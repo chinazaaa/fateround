@@ -188,6 +188,35 @@ export function canDeclareMahjongForRuleset(
   return canDeclareMahjong(hand, melds)
 }
 
+/** Every non-flower tile base a hand can wait on (suits 1-9 + honors). */
+const MAHJONG_WAIT_BASES: string[] = [
+  ...(['m', 'p', 's'] as const).flatMap((suit) => Array.from({ length: 9 }, (_, i) => `${suit}${i + 1}`)),
+  ...HONORS,
+]
+
+/**
+ * Whether the concealed hand is one tile away from a win (tenpai). Mirrors the
+ * web `isTenpai` (src/lib/mahjong-hand.ts): a hand is tenpai when some drawable
+ * tile completes it. Ruleset-agnostic, matching the web helper.
+ */
+export function isMahjongTenpai(hand: string[], melds: MahjongMeld[]): boolean {
+  return MAHJONG_WAIT_BASES.some((tile) => canDeclareMahjong([...hand, tile], melds))
+}
+
+/**
+ * Whether claiming the given discard would complete the hand (ron). Ruleset-aware,
+ * mirroring the web `mahjongClaimOptionsForPlayer` win check. The server
+ * re-validates; this only decides whether to surface the Mahjong claim button.
+ */
+export function canRonWithDiscard(
+  hand: string[],
+  melds: MahjongMeld[],
+  discardTile: string,
+  ruleset: MahjongRuleset
+): boolean {
+  return canDeclareMahjongForRuleset([...hand, discardTile], melds, ruleset)
+}
+
 export type MahjongSelfKongOption = {
   /** Base tile to declare the kong on (sent to the claim endpoint). */
   tile: string

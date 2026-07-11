@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Platform, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native'
 import { captureRef } from 'react-native-view-shot'
 import * as Sharing from 'expo-sharing'
+import * as Clipboard from 'expo-clipboard'
 import type { AnonymousMessage, Game, Player } from '@fateround/shared'
-import { postFinishGame, postPlayAgain } from '@/lib/game-api'
-import { apiUrl } from '@/lib/config'
+import { patchGameSettings, postFinishGame, postPlayAgain } from '@/lib/game-api'
+import { apiUrl, gameWebUrl } from '@/lib/config'
 import { gameTypeMeta } from '@/lib/game-type-meta'
 import { HostChrome } from '@/components/host/HostChrome'
+import { GameLinkQrCode } from '@/components/session/GameLinkQrCode'
+import { SettingToggle } from '@/components/create/SettingToggle'
 import { GameFinishedActions } from '@/components/lifecycle/GameFinishedActions'
 import { useSecretMessageInbox } from '@/components/host/secret-message/useSecretMessageInbox'
 import { ShareMessageCard } from '@/components/host/secret-message/ShareMessageCard'
@@ -36,10 +39,44 @@ export function SecretMessageHostScreen({ gameCode, hostToken, game, players, on
   const [sharingId, setSharingId] = useState<string | null>(null)
   const [shareTarget, setShareTarget] = useState<AnonymousMessage | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [isPublic, setIsPublic] = useState(!!game.is_public)
+  const [savingVisibility, setSavingVisibility] = useState(false)
   const scrollRef = useRef<ScrollView | null>(null)
   const cardRef = useRef<View>(null)
   const sharingLock = useRef(false)
   const headerEmoji = gameTypeMeta('secret_message').emoji
+  const shareUrl = gameWebUrl(gameCode)
+
+  // Keep the local toggle in sync when the game row updates elsewhere.
+  useEffect(() => {
+    setIsPublic(!!game.is_public)
+  }, [game.is_public])
+
+  const copyLink = async () => {
+    try {
+      await Clipboard.setStringAsync(shareUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1600)
+    } catch {
+      setError('Could not copy link')
+    }
+  }
+
+  const toggleVisibility = async (next: boolean) => {
+    setIsPublic(next)
+    setSavingVisibility(true)
+    setError(null)
+    try {
+      await patchGameSettings(gameCode, hostToken, { is_public: next })
+      onReload()
+    } catch (err) {
+      setIsPublic(!next)
+      setError(err instanceof Error ? err.message : 'Failed to update visibility')
+    } finally {
+      setSavingVisibility(false)
+    }
+  }
 
   // Auto-scroll the inbox to the newest message as it arrives.
   useEffect(() => {
@@ -125,6 +162,32 @@ export function SecretMessageHostScreen({ gameCode, hostToken, game, players, on
   return (
     <HostChrome gameCode={gameCode} hostToken={hostToken} game={game} players={players} onReload={onReload}>
       <Text style={styles.hint}>Only you can read these. Senders stay anonymous.</Text>
+
+      <View style={styles.shareCard}>
+        <Text style={styles.shareLabel}>Share link</Text>
+        <Text style={styles.shareCopy}>
+          Post this anywhere — Instagram, WhatsApp, your bio. Anyone who opens it can send you a message.
+        </Text>
+        <View style={styles.qrWrap}>
+          <GameLinkQrCode url={shareUrl} />
+          <Text style={styles.qrCaption}>Scan to open</Text>
+        </View>
+        <Pressable style={styles.copyBtn} onPress={() => void copyLink()}>
+          <Text style={styles.copyBtnText}>{copied ? 'Link copied!' : 'Copy link'}</Text>
+        </Pressable>
+        <Text style={styles.shareUrl} selectable numberOfLines={1} ellipsizeMode="middle">
+          {shareUrl}
+        </Text>
+        <View style={styles.visibilityRow}>
+          <SettingToggle
+            label="Public game"
+            description="Listed in Browse for anyone to find"
+            value={isPublic}
+            onChange={(v) => void toggleVisibility(v)}
+            disabled={savingVisibility}
+          />
+        </View>
+      </View>
 
       {isOpen ? (
         <View style={styles.statusCard}>
@@ -253,6 +316,34 @@ export function SecretMessageHostScreen({ gameCode, hostToken, game, players, on
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     hint: { color: theme.textMuted, fontSize: 14, lineHeight: 20 },
+    shareCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 16,
+      gap: 12,
+    },
+    shareLabel: {
+      color: theme.textFaint,
+      fontSize: 12,
+      fontWeight: '700',
+      letterSpacing: 0.6,
+      textTransform: 'uppercase',
+    },
+    shareCopy: { color: theme.textMuted, fontSize: 13, lineHeight: 19 },
+    qrWrap: { alignItems: 'center', gap: 6, paddingVertical: 2 },
+    qrCaption: { color: theme.textFaint, fontSize: 12 },
+    copyBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 12,
+      paddingVertical: 12,
+      alignItems: 'center',
+    },
+    // White on the solid rose button — intentional, correct in both schemes.
+    copyBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+    shareUrl: { color: theme.textFaint, fontSize: 12, fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) },
+    visibilityRow: { borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 10 },
     statusCard: {
       flexDirection: 'row',
       alignItems: 'center',

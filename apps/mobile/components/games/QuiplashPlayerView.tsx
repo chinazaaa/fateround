@@ -30,6 +30,7 @@ import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChro
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { PhaseStepper } from '@/components/party/PhaseStepper'
+import { PlayerSessionControls } from '@/components/session/PlayerSessionControls'
 import { RoundBreakCard } from '@/components/party/RoundBreakCard'
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import { TimerBadge } from '@/components/ui/TimerBadge'
@@ -141,7 +142,9 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
   const revealTally = currentRound ? countVotesForRound(currentRound.id, votes) : []
   const topVoteCount = revealTally[0]?.votes ?? 0
   const soloRound = roundAnswers.length === 1
-  const soloPoints = soloRound ? soloRoundPoints(bootstrap.players.length) : 0
+  const participantCount = bootstrap.players.filter((p) => p.spectator !== true).length
+  const soloPoints = soloRound ? soloRoundPoints(participantCount) : 0
+  const soloWinnerIsMe = soloRound && myAnswer?.id === roundAnswers[0]?.id
 
   const liveLeaderboard = useMemo(
     () => tallyQuiplashScores([], answers, bootstrap.players, votes),
@@ -263,7 +266,15 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   return (
-    <GameShell bootstrap={bootstrap} title={batch5GameLabel('quiplash')} subtitle={`Round ${currentRound.round_number}`}>
+    <GameShell
+      bootstrap={bootstrap}
+      title={batch5GameLabel('quiplash')}
+      subtitle={
+        bootstrap.game.rounds_count
+          ? `Round ${currentRound.round_number} of ${bootstrap.game.rounds_count}`
+          : `Round ${currentRound.round_number}`
+      }
+    >
       <PhaseStepper steps={['Write', 'Vote', 'Results']} activeIndex={phaseIndex} />
 
       {cannotParticipate && me && bootstrap.myPlayerId ? (
@@ -289,6 +300,12 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
       />
 
       {metadata ? <Text style={styles.prompt}>{metadata.prompt}</Text> : null}
+      {session.phase === 'writing' && !cannotParticipate && !myAnswer ? (
+        <Text style={styles.helper}>Everyone writes one funny answer — yours stays secret until results.</Text>
+      ) : null}
+      {session.phase === 'reveal' ? (
+        <Text style={styles.helper}>Who wrote what — points go to every vote your answer received.</Text>
+      ) : null}
       {countdown > 0 ? <TimerBadge seconds={countdown} /> : null}
 
       {session.phase === 'writing' ? (
@@ -315,8 +332,15 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
               maxLength={QUIPLASH_MAX_ANSWER_LENGTH}
               multiline
             />
-            <Pressable style={styles.primaryBtn} disabled={submitting} onPress={() => void submitAnswer()}>
-              <Text style={styles.primaryText}>Submit answer</Text>
+            <Text style={styles.counter}>
+              {answerText.length}/{QUIPLASH_MAX_ANSWER_LENGTH}
+            </Text>
+            <Pressable
+              style={[styles.primaryBtn, (submitting || !answerText.trim()) && styles.primaryBtnDisabled]}
+              disabled={submitting || !answerText.trim()}
+              onPress={() => void submitAnswer()}
+            >
+              <Text style={styles.primaryText}>{submitting ? 'Submitting…' : 'Submit answer'}</Text>
             </Pressable>
           </>
         )
@@ -324,20 +348,30 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
 
       {session.phase === 'voting' ? (
         <>
-          <Text style={styles.section}>{votingHint}</Text>
+          <Text style={styles.section}>Pick the funniest answer</Text>
+          <Text style={styles.helper}>{votingHint}</Text>
           <View style={styles.choices}>
-            {voteOptions.map((answer, index) => (
-              <Pressable
-                key={answer.id}
-                style={[styles.choice, myVote?.chosen_answer_id === answer.id && styles.choiceSelected]}
-                disabled={submitting || !!myVote || !canVote}
-                onPress={() => void submitVote(answer.id)}
-              >
-                <Text style={styles.choiceBadge}>{answerOptionLabel(index)}</Text>
-                <Text style={styles.choiceText}>{answer.text}</Text>
-              </Pressable>
-            ))}
+            {voteOptions.map((answer, index) => {
+              const isPicked = myVote?.chosen_answer_id === answer.id
+              return (
+                <Pressable
+                  key={answer.id}
+                  style={[styles.choice, isPicked && styles.choiceSelected]}
+                  disabled={submitting || !!myVote || !canVote}
+                  onPress={() => void submitVote(answer.id)}
+                >
+                  <Text style={styles.choiceBadge}>{answerOptionLabel(index)}</Text>
+                  <View style={styles.choiceBody}>
+                    <Text style={styles.choiceText}>{answer.text}</Text>
+                    {isPicked ? <Text style={styles.yourPick}>Your pick</Text> : null}
+                  </View>
+                </Pressable>
+              )
+            })}
           </View>
+          {myAnswer ? (
+            <Text style={styles.locked}>Your answer isn't listed — you can't vote for your own.</Text>
+          ) : null}
           {myVote ? <Text style={styles.locked}>Vote locked in</Text> : null}
         </>
       ) : null}
@@ -347,7 +381,9 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
           {soloRound ? (
             <View style={styles.soloBanner}>
               <Text style={styles.soloText}>
-                Solo round — {soloPoints} pt{soloPoints === 1 ? '' : 's'} for the only answer
+                {soloWinnerIsMe
+                  ? `No one else submitted — you got ${soloPoints} pt${soloPoints === 1 ? '' : 's'}!`
+                  : 'No one else submitted this round.'}
               </Text>
             </View>
           ) : null}
@@ -377,6 +413,19 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
           ) : null}
         </>
       ) : null}
+
+      {me && bootstrap.myPlayerId ? (
+        <PlayerSessionControls
+          gameCode={bootstrap.code}
+          playerId={bootstrap.myPlayerId}
+          currentName={me.name}
+          resumeToken={bootstrap.myResumeToken}
+          onRenamed={() => void bootstrap.load()}
+          onLeft={onLeft}
+          inLobby={false}
+          spectating={cannotParticipate}
+        />
+      ) : null}
     </GameShell>
   )
 }
@@ -385,6 +434,8 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
   waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
   prompt: { color: theme.text, fontSize: 20, fontWeight: '700', lineHeight: 28 },
+  helper: { color: theme.textMuted, fontSize: 14, lineHeight: 20, marginTop: 4 },
+  counter: { color: theme.textFaint, fontSize: 12, textAlign: 'right', marginTop: 4 },
   section: { color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 8 },
   submittedCard: {
     backgroundColor: theme.surface,
@@ -423,6 +474,7 @@ const makeStyles = (theme: Theme) =>
     alignItems: 'center',
     marginTop: 8,
   },
+  primaryBtnDisabled: { opacity: 0.5 },
   // white on the solid rose button — intentional
   primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   choices: { gap: 10, marginTop: 8 },
@@ -448,7 +500,9 @@ const makeStyles = (theme: Theme) =>
     lineHeight: 32,
     fontWeight: '800',
   },
-  choiceText: { color: theme.text, fontSize: 16, flex: 1, lineHeight: 22 },
+  choiceBody: { flex: 1, gap: 4 },
+  choiceText: { color: theme.text, fontSize: 16, lineHeight: 22 },
+  yourPick: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700' },
   locked: { color: theme.textMuted, textAlign: 'center', marginTop: 12 },
   revealList: { gap: 10, paddingVertical: 8 },
   revealRow: { backgroundColor: theme.surface, borderRadius: 10, padding: 12, gap: 4 },

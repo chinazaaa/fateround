@@ -11,13 +11,18 @@ import {
   quickDrawGuessIndividualLeaderboard,
   quickDrawGuessWinningTeams,
   teamLabel,
+  QUICK_DRAW_GUESS_MIN_PLAYERS_TEAM,
+  QUICK_DRAW_GUESS_MIN_PLAYERS_INDIVIDUAL,
 } from '@fateround/shared/quick-draw-guess'
+import { playerIsViewer } from '@fateround/shared/viewers'
 import { emptyStrokeData, normalizeStrokeData } from '@fateround/shared/quick-draw-strokes'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner, WaitingPanel } from '@/components/game/GameChrome'
 import { QuickDrawLiePlayerView } from '@/components/games/QuickDrawLiePlayerView'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
+import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { ActivityFeed } from '@/components/party/ActivityFeed'
 import { RoundBreakCard } from '@/components/party/RoundBreakCard'
 import { TeamBadge } from '@/components/party/TeamBadge'
@@ -42,6 +47,17 @@ import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+
+/** Team that plays turn `turnIndex` (mirrors web `teamForTurn`). */
+const teamForTurn = (turnIndex: number, numTeams: number): number => (turnIndex % numTeams) + 1
+
+/** Total turns in the match (mirrors web `quickDrawGuessTotalTurns`). */
+const quickDrawGuessTotalTurns = (
+  mode: 'team' | 'individual',
+  numTeams: number,
+  rosterLen: number,
+  totalRounds: number
+): number => (mode === 'individual' ? rosterLen : numTeams) * totalRounds
 
 export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
   const [session, setSession] = useState<QuickDrawGuessSession | null>(null)
@@ -129,7 +145,20 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
   const myTeamRow = teamRows.find((r) => r.player_id === bootstrap.myPlayerId)
   const isDrawer = session?.drawer_player_id === bootstrap.myPlayerId
   const onMyTeam = mode === 'individual' || myTeamRow?.team === session?.active_team
-  const canGuess = session?.phase === 'turn' && !isDrawer && onMyTeam
+  const mePlayer = bootstrap.myPlayerId
+    ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
+    : undefined
+  const isViewer = !!(mePlayer && bootstrap.game && playerIsViewer(mePlayer, bootstrap.game))
+  // Individual mode: once I've guessed the word correctly this turn, the guess box
+  // is replaced by a "You got it!" note so I can't keep submitting (mirrors web
+  // QuickDrawGuessPlay `myGuessedThisTurn`).
+  const myGuessedThisTurn =
+    mode === 'individual' &&
+    !!session &&
+    guesses.some(
+      (g) => g.turn_index === session.turn_index && g.player_id === bootstrap.myPlayerId && g.correct
+    )
+  const canGuess = session?.phase === 'turn' && !isDrawer && !isViewer && onMyTeam
 
   const act = async (fn: () => Promise<unknown>) => {
     if (!bootstrap.myResumeToken || acting) return
@@ -175,19 +204,25 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
 
   const guessFeed = useMemo(() => {
     const nameById = new Map(bootstrap.players.map((p) => [p.id, p.name]))
-    return guesses.slice(0, 12).map((g) => {
-      // Individual mode masks other players' guess text so no one can copy a
-      // correct answer — you only see 'guessing…' / 'guessed it ✅'. Mirrors web
-      // GuessFeed hideOthersText (QuickDrawGuessPlay.tsx).
-      const mask = mode === 'individual' && g.player_id !== bootstrap.myPlayerId
-      const primary = mask ? (g.correct ? 'guessed it ✅' : 'guessing…') : g.text
-      return {
-        id: g.id,
-        primary,
-        secondary: `${nameById.get(g.player_id) ?? 'Player'}${g.correct ? ` · +${g.points}` : ''}`,
-      }
-    })
-  }, [guesses, bootstrap.players, bootstrap.myPlayerId, mode])
+    // Only show guesses from the CURRENT turn so stale guesses from earlier
+    // words/turns don't bleed into the live feed (mirrors web GuessFeed).
+    const turnIndex = session?.turn_index ?? -1
+    return guesses
+      .filter((g) => g.turn_index === turnIndex)
+      .slice(0, 12)
+      .map((g) => {
+        // Individual mode masks other players' guess text so no one can copy a
+        // correct answer — you only see 'guessing…' / 'guessed it ✅'. Mirrors web
+        // GuessFeed hideOthersText (QuickDrawGuessPlay.tsx).
+        const mask = mode === 'individual' && g.player_id !== bootstrap.myPlayerId
+        const primary = mask ? (g.correct ? 'guessed it ✅' : 'guessing…') : g.text
+        return {
+          id: g.id,
+          primary,
+          secondary: `${nameById.get(g.player_id) ?? 'Player'}${g.correct ? ` · +${g.points}` : ''}`,
+        }
+      })
+  }, [guesses, bootstrap.players, bootstrap.myPlayerId, mode, session?.turn_index])
 
   const turnSecondsLeft = useAbsoluteDeadline(
     session?.turn_deadline_at,
@@ -239,6 +274,22 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    // "Play again · same settings" reopened the lobby with the ready-up ring
+    // (readiness = holding a seat), using quick-draw's own min-player thresholds.
+    if (bootstrap.game.replay_pending) {
+      return (
+        <GameShell bootstrap={bootstrap} title={batch8GameLabel('quick_draw')} subtitle="Play again">
+          <ReplayReadyRing
+            gameCode={bootstrap.code}
+            players={bootstrap.players}
+            myPlayerId={bootstrap.myPlayerId}
+            myResumeToken={bootstrap.myResumeToken ?? null}
+            minPlayers={mode === 'individual' ? QUICK_DRAW_GUESS_MIN_PLAYERS_INDIVIDUAL : QUICK_DRAW_GUESS_MIN_PLAYERS_TEAM}
+            onReload={() => bootstrap.load()}
+          />
+        </GameShell>
+      )
+    }
     if (mode === 'individual') {
       return <LobbyView {...lobbyProps!} onLeft={onLeft} />
     }
@@ -261,8 +312,18 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
     if (mode === 'individual') {
       const board = quickDrawGuessIndividualLeaderboard(teamRows, bootstrap.players)
       const top = board[0]
+      const hasWinner = !!top && top.score > 0
       return (
-        <GameFinishPanel bootstrap={bootstrap} title="Final results" subtitle="Final standings" detail={top ? `${top.name} — ${top.score} pts` : undefined} leaderboard={scoreListLeaderboard(board)} />
+        <GameFinishPanel
+          bootstrap={bootstrap}
+          emoji={hasWinner ? '🏆' : '🏁'}
+          title={hasWinner ? `${top.name} wins!` : 'Final results'}
+          subtitle="Final standings"
+          detail={top ? `${top.name} — ${top.score} pts` : undefined}
+          leaderboard={scoreListLeaderboard(board)}
+          winnerPlayerId={hasWinner ? top.id : null}
+          roundKey={session?.id ?? null}
+        />
       )
     }
     const scores = computeQuickDrawGuessScores(words, numTeams)
@@ -285,10 +346,39 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
           ? 'Guess the word!'
           : `${drawerName} is drawing`
 
+  // Break card next-up hint: the final turn tips into results; otherwise the next
+  // team (team mode) or next drawer (individual) is up (mirrors web break card).
+  const totalTurns = quickDrawGuessTotalTurns(mode, numTeams, teamRows.length, session.total_rounds)
+  const isLastTurn = session.turn_index + 1 >= totalTurns
+  const breakDetail = isLastTurn
+    ? 'Final results next'
+    : mode === 'individual'
+      ? 'Next drawer up'
+      : `Next up: ${teamLabel(teamForTurn(session.turn_index + 1, numTeams))}`
+
   return (
-    <GameShell bootstrap={bootstrap} title={batch8GameLabel('quick_draw')} subtitle={mode === 'team' ? teamLabel(session.active_team) : 'Individual'}>
+    <GameShell
+      title={batch8GameLabel('quick_draw')}
+      subtitle={mode === 'team' ? teamLabel(session.active_team) : 'Individual'}
+      gameCode={bootstrap.code}
+      game={bootstrap.game}
+      players={bootstrap.players}
+      myPlayerId={bootstrap.myPlayerId}
+      onPromoted={() => bootstrap.load()}
+    >
       <ScrollView contentContainerStyle={styles.content}>
         <TurnBanner text={statusText} isMyTurn={isDrawer || canGuess} />
+
+        {isViewer && mePlayer && bootstrap.myPlayerId ? (
+          <ViewerModeBanner
+            gameCode={bootstrap.code}
+            playerId={bootstrap.myPlayerId}
+            game={bootstrap.game}
+            player={mePlayer}
+            players={bootstrap.players}
+            onPromoted={() => void bootstrap.load()}
+          />
+        ) : null}
 
         {mode === 'team' && myTeamRow?.team ? (
           <View style={styles.teamRow}>
@@ -322,9 +412,10 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
 
         {session.phase === 'break' ? (
           <RoundBreakCard
-            title="Round break"
+            title={isLastTurn ? 'Last turn done' : 'Round break'}
             message={session.status_message ?? 'Next turn starting soon…'}
             secondsLeft={breakSecondsLeft}
+            detail={breakDetail}
           />
         ) : null}
 
@@ -350,7 +441,9 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
           )
         ) : null}
 
-        {canGuess ? (
+        {canGuess && myGuessedThisTurn ? (
+          <Text style={styles.gotIt}>You got it! ✅</Text>
+        ) : canGuess ? (
           <View style={styles.guessBox}>
             <TextInput
               style={styles.input}
@@ -360,6 +453,11 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
               placeholderTextColor={theme.textFaint}
               autoCapitalize="none"
               autoCorrect={false}
+              maxLength={80}
+              onSubmitEditing={() =>
+                guessText.trim() &&
+                void act(() => postQuickDrawGuess(bootstrap.code, bootstrap.myResumeToken!, guessText.trim()))
+              }
             />
             <Pressable
               style={[styles.primaryBtn, acting && styles.btnDisabled]}
@@ -383,6 +481,8 @@ const makeStyles = (theme: Theme) =>
   teamRowLabel: { color: theme.textMuted, fontSize: 14 },
   content: { paddingBottom: 32, gap: 12 },
   status: { color: theme.textSecondary, fontSize: 14 },
+  // emerald success — kept consistent across themes for the "you got it" note
+  gotIt: { color: '#10b981', fontSize: 15, fontWeight: '700', textAlign: 'center' },
   wordBox: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 8, alignItems: 'center' },
   wordLabel: { color: theme.textMuted, fontSize: 12, textTransform: 'uppercase' },
   word: { color: theme.text, fontSize: 32, fontWeight: '800', textAlign: 'center' },

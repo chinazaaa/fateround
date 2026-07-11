@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native'
 import { Image } from 'expo-image'
-import { searchGifs, type GifItem } from '@/lib/api'
+import { searchGifs, type GifItem, type KlipyMediaType } from '@/lib/api'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
@@ -23,6 +23,7 @@ type Props = {
 export function GifPickerSheet({ visible, onPick, onClose }: Props) {
   const theme = useTheme()
   const styles = useThemedStyles(makeStyles)
+  const [tab, setTab] = useState<KlipyMediaType>('gifs')
   const [query, setQuery] = useState('')
   const [items, setItems] = useState<GifItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -36,34 +37,60 @@ export function GifPickerSheet({ visible, onPick, onClose }: Props) {
     setError(null)
     if (debounce.current) clearTimeout(debounce.current)
     debounce.current = setTimeout(() => {
-      searchGifs(query)
+      searchGifs(query, tab)
         .then((res) => alive && setItems(res))
-        .catch((err) => alive && setError(err instanceof Error ? err.message : 'Could not load GIFs'))
+        .catch(
+          (err) =>
+            alive &&
+            setError(err instanceof Error ? err.message : `Could not load ${tab}`)
+        )
         .finally(() => alive && setLoading(false))
     }, 300)
     return () => {
       alive = false
       if (debounce.current) clearTimeout(debounce.current)
     }
-  }, [visible, query])
+  }, [visible, query, tab])
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <View style={styles.sheet}>
           <View style={styles.handle} />
+          <View style={styles.tabRow}>
+            <View style={styles.tabs}>
+              <Pressable
+                style={[styles.tab, tab === 'gifs' && styles.tabActive]}
+                onPress={() => {
+                  setTab('gifs')
+                  setQuery('')
+                }}
+              >
+                <Text style={[styles.tabText, tab === 'gifs' && styles.tabTextActive]}>GIFs</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.tab, tab === 'stickers' && styles.tabActive]}
+                onPress={() => {
+                  setTab('stickers')
+                  setQuery('')
+                }}
+              >
+                <Text style={[styles.tabText, tab === 'stickers' && styles.tabTextActive]}>Stickers</Text>
+              </Pressable>
+            </View>
+            <Pressable onPress={onClose} hitSlop={8}>
+              <Text style={styles.close}>Close</Text>
+            </Pressable>
+          </View>
           <View style={styles.searchRow}>
             <TextInput
               style={styles.search}
               value={query}
               onChangeText={setQuery}
-              placeholder="Search GIFs…"
+              placeholder={tab === 'stickers' ? 'Search stickers…' : 'Search GIFs…'}
               placeholderTextColor={theme.textFaint}
               autoFocus
             />
-            <Pressable onPress={onClose} hitSlop={8}>
-              <Text style={styles.close}>Close</Text>
-            </Pressable>
           </View>
 
           {loading ? (
@@ -73,12 +100,20 @@ export function GifPickerSheet({ visible, onPick, onClose }: Props) {
           ) : error ? (
             <Text style={styles.error}>{error}</Text>
           ) : items.length === 0 ? (
-            <Text style={styles.empty}>No GIFs found.</Text>
+            <Text style={styles.empty}>{tab === 'stickers' ? 'No stickers found.' : 'No GIFs found.'}</Text>
           ) : (
             <ScrollView contentContainerStyle={styles.grid}>
               {items.map((gif) => (
-                <Pressable key={gif.id} style={styles.tile} onPress={() => onPick(gif.fullUrl)}>
-                  <Image source={{ uri: gif.previewUrl }} style={styles.gif} contentFit="cover" />
+                <Pressable
+                  key={gif.id}
+                  style={[styles.tile, tab === 'stickers' && styles.tileSticker]}
+                  onPress={() => onPick(gif.fullUrl)}
+                >
+                  <Image
+                    source={{ uri: gif.previewUrl }}
+                    style={styles.gif}
+                    contentFit={tab === 'stickers' ? 'contain' : 'cover'}
+                  />
                 </Pressable>
               ))}
             </ScrollView>
@@ -101,6 +136,16 @@ const makeStyles = (theme: Theme) =>
     height: '70%',
   },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: theme.border, alignSelf: 'center' },
+  tabRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.sm },
+  tabs: { flexDirection: 'row', gap: 6 },
+  tab: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: theme.radius.sm,
+  },
+  tabActive: { backgroundColor: theme.primarySoft },
+  tabText: { color: theme.textMuted, fontSize: 14, fontWeight: '700' },
+  tabTextActive: { color: theme.primaryMuted },
   searchRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
   search: {
     flex: 1,
@@ -125,5 +170,6 @@ const makeStyles = (theme: Theme) =>
     overflow: 'hidden',
     backgroundColor: theme.surface,
   },
+  tileSticker: { padding: 4 },
   gif: { width: '100%', height: '100%' },
 })

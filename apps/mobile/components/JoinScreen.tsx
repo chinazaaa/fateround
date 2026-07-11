@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput } from 'react-native'
 import { ShareGameCard } from '@/components/session/ShareGameCard'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
@@ -17,6 +18,8 @@ type Props = {
   hint?: string
   /** Overrides the submit button label (e.g. "Join as viewer"). */
   submitLabel?: string
+  /** Optional extra content under the form (e.g. a "How to play" rules link). */
+  footer?: ReactNode
 }
 
 export function JoinScreen({
@@ -29,6 +32,7 @@ export function JoinScreen({
   kicker = 'Join game',
   hint = 'No account needed — enter a display name and play.',
   submitLabel = 'Join game',
+  footer,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const theme = useTheme()
@@ -55,6 +59,8 @@ export function JoinScreen({
         {/* White spinner on the solid rose button — correct in both schemes. */}
         {joining ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{submitLabel}</Text>}
       </Pressable>
+
+      {footer}
 
       <ShareGameCard gameCode={gameCode} />
     </KeyboardFormScreen>

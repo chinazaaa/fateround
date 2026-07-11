@@ -36,6 +36,27 @@ const UMA_PRESETS: Record<UmaPresetKey, { label: string; value: [number, number,
   flat: { label: 'Off', value: [0, 0, 0, 0] },
 }
 
+/** Extra ruleset metadata for the lobby detail panel (mirrors web MAHJONG_RULESET_CONFIG). */
+const MAHJONG_RULESET_DETAIL: Record<string, { tileSet: '136' | '144'; flowers: boolean; dora: boolean; riichi: boolean }> = {
+  fate_round: { tileSet: '136', flowers: false, dora: false, riichi: false },
+  hong_kong: { tileSet: '144', flowers: true, dora: false, riichi: false },
+  riichi: { tileSet: '136', flowers: false, dora: true, riichi: true },
+  mcr: { tileSet: '144', flowers: true, dora: false, riichi: false },
+}
+
+function rulesetTags(rulesetId: string): string {
+  const detail = MAHJONG_RULESET_DETAIL[rulesetId]
+  if (!detail) return ''
+  return [
+    `${detail.tileSet} tiles`,
+    detail.flowers ? 'Flowers' : null,
+    detail.dora ? 'Dora' : null,
+    detail.riichi ? 'Riichi' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
 function umaPresetKey(uma: number[] | undefined): UmaPresetKey {
   const found = (Object.entries(UMA_PRESETS) as [UmaPresetKey, (typeof UMA_PRESETS)[UmaPresetKey]][]).find(
     ([, preset]) => preset.value.every((value, index) => value === uma?.[index])
@@ -73,6 +94,13 @@ export function MahjongLobbySection({ value, onChange }: Props) {
           }))}
           onChange={(ruleset) => onChange({ ruleset })}
         />
+        <View style={styles.detailPanel}>
+          <Text style={styles.detailTitle}>{MAHJONG_RULESET_LABELS[value.ruleset as keyof typeof MAHJONG_RULESET_LABELS]?.label ?? value.ruleset}</Text>
+          <Text style={styles.detailDesc}>
+            {MAHJONG_RULESET_LABELS[value.ruleset as keyof typeof MAHJONG_RULESET_LABELS]?.description ?? ''}
+          </Text>
+          {rulesetTags(value.ruleset) ? <Text style={styles.detailTags}>{rulesetTags(value.ruleset)}</Text> : null}
+        </View>
       </View>
 
       {value.ruleset === 'riichi' ? (
@@ -274,6 +302,25 @@ const makeStyles = (theme: Theme) =>
       backgroundColor: theme.surface,
     },
     blockTitle: { color: theme.text, fontSize: 15, fontWeight: '800' },
+    detailPanel: {
+      marginTop: theme.space.xs,
+      padding: theme.space.sm,
+      borderRadius: theme.radius.md,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surface,
+      gap: 2,
+    },
+    detailTitle: { color: theme.text, fontSize: 14, fontWeight: '800' },
+    detailDesc: { color: theme.textSecondary, fontSize: 12, lineHeight: 16 },
+    detailTags: {
+      color: theme.textFaint,
+      fontSize: 11,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.6,
+      marginTop: 2,
+    },
     subLabel: { color: theme.textSecondary, fontSize: 13, fontWeight: '700' },
     toggles: { gap: theme.space.xs },
     note: { color: theme.textFaint, fontSize: 12, lineHeight: 17 },

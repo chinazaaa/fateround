@@ -211,6 +211,8 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
           highlightCells={highlightCells}
           onMovePiece={(pieceId, diceIndex) => void movePiece(pieceId, diceIndex)}
           acting={acting}
+          variant={variant}
+          turnPlayerId={turnPlayerId}
         />
 
         <View style={styles.diceCard}>
@@ -230,9 +232,16 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
         {session.status_message ? <Text style={styles.status}>{session.status_message}</Text> : null}
 
         {isMyTurn && session.phase === 'roll' ? (
-          <Pressable style={[styles.btn, acting && styles.btnDisabled]} disabled={acting} onPress={() => void roll()}>
-            <Text style={styles.btnText}>{acting ? 'Rolling…' : '🎲 Roll dice'}</Text>
-          </Pressable>
+          <>
+            <Pressable style={[styles.btn, acting && styles.btnDisabled]} disabled={acting} onPress={() => void roll()}>
+              <Text style={styles.btnText}>{acting ? 'Rolling…' : '🎲 Roll dice'}</Text>
+            </Pressable>
+            {!rolling ? (
+              <Text style={styles.rollHint}>
+                Roll a 6 on either die to leave your yard onto your ★ start square.
+              </Text>
+            ) : null}
+          </>
         ) : null}
 
         {isMyTurn && session.phase === 'move' && legalMoves.length > 0 ? (
@@ -274,5 +283,6 @@ const makeStyles = (theme: Theme) =>
   // White on the solid primary button — intentional (case 2).
   btnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
   noMoves: { color: '#fcd34d', textAlign: 'center', fontWeight: '600', fontSize: 13 },
+  rollHint: { color: theme.textMuted, textAlign: 'center', fontSize: 12 },
   hint: { color: theme.textMuted, textAlign: 'center' },
 })

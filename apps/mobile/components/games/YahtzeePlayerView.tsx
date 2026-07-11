@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ScrollView, StyleSheet, Text } from 'react-native'
 import {
   type YahtzeeCategory,
   type YahtzeePlayerScore,
@@ -7,6 +7,7 @@ import {
 } from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import {
+  YAHTZEE_MIN_PLAYERS,
   currentPlayerId,
   totalScore,
 } from '@fateround/shared/yahtzee'
@@ -14,7 +15,8 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
-import { TimerBadge } from '@/components/ui/TimerBadge'
+import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
+import { YahtzeeDiceTray } from '@/components/games/YahtzeeDiceTray'
 import { YahtzeeScorecardGrid } from '@/components/games/YahtzeeScorecardGrid'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -99,7 +101,8 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     if (!bootstrap.myResumeToken || acting) return
     setActing(true)
     try {
-      playSound('dice')
+      // The dice-roll sound is played by YahtzeeDiceTray when the new dice
+      // values arrive, so it stays in sync with the tumble animation.
       await postYahtzeeRoll(bootstrap.code, bootstrap.myResumeToken)
       await bootstrap.load()
     } finally {
@@ -119,6 +122,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     if (!bootstrap.myResumeToken || acting) return
     setActing(true)
     try {
+      playSound('pop') // score-submitted chime
       await postYahtzeeScore(bootstrap.code, bootstrap.myResumeToken, category)
       await bootstrap.load()
     } finally {
@@ -141,6 +145,21 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     )
   }
   if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    // "Play again · same settings" reopened the lobby with the ready-up ring.
+    if (bootstrap.game.replay_pending) {
+      return (
+        <GameShell bootstrap={bootstrap} title={batch3GameLabel('yahtzee')} subtitle="Play again">
+          <ReplayReadyRing
+            gameCode={bootstrap.code}
+            players={bootstrap.players}
+            myPlayerId={bootstrap.myPlayerId}
+            myResumeToken={bootstrap.myResumeToken ?? null}
+            minPlayers={YAHTZEE_MIN_PLAYERS}
+            onReload={() => bootstrap.load()}
+          />
+        </GameShell>
+      )
+    }
     return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (!bootstrap.game || !session) return <GameLoading />
@@ -154,43 +173,38 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
       .sort((a, b) => b.total - a.total)
     return (
       <GameShell bootstrap={bootstrap} title={batch3GameLabel('yahtzee')} subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap} title="Game over" detail={totals[0] ? `${totals[0].name} wins (${totals[0].total})` : undefined} leaderboard={scoreListLeaderboard(totals.map((row) => ({ name: row.name, score: row.total })))} />
+        <GameFinishPanel
+          bootstrap={bootstrap}
+          title="Game over"
+          detail={totals[0] ? `${totals[0].name} wins (${totals[0].total})` : undefined}
+          leaderboard={scoreListLeaderboard(totals.map((row) => ({ name: row.name, score: row.total })))}
+          winnerPlayerId={scores.length > 1 ? session.winner_player_id : null}
+          roundKey={session.id}
+        />
       </GameShell>
     )
   }
 
   const dice = session.dice ?? [1, 1, 1, 1, 1]
-  const canRoll = isMyTurn && (session.rolls_remaining ?? 0) > 0
   const canScore = isMyTurn && (session.rolls_this_turn ?? 0) > 0
   const turnName = bootstrap.players.find((p) => p.id === turnPlayerId)?.name ?? 'Someone'
 
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('yahtzee')} subtitle={isMyTurn ? 'Your turn' : `${turnName}'s turn`}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={styles.diceRow}>
-          {dice.map((value, index) => (
-            <Pressable
-              key={index}
-              style={[styles.die, localHeld[index] && styles.dieHeld]}
-              disabled={!isMyTurn || (session.rolls_this_turn ?? 0) < 1}
-              onPress={() => void toggleHold(index)}
-            >
-              <Text style={styles.dieText}>{value}</Text>
-            </Pressable>
-          ))}
-        </View>
-
-        {timerActive ? (
-          <View style={styles.timerRow}>
-            <TimerBadge seconds={secondsLeft} urgentAt={20} enableAlerts={isMyTurn} />
-          </View>
-        ) : null}
-
-        <View style={styles.actions}>
-          <Pressable style={[styles.btn, !canRoll && styles.btnDisabled]} disabled={!canRoll || acting} onPress={() => void roll()}>
-            <Text style={styles.btnText}>Roll ({session.rolls_remaining ?? 0} left)</Text>
-          </Pressable>
-        </View>
+        <YahtzeeDiceTray
+          dice={dice}
+          held={localHeld}
+          rollsThisTurn={session.rolls_this_turn ?? 0}
+          rollsRemaining={session.rolls_remaining ?? 0}
+          isMyTurn={isMyTurn}
+          interactive={isMyTurn && (session.rolls_this_turn ?? 0) > 0}
+          onToggleHold={(index) => void toggleHold(index)}
+          onRoll={() => void roll()}
+          rolling={acting}
+          timerActive={timerActive}
+          secondsLeft={secondsLeft}
+        />
 
         {session.status_message ? <Text style={styles.status}>{session.status_message}</Text> : null}
 
@@ -210,27 +224,6 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  scroll: { gap: 12, paddingBottom: 24 },
-  diceRow: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
-  // Die faces are functional game pieces — colors left untouched.
-  die: {
-    width: 52,
-    height: 52,
-    borderRadius: 12,
-    backgroundColor: '#17171d',
-    borderWidth: 2,
-    borderColor: '#374151',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dieHeld: { borderColor: '#f43f5e', backgroundColor: '#3f1d2b' },
-  // White on the dark die face — intentional (case 2).
-  dieText: { color: '#fff', fontSize: 22, fontWeight: '800' },
-  timerRow: { alignItems: 'center' },
-  actions: { alignItems: 'center' },
-  btn: { backgroundColor: theme.primary, borderRadius: 12, paddingHorizontal: 20, paddingVertical: 12 },
-  btnDisabled: { opacity: 0.45 },
-  // White on the solid primary button — intentional (case 2).
-  btnText: { color: '#fff', fontWeight: '800' },
-  status: { color: theme.textMuted, textAlign: 'center' },
-})
+    scroll: { gap: 12, paddingBottom: 24 },
+    status: { color: theme.textMuted, textAlign: 'center' },
+  })

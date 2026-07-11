@@ -20,9 +20,13 @@ import { MahjongResultsCard } from '@/components/games/mahjong/MahjongResultsCar
 import { MahjongTileFace } from '@/components/games/mahjong/MahjongTileFace'
 import {
   canDeclareMahjongForRuleset,
+  canRonWithDiscard,
+  isMahjongTenpai,
   mahjongSelfKongOptions,
   type MahjongSelfKongOption,
 } from '@/components/games/mahjong/mahjong-self-actions'
+import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
+import { playerIsViewer } from '@fateround/shared/viewers'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -170,7 +174,12 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
         joining={bootstrap.joining}
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
-        onJoin={() => void bootstrap.join()}
+        onJoin={() =>
+          void bootstrap.join(
+            undefined,
+            bootstrap.game?.status === 'active' ? { joinAsViewer: true } : undefined
+          )
+        }
       />
     )
   }
@@ -211,18 +220,33 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
   }
   if (!bootstrap.game || !session) return <GameLoading />
 
+  const me = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : null
+  const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
+
   const turnName = playerName(bootstrap.players, turnPlayerId)
-  const canDiscard = isMyTurn && session.phase === 'discard' && sortedHand.length > 0
+  const canDiscard = !isViewer && isMyTurn && session.phase === 'discard' && sortedHand.length > 0
   const canSelfWin =
+    !isViewer &&
     isMyTurn &&
     session.phase === 'discard' &&
     !!myState &&
     canDeclareMahjongForRuleset(myState.hand, myState.melds, session.ruleset)
   const selfKongOptions: MahjongSelfKongOption[] =
-    isMyTurn && session.phase === 'discard' ? mahjongSelfKongOptions(myState) : []
+    !isViewer && isMyTurn && session.phase === 'discard' ? mahjongSelfKongOptions(myState) : []
+  // Riichi is only valid in the riichi ruleset, from a closed (all-concealed)
+  // tenpai hand — mirrors web `canRiichi`.
+  const canRiichi =
+    !isViewer &&
+    isMyTurn &&
+    session.phase === 'discard' &&
+    session.ruleset === 'riichi' &&
+    !!myState &&
+    !myState.riichi_declared &&
+    myState.melds.every((meld) => !meld.from_player_id || meld.concealed) &&
+    isMahjongTenpai(myState.hand ?? [], myState.melds ?? [])
   const inClaimWindow = session.phase === 'claim' && session.last_discard != null
   const alreadyPassed = bootstrap.myPlayerId ? session.claim_passes.includes(bootstrap.myPlayerId) : false
-  const canClaim = inClaimWindow && !alreadyPassed && !isMyTurn
+  const canClaim = !isViewer && inClaimWindow && !alreadyPassed && !isMyTurn
   const meldClaims: MeldClaim[] =
     canClaim && session.last_discard
       ? mahjongMeldClaims(
@@ -231,10 +255,28 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
           isSeatAfterDiscarder(session.turn_order, session.last_discard.player_id, bootstrap.myPlayerId)
         )
       : []
+  // Only offer the Mahjong (ron) claim when the discard actually completes the
+  // hand under the ruleset — mirrors web `mahjongClaimOptionsForPlayer`.
+  const canRon =
+    canClaim && !!session.last_discard && !!myState
+      ? canRonWithDiscard(myState.hand ?? [], myState.melds ?? [], session.last_discard.tile, session.ruleset)
+      : false
+  const hasClaimOptions = canRon || meldClaims.length > 0
 
   return (
     <GameShell bootstrap={bootstrap} title={batch8GameLabel('mahjong')} subtitle={mahjongPhaseLabel(session.phase)}>
       <ScrollView contentContainerStyle={styles.content}>
+        {isViewer && me && bootstrap.myPlayerId ? (
+          <ViewerModeBanner
+            gameCode={bootstrap.code}
+            playerId={bootstrap.myPlayerId}
+            game={bootstrap.game}
+            player={me}
+            players={bootstrap.players}
+            onPromoted={() => void bootstrap.load()}
+          />
+        ) : null}
+
         <TurnBanner
           isMyTurn={isMyTurn || canClaim}
           text={
@@ -258,36 +300,42 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
           myPlayerId={bootstrap.myPlayerId}
         />
 
-        <Text style={styles.section}>Your hand ({sortedHand.length})</Text>
-        <View style={styles.tileRow}>
-          {sortedHand.map((tile) => (
-            <Pressable
-              key={tile}
-              disabled={!canDiscard || acting}
-              onPress={() => discard(tile)}
-            >
-              <MahjongTileFace tile={tile} selected={canDiscard} />
-            </Pressable>
-          ))}
-        </View>
-
-        {myState?.melds?.length ? (
+        {isViewer ? (
+          <Text style={styles.viewerNote}>Viewer mode hides private hands.</Text>
+        ) : (
           <>
-            <Text style={styles.section}>Melds</Text>
-            {myState.melds.map((meld, index) => (
-              <View key={`${meld.type}-${index}`} style={styles.meldRow}>
-                <Text style={styles.meldType}>{meld.type.toUpperCase()}</Text>
-                <View style={styles.meldTiles}>
-                  {meld.tiles.map((tile) => (
-                    <MahjongTileFace key={tile} tile={tile} compact />
-                  ))}
-                </View>
-              </View>
-            ))}
-          </>
-        ) : null}
+            <Text style={styles.section}>Your hand ({sortedHand.length})</Text>
+            <View style={styles.tileRow}>
+              {sortedHand.map((tile) => (
+                <Pressable
+                  key={tile}
+                  disabled={!canDiscard || acting}
+                  onPress={() => discard(tile)}
+                >
+                  <MahjongTileFace tile={tile} selected={canDiscard} />
+                </Pressable>
+              ))}
+            </View>
 
-        {canClaim ? (
+            {myState?.melds?.length ? (
+              <>
+                <Text style={styles.section}>Melds</Text>
+                {myState.melds.map((meld, index) => (
+                  <View key={`${meld.type}-${index}`} style={styles.meldRow}>
+                    <Text style={styles.meldType}>{meld.type.toUpperCase()}</Text>
+                    <View style={styles.meldTiles}>
+                      {meld.tiles.map((tile) => (
+                        <MahjongTileFace key={tile} tile={tile} compact />
+                      ))}
+                    </View>
+                  </View>
+                ))}
+              </>
+            ) : null}
+          </>
+        )}
+
+        {canClaim && hasClaimOptions ? (
           <View style={styles.actionPanel}>
             <Text style={styles.actionTitle}>Claim window</Text>
             {meldClaims.length > 0 ? (
@@ -305,9 +353,11 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
               </View>
             ) : null}
             <View style={styles.actionRow}>
-              <Pressable style={[styles.primaryBtn, styles.flexBtn, acting && styles.btnDisabled]} disabled={acting} onPress={claimMahjong}>
-                <Text style={styles.primaryBtnText}>Mahjong</Text>
-              </Pressable>
+              {canRon ? (
+                <Pressable style={[styles.primaryBtn, styles.flexBtn, acting && styles.btnDisabled]} disabled={acting} onPress={claimMahjong}>
+                  <Text style={styles.primaryBtnText}>Mahjong</Text>
+                </Pressable>
+              ) : null}
               <Pressable style={[styles.secondaryBtn, styles.flexBtn, acting && styles.btnDisabled]} disabled={acting} onPress={passClaim}>
                 <Text style={styles.secondaryBtnText}>Pass</Text>
               </Pressable>
@@ -344,7 +394,7 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
           </View>
         ) : null}
 
-        {isMyTurn && session.phase === 'discard' && !myState?.riichi_declared ? (
+        {canRiichi ? (
           <Pressable
             style={[styles.secondaryBtn, acting && styles.btnDisabled]}
             disabled={acting}
@@ -363,6 +413,7 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
   content: { paddingBottom: 32, gap: 12 },
   status: { color: theme.textSecondary, fontSize: 14 },
+  viewerNote: { color: theme.textFaint, fontSize: 13, textAlign: 'center', marginTop: 4 },
   section: { color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 4 },
   tileRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   meldBtn: {

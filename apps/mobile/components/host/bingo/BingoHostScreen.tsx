@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { uniqueTopic } from '@/lib/realtime'
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { BingoCalledNumber, Game, Player } from '@fateround/shared'
 import { formatBingoNumber } from '@fateround/shared/bingo'
 import {
@@ -12,6 +12,7 @@ import { getSupabase } from '@/lib/supabase'
 import { BINGO_CALLED_NUMBER_SELECT, BINGO_CLAIM_SELECT } from '@/lib/supabase-selects'
 import { useBingoAutoCall } from '@/hooks/useBingoAutoCall'
 import { HostChrome } from '@/components/host/HostChrome'
+import { CalledNumbersBoardSection } from '@/components/games/bingo/CalledNumbersBoardSection'
 import { GameFinishedActions } from '@/components/lifecycle/GameFinishedActions'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -105,16 +106,38 @@ export function BingoHostScreen({ gameCode, hostToken, game, players, onReload }
     }
   }
 
-  const onPlayAgain = async () => {
+  const resetGame = async (sameSettings: boolean) => {
     setActing(true)
     try {
-      await postPlayAgain(gameCode, hostToken, true)
+      await postPlayAgain(gameCode, hostToken, sameSettings)
       onReload()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Play again failed')
     } finally {
       setActing(false)
     }
+  }
+
+  const confirmPlayAgain = () => {
+    Alert.alert(
+      'Play again · same settings',
+      'Reopen the game with the same players and settings. Everyone readies up, then you start the next round.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Play again', onPress: () => void resetGame(true) },
+      ]
+    )
+  }
+
+  const confirmReturnToLobby = () => {
+    Alert.alert(
+      'Return to lobby',
+      'Reopen the lobby so you can tweak settings or let new people join before starting again.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Return to lobby', onPress: () => void resetGame(false) },
+      ]
+    )
   }
 
   const lastCalled = calledNumbers.length > 0 ? calledNumbers[calledNumbers.length - 1] : null
@@ -162,6 +185,11 @@ export function BingoHostScreen({ gameCode, hostToken, game, players, onReload }
         </View>
       </ScrollView>
 
+      <CalledNumbersBoardSection
+        calledNumbers={new Set(calledNumbers.map((n) => n.number))}
+        lastCalled={lastCalled?.number ?? null}
+        defaultOpen
+      />
 
       {game.status === 'active' && !winner ? (
         <Pressable style={[styles.secondaryBtn, acting && styles.btnDisabled]} disabled={acting} onPress={() => void onFinish()}>
@@ -171,8 +199,11 @@ export function BingoHostScreen({ gameCode, hostToken, game, players, onReload }
 
       {game.status === 'finished' ? (
         <>
-          <Pressable style={[styles.primaryBtn, acting && styles.btnDisabled]} disabled={acting} onPress={() => void onPlayAgain()}>
-            <Text style={styles.primaryBtnText}>Play again</Text>
+          <Pressable style={[styles.primaryBtn, acting && styles.btnDisabled]} disabled={acting} onPress={confirmPlayAgain}>
+            <Text style={styles.primaryBtnText}>Play again · same settings</Text>
+          </Pressable>
+          <Pressable style={[styles.secondaryBtn, acting && styles.btnDisabled]} disabled={acting} onPress={confirmReturnToLobby}>
+            <Text style={styles.secondaryBtnText}>Return to lobby</Text>
           </Pressable>
           <GameFinishedActions
             gameCode={gameCode}

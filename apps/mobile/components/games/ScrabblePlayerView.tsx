@@ -5,14 +5,16 @@ import { batch6GameLabel } from '@fateround/shared/batch-6-games'
 import { SCRABBLE_BOARD_SIZE, scrabblePremiumAt } from '@fateround/shared/scrabble-constants'
 import { currentTurnPlayerId, scorePlacement, withPlacedTiles } from '@fateround/shared/scrabble-board'
 import { tileSetForDictionary } from '@fateround/shared/scrabble-rulesets'
+import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
+import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ScrabbleTile } from '@/components/games/scrabble/ScrabbleTile'
 import { ScrabbleGameTimerBar } from '@/components/games/scrabble/ScrabbleGameTimerBar'
+import { ScrabbleScoreboard, type ScrabbleScoreRow } from '@/components/games/scrabble/ScrabbleScoreboard'
 import { formatScrabbleClock, useScrabbleChessClock } from '@/components/games/scrabble/useScrabbleChessClock'
-import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useAbsoluteDeadline } from '@/components/party/useAbsoluteDeadline'
@@ -43,6 +45,9 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   const [exchangeIndices, setExchangeIndices] = useState<number[]>([])
   const [acting, setActing] = useState(false)
   const [blankPicker, setBlankPicker] = useState<{ row: number; col: number; rackIndex: number } | null>(null)
+  // Cosmetic rack ordering (shuffle aid). Holds rack indices in display order; null =
+  // natural order. Mirrors web ScrabbleBoard rackOrder / 🔀 Shuffle.
+  const [rackOrder, setRackOrder] = useState<number[] | null>(null)
   const styles = useThemedStyles(makeStyles)
 
   const loadGameState = useCallback(
@@ -92,8 +97,13 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
 
   const activeSession = session ?? bootstrap.gameState
   const myState = playerStates.find((s) => s.player_id === bootstrap.myPlayerId)
+  const me = bootstrap.myPlayerId
+    ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
+    : undefined
+  // Late joiners are seated as read-only viewers (spectators). Disables all turn actions.
+  const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
   const turnPlayerId = activeSession ? currentTurnPlayerId(activeSession) : null
-  const isMyTurn = turnPlayerId === bootstrap.myPlayerId && !myState?.timed_out
+  const isMyTurn = turnPlayerId === bootstrap.myPlayerId && !myState?.timed_out && !isViewer
 
   useGameTurnAlerts({
     gameCode: bootstrap.code,
@@ -127,27 +137,31 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   })
 
   const isChess = chessClock.isChess
-  const scoreRows = useMemo(
+  const scoreRows = useMemo<ScrabbleScoreRow[]>(
     () =>
       playerStates
         .slice()
         .sort((a, b) => b.score - a.score)
         .map((s) => {
           // In chess-clock mode surface each player's live time bank next to their score
-          // (mirrors web BoardScores clockLabel). Timed-out seats read "⏳ out".
-          const clockText = isChess
-            ? s.timed_out
-              ? '⏳ out'
-              : formatScrabbleClock(chessClock.clocksByPlayer.get(s.player_id) ?? (s.clock_ms_remaining ?? 0) / 1000)
-            : null
+          // (mirrors web BoardScores clockLabel). Timed-out seats are struck through.
+          const clockText =
+            isChess && !s.timed_out
+              ? formatScrabbleClock(
+                  chessClock.clocksByPlayer.get(s.player_id) ?? (s.clock_ms_remaining ?? 0) / 1000
+                )
+              : null
           return {
             id: s.player_id,
             name: bootstrap.players.find((p) => p.id === s.player_id)?.name ?? 'Player',
-            score: clockText ? `${s.score} pts · ${clockText}` : s.score,
-            highlight: s.player_id === bootstrap.myPlayerId,
+            score: s.score,
+            isTurn: s.player_id === turnPlayerId,
+            isMe: s.player_id === bootstrap.myPlayerId,
+            timedOut: !!s.timed_out,
+            clockText,
           }
         }),
-    [playerStates, bootstrap.players, bootstrap.myPlayerId, isChess, chessClock.clocksByPlayer]
+    [playerStates, bootstrap.players, bootstrap.myPlayerId, isChess, chessClock.clocksByPlayer, turnPlayerId]
   )
 
   useEffect(() => {
@@ -157,6 +171,40 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
     if (Number.isNaN(deadline) || Date.now() < deadline) return
     void postScrabbleExpireTurn(bootstrap.code).then(() => bootstrap.load()).catch(() => {})
   }, [activeSession?.turn_deadline_at, activeSession?.phase, activeSession?.clock_mode, bootstrap.code, bootstrap.load])
+
+  const rackLength = myState?.rack.length ?? 0
+  // Ordered rack indices for display. Falls back to natural order and self-heals if the
+  // rack size changes (after a play/exchange the shuffled order is dropped).
+  const orderedRackIndices = useMemo(() => {
+    const natural = Array.from({ length: rackLength }, (_, i) => i)
+    if (!rackOrder || rackOrder.length !== rackLength) return natural
+    const seen = new Set(rackOrder)
+    if (seen.size !== rackLength || rackOrder.some((i) => i < 0 || i >= rackLength)) return natural
+    return rackOrder
+  }, [rackOrder, rackLength])
+
+  const shuffleRack = () => {
+    if (rackLength < 2) return
+    const idx = Array.from({ length: rackLength }, (_, i) => i)
+    for (let i = idx.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[idx[i], idx[j]] = [idx[j], idx[i]!]
+    }
+    setRackOrder(idx)
+  }
+
+  const lastMove = activeSession?.last_move ?? null
+  const lastMoveName = lastMove
+    ? bootstrap.players.find((p) => p.id === lastMove.player_id)?.name ?? 'Player'
+    : null
+  const lastMoveText =
+    lastMove && lastMoveName
+      ? lastMove.kind === 'play'
+        ? `${lastMoveName} played ${lastMove.words.join(', ')} for ${lastMove.score} pts`
+        : lastMove.kind === 'exchange'
+          ? `${lastMoveName} exchanged tiles`
+          : `${lastMoveName} passed`
+      : null
 
   const resetTurnUi = () => {
     setPending([])
@@ -222,6 +270,9 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
   if (bootstrap.screen === 'join' && bootstrap.game) {
+    // Mid-game: the only way in is as a read-only viewer (late joiners are seated as
+    // spectators). Present the form as a viewer flow so the intent is clear.
+    const joiningAsViewer = bootstrap.game.status === 'active'
     return (
       <JoinScreen
         gameCode={bootstrap.code}
@@ -229,7 +280,14 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
         joining={bootstrap.joining}
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
-        onJoin={() => void bootstrap.join()}
+        onJoin={() => void bootstrap.join(undefined, joiningAsViewer ? { joinAsViewer: true } : undefined)}
+        kicker={joiningAsViewer ? 'Watch game' : 'Join game'}
+        hint={
+          joiningAsViewer
+            ? 'Game in progress — enter a name to watch as a viewer (read-only).'
+            : 'No account needed — enter a display name and play.'
+        }
+        submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
       />
     )
   }
@@ -257,21 +315,35 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   }
 
   const turnPlayer = bootstrap.players.find((p) => p.id === turnPlayerId)
-  const canExchange = (activeSession.bag?.length ?? 0) >= 7
+  const tilesInBag = activeSession.bag?.length ?? 0
+  const canExchange = tilesInBag >= 7
 
   return (
     <GameShell bootstrap={bootstrap} title="Scrabble" subtitle={`Code ${bootstrap.code}`}>
+      {isViewer && me && bootstrap.myPlayerId ? (
+        <ViewerModeBanner
+          gameCode={bootstrap.code}
+          playerId={bootstrap.myPlayerId}
+          game={bootstrap.game}
+          player={me}
+          players={bootstrap.players}
+          onPromoted={() => void bootstrap.load()}
+        />
+      ) : null}
+
       <TurnBanner
         text={
-          exchangeMode
-            ? `Exchange mode — pick tiles (${exchangeIndices.length})`
-            : pending.length > 0
-              ? placementPreview?.valid
-                ? `Preview +${placementPreview.score} (${placementPreview.words.join(', ')})`
-                : placementPreview?.error ?? 'Place tiles on the board'
-              : isMyTurn
-                ? 'Your turn — pick a rack tile, then tap a square'
-                : `${turnPlayer?.name ?? 'Player'}'s turn`
+          isViewer
+            ? `Spectating — ${turnPlayer?.name ?? 'Player'}'s turn`
+            : exchangeMode
+              ? `Exchange mode — pick tiles (${exchangeIndices.length})`
+              : pending.length > 0
+                ? placementPreview?.valid
+                  ? `Preview +${placementPreview.score} (${placementPreview.words.join(', ')})`
+                  : placementPreview?.error ?? 'Place tiles on the board'
+                : isMyTurn
+                  ? 'Your turn — pick a rack tile, then tap a square'
+                  : `${turnPlayer?.name ?? 'Player'}'s turn`
         }
         isMyTurn={isMyTurn}
       />
@@ -292,7 +364,11 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
         </Text>
       ) : null}
 
-      <LeaderboardPanel title="Scores" rows={scoreRows} highlightId={bootstrap.myPlayerId} />
+      <Text style={styles.bagCount}>{tilesInBag} tiles left in bag</Text>
+
+      {lastMoveText ? <Text style={styles.lastMove}>{lastMoveText}</Text> : null}
+
+      <ScrabbleScoreboard rows={scoreRows} />
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <View style={styles.board}>
@@ -341,29 +417,43 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
         </View>
       </ScrollView>
 
-      <View style={styles.rack}>
-        {myState?.rack.map((letter, index) => {
-          const used = usedRackIndices.has(index)
-          const selected = selectedRackIndex === index
-          const exchanging = exchangeIndices.includes(index)
-          const points = letter !== '?' ? tileSet.values[letter] ?? undefined : undefined
-          return (
-            <Pressable
-              key={index}
-              disabled={!isMyTurn || acting || (used && !exchangeMode)}
-              onPress={() => onRackPress(index, letter)}
-            >
-              <ScrabbleTile
-                letter={letter}
-                points={points}
-                size={40}
-                selected={selected}
-                pending={exchanging}
-              />
-            </Pressable>
-          )
-        })}
-      </View>
+      {myState && rackLength > 0 && !isViewer ? (
+        <>
+          <View style={styles.rackHeader}>
+            <Text style={styles.rackHeaderText}>Your rack</Text>
+            {rackLength >= 2 ? (
+              <Pressable style={styles.shuffleBtn} hitSlop={8} onPress={shuffleRack}>
+                <Text style={styles.shuffleText}>🔀 Shuffle</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          <View style={styles.rack}>
+            {orderedRackIndices.map((index) => {
+              const letter = myState.rack[index]
+              if (letter == null) return null
+              const used = usedRackIndices.has(index)
+              const selected = selectedRackIndex === index
+              const exchanging = exchangeIndices.includes(index)
+              const points = letter !== '?' ? tileSet.values[letter] ?? undefined : undefined
+              return (
+                <Pressable
+                  key={index}
+                  disabled={!isMyTurn || acting || (used && !exchangeMode)}
+                  onPress={() => onRackPress(index, letter)}
+                >
+                  <ScrabbleTile
+                    letter={letter}
+                    points={points}
+                    size={40}
+                    selected={selected}
+                    pending={exchanging}
+                  />
+                </Pressable>
+              )
+            })}
+          </View>
+        </>
+      ) : null}
 
       {isMyTurn ? (
         <View style={styles.actions}>
@@ -465,6 +555,38 @@ const makeStyles = (theme: Theme) =>
     fontSize: 13,
     fontWeight: '600',
   },
+  bagCount: {
+    color: theme.textMuted,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  lastMove: {
+    color: theme.textFaint,
+    textAlign: 'center',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  rackHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  rackHeaderText: {
+    color: theme.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  shuffleBtn: {
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.surface,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  shuffleText: { color: theme.text, fontSize: 12, fontWeight: '700' },
   board: { alignSelf: 'center', borderWidth: 2, borderColor: theme.border, marginVertical: 8 },
   boardRow: { flexDirection: 'row' },
   cell: {

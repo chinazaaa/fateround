@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import {
   type MonopolyBoard,
@@ -11,6 +11,7 @@ import {
   MONOPOLY_JAIL_FINE,
   spaceAt,
 } from '@fateround/shared/monopoly-board'
+import { resolveMonopolyBanner } from '@/components/games/monopoly/monopoly-status-messages'
 import {
   currentPlayerId,
   monopolyPhaseLabel,
@@ -213,6 +214,37 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
+  // Client-side auto-advance: when the per-action deadline expires and it's the
+  // local player's action, auto-submit the default (mirrors web's
+  // useMonopolyDeadlineTimer auto callbacks: auto-roll, auto-pay rent, auto-pass
+  // auction, auto-auction on buy, auto-forfeit on raise-funds). This is a safety
+  // net alongside the server-side timeout so a stalled client still progresses.
+  const autoActedRef = useRef<string | null>(null)
+  const deadline = board?.turn_deadline_at ?? null
+  useEffect(() => {
+    if (!deadline || secondsLeft > 0 || acting || !bootstrap.myResumeToken) return
+    const key = `${deadline}|${board?.phase ?? ''}`
+    if (autoActedRef.current === key) return
+
+    let fn: (() => Promise<unknown>) | null = null
+    if (showRoll || showJail) {
+      fn = () => postMonopolyRoll(bootstrap.code, bootstrap.myResumeToken!)
+    } else if (showBuy) {
+      fn = () => postMonopolyBuy(bootstrap.code, bootstrap.myResumeToken!, 'auction')
+    } else if (showRent) {
+      fn = () => postMonopolyRent(bootstrap.code, bootstrap.myResumeToken!)
+    } else if (showAuction) {
+      fn = () => postMonopolyAuction(bootstrap.code, bootstrap.myResumeToken!, 'pass')
+    } else if (showRaiseFunds) {
+      fn = () => postMonopolyForfeit(bootstrap.code, bootstrap.myResumeToken!)
+    }
+    if (!fn) return
+
+    autoActedRef.current = key
+    void act(fn)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deadline, secondsLeft, acting, showRoll, showJail, showBuy, showRent, showAuction, showRaiseFunds])
+
   const runManage = async (fn: () => Promise<unknown>) => {
     if (!bootstrap.myResumeToken || acting) return
     setActing(true)
@@ -345,6 +377,32 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       ? pendingTrade
       : null
 
+  const banner = resolveMonopolyBanner({
+    statusMessage: board.status_message,
+    phase: board.phase,
+    lastCashEvent: board.last_cash_event,
+    lastRentEvent: board.last_rent_event,
+    lastTradeEvent: board.last_trade_event,
+    hasCardEvent: !!board.last_card_event,
+    myPlayerId: bootstrap.myPlayerId,
+    players: bootstrap.players,
+    themeId,
+  })
+
+  // Current-space / cash chrome (mirrors web MonopolyCurrentSpace + MonopolyCashBadge).
+  const mySpaceOwnerId = myState ? board.property_owners?.[String(myState.position)] : undefined
+  const mySpace = myState ? spaceAt(myState.position) : null
+  const ownable = !!(mySpace && (mySpace.type === 'property' || mySpace.type === 'station' || mySpace.type === 'utility'))
+  const spaceOwnerLabel = !myState
+    ? null
+    : mySpaceOwnerId === bootstrap.myPlayerId
+      ? 'You own this'
+      : mySpaceOwnerId
+        ? `Owned by ${bootstrap.players.find((p) => p.id === mySpaceOwnerId)?.name ?? 'a player'}`
+        : ownable
+          ? 'Unowned'
+          : null
+
   return (
     <GameShell bootstrap={bootstrap} title={batch8GameLabel('monopoly')} subtitle={monopolyPhaseLabel(board.phase)}>
       <ScrollView contentContainerStyle={styles.playContent}>
@@ -359,6 +417,28 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           }
         />
 
+        {myState && mySpace ? (
+          <View style={styles.chromeRow}>
+            <View style={styles.chromeSpace}>
+              <Text style={styles.chromeLabel}>You're on</Text>
+              <Text style={styles.chromeSpaceName} numberOfLines={1}>
+                {themedSpaceName(mySpace.name, myState.position, themeId)}
+              </Text>
+              {spaceOwnerLabel ? (
+                <Text style={styles.chromeSpaceOwner} numberOfLines={1}>
+                  {spaceOwnerLabel}
+                </Text>
+              ) : null}
+            </View>
+            <View style={[styles.chromeCash, myState.bankrupt && styles.chromeCashBankrupt]}>
+              <Text style={styles.chromeLabel}>{myState.bankrupt ? 'Bankrupt' : 'Your cash'}</Text>
+              <Text style={[styles.chromeCashValue, myState.bankrupt && styles.chromeCashValueBankrupt]}>
+                {formatThemedMoney(myState.cash, themeId)}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
         {isViewer && me ? (
           <ViewerModeBanner
             gameCode={bootstrap.code}
@@ -370,8 +450,11 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           />
         ) : null}
 
-        {board.status_message ? (
-          <Text style={styles.status}>{formatThemedText(board.status_message, themeId)}</Text>
+        {banner ? (
+          <View style={[styles.banner, banner.personal ? styles.bannerPersonal : styles.bannerNeutral]}>
+            {isMyTurn ? <Text style={styles.bannerTag}>YOUR TURN</Text> : null}
+            <Text style={styles.bannerText}>{banner.message}</Text>
+          </View>
         ) : null}
 
         <MonopolyBoardView
@@ -635,7 +718,55 @@ const makeStyles = (theme: Theme) =>
   lobbyHint: { color: theme.textMuted, fontSize: 14, marginTop: 12 },
   lobbyToken: { color: theme.text, fontSize: 15, marginTop: 4 },
   playContent: { padding: 16, gap: 12, paddingBottom: 40 },
-  status: { color: theme.textSecondary, fontSize: 14 },
+  chromeRow: { flexDirection: 'row', gap: 8 },
+  chromeSpace: {
+    flex: 1,
+    backgroundColor: theme.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.border,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    justifyContent: 'center',
+  },
+  chromeCash: {
+    minWidth: 108,
+    backgroundColor: theme.primarySoft,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.borderAccent,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    justifyContent: 'center',
+  },
+  chromeCashBankrupt: { backgroundColor: theme.surface, borderColor: theme.border },
+  chromeLabel: {
+    color: theme.textFaint,
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  chromeSpaceName: { color: theme.text, fontSize: 15, fontWeight: '800', marginTop: 2 },
+  chromeSpaceOwner: { color: theme.textMuted, fontSize: 12, marginTop: 1 },
+  chromeCashValue: { color: theme.primary, fontSize: 18, fontWeight: '800', marginTop: 2 },
+  chromeCashValueBankrupt: { color: theme.textMuted },
+  banner: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  bannerPersonal: { backgroundColor: theme.primarySoft, borderColor: theme.borderAccent },
+  bannerNeutral: { backgroundColor: theme.surface, borderColor: theme.border },
+  bannerTag: {
+    color: theme.primary,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginBottom: 3,
+  },
+  bannerText: { color: theme.text, fontSize: 14, lineHeight: 20 },
   errorText: { color: theme.primary, fontSize: 13, fontWeight: '600' },
   dice: { color: theme.text, fontSize: 16, fontWeight: '600' },
   cardEvent: { backgroundColor: theme.surface, borderRadius: 12, padding: 12, gap: 4 },

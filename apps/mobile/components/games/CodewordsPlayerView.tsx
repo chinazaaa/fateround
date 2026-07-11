@@ -11,6 +11,7 @@ import type {
   Player,
 } from '@fateround/shared'
 import { batch7GameLabel } from '@fateround/shared/batch-7-games'
+import { playerIsViewer } from '@fateround/shared/viewers'
 import {
   cellBackground,
   codewordsPlayerPicks,
@@ -27,6 +28,9 @@ import {
 } from '@fateround/shared/codewords'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
+import { CodewordsAchievementPosts } from '@/components/games/CodewordsAchievementPosts'
+import { CodewordsTimerBar } from '@/components/games/CodewordsTimerBar'
+import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import {
   CodewordsBoardReveal,
   CodewordsEndGameStats,
@@ -52,8 +56,21 @@ import {
   CODEWORDS_PLAYER_ROLE_SELECT,
 } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
+import { useToast } from '@/components/ui/Toast'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
+
+const CODEWORDS_RULES = [
+  'Two teams — Red and Blue — each with one spymaster and operatives.',
+  'Spymasters see the secret colour key and give a one-word clue plus a number (how many words it relates to).',
+  'Operatives tap words on the 5×5 grid to guess. Correct guesses let you keep going; wrong guesses end your turn.',
+  'First team to find all their words wins. Hit the assassin and your team loses!',
+]
+
+const ROLE_DESCRIPTIONS: Record<CodewordsRole, string> = {
+  spymaster: 'See the secret key and give a one-word clue plus a number each turn.',
+  operative: 'Tap words on the grid to guess based on your spymaster’s clue.',
+}
 
 type Screen = 'loading' | 'join' | 'waiting' | 'pick_role' | 'playing' | 'finished' | 'not_found'
 
@@ -66,6 +83,7 @@ type CodewordsState = {
 
 export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
+  const toast = useToast()
   const [cwState, setCwState] = useState<CodewordsState>({
     board: null,
     roles: [],
@@ -77,6 +95,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   const [clueNumber, setClueNumber] = useState('')
   const [chatDraft, setChatDraft] = useState('')
   const [pickTeam, setPickTeam] = useState<CodewordsTeam | null>(null)
+  const [pickRole, setPickRole] = useState<CodewordsRole | null>(null)
   const [timerTick, setTimerTick] = useState(0)
 
   const loadGameState = useCallback(
@@ -166,6 +185,8 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   const messages = activeState.messages
 
   const myRole = roles.find((r) => r.player_id === bootstrap.myPlayerId) ?? null
+  const me = bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) ?? null
+  const isViewer = !!(bootstrap.game && me && playerIsViewer(me, bootstrap.game))
   const playerNameById = useMemo(
     () => new Map(bootstrap.players.map((p) => [p.id, p.name])),
     [bootstrap.players]
@@ -185,19 +206,25 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     void postCodewordsExpireTurn(bootstrap.code).then(() => bootstrap.load()).catch(() => {})
   }, [active, board?.turn_deadline_at, timerTick, bootstrap.code, bootstrap.load])
 
-  const act = async (fn: () => Promise<unknown>) => {
+  const act = async (fn: () => Promise<unknown>, successMsg?: string) => {
     if (!bootstrap.myResumeToken || acting) return
     setActing(true)
     try {
       await fn()
       await bootstrap.load()
+      if (successMsg) toast.success(successMsg)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Something went wrong')
     } finally {
       setActing(false)
     }
   }
 
   const saveRole = (team: CodewordsTeam, role: CodewordsRole) =>
-    act(() => postCodewordsRole(bootstrap.code, bootstrap.myResumeToken!, team, role))
+    act(
+      () => postCodewordsRole(bootstrap.code, bootstrap.myResumeToken!, team, role),
+      `You're on ${teamLabel(team)} as ${roleLabel(role)}`
+    )
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
@@ -217,32 +244,127 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   if (bootstrap.screen === 'pick_role' && bootstrap.game) {
     return (
       <GameShell bootstrap={bootstrap} title="Codewords" subtitle={`Pick your role · ${bootstrap.code}`}>
-        <Text style={styles.pickHint}>Choose team and role before the host starts.</Text>
-        <View style={styles.pickRow}>
-          {(['red', 'blue'] as const).map((team) => (
-            <Pressable
-              key={team}
-              style={[styles.pickBtn, pickTeam === team && styles.pickBtnActive]}
-              onPress={() => setPickTeam(team)}
-            >
-              <Text style={styles.pickBtnText}>{teamLabel(team)}</Text>
-            </Pressable>
-          ))}
-        </View>
-        {pickTeam ? (
+        <ScrollView contentContainerStyle={styles.pickScroll}>
+          <Text style={styles.pickHint}>Choose your team and role before the host starts.</Text>
+
+          <Text style={styles.pickSectionLabel}>Team</Text>
           <View style={styles.pickRow}>
-            {(['spymaster', 'operative'] as const).map((role) => (
+            {(['red', 'blue'] as const).map((team) => (
               <Pressable
-                key={role}
-                style={styles.pickBtn}
-                disabled={acting}
-                onPress={() => void saveRole(pickTeam, role)}
+                key={team}
+                style={[
+                  styles.teamBtn,
+                  team === 'red' ? styles.teamBtnRed : styles.teamBtnBlue,
+                  pickTeam === team && styles.pickBtnActive,
+                ]}
+                onPress={() => setPickTeam(team)}
               >
-                <Text style={styles.pickBtnText}>{roleLabel(role)}</Text>
+                <Text style={styles.teamBtnText}>{teamLabel(team)}</Text>
               </Pressable>
             ))}
           </View>
+
+          <Text style={styles.pickSectionLabel}>Role</Text>
+          <View style={styles.roleColumn}>
+            {(['spymaster', 'operative'] as const).map((role) => (
+              <Pressable
+                key={role}
+                style={[styles.roleBtn, pickRole === role && styles.pickBtnActive]}
+                onPress={() => setPickRole(role)}
+              >
+                <Text style={styles.roleBtnTitle}>{roleLabel(role)}</Text>
+                <Text style={styles.roleBtnDesc}>{ROLE_DESCRIPTIONS[role]}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Pressable
+            style={[styles.actionBtn, (!pickTeam || !pickRole || acting) && styles.actionBtnDisabled]}
+            disabled={!pickTeam || !pickRole || acting}
+            onPress={() => pickTeam && pickRole && void saveRole(pickTeam, pickRole)}
+          >
+            <Text style={styles.actionText}>Confirm team &amp; role</Text>
+          </Pressable>
+
+          <View style={styles.rulesCard}>
+            <Text style={styles.rulesTitle}>How to play</Text>
+            {CODEWORDS_RULES.map((rule) => (
+              <Text key={rule} style={styles.ruleLine}>
+                {'•'}  {rule}
+              </Text>
+            ))}
+          </View>
+        </ScrollView>
+      </GameShell>
+    )
+  }
+
+  if (
+    bootstrap.game &&
+    bootstrap.game.status === 'active' &&
+    board &&
+    !board.winner &&
+    isViewer
+  ) {
+    const spectatorTurn = waitingTurnMessage(board, roles, playerNameById)
+    const specRevealed = new Set(board.revealed_indices)
+    const specAttribution = guessAttributionMap(guesses, playerNameById)
+    const specRedTotal = countTeamCells(board.key, 'red')
+    const specBlueTotal = countTeamCells(board.key, 'blue')
+    const specRedRev = countRevealedTeamCells(board.key, board.revealed_indices, 'red')
+    const specBlueRev = countRevealedTeamCells(board.key, board.revealed_indices, 'blue')
+    return (
+      <GameShell bootstrap={bootstrap} title="Codewords" subtitle={`Watching · ${bootstrap.code}`}>
+        <ViewerModeBanner
+          gameCode={bootstrap.code}
+          playerId={bootstrap.myPlayerId!}
+          game={bootstrap.game}
+          player={me!}
+          players={bootstrap.players}
+          onPromoted={() => bootstrap.load()}
+        />
+        <TurnBanner text={spectatorTurn} isMyTurn={false} />
+        <View style={styles.scoreRow}>
+          <Text style={styles.scoreRed}>
+            Red {specRedRev}/{specRedTotal}
+          </Text>
+          <Text style={styles.scoreBlue}>
+            Blue {specBlueRev}/{specBlueTotal}
+          </Text>
+        </View>
+        {board.current_clue_word ? (
+          <View style={styles.clueCard}>
+            <Text style={styles.clueLabel}>Clue</Text>
+            <Text style={styles.clueWord}>
+              {board.current_clue_word} · {board.current_clue_number}
+              {board.guesses_remaining != null ? ` (${board.guesses_remaining} left)` : ''}
+            </Text>
+          </View>
         ) : null}
+        <View style={styles.grid}>
+          {board.words.map((word, index) => {
+            const isRevealed = specRevealed.has(index)
+            const cellType = board.key[index]
+            const bg = cellBackground(cellType, isRevealed, false)
+            return (
+              <View
+                key={index}
+                style={[styles.cell, { backgroundColor: bg }, isRevealed && styles.cellRevealed]}
+              >
+                <Text style={styles.cellWord}>{word}</Text>
+                {specAttribution[index] ? <Text style={styles.cellAttr}>{specAttribution[index]}</Text> : null}
+              </View>
+            )
+          })}
+        </View>
+        <View style={styles.scoreboardBlock}>
+          <CodewordsScoreboard
+            board={board}
+            roles={roles}
+            playerNameById={playerNameById}
+            highlightPlayerId={bootstrap.myPlayerId}
+          />
+        </View>
       </GameShell>
     )
   }
@@ -269,6 +391,17 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
           leaderboard={leaderboard}
           notice={
             <View style={styles.finishExtras}>
+              {bootstrap.myPlayerId ? (
+                <CodewordsAchievementPosts
+                  guesses={guesses}
+                  roles={roles}
+                  players={bootstrap.players}
+                  winner={board.winner}
+                  myPlayerId={bootstrap.myPlayerId}
+                  gameCode={bootstrap.code}
+                  roundKey={board.id ?? null}
+                />
+              ) : null}
               <CodewordsEndGameStats
                 guesses={guesses}
                 roles={roles}
@@ -320,10 +453,21 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title="Codewords" subtitle={`${teamLabel(myRole.team)} ${roleLabel(myRole.role)} · ${bootstrap.code}`}>
-      <TurnBanner
-        text={`${bannerText}${secondsLeft > 0 ? ` · ${secondsLeft}s` : ''}`}
-        isMyTurn={canGiveClue || canGuess}
-      />
+      <TurnBanner text={bannerText} isMyTurn={canGiveClue || canGuess} />
+
+      {board.turn_deadline_at && secondsLeft > 0 ? (
+        <CodewordsTimerBar
+          label={
+            turnPhase === 'clue'
+              ? isMyTurn && isSpymaster
+                ? 'Spymaster timer'
+                : 'Waiting for clue'
+              : 'Operative timer'
+          }
+          seconds={secondsLeft}
+          enableAlerts={canGiveClue || canGuess}
+        />
+      ) : null}
 
       <View style={styles.scoreRow}>
         <Text style={styles.scoreRed}>Red {redRev}/{redTotal}</Text>
@@ -370,10 +514,11 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
           <TextInput
             style={styles.input}
             value={clueWord}
-            onChangeText={setClueWord}
+            onChangeText={(t) => setClueWord(t.replace(/\s/g, '').slice(0, 40))}
             placeholder="Clue word"
             placeholderTextColor="#71717a"
             autoCapitalize="none"
+            maxLength={40}
           />
           <TextInput
             style={styles.inputSmall}
@@ -394,7 +539,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
                 await postCodewordsClue(bootstrap.code, bootstrap.myResumeToken!, clueWord.trim(), n)
                 setClueWord('')
                 setClueNumber('')
-              })
+              }, 'Clue sent')
             }}
           >
             <Text style={styles.actionText}>Send clue</Text>
@@ -406,7 +551,9 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
         <Pressable
           style={[styles.actionBtn, styles.endTurnBtn]}
           disabled={acting}
-          onPress={() => act(() => postCodewordsEndTurn(bootstrap.code, bootstrap.myResumeToken!))}
+          onPress={() =>
+            act(() => postCodewordsEndTurn(bootstrap.code, bootstrap.myResumeToken!), 'Turn ended')
+          }
         >
           <Text style={styles.actionText}>End turn early</Text>
         </Pressable>
@@ -465,17 +612,57 @@ const CELL = 64
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
+  pickScroll: { paddingBottom: 24 },
   pickHint: { color: theme.textMuted, marginBottom: 12, textAlign: 'center' },
-  pickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 12 },
-  pickBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: theme.border,
-    minWidth: 120,
+  pickSectionLabel: {
+    color: theme.textMuted,
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 6,
   },
+  pickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 16 },
+  teamBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 10,
+    minWidth: 120,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  // Functional team colors, fixed in both schemes.
+  teamBtnRed: { backgroundColor: '#dc2626' },
+  teamBtnBlue: { backgroundColor: '#2563eb' },
+  teamBtnText: { color: '#fff', fontWeight: '800', textAlign: 'center', fontSize: 16 },
+  roleColumn: { gap: 8, marginBottom: 16 },
+  roleBtn: {
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: theme.surface,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  roleBtnTitle: { color: theme.text, fontWeight: '800', fontSize: 15, marginBottom: 2 },
+  roleBtnDesc: { color: theme.textMuted, fontSize: 12, lineHeight: 16 },
   pickBtnActive: { borderWidth: 2, borderColor: theme.primary },
-  pickBtnText: { color: theme.text, fontWeight: '700', textAlign: 'center' },
+  actionBtnDisabled: { opacity: 0.5 },
+  rulesCard: {
+    backgroundColor: theme.surface,
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 16,
+    gap: 6,
+  },
+  rulesTitle: {
+    color: theme.textMuted,
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  ruleLine: { color: theme.textSecondary, fontSize: 13, lineHeight: 18 },
   finishExtras: { gap: 16, marginTop: 12 },
   scoreboardBlock: { marginTop: 12 },
   scoreRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },

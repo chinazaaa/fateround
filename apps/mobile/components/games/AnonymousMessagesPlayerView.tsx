@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native'
 import { uniqueTopic } from '@/lib/realtime'
 import {
   ActivityIndicator,
@@ -18,15 +19,22 @@ import {
   anonymousPlayerCanPost,
   isPlayerBanned,
 } from '@fateround/shared/anonymous-messages'
+import { allowLateJoin } from '@fateround/shared/viewers'
 import { GameLoading, GameNotFound, GameShell, WaitingPanel } from '@/components/game/GameChrome'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
 import { GifPickerSheet } from '@/components/games/anonymous/GifPickerSheet'
 import { EmojiPickerSheet } from '@/components/games/anonymous/EmojiPickerSheet'
 import { AnonymousSessionTimerBar } from '@/components/games/anonymous/AnonymousSessionTimerBar'
 import { AnonymousRoomSessionSummary } from '@/components/games/anonymous/AnonymousRoomSessionSummary'
 import { AnonymousLobbyDetail } from '@/components/games/anonymous/AnonymousLobbyDetail'
+import { AnonymousRoomHeadcount } from '@/components/games/anonymous/AnonymousRoomHeadcount'
+import { AnonymousBanCountdownBar } from '@/components/games/anonymous/AnonymousBanCountdownBar'
+import { anonymousRoomMaxPlayers } from '@/components/games/anonymous/anonymous-room-helpers'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
+import { ShareGameCard } from '@/components/session/ShareGameCard'
 import { autoJoinGame } from '@/lib/api'
-import { leaveGame, postAnonymousGif, postAnonymousMessage } from '@/lib/game-api'
+import { leaveGame, postAnonymousGif, postAnonymousMessage, postPlayerReady } from '@/lib/game-api'
 import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
@@ -34,7 +42,15 @@ import { ANONYMOUS_MESSAGE_SELECT, ANONYMOUS_ROOM_BAN_SELECT } from '@/lib/supab
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'active'
+  | 'finished'
+  | 'not_found'
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥']
 
@@ -62,6 +78,12 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   const [emojiTarget, setEmojiTarget] = useState<'composer' | { messageId: string } | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
   const [leaving, setLeaving] = useState(false)
+  const [readyingUp, setReadyingUp] = useState(false)
+  const [ready, setReady] = useState(false)
+  const flatListRef = useRef<FlatList<AnonymousMessage>>(null)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const prevMessageCount = useRef(0)
 
   const { reactions, broadcastReaction } = useAnonymousReactions(code, screen === 'active')
 
@@ -71,10 +93,14 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       return
     }
     if (gameData.status === 'active') {
-      setScreen(playerId ? 'active' : 'join')
+      if (!playerId) {
+        setScreen(allowLateJoin(gameData) ? 'join' : 'game_started_waiting')
+        return
+      }
+      setScreen('active')
       return
     }
-    setScreen(playerId ? 'finished' : 'finished')
+    setScreen(playerId ? 'finished' : 'game_ended')
   }, [])
 
   const loadMessages = useCallback(async () => {
@@ -261,26 +287,111 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     }
   }
 
+  const readyUp = async () => {
+    if (readyingUp || ready) return
+    const session = await getPlayerSession(code)
+    if (!session?.resumeToken) {
+      setJoinError('Your session expired — rejoin to continue')
+      return
+    }
+    setReadyingUp(true)
+    try {
+      await postPlayerReady(code, session.resumeToken, true)
+      setReady(true)
+      await load()
+    } catch (err) {
+      setJoinError(err instanceof Error ? err.message : 'Failed to ready up')
+    } finally {
+      setReadyingUp(false)
+    }
+  }
+
+  const scrollToBottom = useCallback(() => {
+    flatListRef.current?.scrollToEnd({ animated: true })
+    setUnreadCount(0)
+    setShowScrollBtn(false)
+  }, [])
+
+  const handleFeedScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent
+    const distFromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height
+    const scrolledUp = distFromBottom > 120
+    setShowScrollBtn(scrolledUp)
+    if (!scrolledUp) setUnreadCount(0)
+  }, [])
+
+  // Track unread messages while scrolled up; auto-stick to bottom otherwise.
+  useEffect(() => {
+    const delta = messages.length - prevMessageCount.current
+    prevMessageCount.current = messages.length
+    if (delta <= 0) return
+    if (showScrollBtn) {
+      setUnreadCount((c) => c + delta)
+    } else {
+      requestAnimationFrame(() => flatListRef.current?.scrollToEnd({ animated: messages.length > 1 }))
+    }
+  }, [messages.length, showScrollBtn])
+
   const playerCount = useMemo(() => players.filter((p) => !p.spectator).length, [players])
 
   if (screen === 'loading') return <GameLoading />
   if (screen === 'not_found') return <GameNotFound gameCode={code} />
 
-  if (screen === 'join') {
+  if (screen === 'game_started_waiting') {
     return (
-      <GameShell title={batch9GameLabel('anonymous_messages')} subtitle="Anonymous room">
-        <View style={styles.joinBox}>
-          <Text style={styles.joinHint}>Join with a random nickname — no account needed.</Text>
+      <GameStartedWaitingScreen
+        gameCode={code}
+        game={game}
+        onLobbyOpen={() => {
+          setScreen('join')
+          void load()
+        }}
+      />
+    )
+  }
+
+  if (screen === 'game_ended') {
+    return <GameEndedScreen game={game} />
+  }
+
+  if (screen === 'join') {
+    const sessionInProgress = game?.status === 'active'
+    const roomCapacity = game ? anonymousRoomMaxPlayers(game) : null
+    const lobbyFull =
+      game?.status === 'waiting' && roomCapacity != null && players.length >= roomCapacity
+    const joinLabel = joining
+      ? 'Joining…'
+      : lobbyFull
+        ? 'Lobby full — check back when live'
+        : sessionInProgress
+          ? 'Join as viewer'
+          : 'Join room'
+    return (
+      <GameShell title={game?.title || batch9GameLabel('anonymous_messages')} subtitle="Anonymous room">
+        <ScrollView contentContainerStyle={styles.joinScroll}>
+          {game ? <AnonymousRoomHeadcount game={game} players={players} /> : null}
+          <Text style={styles.joinHint}>
+            {lobbyFull
+              ? `This room is full (${roomCapacity} players max). Stick around — once the host starts you can join as a viewer and watch live (read-only).`
+              : sessionInProgress
+                ? 'This session is already in progress. You can join to watch live — late joiners cannot send messages.'
+                : "Join the anonymous room — you'll get a random lobby name shown on your messages. No account needed."}
+          </Text>
           {joinError ? <Text style={styles.error}>{joinError}</Text> : null}
-          <Pressable style={[styles.joinBtn, joining && styles.btnDisabled]} disabled={joining} onPress={() => void join()}>
+          <Pressable
+            style={[styles.joinBtn, (joining || lobbyFull) && styles.btnDisabled]}
+            disabled={joining || lobbyFull}
+            onPress={() => void join()}
+          >
             {joining ? (
               // white on the solid rose join button — intentional
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.joinBtnText}>Join room</Text>
+              <Text style={styles.joinBtnText}>{joinLabel}</Text>
             )}
           </Pressable>
-        </View>
+          <ShareGameCard gameCode={code} />
+        </ScrollView>
       </GameShell>
     )
   }
@@ -290,7 +401,22 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       <GameShell title={game.title || batch9GameLabel('anonymous_messages')} subtitle="Lobby">
         <ScrollView contentContainerStyle={styles.lobbyScroll}>
           <WaitingPanel message="Waiting for the host to start the session…" />
+          <AnonymousRoomHeadcount game={game} players={players} />
           <AnonymousLobbyDetail game={game} players={players} myName={myName} />
+          {myPlayer?.spectator === true ? (
+            <View style={styles.readyBox}>
+              <Text style={styles.readyHint}>Tap below to join the next session</Text>
+              <Pressable
+                style={[styles.joinBtn, (readyingUp || ready) && styles.btnDisabled]}
+                disabled={readyingUp || ready}
+                onPress={() => void readyUp()}
+              >
+                <Text style={styles.joinBtnText}>
+                  {ready ? "You're in — waiting for host" : readyingUp ? 'Getting ready…' : "I'm in — ready to play"}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
           <Pressable style={styles.shareBtn} onPress={() => setShareOpen(true)}>
             <Text style={styles.shareBtnText}>Invite others</Text>
           </Pressable>
@@ -325,19 +451,24 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       title={game?.title || batch9GameLabel('anonymous_messages')}
       subtitle={`${playerCount} in room`}
     >
+      {game ? <AnonymousRoomHeadcount game={game} players={players} /> : null}
       <AnonymousSessionTimerBar game={game} tick={timerTick} />
-      {!canChat ? (
+      {!canChat && !isPlayerBanned(banUntil) ? (
         <Text style={styles.viewOnly}>View only — you joined after the session started.</Text>
       ) : null}
-      {isPlayerBanned(banUntil) ? (
-        <Text style={styles.viewOnly}>You are temporarily muted.</Text>
+      {isPlayerBanned(banUntil) && banUntil ? (
+        <AnonymousBanCountdownBar bannedUntil={banUntil} tick={timerTick} />
       ) : null}
 
+      <View style={styles.feedWrap}>
       <FlatList
+        ref={flatListRef}
         data={messages}
         keyExtractor={(item) => item.id}
         style={styles.feed}
         contentContainerStyle={styles.feedContent}
+        onScroll={handleFeedScroll}
+        scrollEventThrottle={16}
         renderItem={({ item }) => {
           const mine = item.player_id === myPlayerId
           const isGif = item.message_type === 'gif' && !!item.media_url
@@ -362,6 +493,11 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
                 ) : (
                   <Text style={styles.messageText}>{item.text}</Text>
                 )}
+                {item.created_at ? (
+                  <Text style={styles.messageTime}>
+                    {new Date(item.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                  </Text>
+                ) : null}
               </Pressable>
 
               {msgReactions && msgReactions.size > 0 ? (
@@ -406,6 +542,17 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         }}
         ListEmptyComponent={<Text style={styles.empty}>No messages yet — say hi!</Text>}
       />
+      {showScrollBtn ? (
+        <Pressable style={styles.scrollBtn} onPress={scrollToBottom}>
+          <Text style={styles.scrollBtnIcon}>↓</Text>
+          {unreadCount > 0 ? (
+            <View style={styles.scrollBadge}>
+              <Text style={styles.scrollBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+            </View>
+          ) : null}
+        </Pressable>
+      ) : null}
+      </View>
 
       {canPost ? (
         <View style={styles.composerWrap}>
@@ -431,9 +578,14 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
               style={styles.input}
               value={messageInput}
               onChangeText={setMessageInput}
-              placeholder="Message…"
+              placeholder={replyTo ? 'Write your anonymous reply…' : 'Message…'}
               placeholderTextColor={theme.textFaint}
               editable={!sending}
+              multiline
+              maxLength={500}
+              blurOnSubmit
+              returnKeyType="send"
+              onSubmitEditing={() => void sendMessage()}
             />
             <Pressable
               style={[styles.sendBtn, (!messageInput.trim() || sending) && styles.btnDisabled]}
@@ -443,6 +595,9 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
               <Text style={styles.sendBtnText}>Send</Text>
             </Pressable>
           </View>
+          {messageInput.length >= 400 ? (
+            <Text style={styles.charCount}>{messageInput.length}/500</Text>
+          ) : null}
         </View>
       ) : null}
 
@@ -479,6 +634,8 @@ const makeStyles = (theme: Theme) =>
   // white on the solid rose join button — intentional
   joinBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   viewOnly: { color: '#fbbf24', fontSize: 13, marginBottom: 8 },
+  joinScroll: { gap: 14, paddingVertical: 8 },
+  feedWrap: { flex: 1, position: 'relative' },
   feed: { flex: 1, maxHeight: 420 },
   feedContent: { gap: 8, paddingBottom: 12 },
   messageRow: { alignItems: 'flex-start', maxWidth: '85%', alignSelf: 'flex-start', gap: 4 },
@@ -491,6 +648,7 @@ const makeStyles = (theme: Theme) =>
   messageMine: { backgroundColor: theme.primarySoft },
   messageAuthor: { color: theme.textMuted, fontSize: 11, marginBottom: 4 },
   messageText: { color: theme.text, fontSize: 15 },
+  messageTime: { color: theme.textFaint, fontSize: 10, marginTop: 4 },
   gif: { width: 180, height: 140, borderRadius: 8, backgroundColor: theme.bg },
   replyQuote: {
     borderLeftWidth: 2,
@@ -526,6 +684,41 @@ const makeStyles = (theme: Theme) =>
   emojiBarItem: { fontSize: 20 },
   emojiBarReply: { color: theme.primaryMuted, fontSize: 13, fontWeight: '700' },
   empty: { color: theme.textFaint, textAlign: 'center', paddingVertical: 24 },
+  scrollBtn: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  // white on the solid rose scroll button — intentional
+  scrollBtnIcon: { color: '#fff', fontSize: 20, fontWeight: '800', lineHeight: 22 },
+  scrollBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: theme.error,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // white on the solid badge — intentional
+  scrollBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  charCount: { color: theme.textFaint, fontSize: 11, textAlign: 'right' },
+  readyBox: { gap: 8 },
+  readyHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
   composerWrap: { marginTop: 8, gap: 6 },
   replyBanner: {
     flexDirection: 'row',
@@ -577,7 +770,7 @@ const makeStyles = (theme: Theme) =>
     marginTop: 8,
   },
   leaveBtnText: { color: theme.error, fontSize: 15, fontWeight: '700' },
-  composer: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  composer: { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
   input: {
     flex: 1,
     backgroundColor: theme.surface,
@@ -588,6 +781,8 @@ const makeStyles = (theme: Theme) =>
     fontSize: 16,
     paddingHorizontal: 14,
     paddingVertical: 12,
+    maxHeight: 120,
+    textAlignVertical: 'top',
   },
   sendBtn: {
     backgroundColor: theme.primary,

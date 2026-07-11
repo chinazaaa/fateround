@@ -99,10 +99,15 @@ type KlipyFile = {
 }
 type KlipyItem = { id: number | string; file: KlipyFile }
 
-/** Search GIFs via the shared /api/klipy proxy (Klipy). Empty query = trending. */
-export async function searchGifs(query: string): Promise<GifItem[]> {
-  const res = await fetch(apiUrl(`/api/klipy?type=gifs&q=${encodeURIComponent(query)}`), { cache: 'no-store' })
-  if (!res.ok) throw new Error('Could not load GIFs')
+export type KlipyMediaType = 'gifs' | 'stickers'
+
+/**
+ * Search GIFs or stickers via the shared /api/klipy proxy (Klipy).
+ * Empty query = trending. Defaults to GIFs for backward compatibility.
+ */
+export async function searchGifs(query: string, type: KlipyMediaType = 'gifs'): Promise<GifItem[]> {
+  const res = await fetch(apiUrl(`/api/klipy?type=${type}&q=${encodeURIComponent(query)}`), { cache: 'no-store' })
+  if (!res.ok) throw new Error(type === 'stickers' ? 'Could not load stickers' : 'Could not load GIFs')
   const json = (await res.json()) as { data?: { data?: KlipyItem[] } }
   const items = json.data?.data ?? []
   return items

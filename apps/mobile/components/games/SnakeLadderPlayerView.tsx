@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import {
   type SnakeLadderPlayerState,
@@ -29,6 +29,9 @@ type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_fou
 
 /** Minimum time the die keeps spinning after a roll, so the moment reads as tactile. */
 const ROLL_MIN_MS = 700
+/** After someone reaches 100, linger on the board so everyone sees the winning
+ *  move land before the final leaderboard appears. */
+const WIN_HOLD_MS = 9000
 
 const COLOR_HEX: Record<string, string> = {
   red: '#ef4444',
@@ -44,7 +47,10 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
   const [states, setStates] = useState<SnakeLadderPlayerState[]>([])
   const [acting, setActing] = useState(false)
   const [rolling, setRolling] = useState(false)
+  const [holdWin, setHoldWin] = useState(false)
   const rollStartedRef = useRef(0)
+  const winHandledRef = useRef(false)
+  const sawActiveRef = useRef(false)
   const styles = useThemedStyles(makeStyles)
 
   const loadGameState = useCallback(async (): Promise<{ state: null; ok: boolean }> => {
@@ -106,6 +112,46 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
 
   const standings = session ? buildSnakeLadderStandings(states, bootstrap.players, session.winner_player_id) : []
 
+  // Live roster: furthest-along first, with the player on the move bumped to the
+  // top on position ties, then seat order. (Finished standings use buildSnakeLadderStandings.)
+  const roster = useMemo(() => {
+    return [...states]
+      .sort((a, b) => {
+        const byPosition = b.position - a.position
+        if (byPosition !== 0) return byPosition
+        const aIsTurn = a.player_id === turnPlayerId ? 1 : 0
+        const bIsTurn = b.player_id === turnPlayerId ? 1 : 0
+        if (aIsTurn !== bIsTurn) return bIsTurn - aIsTurn
+        return a.player_order - b.player_order
+      })
+      .map((s) => ({
+        playerId: s.player_id,
+        name: bootstrap.players.find((p) => p.id === s.player_id)?.name ?? 'Player',
+        color: s.color,
+        position: s.position,
+      }))
+  }, [states, turnPlayerId, bootstrap.players])
+
+  // Hold on the finished board for a few seconds so the winning move is visible
+  // before switching to the final leaderboard. Only triggers when we witnessed live
+  // play (so opening an already-finished game for replay doesn't re-hold). Resets on replay.
+  useEffect(() => {
+    const status = bootstrap.game?.status
+    if (status === 'active') sawActiveRef.current = true
+    const finishedWithWinner = status === 'finished' && !!session?.winner_player_id
+    if (finishedWithWinner && sawActiveRef.current && !winHandledRef.current) {
+      winHandledRef.current = true
+      setHoldWin(true)
+      const t = setTimeout(() => setHoldWin(false), WIN_HOLD_MS)
+      return () => clearTimeout(t)
+    }
+    if (status !== 'finished') {
+      winHandledRef.current = false
+      setHoldWin(false)
+      if (status === 'waiting') sawActiveRef.current = false
+    }
+  }, [bootstrap.game?.status, session?.winner_player_id])
+
   const roll = async () => {
     if (!bootstrap.myResumeToken || acting || !isMyTurn) return
     setActing(true)
@@ -143,7 +189,11 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
   }
   if (!bootstrap.game || !session) return <GameLoading />
 
-  if (bootstrap.screen === 'finished') {
+  // While holding, keep rendering the active board (with a winner banner) instead of the leaderboard.
+  const effectiveScreen =
+    holdWin && bootstrap.screen === 'finished' && states.length > 0 ? 'playing' : bootstrap.screen
+
+  if (effectiveScreen === 'finished') {
     const winner = bootstrap.players.find((p) => p.id === session.winner_player_id)
     return (
       <GameShell bootstrap={bootstrap} title={batch3GameLabel('snake_and_ladder')} subtitle={bootstrap.code}>
@@ -152,21 +202,30 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
+  const holdWinner = holdWin ? bootstrap.players.find((p) => p.id === session.winner_player_id) : null
+
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('snake_and_ladder')} subtitle={session.status_message ?? bootstrap.code}>
-      <View style={styles.turnBarWrap}>
-        <SnakeLadderTurnBar
-          turnPlayerName={turnPlayerName}
-          isMyTurn={isMyTurn}
-          secondsLeft={secondsLeft}
-          hasTimer={hasTimer}
-        />
-      </View>
+      {holdWinner ? (
+        <View style={styles.winBanner}>
+          <Text style={styles.winBannerTitle}>🏆 {holdWinner.name} wins!</Text>
+          <Text style={styles.winBannerSub}>Final results in a moment…</Text>
+        </View>
+      ) : (
+        <View style={styles.turnBarWrap}>
+          <SnakeLadderTurnBar
+            turnPlayerName={turnPlayerName}
+            isMyTurn={isMyTurn}
+            secondsLeft={secondsLeft}
+            hasTimer={hasTimer}
+          />
+        </View>
+      )}
 
       <SnakeLadderBoard states={states} highlightSquare={session.last_to} />
 
       <View style={styles.list}>
-        {standings.map((row) => {
+        {roster.map((row) => {
           const isTurn = row.playerId === turnPlayerId
           const isMe = row.playerId === bootstrap.myPlayerId
           return (
@@ -192,9 +251,11 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
         ) : null}
       </View>
 
-      <Pressable style={[styles.btn, (!isMyTurn || acting || rolling) && styles.btnDisabled]} disabled={!isMyTurn || acting || rolling} onPress={() => void roll()}>
-        <Text style={styles.btnText}>{isMyTurn ? (acting || rolling ? 'Rolling…' : '🎲 Roll dice') : 'Waiting for turn…'}</Text>
-      </Pressable>
+      {holdWin ? null : (
+        <Pressable style={[styles.btn, (!isMyTurn || acting || rolling) && styles.btnDisabled]} disabled={!isMyTurn || acting || rolling} onPress={() => void roll()}>
+          <Text style={styles.btnText}>{isMyTurn ? (acting || rolling ? 'Rolling…' : '🎲 Roll dice') : 'Waiting for turn…'}</Text>
+        </Pressable>
+      )}
     </GameShell>
   )
 }
@@ -208,6 +269,9 @@ const makeStyles = (theme: Theme) =>
   name: { color: theme.text, flex: 1, fontWeight: '600' },
   pos: { color: '#fcd34d', fontWeight: '700' },
   turnBarWrap: { marginBottom: 12 },
+  winBanner: { marginBottom: 12, padding: 12, borderRadius: 12, alignItems: 'center', backgroundColor: theme.primarySoft, borderWidth: 1, borderColor: theme.primary },
+  winBannerTitle: { color: theme.text, fontWeight: '900', fontSize: 18 },
+  winBannerSub: { color: theme.textMuted, fontSize: 12, marginTop: 2 },
   dieRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14, marginVertical: 12 },
   rollInfo: { color: theme.textMuted, textAlign: 'center' },
   btn: { backgroundColor: theme.primary, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 8 },

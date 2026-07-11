@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Animated, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Chess, type Square } from 'chess.js'
-import type { ChessSession, Game, Player } from '@fateround/shared'
+import type { ChessColor, ChessSession, Game, Player } from '@fateround/shared'
 import {
   chessIsTimed,
   chessResultDetail,
@@ -10,9 +10,11 @@ import {
   formatChessClock,
   liveChessClockMs,
 } from '@fateround/shared/chess'
+import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
@@ -28,6 +30,8 @@ import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 import { useChessAppearance, type ChessPieceType } from './chess/chess-appearance'
 import { ChessPieceGlyph } from './chess/ChessPieceGlyph'
 import { ChessAppearancePicker } from './chess/ChessAppearancePicker'
+import { CapturedTray, computeMaterial, KingGlyph } from './chess/ChessCapturedTray'
+import { ChessResultsExtras } from './chess/ChessResultsExtras'
 import {
   type Premove,
   premoveNeedsPromotion,
@@ -101,9 +105,13 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   const activeSession = session ?? bootstrap.gameState
+  const me = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
+  // A late-joiner / flagged spectator watches read-only (they hold no seat, so
+  // colorForPlayer is null anyway — this also silences turn/move affordances).
+  const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
   const myColor = bootstrap.myPlayerId && activeSession ? colorForPlayer(activeSession, bootstrap.myPlayerId) : null
   const turnPlayerId = activeSession ? currentTurnPlayerId(activeSession) : null
-  const isMyTurn = bootstrap.myPlayerId != null && turnPlayerId === bootstrap.myPlayerId
+  const isMyTurn = bootstrap.myPlayerId != null && turnPlayerId === bootstrap.myPlayerId && !isViewer
   const flipped = myColor === 'b'
   // Off-turn interactivity: queue a premove while the opponent is thinking.
   const canPremove = !isMyTurn && !!myColor && activeSession?.status === 'active'
@@ -167,6 +175,11 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
     }
     return null
   }, [chess, activeSession?.in_check, activeSession?.current_turn])
+
+  const material = useMemo(
+    () => (chess ? computeMaterial(chess) : { capturedByWhite: [], capturedByBlack: [] }),
+    [chess]
+  )
 
   const timed = activeSession ? chessIsTimed(activeSession) : false
 
@@ -307,6 +320,9 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
   if (bootstrap.screen === 'join' && bootstrap.game) {
+    // A match already in progress → the newcomer can only watch (chess has no
+    // late-player seats), so present the join as a read-only viewer entry.
+    const joiningAsViewer = bootstrap.game.status === 'active'
     return (
       <JoinScreen
         gameCode={bootstrap.code}
@@ -315,6 +331,13 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        kicker={joiningAsViewer ? 'Watch game' : 'Join game'}
+        hint={
+          joiningAsViewer
+            ? 'Game in progress — enter a name to watch as a viewer (read-only).'
+            : 'No account needed — enter a display name and play.'
+        }
+        submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
       />
     )
   }
@@ -334,7 +357,25 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
     const title = activeSession.is_draw ? 'Draw!' : winner ? `${winner.name} wins!` : 'Game over'
     return (
       <GameShell bootstrap={bootstrap} title="Chess" subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap} title={title} subtitle="Final standings" detail={detail || undefined} leaderboard={activeSession.is_draw ? undefined : winnerLeaderboard(activeSession.winner_player_id, bootstrap.players, bootstrap.myPlayerId)} winnerPlayerId={activeSession.winner_player_id} roundKey={activeSession.id} />
+        <GameFinishPanel
+          bootstrap={bootstrap}
+          title={title}
+          subtitle="Final standings"
+          detail={detail || undefined}
+          leaderboard={activeSession.is_draw ? undefined : winnerLeaderboard(activeSession.winner_player_id, bootstrap.players, bootstrap.myPlayerId)}
+          winnerPlayerId={activeSession.winner_player_id}
+          roundKey={activeSession.id}
+          notice={
+            bootstrap.game ? (
+              <ChessResultsExtras
+                game={bootstrap.game}
+                players={bootstrap.players}
+                session={activeSession}
+                highlightPlayerId={bootstrap.myPlayerId}
+              />
+            ) : undefined
+          }
+        />
       </GameShell>
     )
   }
@@ -344,8 +385,32 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   const displayFiles = flipped ? [...FILES].reverse() : FILES
   void clockTick
 
+  // Captured-pieces trays: each side lists the enemy pieces it has taken. Top of
+  // the board shows the opponent, bottom shows the viewer's own side.
+  const white = bootstrap.players.find((p) => p.id === activeSession.player_white_id)
+  const black = bootstrap.players.find((p) => p.id === activeSession.player_black_id)
+  const topColor: ChessColor = flipped ? 'w' : 'b'
+  const bottomColor: ChessColor = flipped ? 'b' : 'w'
+  const trayFor = (color: ChessColor) => ({
+    name: (color === 'w' ? white : black)?.name ?? (color === 'w' ? 'White' : 'Black'),
+    pieces: color === 'w' ? material.capturedByWhite : material.capturedByBlack,
+    glyphColor: (color === 'w' ? 'b' : 'w') as ChessColor,
+  })
+  const timeControlSeconds = bootstrap.game?.timer_seconds ?? 0
+
   return (
     <GameShell bootstrap={bootstrap} title="Chess" subtitle={`Code ${bootstrap.code}`}>
+      {isViewer && bootstrap.myPlayerId && me && bootstrap.game ? (
+        <ViewerModeBanner
+          gameCode={bootstrap.code}
+          playerId={bootstrap.myPlayerId}
+          game={bootstrap.game}
+          player={me}
+          players={bootstrap.players}
+          onPromoted={() => void bootstrap.load()}
+        />
+      ) : null}
+
       <TurnBanner
         text={
           activeSession.in_check && isMyTurn
@@ -364,24 +429,33 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       />
 
       {timed ? (
-        <View style={styles.clocks}>
-          <ClockChip
-            label="White"
-            ms={liveChessClockMs(activeSession, 'w')}
-            active={activeSession.current_turn === 'w'}
-          />
-          <ClockChip
-            label="Black"
-            ms={liveChessClockMs(activeSession, 'b')}
-            active={activeSession.current_turn === 'b'}
-          />
-        </View>
+        <>
+          <View style={styles.clocks}>
+            <ClockChip
+              label="White"
+              ms={liveChessClockMs(activeSession, 'w')}
+              active={activeSession.current_turn === 'w'}
+            />
+            <ClockChip
+              label="Black"
+              ms={liveChessClockMs(activeSession, 'b')}
+              active={activeSession.current_turn === 'b'}
+            />
+          </View>
+          {timeControlSeconds > 0 ? (
+            <Text style={styles.timeNote}>
+              ⏱ {Math.round(timeControlSeconds / 60)} min each — your clock only counts down on your turn
+            </Text>
+          ) : null}
+        </>
       ) : null}
 
+      <CapturedTray {...trayFor(topColor)} set={pieceSet} />
+
       <View style={styles.board}>
-        {displayRanks.map((rank) => (
+        {displayRanks.map((rank, rankIdx) => (
           <View key={rank} style={styles.row}>
-            {displayFiles.map((file) => {
+            {displayFiles.map((file, fileIdx) => {
               const square = `${file}${rank}`
               const isLight = (file.charCodeAt(0) - 97 + rank) % 2 === 0
               const piece = chess.get(square as Square)
@@ -390,6 +464,12 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
               const isLastMove = activeSession.last_move_from === square || activeSession.last_move_to === square
               const isKingInCheck = square === inCheckSquare
               const isPremove = premove?.from === square || premove?.to === square
+              // Coordinates hug the board edges (chess.com style): ranks down the
+              // left column, files along the bottom row, tinted the opposite
+              // square colour so each label reads against its own square.
+              const showRank = fileIdx === 0
+              const showFile = rankIdx === displayRanks.length - 1
+              const coordColor = isLight ? boardTheme.dark : boardTheme.light
               return (
                 <Pressable
                   key={square}
@@ -401,6 +481,12 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
                   {isKingInCheck ? <View style={[styles.overlay, styles.checkOverlay]} /> : null}
                   {isPremove ? <View style={[styles.overlay, styles.premoveOverlay]} /> : null}
                   {isSelected ? <View style={[styles.overlay, styles.selectedOverlay]} /> : null}
+                  {showRank ? (
+                    <Text style={[styles.coordRank, { color: coordColor }]}>{rank}</Text>
+                  ) : null}
+                  {showFile ? (
+                    <Text style={[styles.coordFile, { color: coordColor }]}>{file}</Text>
+                  ) : null}
                   {piece ? (
                     <ChessPieceGlyph
                       set={pieceSet}
@@ -418,6 +504,22 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           </View>
         ))}
       </View>
+
+      <CapturedTray {...trayFor(bottomColor)} set={pieceSet} />
+
+      {myColor && activeSession.status === 'active' ? (
+        <Text style={styles.identity}>
+          You are <KingGlyph color={myColor} size={13} />{' '}
+          <Text style={styles.identityStrong}>{myColor === 'w' ? 'White' : 'Black'}</Text>
+          {isMyTurn
+            ? ' · tap a piece, then its destination'
+            : premove
+              ? ` · premove ${premove.from}→${premove.to} queued — tap the board to cancel`
+              : canPremove
+                ? ' · waiting for your opponent — tap a piece to queue a premove'
+                : ' · waiting for your opponent'}
+        </Text>
+      ) : null}
 
       <ChessAppearancePicker defaults={appearanceDefaults} />
 
@@ -461,11 +563,36 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
 
 function ClockChip({ label, ms, active }: { label: string; ms: number; active: boolean }) {
   const styles = useThemedStyles(makeStyles)
+  // Under 30s the active clock turns red and pulses — a quick visual "you're low".
+  const lowTime = active && ms <= 30000
+  const pulse = useRef(new Animated.Value(1)).current
+  useEffect(() => {
+    if (!lowTime) {
+      pulse.setValue(1)
+      return
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 0.4, duration: 500, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 500, useNativeDriver: true }),
+      ])
+    )
+    loop.start()
+    return () => loop.stop()
+  }, [lowTime, pulse])
+
   return (
-    <View style={[styles.clockChip, active && styles.clockActive]}>
-      <Text style={styles.clockLabel}>{label}</Text>
-      <Text style={styles.clockValue}>{formatChessClock(ms)}</Text>
-    </View>
+    <Animated.View
+      style={[
+        styles.clockChip,
+        active && styles.clockActive,
+        lowTime && styles.clockLow,
+        lowTime ? { opacity: pulse } : null,
+      ]}
+    >
+      <Text style={[styles.clockLabel, lowTime && styles.clockLowText]}>{label}</Text>
+      <Text style={[styles.clockValue, lowTime && styles.clockLowText]}>{formatChessClock(ms)}</Text>
+    </Animated.View>
   )
 }
 
@@ -500,8 +627,15 @@ const makeStyles = (theme: Theme) =>
     backgroundColor: theme.surface,
   },
   clockActive: { borderWidth: 1, borderColor: theme.primary },
+  clockLow: { backgroundColor: 'rgba(244,63,94,0.18)', borderWidth: 1, borderColor: '#f43f5e' },
+  clockLowText: { color: '#fb7185' },
   clockLabel: { color: theme.textMuted, fontWeight: '600' },
   clockValue: { color: theme.text, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  timeNote: { color: theme.textFaint, fontSize: 11, textAlign: 'center', marginTop: -2, marginBottom: 6 },
+  coordRank: { position: 'absolute', top: 1, left: 2, fontSize: 8, fontWeight: '700' },
+  coordFile: { position: 'absolute', bottom: 1, right: 2, fontSize: 8, fontWeight: '700' },
+  identity: { color: theme.textMuted, fontSize: 12, textAlign: 'center', marginTop: 10 },
+  identityStrong: { color: theme.text, fontWeight: '700' },
   resignBtn: {
     alignSelf: 'center',
     marginTop: 12,

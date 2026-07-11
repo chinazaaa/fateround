@@ -11,10 +11,19 @@ type Props = {
   markedIndices: number[]
   calledNumbers: Set<number>
   marking?: boolean
+  /** Read-only mode: cells reflect marks/called state but can't be tapped (finished recap). */
+  disabled?: boolean
   onMark: (cellIndex: number) => void
 }
 
-export function BingoCardGrid({ cells, markedIndices, calledNumbers, marking = false, onMark }: Props) {
+export function BingoCardGrid({
+  cells,
+  markedIndices,
+  calledNumbers,
+  marking = false,
+  disabled = false,
+  onMark,
+}: Props) {
   const theme = useTheme()
   const styles = useThemedStyles(makeStyles)
   const { width: screenWidth } = useWindowDimensions()
@@ -40,7 +49,7 @@ export function BingoCardGrid({ cells, markedIndices, calledNumbers, marking = f
               const isFree = cellIndex === BINGO_FREE_INDEX
               const isMarked = marked.has(cellIndex) || isFree
               const isCallable = isFree || calledNumbers.has(number)
-              const canMark = isCallable && !isMarked && !marking
+              const canMark = isCallable && !isMarked && !marking && !disabled
 
               return (
                 <Pressable

@@ -5,7 +5,9 @@ import type { Game, Player, Round, TriviaAnswer } from '@fateround/shared'
 import {
   formatTriviaChoiceLabel,
   parseTriviaMetadata,
+  revealCountdownSeconds,
   tallyTriviaPlayerScores,
+  TRIVIA_REVEAL_SECONDS,
 } from '@fateround/shared/trivia'
 import {
   postFinishGame,
@@ -16,7 +18,10 @@ import { getSupabase } from '@/lib/supabase'
 import { ROUND_SELECT, TRIVIA_ANSWER_SELECT } from '@/lib/supabase-selects'
 import { useTriviaAutoAdvance } from '@/hooks/useTriviaAutoAdvance'
 import { HostChrome } from '@/components/host/HostChrome'
+import { GameFinishedScreen } from '@/components/game/GameChrome'
 import { GameFinishedActions } from '@/components/lifecycle/GameFinishedActions'
+import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
+import { triviaLeaderboard } from '@/lib/finish-leaderboards'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
@@ -35,6 +40,7 @@ export function TriviaHostScreen({ gameCode, hostToken, game, players, onReload 
   const [forcing, setForcing] = useState(false)
   const [acting, setActing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [revealCountdown, setRevealCountdown] = useState(TRIVIA_REVEAL_SECONDS)
 
   const load = useCallback(async () => {
     const [roundsRes, answersRes] = await Promise.all([
@@ -78,6 +84,10 @@ export function TriviaHostScreen({ gameCode, hostToken, game, players, onReload 
     () => rounds.find((r) => r.status === 'active') ?? null,
     [rounds]
   )
+  const lastFinishedRound = useMemo(() => {
+    const finished = rounds.filter((r) => r.status === 'finished')
+    return finished.length ? finished[finished.length - 1] : null
+  }, [rounds])
   const meta = activeRound ? parseTriviaMetadata(activeRound.trivia_metadata) : null
   const activePlayers = players.filter((p) => !p.spectator)
   const roundAnswers = activeRound
@@ -85,6 +95,16 @@ export function TriviaHostScreen({ gameCode, hostToken, game, players, onReload 
     : []
   const scores = tallyTriviaPlayerScores(answers, players)
   const leader = scores[0]
+  const isLastRound = (game.current_round_number ?? 0) >= (game.rounds_count ?? 0)
+  const betweenRounds = game.status === 'active' && !activeRound && lastFinishedRound != null
+
+  useEffect(() => {
+    if (!betweenRounds || !lastFinishedRound?.ended_at) return
+    const tick = () => setRevealCountdown(revealCountdownSeconds(lastFinishedRound.ended_at))
+    tick()
+    const id = setInterval(tick, 200)
+    return () => clearInterval(id)
+  }, [betweenRounds, lastFinishedRound?.ended_at, lastFinishedRound?.id])
 
   const onForceAdvance = async () => {
     setForcing(true)
@@ -148,14 +168,67 @@ export function TriviaHostScreen({ gameCode, hostToken, game, players, onReload 
         </View>
       ) : null}
 
+      {betweenRounds && lastFinishedRound ? (
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>Round {lastFinishedRound.round_number} results</Text>
+          {(() => {
+            const roundMeta = parseTriviaMetadata(lastFinishedRound.trivia_metadata)
+            const finishedAnswers = answers.filter((a) => a.round_id === lastFinishedRound.id)
+            return (
+              <>
+                {roundMeta ? (
+                  <Text style={styles.correctLine}>
+                    Correct: {formatTriviaChoiceLabel(roundMeta.correct_index)}.{' '}
+                    {roundMeta.choices[roundMeta.correct_index]}
+                  </Text>
+                ) : null}
+                {[...finishedAnswers]
+                  .sort((a, b) => b.points - a.points || Number(b.is_correct) - Number(a.is_correct))
+                  .map((a) => {
+                    const player = players.find((p) => p.id === a.player_id)
+                    return (
+                      <View key={a.id} style={styles.resultRow}>
+                        <Text style={[styles.resultName, a.is_correct ? styles.resultCorrect : styles.resultWrong]}>
+                          {player?.name ?? 'Player'} — {a.is_correct ? '✓' : '✗'}
+                        </Text>
+                        <Text style={styles.resultPoints}>+{a.points} pts</Text>
+                      </View>
+                    )
+                  })}
+                <Text style={styles.revealCountdown}>
+                  {revealCountdown > 0
+                    ? isLastRound
+                      ? `Final results in ${revealCountdown}s…`
+                      : `Next question in ${revealCountdown}s…`
+                    : isLastRound
+                      ? 'Showing final results…'
+                      : 'Starting next question…'}
+                </Text>
+              </>
+            )
+          })()}
+        </View>
+      ) : null}
+
+      {game.status === 'active' ? (
+        <LeaderboardPanel
+          title="Live leaderboard"
+          rows={scores.map((row) => ({ id: row.id, name: row.name, score: row.score }))}
+        />
+      ) : null}
+
       {game.status === 'active' ? (
         <Text style={styles.autoHint}>Rounds auto-advance when everyone answers or time runs out.</Text>
       ) : null}
 
-      {game.status === 'finished' && leader ? (
-        <Text style={styles.winner}>
-          {leader.name} wins with {leader.score} pts
-        </Text>
+      {game.status === 'finished' ? (
+        <GameFinishedScreen
+          title="Game over"
+          subtitle="Final standings"
+          detail={leader ? `${leader.name} wins with ${leader.score} pts` : undefined}
+          emoji="🏆"
+          leaderboard={triviaLeaderboard(scores, game.rounds_count, null)}
+        />
       ) : null}
 
       {game.status === 'active' ? (
@@ -223,7 +296,23 @@ const makeStyles = (theme: Theme) =>
   choice: { color: theme.textSecondary, fontSize: 15, lineHeight: 22 },
   answerCount: { color: theme.textMuted, fontSize: 14, marginTop: 4 },
   autoHint: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
-  winner: { color: '#86efac', fontSize: 16, fontWeight: '700', textAlign: 'center' },
+  correctLine: { color: theme.text, fontSize: 15, fontWeight: '600', lineHeight: 22 },
+  resultRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  resultName: { fontSize: 15, fontWeight: '600', flex: 1 },
+  resultCorrect: { color: theme.success },
+  resultWrong: { color: theme.textMuted },
+  resultPoints: { color: theme.textMuted, fontSize: 14, fontWeight: '700' },
+  revealCountdown: { color: theme.primaryMuted, fontSize: 15, fontWeight: '700', textAlign: 'center', marginTop: 4 },
   primaryBtn: {
     backgroundColor: theme.primary,
     borderRadius: 12,

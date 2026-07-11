@@ -28,6 +28,8 @@ type Props = {
   answers: TriviaAnswer[]
   myPlayerId: string
   myResumeToken: string | null
+  playerName?: string
+  readOnly?: boolean
   onReload?: () => void
 }
 
@@ -39,6 +41,8 @@ export function TriviaActiveRound({
   answers,
   myPlayerId,
   myResumeToken,
+  playerName,
+  readOnly = false,
   onReload,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
@@ -131,7 +135,7 @@ export function TriviaActiveRound({
 
   const submitAnswer = useCallback(
     async (choiceIndex: number) => {
-      if (!currentRound || submitting || myAnswer || answerLockRef.current || !myResumeToken) return
+      if (!currentRound || readOnly || submitting || myAnswer || answerLockRef.current || !myResumeToken) return
       answerLockRef.current = true
       setSubmitting(true)
       setSubmittingChoice(choiceIndex)
@@ -147,7 +151,7 @@ export function TriviaActiveRound({
         setSubmittingChoice(null)
       }
     },
-    [currentRound, submitting, myAnswer, gameCode, myResumeToken, onReload]
+    [currentRound, readOnly, submitting, myAnswer, gameCode, myResumeToken, onReload]
   )
 
   const correct = myAnswer?.is_correct ?? lastResult?.isCorrect
@@ -161,6 +165,11 @@ export function TriviaActiveRound({
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
       <View style={styles.header}>
+        {playerName ? (
+          <Text style={styles.playingAs}>
+            Playing as <Text style={styles.playingAsName}>{playerName}</Text>
+          </Text>
+        ) : null}
         {currentRound && game.status === 'active' ? (
           <Text style={styles.roundMeta}>
             Round {currentRound.round_number} of {game.rounds_count ?? '?'}
@@ -194,8 +203,12 @@ export function TriviaActiveRound({
             {metadata.choices.map((choice, index) => (
               <Pressable
                 key={index}
-                style={[styles.choice, submittingChoice === index && styles.choiceSelected]}
-                disabled={submitting}
+                style={[
+                  styles.choice,
+                  submittingChoice === index && styles.choiceSelected,
+                  readOnly && styles.choiceDisabled,
+                ]}
+                disabled={submitting || readOnly}
                 onPress={() => void submitAnswerStable(index)}
               >
                 <Text style={styles.choiceBadge}>{formatTriviaChoiceLabel(index)}</Text>
@@ -204,6 +217,9 @@ export function TriviaActiveRound({
               </Pressable>
             ))}
           </View>
+          {readOnly ? (
+            <Text style={styles.viewerNote}>Watching only — you can&apos;t answer this round.</Text>
+          ) : null}
         </View>
       ) : null}
 
@@ -233,6 +249,11 @@ export function TriviaActiveRound({
               {isLastRound ? `Final results in ${revealCountdown}s…` : `Next question in ${revealCountdown}s…`}
             </Text>
           ) : null}
+          {showCorrectAnswer && game.status === 'active' && revealCountdown <= 0 ? (
+            <Text style={styles.countdown}>
+              {isLastRound ? 'Showing final results…' : 'Starting next question…'}
+            </Text>
+          ) : null}
         </View>
       ) : null}
     </ScrollView>
@@ -243,7 +264,10 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
   scroll: { gap: 12, paddingBottom: 24 },
   header: { alignItems: 'center', gap: 8 },
+  playingAs: { color: theme.textMuted, fontSize: 14 },
+  playingAsName: { color: theme.text, fontWeight: '700' },
   roundMeta: { color: theme.textMuted, fontSize: 14 },
+  viewerNote: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
   panel: {
     backgroundColor: theme.surface,
     borderRadius: 12,
@@ -265,6 +289,7 @@ const makeStyles = (theme: Theme) =>
     borderColor: theme.border,
   },
   choiceSelected: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+  choiceDisabled: { opacity: 0.6 },
   choiceBadge: {
     width: 32,
     height: 32,

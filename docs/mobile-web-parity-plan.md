@@ -59,7 +59,15 @@ _This markdown is the **live source of truth** for what's done. The HTML report 
 - [x] ⚠️ **Chess** — host board-theme/piece-set applied + per-player appearance picker + premove built; _captured-pieces tray & coord labels deferred_
 - [x] ⚠️ **Trivia** — edit source/category/pack from lobby built; _dynamic rounds-cap-from-pool deferred_
 
-**Phase 1 — shared infrastructure** · **Phase 3 — polish** — not started.
+**Phase 1 — shared infrastructure** — ✅ effectively complete (absorbed into Phase 0/2). Its primitives all exist and are wired: `useDeadlineCountdown`/`TimerBadge` (timers), `ViewerModeBanner` + `playerIsViewer` (spectator, 7+ games), `finish-leaderboards.ts` + custom result cards (rich results), `GameFinishPanel` (replay ready-up + play-again, global to all competitive games), guess-masking (Quick Draw, Describe It), host-appearance (Chess, Monopoly). No standalone Phase 1 work remained.
+
+**Phase 3 — polish (medium + low)** _(built 2026-07-11 — 244 items across 28 games; mobile + web typecheck clean)_
+
+**172 built · ~30 already done in earlier passes · 42 deferred.** The 42 deferred are intentionally out of scope for a polish pass: per-cell scale-pulse animations (need 81 `Animated.Value`s), local draft persistence (needs AsyncStorage — no new deps), ambient/decorative effects, or minor settings needing a DB migration. Each is listed with its reason in the workflow output. Representative wins built: Monopoly personalized status banners + deadline auto-advance + current-space header; Sudoku undo/erase/wrong-cell/same-number highlight/completed-number checkmarks/points toast; and per-game hints, progress bars, status headers, timers, sounds, and result detail across the board.
+
+Notable deferrals (cosmetic / needs dep or migration): Sudoku correct-placement scale pulse + draft persistence · Scrabble 5 low-priority animations/labels · Matching Pairs 4 · Codewords/Whot/Trivia 3 each.
+
+**Phase 1 — shared infrastructure** — ✅ complete (absorbed into Phase 0/2, see above).
 
 > **Phase 0 status:** 9 of 11 items complete, 2 partial (Poll's two fixes — core flow works, edge cases noted). All changes typecheck clean (`apps/mobile: tsc --noEmit`) and are **uncommitted on `feat/mobile-shell`** for review. On-device behavior (Expo timers, board rendering, realtime feeds) still needs a manual pass — couldn't be exercised here.
 

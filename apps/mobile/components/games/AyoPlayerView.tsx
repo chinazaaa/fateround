@@ -15,6 +15,7 @@ import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBoots
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { postAyoMove, postAyoResign } from '@/lib/game-api'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { getSupabase } from '@/lib/supabase'
 import { AYO_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
@@ -141,6 +142,7 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        footer={<GameRulesLink gameType="ayo" variant="subtle" />}
       />
     )
   }
@@ -152,13 +154,17 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
   if (bootstrap.screen === 'finished') {
     const winner = bootstrap.players.find((p) => p.id === activeSession.winner_player_id)
     const variant = parseAyoVariant(bootstrap.game?.ayo_variant)
+    const isWin = !activeSession.is_draw && !!winner
     const title = activeSession.is_draw ? 'Draw!' : winner ? `${winner.name} · Ọta wins!` : 'Game over'
     const reason = ayoResultDetail(activeSession.result_reason, variant)
-    const subtitle = reason ? reason.charAt(0).toUpperCase() + reason.slice(1) : 'Final standings'
-    const detail =
-      variant === 'traditional' && activeSession.match_round
-        ? `Round ${activeSession.match_round}`
-        : activeSession.status_message
+    const reasonText = reason ? reason.charAt(0).toUpperCase() + reason.slice(1) : null
+    // On a win, honour the Yoruba flavor line under the winner (matches web);
+    // otherwise keep showing the result reason as the subtitle.
+    const subtitle = isWin ? 'Mo ki ota, mo ki ope o' : (reasonText ?? 'Final standings')
+    const detailParts: string[] = []
+    if (isWin && reasonText) detailParts.push(reasonText)
+    if (variant === 'traditional' && activeSession.match_round) detailParts.push(`Round ${activeSession.match_round}`)
+    const detail = detailParts.length > 0 ? detailParts.join(' · ') : activeSession.status_message
     return (
       <GameShell bootstrap={bootstrap} title="Ayo" subtitle={bootstrap.code}>
         <GameFinishPanel
@@ -180,6 +186,17 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
       : []
   const turnPlayer = bootstrap.players.find((p) => p.id === turnPlayerId)
   const nameOf = (pid: string) => bootstrap.players.find((p) => p.id === pid)?.name ?? 'Player'
+  const variant = parseAyoVariant(bootstrap.game?.ayo_variant)
+  const flip = mySide === 'b'
+  const timed = activeSession.a_time_ms != null && activeSession.b_time_ms != null
+  const timeControlSeconds = bootstrap.game?.timer_seconds ?? 0
+  const timeLabel = timeControlSeconds < 60 ? `${timeControlSeconds}s` : `${Math.round(timeControlSeconds / 60)} min`
+  const howToPlay =
+    `You play the ${flip ? 'top' : 'bottom'} row · tap one of your houses to sow anti-clockwise` +
+    (variant === 'traditional'
+      ? ' · complete fours to win houses · relay until your last seed hits an empty house'
+      : '') +
+    (isMyTurn ? '' : ' · waiting for your opponent')
 
   return (
     <GameShell bootstrap={bootstrap} title="Ayo" subtitle={`Code ${bootstrap.code}`}>
@@ -187,6 +204,12 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
         text={isMyTurn ? 'Your turn — pick a house' : `${turnPlayer?.name ?? 'Opponent'}'s turn`}
         isMyTurn={isMyTurn}
       />
+      {timed && timeControlSeconds > 0 ? (
+        <Text style={styles.hint}>⏱ {timeLabel} each — your clock only counts down on your turn</Text>
+      ) : null}
+      {variant === 'traditional' && activeSession.match_round ? (
+        <Text style={styles.hint}>Round {activeSession.match_round}</Text>
+      ) : null}
       <AyoBoard
         session={activeSession}
         mySide={mySide}
@@ -194,13 +217,14 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
         disabled={acting || !isMyTurn || animation.animating}
         onMove={sow}
         animation={animation}
-        variant={parseAyoVariant(bootstrap.game?.ayo_variant)}
+        variant={variant}
         nameA={nameOf(activeSession.player_a_id)}
         nameB={nameOf(activeSession.player_b_id)}
       />
       {mySide && bootstrap.myPlayerId ? (
         <Text style={styles.sideLabel}>You are {nameOf(bootstrap.myPlayerId)}</Text>
       ) : null}
+      {mySide ? <Text style={styles.howTo}>{howToPlay}</Text> : null}
       {mySide ? (
         <Pressable
           style={styles.resignBtn}
@@ -229,6 +253,8 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     sideLabel: { color: theme.textMuted, textAlign: 'center' },
+    hint: { color: theme.textFaint, fontSize: 12, textAlign: 'center' },
+    howTo: { color: theme.textFaint, fontSize: 12, textAlign: 'center', lineHeight: 17 },
     resignBtn: {
       alignSelf: 'center',
       marginTop: 12,

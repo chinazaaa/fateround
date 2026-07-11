@@ -83,6 +83,7 @@ export function MahjongTableView({
     const isMe = state.player_id === myPlayerId
     const count = state.hand_count ?? state.hand?.length ?? 0
     const furiten = !!state.permanent_furiten || !!state.temporary_furiten
+    const score = session.scores?.[state.player_id]
 
     return (
       <View
@@ -97,8 +98,9 @@ export function MahjongTableView({
       >
         <View style={styles.seatHeader}>
           <Text style={styles.seatLabel}>{MAHJONG_SEAT_LABELS[seat]}</Text>
-          <Text style={styles.seatCount}>{count} tiles</Text>
+          <Text style={styles.seatCount}>{score != null ? `${score} pts` : `${count} tiles`}</Text>
         </View>
+        {score != null ? <Text style={styles.seatSubCount}>{count} tiles</Text> : null}
         <Text style={styles.seatName} numberOfLines={1}>
           {playerName(players, state.player_id)}
           {isMe ? ' · you' : ''}
@@ -188,6 +190,7 @@ const makeStyles = (theme: Theme) =>
     seatHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 6 },
     seatLabel: { color: theme.primaryMuted, fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
     seatCount: { color: theme.textMuted, fontSize: 11 },
+    seatSubCount: { color: theme.textFaint, fontSize: 10 },
     seatName: { color: theme.text, fontSize: 13, fontWeight: '700' },
     flagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
     riichiFlag: { backgroundColor: theme.primarySoft, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },

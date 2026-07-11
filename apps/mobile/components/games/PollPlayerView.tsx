@@ -49,7 +49,13 @@ import { PlayerNameSubmit, lobbyAllowsPlayerNames } from '@/components/games/lob
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ParticipantPhotoCard } from '@/components/games/poll/ParticipantPhotoCard'
+import { PollParticipantGallery } from '@/components/games/poll/PollParticipantGallery'
+import { PollSpectatorReady } from '@/components/games/poll/PollSpectatorReady'
 import { PollRoundResults } from '@/components/games/poll/PollRoundResults'
+import { PollMyVoteRecap } from '@/components/games/poll/PollMyVoteRecap'
+import { PollReactionBar } from '@/components/games/poll/PollReactionBar'
+import { PollAchievements } from '@/components/games/poll/PollAchievements'
+import { computePollAchievements } from '@/components/games/poll/poll-achievements'
 import { PollGenderJoinScreen } from '@/components/games/poll/PollGenderJoinScreen'
 import { WstQuotePool } from '@/components/games/poll/WstQuotePool'
 import { ConfessionInput } from '@/components/games/poll/ConfessionInput'
@@ -380,6 +386,13 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
         onLeft={onLeft}
         activity={
           <>
+            {me?.spectator === true && bootstrap.myResumeToken ? (
+              <PollSpectatorReady
+                gameCode={bootstrap.code}
+                resumeToken={bootstrap.myResumeToken}
+                onReady={() => bootstrap.load()}
+              />
+            ) : null}
             {me?.participant_id ? (
               <ParticipantPhotoCard
                 gameCode={bootstrap.code}
@@ -387,6 +400,9 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
                 participant={myParticipant}
                 onPhotoUpdated={updateParticipantPhoto}
               />
+            ) : null}
+            {gameType && (isThreeChoiceGame(gameType) || isBinaryPeoplePollGame(gameType)) ? (
+              <PollParticipantGallery participants={pollState.participants} />
             ) : null}
             {canSubmitQuestions && gameType ? (
               <PlayerQuestionSubmit
@@ -464,10 +480,19 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
       )
     }
 
+    const achievements = computePollAchievements(
+      bootstrap.game,
+      pollState.participants,
+      pollState.rounds,
+      pollState.votes,
+      bootstrap.players
+    )
+
     return (
       <GameShell bootstrap={bootstrap} title={title} subtitle={bootstrap.code}>
         <ScrollView contentContainerStyle={styles.scroll}>
           {panel}
+          <PollAchievements achievements={achievements} />
           {genderBoards ? (
             <FinalGenderLeaderboards
               gameType={gameType}
@@ -549,6 +574,14 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
     return (
       <GameShell bootstrap={bootstrap} title={title} subtitle={`Round ${currentRound.round_number} results`}>
         <ScrollView contentContainerStyle={styles.scroll}>
+          <PollMyVoteRecap
+            game={bootstrap.game}
+            gameType={gameType}
+            round={currentRound}
+            myVote={myVote}
+            participants={pollState.participants}
+            players={bootstrap.players}
+          />
           <PollRoundResults
             game={bootstrap.game}
             gameType={gameType}
@@ -557,6 +590,9 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
             votes={pollState.votes}
             players={bootstrap.players}
           />
+          {bootstrap.myPlayerId ? (
+            <PollReactionBar gameCode={bootstrap.code} playerId={bootstrap.myPlayerId} />
+          ) : null}
           {!isViewer && bootstrap.myResumeToken ? (
             <ConfessionInput
               gameCode={bootstrap.code}

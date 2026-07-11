@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { colorForPlayer, currentTurnPlayerId, legalStepsFromSquare } from '@fateround/shared/checkers'
+import { playerIsViewer } from '@fateround/shared/viewers'
+import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { CheckersBoard } from '@/components/games/checkers/CheckersBoard'
 import {
   checkersIsTimed,
@@ -14,7 +16,7 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import type { Theme } from '@/constants/theme'
-import { useThemedStyles } from '@/constants/theme-context'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -30,6 +32,7 @@ type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_foun
 
 export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
   const [session, setSession] = useState<CheckersSession | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [acting, setActing] = useState(false)
@@ -91,6 +94,16 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
   })
 
   const myColor = bootstrap.myPlayerId && activeSession ? colorForPlayer(activeSession, bootstrap.myPlayerId) : null
+
+  // A late joiner / spectator watches read-only (no seat, no resign, board locked).
+  const me = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
+  const isViewer = !!(bootstrap.game && me && playerIsViewer(me, bootstrap.game))
+
+  // During a forced multi-jump chain the continuing piece is the only legal mover,
+  // so auto-select it — the player just taps the next landing square.
+  useEffect(() => {
+    if (activeSession?.must_continue_from) setSelected(activeSession.must_continue_from)
+  }, [activeSession?.must_continue_from])
 
   const timed = activeSession ? checkersIsTimed(activeSession) : false
 
@@ -200,21 +213,45 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
   const turnPlayer = bootstrap.players.find((p) => p.id === turnPlayerId)
   const redPlayer = bootstrap.players.find((p) => p.id === activeSession.player_red_id)
   const blackPlayer = bootstrap.players.find((p) => p.id === activeSession.player_black_id)
+  const redName = redPlayer?.name ?? 'Red'
+  const blackName = blackPlayer?.name ?? 'Black'
   const timerSeconds = bootstrap.game?.timer_seconds ?? 0
+  const mustJump = isMyTurn && !!activeSession.must_continue_from
   void clockTick
 
   return (
     <GameShell bootstrap={bootstrap} title="Checkers" subtitle={`Code ${bootstrap.code}`}>
+      {isViewer && me ? (
+        <ViewerModeBanner
+          gameCode={bootstrap.code}
+          playerId={me.id}
+          game={bootstrap.game}
+          player={me}
+          players={bootstrap.players}
+          onPromoted={() => void bootstrap.load()}
+        />
+      ) : null}
+
       <TurnBanner
         text={
-          selected
-            ? `Selected ${selected} — tap destination`
-            : isMyTurn
-              ? 'Your turn — tap a piece'
-              : `${turnPlayer?.name ?? 'Opponent'}'s turn`
+          mustJump
+            ? 'Keep jumping! — same piece must continue'
+            : selected
+              ? `Selected ${selected} — tap destination`
+              : isMyTurn
+                ? 'Your turn — tap a piece'
+                : `${turnPlayer?.name ?? 'Opponent'}'s turn`
         }
         isMyTurn={isMyTurn}
       />
+
+      {!timed ? (
+        <View style={styles.matchup}>
+          <Text style={styles.matchupSide} numberOfLines={1}>🔴 {redName}</Text>
+          <Text style={styles.matchupVs}>vs</Text>
+          <Text style={[styles.matchupSide, styles.matchupSideRight]} numberOfLines={1}>⚫ {blackName}</Text>
+        </View>
+      ) : null}
 
       {timed ? (
         <>
@@ -241,16 +278,31 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
       <CheckersBoard
         board={activeSession.board}
         myColor={myColor}
-        isMyTurn={isMyTurn}
+        isMyTurn={isMyTurn && !isViewer}
         mustContinue={activeSession.must_continue_from}
         selected={selected}
         lastMoveFrom={activeSession.last_move_from}
         lastMoveTo={activeSession.last_move_to}
         acting={acting}
+        redName={redName}
+        blackName={blackName}
+        nameColor={theme.text}
+        mutedColor={theme.textMuted}
         onSquarePress={(row, col) => void onSquarePress(row, col)}
       />
 
       {myColor ? (
+        <Text style={styles.identityHint}>
+          You are <Text style={styles.identityStrong}>{myColor === 'r' ? '🔴 Red' : '⚫ Black'}</Text>
+          {isMyTurn
+            ? mustJump
+              ? ' · you must keep jumping with the same piece'
+              : ' · tap a piece, then its destination'
+            : ' · waiting for your opponent'}
+        </Text>
+      ) : null}
+
+      {myColor && !isViewer ? (
         <Pressable style={styles.resignBtn} disabled={acting} onPress={resign}>
           <Text style={styles.resignText}>Resign</Text>
         </Pressable>
@@ -304,6 +356,21 @@ const makeStyles = (theme: Theme) =>
     clockValue: { color: theme.text, fontWeight: '800', fontVariant: ['tabular-nums'] },
     clockValueLow: { color: '#fca5a5' },
     clockHint: { color: theme.textMuted, fontSize: 12, textAlign: 'center', marginTop: -4, marginBottom: 8 },
+    matchup: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+      padding: 10,
+      borderRadius: 8,
+      backgroundColor: theme.surface,
+      marginBottom: 8,
+    },
+    matchupSide: { flex: 1, color: theme.text, fontWeight: '700', fontSize: 13 },
+    matchupSideRight: { textAlign: 'right' },
+    matchupVs: { color: theme.textFaint, fontSize: 12, fontWeight: '600' },
+    identityHint: { color: theme.textMuted, fontSize: 12, textAlign: 'center', marginTop: 10 },
+    identityStrong: { color: theme.text, fontWeight: '800' },
     resignBtn: {
       alignSelf: 'center',
       marginTop: 12,

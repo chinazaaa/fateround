@@ -14,6 +14,20 @@ async function postJson<T>(path: string, body: Record<string, unknown>): Promise
   return data
 }
 
+export function postNpatDraft(
+  gameId: string,
+  resumeToken: string,
+  roundId: string,
+  answers: { name: string; animal: string; place: string; thing: string; food: string }
+) {
+  return postJson<{ success: boolean }>('/api/npat/draft', {
+    gameId,
+    resumeToken,
+    roundId,
+    ...answers,
+  })
+}
+
 export type NpatCallerOverrideRow = {
   playerId: string
   validName: boolean

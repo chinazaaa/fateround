@@ -1,4 +1,5 @@
 import type { SudokuSubmission } from '@fateround/shared'
+import { playerHasSolvedCell } from '@fateround/shared/sudoku'
 
 // Sudoku standings + cell-ownership helpers, mirrored from the web `@/lib/sudoku`.
 // Kept colocated with the mobile Sudoku view so it can't collide with parallel agents
@@ -40,6 +41,97 @@ export const SUDOKU_PLAYER_COLORS = [
 
 export function sudokuPlayerColor(index: number): string {
   return SUDOKU_PLAYER_COLORS[index % SUDOKU_PLAYER_COLORS.length]!
+}
+
+/** Points deducted for a wrong cell guess (mirrors web SUDOKU_WRONG_PENALTY). */
+export const SUDOKU_WRONG_PENALTY = -3
+
+// ── Unit-completion flash + same-number helpers (ported from web `@/lib/sudoku`) ──
+
+export type SudokuUnitType = 'row' | 'col' | 'block'
+export type SudokuUnitFlash = { type: SudokuUnitType; index: number }
+
+type SolvedCellLike = Pick<SudokuSubmission, 'player_id' | 'cell_row' | 'cell_col' | 'is_correct'>
+
+/** blockIndex from (row, col). */
+export function cellBlockIndex(row: number, col: number): number {
+  return Math.floor(row / 3) * 3 + Math.floor(col / 3)
+}
+
+function cellInUnit(row: number, col: number, type: SudokuUnitType, index: number): boolean {
+  if (type === 'row') return row === index
+  if (type === 'col') return col === index
+  const br = Math.floor(index / 3) * 3
+  const bc = (index % 3) * 3
+  return row >= br && row < br + 3 && col >= bc && col < bc + 3
+}
+
+/** True when every non-given cell in the unit is correctly solved by this player. */
+function isPlayerUnitComplete(
+  puzzle: number[][],
+  submissions: SolvedCellLike[],
+  playerId: string,
+  type: SudokuUnitType,
+  index: number
+): boolean {
+  for (let row = 0; row < 9; row++) {
+    for (let col = 0; col < 9; col++) {
+      if (!cellInUnit(row, col, type, index)) continue
+      if (puzzle[row]![col] !== 0) continue
+      if (!playerHasSolvedCell(submissions, playerId, row, col)) return false
+    }
+  }
+  return true
+}
+
+/** Units that became complete for this player with the solve at (solvedRow, solvedCol). */
+export function getNewlyCompletedUnits(
+  puzzle: number[][],
+  submissions: SolvedCellLike[],
+  playerId: string,
+  solvedRow: number,
+  solvedCol: number
+): SudokuUnitFlash[] {
+  const before = submissions.filter(
+    (s) => !(s.player_id === playerId && s.cell_row === solvedRow && s.cell_col === solvedCol && s.is_correct)
+  )
+  const after = playerHasSolvedCell(submissions, playerId, solvedRow, solvedCol)
+    ? submissions
+    : [...submissions, { player_id: playerId, cell_row: solvedRow, cell_col: solvedCol, is_correct: true } as SolvedCellLike]
+
+  const candidates: SudokuUnitFlash[] = [
+    { type: 'row', index: solvedRow },
+    { type: 'col', index: solvedCol },
+    { type: 'block', index: cellBlockIndex(solvedRow, solvedCol) },
+  ]
+
+  return candidates.filter(
+    (u) =>
+      !isPlayerUnitComplete(puzzle, before, playerId, u.type, u.index) &&
+      isPlayerUnitComplete(puzzle, after, playerId, u.type, u.index)
+  )
+}
+
+export function isCellInFlashingUnits(row: number, col: number, units: SudokuUnitFlash[]): boolean {
+  return units.some((u) => cellInUnit(row, col, u.type, u.index))
+}
+
+/** Digits 1-9 whose nine instances are all solved for this player (green ✓ on pad). */
+export function completedSudokuNumbersForPlayer(
+  puzzle: number[][],
+  submissions: Pick<SudokuSubmission, 'player_id' | 'submitted_value' | 'is_correct'>[],
+  playerId: string
+): number[] {
+  const counts = new Map<number, number>()
+  for (const value of puzzle.flat()) {
+    if (value >= 1 && value <= 9) counts.set(value, (counts.get(value) ?? 0) + 1)
+  }
+  for (const s of submissions) {
+    if (s.player_id !== playerId || !s.is_correct || s.submitted_value == null) continue
+    const value = s.submitted_value
+    if (value >= 1 && value <= 9) counts.set(value, (counts.get(value) ?? 0) + 1)
+  }
+  return Array.from({ length: 9 }, (_, i) => i + 1).filter((value) => (counts.get(value) ?? 0) >= 9)
 }
 
 export type CellOwnerGrid = (string | null)[][]

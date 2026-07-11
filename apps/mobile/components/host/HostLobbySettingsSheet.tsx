@@ -114,6 +114,7 @@ import { useThemedStyles } from '@/constants/theme-context'
 
 /** Games whose max-players is editable via the shared lobby-settings route. */
 const LOBBY_MAX_PLAYERS_GAMES = new Set<GameType>([
+  'bingo',
   'monopoly',
   'yahtzee',
   'whot',
@@ -126,6 +127,8 @@ const LOBBY_MAX_PLAYERS_GAMES = new Set<GameType>([
   'sudoku',
   'matching_pairs',
   'ayo',
+  'describe_it',
+  'quick_draw',
 ])
 
 /** Party games that play a single round — no editable "Rounds" control (mirrors web create). */
@@ -210,7 +213,7 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
   const showTheme = themeOptions.length > 1
 
   const timerOptions = Array.from(
-    new Set<number>([game.timer_seconds ?? 0, ...POLL_ROUND_TIMER_OPTIONS])
+    new Set<number>([game.timer_seconds ?? 0, ...POLL_ROUND_TIMER_OPTIONS, ...(isTrivia ? [10] : [])])
   )
     .filter((n) => n > 0)
     .sort((a, b) => a - b)

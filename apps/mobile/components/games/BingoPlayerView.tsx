@@ -2,16 +2,20 @@ import { useCallback, useMemo, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { BingoCalledNumber, BingoCard, Game, Player } from '@fateround/shared'
 import {
+  BINGO_MIN_PLAYERS,
   formatBingoNumber,
   hasBingoWin,
 } from '@fateround/shared/bingo'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { BingoCardGrid } from '@/components/games/bingo/BingoCardGrid'
+import { BingoCardLegend } from '@/components/games/bingo/BingoCardLegend'
 import { CalledNumbersBoard } from '@/components/games/bingo/CalledNumbersBoard'
+import { CalledNumbersBoardSection } from '@/components/games/bingo/CalledNumbersBoardSection'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { winnerLeaderboard } from '@/lib/finish-leaderboards'
@@ -170,6 +174,22 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
   if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    // "Play again · same settings" reopened the lobby with the ready-up ring:
+    // readiness = holding a seat (tap to ready/sit out).
+    if (bootstrap.game.replay_pending) {
+      return (
+        <GameShell bootstrap={bootstrap} title="Bingo" subtitle="Play again">
+          <ReplayReadyRing
+            gameCode={bootstrap.code}
+            players={bootstrap.players}
+            myPlayerId={bootstrap.myPlayerId}
+            myResumeToken={bootstrap.myResumeToken ?? null}
+            minPlayers={BINGO_MIN_PLAYERS}
+            onReload={() => bootstrap.load()}
+          />
+        </GameShell>
+      )
+    }
     return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (!bootstrap.game) return <GameLoading />
@@ -195,6 +215,20 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
         }
         winnerPlayerId={winnerClaim?.player_id ?? null}
         roundKey={winnerClaim?.id ?? null}
+        notice={
+          card ? (
+            <View style={styles.finishedCard}>
+              <Text style={styles.finishedCardLabel}>Your card</Text>
+              <BingoCardGrid
+                cells={card.cells}
+                markedIndices={card.marked_indices}
+                calledNumbers={calledSet}
+                disabled
+                onMark={() => {}}
+              />
+            </View>
+          ) : undefined
+        }
       />
     )
   }
@@ -257,6 +291,11 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
             onMark={(cellIndex) => void markCell(cellIndex)}
           />
           <Text style={styles.legend}>Tap callable numbers when they are called. Center is free.</Text>
+          <BingoCardLegend />
+          <CalledNumbersBoardSection
+            calledNumbers={calledSet}
+            lastCalled={lastCalled?.number ?? null}
+          />
         </>
       ) : isViewer ? (
         <View style={styles.viewerBoard}>
@@ -308,4 +347,12 @@ const makeStyles = (theme: Theme) =>
   waitingCard: { color: theme.textMuted, textAlign: 'center', marginTop: 24 },
   viewerBoard: { gap: 12, marginTop: 8 },
   viewerHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
+  finishedCard: { gap: 8, alignItems: 'center', marginTop: 4 },
+  finishedCardLabel: {
+    color: theme.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
 })

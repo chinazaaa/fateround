@@ -13,10 +13,13 @@ import {
   teamLabel,
   wordRushMinLengthForRound,
 } from '@fateround/shared/word-rush'
+import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
+import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { ActivityFeed } from '@/components/party/ActivityFeed'
@@ -48,6 +51,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
   const [minLengthText, setMinLengthText] = useState('')
   const [acting, setActing] = useState(false)
   const [lastMessage, setLastMessage] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: WordRushSession | null; ok: boolean }> => {
@@ -109,6 +113,12 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
   const minLength = session
     ? wordRushMinLengthForRound(session.current_round, session.difficulty)
     : 3
+
+  const me = useMemo(
+    () => bootstrap.players.find((p) => p.id === bootstrap.myPlayerId),
+    [bootstrap.players, bootstrap.myPlayerId]
+  )
+  const isViewer = !!(bootstrap.game && me && playerIsViewer(me, bootstrap.game))
 
   const act = async (fn: () => Promise<unknown>) => {
     if (!bootstrap.myResumeToken || acting) return
@@ -194,6 +204,19 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     if (mode === 'individual') {
       return <LobbyView {...lobbyProps!} onLeft={onLeft} />
     }
+    if (bootstrap.game.replay_pending) {
+      return (
+        <GameShell bootstrap={bootstrap} title={batch5GameLabel('word_rush')} subtitle="Play again">
+          <ReplayReadyRing
+            gameCode={bootstrap.code}
+            players={bootstrap.players}
+            myPlayerId={bootstrap.myPlayerId}
+            myResumeToken={bootstrap.myResumeToken ?? null}
+            onReload={() => bootstrap.load()}
+          />
+        </GameShell>
+      )
+    }
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('word_rush')} subtitle="Pick your team">
         <TeamPickerGrid
@@ -214,15 +237,27 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
   if (bootstrap.screen === 'finished') {
     const board = tallyWordRushScores(mode, bootstrap.players, teamRows, answers, numTeams)
     const top = board[0]
+    const hasWinner = !!top && top.score > 0 && board.length > 1
     const detail =
       top && 'name' in top ? `${top.name} — ${top.score} pts` : top ? `${teamLabel(top.team)} wins` : undefined
+    // Individual mode: highlight the winning player in the hero. Team mode has no
+    // single player winner, so leave winnerPlayerId undefined there.
+    const winnerPlayerId =
+      hasWinner && top && 'id' in top ? (top as { id: string }).id : null
+    const finishTitle = hasWinner
+      ? top && 'name' in top
+        ? `${top.name} wins!`
+        : `${teamLabel((top as { team: number }).team)} wins!`
+      : 'Final results'
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('word_rush')} subtitle={bootstrap.code}>
         <GameFinishPanel
           bootstrap={bootstrap}
-          title="Final results"
+          title={finishTitle}
           subtitle="Final standings"
           detail={detail}
+          winnerPlayerId={winnerPlayerId}
+          roundKey={session?.id ?? null}
           leaderboard={scoreListLeaderboard(
             board.map((row) =>
               'name' in row
@@ -249,11 +284,17 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     const text = wordText.trim()
     if (!text || !bootstrap.myResumeToken) return
     setLastMessage(null)
+    setSubmitError(null)
     setActing(true)
     try {
       const result = await postWordRushSubmit(bootstrap.code, bootstrap.myResumeToken, text)
-      if (!result.correct) setLastMessage(result.message ?? 'Not accepted')
-      else {
+      if (!result.correct) {
+        // Keep the typed word so the player can fix it, red-ring the field, and
+        // show the specific dictionary message (mirrors web allowRetry behaviour).
+        setSubmitError(
+          result.message ?? `"${text}" isn't in the dictionary for this letter pair`
+        )
+      } else {
         setWordText('')
         setLastMessage(`+${result.points ?? 0} pts`)
       }
@@ -288,15 +329,38 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
   // round — they earn mirror points from other players' scores instead.
   const isIndividualManualSetter =
     mode === 'individual' && isPromptSetter && session.prompt_mode === 'manual'
+  // Individual mode is one-word-per-round: once you land a correct word this
+  // turn the input is replaced by a "locked in" card (mirrors web).
+  const myCorrectAnswerThisRound =
+    mode === 'individual' && bootstrap.myPlayerId
+      ? answers.find(
+          (a) =>
+            a.player_id === bootstrap.myPlayerId &&
+            a.correct &&
+            a.turn_index === session.turn_index
+        )
+      : undefined
   const canAnswer =
-    (mode === 'individual' && !isIndividualManualSetter) ||
-    (mode === 'team' && onMyTeam && !isPromptSetter)
+    !isViewer &&
+    !myCorrectAnswerThisRound &&
+    ((mode === 'individual' && !isIndividualManualSetter) ||
+      (mode === 'team' && onMyTeam && !isPromptSetter))
 
   const teamRound =
     mode === 'team' && session ? currentTeamRoundNumber(session.turn_index, numTeams) : session.current_round
 
   return (
     <GameShell bootstrap={bootstrap} title={batch5GameLabel('word_rush')} subtitle={session.status_message ?? bootstrap.code}>
+      {isViewer && bootstrap.game && me && bootstrap.myPlayerId ? (
+        <ViewerModeBanner
+          gameCode={bootstrap.code}
+          playerId={bootstrap.myPlayerId}
+          game={bootstrap.game}
+          player={me}
+          players={bootstrap.players}
+          onPromoted={() => void bootstrap.load()}
+        />
+      ) : null}
       <TurnBanner
         text={
           session.phase === 'intermission'
@@ -350,14 +414,19 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
       ) : null}
 
       {session.phase !== 'intermission' && session.start_letter && session.end_letter ? (
-        <View style={styles.promptDisplay}>
-          <Text style={styles.promptLetter}>{session.start_letter.toUpperCase()}</Text>
-          <Text style={styles.promptArrow}>→</Text>
-          <Text style={styles.promptLetter}>{session.end_letter.toUpperCase()}</Text>
+        <View style={styles.promptBlock}>
+          <View style={styles.promptDisplay}>
+            <Text style={styles.promptLetter}>{session.start_letter.toUpperCase()}</Text>
+            <Text style={styles.promptArrow}>→</Text>
+            <Text style={styles.promptLetter}>{session.end_letter.toUpperCase()}</Text>
+          </View>
+          {(session.min_word_length ?? minLength) > 3 ? (
+            <Text style={styles.minCallout}>Minimum {session.min_word_length ?? minLength} letters</Text>
+          ) : null}
         </View>
       ) : null}
 
-      {session.phase === 'awaiting_prompt' && isPromptSetter ? (
+      {session.phase === 'awaiting_prompt' && isPromptSetter && !isViewer ? (
         <View style={styles.panel}>
           <Text style={styles.label}>Set the letter pair</Text>
           <View style={styles.row}>
@@ -403,9 +472,12 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
             Min {session.min_word_length ?? minLength} letters · starts & ends with shown letters
           </Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, submitError ? styles.inputError : null]}
             value={wordText}
-            onChangeText={setWordText}
+            onChangeText={(t) => {
+              setWordText(t)
+              if (submitError) setSubmitError(null)
+            }}
             placeholder="Type a word"
             placeholderTextColor={theme.textFaint}
             onSubmitEditing={() => void submitWord()}
@@ -413,8 +485,20 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
           <Pressable style={styles.primaryBtn} disabled={acting} onPress={() => void submitWord()}>
             <Text style={styles.primaryText}>Submit</Text>
           </Pressable>
-          {lastMessage ? <Text style={styles.feedback}>{lastMessage}</Text> : null}
+          {submitError ? <Text style={styles.errorFeedback}>{submitError}</Text> : null}
+          {!submitError && lastMessage ? <Text style={styles.feedback}>{lastMessage}</Text> : null}
         </View>
+      ) : session.phase === 'playing' && myCorrectAnswerThisRound ? (
+        <View style={styles.lockedCard}>
+          <Text style={styles.lockedTitle}>Correct — locked in for this round ✓</Text>
+          <Text style={styles.lockedBody}>Waiting for other players…</Text>
+        </View>
+      ) : session.phase === 'playing' && isViewer ? (
+        <Text style={styles.waiting}>
+          {mode === 'team'
+            ? `Watching — ${teamLabel(session.active_team)} is playing`
+            : 'Watching — round in progress'}
+        </Text>
       ) : session.phase === 'playing' && isIndividualManualSetter ? (
         <View style={styles.panel}>
           <Text style={styles.setterNote}>
@@ -588,6 +672,7 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
   teamRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   teamRowLabel: { color: theme.textMuted, fontSize: 14 },
+  promptBlock: { alignItems: 'center', gap: 4, paddingVertical: 4 },
   promptDisplay: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -597,6 +682,26 @@ const makeStyles = (theme: Theme) =>
   },
   promptLetter: { color: theme.text, fontSize: 40, fontWeight: '900' },
   promptArrow: { color: theme.primaryMuted, fontSize: 28, fontWeight: '700' },
+  minCallout: {
+    color: theme.primaryMuted,
+    fontSize: 13,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  inputError: { borderColor: theme.error },
+  errorFeedback: { color: theme.error, textAlign: 'center', fontWeight: '600' },
+  lockedCard: {
+    backgroundColor: theme.primarySoft,
+    borderWidth: 1,
+    borderColor: theme.primary,
+    borderRadius: 12,
+    padding: 16,
+    gap: 4,
+    alignItems: 'center',
+  },
+  lockedTitle: { color: theme.primaryMuted, fontSize: 16, fontWeight: '800', textAlign: 'center' },
+  lockedBody: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
   waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
   panel: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 10 },
   label: { color: theme.text, fontSize: 16, fontWeight: '600' },

@@ -12,6 +12,7 @@ import {
   availableLettersForPick,
   clampNpatMarkingTimer,
   clampNpatTimer,
+  collectUsedLetters,
   parseNpatMetadata,
   phaseDeadlineMs,
   playerDisplayName,
@@ -19,7 +20,9 @@ import {
   roundCallerPlayerId,
   tallyNpatScores,
   trimNpatAnswerFields,
+  validateNpatAnswerFields,
 } from '@fateround/shared/npat'
+import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
@@ -34,11 +37,16 @@ import { usePlayerSessionActions } from '@/lib/player-session'
 import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
+import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { ICallOnScoreboard } from '@/components/games/i_call_on/ICallOnScoreboard'
+import { ICallOnGameTimerBar } from '@/components/games/i_call_on/ICallOnGameTimerBar'
+import { ICallOnLiveLeaderboard } from '@/components/games/i_call_on/ICallOnLiveLeaderboard'
+import { ICallOnRoundHeader } from '@/components/games/i_call_on/ICallOnRoundHeader'
 import { isInCatalogue } from '@/components/games/i_call_on/npat-catalogue'
 import {
   postNpatCallerApproveOverrides,
   postNpatDispute,
+  postNpatDraft,
 } from '@/components/games/i_call_on/npat-api'
 import {
   defaultMarkValidityForAnswer,
@@ -61,6 +69,8 @@ const DEFAULT_FLAGS: Record<NpatCategory, boolean> = {
   food: true,
 }
 
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
+
 type CallerValidity = Record<string, Record<NpatCategory, boolean>>
 
 export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
@@ -73,6 +83,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   const [validFlags, setValidFlags] = useState<Record<NpatCategory, boolean>>(DEFAULT_FLAGS)
   const [callerValidity, setCallerValidity] = useState<CallerValidity>({})
   const [acting, setActing] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   const formRef = useRef(form)
   formRef.current = form
@@ -80,6 +91,8 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   const autoSubmittedRoundRef = useRef<string | null>(null)
   const marksSeededRef = useRef<string | null>(null)
   const callerSeededRef = useRef<string | null>(null)
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hydratedRoundRef = useRef<string | null>(null)
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: null; ok: boolean }> => {
@@ -144,6 +157,26 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     ? marks.find((m) => m.marker_player_id === bootstrap.myPlayerId && m.round_id === currentRound.id)
     : undefined
   const availableLetters = availableLettersForPick(rounds)
+  const usedLetters = collectUsedLetters(rounds)
+
+  const me = useMemo(
+    () => bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) ?? null,
+    [bootstrap.players, bootstrap.myPlayerId]
+  )
+  const isViewer = !!(bootstrap.game && me && playerIsViewer(me, bootstrap.game))
+
+  const liveScores = useMemo(
+    () => tallyNpatScores(answers, bootstrap.players),
+    [answers, bootstrap.players]
+  )
+  const callerName = playerDisplayName(callerId, bootstrap.players)
+  const callerIndex = useMemo(() => {
+    const order = metadata?.caller_order
+    if (!order || !callerId) return null
+    const idx = order.indexOf(callerId)
+    return idx >= 0 ? idx + 1 : null
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metadata?.caller_order, callerId])
 
   const roundAnswers = useMemo(
     () => (currentRound ? answers.filter((a) => a.round_id === currentRound.id) : []),
@@ -177,28 +210,54 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     setForm(EMPTY_FORM)
     setValidFlags(DEFAULT_FLAGS)
     setCallerValidity({})
+    setSubmitError(null)
     autoSubmittedRoundRef.current = null
     marksSeededRef.current = null
     callerSeededRef.current = null
+    hydratedRoundRef.current = null
+    if (draftTimerRef.current != null) {
+      clearTimeout(draftTimerRef.current)
+      draftTimerRef.current = null
+    }
   }, [currentRound?.id])
+
+  // ---- rehydrate the answer form from a saved (unsubmitted) draft -----------
+  // If a player typed answers then refreshed/reconnected mid-write, the draft
+  // upsert already persisted them to npat_answers; pull them back into the form.
+  useEffect(() => {
+    if (!currentRound || metadata?.phase !== 'writing' || isViewer) return
+    if (hydratedRoundRef.current === currentRound.id) return
+    hydratedRoundRef.current = currentRound.id
+    if (!myAnswer || myAnswer.submitted_at) return
+    setForm({
+      name: myAnswer.name ?? '',
+      animal: myAnswer.animal ?? '',
+      place: myAnswer.place ?? '',
+      thing: myAnswer.thing ?? '',
+      food: myAnswer.food ?? '',
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentRound?.id, metadata?.phase, myAnswer?.id, myAnswer?.submitted_at, isViewer])
 
   // ---- silent auto-submit when the writing timer expires --------------------
   const doSubmit = useCallback(
     async (values: Record<NpatCategory, string>, silent: boolean) => {
-      if (!currentRound || !bootstrap.myResumeToken || submittingRef.current) return
+      if (isViewer || !currentRound || !bootstrap.myResumeToken || submittingRef.current) return
       submittingRef.current = true
       if (!silent) setActing(true)
       try {
         await postNpatSubmit(bootstrap.code, bootstrap.myResumeToken, currentRound.id, trimNpatAnswerFields(values))
         await bootstrap.load()
-      } catch {
-        /* swallow — a manual retry or the auto-submit guard will recover */
+      } catch (err) {
+        // Surface the reason on a manual submit so the button never looks dead;
+        // silent auto-submit stays quiet (the guard will retry next tick).
+        if (!silent) setSubmitError(err instanceof Error ? err.message : 'Failed to submit answers')
       } finally {
         submittingRef.current = false
         if (!silent) setActing(false)
       }
     },
-    [currentRound, bootstrap]
+    [currentRound, bootstrap, isViewer]
   )
 
   useEffect(() => {
@@ -258,7 +317,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   }, [currentRound?.id, metadata?.phase, isCaller, roundAnswers, roundMarks])
 
   const act = async (fn: () => Promise<unknown>) => {
-    if (!bootstrap.myResumeToken || acting) return
+    if (isViewer || !bootstrap.myResumeToken || acting) return
     setActing(true)
     try {
       await fn()
@@ -273,20 +332,53 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     void act(() => postNpatLetter(bootstrap.code, bootstrap.myResumeToken!, currentRound.id, letter))
   }
 
+  // Debounced draft save: mirrors web's 1.5s autosave to /api/npat/draft so a
+  // refresh/reconnect mid-write doesn't lose typed answers (rehydrated above).
+  const queueDraftSave = () => {
+    if (draftTimerRef.current != null) clearTimeout(draftTimerRef.current)
+    draftTimerRef.current = setTimeout(() => {
+      draftTimerRef.current = null
+      if (isViewer || !currentRound || metadata?.phase !== 'writing' || myAnswer?.submitted_at) return
+      if (!bootstrap.myResumeToken) return
+      void postNpatDraft(
+        bootstrap.code,
+        bootstrap.myResumeToken,
+        currentRound.id,
+        trimNpatAnswerFields(formRef.current)
+      ).catch(() => {
+        /* draft is best-effort; a manual submit still persists everything */
+      })
+    }, 1500)
+  }
+
   // Prevent typing a leading character that doesn't match the round letter, so
   // manual submit + auto-submit always send valid-letter answers.
   const updateField = (category: NpatCategory, value: string) => {
     const letter = metadata?.letter ?? null
+    let changed = false
     setForm((prev) => {
-      if (!value) return { ...prev, [category]: '' }
+      if (!value) {
+        changed = prev[category] !== ''
+        return { ...prev, [category]: '' }
+      }
       const trimmed = value.trimStart()
       if (trimmed.length > 0 && letter && trimmed[0].toUpperCase() !== letter.toUpperCase()) return prev
+      changed = prev[category] !== value
       return { ...prev, [category]: value }
     })
+    if (submitError) setSubmitError(null)
+    if (changed) queueDraftSave()
   }
 
   const submitAnswers = () => {
     if (!currentRound || !metadata?.letter) return
+    const trimmed = trimNpatAnswerFields(form)
+    const validationError = validateNpatAnswerFields(metadata.letter, trimmed)
+    if (validationError) {
+      setSubmitError(validationError)
+      return
+    }
+    setSubmitError(null)
     void doSubmit(form, false)
   }
 
@@ -364,23 +456,34 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   if (bootstrap.screen === 'finished') {
     const scores = tallyNpatScores(answers, bootstrap.players)
     const top = scores[0]
+    const winnerId = top && top.score > 0 ? top.id : null
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={bootstrap.code}>
         <GameFinishPanel
           bootstrap={bootstrap}
-          title="Game over"
+          title={winnerId ? `${top.name} wins!` : 'Game over'}
           subtitle="Final standings"
           detail={top ? `${top.name} — ${top.score} pts` : undefined}
           leaderboard={scoreListLeaderboard(scores)}
+          winnerPlayerId={winnerId}
+          roundKey={bootstrap.game?.session_started_at ?? null}
         />
       </GameShell>
     )
   }
 
   if (!currentRound || !metadata) {
+    const upcoming = rounds
+      .filter((r) => r.status === 'pending')
+      .sort((a, b) => a.round_number - b.round_number)[0]
+    const upNextName = upcoming ? playerDisplayName(upcoming.submitter_player_id, bootstrap.players) : null
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={bootstrap.code}>
-        <Text style={styles.waiting}>Waiting for the next round…</Text>
+        <View style={styles.waitCard}>
+          <Text style={styles.waitEmoji}>⏳</Text>
+          <Text style={styles.waitTitle}>Next letter coming up…</Text>
+          {upNextName ? <Text style={styles.waiting}>Up next: {upNextName} calls the letter</Text> : null}
+        </View>
       </GameShell>
     )
   }
@@ -419,24 +522,70 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
       </View>
     ) : null
 
+  const gameTimerBar = <ICallOnGameTimerBar game={bootstrap.game} />
+  const viewerBanner =
+    bootstrap.myPlayerId && me ? (
+      <ViewerModeBanner
+        gameCode={bootstrap.code}
+        playerId={bootstrap.myPlayerId}
+        game={bootstrap.game}
+        player={me}
+        players={bootstrap.players}
+        onPromoted={() => void bootstrap.load()}
+      />
+    ) : null
+  const roundHeaderCard = (
+    <ICallOnRoundHeader
+      roundNumber={currentRound.round_number}
+      letter={metadata.letter}
+      lettersLeft={availableLetters.length}
+      callerName={callerName}
+      callerIndex={callerIndex}
+      callerCount={metadata.caller_order?.length ?? 0}
+      secondsLeft={secondsLeft}
+      showSeconds={false}
+      revealSecondsLeft={revealSecondsLeft}
+      showReveal={false}
+    />
+  )
+  const liveLeaderboard = <ICallOnLiveLeaderboard rows={liveScores} myPlayerId={bootstrap.myPlayerId} />
+
   if (metadata.phase === 'letter_pick') {
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Round ${currentRound.round_number}`}>
-        {phaseTimer}
-        {isCaller ? (
-          <>
-            <Text style={styles.section}>Pick a letter</Text>
-            <View style={styles.letterGrid}>
-              {availableLetters.map((letter) => (
-                <Pressable key={letter} style={styles.letterBtn} disabled={acting} onPress={() => pickLetter(letter)}>
-                  <Text style={styles.letterText}>{letter}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </>
-        ) : (
-          <Text style={styles.waiting}>Waiting for the caller to pick a letter…</Text>
-        )}
+        <ScrollView contentContainerStyle={styles.form}>
+          {gameTimerBar}
+          {viewerBanner}
+          {roundHeaderCard}
+          {phaseTimer}
+          {isCaller && !isViewer ? (
+            <>
+              <Text style={styles.section}>Pick a letter</Text>
+              <Text style={styles.letterMeta}>
+                {availableLetters.length} letter{availableLetters.length === 1 ? '' : 's'} still available
+                {usedLetters.length > 0 ? ` · ${usedLetters.join(', ')} already used` : ''}
+              </Text>
+              <View style={styles.letterGrid}>
+                {ALPHABET.map((letter) => {
+                  const used = !availableLetters.includes(letter)
+                  return (
+                    <Pressable
+                      key={letter}
+                      style={[styles.letterBtn, used && styles.letterBtnUsed]}
+                      disabled={acting || used}
+                      onPress={() => pickLetter(letter)}
+                    >
+                      <Text style={[styles.letterText, used && styles.letterTextUsed]}>{letter}</Text>
+                    </Pressable>
+                  )
+                })}
+              </View>
+            </>
+          ) : (
+            <Text style={styles.waiting}>Waiting for the caller to pick a letter…</Text>
+          )}
+          {liveLeaderboard}
+        </ScrollView>
       </GameShell>
     )
   }
@@ -445,8 +594,13 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Letter ${metadata.letter ?? '?'}`}>
         <ScrollView contentContainerStyle={styles.form}>
+          {gameTimerBar}
+          {viewerBanner}
+          {roundHeaderCard}
           {phaseTimer}
-          {myAnswer?.submitted_at ? (
+          {isViewer ? (
+            <Text style={styles.locked}>Players are filling in their answers…</Text>
+          ) : myAnswer?.submitted_at ? (
             <Text style={styles.locked}>Answers submitted — waiting for marking…</Text>
           ) : (
             <>
@@ -465,6 +619,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
               <Pressable style={styles.primaryBtn} disabled={acting} onPress={submitAnswers}>
                 <Text style={styles.primaryText}>Submit answers</Text>
               </Pressable>
+              {submitError ? <Text style={styles.submitError}>{submitError}</Text> : null}
               {secondsLeft <= 10 ? (
                 <Text style={styles.autoSendHint}>
                   Unsubmitted answers are sent automatically when time runs out.
@@ -473,6 +628,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
             </>
           )}
           {scoreboard(false, true)}
+          {liveLeaderboard}
         </ScrollView>
       </GameShell>
     )
@@ -485,6 +641,9 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Mark ${targetName}'s answers`}>
         <ScrollView contentContainerStyle={styles.form}>
+          {gameTimerBar}
+          {viewerBanner}
+          {roundHeaderCard}
           {phaseTimer}
           {!reviewTargetAnswer ? (
             <Text style={styles.waiting}>Waiting for assignment…</Text>
@@ -546,17 +705,20 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
             </>
           )}
           {scoreboard(false, false)}
+          {liveLeaderboard}
         </ScrollView>
       </GameShell>
     )
   }
 
   if (metadata.phase === 'host_review') {
-    const callerName = playerDisplayName(callerId, bootstrap.players)
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Letter ${metadata.letter ?? '?'}`}>
         <ScrollView contentContainerStyle={styles.form}>
-          {isCaller ? (
+          {gameTimerBar}
+          {viewerBanner}
+          {roundHeaderCard}
+          {isCaller && !isViewer ? (
             <>
               <View style={styles.reviewCard}>
                 <Text style={styles.section}>Your approval</Text>
@@ -581,9 +743,10 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
                   answer below you think is invalid — {callerName} will see your flags.
                 </Text>
               </View>
-              {scoreboard(false, false, { showDisputeButtons: true })}
+              {scoreboard(false, false, { showDisputeButtons: !isViewer })}
             </>
           )}
+          {liveLeaderboard}
         </ScrollView>
       </GameShell>
     )
@@ -594,6 +757,8 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Letter ${metadata.letter ?? '?'}`}>
       <ScrollView contentContainerStyle={styles.form}>
+        {gameTimerBar}
+        {viewerBanner}
         <View style={styles.revealHead}>
           <Text style={styles.revealTitle}>Round {currentRound.round_number} scores</Text>
           {currentRound.ended_at ? (
@@ -602,12 +767,13 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
             <Text style={styles.revealCountdown}>Next letter coming up…</Text>
           )}
         </View>
-        {myRoundTotal != null ? (
+        {myRoundTotal != null && !isViewer ? (
           <View style={styles.scoredCard}>
             <Text style={styles.scoredText}>You scored {myRoundTotal} pts this round</Text>
           </View>
         ) : null}
         {scoreboard(true, false)}
+        {liveLeaderboard}
       </ScrollView>
     </GameShell>
   )
@@ -615,8 +781,21 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-    waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
+    waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 8 },
+    waitCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 24,
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 16,
+    },
+    waitEmoji: { fontSize: 30 },
+    waitTitle: { color: theme.text, fontSize: 18, fontWeight: '800' },
     section: { color: theme.text, fontSize: 18, fontWeight: '700', marginBottom: 8 },
+    letterMeta: { color: theme.textMuted, fontSize: 12, marginBottom: 4 },
     letterGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     letterBtn: {
       width: 44,
@@ -628,7 +807,10 @@ const makeStyles = (theme: Theme) =>
       borderWidth: 1,
       borderColor: theme.border,
     },
+    letterBtnUsed: { opacity: 0.4, backgroundColor: theme.bg },
     letterText: { color: theme.text, fontSize: 18, fontWeight: '700' },
+    letterTextUsed: { color: theme.textFaint, textDecorationLine: 'line-through' },
+    submitError: { color: theme.error, fontSize: 13, textAlign: 'center', marginTop: 6 },
     form: { gap: 12, paddingBottom: 24 },
     fieldBlock: { gap: 6 },
     fieldLabel: { color: theme.textSecondary, fontSize: 14, fontWeight: '600' },

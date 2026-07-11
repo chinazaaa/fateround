@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { type Game, type Round, type SudokuSubmission } from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
@@ -23,14 +23,20 @@ import { getSupabase } from '@/lib/supabase'
 import { ROUND_SELECT, SUDOKU_SUBMISSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import {
+  boardCompletionPercent,
   buildCellOwnerGrid,
+  completedSudokuNumbersForPlayer,
   formatMinutesSeconds,
+  getNewlyCompletedUnits,
   getPlayerTimeSpent,
+  isCellInFlashingUnits,
   ordinal,
   playerCompletionPercent,
   sudokuPlayerColor,
   SUDOKU_MY_CELL_COLOR,
+  SUDOKU_WRONG_PENALTY,
   tallySudokuScores,
+  type SudokuUnitFlash,
 } from '@/components/games/sudoku/standings'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
@@ -42,11 +48,21 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
   const [puzzle, setPuzzle] = useState<number[][] | null>(null)
   const [submissions, setSubmissions] = useState<SudokuSubmission[]>([])
+  // Local working grid: holds the player's draft entries (including a wrong guess kept in
+  // place, shown red). Correct cells are sourced from `submissions`, never from here.
   const [drafts, setDrafts] = useState<number[][]>(() => Array.from({ length: 9 }, () => Array(9).fill(0)))
+  const [wrongDrafts, setWrongDrafts] = useState<boolean[][]>(() =>
+    Array.from({ length: 9 }, () => Array(9).fill(false))
+  )
+  const [undoStack, setUndoStack] = useState<Array<{ row: number; col: number; prev: number; prevWrong: boolean }>>([])
   const [selected, setSelected] = useState<[number, number] | null>(null)
+  const [highlightNumber, setHighlightNumber] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
+  const [flashUnits, setFlashUnits] = useState<SudokuUnitFlash[]>([])
   const [nowMs, setNowMs] = useState<number>(() => Date.now())
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Viewers watch one player's board at a time (null = auto-pick the leader).
   const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
 
@@ -123,6 +139,18 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
 
   // First correct solver per empty cell — drives each cell's owner color.
   const cellOwners = useMemo(() => buildCellOwnerGrid(submissions), [submissions])
+  const completedNumbers = useMemo(
+    () =>
+      puzzle && bootstrap.myPlayerId
+        ? completedSudokuNumbersForPlayer(puzzle, submissions, bootstrap.myPlayerId)
+        : [],
+    [puzzle, submissions, bootstrap.myPlayerId]
+  )
+  const boardCompletion = useMemo(
+    () => (puzzle ? boardCompletionPercent(puzzle, cellOwners) : 0),
+    [puzzle, cellOwners]
+  )
+  const completedSet = useMemo(() => new Set(completedNumbers), [completedNumbers])
   const mySolvedCells = useMemo(
     () => (bootstrap.myPlayerId ? buildPlayerSolvedGrid(submissions, bootstrap.myPlayerId) : undefined),
     [submissions, bootstrap.myPlayerId]
@@ -180,24 +208,157 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     watchedPlayer?.joined_at
   )
 
-  const pickNumber = async (value: number) => {
-    if (viewing) return
-    if (!selected || !puzzle || !bootstrap.myResumeToken || !bootstrap.myPlayerId || submitting) return
-    const [row, col] = selected
-    if (puzzle[row]![col] !== 0) return
-    if (playerHasSolvedCell(submissions, bootstrap.myPlayerId, row, col)) return
+  const showToast = useCallback((msg: string, ok: boolean) => {
+    setToast({ msg, ok })
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = setTimeout(() => setToast(null), 3000)
+  }, [])
 
+  const triggerUnitFlash = useCallback((units: SudokuUnitFlash[]) => {
+    if (units.length === 0) return
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current)
+    setFlashUnits(units)
+    flashTimerRef.current = setTimeout(() => {
+      setFlashUnits([])
+      flashTimerRef.current = null
+    }, 550)
+  }, [])
+
+  // Clean up timers on unmount.
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current)
+    }
+  }, [])
+
+  // Reset the local working grid whenever a new session (incl. a replay) starts.
+  const sessionKey = bootstrap.game?.session_started_at ?? null
+  useEffect(() => {
+    setDrafts(Array.from({ length: 9 }, () => Array(9).fill(0)))
+    setWrongDrafts(Array.from({ length: 9 }, () => Array(9).fill(false)))
+    setUndoStack([])
+    setSelected(null)
+    setHighlightNumber(null)
+  }, [sessionKey])
+
+  const isCellEditable = useCallback(
+    (row: number, col: number): boolean => {
+      if (viewing || !puzzle || !bootstrap.myPlayerId) return false
+      if (puzzle[row]![col] !== 0) return false
+      return !playerHasSolvedCell(submissions, bootstrap.myPlayerId, row, col)
+    },
+    [viewing, puzzle, bootstrap.myPlayerId, submissions]
+  )
+
+  // Tapping a filled/given/solved cell highlights every cell holding that same number;
+  // tapping an editable empty cell selects it and clears any highlight.
+  const handleCellSelect = (row: number, col: number) => {
+    if (viewing || !puzzle) return
+    const givenVal = puzzle[row]?.[col]
+    if (givenVal && givenVal !== 0) {
+      setHighlightNumber(givenVal)
+      setSelected(null)
+      return
+    }
+    if (!isCellEditable(row, col)) {
+      // Filled by a correct submission (mine or another player's) — highlight its value.
+      const filledVal = displayGrid?.[row]?.[col]
+      if (filledVal && filledVal > 0) {
+        setHighlightNumber(filledVal)
+        setSelected(null)
+      }
+      return
+    }
+    setHighlightNumber(null)
+    setSelected([row, col])
+  }
+
+  const setWrongDraft = (row: number, col: number, wrong: boolean) => {
+    setWrongDrafts((prev) => {
+      const next = prev.map((r) => [...r])
+      next[row]![col] = wrong
+      return next
+    })
+  }
+
+  const clearLocalDraft = (row: number, col: number) => {
+    setDrafts((prev) => {
+      const next = prev.map((r) => [...r])
+      next[row]![col] = 0
+      return next
+    })
+    setWrongDraft(row, col, false)
+  }
+
+  const submitCell = async (row: number, col: number, value: number) => {
+    if (!bootstrap.myResumeToken || !bootstrap.myPlayerId) return
     setSubmitting(true)
-    setMessage(null)
     try {
       const result = await postSudokuSubmit(bootstrap.code, bootstrap.myResumeToken, row, col, value)
-      setMessage(result.isCorrect ? `+${result.pointsAwarded} pts` : 'Wrong — try again')
+      if (result.isCorrect) {
+        showToast(`✓ Correct! +${result.pointsAwarded} pts`, true)
+        if (puzzle && bootstrap.myPlayerId) {
+          triggerUnitFlash(getNewlyCompletedUnits(puzzle, submissions, bootstrap.myPlayerId, row, col))
+        }
+        setWrongDraft(row, col, false)
+      } else {
+        showToast(`✗ Wrong! ${SUDOKU_WRONG_PENALTY} pts`, false)
+        setWrongDraft(row, col, true)
+      }
       await bootstrap.load()
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Submit failed')
+      showToast(err instanceof Error ? err.message : 'Submit failed', false)
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleNumberPress = (value: number) => {
+    if (viewing || submitting || !selected) return
+    const [row, col] = selected
+    if (!isCellEditable(row, col)) return
+    const prev = drafts[row]?.[col] ?? 0
+    const prevWrong = wrongDrafts[row]?.[col] ?? false
+    setDrafts((prevGrid) => {
+      const next = prevGrid.map((r) => [...r])
+      next[row]![col] = value
+      return next
+    })
+    setWrongDraft(row, col, false)
+    setUndoStack((stack) => [...stack, { row, col, prev, prevWrong }])
+    void submitCell(row, col, value)
+  }
+
+  const handleErase = () => {
+    if (viewing || submitting || !selected) return
+    const [row, col] = selected
+    if (!isCellEditable(row, col)) return
+    const current = drafts[row]?.[col] ?? 0
+    const isWrong = wrongDrafts[row]?.[col] ?? false
+    if (!current && !isWrong) return
+    setUndoStack((stack) => [...stack, { row, col, prev: current, prevWrong: isWrong }])
+    clearLocalDraft(row, col)
+  }
+
+  const handleUndo = () => {
+    if (viewing || submitting) return
+    const stack = [...undoStack]
+    while (stack.length > 0) {
+      const last = stack.pop()!
+      if (!isCellEditable(last.row, last.col)) continue
+      setUndoStack(stack)
+      setDrafts((prev) => {
+        const grid = prev.map((r) => [...r])
+        grid[last.row]![last.col] = last.prev
+        return grid
+      })
+      setWrongDraft(last.row, last.col, last.prevWrong)
+      setSelected([last.row, last.col])
+      setHighlightNumber(null)
+      return
+    }
+    setUndoStack([])
   }
 
   if (bootstrap.screen === 'loading') return <GameLoading />
@@ -222,13 +383,18 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   if (bootstrap.screen === 'finished') {
     const entries = bootstrap.players
       .filter((p) => !p.spectator)
-      .map((p) => ({
-        id: p.id,
-        name: p.name,
-        points: submissions
-          .filter((s) => s.player_id === p.id && s.is_correct)
-          .reduce((sum, s) => sum + s.points_awarded, 0),
-      }))
+      .map((p) => {
+        const pct = puzzle ? playerCompletionPercent(puzzle, submissions, p.id) : 0
+        const timeSecs = getPlayerTimeSpent(bootstrap.game, submissions, p.id, pct, nowMs, p.joined_at)
+        return {
+          id: p.id,
+          name: p.name,
+          points: submissions
+            .filter((s) => s.player_id === p.id && s.is_correct)
+            .reduce((sum, s) => sum + s.points_awarded, 0),
+          detail: bootstrap.game?.session_started_at ? `⏱ ${formatMinutesSeconds(timeSecs)}` : undefined,
+        }
+      })
     const top = [...entries].sort((a, b) => b.points - a.points)[0]
     const winnerId = top && top.points > 0 ? top.id : null
     return (
@@ -239,6 +405,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
           subtitle="Final standings"
           leaderboard={pointsLeaderboard(entries, bootstrap.myPlayerId)}
           winnerPlayerId={winnerId}
+          roundKey={bootstrap.game?.session_started_at ?? undefined}
         />
       </GameShell>
     )
@@ -267,6 +434,12 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('sudoku')} subtitle={bootstrap.code}>
       <SudokuGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} />
+
+      {toast ? (
+        <View style={[styles.toast, toast.ok ? styles.toastOk : styles.toastBad]}>
+          <Text style={styles.toastText}>{toast.msg}</Text>
+        </View>
+      ) : null}
 
       {/* Viewer player-picker: switch whose board you're watching. */}
       {viewing ? (
@@ -327,7 +500,12 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
                   const owner = !given && !mine ? cellOwners[r]![c] : null
                   const ownerColor = owner ? playerColors[owner] ?? sudokuPlayerColor(0) : null
                   const selectedCell = !viewing && selected?.[0] === r && selected?.[1] === c
-                  const bg = mine ? SUDOKU_MY_CELL_COLOR : ownerColor ?? undefined
+                  const wrong = !viewing && wrongDrafts[r]?.[c] === true && value > 0
+                  const flashing = !viewing && isCellInFlashingUnits(r, c, flashUnits)
+                  const highlighted =
+                    highlightNumber != null && value === highlightNumber && value > 0 && !selectedCell
+                  const baseBg = mine ? SUDOKU_MY_CELL_COLOR : ownerColor ?? undefined
+                  const bg = flashing ? '#fbbf24' : highlighted ? 'rgba(56,189,248,0.30)' : baseBg
                   return (
                     <Pressable
                       key={`${r}-${c}`}
@@ -337,10 +515,16 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
                         bg ? { backgroundColor: bg } : null,
                         selectedCell && styles.cellSelected,
                       ]}
-                      disabled={viewing || given || mine}
-                      onPress={() => setSelected([r, c])}
+                      disabled={viewing}
+                      onPress={() => handleCellSelect(r, c)}
                     >
-                      <Text style={[styles.cellText, mine && styles.cellTextSolved]}>
+                      <Text
+                        style={[
+                          styles.cellText,
+                          mine && styles.cellTextSolved,
+                          wrong && styles.cellTextWrong,
+                        ]}
+                      >
                         {value > 0 ? value : ''}
                       </Text>
                     </Pressable>
@@ -353,19 +537,46 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
             <Text style={styles.viewingHint}>You are watching — tap a name above to switch boards.</Text>
           ) : (
             <>
-              <View style={styles.pad}>
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-                  <Pressable
-                    key={n}
-                    style={styles.padKey}
-                    disabled={!selected || submitting}
-                    onPress={() => void pickNumber(n)}
-                  >
-                    <Text style={styles.padText}>{n}</Text>
-                  </Pressable>
-                ))}
+              {/* Toolbar: completion % star, Undo, Erase */}
+              <View style={styles.toolbar}>
+                <View style={styles.toolBtn}>
+                  <Text style={styles.toolIcon}>★</Text>
+                  <Text style={styles.toolLabel}>{boardCompletion}%</Text>
+                </View>
+                <Pressable
+                  style={styles.toolBtn}
+                  disabled={undoStack.length === 0 || submitting}
+                  onPress={handleUndo}
+                >
+                  <Text style={[styles.toolIcon, (undoStack.length === 0 || submitting) && styles.toolDisabled]}>
+                    ↺
+                  </Text>
+                  <Text style={[styles.toolLabel, (undoStack.length === 0 || submitting) && styles.toolDisabled]}>
+                    Undo
+                  </Text>
+                </Pressable>
+                <Pressable style={styles.toolBtn} disabled={!selected || submitting} onPress={handleErase}>
+                  <Text style={[styles.toolIcon, (!selected || submitting) && styles.toolDisabled]}>⌫</Text>
+                  <Text style={[styles.toolLabel, (!selected || submitting) && styles.toolDisabled]}>Erase</Text>
+                </Pressable>
               </View>
-              {message ? <Text style={styles.message}>{message}</Text> : null}
+              <View style={styles.pad}>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => {
+                  const complete = completedSet.has(n)
+                  return (
+                    <Pressable
+                      key={n}
+                      style={[styles.padKey, complete && styles.padKeyComplete]}
+                      disabled={!selected || submitting}
+                      onPress={() => handleNumberPress(n)}
+                    >
+                      <Text style={[styles.padText, complete && styles.padTextComplete]}>
+                        {complete ? '✓' : n}
+                      </Text>
+                    </Pressable>
+                  )
+                })}
+              </View>
             </>
           )}
 
@@ -511,6 +722,19 @@ const makeStyles = (theme: Theme) =>
     cellText: { color: '#fff', fontWeight: '700', fontSize: 14 },
     // Dark digit on the pastel-green "my solved" cell so the value stays readable.
     cellTextSolved: { color: '#0b1220' },
+    // Red digit marks a wrong guess left in place.
+    cellTextWrong: { color: '#ef4444' },
+    toolbar: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      alignItems: 'center',
+      marginTop: 14,
+      paddingHorizontal: 8,
+    },
+    toolBtn: { alignItems: 'center', gap: 2, minWidth: 56, paddingVertical: 4 },
+    toolIcon: { color: theme.textSecondary, fontSize: 20, lineHeight: 22 },
+    toolLabel: { color: theme.textMuted, fontSize: 11, fontWeight: '600' },
+    toolDisabled: { opacity: 0.4 },
     pad: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 16 },
     padKey: {
       width: 44,
@@ -522,8 +746,21 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
+    padKeyComplete: { backgroundColor: 'rgba(16,185,129,0.18)', borderColor: 'rgba(16,185,129,0.5)' },
     padText: { color: theme.text, fontSize: 18, fontWeight: '700' },
+    padTextComplete: { color: '#10b981' },
     message: { color: '#fcd34d', textAlign: 'center', marginTop: 12 },
+    toast: {
+      alignSelf: 'center',
+      marginTop: 8,
+      marginBottom: 4,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 999,
+    },
+    toastOk: { backgroundColor: '#10b981' },
+    toastBad: { backgroundColor: '#ef4444' },
+    toastText: { color: '#fff', fontWeight: '700', fontSize: 14 },
     standings: { marginTop: 20, gap: 8 },
     standRow: {
       flexDirection: 'row',

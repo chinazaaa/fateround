@@ -6,6 +6,7 @@ import {
   isMostLikelyTo,
   isNeverHaveIEver,
   isPickANumber,
+  isThisOrThat,
 } from '@fateround/shared/poll-games'
 import { getSupabase } from '@/lib/supabase'
 import {
@@ -27,6 +28,17 @@ type QuestionRow = {
 
 const SELECT = 'id,player_id,question_type,option_a,option_b,question_text'
 
+/** Parse a "Coffee or Tea?" string into two options. Ported from web `parseOrSplitQuestion`. */
+function parseOrSplitQuestion(text: string): { optionA: string; optionB: string } | null {
+  const q = text.trim().replace(/^["']|["']$/g, '')
+  const match = q.match(/^(.+?)\s+or\s+(.+)$/i)
+  if (!match) return null
+  const optionA = match[1].trim()
+  const optionB = match[2].trim().replace(/\?+$/, '').trim()
+  if (!optionA || !optionB) return null
+  return { optionA, optionB }
+}
+
 /** Games that accept player-submitted questions in the lobby. Mirrors web `lobbyAllowsPlayerQuestions`. */
 export function lobbyAllowsPlayerQuestions(game: Pick<Game, 'game_type' | 'player_questions_enabled'>): boolean {
   const t = game.game_type
@@ -44,11 +56,13 @@ type Props = {
 export function PlayerQuestionSubmit({ gameCode, gameType, playerId, resumeToken }: Props) {
   const theme = useTheme()
   const styles = useThemedStyles(makeStyles)
-  const isBinary = isBinaryChoiceGame(gameType)
+  const isTot = isThisOrThat(gameType)
+  const isBinary = isBinaryChoiceGame(gameType) && !isTot
   const [mine, setMine] = useState<QuestionRow[]>([])
   const [optionA, setOptionA] = useState('')
   const [optionB, setOptionB] = useState('')
   const [text, setText] = useState('')
+  const [totText, setTotText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -80,7 +94,20 @@ export function PlayerQuestionSubmit({ gameCode, gameType, playerId, resumeToken
   const submit = async () => {
     if (busy) return
     setError(null)
-    if (isBinary) {
+    if (isTot) {
+      const parsed = parseOrSplitQuestion(totText)
+      if (!parsed) return setError('Use "Coffee or Tea?" format with " or " between options')
+      setBusy(true)
+      try {
+        await postPlayerQuestionWyr(gameCode, resumeToken, parsed.optionA, parsed.optionB)
+        setTotText('')
+        await load()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not submit')
+      } finally {
+        setBusy(false)
+      }
+    } else if (isBinary) {
       const a = optionA.trim()
       const b = optionB.trim()
       if (!a || !b) return setError('Enter both options')
@@ -133,7 +160,17 @@ export function PlayerQuestionSubmit({ gameCode, gameType, playerId, resumeToken
       <Text style={styles.title}>Add a question</Text>
       <Text style={styles.hint}>Your questions join the pool for this game.</Text>
 
-      {isBinary ? (
+      {isTot ? (
+        <TextInput
+          style={styles.input}
+          value={totText}
+          onChangeText={setTotText}
+          placeholder="Coffee or Tea?"
+          placeholderTextColor={theme.textFaint}
+          maxLength={200}
+          autoCapitalize="sentences"
+        />
+      ) : isBinary ? (
         <>
           <TextInput
             style={styles.input}

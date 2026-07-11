@@ -7,8 +7,10 @@ import {
   subBoardCells,
 } from '@fateround/shared/tic-tac-toe'
 import { currentTurnPlayerId } from '@fateround/shared/tic-tac-toe'
+import { playerIsViewer } from '@fateround/shared/viewers'
 import type { Game, Player, TicTacToeBoardResult, TicTacToeMark, TicTacToeSession } from '@fateround/shared'
 import { useTicTacToeTurnTimer } from './tic-tac-toe/useTicTacToeTurnTimer'
+import { TicTacToeFinalBoardRecap } from './tic-tac-toe/TicTacToeFinalBoardRecap'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
@@ -82,11 +84,16 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
   const turnPlayerIdEarly = activeSessionEarly ? currentTurnPlayerId(activeSessionEarly) : null
   const isMyTurnEarly = bootstrap.myPlayerId != null && turnPlayerIdEarly === bootstrap.myPlayerId
 
+  // A late joiner / spectator watches read-only: no seat, board locked, and turn
+  // notifications suppressed (mirrors web's isViewer handling).
+  const meEarly = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
+  const isViewer = !!(bootstrap.game && meEarly && playerIsViewer(meEarly, bootstrap.game))
+
   useGameTurnAlerts({
     gameCode: bootstrap.code,
     status: bootstrap.game?.status,
-    isMyTurn: isMyTurnEarly,
-    enabled: bootstrap.screen === 'active',
+    isMyTurn: isViewer ? false : isMyTurnEarly,
+    enabled: bootstrap.screen === 'active' && !isViewer,
   })
 
   // Live per-turn countdown. Any client may drive the expiry poke (server
@@ -144,7 +151,7 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
     const title = activeSession.is_draw ? 'Draw!' : winner ? `${winner.name} wins!` : 'Game over'
     return (
       <GameShell bootstrap={bootstrap} title="Tic Tac Toe" subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap} title={title} subtitle="Final standings" detail={activeSession.status_message} leaderboard={activeSession.is_draw ? undefined : winnerLeaderboard(activeSession.winner_player_id, bootstrap.players, bootstrap.myPlayerId)} winnerPlayerId={activeSession.winner_player_id} roundKey={activeSession.id} />
+        <GameFinishPanel bootstrap={bootstrap} title={title} subtitle="Final standings" detail={activeSession.status_message} leaderboard={activeSession.is_draw ? undefined : winnerLeaderboard(activeSession.winner_player_id, bootstrap.players, bootstrap.myPlayerId)} winnerPlayerId={activeSession.winner_player_id} roundKey={activeSession.id} notice={<TicTacToeFinalBoardRecap session={activeSession} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />} />
       </GameShell>
     )
   }
@@ -183,6 +190,7 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
                   const globalIndex = boardIndex * 9 + pos
                   const playable =
                     isMyTurn &&
+                    !isViewer &&
                     !acting &&
                     boardInPlay(activeSession, boardIndex) &&
                     !cell &&
@@ -216,7 +224,16 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
           )
         })}
       </View>
-      {myMark ? <Text style={styles.youAre}>You are {markGlyph(myMark)}</Text> : null}
+      {myMark ? (
+        <Text style={styles.youAre}>
+          You are <Text style={styles.youAreMark}>{markGlyph(myMark)}</Text> ·{' '}
+          {isMyTurn
+            ? activeSession.active_board == null
+              ? 'play in any open board'
+              : 'play in the highlighted board'
+            : 'waiting for your opponent'}
+        </Text>
+      ) : null}
     </GameShell>
   )
 }
@@ -316,7 +333,8 @@ const makeStyles = (theme: Theme) =>
   cellMark: { fontSize: 16, fontWeight: '800', color: '#fff' },
   markX: { color: '#38bdf8' },
   markO: { color: '#fb923c' },
-  youAre: { color: theme.textMuted, textAlign: 'center', fontSize: 14 },
+  youAre: { color: theme.textMuted, textAlign: 'center', fontSize: 13 },
+  youAreMark: { color: theme.text, fontWeight: '800' },
   turnBar: {
     flexDirection: 'row',
     alignItems: 'center',

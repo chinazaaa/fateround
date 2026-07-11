@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { normalizeGameCode, type Game, type Player } from '@fateround/shared'
+import { playerIsViewer } from '@fateround/shared/viewers'
 import {
   type MafiaChatMessage,
   type MafiaStateResponse,
@@ -13,6 +14,8 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { getPlayerSession } from '@/lib/secure-session'
 import {
@@ -89,6 +92,10 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   const amIAlive = state?.players.find((p) => p.id === bootstrap.myPlayerId)?.isAlive ?? false
   const amISpectator =
     !!bootstrap.myPlayerId && !!state && !state.players.some((p) => p.id === bootstrap.myPlayerId)
+  const myPlayerRow = bootstrap.myPlayerId
+    ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
+    : undefined
+  const isViewer = !!(bootstrap.game && myPlayerRow && playerIsViewer(myPlayerRow, bootstrap.game))
   const killedPlayer = state?.lastNightKillPlayerId
     ? state.players.find((p) => p.id === state.lastNightKillPlayerId)
     : undefined
@@ -193,6 +200,23 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         isMyTurn={phase === 'night' && amIAlive && !!myState && myState.role !== 'villager' && !myState.nightActionSubmitted}
       />
 
+      {isViewer && bootstrap.game && bootstrap.myPlayerId && myPlayerRow ? (
+        <View style={styles.bannerWrap}>
+          <ViewerModeBanner
+            gameCode={bootstrap.code}
+            playerId={bootstrap.myPlayerId}
+            game={bootstrap.game}
+            player={myPlayerRow}
+            players={bootstrap.players}
+            onPromoted={() => bootstrap.load()}
+          />
+        </View>
+      ) : null}
+
+      <View style={styles.rulesRow}>
+        <GameRulesLink gameType="mafia" />
+      </View>
+
       {myState ? (
         <View style={styles.identityCard}>
           <Text style={styles.identityEmoji}>{mafiaRoleEmoji(myState.role)}</Text>
@@ -208,6 +232,17 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               {myState.detectiveResult.alignment === 'mafia' ? 'Mafia' : 'Village'}
             </Text>
           ) : null}
+          <View style={[styles.statusPill, amIAlive ? styles.statusAlive : styles.statusDead]}>
+            <Text style={[styles.statusPillText, amIAlive ? styles.statusAliveText : styles.statusDeadText]}>
+              {amIAlive ? '💚 ALIVE' : '💀 ELIMINATED'}
+            </Text>
+          </View>
+        </View>
+      ) : amISpectator ? (
+        <View style={styles.identityCard}>
+          <Text style={styles.identityEmoji}>👁️</Text>
+          <Text style={styles.identityRole}>SPECTATING</Text>
+          <Text style={styles.identityDesc}>You are watching this game.</Text>
         </View>
       ) : null}
 
@@ -218,7 +253,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
         {phase === 'night' ? (
           <>
-            {!amIAlive ? (
+            {amISpectator ? (
+              <Text style={styles.phaseText}>Watching — night actions in progress…</Text>
+            ) : !amIAlive ? (
               <Text style={styles.phaseText}>You are eliminated. Watch the night unfold…</Text>
             ) : myState?.role === 'villager' ? (
               <Text style={styles.phaseText}>The village sleeps…</Text>
@@ -268,12 +305,22 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
         {phase === 'day' ? (
           <>
-            {!amIAlive ? (
+            {amISpectator ? (
+              <Text style={styles.phaseText}>Watching — voting in progress…</Text>
+            ) : !amIAlive ? (
               <Text style={styles.phaseText}>You are eliminated — watch the vote.</Text>
             ) : (
               <>
                 {myState?.dayVoteSubmitted ? (
-                  <Text style={styles.phaseOk}>Vote cast — tap Skip to change.</Text>
+                  <View style={styles.voteCastRow}>
+                    <Text style={styles.phaseOk}>✓ Vote cast</Text>
+                    <Pressable
+                      disabled={acting}
+                      onPress={() => act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, null))}
+                    >
+                      <Text style={styles.changeVoteLink}>Change vote</Text>
+                    </Pressable>
+                  </View>
                 ) : null}
                 <View style={styles.targetGrid}>
                   {state.players
@@ -287,21 +334,34 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                           disabled={acting}
                           onPress={() => act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, p.id))}
                         >
-                          <Text style={styles.targetText}>
-                            {p.name}
-                            {votes > 0 ? ` (${votes})` : ''}
-                          </Text>
+                          <View style={styles.targetHeaderRow}>
+                            <Text style={styles.targetText}>{p.name}</Text>
+                            {votes > 0 ? (
+                              <View style={styles.voteBadge}>
+                                <Text style={styles.voteBadgeText}>{votes}</Text>
+                              </View>
+                            ) : null}
+                          </View>
+                          {votes > 0 ? (
+                            <View style={styles.pipRow}>
+                              {Array.from({ length: Math.min(votes, 8) }).map((_, i) => (
+                                <Text key={i} style={styles.pip}>
+                                  ●
+                                </Text>
+                              ))}
+                            </View>
+                          ) : null}
                         </Pressable>
                       )
                     })}
-                  <Pressable
-                    style={[styles.targetBtn, styles.skipBtn]}
-                    disabled={acting}
-                    onPress={() => act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, null))}
-                  >
-                    <Text style={styles.targetText}>Skip / clear</Text>
-                  </Pressable>
                 </View>
+                <Pressable
+                  style={styles.skipFullBtn}
+                  disabled={acting}
+                  onPress={() => act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, null))}
+                >
+                  <Text style={styles.skipFullText}>⏭ Skip / No Lynch</Text>
+                </Pressable>
               </>
             )}
           </>
@@ -324,13 +384,17 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
       <Text style={styles.sectionTitle}>Players</Text>
       <View style={styles.playerList}>
-        {state.players.map((p) => (
-          <Text key={p.id} style={[styles.playerChip, !p.isAlive && styles.playerDead]}>
-            {p.name}
-            {!p.isAlive && p.role ? ` · ${p.role}` : ''}
-            {!p.isAlive ? ' 💀' : ''}
-          </Text>
-        ))}
+        {state.players.map((p) => {
+          const rosterVotes = phase === 'day' && showDayVotes && p.isAlive ? (state.voteTallies[p.id] ?? 0) : 0
+          return (
+            <Text key={p.id} style={[styles.playerChip, !p.isAlive && styles.playerDead]}>
+              {p.isAlive ? '👤 ' : '💀 '}
+              {p.name}
+              {!p.isAlive && p.role ? ` · ${p.role}` : ''}
+              {rosterVotes > 0 ? ` · ${rosterVotes} vote${rosterVotes !== 1 ? 's' : ''}` : ''}
+            </Text>
+          )
+        })}
       </View>
 
       {/* Alive Mafia see their secret chat AND the town chat simultaneously (matches web) */}
@@ -453,6 +517,20 @@ const makeStyles = (theme: Theme) =>
   identityDesc: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 4 },
   allies: { color: '#fca5a5', fontSize: 13, marginTop: 8 },
   investigation: { color: '#86efac', fontSize: 13, marginTop: 8 },
+  statusPill: {
+    marginTop: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  statusPillText: { fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
+  statusAlive: { backgroundColor: '#10b98118', borderColor: '#10b98155' },
+  statusDead: { backgroundColor: '#f43f5e18', borderColor: '#f43f5e55' },
+  statusAliveText: { color: '#34d399' },
+  statusDeadText: { color: '#fb7185' },
+  bannerWrap: { marginBottom: 12 },
+  rulesRow: { alignItems: 'flex-end', marginBottom: 8 },
   phaseCard: {
     backgroundColor: theme.surface,
     borderRadius: 12,
@@ -472,7 +550,31 @@ const makeStyles = (theme: Theme) =>
     minWidth: '45%',
   },
   skipBtn: { borderWidth: 1, borderColor: theme.border },
-  targetText: { color: theme.text, fontWeight: '700', textAlign: 'center' },
+  targetText: { color: theme.text, fontWeight: '700' },
+  targetHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 6 },
+  voteBadge: {
+    backgroundColor: '#f43f5e22',
+    borderColor: '#f43f5e55',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 1,
+  },
+  voteBadgeText: { color: '#fb7185', fontSize: 12, fontWeight: '800' },
+  pipRow: { flexDirection: 'row', gap: 2, marginTop: 4, flexWrap: 'wrap' },
+  pip: { color: '#fb7185', fontSize: 10 },
+  voteCastRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  changeVoteLink: { color: theme.textMuted, fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
+  skipFullBtn: {
+    marginTop: 10,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.border,
+    alignItems: 'center',
+  },
+  skipFullText: { color: theme.textSecondary, fontWeight: '700' },
   sectionTitle: { color: theme.textMuted, fontWeight: '700', marginBottom: 6, marginTop: 4 },
   mafiaChatTitle: { color: '#f87171' },
   playerList: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },

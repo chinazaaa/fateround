@@ -16,7 +16,7 @@ import {
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { CardTableArea } from '@/components/games/cards/CardTableArea'
 import { GameTimerBar } from '@/components/games/cards/GameTimerBar'
-import { PlayerTurnRail } from '@/components/games/cards/PlayerTurnRail'
+import { CrazyEightsRoster } from '@/components/games/cards/CrazyEightsRoster'
 import { WhotCardFace } from '@/components/games/cards/WhotCardFace'
 import { WhotShapeIcon } from '@/components/games/cards/WhotShapeIcon'
 import { useTurnDeadlineSeconds } from '@/components/games/cards/useTurnDeadlineSeconds'
@@ -237,14 +237,17 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
       : penalty?.type === 'pick3'
         ? `Pick 3 — play a 5 or draw ${penalty.count}`
         : null
-  const tableHint = [
-    hasActiveWhotCall(session) && session.required_shape
-      ? `Must match ${WHOT_SHAPE_LABELS[session.required_shape]}`
-      : null,
-    penaltyLabel,
-  ]
-    .filter(Boolean)
-    .join(' · ')
+  // Persistent "Must play …" demand for an active WHOT call. Covers both a called
+  // shape AND a called number (number calls enabled) — mirrors the web demand badge,
+  // which stays visible for the whole call even after status_message is overwritten.
+  const demandLabel = hasActiveWhotCall(session)
+    ? session.required_shape
+      ? `Must play ${WHOT_SHAPE_LABELS[session.required_shape]}`
+      : session.required_number != null
+        ? `Must play number ${session.required_number}`
+        : null
+    : null
+  const tableHint = [demandLabel, penaltyLabel].filter(Boolean).join(' · ')
   // Match the web: the draw/pass action is available on your turn unless the pile
   // is depleted AND you already hold a playable card (then you must play it). This
   // means you can still draw voluntarily even when holding a wild WHOT.
@@ -259,6 +262,22 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
       : penalty?.type === 'pick3'
         ? `Draw ${penalty.count} (Pick 3)`
         : 'Draw a card'
+
+  // Order the roster by turn_order so seats read in play order (matching web); append
+  // any players not seated in the turn order (e.g. pure spectators) at the end.
+  const orderedPlayers = (() => {
+    const byId = new Map(bootstrap.players.map((p) => [p.id, p]))
+    const seated = (session.turn_order ?? [])
+      .map((id) => byId.get(id))
+      .filter((p): p is Player => !!p)
+    const seatedIds = new Set(seated.map((p) => p.id))
+    const rest = bootstrap.players.filter((p) => !seatedIds.has(p.id))
+    return [...seated, ...rest]
+  })()
+
+  // When the draw pile is empty it reshuffles from the played (discard) cards — surface
+  // that so an empty pile doesn't read as "no cards left to draw".
+  const drawReshuffles = drawDepleted && session.discard_pile.length > 0
 
   return (
     <GameShell bootstrap={bootstrap} title={batch4GameLabel('whot')} subtitle={bootstrap.code}>
@@ -289,11 +308,12 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
         </View>
       ) : null}
 
-      <PlayerTurnRail
-        players={bootstrap.players}
+      <CrazyEightsRoster
+        players={orderedPlayers}
         turnPlayerId={turnPlayerId}
         myPlayerId={bootstrap.myPlayerId}
         handCounts={handCounts}
+        finishOrder={session.finish_order ?? []}
       />
 
       <CardTableArea
@@ -308,6 +328,10 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
           )
         }
       />
+
+      {drawReshuffles ? (
+        <Text style={styles.reshuffleNote}>Draw pile empty — reshuffles from played cards</Text>
+      ) : null}
 
       {isWatching ? (
         <Text style={styles.spectateStatus}>
@@ -396,6 +420,7 @@ const makeStyles = (theme: Theme) =>
   rosterTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
   rosterTag: { color: theme.textMuted, fontSize: 12, fontWeight: '600' },
   spectateStatus: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 2 },
+  reshuffleNote: { color: theme.textMuted, fontSize: 12, textAlign: 'center', marginTop: -2 },
   choosePanel: { gap: 8 },
   shapeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   shapeHint: { color: theme.textMuted, fontSize: 12 },

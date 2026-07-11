@@ -17,11 +17,17 @@ import {
   describeItWinningTeams,
   isDescribeItResultsPhase,
   teamLabel,
+  DESCRIBE_IT_MIN_PLAYERS,
+  DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
 } from '@fateround/shared/describe-it'
+import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
+import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { DescribeItAchievementPosts } from '@/components/games/DescribeItAchievementPosts'
 import { ActivityFeed } from '@/components/party/ActivityFeed'
 import { RoundBreakCard } from '@/components/party/RoundBreakCard'
@@ -51,6 +57,17 @@ import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+
+/** Team that plays turn `turnIndex` (mirrors web `teamForTurn`). */
+const teamForTurn = (turnIndex: number, numTeams: number): number => (turnIndex % numTeams) + 1
+
+/** Total turns in the match (mirrors web `describeItTotalTurns`). */
+const describeItTotalTurns = (
+  mode: 'team' | 'individual',
+  numTeams: number,
+  rosterLen: number,
+  totalRounds: number
+): number => (mode === 'individual' ? rosterLen : numTeams) * totalRounds
 
 export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
@@ -133,12 +150,25 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   const numTeams = clampDescribeItTeams(bootstrap.game?.describe_it_num_teams)
   const myTeamRow = teamRows.find((r) => r.player_id === bootstrap.myPlayerId)
   const isDescriber = session?.describer_player_id === bootstrap.myPlayerId
-  const onMyTeam = mode === 'individual' || myTeamRow?.team === session?.active_team
-  const canGuess =
-    session?.phase === 'turn' &&
-    !isDescriber &&
-    onMyTeam &&
-    (mode === 'team' || (session.current_clues?.length ?? 0) > 0)
+  const mePlayer = bootstrap.myPlayerId
+    ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
+    : undefined
+  const isViewer = !!(mePlayer && bootstrap.game && playerIsViewer(mePlayer, bootstrap.game))
+  const inRoster = !!bootstrap.myPlayerId && (session?.roster?.includes(bootstrap.myPlayerId) ?? false)
+  const onMyTeam = mode === 'individual' ? inRoster : myTeamRow?.team === session?.active_team
+  // Whether I'm eligible to guess this turn — the clue-gate is a *display* concern
+  // handled in the guess panel (mirrors web `canGuess`).
+  const canGuess = session?.phase === 'turn' && !isDescriber && !isViewer && onMyTeam
+  // Individual mode: once I've guessed the word this turn, the guess box is replaced
+  // by a "waiting for others" note so I can't keep spamming.
+  const myGuessedThisTurn =
+    !!session &&
+    guesses.some(
+      (g) => g.turn_index === session.turn_index && g.player_id === bootstrap.myPlayerId && g.correct
+    )
+
+  // Foreground turn/start nudge — mirrors web `useTurnNotifications({ status })`.
+  useTurnNotifications({ status: bootstrap.game?.status, isMyTurn: isDescriber })
 
   const act = async (fn: () => Promise<unknown>) => {
     if (!bootstrap.myResumeToken || acting) return
@@ -204,7 +234,13 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     // Anti-cheat: in individual mode, never show another player's guess TEXT, so a
     // slow guesser can't copy a rival's correct word off the feed. Mirrors web.
     const hideOthersText = mode === 'individual'
-    return guesses.slice(0, 12).map((g) => {
+    // Only show guesses from the CURRENT turn, so stale guesses from earlier
+    // words/turns don't bleed into the live feed (mirrors web GuessFeed).
+    const turnIndex = session?.turn_index ?? -1
+    return guesses
+      .filter((g) => g.turn_index === turnIndex)
+      .slice(0, 12)
+      .map((g) => {
       const name = nameById.get(g.player_id) ?? 'Player'
       const mask = hideOthersText && g.player_id !== bootstrap.myPlayerId
       const primary = mask ? (g.correct ? 'guessed it ✅' : 'guessing…') : g.text
@@ -214,7 +250,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
         secondary: `${name}${g.correct && !mask ? ' · correct!' : ''}`,
       }
     })
-  }, [guesses, bootstrap.players, bootstrap.myPlayerId, mode])
+  }, [guesses, bootstrap.players, bootstrap.myPlayerId, mode, session?.turn_index])
 
   const turnSecondsLeft = useAbsoluteDeadline(
     session?.turn_deadline_at,
@@ -241,9 +277,36 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    // "Play again · same settings" reopened the lobby with the ready-up ring
+    // (readiness = holding a seat), using describe-it's own min-player thresholds.
+    if (bootstrap.game.replay_pending) {
+      return (
+        <GameShell bootstrap={bootstrap} title={batch4GameLabel('describe_it')} subtitle="Play again">
+          <ReplayReadyRing
+            gameCode={bootstrap.code}
+            players={bootstrap.players}
+            myPlayerId={bootstrap.myPlayerId}
+            myResumeToken={bootstrap.myResumeToken ?? null}
+            minPlayers={mode === 'individual' ? DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL : DESCRIBE_IT_MIN_PLAYERS}
+            onReload={() => bootstrap.load()}
+          />
+        </GameShell>
+      )
+    }
     if (mode === 'individual') {
       return (
-        <LobbyView {...lobbyProps!} onLeft={onLeft} />
+        <LobbyView
+          {...lobbyProps!}
+          onLeft={onLeft}
+          activity={
+            <View style={styles.soloCard}>
+              <Text style={styles.soloTitle}>Everyone plays solo 🏆</Text>
+              <Text style={styles.soloBody}>
+                You'll take turns describing a word while everyone races to guess. Fastest guessers score the most.
+              </Text>
+            </View>
+          }
+        />
       )
     }
     return (
@@ -271,9 +334,10 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
         <GameShell bootstrap={bootstrap} title={batch4GameLabel('describe_it')} subtitle={bootstrap.code}>
           <GameFinishPanel
             bootstrap={bootstrap}
-            title="Final results"
+            emoji={top && top.score > 0 ? '🏆' : '🏁'}
+            title={top && top.score > 0 ? `${top.name} wins!` : 'Final results'}
             subtitle="Final standings"
-            detail={top ? `${top.name} — ${top.score} pts` : undefined}
+            detail={top && top.score > 0 ? `${top.score} pts` : undefined}
             leaderboard={scoreListLeaderboard(board)}
             winnerPlayerId={top && top.score > 0 ? top.id : null}
             roundKey={session.id}
@@ -297,9 +361,36 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     const scores = computeDescribeItScores(words, numTeams)
     const winners = describeItWinningTeams(scores)
     const winnerLabel = winners.map((t) => teamLabel(t)).join(', ')
+    // Fun end-of-match stat: who guessed the most words (mirrors web share card).
+    const guessCounts = new Map<string, number>()
+    for (const w of words) {
+      if (w.status === 'guessed' && w.guesser_player_id) {
+        guessCounts.set(w.guesser_player_id, (guessCounts.get(w.guesser_player_id) ?? 0) + 1)
+      }
+    }
+    const nameById = new Map(bootstrap.players.map((p) => [p.id, p.name]))
+    const topGuessers = [...guessCounts.entries()]
+      .map(([id, count]) => ({ name: nameById.get(id) ?? 'Player', count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3)
     return (
       <GameShell bootstrap={bootstrap} title={batch4GameLabel('describe_it')} subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap} title="Final results" subtitle="Team scores" detail={winnerLabel ? `${winnerLabel} wins` : undefined} leaderboard={toLeaderboardRows(scores.map((row) => ({ name: teamLabel(row.team), score: row.score })))} />
+        <GameFinishPanel
+          bootstrap={bootstrap}
+          emoji={winners.length > 0 ? '🏆' : '🏁'}
+          title={winnerLabel ? `${winnerLabel} wins!` : 'Final results'}
+          subtitle="Team scores"
+          detail={winnerLabel ? undefined : 'No words guessed'}
+          leaderboard={toLeaderboardRows(scores.map((row) => ({ name: teamLabel(row.team), score: row.score })))}
+          notice={
+            topGuessers.length > 0 ? (
+              <Text style={styles.topGuessers}>
+                Top guesser{topGuessers.length > 1 ? 's' : ''}:{' '}
+                {topGuessers.map((g) => `${g.name} (${g.count})`).join(' · ')}
+              </Text>
+            ) : null
+          }
+        />
       </GameShell>
     )
   }
@@ -314,6 +405,16 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
         ? `${describerName} is describing`
         : `${teamLabel(session.active_team)} is up`)
 
+  // Break card next-up hint: the final turn tips into results; otherwise the next
+  // describer (individual) or next team (team) is up (mirrors web break card).
+  const totalTurns = describeItTotalTurns(mode, numTeams, session.roster?.length ?? 0, session.total_rounds)
+  const isLastTurn = session.turn_index + 1 >= totalTurns
+  const breakDetail = isLastTurn
+    ? 'Final results next'
+    : mode === 'individual'
+      ? 'Next describer up'
+      : `Up next: ${teamLabel(teamForTurn(session.turn_index + 1, numTeams))}`
+
   return (
     <GameShell
       title={batch4GameLabel('describe_it')}
@@ -325,6 +426,17 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
       onPromoted={() => bootstrap.load()}
     >
       <TurnBanner text={statusText} isMyTurn={isDescriber || canGuess} />
+
+      {isViewer && mePlayer && bootstrap.myPlayerId ? (
+        <ViewerModeBanner
+          gameCode={bootstrap.code}
+          playerId={bootstrap.myPlayerId}
+          game={bootstrap.game}
+          player={mePlayer}
+          players={bootstrap.players}
+          onPromoted={() => void bootstrap.load()}
+        />
+      ) : null}
 
       {mode === 'team' && myTeamRow?.team ? (
         <View style={styles.teamRow}>
@@ -358,10 +470,10 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
 
       {session.phase === 'break' ? (
         <RoundBreakCard
-          title="Round break"
+          title={isLastTurn ? 'Last turn done' : 'Round break'}
           message={session.status_message ?? 'Next turn starting soon…'}
           secondsLeft={breakSecondsLeft}
-          detail={mode === 'team' ? `Up next: ${teamLabel(session.active_team)}` : undefined}
+          detail={breakDetail}
         />
       ) : (
         <>
@@ -395,8 +507,11 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
                   </Pressable>
                 ) : null}
               </View>
+              {mode === 'individual' && (session.current_clues?.length ?? 0) === 0 ? (
+                <Text style={styles.hint}>The guessers' timer starts when you send your first clue.</Text>
+              ) : null}
             </View>
-          ) : canGuess ? (
+          ) : (
             <View style={styles.panel}>
               {(session.current_clues?.length ?? 0) > 0 ? (
                 <ScrollView style={styles.clueScroll}>
@@ -409,22 +524,37 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
               ) : (
                 <Text style={styles.waiting}>Waiting for the first clue…</Text>
               )}
-              <TextInput
-                style={styles.input}
-                value={guessText}
-                onChangeText={setGuessText}
-                placeholder="Type your guess"
-                placeholderTextColor={theme.textFaint}
-                onSubmitEditing={sendGuess}
-              />
-              <Pressable style={styles.primaryBtn} disabled={acting} onPress={sendGuess}>
-                <Text style={styles.primaryText}>Guess</Text>
-              </Pressable>
+              {mode === 'individual' && myGuessedThisTurn ? (
+                <Text style={styles.gotIt}>✅ You got it! Waiting for the others…</Text>
+              ) : canGuess && mode === 'individual' && (session.current_clues?.length ?? 0) === 0 ? (
+                // Individual mode: the guessing timer only starts on the first clue.
+                <Text style={styles.gateHint}>Guessing opens with the first clue…</Text>
+              ) : canGuess ? (
+                <>
+                  <TextInput
+                    style={styles.input}
+                    value={guessText}
+                    onChangeText={setGuessText}
+                    placeholder="Type your guess"
+                    placeholderTextColor={theme.textFaint}
+                    onSubmitEditing={sendGuess}
+                  />
+                  <Pressable style={styles.primaryBtn} disabled={acting} onPress={sendGuess}>
+                    <Text style={styles.primaryText}>Guess</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <Text style={styles.gateHint}>
+                  {isViewer
+                    ? 'Watching this round'
+                    : mode === 'individual'
+                      ? 'Watching'
+                      : onMyTeam
+                        ? 'Watch and wait for your turn…'
+                        : 'Another team is playing…'}
+                </Text>
+              )}
             </View>
-          ) : (
-            <Text style={styles.waiting}>
-              {onMyTeam ? 'Watch and wait for your turn…' : 'Another team is playing…'}
-            </Text>
           )}
 
           <ActivityFeed title="Recent guesses" items={guessFeed} emptyText="No guesses yet" />
@@ -439,6 +569,14 @@ const makeStyles = (theme: Theme) =>
   teamRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   teamRowLabel: { color: theme.textMuted, fontSize: 14 },
   waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
+  hint: { color: theme.textFaint, fontSize: 12, textAlign: 'center' },
+  gateHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 4 },
+  // emerald success — kept consistent across themes for the "you got it" note
+  gotIt: { color: '#10b981', fontSize: 14, fontWeight: '700', textAlign: 'center', marginTop: 4 },
+  topGuessers: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
+  soloCard: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 4 },
+  soloTitle: { color: theme.text, fontSize: 15, fontWeight: '800', textAlign: 'center' },
+  soloBody: { color: theme.textMuted, fontSize: 13, textAlign: 'center', lineHeight: 19 },
   panel: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 12 },
   wordLabel: { color: theme.textMuted, fontSize: 13 },
   word: { color: theme.text, fontSize: 28, fontWeight: '800' },
