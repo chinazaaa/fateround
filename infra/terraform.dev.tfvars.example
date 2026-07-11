@@ -49,3 +49,13 @@ vapid_subject     = "mailto:hello@fateround.com"
 # keep music off. Register redirect URI ${next_public_app_url}/api/spotify/callback in
 # the Spotify dashboard (Spotify disallows localhost — use 127.0.0.1 for local dev).
 spotify_client_secret = "REPLACE_WITH_SPOTIFY_CLIENT_SECRET"
+
+# OpenTelemetry export (optional). Leave the endpoint empty to keep telemetry off —
+# the app's src/instrumentation.ts no-ops without it, so nothing is emitted. To turn it
+# on, create a Grafana Cloud (or other OTLP) stack and fill in the endpoint + auth header.
+#   endpoint: the OTLP/HTTP gateway URL (Grafana Cloud: https://otlp-gateway-<region>.grafana.net/otlp)
+#   headers:  backend auth, e.g. Authorization=Basic <base64(instanceID:token)>
+#   resource_attributes: labels stamped on every span/metric (service.name defaults to "fateround")
+otel_exporter_otlp_endpoint = ""
+otel_exporter_otlp_headers  = ""
+otel_resource_attributes    = "deployment.environment=dev"
