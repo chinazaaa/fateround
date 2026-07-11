@@ -359,6 +359,16 @@ export function postWordHuntSubmit(gameId: string, resumeToken: string, word: st
   })
 }
 
+// Finishes a Word Hunt game whose timer has run out. Safe to call unauthenticated:
+// the route re-verifies the deadline server-side before ending the game.
+// Route: src/app/api/games/[code]/expire-word-hunt/route.ts
+export function postExpireWordHunt(gameCode: string) {
+  return postJson<{ expired: boolean; finished: boolean }>(
+    `/api/games/${gameCode.toUpperCase()}/expire-word-hunt`,
+    {}
+  )
+}
+
 export function postNpatLetter(gameId: string, resumeToken: string, roundId: string, letter: string) {
   return postJson<{ success: boolean }>('/api/npat/letter', { gameId, resumeToken, roundId, letter })
 }
@@ -546,6 +556,43 @@ export function postMonopolyForfeit(gameId: string, resumeToken: string) {
   return postJson<{ success: boolean }>('/api/monopoly/forfeit', { gameId, resumeToken })
 }
 
+export function postMonopolyBuild(
+  gameId: string,
+  resumeToken: string,
+  spaceIndex: number,
+  action: 'buy_house' | 'sell_house' | 'buy_hotel' | 'sell_hotel'
+) {
+  return postJson<{ success: boolean }>('/api/monopoly/build', { gameId, resumeToken, spaceIndex, action })
+}
+
+export function postMonopolyMortgage(
+  gameId: string,
+  resumeToken: string,
+  spaceIndex: number,
+  action: 'mortgage' | 'unmortgage'
+) {
+  return postJson<{ success: boolean }>('/api/monopoly/mortgage', { gameId, resumeToken, spaceIndex, action })
+}
+
+export function postMonopolyTrade(
+  gameId: string,
+  resumeToken: string,
+  payload: {
+    toPlayerId?: string
+    offerCash?: number
+    requestCash?: number
+    offerProperties?: number[]
+    requestProperties?: number[]
+    offerGetOutCards?: number
+    requestGetOutCards?: number
+    accept?: boolean
+    cancel?: boolean
+    repair?: boolean
+  }
+) {
+  return postJson<{ success: boolean }>('/api/monopoly/trade', { gameId, resumeToken, ...payload })
+}
+
 export async function getMahjongState(
   gameId: string,
   playerId: string,
@@ -628,6 +675,39 @@ export function postAnonymousGif(
     messageType: 'gif',
     mediaUrl,
     replyToId: replyToId ?? undefined,
+  })
+}
+
+/** Host removes a single message from an anonymous room feed. */
+export function deleteAnonymousMessage(gameId: string, messageId: string, hostToken: string) {
+  return jsonRequest<{ success?: boolean }>('/api/anonymous-messages', 'DELETE', {
+    gameId: gameId.toUpperCase(),
+    messageId,
+    hostToken,
+  })
+}
+
+/** Host mutes a player in an anonymous room for the given number of minutes. */
+export function muteAnonymousPlayer(
+  gameId: string,
+  playerId: string,
+  hostToken: string,
+  durationMinutes: number
+) {
+  return postJson<{ success: boolean }>('/api/anonymous-room/bans', {
+    gameId: gameId.toUpperCase(),
+    playerId,
+    hostToken,
+    durationMinutes,
+  })
+}
+
+/** Host unmutes a previously muted player in an anonymous room. */
+export function unmuteAnonymousPlayer(gameId: string, playerId: string, hostToken: string) {
+  return jsonRequest<{ success?: boolean }>('/api/anonymous-room/bans', 'DELETE', {
+    gameId: gameId.toUpperCase(),
+    playerId,
+    hostToken,
   })
 }
 

@@ -3,7 +3,7 @@ import { HostLobbyScreen } from '@/components/HostLobbyScreen'
 import { HostRouter } from '@/components/host/HostRouter'
 import { useHostGame } from '@/hooks/useHostGame'
 import type { Theme } from '@/constants/theme'
-import { useTheme, useThemedStyles } from '@/constants/theme-context'
+import { GameThemeProvider, useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -36,18 +36,23 @@ export function HostGameScreen({ gameCode, hostToken }: Props) {
 
   const inLobby = game.status === 'waiting'
 
-  if (inLobby) {
-    return <HostLobbyScreen gameCode={gameCode} hostToken={hostToken} />
-  }
-
+  // Apply the game's chosen edition/theme across the lobby and in-game views.
+  // Reading it here means a theme change from the lobby settings sheet re-applies
+  // live (useHostGame reloads on the `games` change).
   return (
-    <HostRouter
-      gameCode={gameCode}
-      hostToken={hostToken}
-      game={game}
-      players={players}
-      onReload={() => void reload()}
-    />
+    <GameThemeProvider theme={game.status === 'finished' ? 'default' : game.theme}>
+      {inLobby ? (
+        <HostLobbyScreen gameCode={gameCode} hostToken={hostToken} />
+      ) : (
+        <HostRouter
+          gameCode={gameCode}
+          hostToken={hostToken}
+          game={game}
+          players={players}
+          onReload={() => void reload()}
+        />
+      )}
+    </GameThemeProvider>
   )
 }
 

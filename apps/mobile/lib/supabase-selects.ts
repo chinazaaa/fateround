@@ -34,7 +34,7 @@ export const MEMORY_MATCH_PROGRESS_SELECT =
   'id,game_id,round_id,player_id,pairs_matched,wrong_attempts,finished,finish_rank'
 
 export const SUDOKU_SUBMISSION_SELECT =
-  'id,game_id,round_id,player_id,cell_row,cell_col,submitted_value,is_correct,points_awarded'
+  'id,game_id,round_id,player_id,cell_row,cell_col,submitted_value,is_correct,points_awarded,submitted_at'
 
 export const TIC_TAC_TOE_SESSION_SELECT =
   'id,game_id,player_x_id,player_o_id,board,board_winners,active_board,current_turn_mark,status,winner_player_id,is_draw,status_message'

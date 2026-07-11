@@ -1,10 +1,12 @@
 import type { Game, Player } from '@fateround/shared'
 import { isPollGame } from '@fateround/shared/poll-games'
+import { AnonymousMessagesHostScreen } from '@/components/host/anonymous/AnonymousMessagesHostScreen'
 import { BingoHostScreen } from '@/components/host/bingo/BingoHostScreen'
 import { GenericHostScreen } from '@/components/host/GenericHostScreen'
 import { MafiaHostScreen } from '@/components/host/mafia/MafiaHostScreen'
 import { PollRoundHostScreen } from '@/components/host/poll/PollRoundHostScreen'
 import { QuickDrawHostScreen } from '@/components/host/quick-draw/QuickDrawHostScreen'
+import { SecretMessageHostScreen } from '@/components/host/secret-message/SecretMessageHostScreen'
 import { TriviaHostScreen } from '@/components/host/trivia/TriviaHostScreen'
 
 type Props = {
@@ -59,6 +61,30 @@ export function HostRouter({ gameCode, hostToken, game, players, onReload }: Pro
   if (type === 'quick_draw') {
     return (
       <QuickDrawHostScreen
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        players={players}
+        onReload={onReload}
+      />
+    )
+  }
+
+  if (type === 'secret_message') {
+    return (
+      <SecretMessageHostScreen
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        players={players}
+        onReload={onReload}
+      />
+    )
+  }
+
+  if (type === 'anonymous_messages') {
+    return (
+      <AnonymousMessagesHostScreen
         gameCode={gameCode}
         hostToken={hostToken}
         game={game}

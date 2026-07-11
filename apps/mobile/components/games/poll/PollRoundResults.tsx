@@ -4,11 +4,14 @@ import {
   isBinaryChoiceGame,
   isMostLikelyTo,
   isNeverHaveIEver,
+  isPickANumber,
   isThreeChoiceGame,
+  isWhoSaidThis,
   mltVoteTargets,
   pairLabels,
   smkSlotLabels,
 } from '@fateround/shared/poll-games'
+import { hotSeatPlayerDisplayName } from '@fateround/shared/hot-seat'
 import { tallyMltVotes, tallyRoundVotes, tallyWyrVotes } from '@fateround/shared/vote-stats'
 import { ParticipantAvatar } from '@/components/ui/ParticipantAvatar'
 import type { Theme } from '@/constants/theme'
@@ -31,6 +34,70 @@ export function PollRoundResults({ game, gameType, round, participants, votes, p
         .map((id) => participants.find((p) => p.id === id))
         .filter((p): p is Participant => !!p)
     : []
+
+  if (isPickANumber(gameType)) {
+    const pickerName = hotSeatPlayerDisplayName(round.submitter_player_id ?? null, players, participants)
+    const pickerVote = roundVotes.find((v) => v.player_id === round.submitter_player_id)
+    const pickedNumber = pickerVote?.picked_number ?? null
+    const question = round.mlt_question?.trim()
+    if (!question) {
+      return (
+        <View style={styles.panel}>
+          <Text style={styles.title}>Pick a Number</Text>
+          <Text style={styles.meta}>No number picked this round</Text>
+        </View>
+      )
+    }
+    return (
+      <View style={styles.panel}>
+        <Text style={styles.kicker}>Pick a Number</Text>
+        <Text style={styles.panPicker}>
+          {pickerName}
+          {pickedNumber ? ` picked #${pickedNumber}` : ' revealed a question'}
+        </Text>
+        <View style={styles.panQuestionBox}>
+          <Text style={styles.panQuestionLabel}>Revealed question</Text>
+          <Text style={styles.panQuestion}>{question}</Text>
+        </View>
+      </View>
+    )
+  }
+
+  if (isWhoSaidThis(gameType)) {
+    const anime = round.anime_metadata
+    let correctLabel: string | null = null
+    let correctCount = 0
+    if (anime) {
+      correctLabel = anime.correct_character
+      correctCount = roundVotes.filter((v) => v.anime_choice === anime.correct_character).length
+    } else {
+      const correctId =
+        round.quote_author_participant_id ??
+        players.find((p) => p.id === round.submitter_player_id)?.participant_id ??
+        null
+      if (correctId) {
+        correctLabel = participants.find((p) => p.id === correctId)?.name ?? 'Unknown'
+        correctCount = roundVotes.filter((v) => v.target_participant_id === correctId).length
+      }
+    }
+    return (
+      <View style={styles.panel}>
+        <Text style={styles.kicker}>Who Said This?</Text>
+        {round.quote_text ? <Text style={styles.quote}>&ldquo;{round.quote_text}&rdquo;</Text> : null}
+        {correctLabel ? (
+          <>
+            <Text style={styles.wstLabel}>Correct answer</Text>
+            <Text style={styles.wstAnswer}>{correctLabel}</Text>
+            <Text style={styles.meta}>
+              {correctCount} guessed right of {roundVotes.length} vote{roundVotes.length === 1 ? '' : 's'}
+            </Text>
+          </>
+        ) : (
+          <Text style={styles.meta}>Answer not revealed</Text>
+        )}
+      </View>
+    )
+  }
 
   if (isBinaryChoiceGame(gameType) || isNeverHaveIEver(gameType)) {
     const tally = tallyWyrVotes(roundVotes)
@@ -142,6 +209,40 @@ const makeStyles = (theme: Theme) =>
     fontWeight: '800',
     textAlign: 'center',
   },
+  kicker: {
+    color: theme.primaryMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    textAlign: 'center',
+  },
+  panPicker: { color: theme.text, fontSize: 15, fontWeight: '600', textAlign: 'center' },
+  panQuestionBox: {
+    backgroundColor: theme.bg,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: 14,
+  },
+  panQuestionLabel: {
+    color: theme.textMuted,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  panQuestion: { color: theme.text, fontSize: 16, fontWeight: '600', textAlign: 'center', lineHeight: 22 },
+  quote: { color: theme.text, fontSize: 16, fontStyle: 'italic', textAlign: 'center', lineHeight: 24 },
+  wstLabel: {
+    color: theme.textMuted,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    textAlign: 'center',
+  },
+  wstAnswer: { color: theme.text, fontSize: 20, fontWeight: '800', textAlign: 'center' },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',

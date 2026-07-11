@@ -18,21 +18,23 @@ _Goal: bring the mobile app to feature parity with web across all 28 audited gam
 
 _This markdown is the **live source of truth** for what's done. The HTML report is a generated snapshot. Check items off (`- [x]`) as they land. Status: ⬜ pending · 🔨 in progress · ✅ done · ⚠️ partial (see notes)._
 
-**Phase 0 — ship-blockers**
+**Phase 0 — ship-blockers** _(built 2026-07-11; typechecks clean; needs on-device review)_
 
-- [ ] ⬜ **P0.1 Monopoly** — build/hotel/sell, mortgage/unmortgage, trade builder + accept/decline, properties list + set tracker
-- [ ] ⬜ **P0.2a Secret Message** — host inbox view (read received messages)
-- [ ] ⬜ **P0.2b Anonymous Messages** — host view (start/watch/moderate/end)
-- [ ] ⬜ **P0.3a Poll — Pick a Number** — turn-based picker flow
-- [ ] ⬜ **P0.3b Poll — Gender voting** — gender select at join + per-round gating
-- [ ] ⬜ **P0.4a Matching Pairs** — memorize phase + multi-round scoring/results
-- [ ] ⬜ **P0.4b Sudoku** — live standings + opponent cell-ownership colors
-- [ ] ⬜ **P0.4c Mahjong** — self-draw win (tsumo) + concealed/added kong
-- [ ] ⬜ **P0.4d Word Hunt** — countdown timer + time-up enforcement
-- [ ] ⬜ **P0.4e Snake & Ladder** — render the visual board (grid, snakes, ladders, tokens)
-- [ ] ⬜ **P0.4f I Call On / NPAT** — live scoreboard (answers + marks)
+- [x] ✅ **P0.1 Monopoly** — build/hotel/sell, mortgage/unmortgage, full trade builder + accept/decline, properties-by-color list + set tracker. New: `monopoly/{MonopolyManagePanel,MonopolyTradeModal,MonopolyTradeReview,manage-logic}`; wrappers `postMonopolyBuild/Mortgage/Trade`.
+- [x] ✅ **P0.2a Secret Message** — host inbox view (`host/secret-message/SecretMessageHostScreen`); HostRouter now routes `secret_message` to it instead of the sender composer.
+- [x] ✅ **P0.2b Anonymous Messages** — host view (`host/anonymous/AnonymousMessagesHostScreen`): watch feed, delete message, mute/unmute, end session, summary. ⚠️ _in-lobby muting during `waiting` not ported (start-session gate lives in the generic lobby)._
+- [x] ⚠️ **P0.3a Poll — Pick a Number** — picker gating + reveal implemented. _Remaining: picker-timeout auto-submit (random number on expiry)._
+- [x] ⚠️ **P0.3b Poll — Gender voting** — gender select at join + per-round vote gating implemented. _Remaining: send `identityGender/pollGender` so a free-name joiner's own name is placed into the correct-gender poll (needs shared `bootstrap.join`/`lib/api.ts` — deferred to avoid parallel-edit collisions)._
+- [x] ✅ **P0.4a Matching Pairs** — memorize phase + multi-round scoring/round-results.
+- [x] ✅ **P0.4b Sudoku** — live standings + opponent cell-ownership colors (`sudoku/standings.ts`). Applied `submitted_at` to the submission select + type.
+- [x] ✅ **P0.4c Mahjong** — self-draw win (tsumo) + concealed/added kong on your own turn (`mahjong/mahjong-self-actions.ts`).
+- [x] ✅ **P0.4d Word Hunt** — MM:SS countdown, urgent <10s, board disabled + submit blocked at 0:00 (`word-hunt/useWordHuntTimer.ts`, `postExpireWordHunt`).
+- [x] ✅ **P0.4e Snake & Ladder** — real board via react-native-svg (`snake-ladder/{board-layout,SnakeLadderBoard}`): grid, snakes, ladders, fanned tokens.
+- [x] ✅ **P0.4f I Call On / NPAT** — live scoreboard across writing/marking/review/reveal (`i_call_on/ICallOnScoreboard`). _Note: caller Valid/Invalid overrides + dispute flags are separate Phase-2 high items, not this scoreboard._
 
 **Phase 1 — shared infrastructure** · **Phase 2 — per-game high** · **Phase 3 — polish** — not started.
+
+> **Status:** 9 of 11 items complete, 2 partial (Poll's two fixes — core flow works, edge cases noted). All changes typecheck clean (`apps/mobile: tsc --noEmit`) and are **uncommitted on `feat/mobile-shell`** for review. On-device behavior (Expo timers, board rendering, realtime feeds) still needs a manual pass — couldn't be exercised here.
 
 ---
 

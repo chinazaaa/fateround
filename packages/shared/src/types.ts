@@ -414,6 +414,7 @@ export interface SudokuSubmission {
   submitted_value: number | null
   is_correct: boolean
   points_awarded: number
+  submitted_at?: string | null
 }
 
 export type SnakeLadderColor = 'red' | 'blue' | 'green' | 'yellow' | 'purple' | 'orange'

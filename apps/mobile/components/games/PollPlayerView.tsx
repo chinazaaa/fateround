@@ -34,6 +34,7 @@ import {
   smkSlotLabels,
 } from '@fateround/shared/poll-games'
 import { isImportClaimMode } from '@fateround/shared/participant-mode'
+import { hotSeatPlayerDisplayName } from '@fateround/shared/hot-seat'
 import {
   finalResultsAutoRevealSeconds,
   ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
@@ -49,6 +50,17 @@ import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChro
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ParticipantPhotoCard } from '@/components/games/poll/ParticipantPhotoCard'
 import { PollRoundResults } from '@/components/games/poll/PollRoundResults'
+import { PollGenderJoinScreen } from '@/components/games/poll/PollGenderJoinScreen'
+import {
+  activeVoteBanner,
+  canPlayerVoteInRound,
+  effectivePlayerGender,
+  getRoundParticipantGender,
+  isGameGenderBased,
+  isGenderFreeVoting,
+  roundVoterLabel,
+  spectatorMessage,
+} from '@/components/games/poll/gender'
 import { ParticipantAvatar } from '@/components/ui/ParticipantAvatar'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
@@ -81,7 +93,6 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
   const [pairAssignment, setPairAssignment] = useState<PairAssignmentMap>({})
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
-  const [revealedQuestion, setRevealedQuestion] = useState<string | null>(null)
   const styles = useThemedStyles(makeStyles)
 
   const loadGameState = useCallback(
@@ -270,8 +281,7 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
         }
       }
 
-      const result = await postVote(bootstrap.code, bootstrap.myResumeToken, currentRound.id, body)
-      if (result.revealedQuestion) setRevealedQuestion(result.revealedQuestion)
+      await postVote(bootstrap.code, bootstrap.myResumeToken, currentRound.id, body)
       await bootstrap.load()
       resetDraft()
     } catch (err) {
@@ -288,7 +298,6 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
     setPickedNumber(null)
     setAssignment(emptyAssignment())
     setPairAssignment({})
-    setRevealedQuestion(null)
     setSubmitError(null)
   }
 
@@ -317,6 +326,18 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
           error={bootstrap.error}
           hint="Select your name from the list"
           onJoin={(participantId, name) => void bootstrap.join(name, { participantId })}
+        />
+      )
+    }
+    if (isGameGenderBased(bootstrap.game)) {
+      return (
+        <PollGenderJoinScreen
+          gameCode={bootstrap.code}
+          joinName={bootstrap.joinName}
+          joining={bootstrap.joining}
+          error={bootstrap.error}
+          onChangeName={bootstrap.setJoinName}
+          onJoin={(gender) => void bootstrap.join(bootstrap.joinName, { gender })}
         />
       )
     }
@@ -420,6 +441,24 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
   const panUsed = panUsedNumbersFromVotes(pollState.votes, currentRound?.id)
   const panAvailable = panAvailableNumbers(panPool.length, panUsed)
 
+  // Pick a Number — only the round's designated picker chooses; the list stays hidden.
+  const isPan = isPickANumber(gameType)
+  const pickerId = currentRound?.submitter_player_id ?? null
+  const isPicker = !!bootstrap.myPlayerId && bootstrap.myPlayerId === pickerId
+  const pickerName = hotSeatPlayerDisplayName(pickerId, bootstrap.players, pollState.participants)
+  const pickerVote = currentRound
+    ? pollState.votes.find((v) => v.round_id === currentRound.id && v.player_id === pickerId)
+    : undefined
+  const panRevealed = isPan && !!currentRound?.mlt_question?.trim()
+  const panPickedNumber = pickerVote?.picked_number ?? null
+
+  // Gender-based voting — opposite-gender rounds; `both` votes every round.
+  const genderFree = isGenderFreeVoting(bootstrap.game)
+  const myPlayerGender = effectivePlayerGender(me, pollState.participants)
+  const roundGender = genderFree ? null : getRoundParticipantGender(roundIds, pollState.participants)
+  const canVoteThisRound =
+    genderFree || (roundGender !== null && canPlayerVoteInRound(myPlayerGender, roundGender))
+
   if (showingRoundResults && currentRound && gameType) {
     const waitMessage = roundResultsWaitMessage({
       isLastRound,
@@ -455,19 +494,98 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
       onPromoted={() => bootstrap.load()}
     >
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        {voteTimerActive && timeLeft > 0 ? (
+        {voteTimerActive && timeLeft > 0 && (!isPan || (isPicker && !panRevealed)) ? (
           <View style={styles.timerRow}>
             <TimerBadge seconds={timeLeft} />
           </View>
         ) : null}
         {isViewer ? (
           <Text style={styles.waiting}>You are watching — voting is disabled.</Text>
+        ) : isPan ? (
+          !currentRound || currentRound.status !== 'active' ? (
+            <Text style={styles.waiting}>Waiting for the next round…</Text>
+          ) : (
+            <View style={styles.panCard}>
+              <Text style={styles.panKicker}>Picker this round</Text>
+              <Text style={styles.panName}>{isPicker ? 'YOU' : pickerName}</Text>
+              {panRevealed ? (
+                <>
+                  <View style={styles.panRevealBox}>
+                    {panPickedNumber ? (
+                      <Text style={styles.panPickedNumber}>#{panPickedNumber}</Text>
+                    ) : null}
+                    <Text style={styles.panRevealLabel}>Revealed question</Text>
+                    <Text style={styles.panRevealQuestion}>{currentRound.mlt_question}</Text>
+                  </View>
+                  <View style={styles.answerBanner}>
+                    <Text style={styles.answerBannerText}>
+                      {isPicker ? 'Your turn — answer out loud!' : `${pickerName} — answer out loud!`}
+                    </Text>
+                    <Text style={styles.answerBannerSub}>The host will advance when they&apos;re done</Text>
+                  </View>
+                </>
+              ) : isPicker ? (
+                <>
+                  <Text style={styles.prompt}>Pick a number between 1 and {panPool.length}</Text>
+                  <Text style={styles.panHint}>
+                    {panUsed.size > 0
+                      ? `${panAvailable.length} left — taken picks are greyed out`
+                      : 'Questions stay hidden until you choose'}
+                  </Text>
+                  <View style={styles.numberGrid}>
+                    {Array.from({ length: panPool.length }, (_, i) => i + 1).map((n) => {
+                      const taken = panUsed.has(n)
+                      return (
+                        <Pressable
+                          key={n}
+                          style={[
+                            styles.numberCell,
+                            pickedNumber === n && styles.numberCellSelected,
+                            taken && styles.numberCellTaken,
+                          ]}
+                          disabled={submitting || taken}
+                          onPress={() => setPickedNumber(n)}
+                        >
+                          <Text style={[styles.numberText, taken && styles.numberTextTaken]}>{n}</Text>
+                        </Pressable>
+                      )
+                    })}
+                  </View>
+                  {submitError ? <Text style={styles.error}>{submitError}</Text> : null}
+                  <Pressable
+                    style={[styles.submit, !canSubmit && styles.submitDisabled]}
+                    disabled={!canSubmit || submitting}
+                    onPress={() => void submitVote()}
+                  >
+                    <Text style={styles.submitText}>
+                      {submitting ? 'Locking in…' : pickedNumber ? `Lock in #${pickedNumber}` : 'Pick a number first'}
+                    </Text>
+                  </Pressable>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.waiting}>Waiting for {pickerName} to pick a number…</Text>
+                  <Text style={styles.panHint}>The question list is hidden from everyone</Text>
+                </>
+              )}
+            </View>
+          )
         ) : !currentRound || currentRound.status !== 'active' ? (
           <Text style={styles.waiting}>Waiting for the next round…</Text>
+        ) : !canVoteThisRound ? (
+          <View style={styles.spectatorCard}>
+            {roundGender ? <Text style={styles.roundGenderLabel}>{roundVoterLabel(roundGender)}</Text> : null}
+            <Text style={styles.waiting}>{spectatorMessage(roundGender, myPlayerGender)}</Text>
+          </View>
         ) : myVote ? (
           <Text style={styles.locked}>Vote locked — waiting for results.</Text>
         ) : (
           <>
+            {!genderFree && activeVoteBanner(myPlayerGender) ? (
+              <View style={styles.voteBanner}>
+                <Text style={styles.voteBannerText}>{activeVoteBanner(myPlayerGender)}</Text>
+              </View>
+            ) : null}
             {isBinaryChoiceGame(gameType) || isNeverHaveIEver(gameType) ? (
               <>
                 <Text style={styles.prompt}>
@@ -549,27 +667,6 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
                     ))}
                   </View>
                 )}
-              </>
-            ) : null}
-
-            {isPickANumber(gameType) ? (
-              <>
-                <Text style={styles.prompt}>Pick an available number</Text>
-                <View style={styles.numberGrid}>
-                  {panAvailable.map((n) => (
-                    <Pressable
-                      key={n}
-                      style={[styles.numberCell, pickedNumber === n && styles.numberCellSelected]}
-                      disabled={submitting}
-                      onPress={() => setPickedNumber(n)}
-                    >
-                      <Text style={styles.numberText}>{n}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-                {revealedQuestion || currentRound.mlt_question ? (
-                  <Text style={styles.revealed}>{revealedQuestion ?? currentRound.mlt_question}</Text>
-                ) : null}
               </>
             ) : null}
 
@@ -748,7 +845,70 @@ const makeStyles = (theme: Theme) =>
     justifyContent: 'center',
   },
   numberCellSelected: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+  numberCellTaken: { opacity: 0.4 },
   numberText: { color: theme.text, fontWeight: '700' },
+  numberTextTaken: { textDecorationLine: 'line-through', color: theme.textFaint },
+  panCard: {
+    backgroundColor: theme.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: 18,
+    gap: 12,
+  },
+  panKicker: {
+    color: theme.primaryMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    textAlign: 'center',
+  },
+  panName: { color: theme.text, fontSize: 26, fontWeight: '900', textAlign: 'center' },
+  panHint: { color: theme.textFaint, fontSize: 13, textAlign: 'center' },
+  panRevealBox: {
+    backgroundColor: theme.bg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: 16,
+    gap: 8,
+    alignItems: 'center',
+  },
+  panPickedNumber: { color: theme.primaryMuted, fontSize: 28, fontWeight: '900' },
+  panRevealLabel: {
+    color: theme.textMuted,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  panRevealQuestion: { color: theme.text, fontSize: 17, fontWeight: '600', textAlign: 'center', lineHeight: 24 },
+  answerBanner: {
+    backgroundColor: theme.primarySoft,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.primary,
+    padding: 14,
+    alignItems: 'center',
+    gap: 4,
+  },
+  answerBannerText: { color: theme.text, fontSize: 15, fontWeight: '700', textAlign: 'center' },
+  answerBannerSub: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
+  spectatorCard: { gap: 8, marginTop: 16, alignItems: 'center' },
+  roundGenderLabel: {
+    color: theme.primaryMuted,
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  voteBanner: {
+    backgroundColor: theme.primarySoft,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  voteBannerText: { color: theme.primaryMuted, fontSize: 13, fontWeight: '700' },
   error: { color: '#fca5a5', textAlign: 'center' },
   submit: {
     marginTop: 8,

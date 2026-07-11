@@ -10,7 +10,7 @@ import { getSupabase, GAME_SELECT } from '@/lib/supabase'
 import type { Game, GameType } from '@fateround/shared'
 import { normalizeGameCode } from '@fateround/shared'
 import type { Theme } from '@/constants/theme'
-import { useTheme, useThemedStyles } from '@/constants/theme-context'
+import { GameThemeProvider, useTheme, useThemedStyles } from '@/constants/theme-context'
 
 export default function GameScreen() {
   const styles = useThemedStyles(makeStyles)
@@ -100,10 +100,12 @@ export default function GameScreen() {
   }
 
   return (
-    <PlayerSessionShell gameCode={gameCode} game={game}>
-      <GamePushSetup gameCode={gameCode} />
-      <GameRouter gameCode={gameCode} gameType={gameType} />
-    </PlayerSessionShell>
+    <GameThemeProvider theme={game.status === 'finished' ? 'default' : game.theme}>
+      <PlayerSessionShell gameCode={gameCode} game={game}>
+        <GamePushSetup gameCode={gameCode} />
+        <GameRouter gameCode={gameCode} gameType={gameType} />
+      </PlayerSessionShell>
+    </GameThemeProvider>
   )
 }
 

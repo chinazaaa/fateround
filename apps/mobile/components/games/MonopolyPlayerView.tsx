@@ -35,13 +35,24 @@ import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBoots
 import { joinGame } from '@/lib/api'
 import {
   postMonopolyAuction,
+  postMonopolyBuild,
   postMonopolyBuy,
   postMonopolyForfeit,
   postMonopolyJail,
+  postMonopolyMortgage,
   postMonopolyRent,
   postMonopolyRoll,
   postMonopolySettleDebt,
+  postMonopolyTrade,
 } from '@/lib/game-api'
+import {
+  MonopolyManagePanel,
+  type BuildAction,
+  type MortgageAction,
+  type TradeProposal,
+} from '@/components/games/monopoly/MonopolyManagePanel'
+import { MonopolyTradeModal } from '@/components/games/monopoly/MonopolyTradeModal'
+import { normalizePendingTrade } from '@/components/games/monopoly/manage-logic'
 import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { getSupabase } from '@/lib/supabase'
 import { MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT } from '@/lib/supabase-selects'
@@ -62,6 +73,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const [joinError, setJoinError] = useState<string | null>(null)
   const [joiningToken, setJoiningToken] = useState(false)
   const [timerTick, setTimerTick] = useState(0)
+  const [manageError, setManageError] = useState<string | null>(null)
   const styles = useThemedStyles(makeStyles)
   const theme = useTheme()
 
@@ -187,6 +199,33 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
+  const runManage = async (fn: () => Promise<unknown>) => {
+    if (!bootstrap.myResumeToken || acting) return
+    setActing(true)
+    setManageError(null)
+    try {
+      await fn()
+      await bootstrap.load()
+    } catch (err) {
+      setManageError(err instanceof Error ? err.message : 'Action failed')
+    } finally {
+      setActing(false)
+    }
+  }
+
+  const onBuild = (spaceIndex: number, action: BuildAction) =>
+    void runManage(() => postMonopolyBuild(bootstrap.code, bootstrap.myResumeToken!, spaceIndex, action))
+  const onMortgage = (spaceIndex: number, action: MortgageAction) =>
+    void runManage(() => postMonopolyMortgage(bootstrap.code, bootstrap.myResumeToken!, spaceIndex, action))
+  const onProposeTrade = (proposal: TradeProposal) =>
+    void runManage(() => postMonopolyTrade(bootstrap.code, bootstrap.myResumeToken!, proposal))
+  const onCancelTrade = () =>
+    void runManage(() => postMonopolyTrade(bootstrap.code, bootstrap.myResumeToken!, { cancel: true }))
+  const onRepairTrade = () =>
+    void runManage(() => postMonopolyTrade(bootstrap.code, bootstrap.myResumeToken!, { repair: true }))
+  const onRespondTrade = (accept: boolean) =>
+    void runManage(() => postMonopolyTrade(bootstrap.code, bootstrap.myResumeToken!, { accept }))
+
   const tokenOwners = useMemo(() => monopolyTokenOwners(bootstrap.players), [bootstrap.players])
 
   if (bootstrap.screen === 'loading') return <GameLoading />
@@ -269,6 +308,15 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   if (!bootstrap.game || !board) return <GameLoading />
 
   const turnName = bootstrap.players.find((p) => p.id === turnPlayerId)?.name ?? 'Player'
+
+  const pendingTrade = board.pending_trade ? normalizePendingTrade(board.pending_trade) : null
+  const incomingTrade =
+    pendingTrade &&
+    pendingTrade.to_player_id === bootstrap.myPlayerId &&
+    bootstrap.players.some((p) => p.id === pendingTrade.from_player_id) &&
+    bootstrap.players.some((p) => p.id === pendingTrade.to_player_id)
+      ? pendingTrade
+      : null
 
   return (
     <GameShell bootstrap={bootstrap} title={batch8GameLabel('monopoly')} subtitle={monopolyPhaseLabel(board.phase)}>
@@ -475,7 +523,32 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             </View>
           </View>
         ) : null}
+
+        {manageError ? <Text style={styles.errorText}>{manageError}</Text> : null}
+
+        <MonopolyManagePanel
+          board={board}
+          myPlayerId={bootstrap.myPlayerId}
+          myState={myState}
+          states={states}
+          players={bootstrap.players}
+          acting={acting}
+          onBuild={onBuild}
+          onMortgage={onMortgage}
+          onProposeTrade={onProposeTrade}
+          onCancelTrade={onCancelTrade}
+          onRepairTrade={onRepairTrade}
+        />
       </ScrollView>
+
+      {incomingTrade ? (
+        <MonopolyTradeModal
+          trade={incomingTrade}
+          players={bootstrap.players}
+          acting={acting}
+          onRespond={onRespondTrade}
+        />
+      ) : null}
     </GameShell>
   )
 }
@@ -506,6 +579,7 @@ const makeStyles = (theme: Theme) =>
   lobbyToken: { color: theme.text, fontSize: 15, marginTop: 4 },
   playContent: { padding: 16, gap: 12, paddingBottom: 40 },
   status: { color: theme.textSecondary, fontSize: 14 },
+  errorText: { color: theme.primary, fontSize: 13, fontWeight: '600' },
   dice: { color: theme.text, fontSize: 16, fontWeight: '600' },
   cardEvent: { backgroundColor: theme.surface, borderRadius: 12, padding: 12, gap: 4 },
   cardKind: { color: '#fbbf24', fontSize: 12, textTransform: 'uppercase' },

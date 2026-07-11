@@ -2,7 +2,9 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { useColorScheme } from 'react-native'
 import type { StyleSheet } from 'react-native'
 import * as SecureStore from 'expo-secure-store'
+import { parseThemeId } from '@fateround/shared/create-themes'
 import { darkTheme, lightTheme, type Theme } from '@/constants/theme'
+import { GAME_THEME_OVERRIDES } from '@/constants/game-themes'
 
 /** What the user picked. `system` defers to the phone's light/dark setting. */
 export type ThemeMode = 'system' | 'light' | 'dark'
@@ -107,4 +109,31 @@ export function useThemedStyles<T extends StyleSheet.NamedStyles<T>>(
 ): T {
   const theme = useTheme()
   return useMemo(() => factory(theme), [factory, theme])
+}
+
+/**
+ * Applies a per-game visual theme (Neon / Retro / Elegant / Tropical — the
+ * `game.theme` "edition" picked in create + lobby settings) to everything it
+ * wraps. It nests over the app's light/dark context, merging the theme's palette
+ * overrides onto the base tokens, so every tokenized game screen recolors with no
+ * per-screen changes. `default` (and unknown/finished) passes the base theme
+ * through untouched.
+ */
+export function GameThemeProvider({
+  theme: themeValue,
+  children,
+}: {
+  /** Raw `game.theme` value (or `'default'` to reset, e.g. on finish). */
+  theme: string | null | undefined
+  children: React.ReactNode
+}) {
+  const parent = useThemeContext()
+
+  const value = useMemo<ThemeContextValue>(() => {
+    const overrides = GAME_THEME_OVERRIDES[parseThemeId(themeValue)]
+    if (!overrides) return parent
+    return { ...parent, theme: { ...parent.theme, ...overrides } }
+  }, [parent, themeValue])
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
 }
