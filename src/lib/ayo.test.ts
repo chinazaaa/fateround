@@ -12,7 +12,6 @@ import {
   sowFromPit,
   startingPits,
   shouldEndGameForSide,
-  shouldEndTraditionalDeal,
   totalSeedsOnSide,
   seedsOnBoard,
   nextPit,
@@ -224,17 +223,33 @@ describe('applyAyoMove oware', () => {
   })
 })
 
+describe('applyAyoMove traditional', () => {
+  it('ends the deal when the opponent is left with no legal move', () => {
+    // Side A sows its last seed onto its own row; side B is left empty and cannot move.
+    const pits = Array(AYO_PIT_COUNT).fill(0)
+    pits[0] = 1
+    const result = applyAyoMove(pits, 0, 0, 0, 0, 'a', 0, TRADITIONAL_CONFIG)
+    expect(result.finished).toBe(true)
+    expect(result.winnerSide).toBe('a')
+    expect(seedsOnBoard(result.pits)).toBe(0)
+    // The single seed left on A's row is collected into A's captured total.
+    expect(result.capturedA).toBe(1)
+    expect(result.capturedB).toBe(0)
+  })
+})
+
 describe('shouldEndGameForSide', () => {
   it('is true when side to move has no legal move (oware)', () => {
     const pits = Array(AYO_PIT_COUNT).fill(0)
     pits[0] = 2
     expect(shouldEndGameForSide(pits, 'b', OWare_CONFIG)).toBe(true)
   })
-})
 
-describe('shouldEndTraditionalDeal', () => {
-  it('is true when the board has no seeds left', () => {
-    expect(shouldEndTraditionalDeal(Array(AYO_PIT_COUNT).fill(0), TRADITIONAL_CONFIG)).toBe(true)
+  it('is true when side to move has no legal move even if the board is not empty (traditional)', () => {
+    const pits = Array(AYO_PIT_COUNT).fill(0)
+    pits[0] = 3 // seeds only on side A
+    expect(shouldEndGameForSide(pits, 'b', TRADITIONAL_CONFIG)).toBe(true)
+    expect(shouldEndGameForSide(pits, 'a', TRADITIONAL_CONFIG)).toBe(false)
   })
 })
 

@@ -463,12 +463,6 @@ export function shouldEndGameForSide(pits: number[], sideToMove: AyoSide, config
   return legalMovesForSide(pits, sideToMove, config).length === 0
 }
 
-/** Traditional deals end when the board is empty. */
-export function shouldEndTraditionalDeal(pits: number[], config: AyoBoardConfig): boolean {
-  if (seedsOnBoard(pits) === 0) return true
-  return !hasSeedsOnSide(pits, 'a', config) && !hasSeedsOnSide(pits, 'b', config)
-}
-
 /** @deprecated Use shouldEndGameForSide — kept for tests migrating off the old rule. */
 export function shouldEndGame(pits: number[]): boolean {
   return seedsOnBoard(pits) === 0
@@ -549,10 +543,9 @@ export function applyAyoMove(
   const nextHousesB = housesB + wonB
   const nextTurn = resolveNextTurn(side)
 
-  const endDeal =
-    config.variant === 'traditional'
-      ? shouldEndTraditionalDeal(sown, config)
-      : shouldEndGameForSide(sown, nextTurn, config)
+  // A deal ends when the board empties or the player about to move has no legal move.
+  // (Traditional has no feeding rule, so shouldEndGameForSide captures both cases.)
+  const endDeal = shouldEndGameForSide(sown, nextTurn, config)
 
   if (!endDeal) {
     return {
@@ -574,7 +567,12 @@ export function applyAyoMove(
   }
 
   if (config.variant === 'traditional') {
-    const { draw, winnerSide } = dealWinnerFromHouses(nextHousesA, nextHousesB, nextCapturedA, nextCapturedB)
+    // If the deal ended because a side was blocked, seeds may still sit on the board —
+    // each side collects the seeds remaining on its own row before scoring.
+    const collected = collectRemainingSeeds(sown, nextCapturedA, nextCapturedB)
+    const finalCapturedA = collected.capturedA
+    const finalCapturedB = collected.capturedB
+    const { draw, winnerSide } = dealWinnerFromHouses(nextHousesA, nextHousesB, finalCapturedA, finalCapturedB)
     let aRowSize = config.aRowSize
     let bRowSize = config.bRowSize
     let matchFinished = false
@@ -589,9 +587,9 @@ export function applyAyoMove(
     }
 
     return {
-      pits: sown,
-      capturedA: nextCapturedA,
-      capturedB: nextCapturedB,
+      pits: collected.pits,
+      capturedA: finalCapturedA,
+      capturedB: finalCapturedB,
       housesA: nextHousesA,
       housesB: nextHousesB,
       aRowSize,
