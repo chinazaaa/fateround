@@ -18,6 +18,7 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postChessExpireTurn, postChessMove, postChessResign } from '@/lib/game-api'
+import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { CHESS_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
@@ -153,6 +154,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
     if (!bootstrap.myResumeToken || acting) return
     setActing(true)
     try {
+      playSound('move')
       await postChessMove(bootstrap.code, bootstrap.myResumeToken, from, to, promotion)
       setSelected(null)
       setPromotionMove(null)

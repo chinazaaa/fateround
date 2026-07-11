@@ -8,6 +8,7 @@ import { clearPlayerSession, getHostToken, getPlayerSession } from '@/lib/secure
 import { gameHasMobileVoice } from '@/lib/voice-games'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { PlayerSessionMenu } from '@/components/session/PlayerSessionMenu'
+import { HostNominationBanner } from '@/components/session/HostNominationBanner'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { HeaderAction } from '@/components/ui/HeaderAction'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
@@ -118,6 +119,9 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
 
       {game && gameHasMobileVoice(game.game_type) ? (
         <VoiceRail gameCode={gameCode} mode="player" />
+      ) : null}
+      {!gameEnded ? (
+        <HostNominationBanner gameCode={gameCode} playerId={playerId} resumeToken={resumeToken} />
       ) : null}
       <View style={styles.body}>{children}</View>
       <ShareGameSheet

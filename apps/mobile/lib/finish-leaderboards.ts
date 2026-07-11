@@ -37,6 +37,48 @@ export function scoreListLeaderboard(
   )
 }
 
+export function triviaLeaderboard(
+  scores: Array<{ id: string; name: string; score: number; correctCount: number }>,
+  totalRounds: number | null | undefined,
+  myPlayerId?: string | null
+): FinishedLeaderboardRow[] {
+  return scores.map((row, index) => ({
+    name: row.name,
+    score: row.score,
+    scoreSuffix: 'pts',
+    detail: totalRounds ? `${row.correctCount}/${totalRounds}` : undefined,
+    you: !!myPlayerId && row.id === myPlayerId,
+    highlight: index === 0,
+  }))
+}
+
+/**
+ * Card games (Whot / Crazy Eights): winner is out of cards, everyone else is
+ * ranked by the penalty points left in hand (lower is better).
+ */
+export function cardHandLeaderboard(
+  entries: Array<{ id: string; name: string; points: number; cardCount: number }>,
+  winnerId: string | null | undefined,
+  myPlayerId?: string | null
+): FinishedLeaderboardRow[] {
+  const ordered = [...entries].sort((a, b) => {
+    if (a.id === winnerId) return -1
+    if (b.id === winnerId) return 1
+    return a.points - b.points || a.cardCount - b.cardCount
+  })
+  return ordered.map((entry, index) => {
+    const isWinner = entry.id === winnerId
+    return {
+      name: entry.name,
+      score: isWinner ? 'Winner' : entry.points,
+      scoreSuffix: isWinner ? undefined : 'pts',
+      detail: isWinner ? undefined : `${entry.cardCount} card${entry.cardCount === 1 ? '' : 's'}`,
+      you: !!myPlayerId && entry.id === myPlayerId,
+      highlight: index === 0,
+    }
+  })
+}
+
 export function winnerLeaderboard(
   winnerPlayerId: string | null | undefined,
   players: Player[],

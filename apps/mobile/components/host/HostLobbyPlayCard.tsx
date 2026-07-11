@@ -1,0 +1,275 @@
+import { useState } from 'react'
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import type { GameType, Player } from '@fateround/shared'
+import { MONOPOLY_PLAYER_TOKENS, takenMonopolyTokens } from '@fateround/shared/monopoly-tokens'
+import { joinGame } from '@/lib/api'
+import { patchPlayerName, leaveGame } from '@/lib/game-api'
+import {
+  clearPlayerSession,
+  setPlayerSession,
+  type PlayerSession,
+} from '@/lib/secure-session'
+import { theme } from '@/constants/theme'
+
+type Props = {
+  gameCode: string
+  gameType: GameType
+  players: Player[]
+  session: PlayerSession | null
+  onSessionChange: (session: PlayerSession | null) => void
+  onReload: () => void
+}
+
+/**
+ * Host "play along" from the lobby — join as a player while keeping the host
+ * token (spectator ↔ player), rename in place, or drop the seat. Batch 23.
+ */
+export function HostLobbyPlayCard({
+  gameCode,
+  gameType,
+  players,
+  session,
+  onSessionChange,
+  onReload,
+}: Props) {
+  const [name, setName] = useState(session?.playerName ?? '')
+  const [busy, setBusy] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [token, setToken] = useState<string | null>(null)
+
+  const isMonopoly = gameType === 'monopoly'
+  const taken = isMonopoly ? takenMonopolyTokens(players) : new Set<string>()
+  const needsToken = isMonopoly && !token
+
+  const onJoin = async () => {
+    const trimmed = name.trim()
+    if (!trimmed || busy || needsToken) return
+    setBusy(true)
+    setError(null)
+    try {
+      const data = await joinGame({ gameCode, playerName: trimmed, monopolyToken: token })
+      const next: PlayerSession = {
+        playerId: data.playerId,
+        playerName: data.playerName,
+        playerGender: data.playerGender ?? 'both',
+        resumeToken: data.resumeToken ?? null,
+      }
+      await setPlayerSession(gameCode, next.playerId, next.playerName, next.playerGender, next.resumeToken)
+      onSessionChange(next)
+      onReload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not join')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const onRename = async () => {
+    const trimmed = name.trim()
+    if (!session?.resumeToken || !trimmed || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await patchPlayerName(gameCode, session.playerId, trimmed, session.resumeToken)
+      const next: PlayerSession = { ...session, playerName: trimmed }
+      await setPlayerSession(gameCode, next.playerId, next.playerName, next.playerGender, next.resumeToken)
+      onSessionChange(next)
+      setRenaming(false)
+      onReload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not rename')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const onStop = async () => {
+    if (!session?.resumeToken || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await leaveGame(gameCode, session.playerId, session.resumeToken)
+      await clearPlayerSession(gameCode)
+      onSessionChange(null)
+      setRenaming(false)
+      onReload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not stop playing')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!session) {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.title}>Play along</Text>
+        <Text style={styles.hint}>
+          Take a seat in your own game. Your host controls stay on this device — switch back any time.
+        </Text>
+        <TextInput
+          style={styles.input}
+          value={name}
+          onChangeText={setName}
+          placeholder="Your name"
+          placeholderTextColor={theme.textFaint}
+          autoCapitalize="words"
+        />
+        {isMonopoly ? (
+          <View style={styles.tokens}>
+            <Text style={styles.tokenLabel}>Pick your token</Text>
+            <View style={styles.tokenGrid}>
+              {MONOPOLY_PLAYER_TOKENS.map((t) => {
+                const isTaken = taken.has(t.id)
+                const selected = token === t.id
+                return (
+                  <Pressable
+                    key={t.id}
+                    style={[styles.token, selected && styles.tokenOn, isTaken && styles.tokenTaken]}
+                    disabled={isTaken}
+                    onPress={() => setToken(t.id)}
+                  >
+                    <Text style={styles.tokenEmoji}>{t.emoji}</Text>
+                  </Pressable>
+                )
+              })}
+            </View>
+          </View>
+        ) : null}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+        <Pressable
+          style={[styles.primary, (!name.trim() || busy || needsToken) && styles.disabled]}
+          disabled={!name.trim() || busy || needsToken}
+          onPress={() => void onJoin()}
+        >
+          <Text style={styles.primaryText}>{busy ? 'Joining…' : 'Play as yourself'}</Text>
+        </Pressable>
+      </View>
+    )
+  }
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.title}>You’re playing</Text>
+      {renaming ? (
+        <>
+          <TextInput
+            style={styles.input}
+            value={name}
+            onChangeText={setName}
+            placeholder="Your name"
+            placeholderTextColor={theme.textFaint}
+            autoCapitalize="words"
+            autoFocus
+          />
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <View style={styles.row}>
+            <Pressable
+              style={[styles.primary, styles.flex, (!name.trim() || busy) && styles.disabled]}
+              disabled={!name.trim() || busy}
+              onPress={() => void onRename()}
+            >
+              <Text style={styles.primaryText}>{busy ? 'Saving…' : 'Save name'}</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.secondary, styles.flex]}
+              onPress={() => {
+                setName(session.playerName)
+                setRenaming(false)
+                setError(null)
+              }}
+            >
+              <Text style={styles.secondaryText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </>
+      ) : (
+        <>
+          <Text style={styles.seatName}>{session.playerName}</Text>
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <View style={styles.row}>
+            <Pressable
+              style={[styles.secondary, styles.flex, busy && styles.disabled]}
+              disabled={busy}
+              onPress={() => {
+                setName(session.playerName)
+                setRenaming(true)
+              }}
+            >
+              <Text style={styles.secondaryText}>Rename</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.secondary, styles.flex, busy && styles.disabled]}
+              disabled={busy}
+              onPress={() => void onStop()}
+            >
+              <Text style={styles.secondaryText}>{busy ? '…' : 'Stop playing'}</Text>
+            </Pressable>
+          </View>
+        </>
+      )}
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: theme.surface,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: theme.space.md,
+    gap: theme.space.sm,
+    marginTop: theme.space.md,
+  },
+  title: { color: theme.text, fontSize: 17, fontWeight: '800' },
+  hint: { color: theme.textMuted, fontSize: 14, lineHeight: 20 },
+  seatName: { color: theme.primaryMuted, fontSize: 18, fontWeight: '800' },
+  tokens: { gap: 6 },
+  tokenLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
+  tokenGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
+  token: {
+    width: 44,
+    height: 44,
+    borderRadius: theme.radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.bg,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  tokenOn: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+  tokenTaken: { opacity: 0.3 },
+  tokenEmoji: { fontSize: 22 },
+  input: {
+    backgroundColor: theme.bg,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: theme.radius.sm,
+    color: theme.text,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    fontSize: 15,
+  },
+  error: { color: theme.error, fontSize: 13 },
+  row: { flexDirection: 'row', gap: theme.space.sm },
+  flex: { flex: 1 },
+  primary: {
+    backgroundColor: theme.primary,
+    borderRadius: theme.radius.sm,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  primaryText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  secondary: {
+    backgroundColor: theme.bgElevated,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: theme.radius.sm,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  secondaryText: { color: theme.textSecondary, fontWeight: '700', fontSize: 15 },
+  disabled: { opacity: 0.5 },
+})

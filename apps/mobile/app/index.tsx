@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
-import { Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useCallback, useState } from 'react'
+import { Linking, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useFocusEffect, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { normalizeGameCode } from '@fateround/shared'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
@@ -13,14 +13,38 @@ import { WEB_BASE_URL } from '@/lib/config'
 import { gameLabel } from '@/lib/mobile-registry'
 import { getRecentGames, type RecentGame } from '@/lib/recent-games'
 
+const RECENT_COLLAPSED_COUNT = 3
+
 export default function HomeScreen() {
   const router = useRouter()
   const [gameCode, setGameCode] = useState('')
   const [recent, setRecent] = useState<RecentGame[]>([])
+  const [showAllRecent, setShowAllRecent] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
 
-  useEffect(() => {
-    void getRecentGames().then(setRecent)
+  const loadRecent = useCallback(async () => {
+    setRecent(await getRecentGames())
   }, [])
+
+  // Re-read whenever the home screen regains focus (e.g. returning from a game
+  // just played) so the Recent list is always current without a manual reload.
+  useFocusEffect(
+    useCallback(() => {
+      void loadRecent()
+    }, [loadRecent])
+  )
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await loadRecent()
+    } finally {
+      setRefreshing(false)
+    }
+  }, [loadRecent])
+
+  const visibleRecent = showAllRecent ? recent : recent.slice(0, RECENT_COLLAPSED_COUNT)
+  const hiddenRecentCount = recent.length - RECENT_COLLAPSED_COUNT
 
   const canJoin = normalizeGameCode(gameCode).length >= 4
 
@@ -33,7 +57,17 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <AmbientBackground />
-      <KeyboardFormScreen contentContainerStyle={styles.container}>
+      <KeyboardFormScreen
+        contentContainerStyle={styles.container}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void onRefresh()}
+            tintColor={theme.primaryMuted}
+            colors={[theme.primary]}
+          />
+        }
+      >
         <View style={styles.hero}>
           <Text style={styles.kicker}>Party games</Text>
           <FateRoundLogo variant="stacked" width={200} />
@@ -74,7 +108,7 @@ export default function HomeScreen() {
         {recent.length > 0 ? (
           <View style={styles.recentBlock}>
             <Text style={styles.sectionTitle}>Recent</Text>
-            {recent.map((entry) => (
+            {visibleRecent.map((entry) => (
               <Pressable
                 key={entry.code}
                 style={({ pressed }) => [styles.recentRow, pressed && styles.recentRowPressed]}
@@ -92,6 +126,17 @@ export default function HomeScreen() {
                 <Text style={styles.recentChevron}>›</Text>
               </Pressable>
             ))}
+            {hiddenRecentCount > 0 ? (
+              <Pressable
+                style={({ pressed }) => [styles.recentToggle, pressed && styles.recentRowPressed]}
+                onPress={() => setShowAllRecent((v) => !v)}
+                hitSlop={8}
+              >
+                <Text style={styles.recentToggleText}>
+                  {showAllRecent ? 'Show less' : `Show all ${recent.length}`}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
       </KeyboardFormScreen>
@@ -185,6 +230,16 @@ const styles = StyleSheet.create({
     color: theme.primaryMuted,
     fontSize: 14,
     fontWeight: '800',
+  },
+  recentToggle: {
+    alignItems: 'center',
+    paddingVertical: theme.space.sm,
+    marginTop: 2,
+  },
+  recentToggleText: {
+    color: theme.primaryMuted,
+    fontSize: 14,
+    fontWeight: '700',
   },
   recentMeta: { flex: 1, gap: 2 },
   recentCode: {

@@ -32,6 +32,7 @@ export function ShareGameInviteContent({
   )
   const [tab, setTab] = useState<ShareLinkKey>('invite')
   const [copied, setCopied] = useState(false)
+  const [codeCopied, setCodeCopied] = useState(false)
 
   useEffect(() => {
     if (!links.some((link) => link.key === tab)) {
@@ -51,6 +52,12 @@ export function ShareGameInviteContent({
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const onCopyCode = async () => {
+    await Clipboard.setStringAsync(code)
+    setCodeCopied(true)
+    setTimeout(() => setCodeCopied(false), 2000)
+  }
+
   const onShare = async () => {
     try {
       await Share.share({
@@ -64,10 +71,11 @@ export function ShareGameInviteContent({
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.codeRow}>
+      <Pressable style={styles.codeRow} onPress={() => void onCopyCode()}>
         <Text style={styles.codeLabel}>Game code</Text>
         <Text style={styles.code}>{code}</Text>
-      </View>
+        <Text style={styles.codeCopy}>{codeCopied ? 'Copied!' : 'Copy code'}</Text>
+      </Pressable>
 
       {links.length > 1 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
@@ -132,6 +140,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 2,
     fontFamily: 'Menlo',
+  },
+  codeCopy: {
+    marginLeft: 'auto',
+    color: theme.primaryMuted,
+    fontSize: 13,
+    fontWeight: '700',
   },
   tabs: {
     gap: theme.space.xs,

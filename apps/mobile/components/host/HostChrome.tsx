@@ -7,6 +7,8 @@ import { gameLabel } from '@/lib/mobile-registry'
 import { gameHasMobileVoice } from '@/lib/voice-games'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
+import { TransferHostSheet } from '@/components/host/TransferHostSheet'
+import { GameRouter, hasMobilePlayerView } from '@/components/games/GameRouter'
 import { HeaderAction } from '@/components/ui/HeaderAction'
 import { theme } from '@/constants/theme'
 import { getPlayerSession } from '@/lib/secure-session'
@@ -18,16 +20,25 @@ type Props = {
   children: ReactNode
 }
 
+type HostTab = 'manage' | 'play'
+
 export function HostChrome({ gameCode, hostToken, game, children }: Props) {
   const router = useRouter()
   const code = gameCode.toUpperCase()
   const typeLabel = gameLabel(game.game_type)
   const [shareOpen, setShareOpen] = useState(false)
+  const [transferOpen, setTransferOpen] = useState(false)
   const [resumeToken, setResumeToken] = useState<string | null>(null)
+  const [tab, setTab] = useState<HostTab>('manage')
 
   useEffect(() => {
-    void getPlayerSession(gameCode).then((session) => setResumeToken(session?.resumeToken ?? null))
+    void getPlayerSession(gameCode).then((session) => {
+      setResumeToken(session?.resumeToken ?? null)
+    })
   }, [gameCode])
+
+  // Play tab embeds the host's own player experience (join screen if not seated yet).
+  const canPlay = hasMobilePlayerView(game.game_type)
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -44,7 +55,10 @@ export function HostChrome({ gameCode, hostToken, game, children }: Props) {
           >
             <Text style={styles.backIcon}>←</Text>
           </Pressable>
-          <HeaderAction label="Share code" accent onPress={() => setShareOpen(true)} />
+          <View style={styles.toolbarActions}>
+            <HeaderAction label="Transfer" onPress={() => setTransferOpen(true)} />
+            <HeaderAction label="Share code" accent onPress={() => setShareOpen(true)} />
+          </View>
         </View>
 
         <View style={styles.meta}>
@@ -61,17 +75,48 @@ export function HostChrome({ gameCode, hostToken, game, children }: Props) {
             </Text>
           ) : null}
         </View>
+
+        {canPlay ? (
+          <View style={styles.tabs}>
+            {(['play', 'manage'] as HostTab[]).map((t) => {
+              const active = tab === t
+              return (
+                <Pressable
+                  key={t}
+                  style={[styles.tab, active && styles.tabActive]}
+                  onPress={() => setTab(t)}
+                >
+                  <Text style={[styles.tabText, active && styles.tabTextActive]}>
+                    {t === 'manage' ? 'Manage' : 'Play'}
+                  </Text>
+                </Pressable>
+              )
+            })}
+          </View>
+        ) : null}
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {children}
-      </ScrollView>
+      {tab === 'play' && canPlay ? (
+        <View style={styles.playBody}>
+          <GameRouter gameCode={gameCode} gameType={game.game_type} />
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          {children}
+        </ScrollView>
+      )}
       <ShareGameSheet
         visible={shareOpen}
         gameCode={gameCode}
         hostToken={hostToken}
         resumeToken={resumeToken}
         onClose={() => setShareOpen(false)}
+      />
+      <TransferHostSheet
+        gameCode={gameCode}
+        hostToken={hostToken}
+        visible={transferOpen}
+        onClose={() => setTransferOpen(false)}
       />
     </SafeAreaView>
   )
@@ -93,6 +138,23 @@ const styles = StyleSheet.create({
     paddingTop: theme.space.xs,
     gap: theme.space.sm,
   },
+  toolbarActions: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
+  tabs: {
+    flexDirection: 'row',
+    marginHorizontal: theme.space.lg,
+    marginTop: theme.space.xs,
+    backgroundColor: theme.surface,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: 3,
+    gap: 3,
+  },
+  tab: { flex: 1, paddingVertical: 9, borderRadius: theme.radius.sm, alignItems: 'center' },
+  tabActive: { backgroundColor: theme.primary },
+  tabText: { color: theme.textMuted, fontSize: 14, fontWeight: '800' },
+  tabTextActive: { color: '#fff' },
+  playBody: { flex: 1 },
   backBtn: {
     width: 40,
     height: 40,

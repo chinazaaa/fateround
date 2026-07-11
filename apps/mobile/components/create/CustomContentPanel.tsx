@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import type { GameType } from '@fateround/shared'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
+import { LibraryPackPicker } from '@/components/create/LibraryPackPicker'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import { theme } from '@/constants/theme'
+import { parseListCsv, parseTriviaCsv, parseWyrCsv, pickCsvText } from '@/lib/file-import'
 import {
   MAX_TRIVIA_CHOICES,
   customContentCopy,
@@ -12,7 +15,9 @@ import {
   customContentNoun,
   emptyTriviaDraft,
   supportsCustomContent,
+  supportsLibrary,
   type CustomContentState,
+  type CustomQuestionSource,
   type TriviaDraft,
   type WyrPairDraft,
 } from '@/lib/create-settings/custom-content'
@@ -25,6 +30,9 @@ type Props = {
 }
 
 export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: Props) {
+  const [importError, setImportError] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
+
   if (!supportsCustomContent(gameType)) return null
 
   const kind = customContentKind(gameType)
@@ -34,6 +42,48 @@ export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: 
   const count = customContentCount(gameType, custom)
   const min = customContentMinimum(gameType, roundsCount)
   const enough = count >= min
+  const hasLibrary = supportsLibrary(gameType)
+
+  const options: { value: CustomQuestionSource; label: string; hint: string }[] = [
+    { value: 'platform', label: 'Platform', hint: 'Use our built-in pool.' },
+    ...(hasLibrary ? [{ value: 'library' as const, label: 'Library', hint: 'Pick a community pack.' }] : []),
+    { value: 'custom', label: 'Your own', hint: copy.sourceHint },
+  ]
+
+  const onSourceChange = (source: CustomQuestionSource) => {
+    // Leaving library clears the picked pack; switching in shows the picker.
+    onChange(source === 'library' ? { source } : { source, libraryPackTitle: null })
+  }
+
+  const onImportFile = async () => {
+    if (importing) return
+    setImporting(true)
+    setImportError(null)
+    try {
+      const picked = await pickCsvText()
+      if (!picked) return
+      if (kind === 'binary') {
+        const rows = parseWyrCsv(picked.text)
+        if (rows.length === 0) return setImportError('No option_a / option_b rows found')
+        const existing = custom.pairs.filter((p) => p.optionA.trim() && p.optionB.trim())
+        onChange({ pairs: [...existing, ...rows] })
+      } else if (kind === 'trivia') {
+        const rows = parseTriviaCsv(picked.text)
+        if (rows.length === 0) return setImportError('No question rows found (question, answers, correct)')
+        const existing = custom.trivia.filter((t) => t.question.trim() && t.choices.filter(Boolean).length >= 2)
+        onChange({ trivia: [...existing, ...rows] })
+      } else {
+        const rows = parseListCsv(gameType, picked.text)
+        if (rows.length === 0) return setImportError('No rows found in that file')
+        const existing = custom.prompts.map((p) => p.trim()).filter(Boolean)
+        onChange({ prompts: [...existing, ...rows] })
+      }
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Could not read that file')
+    } finally {
+      setImporting(false)
+    }
+  }
 
   return (
     <SurfaceCard>
@@ -42,17 +92,20 @@ export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: 
 
         <View style={styles.field}>
           <Text style={styles.label}>Source</Text>
-          <SegmentedControl
-            value={custom.source}
-            options={[
-              { value: 'platform', label: 'Platform', hint: 'Use our built-in pool.' },
-              { value: 'custom', label: 'Your own', hint: copy.sourceHint },
-            ]}
-            onChange={(source) => onChange({ source })}
-          />
+          <SegmentedControl value={custom.source} options={options} onChange={onSourceChange} />
         </View>
 
-        {custom.source === 'custom' ? (
+        {custom.source === 'library' ? (
+          <>
+            <LibraryPackPicker gameType={gameType} custom={custom} onChange={onChange} />
+            {custom.libraryPackTitle ? (
+              <Text style={[styles.count, enough ? styles.countOk : styles.countLow]}>
+                {count} / {min} {noun}
+                {enough ? ' ✓' : ' needed'}
+              </Text>
+            ) : null}
+          </>
+        ) : custom.source === 'custom' ? (
           <>
             <Text style={styles.hint}>{copy.hint}</Text>
 
@@ -64,9 +117,16 @@ export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: 
               <ListEditor custom={custom} placeholder={copy.placeholder} onChange={onChange} />
             )}
 
-            <Pressable style={styles.addButton} onPress={() => addItem(kind, custom, onChange)}>
-              <Text style={styles.addButtonText}>＋ {copy.addLabel}</Text>
-            </Pressable>
+            <View style={styles.actionRow}>
+              <Pressable style={styles.addButton} onPress={() => addItem(kind, custom, onChange)}>
+                <Text style={styles.addButtonText}>＋ {copy.addLabel}</Text>
+              </Pressable>
+              <Pressable style={styles.importButton} onPress={() => void onImportFile()} disabled={importing}>
+                <Text style={styles.importButtonText}>{importing ? 'Reading…' : '⭱ Import CSV'}</Text>
+              </Pressable>
+            </View>
+
+            {importError ? <Text style={styles.importError}>{importError}</Text> : null}
 
             <Text style={[styles.count, enough ? styles.countOk : styles.countLow]}>
               {count} / {min} {noun}
@@ -354,8 +414,8 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: theme.success,
   },
+  actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
   addButton: {
-    alignSelf: 'flex-start',
     paddingVertical: theme.space.sm,
     paddingHorizontal: theme.space.md,
     borderRadius: theme.radius.pill,
@@ -368,6 +428,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
   },
+  importButton: {
+    paddingVertical: theme.space.sm,
+    paddingHorizontal: theme.space.md,
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.bgElevated,
+  },
+  importButtonText: { color: theme.textSecondary, fontSize: 14, fontWeight: '700' },
+  importError: { color: theme.error, fontSize: 13 },
   addChoice: {
     alignSelf: 'flex-start',
     paddingVertical: 6,

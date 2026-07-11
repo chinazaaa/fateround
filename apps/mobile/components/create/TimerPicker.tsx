@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native'
-import { SegmentedControl } from '@/components/create/SegmentedControl'
+import { SelectField } from '@/components/create/SelectField'
 import { theme } from '@/constants/theme'
 
 type Props = {
@@ -15,8 +15,9 @@ export function TimerPicker({ label, hint, value, options, format, onChange }: P
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
-      <SegmentedControl
+      <SelectField
         value={String(value)}
+        title={label}
         options={options.map((seconds) => ({
           value: String(seconds),
           label: format(seconds),

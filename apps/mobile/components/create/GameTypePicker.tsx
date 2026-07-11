@@ -1,7 +1,13 @@
 import type { GameType } from '@fateround/shared'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { useMemo, useState } from 'react'
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { gameLabel } from '@/lib/mobile-registry'
-import { gameTypeMeta } from '@/lib/game-type-meta'
+import {
+  GAME_CATEGORIES,
+  gameTypeCategory,
+  gameTypeMeta,
+  type GameCategory,
+} from '@/lib/game-type-meta'
 import { theme } from '@/constants/theme'
 
 type Props = {
@@ -10,33 +16,148 @@ type Props = {
   onChange: (type: GameType) => void
 }
 
+type Filter = GameCategory | 'all'
+
 export function GameTypePicker({ options, value, onChange }: Props) {
-  return (
-    <View style={styles.grid}>
-      {options.map((type) => {
-        const selected = type === value
-        const meta = gameTypeMeta(type)
+  const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState<Filter>('all')
+
+  const trimmed = query.trim().toLowerCase()
+
+  // Only show category chips that actually have games in this list.
+  const chips = useMemo(() => {
+    const present = new Set(options.map((t) => gameTypeCategory(t)))
+    return GAME_CATEGORIES.filter((c) => present.has(c.key))
+  }, [options])
+
+  const visible = useMemo(() => {
+    if (trimmed) {
+      // Searching ignores the active chip so a match is never hidden.
+      return options.filter((t) => {
+        const meta = gameTypeMeta(t)
         return (
-          <Pressable
-            key={type}
-            style={[styles.tile, selected && styles.tileSelected]}
-            onPress={() => onChange(type)}
-          >
-            <Text style={styles.emoji}>{meta.emoji}</Text>
-            <Text style={[styles.name, selected && styles.nameSelected]} numberOfLines={2}>
-              {gameLabel(type)}
-            </Text>
-            <Text style={styles.blurb} numberOfLines={2}>
-              {meta.blurb}
-            </Text>
-          </Pressable>
+          gameLabel(t).toLowerCase().includes(trimmed) ||
+          meta.blurb.toLowerCase().includes(trimmed)
         )
-      })}
+      })
+    }
+    if (filter === 'all') return options
+    return options.filter((t) => gameTypeCategory(t) === filter)
+  }, [options, trimmed, filter])
+
+  return (
+    <View style={styles.wrap}>
+      <TextInput
+        style={styles.search}
+        value={query}
+        onChangeText={setQuery}
+        placeholder="Search games…"
+        placeholderTextColor={theme.textFaint}
+        autoCapitalize="none"
+        autoCorrect={false}
+        returnKeyType="search"
+        clearButtonMode="while-editing"
+      />
+
+      {!trimmed ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipRow}
+        >
+          <FilterChip label="All" active={filter === 'all'} onPress={() => setFilter('all')} />
+          {chips.map((c) => (
+            <FilterChip
+              key={c.key}
+              label={c.label}
+              active={filter === c.key}
+              onPress={() => setFilter(c.key)}
+            />
+          ))}
+        </ScrollView>
+      ) : null}
+
+      {visible.length === 0 ? (
+        <Text style={styles.empty}>No games match “{query.trim()}”.</Text>
+      ) : (
+        <View style={styles.grid}>
+          {visible.map((type) => {
+            const selected = type === value
+            const meta = gameTypeMeta(type)
+            return (
+              <Pressable
+                key={type}
+                style={[styles.tile, selected && styles.tileSelected]}
+                onPress={() => onChange(type)}
+              >
+                <Text style={styles.emoji}>{meta.emoji}</Text>
+                <Text style={[styles.name, selected && styles.nameSelected]} numberOfLines={2}>
+                  {gameLabel(type)}
+                </Text>
+                <Text style={styles.blurb} numberOfLines={2}>
+                  {meta.blurb}
+                </Text>
+              </Pressable>
+            )
+          })}
+        </View>
+      )}
     </View>
   )
 }
 
+function FilterChip({
+  label,
+  active,
+  onPress,
+}: {
+  label: string
+  active: boolean
+  onPress: () => void
+}) {
+  return (
+    <Pressable style={[styles.chip, active && styles.chipActive]} onPress={onPress}>
+      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+    </Pressable>
+  )
+}
+
 const styles = StyleSheet.create({
+  wrap: { gap: theme.space.sm },
+  search: {
+    backgroundColor: theme.bgElevated,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.border,
+    paddingHorizontal: theme.space.md,
+    paddingVertical: 12,
+    color: theme.text,
+    fontSize: 15,
+  },
+  chipRow: {
+    gap: theme.space.xs,
+    paddingVertical: 2,
+    paddingRight: theme.space.md,
+  },
+  chip: {
+    paddingHorizontal: theme.space.md,
+    paddingVertical: 8,
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.bgElevated,
+  },
+  chipActive: {
+    borderColor: theme.primary,
+    backgroundColor: theme.primarySoft,
+  },
+  chipText: { color: theme.textMuted, fontSize: 13, fontWeight: '700' },
+  chipTextActive: { color: '#fff' },
+  empty: {
+    color: theme.textMuted,
+    fontSize: 14,
+    paddingVertical: theme.space.md,
+  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

@@ -12,7 +12,7 @@ import { getSupabase } from '@/lib/supabase'
 import { PARTICIPANT_SELECT, ROUND_SELECT, VOTE_SELECT } from '@/lib/supabase-selects'
 import { PollRoundResults } from '@/components/games/poll/PollRoundResults'
 import { HostChrome } from '@/components/host/HostChrome'
-import { HostPlayAlongCard } from '@/components/host/HostPlayAlongCard'
+import { GameFinishedActions } from '@/components/lifecycle/GameFinishedActions'
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import { mltVoteLeaderboard } from '@/lib/finish-leaderboards'
 
@@ -209,20 +209,22 @@ export function PollRoundHostScreen({ gameCode, hostToken, game, players, onRelo
         </Pressable>
       ) : null}
 
-      <HostPlayAlongCard gameCode={gameCode} />
 
       {game.status === 'finished' ? (
-        <Pressable
-          style={[styles.primaryBtn, acting === 'replay' && styles.btnDisabled]}
-          disabled={!!acting}
-          onPress={() => void run('replay', () => postPlayAgain(gameCode, hostToken, true))}
-        >
-          {acting === 'replay' ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.primaryBtnText}>Play again</Text>
-          )}
-        </Pressable>
+        <>
+          <Pressable
+            style={[styles.primaryBtn, acting === 'replay' && styles.btnDisabled]}
+            disabled={!!acting}
+            onPress={() => void run('replay', () => postPlayAgain(gameCode, hostToken, true))}
+          >
+            {acting === 'replay' ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.primaryBtnText}>Play again</Text>
+            )}
+          </Pressable>
+          <GameFinishedActions gameCode={gameCode} gameType={game.game_type} gameTitle={game.title} />
+        </>
       ) : null}
 
       <Text style={styles.footerHint}>{roundLabel} host controls</Text>

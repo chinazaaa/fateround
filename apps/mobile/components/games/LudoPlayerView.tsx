@@ -18,6 +18,7 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { postLudoMove, postLudoRoll } from '@/lib/game-api'
+import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { LUDO_PLAYER_STATE_SELECT, LUDO_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
@@ -103,6 +104,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
     if (!bootstrap.myResumeToken || acting || !isMyTurn) return
     setActing(true)
     try {
+      playSound('dice')
       await postLudoRoll(bootstrap.code, bootstrap.myResumeToken)
       await bootstrap.load()
     } finally {
@@ -114,6 +116,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
     if (!bootstrap.myResumeToken || acting) return
     setActing(true)
     try {
+      playSound('move')
       await postLudoMove(bootstrap.code, bootstrap.myResumeToken, pieceId, diceIndex)
       await bootstrap.load()
     } finally {

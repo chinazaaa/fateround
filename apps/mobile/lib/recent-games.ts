@@ -15,7 +15,10 @@ export async function getRecentGames(): Promise<RecentGame[]> {
     const raw = await SecureStore.getItemAsync(RECENT_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw) as RecentGame[]
-    return Array.isArray(parsed) ? parsed : []
+    if (!Array.isArray(parsed)) return []
+    // Newest first — writes already prepend, but sort defensively so the list
+    // stays ordered by last played even if older data is out of order.
+    return [...parsed].sort((a, b) => (b.lastJoinedAt ?? '').localeCompare(a.lastJoinedAt ?? ''))
   } catch {
     return []
   }

@@ -15,6 +15,7 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { postTicTacToeMove } from '@/lib/game-api'
+import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { TIC_TAC_TOE_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
@@ -88,6 +89,7 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
     if (!bootstrap.myResumeToken) return
     setActing(true)
     try {
+      playSound('move')
       await postTicTacToeMove(bootstrap.code, bootstrap.myResumeToken, cellIndex)
       await bootstrap.load()
     } catch (err) {

@@ -10,6 +10,7 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { postCheckersMove } from '@/lib/game-api'
+import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { CHECKERS_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
@@ -104,6 +105,7 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
 
     setActing(true)
     try {
+      playSound('move')
       await postCheckersMove(bootstrap.code, bootstrap.myResumeToken, selected, sq)
       setSelected(null)
       await bootstrap.load()

@@ -60,6 +60,61 @@ export async function joinGame(input: {
   return data
 }
 
+export type LibraryPackSummary = {
+  id: string
+  title: string
+  game_type: GameType
+  author_name: string
+  description: string | null
+  question_count: number
+  tags?: string[]
+}
+
+export type LibraryPack = LibraryPackSummary & { questions: unknown[] }
+
+/** Community question packs for a game type (read-only pick). */
+export async function fetchLibraryPacks(gameType: GameType): Promise<LibraryPackSummary[]> {
+  const res = await fetch(apiUrl(`/api/library?game_type=${encodeURIComponent(gameType)}&page_size=100`), {
+    cache: 'no-store',
+  })
+  const data = (await res.json()) as { packs?: LibraryPackSummary[]; error?: string }
+  if (!res.ok) throw new Error(data.error ?? 'Could not load packs')
+  return data.packs ?? []
+}
+
+/** Full pack including its questions. */
+export async function fetchLibraryPack(id: string): Promise<LibraryPack> {
+  const res = await fetch(apiUrl(`/api/library/${id}`))
+  const data = (await res.json()) as { pack?: LibraryPack; error?: string }
+  if (!res.ok || !data.pack) throw new Error(data.error ?? 'Could not load pack')
+  return data.pack
+}
+
+export type GifItem = { id: string; previewUrl: string; fullUrl: string }
+
+type KlipyFile = {
+  hd?: { gif?: { url: string }; webp?: { url: string } }
+  sm?: { gif?: { url: string }; webp?: { url: string } }
+  xs?: { gif?: { url: string }; webp?: { url: string } }
+}
+type KlipyItem = { id: number | string; file: KlipyFile }
+
+/** Search GIFs via the shared /api/klipy proxy (Klipy). Empty query = trending. */
+export async function searchGifs(query: string): Promise<GifItem[]> {
+  const res = await fetch(apiUrl(`/api/klipy?type=gifs&q=${encodeURIComponent(query)}`), { cache: 'no-store' })
+  if (!res.ok) throw new Error('Could not load GIFs')
+  const json = (await res.json()) as { data?: { data?: KlipyItem[] } }
+  const items = json.data?.data ?? []
+  return items
+    .map((item) => {
+      const f = item.file
+      const previewUrl = f.sm?.webp?.url ?? f.sm?.gif?.url ?? f.xs?.gif?.url ?? ''
+      const fullUrl = f.hd?.gif?.url ?? f.sm?.gif?.url ?? previewUrl
+      return { id: String(item.id), previewUrl, fullUrl }
+    })
+    .filter((g) => g.previewUrl && g.fullUrl)
+}
+
 export function isGameMobileSupported(
   gameType: GameType,
   config: MobileConfig | null

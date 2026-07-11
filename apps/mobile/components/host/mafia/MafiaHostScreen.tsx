@@ -8,7 +8,7 @@ import {
   postPlayAgain,
 } from '@/lib/game-api'
 import { HostChrome } from '@/components/host/HostChrome'
-import { HostPlayAlongCard } from '@/components/host/HostPlayAlongCard'
+import { GameFinishedActions } from '@/components/lifecycle/GameFinishedActions'
 
 type MafiaHostPlayer = {
   id: string
@@ -135,7 +135,6 @@ export function MafiaHostScreen({ gameCode, hostToken, game, players, onReload }
         </Pressable>
       ) : null}
 
-      <HostPlayAlongCard gameCode={gameCode} />
 
       {game.status === 'active' ? (
         <Pressable
@@ -148,13 +147,16 @@ export function MafiaHostScreen({ gameCode, hostToken, game, players, onReload }
       ) : null}
 
       {game.status === 'finished' ? (
-        <Pressable
-          style={[styles.primaryBtn, acting && styles.btnDisabled]}
-          disabled={acting}
-          onPress={() => void onPlayAgain()}
-        >
-          <Text style={styles.primaryBtnText}>Play again</Text>
-        </Pressable>
+        <>
+          <Pressable
+            style={[styles.primaryBtn, acting && styles.btnDisabled]}
+            disabled={acting}
+            onPress={() => void onPlayAgain()}
+          >
+            <Text style={styles.primaryBtnText}>Play again</Text>
+          </Pressable>
+          <GameFinishedActions gameCode={gameCode} gameType={game.game_type} gameTitle={game.title} />
+        </>
       ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}

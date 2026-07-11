@@ -20,6 +20,7 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postYahtzeeHold, postYahtzeeRoll, postYahtzeeScore } from '@/lib/game-api'
+import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { YAHTZEE_PLAYER_SCORES_SELECT, YAHTZEE_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
@@ -90,6 +91,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     if (!bootstrap.myResumeToken || acting) return
     setActing(true)
     try {
+      playSound('dice')
       await postYahtzeeRoll(bootstrap.code, bootstrap.myResumeToken)
       await bootstrap.load()
     } finally {

@@ -28,6 +28,10 @@ export function postAyoMove(gameId: string, resumeToken: string, pitIndex: numbe
   return postJson<{ success: boolean }>('/api/ayo/move', { gameId, resumeToken, pitIndex })
 }
 
+export function expireAyoTurn(gameId: string) {
+  return postJson<{ success: boolean }>('/api/ayo/expire-turn', { gameId })
+}
+
 export function postBingoMark(gameId: string, resumeToken: string, cellIndex: number) {
   return postJson<{ success: boolean; marked_indices?: number[] }>('/api/bingo/mark', {
     gameId,
@@ -56,10 +60,17 @@ export function postPlayerReady(gameId: string, resumeToken: string, ready: bool
   return postJson<{ success: boolean }>('/api/players/ready', { gameId, resumeToken, ready })
 }
 
-export function postPlayAgain(gameCode: string, hostToken: string, sameSettings = true) {
+export function postPlayAgain(
+  gameCode: string,
+  hostToken: string,
+  sameSettings = true,
+  hostPlayerId?: string | null
+) {
   return postJson<{ success: boolean }>(`/api/games/${gameCode.toUpperCase()}/play-again`, {
     hostToken,
     same_settings: sameSettings,
+    // Preserve the host's own seat across the replay so they don't re-enter their name.
+    ...(hostPlayerId ? { hostPlayerId } : {}),
   })
 }
 
@@ -504,6 +515,23 @@ export function postAnonymousMessage(
   })
 }
 
+/** Send a GIF/sticker (message_type 'gif', media_url = the Klipy URL). */
+export function postAnonymousGif(
+  gameId: string,
+  playerId: string,
+  mediaUrl: string,
+  replyToId?: string | null
+) {
+  return postJson<{ success: boolean }>('/api/anonymous-messages', {
+    gameId,
+    playerId,
+    text: '',
+    messageType: 'gif',
+    mediaUrl,
+    replyToId: replyToId ?? undefined,
+  })
+}
+
 export function postHotSeat(
   gameId: string,
   roundId: string,
@@ -540,6 +568,32 @@ export function verifyHost(gameId: string, hostToken: string) {
   return postJson<VerifyHostResponse>(`/api/games/${gameId.toUpperCase()}/verify-host`, { hostToken })
 }
 
+// --- Host transfer (nominee claim flow) — Batch 24 -------------------------
+
+/** Host nominates a player to take over (or pass null to cancel). Auth: host token. */
+export function postTransferHost(gameCode: string, hostToken: string, playerId: string | null) {
+  return postJson<{ ok: boolean; pendingHostPlayerId: string | null }>(
+    `/api/games/${gameCode.toUpperCase()}/transfer-host`,
+    { hostToken, playerId }
+  )
+}
+
+/** Nominee accepts — mints & returns a fresh host token. Auth: nominee's resume token. */
+export function postClaimHost(gameCode: string, resumeToken: string) {
+  return postJson<{ ok: boolean; hostToken: string }>(
+    `/api/games/${gameCode.toUpperCase()}/claim-host`,
+    { resumeToken }
+  )
+}
+
+/** Nominee declines — clears the nomination without rotating the token. */
+export function postDeclineHost(gameCode: string, resumeToken: string) {
+  return postJson<{ ok: boolean; declined: boolean }>(
+    `/api/games/${gameCode.toUpperCase()}/decline-host`,
+    { resumeToken }
+  )
+}
+
 /**
  * Start the game. The server generates rounds and flips status to active. It
  * enforces per-game minimum-player rules and throws (via postJson) with the
@@ -547,6 +601,59 @@ export function verifyHost(gameId: string, hostToken: string) {
  */
 export function startGame(gameId: string, hostToken: string) {
   return postJson<{ ok?: boolean }>(`/api/games/${gameId.toUpperCase()}/start`, { hostToken })
+}
+
+export type LobbySettingsPatch = {
+  is_public?: boolean
+  rounds_count?: number
+  timer_seconds?: number
+  late_join_policy?: 'lobby_only' | 'viewers_only' | 'viewers_and_players'
+}
+
+/** Update editable lobby settings while waiting. Server clamps/validates per game. */
+export function patchGameSettings(gameCode: string, hostToken: string, patch: LobbySettingsPatch) {
+  return jsonRequest<{ ok?: boolean }>(`/api/games/${gameCode.toUpperCase()}`, 'PATCH', {
+    hostToken,
+    ...patch,
+  })
+}
+
+/**
+ * Board/party game lobby settings via the shared `lobby-settings` route
+ * (max players, house rules, per-game timers, etc.). Waiting-only server-side.
+ * The server ignores fields that don't apply to the game type.
+ */
+export type BoardLobbyPatch = {
+  is_public?: boolean
+  max_players?: number
+  timer_seconds?: number
+  game_duration_seconds?: number
+  rounds_count?: number
+  whot_pick3_enabled?: boolean
+  whot_cards_enabled?: boolean
+  whot_number_calls_enabled?: boolean
+  whot_pick2_stacking?: boolean
+  crazy8_action_cards?: boolean
+  crazy8_jokers?: boolean
+  crazy8_pick2_stacking?: boolean
+  ludo_variant?: 'modern' | 'traditional'
+  ayo_variant?: 'traditional' | 'oware'
+  mafia_doctor_enabled?: boolean
+  mafia_detective_enabled?: boolean
+  mafia_anonymous_votes?: boolean
+  operative_timer_seconds?: number
+  quick_draw_variant?: 'lie' | 'guess'
+  quick_draw_play_mode?: 'team' | 'individual'
+  quick_draw_num_teams?: number
+  mahjong_ruleset?: string
+  mahjong_rule_options?: Record<string, unknown>
+}
+
+export function postLobbySettings(gameCode: string, hostToken: string, patch: BoardLobbyPatch) {
+  return postJson<{ ok?: boolean }>(`/api/games/${gameCode.toUpperCase()}/lobby-settings`, {
+    hostToken,
+    ...patch,
+  })
 }
 
 export function postEndRound(gameId: string, hostToken: string) {

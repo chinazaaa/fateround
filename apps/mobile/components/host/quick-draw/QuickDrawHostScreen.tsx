@@ -29,7 +29,7 @@ import {
   postQuickDrawGuessAdvance,
 } from '@/lib/game-api'
 import { HostChrome } from '@/components/host/HostChrome'
-import { HostPlayAlongCard } from '@/components/host/HostPlayAlongCard'
+import { GameFinishedActions } from '@/components/lifecycle/GameFinishedActions'
 import { DrawingPreview } from '@/components/quick-draw/DrawingCanvas'
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import { TimerBadge } from '@/components/ui/TimerBadge'
@@ -247,7 +247,6 @@ export function QuickDrawHostScreen({ gameCode, hostToken, game, players, onRelo
         </Pressable>
       ) : null}
 
-      <HostPlayAlongCard gameCode={gameCode} />
 
       {game.status === 'active' ? (
         <Pressable style={[styles.secondaryBtn, acting && styles.btnDisabled]} disabled={acting} onPress={() => void onFinish()}>
@@ -256,9 +255,12 @@ export function QuickDrawHostScreen({ gameCode, hostToken, game, players, onRelo
       ) : null}
 
       {game.status === 'finished' ? (
-        <Pressable style={[styles.primaryBtn, acting && styles.btnDisabled]} disabled={acting} onPress={() => void onPlayAgain()}>
-          <Text style={styles.primaryBtnText}>Play again</Text>
-        </Pressable>
+        <>
+          <Pressable style={[styles.primaryBtn, acting && styles.btnDisabled]} disabled={acting} onPress={() => void onPlayAgain()}>
+            <Text style={styles.primaryBtnText}>Play again</Text>
+          </Pressable>
+          <GameFinishedActions gameCode={gameCode} gameType={game.game_type} gameTitle={game.title} />
+        </>
       ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}

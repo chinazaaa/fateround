@@ -33,6 +33,10 @@ export function ViewerModeBanner({
   playerDetail,
   onPromoted,
 }: Props) {
+  // This banner is about watching a *live* game (late-join / spectator states).
+  // Once the game is over it's meaningless — and a winner marked out-of-play
+  // (is_eliminated) would otherwise wrongly see "Spectating" on the results screen.
+  if (game.status !== 'active') return null
   if (!playerIsViewer(player, game)) return null
 
   const canPromote = canSwitchViewerToPlayer(player, game, players)

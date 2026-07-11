@@ -14,7 +14,13 @@ import { startGame, postPlayAgain } from '@/lib/game-api'
 import { gameHasMobileVoice } from '@/lib/voice-games'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
-import { getPlayerSession } from '@/lib/secure-session'
+import { HostLobbyPlayCard } from '@/components/host/HostLobbyPlayCard'
+import { HostLobbySettingsSheet } from '@/components/host/HostLobbySettingsSheet'
+import { clearPlayerSession, getPlayerSession, type PlayerSession } from '@/lib/secure-session'
+import { useHostAutoReady } from '@/hooks/useHostAutoReady'
+import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
+import { useGamePlayerLimits } from '@/hooks/useGamePlayerLimits'
+import { isLobbyLimitGameType } from '@fateround/shared/lobby-limits'
 
 type Props = {
   gameCode: string
@@ -33,7 +39,11 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
   const [replaying, setReplaying] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
-  const [resumeToken, setResumeToken] = useState<string | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [hostSession, setHostSession] = useState<PlayerSession | null>(null)
+  const hostPlayerId = hostSession?.playerId ?? null
+  const resumeToken = hostSession?.resumeToken ?? null
+  const { limits } = useGamePlayerLimits()
 
   const load = useCallback(async () => {
     const supabase = getSupabase()
@@ -68,8 +78,16 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
   }, [gameCode, load])
 
   useEffect(() => {
-    void getPlayerSession(gameCode).then((session) => setResumeToken(session?.resumeToken ?? null))
+    void getPlayerSession(gameCode).then((session) => setHostSession(session))
   }, [gameCode])
+
+  const onSelfRemoved = useCallback(() => {
+    void clearPlayerSession(gameCode)
+    setHostSession(null)
+  }, [gameCode])
+
+  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
+  useHostPlayerReconciliation(players, hostPlayerId, onSelfRemoved)
 
   const onShare = useCallback(() => setShareOpen(true), [])
 
@@ -90,14 +108,14 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
     setReplaying(true)
     setError(null)
     try {
-      await postPlayAgain(gameCode, hostToken, true)
+      await postPlayAgain(gameCode, hostToken, true, hostPlayerId)
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not set up play again')
     } finally {
       setReplaying(false)
     }
-  }, [gameCode, hostToken, load])
+  }, [gameCode, hostToken, load, hostPlayerId])
 
   if (loading) {
     return (
@@ -111,6 +129,9 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
   const finished = game?.status === 'finished'
   const replayLobby = game?.status === 'waiting' && game.replay_pending === true
   const readyCount = activePlayers.length
+  const gameType = game?.game_type
+  const minPlayers = gameType && isLobbyLimitGameType(gameType) ? limits[gameType].min : 1
+  const meetsMinimum = activePlayers.length >= minPlayers
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -126,6 +147,12 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
           <Text style={styles.code}>{gameCode}</Text>
         </Pressable>
 
+        {game && !finished ? (
+          <Pressable style={styles.settingsBtn} onPress={() => setSettingsOpen(true)}>
+            <Text style={styles.settingsBtnText}>⚙  Edit settings</Text>
+          </Pressable>
+        ) : null}
+
         <View style={styles.rosterHeader}>
           <Text style={styles.sectionTitle}>Players</Text>
           <Text style={styles.count}>{activePlayers.length}</Text>
@@ -140,6 +167,17 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
             </View>
           ))
         )}
+
+        {!finished ? (
+          <HostLobbyPlayCard
+            gameCode={gameCode}
+            gameType={game?.game_type ?? 'trivia'}
+            players={players}
+            session={hostSession}
+            onSessionChange={setHostSession}
+            onReload={() => void load()}
+          />
+        ) : null}
 
         {finished ? (
           <Text style={styles.finishedHint}>
@@ -168,29 +206,43 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
             )}
           </Pressable>
         ) : replayLobby ? (
-          <Pressable
-            style={[styles.startButton, (starting || readyCount === 0) && styles.startButtonDisabled]}
-            onPress={onStart}
-            disabled={starting || readyCount === 0}
-          >
-            {starting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.startButtonText}>Start next round</Text>
-            )}
-          </Pressable>
+          <>
+            {!meetsMinimum ? (
+              <Text style={styles.minHint}>
+                Need at least {minPlayers} player{minPlayers === 1 ? '' : 's'} to start ({activePlayers.length}/{minPlayers})
+              </Text>
+            ) : null}
+            <Pressable
+              style={[styles.startButton, (starting || !meetsMinimum) && styles.startButtonDisabled]}
+              onPress={onStart}
+              disabled={starting || !meetsMinimum}
+            >
+              {starting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.startButtonText}>Start next round</Text>
+              )}
+            </Pressable>
+          </>
         ) : (
-          <Pressable
-            style={[styles.startButton, (starting || activePlayers.length === 0) && styles.startButtonDisabled]}
-            onPress={onStart}
-            disabled={starting || activePlayers.length === 0}
-          >
-            {starting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.startButtonText}>Start game</Text>
-            )}
-          </Pressable>
+          <>
+            {!meetsMinimum ? (
+              <Text style={styles.minHint}>
+                Need at least {minPlayers} player{minPlayers === 1 ? '' : 's'} to start ({activePlayers.length}/{minPlayers})
+              </Text>
+            ) : null}
+            <Pressable
+              style={[styles.startButton, (starting || !meetsMinimum) && styles.startButtonDisabled]}
+              onPress={onStart}
+              disabled={starting || !meetsMinimum}
+            >
+              {starting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.startButtonText}>Start game</Text>
+              )}
+            </Pressable>
+          </>
         )}
       </View>
       <ShareGameSheet
@@ -200,6 +252,16 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
         resumeToken={resumeToken}
         onClose={() => setShareOpen(false)}
       />
+      {game ? (
+        <HostLobbySettingsSheet
+          gameCode={gameCode}
+          hostToken={hostToken}
+          game={game}
+          visible={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          onSaved={() => void load()}
+        />
+      ) : null}
     </SafeAreaView>
   )
 }
@@ -226,6 +288,16 @@ const styles = StyleSheet.create({
   },
   codeLabel: { color: '#9ca3af', fontSize: 13, marginBottom: 6 },
   code: { color: '#fff', fontSize: 40, fontWeight: '800', letterSpacing: 8 },
+  settingsBtn: {
+    backgroundColor: '#17171d',
+    borderColor: '#2a2a35',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  settingsBtnText: { color: '#fda4af', fontSize: 15, fontWeight: '700' },
   rosterHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   sectionTitle: { color: '#fff', fontSize: 18, fontWeight: '700' },
   count: { color: '#9ca3af', fontSize: 16, fontWeight: '600' },
@@ -255,6 +327,7 @@ const styles = StyleSheet.create({
   },
   error: { color: '#f87171', fontSize: 15, marginTop: 12 },
   footer: { padding: 24, borderTopColor: '#1c1c24', borderTopWidth: 1 },
+  minHint: { color: '#9ca3af', fontSize: 13, textAlign: 'center', marginBottom: 12 },
   startButton: { backgroundColor: '#f43f5e', borderRadius: 12, paddingVertical: 16, alignItems: 'center' },
   startButtonDisabled: { opacity: 0.5 },
   startButtonText: { color: '#fff', fontSize: 17, fontWeight: '600' },

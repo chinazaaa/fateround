@@ -30,6 +30,7 @@ import {
 } from '@/lib/game-api'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { winnerLeaderboard } from '@/lib/finish-leaderboards'
+import { mahjongMeldClaims, isSeatAfterDiscarder, type MeldClaim } from '@/lib/mahjong-claims'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -123,6 +124,17 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
       postMahjongClaim(gameCode.toUpperCase(), bootstrap.myPlayerId!, bootstrap.myResumeToken!, 'mahjong')
     )
 
+  const claimMeld = (meld: MeldClaim) =>
+    void act(() =>
+      postMahjongClaim(
+        gameCode.toUpperCase(),
+        bootstrap.myPlayerId!,
+        bootstrap.myResumeToken!,
+        meld.type,
+        meld.tiles
+      )
+    )
+
   const declareRiichi = () =>
     void act(() =>
       postMahjongRiichi(gameCode.toUpperCase(), bootstrap.myPlayerId!, bootstrap.myResumeToken!)
@@ -161,6 +173,14 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
   const inClaimWindow = session.phase === 'claim' && session.last_discard != null
   const alreadyPassed = bootstrap.myPlayerId ? session.claim_passes.includes(bootstrap.myPlayerId) : false
   const canClaim = inClaimWindow && !alreadyPassed && !isMyTurn
+  const meldClaims: MeldClaim[] =
+    canClaim && session.last_discard
+      ? mahjongMeldClaims(
+          myState?.hand ?? [],
+          session.last_discard.tile,
+          isSeatAfterDiscarder(session.turn_order, session.last_discard.player_id, bootstrap.myPlayerId)
+        )
+      : []
 
   return (
     <GameShell bootstrap={bootstrap} title={batch8GameLabel('mahjong')} subtitle={mahjongPhaseLabel(session.phase)}>
@@ -221,6 +241,20 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
         {canClaim ? (
           <View style={styles.actionPanel}>
             <Text style={styles.actionTitle}>Claim window</Text>
+            {meldClaims.length > 0 ? (
+              <View style={styles.actionRow}>
+                {meldClaims.map((meld) => (
+                  <Pressable
+                    key={`${meld.type}-${meld.tiles.join('')}`}
+                    style={[styles.meldBtn, styles.flexBtn, acting && styles.btnDisabled]}
+                    disabled={acting}
+                    onPress={() => claimMeld(meld)}
+                  >
+                    <Text style={styles.meldBtnText}>{meld.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
             <View style={styles.actionRow}>
               <Pressable style={[styles.primaryBtn, styles.flexBtn, acting && styles.btnDisabled]} disabled={acting} onPress={claimMahjong}>
                 <Text style={styles.primaryBtnText}>Mahjong</Text>
@@ -252,6 +286,16 @@ const styles = StyleSheet.create({
   status: { color: '#d1d5db', fontSize: 14 },
   section: { color: '#fff', fontSize: 16, fontWeight: '600', marginTop: 4 },
   tileRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  meldBtn: {
+    backgroundColor: '#3f1d2b',
+    borderWidth: 1,
+    borderColor: '#f43f5e',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  meldBtnText: { color: '#fda4af', fontWeight: '800', fontSize: 14 },
   meldRow: { gap: 6, marginBottom: 8 },
   meldType: { color: '#fda4af', fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
   meldTiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },

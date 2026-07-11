@@ -1,9 +1,14 @@
-import { useCallback, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
-import { ayoScores, legalMovesForSide, sideForPlayer, currentTurnPlayerId } from '@fateround/shared/ayo'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { StyleSheet, Text } from 'react-native'
+import { legalMovesForSide, sideForPlayer, currentTurnPlayerId } from '@fateround/shared/ayo'
 import type { AyoSession, Game, Player } from '@fateround/shared'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
+import { AyoBoard } from '@/components/games/ayo/AyoBoard'
+import { useAyoSowAnimation } from '@/hooks/useAyoSowAnimation'
+import { useAyoClockExpiry } from '@/hooks/useAyoClockExpiry'
+import { parseAyoVariant } from '@/lib/ayo-sow'
+import { playAyoSeedDrop, playAyoTurnChime } from '@/lib/ayo-sounds'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -19,6 +24,7 @@ type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_foun
 export function AyoPlayerView({ gameCode }: { gameCode: string }) {
   const [session, setSession] = useState<AyoSession | null>(null)
   const [acting, setActing] = useState(false)
+  const { animation, playSowAnimation } = useAyoSowAnimation({ onSeedDrop: playAyoSeedDrop })
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: AyoSession | null; ok: boolean }> => {
@@ -71,13 +77,33 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
     enabled: bootstrap.screen === 'active',
   })
 
+  useAyoClockExpiry(bootstrap.code, activeSession, bootstrap.screen === 'active')
+
+  // Chime once when it becomes your turn (matches the web turn sound).
+  const prevMyTurn = useRef(false)
+  useEffect(() => {
+    const active = bootstrap.screen === 'active'
+    if (active && isMyTurn && !prevMyTurn.current) playAyoTurnChime()
+    prevMyTurn.current = active && isMyTurn
+  }, [isMyTurn, bootstrap.screen])
+
   const mySide = bootstrap.myPlayerId && activeSession ? sideForPlayer(activeSession, bootstrap.myPlayerId) : null
 
   const sow = async (pitIndex: number) => {
-    if (!bootstrap.myResumeToken || !isMyTurn) return
+    if (!bootstrap.myResumeToken || !isMyTurn || !activeSession) return
     setActing(true)
+    const config = {
+      variant: parseAyoVariant(bootstrap.game?.ayo_variant),
+      aRowSize: activeSession.a_row_size,
+      bRowSize: activeSession.b_row_size,
+    }
     try {
-      await postAyoMove(bootstrap.code, bootstrap.myResumeToken, pitIndex)
+      // Fire the move and the seed-by-seed animation together; reconcile with
+      // the authoritative server state once both settle.
+      await Promise.all([
+        postAyoMove(bootstrap.code, bootstrap.myResumeToken, pitIndex),
+        playSowAnimation(activeSession.pits, pitIndex, config),
+      ])
       await bootstrap.load()
     } finally {
       setActing(false)
@@ -113,98 +139,37 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  const scores = ayoScores(activeSession)
   const legal =
-    mySide && isMyTurn
+    mySide && isMyTurn && !animation.animating
       ? legalMovesForSide(activeSession.pits, mySide, activeSession.a_row_size, activeSession.b_row_size)
       : []
   const turnPlayer = bootstrap.players.find((p) => p.id === turnPlayerId)
+  const nameOf = (pid: string) => bootstrap.players.find((p) => p.id === pid)?.name ?? 'Player'
 
   return (
     <GameShell bootstrap={bootstrap} title="Ayo" subtitle={`Code ${bootstrap.code}`}>
       <TurnBanner
-        text={isMyTurn ? 'Your turn — tap a pit' : `${turnPlayer?.name ?? 'Opponent'}'s turn`}
+        text={isMyTurn ? 'Your turn — pick a house' : `${turnPlayer?.name ?? 'Opponent'}'s turn`}
         isMyTurn={isMyTurn}
       />
-      <View style={styles.scoreRow}>
-        <Text style={styles.score}>A: {scores.a}</Text>
-        <Text style={styles.score}>B: {scores.b}</Text>
-      </View>
-      <View style={styles.board}>
-        <PitRow
-          pits={activeSession.pits.slice(6, 12)}
-          offset={6}
-          legal={legal}
-          disabled={acting || !isMyTurn}
-          onPress={sow}
-        />
-        <PitRow
-          pits={activeSession.pits.slice(0, 6)}
-          offset={0}
-          legal={legal}
-          disabled={acting || !isMyTurn}
-          onPress={sow}
-          reverse
-        />
-      </View>
-      {mySide ? <Text style={styles.sideLabel}>You are side {mySide.toUpperCase()}</Text> : null}
+      <AyoBoard
+        session={activeSession}
+        mySide={mySide}
+        legal={legal}
+        disabled={acting || !isMyTurn || animation.animating}
+        onMove={sow}
+        animation={animation}
+        variant={parseAyoVariant(bootstrap.game?.ayo_variant)}
+        nameA={nameOf(activeSession.player_a_id)}
+        nameB={nameOf(activeSession.player_b_id)}
+      />
+      {mySide && bootstrap.myPlayerId ? (
+        <Text style={styles.sideLabel}>You are {nameOf(bootstrap.myPlayerId)}</Text>
+      ) : null}
     </GameShell>
   )
 }
 
-function PitRow({
-  pits,
-  offset,
-  legal,
-  disabled,
-  onPress,
-  reverse,
-}: {
-  pits: number[]
-  offset: number
-  legal: number[]
-  disabled: boolean
-  onPress: (pit: number) => void
-  reverse?: boolean
-}) {
-  const indices = pits.map((_, i) => offset + (reverse ? 5 - i : i))
-  return (
-    <View style={styles.pitRow}>
-      {indices.map((pitIndex, i) => {
-        const seeds = pits[reverse ? 5 - i : i] ?? 0
-        const playable = legal.includes(pitIndex)
-        return (
-          <Pressable
-            key={pitIndex}
-            style={[styles.pit, playable && styles.pitPlayable]}
-            disabled={disabled || !playable}
-            onPress={() => onPress(pitIndex)}
-          >
-            <Text style={styles.seedCount}>{seeds}</Text>
-          </Pressable>
-        )
-      })}
-    </View>
-  )
-}
-
 const styles = StyleSheet.create({
-  scoreRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  score: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  board: { backgroundColor: '#5c3d1e', borderRadius: 16, padding: 12, gap: 16 },
-  pitRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
-  pit: {
-    flex: 1,
-    aspectRatio: 1,
-    maxWidth: 52,
-    borderRadius: 999,
-    backgroundColor: '#3d2812',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#2a1a0d',
-  },
-  pitPlayable: { borderColor: '#f43f5e' },
-  seedCount: { color: '#fde68a', fontSize: 18, fontWeight: '800' },
   sideLabel: { color: '#9ca3af', textAlign: 'center' },
 })

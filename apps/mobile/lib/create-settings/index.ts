@@ -31,6 +31,14 @@ import {
   validateCustomContent,
   type CustomContentState,
 } from '@/lib/create-settings/custom-content'
+import {
+  defaultPeopleSettings,
+  needsPeopleStep,
+  peoplePayload,
+  validateCustomSlots,
+  validateParticipants,
+  type PeopleSettings,
+} from '@/lib/create-settings/people'
 
 export type { GameRoomSettings } from '@/lib/create-settings/board-games'
 export { hasGameRoomSettings, BATCH_19_BOARD_GAMES } from '@/lib/create-settings/board-games'
@@ -38,6 +46,13 @@ export type { PartyRoomSettings } from '@/lib/create-settings/party-games'
 export { hasPartyRoomSettings, BATCH_20_PARTY_GAMES, isPollPartyGame } from '@/lib/create-settings/party-games'
 export type { CustomContentState } from '@/lib/create-settings/custom-content'
 export { supportsCustomContent } from '@/lib/create-settings/custom-content'
+export type { PeopleSettings } from '@/lib/create-settings/people'
+export {
+  supportsImportMode,
+  participantModeOptions,
+  isCustomGame,
+  minParticipants,
+} from '@/lib/create-settings/people'
 
 export type CreateWizardStep = 'setup' | 'people'
 
@@ -51,6 +66,7 @@ export type CreateWizardState = {
   room: GameRoomSettings
   party: PartyRoomSettings
   custom: CustomContentState
+  people: PeopleSettings
 }
 
 export type CreateSettingsRegistryEntry = {
@@ -58,16 +74,12 @@ export type CreateSettingsRegistryEntry = {
   validate?: (state: CreateWizardState) => string | null
 }
 
-export function needsParticipantStep(gameType: GameType): boolean {
-  return gameType === 'who_said_this'
+export function needsParticipantStep(state: CreateWizardState): boolean {
+  return needsPeopleStep(state.gameType, state.people)
 }
 
-export function wizardStepsForGame(gameType: GameType): CreateWizardStep[] {
-  return needsParticipantStep(gameType) ? ['setup', 'people'] : ['setup']
-}
-
-export function usesNativeJoinersMode(gameType: GameType): boolean {
-  return gameType !== 'who_said_this'
+export function wizardStepsForGame(state: CreateWizardState): CreateWizardStep[] {
+  return needsParticipantStep(state) ? ['setup', 'people'] : ['setup']
 }
 
 function themeForGameType(gameType: GameType, current: ThemeId): ThemeId {
@@ -90,6 +102,7 @@ export function createInitialState(
     room: defaultGameRoomSettings(gameType),
     party: defaultPartyRoomSettings(gameType),
     custom: defaultCustomContentState(),
+    people: defaultPeopleSettings(gameType),
   }
 }
 
@@ -110,19 +123,27 @@ export function applyGameTypeChange(
     room: defaultGameRoomSettings(gameType),
     party: defaultPartyRoomSettings(gameType),
     custom: defaultCustomContentState(),
+    people: defaultPeopleSettings(gameType),
   }
 }
 
-export const CREATE_SETTINGS_REGISTRY: Partial<Record<GameType, CreateSettingsRegistryEntry>> = {
-  who_said_this: {
-    validate: () => 'Add a participant list on web for now — coming in a future app update.',
-  },
-}
+export const CREATE_SETTINGS_REGISTRY: Partial<Record<GameType, CreateSettingsRegistryEntry>> = {}
 
-export function validateCreateState(state: CreateWizardState): string | null {
+/** Everything the host must get right on the Setup step before the People step. */
+export function validateSetupStep(state: CreateWizardState): string | null {
   if (!state.title.trim()) return 'Enter a game title'
   const customError = validateCustomContent(state.gameType, state.custom, state.party.roundsCount)
   if (customError) return customError
+  const slotError = validateCustomSlots(state.gameType, state.people)
+  if (slotError) return slotError
+  return null
+}
+
+export function validateCreateState(state: CreateWizardState): string | null {
+  const setupError = validateSetupStep(state)
+  if (setupError) return setupError
+  const peopleError = validateParticipants(state.gameType, state.people)
+  if (peopleError) return peopleError
   const entry = CREATE_SETTINGS_REGISTRY[state.gameType]
   return entry?.validate?.(state) ?? null
 }
@@ -144,13 +165,7 @@ export function buildCreatePayload(state: CreateWizardState, limits: GamePlayerL
     theme: state.theme,
     isPublic: state.isPublic,
     ...customContentPayload(gameType, state.custom),
-    participants: [],
-    ...(usesNativeJoinersMode(gameType)
-      ? {
-          participant_mode: 'joiners',
-          anonymous: isPollPartyGame(gameType) ? state.party.anonymous : true,
-        }
-      : { participant_mode: 'import', anonymous: true }),
+    ...peoplePayload(gameType, state.people, state.party.anonymous, isPollPartyGame(gameType)),
     ...gameRoomSettingsPayload(gameType, state.room),
     ...partyRoomSettingsPayload(gameType, state.party),
   }

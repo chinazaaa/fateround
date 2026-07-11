@@ -13,6 +13,7 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 import { postBingoClaim, postBingoMark } from '@/lib/game-api'
+import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import {
   BINGO_CALLED_NUMBER_SELECT,
@@ -116,6 +117,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     if (!bootstrap.myResumeToken || !card) return
     setMarking(true)
     try {
+      playSound('pop')
       await postBingoMark(bootstrap.code, bootstrap.myResumeToken, cellIndex)
       await bootstrap.load()
     } finally {

@@ -1,9 +1,10 @@
-import { View, StyleSheet } from 'react-native'
+import { ScrollView, StyleSheet } from 'react-native'
 import type { Game, Player } from '@fateround/shared'
 import {
   GameFinishedScreen,
   type FinishedLeaderboardRow,
 } from '@/components/game/GameChrome'
+import { GameFinishedActions } from '@/components/lifecycle/GameFinishedActions'
 import { PlayAgainFooter } from '@/components/lifecycle/PlayAgainFooter'
 import { theme } from '@/constants/theme'
 
@@ -40,7 +41,11 @@ export function GameFinishPanel({
   if (!game) return null
 
   return (
-    <View style={styles.wrap}>
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.wrap}
+      showsVerticalScrollIndicator={false}
+    >
       <GameFinishedScreen
         title={title}
         detail={detail}
@@ -52,13 +57,23 @@ export function GameFinishPanel({
       {showPlayAgain ? (
         <PlayAgainFooter gameCode={bootstrap.code} game={game} onReplayReady={bootstrap.load} />
       ) : null}
-    </View>
+      <GameFinishedActions
+        gameCode={bootstrap.code}
+        gameType={game.game_type}
+        gameTitle={game.title}
+        resultTitle={title}
+        leaderboard={leaderboard}
+      />
+    </ScrollView>
   )
 }
 
 const styles = StyleSheet.create({
-  wrap: {
+  scroll: {
     flex: 1,
+  },
+  wrap: {
+    flexGrow: 1,
     justifyContent: 'center',
     padding: theme.space.lg,
     gap: theme.space.md,

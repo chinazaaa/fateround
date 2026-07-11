@@ -12,7 +12,7 @@ import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { getSupabase } from '@/lib/supabase'
 import { ROUND_SELECT, TRIVIA_ANSWER_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
-import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
+import { triviaLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -95,7 +95,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
           title="Game over"
           subtitle="Final standings"
           detail={top ? `${top.name} wins with ${top.score} pts` : undefined}
-          leaderboard={scoreListLeaderboard(scores.map((row) => ({ name: row.name, score: row.score })))}
+          leaderboard={triviaLeaderboard(scores, bootstrap.game?.rounds_count, bootstrap.myPlayerId)}
         />
       </GameShell>
     )

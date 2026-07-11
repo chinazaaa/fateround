@@ -11,7 +11,7 @@ import { getSupabase } from '@/lib/supabase'
 import { BINGO_CALLED_NUMBER_SELECT, BINGO_CLAIM_SELECT } from '@/lib/supabase-selects'
 import { useBingoAutoCall } from '@/hooks/useBingoAutoCall'
 import { HostChrome } from '@/components/host/HostChrome'
-import { HostPlayAlongCard } from '@/components/host/HostPlayAlongCard'
+import { GameFinishedActions } from '@/components/lifecycle/GameFinishedActions'
 
 type BingoClaim = { id: string; player_id: string; status: string }
 
@@ -158,7 +158,6 @@ export function BingoHostScreen({ gameCode, hostToken, game, players, onReload }
         </View>
       </ScrollView>
 
-      <HostPlayAlongCard gameCode={gameCode} />
 
       {game.status === 'active' && !winner ? (
         <Pressable style={[styles.secondaryBtn, acting && styles.btnDisabled]} disabled={acting} onPress={() => void onFinish()}>
@@ -167,9 +166,19 @@ export function BingoHostScreen({ gameCode, hostToken, game, players, onReload }
       ) : null}
 
       {game.status === 'finished' ? (
-        <Pressable style={[styles.primaryBtn, acting && styles.btnDisabled]} disabled={acting} onPress={() => void onPlayAgain()}>
-          <Text style={styles.primaryBtnText}>Play again</Text>
-        </Pressable>
+        <>
+          <Pressable style={[styles.primaryBtn, acting && styles.btnDisabled]} disabled={acting} onPress={() => void onPlayAgain()}>
+            <Text style={styles.primaryBtnText}>Play again</Text>
+          </Pressable>
+          <GameFinishedActions
+            gameCode={gameCode}
+            gameType={game.game_type}
+            gameTitle={game.title}
+            resultTitle={
+              winner ? `${players.find((p) => p.id === winner.player_id)?.name ?? 'Player'} wins!` : undefined
+            }
+          />
+        </>
       ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}

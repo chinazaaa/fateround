@@ -60,6 +60,7 @@ export interface Game {
   max_players?: number | null
   allow_viewers?: boolean | null
   allow_late_players?: boolean | null
+  is_public?: boolean | null
   ayo_variant?: string | null
   participant_mode?: ParticipantMode | string | null
   participant_filter?: string | null
@@ -87,6 +88,7 @@ export interface Game {
   game_duration_seconds?: number | null
   rounds_count?: number | null
   replay_pending?: boolean | null
+  pending_host_player_id?: string | null
   tournament_id?: string | null
   chess_board_theme?: string | null
   chess_piece_set?: string | null
@@ -194,13 +196,22 @@ export interface AyoSession {
   captured_b: number
   houses_a: number
   houses_b: number
+  match_round: number
   a_row_size: number
   b_row_size: number
   current_turn: AyoSide
+  a_win_streak: number
+  b_win_streak: number
+  a_time_ms: number | null
+  b_time_ms: number | null
+  turn_started_at: string | null
+  last_pit: number | null
   status: 'active' | 'finished'
+  result_reason: string | null
   winner_player_id: string | null
   is_draw: boolean
   status_message: string | null
+  turn_deadline_at: string | null
 }
 
 export interface BingoCard {

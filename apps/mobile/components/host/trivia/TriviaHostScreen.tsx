@@ -15,7 +15,7 @@ import { getSupabase } from '@/lib/supabase'
 import { ROUND_SELECT, TRIVIA_ANSWER_SELECT } from '@/lib/supabase-selects'
 import { useTriviaAutoAdvance } from '@/hooks/useTriviaAutoAdvance'
 import { HostChrome } from '@/components/host/HostChrome'
-import { HostPlayAlongCard } from '@/components/host/HostPlayAlongCard'
+import { GameFinishedActions } from '@/components/lifecycle/GameFinishedActions'
 
 type Props = {
   gameCode: string
@@ -168,7 +168,6 @@ export function TriviaHostScreen({ gameCode, hostToken, game, players, onReload 
         </Pressable>
       ) : null}
 
-      <HostPlayAlongCard gameCode={gameCode} />
 
       {game.status === 'active' ? (
         <Pressable
@@ -181,13 +180,21 @@ export function TriviaHostScreen({ gameCode, hostToken, game, players, onReload 
       ) : null}
 
       {game.status === 'finished' ? (
-        <Pressable
-          style={[styles.primaryBtn, acting && styles.btnDisabled]}
-          disabled={acting}
-          onPress={() => void onPlayAgain()}
-        >
-          <Text style={styles.primaryBtnText}>Play again</Text>
-        </Pressable>
+        <>
+          <Pressable
+            style={[styles.primaryBtn, acting && styles.btnDisabled]}
+            disabled={acting}
+            onPress={() => void onPlayAgain()}
+          >
+            <Text style={styles.primaryBtnText}>Play again</Text>
+          </Pressable>
+          <GameFinishedActions
+            gameCode={gameCode}
+            gameType={game.game_type}
+            gameTitle={game.title}
+            resultTitle={leader ? `${leader.name} wins!` : undefined}
+          />
+        </>
       ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}

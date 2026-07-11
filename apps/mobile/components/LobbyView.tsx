@@ -1,5 +1,5 @@
-import { ReactNode } from 'react'
-import { ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ReactNode, useState } from 'react'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { Game, Player } from '@fateround/shared'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
@@ -7,6 +7,7 @@ import { PlayerSessionControls } from '@/components/session/PlayerSessionControl
 import { ShareGameCard } from '@/components/session/ShareGameCard'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { gameLabel } from '@/lib/mobile-registry'
+import { postPlayerReady } from '@/lib/game-api'
 
 type Props = {
   gameCode: string
@@ -40,6 +41,22 @@ export function LobbyView({
   const me = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const spectating = !!(me && playerIsViewer(me, game))
   const typeLabel = gameLabel(game.game_type)
+  const [readying, setReadying] = useState(false)
+
+  // After a host "Return to lobby" reset everyone is sat out (spectator). Let a
+  // spectating player take a seat / get ready straight from the normal lobby —
+  // the replay ring path handles the "Play again" case separately.
+  const canGetReady = spectating && game.status === 'waiting' && !!myResumeToken
+  const getReady = async () => {
+    if (!myResumeToken) return
+    setReadying(true)
+    try {
+      await postPlayerReady(gameCode, myResumeToken, true)
+      await onReload?.()
+    } finally {
+      setReadying(false)
+    }
+  }
 
   if (game.replay_pending && game.status === 'waiting') {
     return (
@@ -63,6 +80,15 @@ export function LobbyView({
         {description ? <Text style={styles.description}>{description}</Text> : null}
         <Text style={styles.gameType}>{typeLabel}</Text>
         <GameRulesLink gameType={game.game_type} />
+        {canGetReady ? (
+          <Pressable
+            style={[styles.getReadyBtn, readying && styles.getReadyBtnDisabled]}
+            disabled={readying}
+            onPress={() => void getReady()}
+          >
+            <Text style={styles.getReadyText}>{readying ? 'Joining…' : 'Tap to get ready'}</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       {activity}
@@ -148,6 +174,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: 4,
   },
+  getReadyBtn: {
+    marginTop: 12,
+    backgroundColor: '#f43f5e',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+  },
+  getReadyBtnDisabled: { opacity: 0.7 },
+  getReadyText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   section: {
     color: '#fff',
     fontSize: 16,

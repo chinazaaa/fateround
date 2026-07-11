@@ -1,8 +1,6 @@
 import { useEffect } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
-import { useRouter } from 'expo-router'
+import { StyleSheet, Text } from 'react-native'
 import type { Game } from '@fateround/shared'
-import { AppButton } from '@/components/ui/AppButton'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import { theme } from '@/constants/theme'
 import { getSupabase } from '@/lib/supabase'
@@ -18,8 +16,6 @@ type Props = {
  * host play-again (`waiting` + `replay_pending`) and reloads when that happens.
  */
 export function PlayAgainFooter({ gameCode, game, onReplayReady }: Props) {
-  const router = useRouter()
-
   useEffect(() => {
     if (game.status !== 'finished') return
 
@@ -50,7 +46,6 @@ export function PlayAgainFooter({ gameCode, game, onReplayReady }: Props) {
       <Text style={styles.hint}>
         If the host starts another round, you'll get a ready-up prompt in the lobby.
       </Text>
-      <AppButton label="Go home" variant="secondary" onPress={() => router.replace('/')} />
     </SurfaceCard>
   )
 }

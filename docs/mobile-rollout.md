@@ -254,9 +254,9 @@ Detail:
 - [x] **Party** — describe_it, word_rush, quiplash team/score UX (P2)
 - [x] **Heavy** — monopoly board, scrabble tiles, mahjong table, quick_draw guess (P3)
 - [x] **Quick Draw (guess + Drawful):** native touch canvas (`DrawingCanvas`), stroke sync, full Drawful player flow *(Batch 17)*
-- [ ] **Anonymous room** — text feed only; no GIFs, reactions, reply threading
-- [ ] **Remaining games** — logic-first MVPs (matching_pairs, sudoku, mafia, etc.)
-- [ ] **Mahjong** — simplified claim UI (no full chow/pung/kong picker like web)
+- [x] **Anonymous room** — GIFs (Klipy via `/api/klipy` + `expo-image`), ephemeral reactions (broadcast, `useAnonymousReactions`), and reply threading now shipped (`GifPickerSheet`, upgraded `AnonymousMessagesPlayerView`)
+- [x] **Mahjong** — full pung/kong/chow claim picker (`lib/mahjong-claims.ts` ported from web; chow gated to the seat after the discarder); server re-validates
+- [ ] **Remaining games polish** — all types are playable MVPs; visual/animation parity with web is an ongoing polish backlog, not a functional gap (matching_pairs, sudoku, mafia, etc. all have working player + host views)
 
 ### Testing & release
 
@@ -324,19 +324,19 @@ Batches 10–20 core work is **done**. Next: **custom content create (21–22)**
 - [x] Manual entry: custom WYR / This-or-That pairs, MLT / NHIE / Pick-a-Number / Quiplash prompts, trivia Q&A (question + 2–4 answers + correct + category), describe-it & quick-draw words, codewords single-word pool
 - [x] `question_source`: platform \| custom toggle per supported game (`CustomContentPanel`)
 - [x] Client-side minimums mirror `POST /api/games` (rounds-count floor, Pick-a-Number ≥5, Codewords ≥25 single words)
-- [ ] Deferred: library question packs (read-only pick from `/api/library`) — `question_source: 'library'` stays web-only for now
+- [x] Library question packs — shipped in **Batch 25** (see below)
 
 **Shipped:** `apps/mobile/lib/create-settings/custom-content.ts` (kinds, payload, validation), `apps/mobile/components/create/CustomContentPanel.tsx` (source toggle + list/pair/trivia editors), wired into `CreateWizardShell` + `buildCreatePayload` + `validateCreateState`.
 
-### Batch 22 — Participants & Custom Game *(planned)*
+### Batch 22 — Participants & Custom Game ✅
 
-- [ ] Manual participant list (name + optional gender)
-- [ ] Joiners vs import mode where relevant
-- [ ] **Custom Game** — slot builder (`custom_slots`) + validation
-- [ ] Optional later: CSV import via document picker
-- [ ] Add `custom` to `NATIVE_CREATABLE_GAMES`; remove “go to web” for create
+- [x] Manual participant list — `ParticipantListEditor` (name + optional F/M gender, add/remove, live count vs minimum) as the real People step
+- [x] Joiners vs import mode — `PlayerModePanel` (Hot Seat: join ↔ pre-set roster; Most Likely To: join ↔ import list); Who Said This & Custom are import-locked
+- [x] **Custom Game** — `CustomSlotBuilderPanel` (5 templates + from-scratch, 2–5 slots, emoji/label/color pickers, live preview); `custom_slots` payload + validation (≥2 labelled slots, participants ≥ slot count)
+- [x] Added `custom` to `NATIVE_CREATABLE_GAMES`; removed the custom-slots “go to web” copy
+- [x] **CSV / file import** via document picker — `lib/file-import.ts` (`expo-document-picker` + SDK-57 `new File().text()`); **Import CSV** buttons in `CustomContentPanel` (WYR / list / trivia) and `ParticipantListEditor` (name + gender). `.xlsx` stays web-only (binary)
 
-**Architecture note:** Port per-game **config modules**, not the 4,700-line web create page. Mirror web’s `needsParticipantStep` logic for when step 2 (People) appears.
+**Shipped:** `apps/mobile/lib/create-settings/people.ts` (modes, slots, participant + slot validation, payload), `CustomSlotBuilderPanel.tsx`, `PlayerModePanel.tsx`, `ParticipantListEditor.tsx`; `needsParticipantStep`/`wizardStepsForGame` now derive the People step from `needsPeopleStep(gameType, people)` per web. Replaced the old `PeopleStepPlaceholder`.
 
 ### Batch 23 — Host + play parity *(planned)*
 
@@ -344,18 +344,66 @@ Batches 10–20 core work is **done**. Next: **custom content create (21–22)**
 
 Batch 16 shipped **`HostPlayAlongCard`** (join from in-game host dashboard + **Host** button in player header). Batch 23 finishes the lobby and integrated UX.
 
-| Gap (vs web) | Planned work |
-|--------------|--------------|
-| Play along from **lobby before start** | Add `HostPlayAlongCard` (or shared join flow) to `HostLobbyScreen`; persist host + player sessions |
-| **Spectator vs player** host mode | Per-game or global toggle: host-only (manage) vs play-as-yourself; drop player seat when switching to spectator *(mirror web `HostModeSelector`)* |
-| **Play / Manage on one screen** | Host shell with tabs or segmented control — **Manage** (roster, start, host controls) + **Play** (embedded player view or quick switch without losing context) |
-| **Lobby auto-seat** (board games) | Chess, checkers, tic-tac-toe, ludo, etc.: host picks seat / color in lobby before start *(mirror web host lobby panels)* |
-| **Host rename while seated** | Patch player name via host token when host is also a player *(web `renameHost`)* |
-| **Replay lobby play-along** | After play-again, re-join host’s player seat without re-entering name |
+| Gap (vs web) | Status |
+|--------------|--------|
+| Play along from **lobby before start** | ✅ `HostLobbyPlayCard` on `HostLobbyScreen` — join as player, host token retained, session persisted |
+| **Spectator vs player** host mode | ✅ Play-as-yourself ↔ **Stop playing** (drops the seat via `leaveGame` + `clearPlayerSession`) |
+| **Play / Manage on one screen** | ✅ **Embedded tabs** — `HostChrome` now has a `Manage` / `Play` segmented control; the Play tab renders the host's own `GameRouter` inline (join screen if not seated). Replaced the old navigate-away quick-switch |
+| **Host mode toggle (spectator vs player)** | ✅ Inherent in the Play tab — not seated → join screen; seated → the game. Lobby `HostLobbyPlayCard` also has explicit **Stop playing** |
+| **Lobby auto-seat** (board games) | ✅ chess/checkers/tic-tac-toe/ludo auto-assign colour at start; **Monopoly** now has a lobby token picker in `HostLobbyPlayCard` |
+| **Host rename while seated** | ✅ Rename in `HostLobbyPlayCard` (patches via the host's own resume token) |
+| **Replay lobby play-along** | ✅ `useHostAutoReady` re-marks the seat ready; `postPlayAgain` passes `hostPlayerId` so the seat survives the replay |
 
-**Reference (web):** `HostModeSelector`, play/manage tabs in `*HostView` components, `useHostAutoReady`, `useHostPlayerReconciliation`.
+**Shipped:** `HostLobbyPlayCard.tsx` (+ Monopoly token grid), `hooks/useHostAutoReady.ts`, `hooks/useHostPlayerReconciliation.ts`; `HostChrome` **Manage/Play embedded tabs** (`GameRouter` inline); `postPlayAgain(..., hostPlayerId)`. Removed the standalone in-game `HostPlayAlongCard` (superseded by the Play tab).
 
-**Out of scope for Batch 23:** host transfer to another player (nominee claim flow) — keep web-only unless needed.
+### Batch 24 — Host transfer (nominee claim flow) ✅
+
+**Goal:** Let a host hand the game to another player without web — the claim-based, two-token transfer web already ships.
+
+- [x] **Host side** — `TransferHostSheet` (opened from `HostChrome`'s **Transfer** action): pick a non-spectator player → `POST /transfer-host`; live "waiting for X" via `useHostNomination`; **Cancel invite** (nominate `null`); resolves accept vs decline with `verifyHost` — on accept it drops the dead host token (`clearHostToken`) and returns to the player view, on decline it shows "still the host"
+- [x] **Nominee side** — `HostNominationBanner` in `PlayerSessionShell`: when `pending_host_player_id === myPlayerId`, **Become host** → `POST /claim-host` (mints a fresh host token) → stores it + opens `/host/[code]`; **Decline** → `POST /decline-host`
+- [x] `useHostNomination` — realtime `games.pending_host_player_id` tracker shared by both sides
+- [x] Added `pending_host_player_id` to the shared `Game` type + mobile `GAME_SELECT`; API helpers `postTransferHost` / `postClaimHost` / `postDeclineHost`
+- Only `host_token` moves (rotated, returned solely to the proven nominee); the outgoing host's token is invalidated immediately
+
+**Available in-game** (from the host dashboard). Lobby-stage transfer can be added later if wanted.
+
+### Batch 25 — Library packs ✅
+
+The deferred Batch-21 item. Community question packs, read-only pick from the server.
+
+- [x] Third **Library** source option in `CustomContentPanel` for games that support it (trivia, WYR, This-or-That, MLT, NHIE, Pick-a-Number, Codewords, Describe It, Quick Draw — mirrors web `questionSourceOptions`)
+- [x] `LibraryPackPicker` — lists `GET /api/library?game_type=X`, loads the chosen pack's questions via `GET /api/library/[id]`
+- [x] A picked pack loads into the same editor buffers and persists as `question_source: 'custom'` + `custom_questions` — exactly how web folds library into custom (schema only accepts platform/custom)
+- [x] `fetchLibraryPacks` / `fetchLibraryPack` API client; `packQuestionsToState` + `supportsLibrary` + `usesCustomQuestions` in `custom-content.ts`
+
+**All create-flow deferrals are now closed** except `.xlsx` import (binary — CSV/TSV works natively).
+
+## Lobby settings editing (Batches 26+)
+
+Hosts can now edit settings from the lobby (mirrors web). **Universal four** — visibility, rounds, timer, late-join — shipped in `HostLobbySettingsSheet` (**Edit settings** on `HostLobbyScreen`). These batches add the **game-specific** deltas, grouped so games sharing the same web panel + save endpoint land together. Every lobby edit is server-gated to `status === 'waiting'` (PATCH-route settings also allow `finished`).
+
+**Save endpoints:** `PATCH /api/games/[code]` (universal + poll/trivia/scrabble/npat) · `POST /api/games/[code]/lobby-settings` (board house-rules + several party games + max_players) · dedicated `/api/{describe-it,word-rush,quick-draw,bingo}/settings`, `/api/codewords/{timers,randomize-teams}`.
+
+| Batch | Games | Unique lobby settings | Endpoint | Status |
+|-------|-------|-----------------------|----------|--------|
+| **26** | *(infra)* + Monopoly/Yahtzee/Snake&Ladder + others | `postLobbySettings` helper; **Max players** (board + word_hunt/mafia/sudoku/matching_pairs/ayo) | lobby-settings | ✅ |
+| **27** | Whot, Crazy Eights | Game length + house-rule toggles + turn timer | lobby-settings | ✅ |
+| **28** | Ludo, Ayo | Variant + turn timer | lobby-settings | ✅ |
+| **29** | Describe It, Word Rush | Mode / teams / turn / rounds (+WR prompt·difficulty) | `/describe-it`,`/word-rush`/settings | ⏳ |
+| **30** | Mafia, Quiplash | Roles / dual timers | lobby-settings | ⏳ |
+| **31** | Sudoku, Matching Pairs, Word Hunt | Time / grid / rounds | lobby-settings | ⏳ |
+| **32** | Quick Draw | Variant/mode/teams/timers + word pool | lobby-settings + `/quick-draw/settings` | ⏳ |
+| **33** | Bingo | Call mode + interval | `/bingo/settings` | ⏳ |
+| **34** | Poll suite, Trivia, Two Truths | Pair-vote mode, player questions, AI questions | PATCH | ⏳ |
+| **35** | Scrabble | Dictionary, clock mode/bank | PATCH | ⏳ |
+| **36** | Codewords | Spymaster/operative timers, shuffle teams | `/codewords/{timers,randomize-teams}` | ⏳ |
+| **37** | I-Call-On | Writing/marking timers, duration | PATCH | ⏳ |
+| **38** | Mahjong | Ruleset + conditional rule options (complex, last) | lobby-settings | ⏳ |
+
+**Create-only (no lobby editor — server locks them):** `gender_based`, `trivia_category`, `question_source` (except via word-pool routes), `codewords_player_picks`/`codewords_randomize_teams` flags, `chess_board_theme`/`chess_piece_set`. Yahtzee/Snake&Ladder/Monopoly need nothing beyond Batch 26.
+
+**Batch 26 shipped:** `postLobbySettings` in `game-api.ts`; **Max players** control in `HostLobbySettingsSheet` (routed to `lobby-settings`, gated to the games that route accepts it for).
 
 ### Batch 10 — Session & navigation shell ✅
 
@@ -467,7 +515,8 @@ Client check: `isGameMobileSupported()` in `apps/mobile/lib/api.ts`.
 | `apps/mobile/components/games/GameRouter.tsx` | View registry + batch lists |
 | `apps/mobile/components/lifecycle/*` | Pre-join, replay ready, viewer banner |
 | `apps/mobile/hooks/useGameViewBootstrap.ts` | Join, load, screen FSM |
-| `apps/mobile/components/HostLobbyScreen.tsx` | Host lobby (start, play-again, roster) |
+| `apps/mobile/components/HostLobbyScreen.tsx` | Host lobby (start, play-again, roster, **Edit settings** sheet) |
+| `apps/mobile/components/host/HostLobbySettingsSheet.tsx` | In-lobby settings editor — visibility, rounds, timer, late-join (`PATCH /api/games/[code]`) |
 | `apps/mobile/components/host/HostGameScreen.tsx` | Host shell: lobby vs in-game routing |
 | `apps/mobile/components/host/HostRouter.tsx` | Per-game host view dispatch |
 | `apps/mobile/components/host/HostPlayAlongCard.tsx` | Host join-as-player while keeping token |

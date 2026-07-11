@@ -31,6 +31,7 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postCrazyEightsChoose, postCrazyEightsDraw, postCrazyEightsPlay } from '@/lib/game-api'
+import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { CRAZY8_PLAYER_HANDS_SELECT, CRAZY8_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
@@ -133,10 +134,15 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
-  const playCard = (cardId: string) =>
-    act(() => postCrazyEightsPlay(bootstrap.code, bootstrap.myResumeToken!, cardId))
+  const playCard = (cardId: string) => {
+    playSound('card')
+    return act(() => postCrazyEightsPlay(bootstrap.code, bootstrap.myResumeToken!, cardId))
+  }
 
-  const drawCard = () => act(() => postCrazyEightsDraw(bootstrap.code, bootstrap.myResumeToken!))
+  const drawCard = () => {
+    playSound('card')
+    return act(() => postCrazyEightsDraw(bootstrap.code, bootstrap.myResumeToken!))
+  }
 
   const chooseSuit = (suit: CrazyEightsCalledSuit) =>
     act(() => postCrazyEightsChoose(bootstrap.code, bootstrap.myResumeToken!, suit))

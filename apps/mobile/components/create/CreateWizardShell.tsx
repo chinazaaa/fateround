@@ -3,13 +3,15 @@ import { Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { GameType } from '@fateround/shared'
-import { GameTypePicker } from '@/components/create/GameTypePicker'
-import { PeopleStepPlaceholder } from '@/components/create/PeopleStepPlaceholder'
+import { GameTypePickerField } from '@/components/create/GameTypePickerField'
+import { ParticipantListEditor } from '@/components/create/ParticipantListEditor'
 import { StepIndicator } from '@/components/create/StepIndicator'
 import { UniversalLobbyFields } from '@/components/create/UniversalLobbyFields'
 import { GameRoomSettingsPanel } from '@/components/create/GameRoomSettingsPanel'
 import { PartyRoomSettingsPanel } from '@/components/create/PartyRoomSettingsPanel'
 import { CustomContentPanel } from '@/components/create/CustomContentPanel'
+import { CustomSlotBuilderPanel } from '@/components/create/CustomSlotBuilderPanel'
+import { PlayerModePanel } from '@/components/create/PlayerModePanel'
 import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
 import { FormField } from '@/components/ui/FormField'
@@ -23,6 +25,7 @@ import {
   createInitialState,
   needsParticipantStep,
   validateCreateState,
+  validateSetupStep,
   wizardStepsForGame,
   type CreateWizardState,
   type CreateWizardStep,
@@ -47,9 +50,9 @@ export function CreateWizardShell() {
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const steps = useMemo(() => wizardStepsForGame(state.gameType), [state.gameType])
+  const steps = useMemo(() => wizardStepsForGame(state), [state])
   const stepIndex = step === 'people' ? 1 : 0
-  const showPeopleStep = needsParticipantStep(state.gameType)
+  const showPeopleStep = needsParticipantStep(state)
 
   const patchState = (patch: Partial<CreateWizardState>) => {
     setState((prev) => ({ ...prev, ...patch }))
@@ -58,14 +61,15 @@ export function CreateWizardShell() {
 
   const onGameTypeChange = (gameType: GameType) => {
     setState((prev) => applyGameTypeChange(prev, gameType, limits))
-    if (!needsParticipantStep(gameType)) setStep('setup')
+    setStep('setup')
     setError(null)
   }
 
   const onPrimary = async () => {
     if (step === 'setup' && showPeopleStep) {
-      if (!state.title.trim()) {
-        setError('Enter a game title')
+      const setupError = validateSetupStep(state)
+      if (setupError) {
+        setError(setupError)
         return
       }
       setStep('people')
@@ -95,13 +99,25 @@ export function CreateWizardShell() {
   const primaryLabel =
     step === 'setup' && showPeopleStep ? 'Next: People' : creating ? 'Creating…' : 'Create & host'
 
-  const primaryDisabled =
-    step === 'people' || creating || (step === 'setup' && !state.title.trim())
+  const primaryDisabled = creating || (step === 'setup' && !state.title.trim())
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <AmbientBackground />
-      <KeyboardFormScreen contentContainerStyle={styles.container}>
+      <KeyboardFormScreen
+        contentContainerStyle={styles.container}
+        footer={
+          <View style={styles.footer}>
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+            <AppButton
+              label={primaryLabel}
+              onPress={() => void onPrimary()}
+              loading={creating}
+              disabled={primaryDisabled}
+            />
+          </View>
+        }
+      >
         <Pressable
           style={styles.back}
           onPress={() => {
@@ -143,7 +159,7 @@ export function CreateWizardShell() {
 
             <View style={styles.typeSection}>
               <Text style={styles.typeHeading}>Game type</Text>
-              <GameTypePicker
+              <GameTypePickerField
                 options={NATIVE_CREATABLE_GAMES}
                 value={state.gameType}
                 onChange={onGameTypeChange}
@@ -170,23 +186,30 @@ export function CreateWizardShell() {
               roundsCount={state.party.roundsCount}
               onChange={(customPatch) => patchState({ custom: { ...state.custom, ...customPatch } })}
             />
+
+            <CustomSlotBuilderPanel
+              gameType={state.gameType}
+              people={state.people}
+              onChange={(peoplePatch) => patchState({ people: { ...state.people, ...peoplePatch } })}
+            />
+
+            <PlayerModePanel
+              gameType={state.gameType}
+              people={state.people}
+              onChange={(peoplePatch) => patchState({ people: { ...state.people, ...peoplePatch } })}
+            />
           </>
         ) : (
-          <PeopleStepPlaceholder />
+          <ParticipantListEditor
+            gameType={state.gameType}
+            people={state.people}
+            onChange={(peoplePatch) => patchState({ people: { ...state.people, ...peoplePatch } })}
+          />
         )}
-
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-
-        <AppButton
-          label={primaryLabel}
-          onPress={() => void onPrimary()}
-          loading={creating}
-          disabled={primaryDisabled}
-        />
 
         {step === 'setup' ? (
           <Pressable style={styles.webLink} onPress={() => void Linking.openURL(`${WEB_BASE_URL}/create`)}>
-            <Text style={styles.webLinkText}>Need library packs, file import, or custom game slots?</Text>
+            <Text style={styles.webLinkText}>Prefer a bigger screen, or need .xlsx import?</Text>
             <Text style={styles.webLinkAction}>Full setup on web →</Text>
           </Pressable>
         ) : null}
@@ -232,6 +255,15 @@ const styles = StyleSheet.create({
     color: theme.text,
     fontSize: 18,
     fontWeight: '800',
+  },
+  footer: {
+    paddingHorizontal: theme.space.lg,
+    paddingTop: theme.space.sm,
+    paddingBottom: theme.space.sm,
+    gap: theme.space.sm,
+    borderTopWidth: 1,
+    borderTopColor: theme.border,
+    backgroundColor: theme.bg,
   },
   error: {
     color: theme.error,

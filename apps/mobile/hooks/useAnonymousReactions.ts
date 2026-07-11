@@ -1,0 +1,76 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { RealtimeChannel } from '@supabase/supabase-js'
+import { getSupabase } from '@/lib/supabase'
+
+type ReactionAction = 'add' | 'remove'
+type ReactionEvent = { messageId: string; emoji: string; playerName: string; action: ReactionAction }
+
+/** messageId → emoji → Set<playerName> */
+export type ReactionMap = Map<string, Map<string, Set<string>>>
+
+function applyReactionEvent(prev: ReactionMap, event: ReactionEvent): ReactionMap {
+  const { messageId, emoji, playerName, action } = event
+  const next = new Map(prev)
+  const msg = new Map(next.get(messageId) ?? new Map<string, Set<string>>())
+  const players = new Set(msg.get(emoji) ?? new Set<string>())
+
+  if (action === 'add') players.add(playerName)
+  else players.delete(playerName)
+
+  if (players.size > 0) msg.set(emoji, players)
+  else msg.delete(emoji)
+
+  if (msg.size > 0) next.set(messageId, msg)
+  else next.delete(messageId)
+
+  return next
+}
+
+/**
+ * Ephemeral reactions over a Supabase broadcast channel (no DB), mirroring web
+ * `useAnonymousReactions`. Reactions live only for the session.
+ */
+export function useAnonymousReactions(gameCode: string, enabled: boolean) {
+  const [reactions, setReactions] = useState<ReactionMap>(new Map())
+  const channelRef = useRef<RealtimeChannel | null>(null)
+
+  const applyReaction = useCallback((event: ReactionEvent) => {
+    setReactions((prev) => applyReactionEvent(prev, event))
+  }, [])
+
+  useEffect(() => {
+    if (!enabled || !gameCode) return
+    const supabase = getSupabase()
+    const channel = supabase.channel(`anon-reactions:${gameCode}`, {
+      config: { broadcast: { self: false } },
+    })
+    channel.on('broadcast', { event: 'message-reaction' }, ({ payload }) => {
+      const { messageId, emoji, playerName, action } = (payload ?? {}) as ReactionEvent
+      if (!messageId || !emoji || !playerName || (action !== 'add' && action !== 'remove')) return
+      applyReaction({ messageId, emoji, playerName, action })
+    })
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') channelRef.current = channel
+    })
+    return () => {
+      channelRef.current = null
+      void supabase.removeChannel(channel)
+    }
+  }, [enabled, gameCode, applyReaction])
+
+  const broadcastReaction = useCallback(
+    (messageId: string, emoji: string, playerName: string, action: ReactionAction) => {
+      applyReaction({ messageId, emoji, playerName, action })
+      const channel = channelRef.current
+      if (!channel) return
+      void channel.send({
+        type: 'broadcast',
+        event: 'message-reaction',
+        payload: { messageId, emoji, playerName, action },
+      })
+    },
+    [applyReaction]
+  )
+
+  return { reactions, broadcastReaction }
+}

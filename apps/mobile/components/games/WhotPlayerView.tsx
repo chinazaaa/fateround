@@ -14,6 +14,7 @@ import {
   whotSecondsLeft,
 } from '@fateround/shared/whot'
 import { CardTableArea } from '@/components/games/cards/CardTableArea'
+import { GameTimerBar } from '@/components/games/cards/GameTimerBar'
 import { PlayerTurnRail } from '@/components/games/cards/PlayerTurnRail'
 import { WhotCardFace } from '@/components/games/cards/WhotCardFace'
 import { WhotShapeIcon } from '@/components/games/cards/WhotShapeIcon'
@@ -26,10 +27,11 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postWhotChooseNumber, postWhotChooseShape, postWhotDraw, postWhotPlay } from '@/lib/game-api'
+import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
-import { winnerLeaderboard } from '@/lib/finish-leaderboards'
+import { cardHandLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -108,6 +110,18 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     !!session?.turn_deadline_at && session.phase === 'playing'
   )
 
+  const gameDurationSeconds = bootstrap.game?.game_duration_seconds ?? 0
+  const gameDeadlineAt = useMemo(() => {
+    const start = bootstrap.game?.session_started_at
+    if (!start || gameDurationSeconds <= 0) return null
+    return new Date(new Date(start).getTime() + gameDurationSeconds * 1000).toISOString()
+  }, [bootstrap.game?.session_started_at, gameDurationSeconds])
+  const gameSecondsLeft = useTurnDeadlineSeconds(
+    whotSecondsLeft,
+    gameDeadlineAt,
+    !!gameDeadlineAt && bootstrap.game?.status === 'active'
+  )
+
   const handCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const hand of hands) counts[hand.player_id] = hand.cards.length
@@ -125,7 +139,10 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
-  const playCard = (cardId: string) => act(() => postWhotPlay(bootstrap.code, bootstrap.myResumeToken!, cardId))
+  const playCard = (cardId: string) => {
+    playSound('card')
+    return act(() => postWhotPlay(bootstrap.code, bootstrap.myResumeToken!, cardId))
+  }
 
   const chooseShape = (shape: WhotShape) =>
     act(() => postWhotChooseShape(bootstrap.code, bootstrap.myResumeToken!, shape))
@@ -133,7 +150,10 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const chooseNumber = (number: number) =>
     act(() => postWhotChooseNumber(bootstrap.code, bootstrap.myResumeToken!, number))
 
-  const drawCard = () => act(() => postWhotDraw(bootstrap.code, bootstrap.myResumeToken!))
+  const drawCard = () => {
+    playSound('card')
+    return act(() => postWhotDraw(bootstrap.code, bootstrap.myResumeToken!))
+  }
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
@@ -156,9 +176,29 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'finished') {
     const winner = bootstrap.players.find((p) => p.id === session.winner_player_id)
+    // Rank everyone who was seated (session.turn_order) — NOT `!spectator`, because
+    // the winner is flagged out-of-play when they empty their hand and would be
+    // dropped, leaving the crown on a loser. Fall back to seated players if needed.
+    const playerById = new Map(bootstrap.players.map((p) => [p.id, p]))
+    const seatIds =
+      session.turn_order && session.turn_order.length > 0
+        ? session.turn_order
+        : bootstrap.players.filter((p) => !p.spectator).map((p) => p.id)
+    const standings = seatIds
+      .map((id) => playerById.get(id))
+      .filter((p): p is Player => !!p)
+      .map((p) => {
+        const cards = hands.find((h) => h.player_id === p.id)?.cards ?? []
+        return {
+          id: p.id,
+          name: p.name,
+          points: cards.reduce((sum, c) => sum + (c.number ?? 0), 0),
+          cardCount: cards.length,
+        }
+      })
     return (
       <GameShell bootstrap={bootstrap} title={batch4GameLabel('whot')} subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap} title="Game over" subtitle="Final standings" detail={winner ? `${winner.name} wins` : undefined} leaderboard={winnerLeaderboard(session.winner_player_id, bootstrap.players, bootstrap.myPlayerId)} />
+        <GameFinishPanel bootstrap={bootstrap} title="Game over" subtitle="Final standings" detail={winner ? `${winner.name} wins` : undefined} leaderboard={cardHandLeaderboard(standings, session.winner_player_id, bootstrap.myPlayerId)} />
       </GameShell>
     )
   }
@@ -178,14 +218,26 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   ]
     .filter(Boolean)
     .join(' · ')
+  // Match the web: the draw/pass action is available on your turn unless the pile
+  // is depleted AND you already hold a playable card (then you must play it). This
+  // means you can still draw voluntarily even when holding a wild WHOT.
+  const drawDepleted = isDrawPileDepleted(session)
+  const canPlayNow = !!myHand && hasPlayableCard(myHand.cards, session, rules)
   const canDraw =
-    isMyTurn &&
-    session.phase === 'playing' &&
-    !choosingWhot &&
-    (!myHand || !hasPlayableCard(myHand.cards, session, rules) || isDrawPileDepleted(session))
+    isMyTurn && session.phase === 'playing' && !choosingWhot && !(drawDepleted && canPlayNow)
+  const drawLabel = drawDepleted
+    ? 'Pass turn'
+    : penalty?.type === 'pick2'
+      ? `Draw ${penalty.count} (Pick 2)`
+      : penalty?.type === 'pick3'
+        ? `Draw ${penalty.count} (Pick 3)`
+        : 'Draw a card'
 
   return (
     <GameShell bootstrap={bootstrap} title={batch4GameLabel('whot')} subtitle={bootstrap.code}>
+      {gameDurationSeconds > 0 && gameSecondsLeft > 0 ? (
+        <GameTimerBar secondsLeft={gameSecondsLeft} durationSeconds={gameDurationSeconds} />
+      ) : null}
       <TurnBanner text={session.status_message ?? `${turnName}'s turn`} isMyTurn={isMyTurn} />
       {timerSeconds > 0 ? <TimerBadge seconds={timerSeconds} /> : null}
 
@@ -199,9 +251,10 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
       <CardTableArea
         pileCount={session.draw_pile.length}
         hint={tableHint || null}
+        drawAccent="#059669"
         topCard={
           session.top_card ? (
-            <WhotCardFace card={session.top_card} />
+            <WhotCardFace card={session.top_card} big />
           ) : (
             <Text style={styles.emptyTop}>—</Text>
           )
@@ -253,7 +306,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
 
       {canDraw ? (
         <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void drawCard()}>
-          <Text style={styles.drawText}>Draw card</Text>
+          <Text style={styles.drawText}>{drawLabel}</Text>
         </Pressable>
       ) : null}
     </GameShell>

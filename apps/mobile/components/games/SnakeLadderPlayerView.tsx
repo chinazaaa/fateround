@@ -13,6 +13,7 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postSnakeLadderRoll } from '@/lib/game-api'
+import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { SNAKE_LADDER_PLAYER_STATE_SELECT, SNAKE_LADDER_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
@@ -92,6 +93,7 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
     if (!bootstrap.myResumeToken || acting || !isMyTurn) return
     setActing(true)
     try {
+      playSound('dice')
       await postSnakeLadderRoll(bootstrap.code, bootstrap.myResumeToken)
       await bootstrap.load()
     } finally {

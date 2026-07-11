@@ -14,6 +14,7 @@ import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useRoundTimer } from '@/hooks/useRoundTimer'
 import { useTriviaRevealAdvance } from '@/hooks/useTriviaRevealAdvance'
 import { postTriviaAnswer } from '@/lib/game-api'
+import { playSound } from '@/lib/sounds'
 
 type PlayScreen = 'waiting' | 'active' | 'locked' | 'revealed'
 
@@ -134,6 +135,7 @@ export function TriviaActiveRound({
       try {
         const result = await postTriviaAnswer(gameCode, myResumeToken, currentRound.id, choiceIndex)
         setLastResult({ isCorrect: result.isCorrect, points: result.points })
+        playSound(result.isCorrect ? 'correct' : 'wrong')
         onReload?.()
       } catch {
         answerLockRef.current = false

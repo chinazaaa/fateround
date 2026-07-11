@@ -5,10 +5,12 @@ import { WHOT_SHAPE_COLORS, WhotShapeIcon } from './WhotShapeIcon'
 export function WhotCardFace({
   card,
   compact,
+  big,
   playable,
 }: {
   card: WhotCard
   compact?: boolean
+  big?: boolean
   playable?: boolean
 }) {
   const isWhot = card.number === 20
@@ -19,12 +21,13 @@ export function WhotCardFace({
       style={[
         styles.card,
         compact && styles.cardCompact,
+        big && styles.cardBig,
         playable && styles.cardPlayable,
         { backgroundColor: isWhot ? '#581c87' : accent },
       ]}
     >
-      <Text style={styles.number}>{isWhot ? 'WHOT' : card.number}</Text>
-      <WhotShapeIcon shape={card.shape} size={compact ? 18 : 22} onCard />
+      <Text style={[styles.number, big && styles.numberBig]}>{isWhot ? 'WHOT' : card.number}</Text>
+      <WhotShapeIcon shape={card.shape} size={compact ? 18 : big ? 28 : 22} onCard />
     </View>
   )
 }
@@ -45,6 +48,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   cardCompact: { width: 48, height: 68 },
+  cardBig: { width: 66, height: 94, borderRadius: 10, padding: 8 },
   cardPlayable: { borderColor: '#fcd34d', borderWidth: 2 },
   number: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  numberBig: { fontSize: 20 },
 })

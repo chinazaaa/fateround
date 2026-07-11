@@ -10,6 +10,19 @@ export type FinishedLeaderboardRow = {
   name: string
   score: number | string
   highlight?: boolean
+  /** Appends "(you)" to the name. */
+  you?: boolean
+  /** Unit shown after the score, e.g. "pts". */
+  scoreSuffix?: string
+  /** Secondary stat shown after the score, e.g. "2/2" correct. */
+  detail?: string
+}
+
+function rankBadge(index: number): string {
+  if (index === 0) return '👑'
+  if (index === 1) return '🥈'
+  if (index === 2) return '🥉'
+  return `${index + 1}`
 }
 
 export function GameLoading() {
@@ -126,9 +139,16 @@ export function GameFinishedScreen({
         <View style={styles.leaderboard}>
           {leaderboard.map((row, index) => (
             <View key={`${row.name}-${index}`} style={[styles.leaderboardRow, row.highlight && styles.leaderboardHighlight]}>
-              <Text style={styles.leaderboardRank}>{index + 1}</Text>
-              <Text style={styles.leaderboardName}>{row.name}</Text>
-              <Text style={styles.leaderboardScore}>{row.score}</Text>
+              <Text style={styles.leaderboardRank}>{rankBadge(index)}</Text>
+              <Text style={styles.leaderboardName} numberOfLines={1}>
+                {row.name}
+                {row.you ? <Text style={styles.leaderboardYou}> (you)</Text> : null}
+              </Text>
+              <Text style={styles.leaderboardScore}>
+                {row.score}
+                {row.scoreSuffix ? ` ${row.scoreSuffix}` : ''}
+                {row.detail ? <Text style={styles.leaderboardDetail}>{`  ·  ${row.detail}`}</Text> : null}
+              </Text>
             </View>
           ))}
         </View>
@@ -255,6 +275,10 @@ const styles = StyleSheet.create({
   leaderboard: {
     gap: 6,
     marginTop: 4,
+    // Fill the (centered) panel width so each row's flex name column has room
+    // to expand — otherwise the name collapses to zero width and disappears.
+    alignSelf: 'stretch',
+    width: '100%',
   },
   leaderboardRow: {
     flexDirection: 'row',
@@ -271,9 +295,10 @@ const styles = StyleSheet.create({
   },
   leaderboardRank: {
     color: '#6b7280',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
-    width: 20,
+    width: 26,
+    textAlign: 'center',
   },
   leaderboardName: {
     flex: 1,
@@ -281,10 +306,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
+  leaderboardYou: {
+    color: '#9ca3af',
+    fontWeight: '600',
+  },
   leaderboardScore: {
     color: '#fda4af',
     fontSize: 15,
     fontWeight: '700',
+  },
+  leaderboardDetail: {
+    color: '#6b7280',
+    fontSize: 13,
+    fontWeight: '600',
   },
   finishedButton: {
     backgroundColor: '#f43f5e',

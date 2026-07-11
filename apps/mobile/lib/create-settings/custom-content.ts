@@ -19,7 +19,7 @@ export const CODEWORDS_MIN_CUSTOM_POOL = 25
 export const PICK_A_NUMBER_MIN_POOL = 5
 export const MAX_TRIVIA_CHOICES = 4
 
-export type CustomQuestionSource = 'platform' | 'custom'
+export type CustomQuestionSource = 'platform' | 'custom' | 'library'
 
 /** Which manual editor a game needs. */
 export type CustomContentKind = 'binary' | 'trivia' | 'list'
@@ -37,6 +37,27 @@ export type CustomContentState = {
   pairs: WyrPairDraft[]
   prompts: string[]
   trivia: TriviaDraft[]
+  /** Title of the picked community pack when `source === 'library'` (UI only). */
+  libraryPackTitle: string | null
+}
+
+/** Library and custom both persist as `question_source: 'custom'` — they share buffers. */
+export function usesCustomQuestions(source: CustomQuestionSource): boolean {
+  return source !== 'platform'
+}
+
+/** Games that expose a community "library" pack tier (mirrors web `questionSourceOptions`). */
+export function supportsLibrary(gameType: GameType): boolean {
+  return (
+    isTriviaGame(gameType) ||
+    isBinaryChoiceGame(gameType) ||
+    isMostLikelyTo(gameType) ||
+    isNeverHaveIEver(gameType) ||
+    isPickANumber(gameType) ||
+    isCodewordsGame(gameType) ||
+    isDescribeItGame(gameType) ||
+    isQuickDrawGame(gameType)
+  )
 }
 
 export function emptyTriviaDraft(): TriviaDraft {
@@ -49,7 +70,48 @@ export function defaultCustomContentState(): CustomContentState {
     pairs: [{ optionA: '', optionB: '' }],
     prompts: [''],
     trivia: [emptyTriviaDraft()],
+    libraryPackTitle: null,
   }
+}
+
+/** Convert a community pack's raw `questions` into the editor buffers for a game. */
+export function packQuestionsToState(
+  gameType: GameType,
+  questions: unknown[],
+  title: string
+): Partial<CustomContentState> {
+  const kind = customContentKind(gameType)
+  if (kind === 'binary') {
+    const pairs = questions
+      .map((q) => {
+        const o = (q ?? {}) as { optionA?: unknown; optionB?: unknown }
+        return { optionA: String(o.optionA ?? '').trim(), optionB: String(o.optionB ?? '').trim() }
+      })
+      .filter((p) => p.optionA && p.optionB)
+    return { source: 'library', libraryPackTitle: title, pairs: pairs.length ? pairs : [{ optionA: '', optionB: '' }] }
+  }
+  if (kind === 'trivia') {
+    const trivia = questions
+      .map((q) => {
+        const o = (q ?? {}) as { question?: unknown; choices?: unknown; correctIndex?: unknown; category?: unknown }
+        const choices = Array.isArray(o.choices)
+          ? o.choices.filter((c): c is string => typeof c === 'string').map((c) => c.trim()).filter(Boolean)
+          : []
+        return {
+          question: String(o.question ?? '').trim(),
+          choices: choices.slice(0, MAX_TRIVIA_CHOICES),
+          correctIndex: Number(o.correctIndex) || 0,
+          category: (o.category === 'tech' ? 'tech' : 'general') as TriviaCategory,
+        }
+      })
+      .filter((t) => t.question && t.choices.length >= 2 && t.correctIndex < t.choices.length)
+    return { source: 'library', libraryPackTitle: title, trivia: trivia.length ? trivia : [emptyTriviaDraft()] }
+  }
+  const prompts = questions
+    .map((q) => (typeof q === 'string' ? q : String((q as { question?: unknown })?.question ?? '')))
+    .map((p) => p.trim())
+    .filter(Boolean)
+  return { source: 'library', libraryPackTitle: title, prompts: prompts.length ? prompts : [''] }
 }
 
 /**
@@ -215,15 +277,16 @@ export function validateCustomContent(
   custom: CustomContentState,
   roundsCount: number
 ): string | null {
-  if (!supportsCustomContent(gameType) || custom.source !== 'custom') return null
+  if (!supportsCustomContent(gameType) || !usesCustomQuestions(custom.source)) return null
   const count = customContentCount(gameType, custom)
   const min = customContentMinimum(gameType, roundsCount)
   if (count < min) {
     const noun = customContentNoun(gameType)
+    const lead = custom.source === 'library' ? 'Pick a pack with at least' : 'Add at least'
     if (isCodewordsGame(gameType) || isPickANumber(gameType)) {
-      return `Add at least ${min} ${noun} (${count} so far)`
+      return `${lead} ${min} ${noun} (${count} so far)`
     }
-    return `Add at least ${min} ${noun} for ${roundsCount} rounds (${count} so far)`
+    return `${lead} ${min} ${noun} for ${roundsCount} rounds (${count} so far)`
   }
   return null
 }
@@ -233,7 +296,7 @@ export function customContentPayload(
   gameType: GameType,
   custom: CustomContentState
 ): Record<string, unknown> {
-  if (!supportsCustomContent(gameType) || custom.source !== 'custom') {
+  if (!supportsCustomContent(gameType) || !usesCustomQuestions(custom.source)) {
     return { question_source: 'platform' }
   }
   const kind = customContentKind(gameType)
