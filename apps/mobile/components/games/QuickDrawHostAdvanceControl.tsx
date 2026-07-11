@@ -34,7 +34,7 @@ export function QuickDrawHostAdvanceControl({
     setError(null)
     try {
       if (isGuess) await postQuickDrawGuessAdvance(gameCode, hostToken)
-      else await postQuickDrawAdvance(gameCode)
+      else await postQuickDrawAdvance(gameCode, hostToken, true)
       await onReload()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to advance')

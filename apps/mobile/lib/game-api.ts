@@ -1106,8 +1106,14 @@ export function postQuickDrawVote(gameId: string, resumeToken: string, drawingId
   })
 }
 
-export function postQuickDrawAdvance(gameId: string) {
-  return postJson<{ ok?: boolean }>('/api/quick-draw/advance', { gameId: gameId.toUpperCase() })
+export function postQuickDrawAdvance(gameId: string, hostToken?: string, force?: boolean) {
+  return postJson<{ ok?: boolean }>('/api/quick-draw/advance', {
+    gameId: gameId.toUpperCase(),
+    ...(hostToken ? { hostToken } : {}),
+    // Host "skip" must bypass the phase gates; the auto-advance loop omits this
+    // so it only advances once the timer/submission conditions are actually met.
+    ...(force ? { force: true } : {}),
+  })
 }
 
 export function postMafiaAdvanceHost(gameId: string, hostToken: string, nextPhase?: string) {
