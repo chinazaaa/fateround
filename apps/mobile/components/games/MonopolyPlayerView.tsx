@@ -57,6 +57,7 @@ import {
   type MortgageAction,
   type TradeProposal,
 } from '@/components/games/monopoly/MonopolyManagePanel'
+import { MonopolyPlayerList } from '@/components/games/monopoly/MonopolyPlayerList'
 import { MonopolyTradeModal } from '@/components/games/monopoly/MonopolyTradeModal'
 import { getMonopolyBuildActionCount, normalizePendingTrade } from '@/components/games/monopoly/manage-logic'
 import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
@@ -80,6 +81,9 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const [joiningToken, setJoiningToken] = useState(false)
   const [timerTick, setTimerTick] = useState(0)
   const [manageError, setManageError] = useState<string | null>(null)
+  // Bottom-panel tabs (mirrors web MonopolyActiveLayout `SidePanel`): 'build'
+  // shows the Build & trade manage panel, 'players' shows the all-players list.
+  const [panel, setPanel] = useState<'build' | 'players'>('build')
   const styles = useThemedStyles(makeStyles)
   const theme = useTheme()
 
@@ -91,6 +95,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const managePanelYRef = useRef(0)
   const nudgeAnim = useRef(new Animated.Value(0)).current
   const scrollToManagePanel = useCallback(() => {
+    setPanel('build')
     scrollRef.current?.scrollTo({ y: Math.max(managePanelYRef.current - 12, 0), animated: true })
   }, [])
 
@@ -187,6 +192,11 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const me = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
   const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
   const isMyTurn = turnPlayerId === bootstrap.myPlayerId && !myState?.bankrupt && !isViewer
+
+  // Viewers have no Build & trade panel, so pin them to the Players tab.
+  useEffect(() => {
+    if (isViewer) setPanel('players')
+  }, [isViewer])
 
   useGameTurnAlerts({
     gameCode: bootstrap.code,
@@ -713,33 +723,39 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           </View>
         ) : null}
 
-        <View style={styles.scores}>
-          {states.map((state, index) => {
-            const player = bootstrap.players.find((p) => p.id === state.player_id)
-            const space = spaceAt(state.position)
-            return (
-              <View key={state.id} style={[styles.scoreRow, state.player_id === turnPlayerId && styles.scoreRowActive]}>
-                <Text style={styles.scoreName}>
-                  {monopolyTokenEmoji(player?.monopoly_token, index)} {player?.name ?? 'Player'}
-                  {state.bankrupt ? ' (bankrupt)' : ''}
-                </Text>
-                <Text style={styles.scoreMeta}>
-                  {formatThemedMoney(state.cash, themeId)} · {themedSpaceName(space.name, state.position, themeId)}
-                  {state.in_jail ? ' · Jail' : ''}
-                </Text>
-              </View>
-            )
-          })}
-        </View>
-
         {showRaiseFunds && debt ? (
           <Text style={styles.raiseReason}>{formatThemedText(debt.reason, themeId)}</Text>
         ) : null}
 
         {manageError ? <Text style={styles.errorText}>{manageError}</Text> : null}
 
-        {isViewer ? null : (
-          <View onLayout={(e) => (managePanelYRef.current = e.nativeEvent.layout.y)}>
+        {/* Tabbed bottom panel — Build & trade / Players (mirrors web). */}
+        <View style={styles.panelWrap} onLayout={(e) => (managePanelYRef.current = e.nativeEvent.layout.y)}>
+          {isViewer ? (
+            <Text style={styles.panelLabel}>Players</Text>
+          ) : (
+            <View style={styles.tabBar}>
+              <Pressable
+                style={[styles.tab, panel === 'build' && styles.tabActive]}
+                onPress={() => setPanel('build')}
+              >
+                <Text style={[styles.tabText, panel === 'build' && styles.tabTextActive]}>Build &amp; trade</Text>
+                {buildActions > 0 ? (
+                  <View style={styles.tabBadge}>
+                    <Text style={styles.tabBadgeText}>{buildActions}</Text>
+                  </View>
+                ) : null}
+              </Pressable>
+              <Pressable
+                style={[styles.tab, panel === 'players' && styles.tabActive]}
+                onPress={() => setPanel('players')}
+              >
+                <Text style={[styles.tabText, panel === 'players' && styles.tabTextActive]}>Players</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {!isViewer && panel === 'build' ? (
             <MonopolyManagePanel
               board={board}
               myPlayerId={bootstrap.myPlayerId}
@@ -754,8 +770,17 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               onCancelTrade={onCancelTrade}
               onRepairTrade={onRepairTrade}
             />
-          </View>
-        )}
+          ) : (
+            <MonopolyPlayerList
+              states={states}
+              players={bootstrap.players}
+              currentPlayerId={turnPlayerId}
+              propertyOwners={board.property_owners}
+              myPlayerId={bootstrap.myPlayerId}
+              themeId={themeId}
+            />
+          )}
+        </View>
       </ScrollView>
 
       {incomingTrade ? (
@@ -873,11 +898,56 @@ const makeStyles = (theme: Theme) =>
   cardEvent: { backgroundColor: theme.surface, borderRadius: 12, padding: 12, gap: 4 },
   cardKind: { color: '#fbbf24', fontSize: 12, textTransform: 'uppercase' },
   cardText: { color: theme.text, fontSize: 14 },
-  scores: { gap: 8 },
-  scoreRow: { backgroundColor: theme.surface, borderRadius: 10, padding: 10 },
-  scoreRowActive: { borderColor: theme.primary, borderWidth: 1 },
-  scoreName: { color: theme.text, fontSize: 15, fontWeight: '600' },
-  scoreMeta: { color: theme.textMuted, fontSize: 13, marginTop: 2 },
+  panelWrap: { gap: 12 },
+  panelLabel: {
+    color: theme.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    paddingHorizontal: 2,
+  },
+  // Pill tab bar (mirrors web's inset tablist): a rounded inset track with two
+  // segments; the active tab is a raised/filled surface.
+  tabBar: {
+    flexDirection: 'row',
+    gap: 6,
+    padding: 4,
+    borderRadius: 14,
+    backgroundColor: theme.bg,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 8,
+  },
+  tabActive: {
+    backgroundColor: theme.surface,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  tabText: { color: theme.textMuted, fontSize: 14, fontWeight: '700' },
+  tabTextActive: { color: theme.text },
+  tabBadge: {
+    minWidth: 18,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 999,
+    backgroundColor: theme.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabBadgeText: { color: '#fff', fontSize: 10, fontWeight: '900' },
   actionPanel: { backgroundColor: theme.surface, borderRadius: 12, padding: 14, gap: 10 },
   actionTitle: { color: theme.text, fontSize: 17, fontWeight: '700' },
   actionSub: { color: theme.textMuted, fontSize: 13 },
@@ -907,14 +977,26 @@ const makeStyles = (theme: Theme) =>
     alignItems: 'center',
     gap: 3,
     width: '100%',
-    backgroundColor: 'rgba(15,23,42,0.42)',
+    // Solid dark card so the cash reads clearly over any edition's board-centre
+    // colour (some palettes use a light centre that swallowed the old
+    // translucent card + white text).
+    backgroundColor: 'rgba(10,15,28,0.94)',
     borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.35)',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
   },
   centerOn: { color: 'rgba(255,255,255,0.82)', fontSize: 9, fontWeight: '700', textAlign: 'center' },
-  centerCashLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 8, fontWeight: '800', letterSpacing: 0.6 },
-  centerCash: { color: '#ffffff', fontSize: 20, fontWeight: '800' },
+  centerCashLabel: {
+    color: 'rgba(251,191,36,0.85)',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginTop: 1,
+  },
+  // Bright amber, large + bold so the amount is unmistakable on the board.
+  centerCash: { color: '#fbbf24', fontSize: 24, fontWeight: '900', fontVariant: ['tabular-nums'] },
   centerCashBankrupt: { color: '#fca5a5' },
   dieRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
   die: { width: 22, height: 22, borderRadius: 5, backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center' },

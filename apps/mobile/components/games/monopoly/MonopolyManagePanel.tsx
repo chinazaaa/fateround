@@ -10,6 +10,7 @@ import { MONOPOLY_COLOR_HEX } from '@fateround/shared/monopoly-board-layout'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { formatThemedMoney, themedSpaceName } from './monopoly-theme'
+import { buildColorPortfolio, type ColorPortfolioStatus } from './color-portfolio'
 import { MonopolyTradeReview } from './MonopolyTradeReview'
 import {
   buildColorGroupStatuses,
@@ -168,6 +169,56 @@ export function MonopolyManagePanel({
   const myGroups = ownedColorGroups(owners, myPlayerId)
   const stationAndUtilityProps = mine.filter((s) => s.type === 'station' || s.type === 'utility')
 
+  // Full colour-set portfolio (all groups, with the streets still needed) —
+  // mirrors web MonopolyColorPortfolio / ColorSetRow.
+  const playerNames = new Map(players.map((p) => [p.id, p.name]))
+  const portfolio = buildColorPortfolio(owners, myPlayerId, playerNames)
+  const streetSets = portfolio.filter((s) => s.group !== 'station' && s.group !== 'utility')
+  const specialSets = portfolio.filter((s) => s.group === 'station' || s.group === 'utility')
+  const completeSetCount = streetSets.filter((s) => s.complete).length
+  const inProgressSetCount = streetSets.filter((s) => s.owned > 0 && !s.complete).length
+
+  const renderColorSetCard = (status: ColorPortfolioStatus) => {
+    const inactive = status.owned === 0
+    return (
+      <View
+        key={status.group}
+        style={[
+          styles.setCard,
+          inactive ? styles.setCardInactive : status.complete ? styles.setCardComplete : null,
+        ]}
+      >
+        <View style={[styles.setCardBar, { backgroundColor: MONOPOLY_COLOR_HEX[status.group] }]} />
+        <View style={styles.setCardBody}>
+          <View style={styles.setCardHeader}>
+            <Text style={styles.setCardName} numberOfLines={1}>
+              {status.label}
+            </Text>
+            <Text style={styles.setCardCount}>
+              {status.owned}/{status.total}
+              {status.complete ? <Text style={styles.setCardCheck}> ✓</Text> : null}
+            </Text>
+          </View>
+          {!inactive && status.missing.length > 0 ? (
+            <Text style={styles.setCardNeed}>
+              <Text style={styles.setCardNeedLabel}>Need: </Text>
+              {status.missing.map((m, i) => (
+                <Text key={m.index}>
+                  {i > 0 ? ', ' : ''}
+                  <Text style={styles.setCardNeedStreet}>{themedSpaceName(m.name, m.index, themeId)}</Text>
+                  <Text style={styles.setCardNeedOwner}>
+                    {m.heldBy === 'other' && m.ownerName ? ` (${m.ownerName})` : ' (bank)'}
+                  </Text>
+                </Text>
+              ))}
+            </Text>
+          ) : null}
+          {inactive ? <Text style={styles.setCardEmpty}>None owned yet</Text> : null}
+        </View>
+      </View>
+    )
+  }
+
   const renderPropertyCard = (space: (typeof mine)[number]) => {
     const level = buildingLevel(buildings, space.index)
     const isMortgaged = mortgaged[String(space.index)]
@@ -284,27 +335,17 @@ export function MonopolyManagePanel({
         </Text>
       </View>
 
-      {/* Color-set tracker */}
+      {/* Colour-set portfolio */}
       <View style={styles.section}>
-        <Text style={styles.labelCaps}>Color sets</Text>
-        <View style={styles.setGrid}>
-          {ownedColorGroups(owners, myPlayerId).length === 0 ? (
-            <Text style={styles.muted}>No properties yet.</Text>
-          ) : (
-            myGroups.map((group) => {
-              const status = statusByGroup.get(group)!
-              return (
-                <View key={group} style={styles.setPill}>
-                  <View style={[styles.setSwatch, { backgroundColor: MONOPOLY_COLOR_HEX[group] }]} />
-                  <Text style={styles.setPillText}>
-                    {COLOR_GROUP_LABELS[group]} {status.owned}/{status.total}
-                    {status.complete ? ' ✓' : ''}
-                  </Text>
-                </View>
-              )
-            })
-          )}
+        <View style={styles.setHeaderRow}>
+          <Text style={styles.labelCaps}>Colour sets</Text>
+          <Text style={styles.setHeaderMeta}>
+            {completeSetCount} complete
+            {inProgressSetCount > 0 ? ` · ${inProgressSetCount} in progress` : ''}
+          </Text>
         </View>
+        <View style={styles.setGrid}>{streetSets.map(renderColorSetCard)}</View>
+        <View style={styles.setGrid}>{specialSets.map(renderColorSetCard)}</View>
       </View>
 
       {/* Your properties */}
@@ -621,20 +662,37 @@ const makeStyles = (theme: Theme) =>
     strong: { color: theme.text, fontWeight: '700' },
     inventoryText: { color: theme.text, fontSize: 14, fontWeight: '600' },
 
-    setGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-    setPill: {
+    setHeaderRow: {
       flexDirection: 'row',
-      alignItems: 'center',
+      flexWrap: 'wrap',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
       gap: 6,
-      backgroundColor: theme.bg,
-      borderRadius: 8,
+    },
+    setHeaderMeta: { color: theme.textMuted, fontSize: 10 },
+    setGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    setCard: {
+      width: '48%',
+      flexGrow: 1,
+      borderRadius: 12,
       borderWidth: 1,
       borderColor: theme.border,
-      paddingHorizontal: 8,
-      paddingVertical: 5,
+      backgroundColor: theme.bg,
+      overflow: 'hidden',
     },
-    setSwatch: { width: 12, height: 12, borderRadius: 3 },
-    setPillText: { color: theme.text, fontSize: 12, fontWeight: '600' },
+    setCardInactive: { opacity: 0.55 },
+    setCardComplete: { borderColor: theme.primary },
+    setCardBar: { height: 8, width: '100%' },
+    setCardBody: { paddingHorizontal: 10, paddingVertical: 8, gap: 3 },
+    setCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
+    setCardName: { color: theme.text, fontSize: 13, fontWeight: '700', flexShrink: 1 },
+    setCardCount: { color: theme.text, fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] },
+    setCardCheck: { color: theme.primary },
+    setCardNeed: { color: theme.textMuted, fontSize: 10, lineHeight: 15 },
+    setCardNeedLabel: { color: theme.textMuted, fontWeight: '700' },
+    setCardNeedStreet: { color: theme.text },
+    setCardNeedOwner: { color: theme.textFaint },
+    setCardEmpty: { color: theme.textFaint, fontSize: 10 },
 
     groupBlock: { gap: 8, marginTop: 4 },
     groupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },

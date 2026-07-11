@@ -10,9 +10,9 @@ import {
 } from '@fateround/shared/monopoly-board-layout'
 import { spaceAt } from '@fateround/shared/monopoly-board'
 import { monopolyTokenEmoji } from '@fateround/shared/monopoly-tokens'
-import { getBoardPalette, themedSpaceIcon, themedSpaceName } from './monopoly-theme'
+import { formatThemedMoney, getBoardPalette, themedSpaceIcon, themedSpaceName } from './monopoly-theme'
 
-const TOKEN_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899']
+export const TOKEN_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899']
 
 function defaultSpaceIcon(type: string): string {
   switch (type) {
@@ -151,10 +151,29 @@ export function MonopolyBoardView({
                       ]}
                     />
                   ) : null}
-                  <Text style={[styles.spaceName, { color: palette.tileText }]} numberOfLines={2}>
+                  {space.price != null && !ownerId ? (
+                    <Text style={[styles.spacePrice, { color: palette.tileText }]} numberOfLines={1}>
+                      {formatThemedMoney(space.price, themeId)}
+                    </Text>
+                  ) : null}
+                  <Text
+                    style={[styles.spaceName, { color: palette.tileText }]}
+                    numberOfLines={space.price != null ? 1 : 2}
+                  >
                     {shortMonopolySpaceName(displayName, isCorner ? 6 : 7)}
                   </Text>
-                  {space.type !== 'property' ? <Text style={styles.spaceIcon}>{icon}</Text> : null}
+                  {space.price == null && space.type !== 'property' ? (
+                    <Text style={styles.spaceIcon}>{icon}</Text>
+                  ) : null}
+                  {space.price != null ? (
+                    <Text style={[styles.spaceRent, { color: palette.tileText }]} numberOfLines={1}>
+                      {space.type === 'utility'
+                        ? '4×/10×'
+                        : space.rent != null
+                          ? formatThemedMoney(space.rent, themeId)
+                          : ''}
+                    </Text>
+                  ) : null}
                   {ownerId ? (
                     <View
                       style={[
@@ -240,6 +259,20 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center',
     lineHeight: 7,
+  },
+  spacePrice: {
+    fontSize: 6,
+    fontWeight: '900',
+    textAlign: 'center',
+    lineHeight: 7,
+    opacity: 0.95,
+  },
+  spaceRent: {
+    fontSize: 5.5,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 6.5,
+    opacity: 0.7,
   },
   spaceIcon: { fontSize: 8, marginTop: 1 },
   ownerDot: {
