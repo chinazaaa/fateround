@@ -7,6 +7,7 @@ import { patchGameSettings, postFinishGame, postPlayAgain, removePlayerAsHost } 
 import { SettingToggle } from '@/components/create/SettingToggle'
 import { LateJoinPolicyPicker } from '@/components/create/LateJoinPolicyPicker'
 import { WordRushHostRoundControl } from '@/components/games/WordRushHostRoundControl'
+import { AddGameTimeControl } from '@/components/host/AddGameTimeControl'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
@@ -183,6 +184,8 @@ export function HostControlsSheet({
           {active && game.game_type === 'word_rush' ? (
             <WordRushHostRoundControl gameCode={gameCode} hostToken={hostToken} onReload={onReload} />
           ) : null}
+
+          <AddGameTimeControl gameCode={gameCode} hostToken={hostToken} game={game} onExtended={onReload} />
 
           {active ? (
             <Pressable

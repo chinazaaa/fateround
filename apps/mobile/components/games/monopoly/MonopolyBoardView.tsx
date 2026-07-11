@@ -6,7 +6,6 @@ import {
   MONOPOLY_GRID_SIZE,
   BOARD_SPACE_GRID,
   boardEdgeForSpace,
-  shortMonopolySpaceName,
 } from '@fateround/shared/monopoly-board-layout'
 import { spaceAt } from '@fateround/shared/monopoly-board'
 import { monopolyTokenEmoji } from '@fateround/shared/monopoly-tokens'
@@ -70,7 +69,7 @@ export function MonopolyBoardView({
   center?: ReactNode
 }) {
   const { width } = useWindowDimensions()
-  const cellSize = Math.min(Math.floor((width - 24) / MONOPOLY_GRID_SIZE), 34)
+  const cellSize = Math.min(Math.floor((width - 12) / MONOPOLY_GRID_SIZE), 42)
   const boardPx = cellSize * MONOPOLY_GRID_SIZE
   const innerPx = cellSize * (MONOPOLY_GRID_SIZE - 2)
   const palette = getBoardPalette(themeId)
@@ -158,9 +157,11 @@ export function MonopolyBoardView({
                   ) : null}
                   <Text
                     style={[styles.spaceName, { color: palette.tileText }]}
-                    numberOfLines={space.price != null ? 1 : 2}
+                    numberOfLines={2}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.7}
                   >
-                    {shortMonopolySpaceName(displayName, isCorner ? 6 : 7)}
+                    {displayName}
                   </Text>
                   {space.price == null && space.type !== 'property' ? (
                     <Text style={styles.spaceIcon}>{icon}</Text>
@@ -255,23 +256,23 @@ const styles = StyleSheet.create({
   colorBarHorizontal: { top: 0, left: 0, right: 0, height: 4 },
   colorBarVertical: { top: 0, bottom: 0, left: 0, width: 4 },
   spaceName: {
-    fontSize: 6,
+    fontSize: 7,
     fontWeight: '800',
     textAlign: 'center',
-    lineHeight: 7,
+    lineHeight: 8,
   },
   spacePrice: {
-    fontSize: 6,
+    fontSize: 7,
     fontWeight: '900',
     textAlign: 'center',
-    lineHeight: 7,
+    lineHeight: 8,
     opacity: 0.95,
   },
   spaceRent: {
-    fontSize: 5.5,
+    fontSize: 6,
     fontWeight: '600',
     textAlign: 'center',
-    lineHeight: 6.5,
+    lineHeight: 7,
     opacity: 0.7,
   },
   spaceIcon: { fontSize: 8, marginTop: 1 },

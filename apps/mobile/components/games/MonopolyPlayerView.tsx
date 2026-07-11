@@ -11,7 +11,7 @@ import {
   MONOPOLY_JAIL_FINE,
   spaceAt,
 } from '@fateround/shared/monopoly-board'
-import { resolveMonopolyBanner } from '@/components/games/monopoly/monopoly-status-messages'
+import { monopolyEventSeq, resolveMonopolyBanner } from '@/components/games/monopoly/monopoly-status-messages'
 import {
   currentPlayerId,
   monopolyPhaseLabel,
@@ -27,9 +27,11 @@ import {
 } from '@fateround/shared/monopoly-tokens'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { MonopolyBoardView } from '@/components/games/monopoly/MonopolyBoardView'
+import { MonopolyGameTimerBar } from '@/components/games/monopoly/MonopolyGameTimerBar'
+import { MonopolyStatusCards } from '@/components/games/monopoly/MonopolyStatusCards'
 import {
   formatThemedMoney,
   formatThemedText,
@@ -70,6 +72,27 @@ import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+
+/**
+ * Returns whether a sequenced event notification is currently "fresh". Each time
+ * `seq` increases (a new event), it flashes on for `ms` then auto-hides — so
+ * stale notifications (a card effect, a rent line) don't linger forever, and a
+ * new event always re-appears. `seq === 0` means "no event" → never shown here.
+ */
+function useSeqFlash(seq: number, ms = 6000): boolean {
+  const [hidden, setHidden] = useState(false)
+  const lastSeq = useRef(0)
+  useEffect(() => {
+    if (seq > 0 && seq !== lastSeq.current) {
+      lastSeq.current = seq
+      setHidden(false)
+      const t = setTimeout(() => setHidden(true), ms)
+      return () => clearTimeout(t)
+    }
+    return undefined
+  }, [seq, ms])
+  return seq > 0 && !hidden
+}
 
 export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const [board, setBoard] = useState<MonopolyBoard | null>(null)
@@ -155,6 +178,14 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     const free = firstAvailableMonopolyToken(bootstrap.players)
     setSelectedToken(free)
   }, [bootstrap.players, bootstrap.screen])
+
+  // Transient event notifications — the banner (cash/rent/trade) and the card
+  // (Chance/Community) auto-dismiss a few seconds after a NEW event fires, so
+  // stale notifications don't stick around and a fresh one always re-appears.
+  const bannerEventVisible = useSeqFlash(
+    monopolyEventSeq(board?.last_cash_event, board?.last_rent_event, board?.last_trade_event)
+  )
+  const cardEventVisible = useSeqFlash(board?.last_card_event?.seq ?? 0)
 
   const joinWithToken = async () => {
     const playerName = bootstrap.joinName.trim()
@@ -427,6 +458,9 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     players: bootstrap.players,
     themeId,
   })
+  // Event banners (seq > 0) only show while fresh; a plain status message
+  // (seq 0) reflects current state and stays until it changes.
+  const visibleBanner = banner && (banner.seq === 0 || bannerEventVisible) ? banner : null
 
   // Current-space / cash chrome (mirrors web MonopolyCurrentSpace + MonopolyCashBadge).
   const mySpaceOwnerId = myState ? board.property_owners?.[String(myState.position)] : undefined
@@ -651,22 +685,17 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title={batch8GameLabel('monopoly')} subtitle={monopolyPhaseLabel(board.phase)}>
       <ScrollView ref={scrollRef} contentContainerStyle={styles.playContent}>
-        <TurnBanner
-          isMyTurn={!!isMyTurn}
-          text={
-            secondsLeft > 0
-              ? `${isMyTurn ? 'Your turn' : `${turnName}'s turn`} · ${secondsLeft}s`
-              : isMyTurn
-                ? 'Your turn'
-                : `${turnName}'s turn`
-          }
-        />
+        <MonopolyGameTimerBar game={bootstrap.game} />
 
-        {spaceOwnerLabel ? (
-          <Text style={styles.spaceOwnerLine} numberOfLines={1}>
-            {spaceOwnerLabel}
-          </Text>
-        ) : null}
+        <MonopolyStatusCards
+          isMyTurn={!!isMyTurn}
+          turnName={turnName}
+          secondsLeft={secondsLeft}
+          phaseLabel={monopolyPhaseLabel(board.phase)}
+          spaceName={mySpace ? themedSpaceName(mySpace.name, myState!.position, themeId) : null}
+          spaceOwnerLabel={spaceOwnerLabel}
+          banner={visibleBanner}
+        />
 
         {isViewer && me ? (
           <ViewerModeBanner
@@ -677,13 +706,6 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             players={bootstrap.players}
             onPromoted={() => void bootstrap.load()}
           />
-        ) : null}
-
-        {banner ? (
-          <View style={[styles.banner, banner.personal ? styles.bannerPersonal : styles.bannerNeutral]}>
-            {isMyTurn ? <Text style={styles.bannerTag}>YOUR TURN</Text> : null}
-            <Text style={styles.bannerText}>{banner.message}</Text>
-          </View>
         ) : null}
 
         {showRaiseCashNudge ? (
@@ -716,7 +738,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           center={isViewer ? undefined : boardCenter}
         />
 
-        {board.last_card_event ? (
+        {board.last_card_event && cardEventVisible ? (
           <View style={styles.cardEvent}>
             <Text style={styles.cardKind}>{board.last_card_event.kind === 'chance' ? 'Chance' : 'Community Chest'}</Text>
             <Text style={styles.cardText}>{formatThemedText(board.last_card_event.card_message, themeId)}</Text>
@@ -974,20 +996,14 @@ const makeStyles = (theme: Theme) =>
   // Board-center turn UI. Sits on the (dark) board centre, so it carries its own
   // translucent dark card and uses light text for readability on any edition palette.
   center: {
+    // No card — the turn UI sits directly on the board's centre felt (mirrors web).
     alignItems: 'center',
     gap: 3,
     width: '100%',
-    // Solid dark card so the cash reads clearly over any edition's board-centre
-    // colour (some palettes use a light centre that swallowed the old
-    // translucent card + white text).
-    backgroundColor: 'rgba(10,15,28,0.94)',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(251,191,36,0.35)',
-    paddingHorizontal: 10,
-    paddingVertical: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
   },
-  centerOn: { color: 'rgba(255,255,255,0.82)', fontSize: 9, fontWeight: '700', textAlign: 'center' },
+  centerOn: { color: 'rgba(255,255,255,0.9)', fontSize: 9, fontWeight: '700', textAlign: 'center' },
   centerCashLabel: {
     color: 'rgba(251,191,36,0.85)',
     fontSize: 9,

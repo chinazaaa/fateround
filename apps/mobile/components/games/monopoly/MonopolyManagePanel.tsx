@@ -9,6 +9,7 @@ import {
 import { MONOPOLY_COLOR_HEX } from '@fateround/shared/monopoly-board-layout'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
+import { SelectField, type SelectOption } from '@/components/create/SelectField'
 import { formatThemedMoney, themedSpaceName } from './monopoly-theme'
 import { buildColorPortfolio, type ColorPortfolioStatus } from './color-portfolio'
 import { MonopolyTradeReview } from './MonopolyTradeReview'
@@ -117,6 +118,16 @@ export function MonopolyManagePanel({
     : 0
   const housesInBank = board.houses_in_bank ?? 32
   const hotelsInBank = board.hotels_in_bank ?? 12
+
+  // Dropdown options for the trade partner (mirrors web's `<select>`): a
+  // "Trade with…" placeholder followed by every tradeable player — all players
+  // except me and anyone bankrupt.
+  const tradeTargetOptions: SelectOption<string>[] = [
+    { value: '', label: 'Trade with…' },
+    ...players
+      .filter((p) => p.id !== myPlayerId && !states.find((s) => s.player_id === p.id)?.bankrupt)
+      .map((p) => ({ value: p.id, label: p.name })),
+  ]
 
   const toggleProp = (list: number[], setList: (v: number[]) => void, idx: number) => {
     setList(list.includes(idx) ? list.filter((i) => i !== idx) : [...list, idx])
@@ -467,28 +478,18 @@ export function MonopolyManagePanel({
               filled in for a normal swap.
             </Text>
 
-            <View style={styles.targetRow}>
-              {players
-                .filter((p) => p.id !== myPlayerId)
-                .map((p) => {
-                  const selected = tradeTarget === p.id
-                  return (
-                    <Pressable
-                      key={p.id}
-                      style={[styles.targetChip, selected && styles.targetChipOn]}
-                      onPress={() => {
-                        setTradeTarget(selected ? '' : p.id)
-                        setRequestProps([])
-                        setRequestJailCards(0)
-                        setTradeConfirmOpen(false)
-                        setConfirmOneWayGift(false)
-                      }}
-                    >
-                      <Text style={[styles.targetChipText, selected && styles.targetChipTextOn]}>{p.name}</Text>
-                    </Pressable>
-                  )
-                })}
-            </View>
+            <SelectField
+              value={tradeTarget}
+              title="Trade with"
+              options={tradeTargetOptions}
+              onChange={(v) => {
+                setTradeTarget(v)
+                setRequestProps([])
+                setRequestJailCards(0)
+                setTradeConfirmOpen(false)
+                setConfirmOneWayGift(false)
+              }}
+            />
 
             {tradeTarget ? (
               <>

@@ -623,6 +623,22 @@ export function postMonopolyTrade(
   return postJson<{ success: boolean }>('/api/monopoly/trade', { gameId, resumeToken, ...payload })
 }
 
+/** Host adds time to a timed Monopoly game (extensionSeconds ∈ {600,900,1800}). */
+export function postExtendMonopolyTime(gameCode: string, hostToken: string, extensionSeconds: number) {
+  return postJson<{ ok?: boolean; success?: boolean }>(
+    `/api/games/${gameCode.toUpperCase()}/extend-monopoly-time`,
+    { hostToken, extensionSeconds }
+  )
+}
+
+/** Host adds time to a timed Scrabble game (extensionSeconds ∈ {600,900,1800}). */
+export function postExtendScrabbleTime(gameCode: string, hostToken: string, extensionSeconds: number) {
+  return postJson<{ ok?: boolean; success?: boolean }>(
+    `/api/games/${gameCode.toUpperCase()}/extend-scrabble-time`,
+    { hostToken, extensionSeconds }
+  )
+}
+
 export async function getMahjongState(
   gameId: string,
   playerId: string,
