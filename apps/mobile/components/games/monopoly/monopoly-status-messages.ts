@@ -158,66 +158,77 @@ export function formatTradeMessageForPlayer(
  * when a phase-specific action panel already owns the messaging (buy / pay_rent /
  * auction / raise_funds) or a card event is showing.
  */
-/** Highest sequence number across the cash/rent/trade events (0 if none). Used
- *  to detect a *new* event so the banner can flash transiently and re-appear. */
-export function monopolyEventSeq(lastCashEvent: unknown, lastRentEvent: unknown, lastTradeEvent: unknown): number {
-  const c = parseCashEvent(lastCashEvent)?.seq ?? 0
-  const r = parseRentEvent(lastRentEvent)?.seq ?? 0
-  const t = parseTradeEvent(lastTradeEvent)?.seq ?? 0
-  return Math.max(c, r, t)
+export type MonopolyEventKind = 'cash' | 'rent' | 'trade' | 'card'
+
+export interface MonopolyEventSeqs {
+  cash: number
+  rent: number
+  trade: number
+  card: number
 }
 
-export function resolveMonopolyBanner(args: {
-  statusMessage: string | null | undefined
-  phase: string
-  lastCashEvent: unknown
-  lastRentEvent: unknown
-  lastTradeEvent: unknown
-  hasCardEvent: boolean
-  myPlayerId: string | null | undefined
-  players: NamedPlayer[]
-  themeId?: string | null
-}): { message: string; personal: boolean; seq: number } | null {
-  const { statusMessage, phase, hasCardEvent, myPlayerId, players, themeId } = args
-
-  const cashEvent = parseCashEvent(args.lastCashEvent)
-  const tradeEvent = parseTradeEvent(args.lastTradeEvent)
-  const rentEvent = parseRentEvent(args.lastRentEvent)
-
-  // Events personal to the local player always show; pick the NEWEST by seq so a
-  // fresh rent payment isn't hidden behind a stale cash/card message.
-  const personal: { message: string; seq: number }[] = []
-  if (cashEvent && cashEvent.player_id === myPlayerId) {
-    personal.push({ message: formatCashMessageForPlayer(cashEvent, themeId), seq: cashEvent.seq })
+/**
+ * Per-type sequence numbers for the board's last cash/rent/trade/card events.
+ * NOTE: each counter is independent (a trade's seq is unrelated to a cash seq),
+ * so they can only be compared WITHIN a type — used to detect that a given event
+ * kind just fired (its own counter incremented), never to rank across kinds.
+ */
+export function monopolyEventSeqs(
+  lastCashEvent: unknown,
+  lastRentEvent: unknown,
+  lastTradeEvent: unknown,
+  lastCardEvent: { seq?: number } | null | undefined
+): MonopolyEventSeqs {
+  return {
+    cash: parseCashEvent(lastCashEvent)?.seq ?? 0,
+    rent: parseRentEvent(lastRentEvent)?.seq ?? 0,
+    trade: parseTradeEvent(lastTradeEvent)?.seq ?? 0,
+    card: lastCardEvent?.seq ?? 0,
   }
-  if (
-    tradeEvent &&
-    (tradeEvent.outcome === 'declined' || tradeEvent.outcome === 'accepted') &&
-    (tradeEvent.from_player_id === myPlayerId || tradeEvent.to_player_id === myPlayerId)
-  ) {
-    personal.push({ message: formatTradeMessageForPlayer(tradeEvent, myPlayerId, players, themeId), seq: tradeEvent.seq })
-  }
-  if (rentEvent && (rentEvent.owner_player_id === myPlayerId || rentEvent.payer_player_id === myPlayerId)) {
-    personal.push({ message: formatRentMessageForPlayer(rentEvent, myPlayerId, players, themeId), seq: rentEvent.seq })
-  }
-  if (personal.length > 0) {
-    personal.sort((a, b) => b.seq - a.seq)
-    return { message: personal[0].message, personal: true, seq: personal[0].seq }
-  }
+}
 
-  const phaseOwnsMessaging =
-    phase === 'buy' || phase === 'pay_rent' || phase === 'auction' || phase === 'raise_funds'
-  if (phaseOwnsMessaging || hasCardEvent) return null
-
-  if (rentEvent) {
-    return {
-      message: formatRentMessageForPlayer(rentEvent, myPlayerId, players, themeId),
-      personal: false,
-      seq: rentEvent.seq,
+/**
+ * Message for the specific event kind that just fired, personalised to the local
+ * player. Returns null when that event isn't worth surfacing as a banner (a cash
+ * or trade event that doesn't involve me; a proposed trade — handled by the modal).
+ */
+export function monopolyEventBanner(
+  kind: MonopolyEventKind,
+  args: {
+    lastCashEvent: unknown
+    lastRentEvent: unknown
+    lastTradeEvent: unknown
+    myPlayerId: string | null | undefined
+    players: NamedPlayer[]
+    themeId?: string | null
+  }
+): { message: string; personal: boolean } | null {
+  const { myPlayerId, players, themeId } = args
+  if (kind === 'cash') {
+    const e = parseCashEvent(args.lastCashEvent)
+    return e && e.player_id === myPlayerId
+      ? { message: formatCashMessageForPlayer(e, themeId), personal: true }
+      : null
+  }
+  if (kind === 'trade') {
+    const e = parseTradeEvent(args.lastTradeEvent)
+    if (
+      e &&
+      (e.outcome === 'declined' || e.outcome === 'accepted') &&
+      (e.from_player_id === myPlayerId || e.to_player_id === myPlayerId)
+    ) {
+      return { message: formatTradeMessageForPlayer(e, myPlayerId, players, themeId), personal: true }
     }
+    return null
   }
-  if (statusMessage) {
-    return { message: formatThemedText(statusMessage, themeId), personal: false, seq: 0 }
+  if (kind === 'rent') {
+    const e = parseRentEvent(args.lastRentEvent)
+    return e
+      ? {
+          message: formatRentMessageForPlayer(e, myPlayerId, players, themeId),
+          personal: e.owner_player_id === myPlayerId || e.payer_player_id === myPlayerId,
+        }
+      : null
   }
   return null
 }

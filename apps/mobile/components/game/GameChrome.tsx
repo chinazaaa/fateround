@@ -152,7 +152,7 @@ export function GameFinishedScreen({
                 {row.name?.trim() ? row.name : 'Player'}
                 {row.you ? <Text style={styles.leaderboardYou}> (you)</Text> : null}
               </Text>
-              <Text style={styles.leaderboardScore}>
+              <Text style={styles.leaderboardScore} numberOfLines={2}>
                 {row.score}
                 {row.scoreSuffix ? ` ${row.scoreSuffix}` : ''}
                 {row.detail ? <Text style={styles.leaderboardDetail}>{`  ·  ${row.detail}`}</Text> : null}
@@ -312,6 +312,7 @@ const makeStyles = (theme: Theme) =>
   },
   leaderboardName: {
     flex: 1,
+    minWidth: 52,
     color: theme.text,
     fontSize: 15,
     fontWeight: '600',
@@ -321,6 +322,8 @@ const makeStyles = (theme: Theme) =>
     fontWeight: '600',
   },
   leaderboardScore: {
+    flexShrink: 1,
+    textAlign: 'right',
     color: theme.primaryMuted,
     fontSize: 15,
     fontWeight: '700',

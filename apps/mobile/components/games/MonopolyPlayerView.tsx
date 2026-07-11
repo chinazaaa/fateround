@@ -11,7 +11,11 @@ import {
   MONOPOLY_JAIL_FINE,
   spaceAt,
 } from '@fateround/shared/monopoly-board'
-import { monopolyEventSeq, resolveMonopolyBanner } from '@/components/games/monopoly/monopoly-status-messages'
+import {
+  monopolyEventBanner,
+  monopolyEventSeqs,
+  type MonopolyEventKind,
+} from '@/components/games/monopoly/monopoly-status-messages'
 import {
   currentPlayerId,
   monopolyPhaseLabel,
@@ -74,24 +78,34 @@ import { useTheme, useThemedStyles } from '@/constants/theme-context'
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
 /**
- * Returns whether a sequenced event notification is currently "fresh". Each time
- * `seq` increases (a new event), it flashes on for `ms` then auto-hides — so
- * stale notifications (a card effect, a rent line) don't linger forever, and a
- * new event always re-appears. `seq === 0` means "no event" → never shown here.
+ * Detects which board event (cash / rent / trade / card) most recently fired and
+ * surfaces it transiently. Each event type has its OWN sequence counter, so we
+ * watch every counter and flag whichever one just incremented — then auto-clear
+ * after `ms`. This means a trade decline shows even while a stale cash seq is
+ * higher, and notifications don't linger forever. Returns null when nothing is
+ * currently fresh.
  */
-function useSeqFlash(seq: number, ms = 6000): boolean {
-  const [hidden, setHidden] = useState(false)
-  const lastSeq = useRef(0)
+function useMonopolyLatestEvent(
+  seqs: { cash: number; rent: number; trade: number; card: number },
+  ms = 6000
+): MonopolyEventKind | null {
+  const [active, setActive] = useState<MonopolyEventKind | null>(null)
+  const prev = useRef(seqs)
   useEffect(() => {
-    if (seq > 0 && seq !== lastSeq.current) {
-      lastSeq.current = seq
-      setHidden(false)
-      const t = setTimeout(() => setHidden(true), ms)
-      return () => clearTimeout(t)
-    }
-    return undefined
-  }, [seq, ms])
-  return seq > 0 && !hidden
+    const p = prev.current
+    // Later entries win if two counters advance in the same update (rare).
+    let changed: MonopolyEventKind | null = null
+    if (seqs.cash > p.cash) changed = 'cash'
+    if (seqs.rent > p.rent) changed = 'rent'
+    if (seqs.trade > p.trade) changed = 'trade'
+    if (seqs.card > p.card) changed = 'card'
+    prev.current = seqs
+    if (!changed) return undefined
+    setActive(changed)
+    const t = setTimeout(() => setActive(null), ms)
+    return () => clearTimeout(t)
+  }, [seqs.cash, seqs.rent, seqs.trade, seqs.card, ms])
+  return active
 }
 
 export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
@@ -179,13 +193,16 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     setSelectedToken(free)
   }, [bootstrap.players, bootstrap.screen])
 
-  // Transient event notifications — the banner (cash/rent/trade) and the card
-  // (Chance/Community) auto-dismiss a few seconds after a NEW event fires, so
-  // stale notifications don't stick around and a fresh one always re-appears.
-  const bannerEventVisible = useSeqFlash(
-    monopolyEventSeq(board?.last_cash_event, board?.last_rent_event, board?.last_trade_event)
+  // Transient event notifications — whichever event (cash/rent/trade/card) most
+  // recently fired shows for a few seconds then auto-dismisses, so stale ones
+  // don't linger and a fresh one (e.g. a trade decline) always appears.
+  const eventSeqs = monopolyEventSeqs(
+    board?.last_cash_event,
+    board?.last_rent_event,
+    board?.last_trade_event,
+    board?.last_card_event
   )
-  const cardEventVisible = useSeqFlash(board?.last_card_event?.seq ?? 0)
+  const activeEventKind = useMonopolyLatestEvent(eventSeqs)
 
   const joinWithToken = async () => {
     const playerName = bootstrap.joinName.trim()
@@ -447,20 +464,30 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       ? pendingTrade
       : null
 
-  const banner = resolveMonopolyBanner({
-    statusMessage: board.status_message,
-    phase: board.phase,
-    lastCashEvent: board.last_cash_event,
-    lastRentEvent: board.last_rent_event,
-    lastTradeEvent: board.last_trade_event,
-    hasCardEvent: !!board.last_card_event,
-    myPlayerId: bootstrap.myPlayerId,
-    players: bootstrap.players,
-    themeId,
-  })
-  // Event banners (seq > 0) only show while fresh; a plain status message
-  // (seq 0) reflects current state and stays until it changes.
-  const visibleBanner = banner && (banner.seq === 0 || bannerEventVisible) ? banner : null
+  const bannerPhaseOwnsMessaging =
+    board.phase === 'buy' ||
+    board.phase === 'pay_rent' ||
+    board.phase === 'auction' ||
+    board.phase === 'raise_funds'
+  // Show the freshly-fired event (cash/rent/trade) as a transient banner; when
+  // nothing is flashing, fall back to the persistent board status message
+  // (unless a phase panel or a card event already owns the messaging).
+  const eventBanner =
+    activeEventKind && activeEventKind !== 'card'
+      ? monopolyEventBanner(activeEventKind, {
+          lastCashEvent: board.last_cash_event,
+          lastRentEvent: board.last_rent_event,
+          lastTradeEvent: board.last_trade_event,
+          myPlayerId: bootstrap.myPlayerId,
+          players: bootstrap.players,
+          themeId,
+        })
+      : null
+  const statusBanner =
+    !activeEventKind && board.status_message && !bannerPhaseOwnsMessaging && !board.last_card_event
+      ? { message: formatThemedText(board.status_message, themeId), personal: false }
+      : null
+  const visibleBanner = eventBanner ?? statusBanner
 
   // Current-space / cash chrome (mirrors web MonopolyCurrentSpace + MonopolyCashBadge).
   const mySpaceOwnerId = myState ? board.property_owners?.[String(myState.position)] : undefined
@@ -738,7 +765,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           center={isViewer ? undefined : boardCenter}
         />
 
-        {board.last_card_event && cardEventVisible ? (
+        {board.last_card_event && activeEventKind === 'card' ? (
           <View style={styles.cardEvent}>
             <Text style={styles.cardKind}>{board.last_card_event.kind === 'chance' ? 'Chance' : 'Community Chest'}</Text>
             <Text style={styles.cardText}>{formatThemedText(board.last_card_event.card_message, themeId)}</Text>

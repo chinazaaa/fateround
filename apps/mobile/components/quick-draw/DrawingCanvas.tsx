@@ -83,7 +83,14 @@ function useDrawingBoard({ readOnly = false, strokeData, resetKey, onStrokeChang
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => !readOnly,
+        onStartShouldSetPanResponderCapture: () => !readOnly,
         onMoveShouldSetPanResponder: () => !readOnly,
+        onMoveShouldSetPanResponderCapture: () => !readOnly,
+        // Keep the stroke: don't let an ancestor ScrollView (or the screen's
+        // swipe-back gesture) steal the touch mid-draw, which made the drawing
+        // "shift" as the page scrolled.
+        onPanResponderTerminationRequest: () => false,
+        onShouldBlockNativeResponder: () => true,
         onPanResponderGrant: (evt) => {
           if (readOnly) return
           const [x, y] = toCanvasPoint(evt.nativeEvent.locationX, evt.nativeEvent.locationY)
