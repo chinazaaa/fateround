@@ -67,7 +67,14 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
     else router.replace('/')
   }
 
-  const onShare = () => setShareOpen(true)
+  const onShare = () => {
+    // Re-read the stored session first: the shell loads it once on mount (on the
+    // join screen, before a resume token exists), so without this the share sheet
+    // would be missing the player's own link right after they join. reloadSession
+    // updates state and the open sheet re-renders with the resume token.
+    void reloadSession()
+    setShareOpen(true)
+  }
 
   const openHost = async () => {
     const token = await getHostToken(gameCode)
