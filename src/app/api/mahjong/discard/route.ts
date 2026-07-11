@@ -3,6 +3,7 @@ import { parseGameType, isMahjongGame } from '@/lib/game-types'
 import { processMahjongDiscard } from '@/lib/mahjong'
 import { mahjongDiscardSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { scheduleTurnNotification } from '@/lib/push'
 import { verifyMahjongPlayerAccess } from '@/lib/mahjong-auth'
 
 export async function POST(req: NextRequest) {
@@ -27,6 +28,8 @@ export async function POST(req: NextRequest) {
 
   const { error } = await processMahjongDiscard(supabase, code, playerId, tile)
   if (error) return NextResponse.json({ error }, { status: 400 })
+
+  scheduleTurnNotification(code)
 
   return NextResponse.json({ success: true })
 }

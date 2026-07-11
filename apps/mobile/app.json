@@ -1,0 +1,101 @@
+{
+  "expo": {
+    "name": "Fate Round",
+    "slug": "fateround",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "fateround",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.fateround.app",
+      "associatedDomains": [
+        "applinks:fateround.com"
+      ],
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
+        "NSMicrophoneUsageDescription": "Fate Round uses the microphone for in-game voice chat with other players."
+      },
+      "bitcode": false
+    },
+    "android": {
+      "package": "com.fateround.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0b0b0f",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "https", "host": "fateround.com", "pathPrefix": "/game" },
+            { "scheme": "https", "host": "fateround.com", "pathPrefix": "/host" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ],
+      "permissions": [
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.CAMERA",
+        "android.permission.INTERNET",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WAKE_LOCK",
+        "android.permission.BLUETOOTH"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#f43f5e"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0b0b0f"
+        }
+      ],
+      "@livekit/react-native-expo-plugin",
+      "@config-plugins/react-native-webrtc",
+      "expo-audio",
+      "expo-image",
+      "expo-asset",
+      "expo-sharing"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "2b684f51-4910-4aba-b945-cf9b1d1a1ba4"
+      }
+    },
+    "owner": "fateround"
+  }
+}

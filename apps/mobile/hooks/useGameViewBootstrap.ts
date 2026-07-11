@@ -1,0 +1,220 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { Game, Player } from '@fateround/shared'
+import { normalizeGameCode } from '@fateround/shared'
+import { joinGame } from '@/lib/api'
+import { recordRecentGame } from '@/lib/recent-games'
+import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
+import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
+import { uniqueTopic } from '@/lib/realtime'
+
+export type UseGameViewBootstrapOptions<Screen extends string, GameState> = {
+  gameCode: string
+  loadingScreen: Screen
+  notFoundScreen: Screen
+  joinScreen: Screen
+  waitingScreen: Screen
+  loadGameState: (game: Game, players: Player[]) => Promise<{ state: GameState; ok: boolean }>
+  computeScreen: (game: Game, playerId: string | null, state: GameState) => Screen
+  afterResolve?: (game: Game, playerId: string | null, state: GameState) => void | Promise<void>
+}
+
+export function useGameViewBootstrap<Screen extends string, GameState>(
+  opts: UseGameViewBootstrapOptions<Screen, GameState>
+) {
+  const {
+    gameCode,
+    loadingScreen,
+    notFoundScreen,
+    joinScreen,
+    waitingScreen,
+    loadGameState,
+    computeScreen,
+    afterResolve,
+  } = opts
+
+  const code = normalizeGameCode(gameCode)
+  const [screen, setScreen] = useState<Screen>(loadingScreen)
+  const [game, setGame] = useState<Game | null>(null)
+  const [players, setPlayers] = useState<Player[]>([])
+  const [gameState, setGameState] = useState<GameState | null>(null)
+  const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
+  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
+  const [joinName, setJoinName] = useState('')
+  const [joining, setJoining] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(async (): Promise<boolean> => {
+    try {
+      const supabase = getSupabase()
+      const [gameRes, playersRes] = await Promise.all([
+        supabase.from('games').select(GAME_SELECT).eq('id', code).maybeSingle(),
+        supabase.from('players').select(PLAYER_SELECT).eq('game_id', code).order('joined_at'),
+      ])
+
+      if (gameRes.error || playersRes.error) return false
+
+      const gameData = gameRes.data as Game | null
+      const playerRows = (playersRes.data ?? []) as Player[]
+
+      if (!gameData) {
+        setGame(null)
+        setPlayers([])
+        setScreen(notFoundScreen)
+        return true
+      }
+
+      const { state, ok } = await loadGameState(gameData, playerRows)
+
+      setGame(gameData)
+      setPlayers(playerRows)
+      setGameState(ok ? state : null)
+
+      const session = await getPlayerSession(code)
+      const playerId = session?.playerId ?? null
+      if (session) {
+        setMyPlayerId(session.playerId)
+        setMyResumeToken(session.resumeToken)
+        setJoinName(session.playerName)
+        void recordRecentGame({
+          code,
+          title: gameData.title,
+          gameType: gameData.game_type,
+        })
+      } else {
+        setMyPlayerId(null)
+        setMyResumeToken(null)
+      }
+
+      const resolvedState = ok ? state : (null as GameState)
+      if (afterResolve) await afterResolve(gameData, playerId, resolvedState)
+      setScreen(computeScreen(gameData, playerId, resolvedState))
+      return true
+    } catch {
+      return false
+    }
+  }, [afterResolve, code, computeScreen, loadGameState, notFoundScreen])
+
+  const join = useCallback(
+    async (
+      name?: string,
+      options?: {
+        joinAsViewer?: boolean
+        participantId?: string
+        gender?: import('@fateround/shared').PlayerGender
+        identityGender?: import('@fateround/shared').ParticipantGender
+        pollGender?: import('@fateround/shared').ParticipantGender
+      }
+    ) => {
+      const playerName = (name ?? joinName).trim()
+      if (!playerName && !options?.participantId) {
+        setError('Enter your name to join')
+        return
+      }
+
+      setJoining(true)
+      setError(null)
+      try {
+        const existing = await getPlayerSession(code)
+        const data = await joinGame({
+          gameCode: code,
+          playerName: playerName || 'Player',
+          resumeToken: existing?.resumeToken ?? undefined,
+          joinAsViewer: options?.joinAsViewer,
+          participantId: options?.participantId,
+          gender: options?.gender,
+          identityGender: options?.identityGender,
+          pollGender: options?.pollGender,
+        })
+
+        const gender = data.playerGender ?? 'both'
+        await setPlayerSession(code, data.playerId, data.playerName, gender, data.resumeToken ?? null)
+        setMyPlayerId(data.playerId)
+        setMyResumeToken(data.resumeToken ?? null)
+        setJoinName(data.playerName)
+        await load()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to join')
+      } finally {
+        setJoining(false)
+      }
+    },
+    [code, joinName, load]
+  )
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  return {
+    code,
+    screen,
+    setScreen,
+    game,
+    players,
+    gameState,
+    myPlayerId,
+    myResumeToken,
+    joinName,
+    setJoinName,
+    joining,
+    error,
+    load,
+    join,
+    joinScreen,
+    waitingScreen,
+  }
+}
+
+type WatchedTable = string | { table: string; column?: string }
+
+export function useGameTableSync(
+  gameCode: string,
+  tables: readonly WatchedTable[],
+  reload: () => void | Promise<unknown>,
+  enabled = true
+) {
+  const reloadRef = useRef(reload)
+  reloadRef.current = reload
+
+  // Call sites pass a fresh `tables` array literal each render; keying the
+  // effect on the serialized contents (not array identity) stops it from
+  // re-subscribing every render.
+  const tablesKey = JSON.stringify(tables)
+
+  useEffect(() => {
+    if (!enabled || !gameCode || tables.length === 0) return
+
+    const supabase = getSupabase()
+    const norm = tables.map((t) =>
+      typeof t === 'string' ? { table: t, column: 'game_id' } : { table: t.table, column: t.column ?? 'game_id' }
+    )
+
+    let debounce: ReturnType<typeof setTimeout> | null = null
+    const schedule = () => {
+      if (debounce) clearTimeout(debounce)
+      debounce = setTimeout(() => {
+        void Promise.resolve()
+          .then(() => reloadRef.current())
+          .catch(() => {})
+      }, 90)
+    }
+
+    let channel = supabase.channel(uniqueTopic(`sync-${gameCode}`))
+    for (const { table, column } of norm) {
+      channel = channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table, filter: `${column}=eq.${gameCode}` },
+        () => schedule()
+      )
+    }
+
+    channel.subscribe()
+
+    return () => {
+      if (debounce) clearTimeout(debounce)
+      void supabase.removeChannel(channel)
+    }
+    // `tables` is intentionally keyed via tablesKey (contents, not identity).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, gameCode, tablesKey])
+}

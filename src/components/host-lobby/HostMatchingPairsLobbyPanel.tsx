@@ -9,6 +9,7 @@ import {
   formatMatchingPairsGameDuration,
 } from '@/lib/memory-match'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
+import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
@@ -208,6 +209,7 @@ export function HostMatchingPairsLobbyPanel({ gameCode, hostToken, game, playerC
         />
       </HostLobbySettingBlock>
 
+      <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={onGameUpdate} />
       {gameSupportsViewerSetting(game.game_type) && game.status === 'waiting' && (
         <HostLobbySettingBlock title="Late joiners">
           <HostAllowViewersField

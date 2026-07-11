@@ -8,6 +8,7 @@ import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
+import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { supabase } from '@/lib/supabase'
@@ -534,6 +535,10 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
         />
       )}
       {!gameFinished && <HostRulesRow gameType="describe_it" />}
+
+      {game.status === 'waiting' && (
+        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+      )}
 
       {game.status === 'active' && !gameFinished && (
         <HostLobbyPlayersSection

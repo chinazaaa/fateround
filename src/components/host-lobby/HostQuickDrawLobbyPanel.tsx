@@ -23,6 +23,7 @@ import {
 } from '@/lib/quick-draw'
 import { QUICK_DRAW_GUESS_TEAM_OPTIONS, clampQuickDrawNumTeams, clampQuickDrawPlayMode } from '@/lib/quick-draw-guess'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
+import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
@@ -312,6 +313,7 @@ export function HostQuickDrawLobbyPanel({ gameCode, hostToken, game, playerCount
         />
       </HostLobbySettingBlock>
 
+      <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={onGameUpdate} />
       {gameSupportsViewerSetting(game.game_type) && game.status === 'waiting' && (
         <HostLobbySettingBlock title="Late joiners">
           <HostAllowViewersField

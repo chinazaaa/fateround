@@ -4,6 +4,7 @@ import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { assertHostGameSettings, assertHostLateJoinSettings } from '@/lib/game-admin'
 import { questionPoolCap } from '@/lib/custom-questions'
 import { parseTimerSeconds, updateGameSchema } from '@/lib/validation'
+import { parseThemeId } from '@/lib/themes'
 import { parseJsonBody } from '@/lib/parse-body'
 import { HOST_GAME_SELECT } from '@/lib/supabase-selects'
 import {
@@ -46,6 +47,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   const {
     hostToken,
     is_public: rawIsPublic,
+    theme: rawTheme,
     rounds_count: rawRoundsCount,
     timer_seconds: rawTimerSeconds,
     operative_timer_seconds: rawOperativeTimerSeconds,
@@ -80,6 +82,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   // Applies to every game type, so it's handled up front with no per-type gating.
   if (rawIsPublic !== undefined) {
     updatePayload.is_public = rawIsPublic
+  }
+
+  // Theme / Monopoly edition. Safe pre-start (board isn't generated until start),
+  // gated to waiting/finished by the assertHostGameSettings path above. Validated
+  // to a known theme id, matching how create handles it.
+  if (rawTheme !== undefined) {
+    updatePayload.theme = parseThemeId(rawTheme)
   }
 
   if (rawRoundsCount !== undefined) {
