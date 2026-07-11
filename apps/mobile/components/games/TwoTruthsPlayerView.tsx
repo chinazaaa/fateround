@@ -20,6 +20,8 @@ import { getSupabase } from '@/lib/supabase'
 import { ROUND_SELECT, TTL_GUESS_SELECT, TTL_STATEMENT_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -32,6 +34,8 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   const [stmtC, setStmtC] = useState('')
   const [lieIndex, setLieIndex] = useState(0)
   const [submitting, setSubmitting] = useState(false)
+  const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: null; ok: boolean }> => {
@@ -165,7 +169,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
                   value={value}
                   onChangeText={setValue}
                   placeholder={`Statement ${formatTtlChoiceLabel(index)}`}
-                  placeholderTextColor="#6b7280"
+                  placeholderTextColor={theme.textFaint}
                   maxLength={TTL_MAX_STATEMENT_LENGTH}
                   multiline
                 />
@@ -273,64 +277,68 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
-  waiting: { color: '#9ca3af', fontSize: 16, textAlign: 'center', marginTop: 24 },
-  help: { color: '#d1d5db', fontSize: 15, lineHeight: 22 },
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+  waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
+  help: { color: theme.textSecondary, fontSize: 15, lineHeight: 22 },
   form: { gap: 12, paddingBottom: 24 },
   fieldBlock: { gap: 8 },
   lieToggle: { alignSelf: 'flex-start' },
   lieBadge: {
-    color: '#9ca3af',
+    color: theme.textMuted,
     fontWeight: '700',
     fontSize: 13,
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 6,
   },
-  lieBadgeActive: { color: '#fff', backgroundColor: '#f43f5e' },
+  // white text on the solid rose "LIE" badge — intentional
+  lieBadgeActive: { color: '#fff', backgroundColor: theme.primary },
   input: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#2a2a35',
-    color: '#fff',
+    borderColor: theme.border,
+    color: theme.text,
     padding: 12,
     minHeight: 72,
     fontSize: 16,
   },
   primaryBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 10,
     padding: 14,
     alignItems: 'center',
     marginTop: 8,
   },
+  // white on the solid rose button — intentional
   primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  featured: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  featured: { color: theme.text, fontSize: 18, fontWeight: '700' },
   choices: { gap: 10, marginTop: 8 },
   choice: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12,
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
   },
-  choiceSelected: { borderColor: '#f43f5e', backgroundColor: '#3f1d2b' },
+  choiceSelected: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
   choiceReveal: { borderColor: '#fbbf24' },
   choiceBadge: {
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
+    // white on the solid rose badge — intentional
     color: '#fff',
     textAlign: 'center',
     lineHeight: 32,
     fontWeight: '800',
   },
-  choiceText: { color: '#fff', fontSize: 16, flex: 1, lineHeight: 22 },
-  locked: { color: '#9ca3af', textAlign: 'center', marginTop: 12 },
+  choiceText: { color: theme.text, fontSize: 16, flex: 1, lineHeight: 22 },
+  locked: { color: theme.textMuted, textAlign: 'center', marginTop: 12 },
 })

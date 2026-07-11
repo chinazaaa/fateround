@@ -71,5 +71,5 @@ const makeStyles = (theme: Theme) =>
     textAlign: 'center',
     lineHeight: 16,
   },
-  labelSelected: { color: '#fff' },
+  labelSelected: { color: theme.primaryMuted },
 })

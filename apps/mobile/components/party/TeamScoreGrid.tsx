@@ -1,6 +1,8 @@
 import { StyleSheet, Text, View } from 'react-native'
 import { TeamBadge } from './TeamBadge'
 import { teamChipStyle } from './team-colors'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 export function TeamScoreGrid({
   scores,
@@ -17,6 +19,7 @@ export function TeamScoreGrid({
   totalRounds?: number
   title?: string
 }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.panel}>
       <View style={styles.header}>
@@ -55,22 +58,23 @@ export function TeamScoreGrid({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   panel: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 12,
     padding: 12,
     gap: 8,
   },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: {
-    color: '#fda4af',
+    color: theme.primaryMuted,
     fontSize: 11,
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
-  roundMeta: { color: '#9ca3af', fontSize: 11, fontWeight: '600' },
+  roundMeta: { color: theme.textMuted, fontSize: 11, fontWeight: '600' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     flexBasis: '47%',
@@ -85,7 +89,7 @@ const styles = StyleSheet.create({
   },
   chipActive: { borderWidth: 2 },
   chipLeft: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
-  you: { color: '#9ca3af', fontSize: 10, fontWeight: '700' },
+  you: { color: theme.textMuted, fontSize: 10, fontWeight: '700' },
   clock: { fontSize: 12 },
-  score: { color: '#fff', fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  score: { color: theme.text, fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
 })

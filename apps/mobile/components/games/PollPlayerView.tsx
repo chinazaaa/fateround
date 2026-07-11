@@ -59,6 +59,9 @@ import { getSupabase } from '@/lib/supabase'
 import { PARTICIPANT_SELECT, ROUND_SELECT, VOTE_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { mltVoteLeaderboard } from '@/lib/finish-leaderboards'
+import { tallyWstScores, wstLeaderboard } from '@/lib/wst-standings'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -79,6 +82,7 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [revealedQuestion, setRevealedQuestion] = useState<string | null>(null)
+  const styles = useThemedStyles(makeStyles)
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: PollState; ok: boolean }> => {
@@ -375,6 +379,22 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
   const title = pollGameLabel(gameType)
 
   if (bootstrap.screen === 'finished') {
+    if (isWhoSaidThis(gameType)) {
+      const scores = tallyWstScores(pollState.rounds, pollState.votes, bootstrap.players)
+      const top = scores[0]
+      const winnerId = top && top.correctGuesses > 0 ? top.playerId : null
+      return (
+        <GameShell bootstrap={bootstrap} title={title} subtitle={bootstrap.code}>
+          <GameFinishPanel
+            bootstrap={bootstrap}
+            title={winnerId ? `${top!.name} wins!` : 'Game over'}
+            subtitle="Best guessers"
+            leaderboard={wstLeaderboard(scores, bootstrap.myPlayerId)}
+            winnerPlayerId={winnerId}
+          />
+        </GameShell>
+      )
+    }
     const leaderboard = isMostLikelyTo(gameType)
       ? mltVoteLeaderboard(pollState.votes, pollState.participants)
       : undefined
@@ -648,6 +668,7 @@ function ChoiceButton({
   disabled: boolean
   onPress: () => void
 }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <Pressable
       style={[styles.choice, selected && styles.choiceSelected]}
@@ -659,82 +680,84 @@ function ChoiceButton({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   scroll: { paddingBottom: 32, gap: 12 },
   timerRow: { alignItems: 'center', marginBottom: 4 },
-  waiting: { color: '#9ca3af', fontSize: 16, textAlign: 'center', marginTop: 24 },
+  waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
   locked: { color: '#86efac', fontSize: 16, textAlign: 'center', marginTop: 24 },
-  prompt: { color: '#fff', fontSize: 18, fontWeight: '700', lineHeight: 26 },
+  prompt: { color: theme.text, fontSize: 18, fontWeight: '700', lineHeight: 26 },
   quote: { color: '#e5e7eb', fontSize: 18, fontStyle: 'italic', lineHeight: 26 },
   revealed: { color: '#fcd34d', fontSize: 16, lineHeight: 24, marginTop: 8 },
   choices: { gap: 10 },
   choice: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
   },
-  choiceSelected: { borderColor: '#f43f5e', backgroundColor: '#3f1d2b' },
-  choiceText: { color: '#fff', fontSize: 16 },
+  choiceSelected: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+  choiceText: { color: theme.text, fontSize: 16 },
   mltRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 12,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
   },
-  mltRowSelected: { borderColor: '#f43f5e', backgroundColor: '#3f1d2b' },
+  mltRowSelected: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
   personRow: { gap: 8, marginTop: 4 },
-  personName: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  personName: { color: theme.text, fontSize: 16, fontWeight: '600' },
   slotRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   slotBtn: {
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
   },
-  slotBtnSelected: { borderColor: '#f43f5e', backgroundColor: '#3f1d2b' },
-  slotBtnText: { color: '#fff', fontSize: 13 },
+  slotBtnSelected: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+  slotBtnText: { color: theme.text, fontSize: 13 },
   pairBtn: {
     flex: 1,
     minWidth: 100,
     paddingVertical: 12,
     borderRadius: 10,
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     alignItems: 'center',
   },
   pairBtnPositive: { borderColor: '#22c55e', backgroundColor: '#14532d' },
   pairBtnNegative: { borderColor: '#ef4444', backgroundColor: '#450a0a' },
-  pairBtnText: { color: '#fff', fontWeight: '600' },
+  pairBtnText: { color: theme.text, fontWeight: '600' },
   numberGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   numberCell: {
     width: 44,
     height: 44,
     borderRadius: 10,
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  numberCellSelected: { borderColor: '#f43f5e', backgroundColor: '#3f1d2b' },
-  numberText: { color: '#fff', fontWeight: '700' },
+  numberCellSelected: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+  numberText: { color: theme.text, fontWeight: '700' },
   error: { color: '#fca5a5', textAlign: 'center' },
   submit: {
     marginTop: 8,
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
   },
   submitDisabled: { opacity: 0.45 },
+  // white on the solid rose submit button — intentional
   submitText: { color: '#fff', fontWeight: '800', fontSize: 16 },
 })

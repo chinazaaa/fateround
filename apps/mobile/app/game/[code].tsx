@@ -9,8 +9,12 @@ import { WebFallbackScreen } from '@/components/WebFallbackScreen'
 import { getSupabase, GAME_SELECT } from '@/lib/supabase'
 import type { Game, GameType } from '@fateround/shared'
 import { normalizeGameCode } from '@fateround/shared'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 export default function GameScreen() {
+  const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
   const { code } = useLocalSearchParams<{ code: string }>()
   const gameCode = typeof code === 'string' ? normalizeGameCode(code) : ''
   const [game, setGame] = useState<Game | null>(null)
@@ -70,7 +74,7 @@ export default function GameScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator color="#f43f5e" size="large" />
+        <ActivityIndicator color={theme.primary} size="large" />
       </View>
     )
   }
@@ -103,17 +107,18 @@ export default function GameScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    backgroundColor: '#0b0b0f',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  errorText: {
-    color: '#fff',
-    fontSize: 18,
-    textAlign: 'center',
-  },
-})
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+    centered: {
+      flex: 1,
+      backgroundColor: theme.bg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+    },
+    errorText: {
+      color: theme.text,
+      fontSize: 18,
+      textAlign: 'center',
+    },
+  })

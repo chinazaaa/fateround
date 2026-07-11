@@ -29,8 +29,10 @@ import {
   postMahjongRiichi,
 } from '@/lib/game-api'
 import { usePlayerSessionActions } from '@/lib/player-session'
-import { winnerLeaderboard } from '@/lib/finish-leaderboards'
+import { mahjongLeaderboard } from '@/lib/finish-leaderboards'
 import { mahjongMeldClaims, isSeatAfterDiscarder, type MeldClaim } from '@/lib/mahjong-claims'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -38,6 +40,7 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
   const [mahjongState, setMahjongState] = useState<MahjongStateResponse | null>(null)
   const [acting, setActing] = useState(false)
   const [timerTick, setTimerTick] = useState(0)
+  const styles = useThemedStyles(makeStyles)
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: MahjongStateResponse | null; ok: boolean }> => {
@@ -158,11 +161,33 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
     return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (bootstrap.screen === 'finished' && bootstrap.game) {
-    const winner = bootstrap.players.find((p) => p.id === session?.winner_player_id)
+    const winnerIds =
+      session?.winner_player_ids && session.winner_player_ids.length > 0
+        ? session.winner_player_ids
+        : session?.winner_player_id
+          ? [session.winner_player_id]
+          : []
+    const winnerNames = winnerIds
+      .map((id) => bootstrap.players.find((p) => p.id === id)?.name)
+      .filter((n): n is string => !!n)
+    const title =
+      winnerNames.length > 0
+        ? `${winnerNames.join(' & ')} calls Mahjong!`
+        : session?.status_message ?? 'Wall draw'
     return (
-      <GameFinishPanel bootstrap={bootstrap}
-        title={batch8GameLabel('mahjong')}
-        detail={winner ? `${winner.name} wins` : session?.status_message ?? 'Hand over'}
+      <GameFinishPanel
+        bootstrap={bootstrap}
+        title={title}
+        subtitle="Final standings"
+        leaderboard={mahjongLeaderboard(
+          bootstrap.players,
+          session?.scores,
+          session?.score_summary?.payments,
+          winnerIds,
+          bootstrap.myPlayerId
+        )}
+        winnerPlayerId={winnerIds[0] ?? null}
+        roundKey={session?.id}
       />
     )
   }
@@ -281,41 +306,43 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   content: { paddingBottom: 32, gap: 12 },
-  status: { color: '#d1d5db', fontSize: 14 },
-  section: { color: '#fff', fontSize: 16, fontWeight: '600', marginTop: 4 },
+  status: { color: theme.textSecondary, fontSize: 14 },
+  section: { color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 4 },
   tileRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   meldBtn: {
-    backgroundColor: '#3f1d2b',
+    backgroundColor: theme.primarySoft,
     borderWidth: 1,
-    borderColor: '#f43f5e',
+    borderColor: theme.primary,
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 12,
     alignItems: 'center',
   },
-  meldBtnText: { color: '#fda4af', fontWeight: '800', fontSize: 14 },
+  meldBtnText: { color: theme.primaryMuted, fontWeight: '800', fontSize: 14 },
   meldRow: { gap: 6, marginBottom: 8 },
-  meldType: { color: '#fda4af', fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
+  meldType: { color: theme.primaryMuted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
   meldTiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
-  actionPanel: { backgroundColor: '#17171d', borderRadius: 12, padding: 14, gap: 10 },
-  actionTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  actionPanel: { backgroundColor: theme.surface, borderRadius: 12, padding: 14, gap: 10 },
+  actionTitle: { color: theme.text, fontSize: 16, fontWeight: '700' },
   actionRow: { flexDirection: 'row', gap: 8 },
   flexBtn: { flex: 1 },
   primaryBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: 'center',
   },
+  // white on the solid rose button — intentional
   primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   secondaryBtn: {
-    backgroundColor: '#2a2a35',
+    backgroundColor: theme.border,
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: 'center',
   },
-  secondaryBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  secondaryBtnText: { color: theme.text, fontWeight: '600', fontSize: 15 },
   btnDisabled: { opacity: 0.5 },
 })

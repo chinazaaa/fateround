@@ -2,6 +2,8 @@ import { EditNameInline } from '@/components/session/EditNameInline'
 import { LeaveGameButton } from '@/components/session/LeaveGameButton'
 import { PlayerResumeCard } from '@/components/session/PlayerResumeCard'
 import { StyleSheet, View } from 'react-native'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -24,6 +26,7 @@ export function PlayerSessionControls({
   inLobby = false,
   spectating = false,
 }: Props) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.wrap}>
       <EditNameInline
@@ -39,6 +42,7 @@ export function PlayerSessionControls({
   )
 }
 
-const styles = StyleSheet.create({
-  wrap: { gap: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#2a2a35' },
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+  wrap: { gap: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: theme.border },
 })

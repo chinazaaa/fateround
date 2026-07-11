@@ -16,6 +16,8 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { postLudoMove, postLudoRoll } from '@/lib/game-api'
@@ -28,6 +30,7 @@ import { ludoLeaderboard } from '@/lib/finish-leaderboards'
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
 export function LudoPlayerView({ gameCode }: { gameCode: string }) {
+  const styles = useThemedStyles(makeStyles)
   const [session, setSession] = useState<LudoSession | null>(null)
   const [states, setStates] = useState<LudoPlayerState[]>([])
   const [acting, setActing] = useState(false)
@@ -205,12 +208,14 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   scroll: { gap: 12, paddingBottom: 24 },
-  status: { color: '#9ca3af', textAlign: 'center' },
+  status: { color: theme.textMuted, textAlign: 'center' },
   dice: { color: '#fcd34d', textAlign: 'center', fontWeight: '700' },
-  btn: { backgroundColor: '#f43f5e', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  btn: { backgroundColor: theme.primary, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   btnDisabled: { opacity: 0.45 },
+  // White on the solid primary button — intentional (case 2).
   btnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
-  hint: { color: '#9ca3af', textAlign: 'center' },
+  hint: { color: theme.textMuted, textAlign: 'center' },
 })

@@ -704,6 +704,7 @@ export function startGame(gameId: string, hostToken: string) {
 
 export type LobbySettingsPatch = {
   is_public?: boolean
+  theme?: string
   rounds_count?: number
   timer_seconds?: number
   operative_timer_seconds?: number

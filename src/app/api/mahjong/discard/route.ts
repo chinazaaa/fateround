@@ -3,6 +3,7 @@ import { parseGameType, isMahjongGame } from '@/lib/game-types'
 import { processMahjongDiscard } from '@/lib/mahjong'
 import { mahjongDiscardSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { scheduleTurnNotification } from '@/lib/push'
 import { verifyMahjongPlayerAccess } from '@/lib/mahjong-auth'
 
 export async function POST(req: NextRequest) {

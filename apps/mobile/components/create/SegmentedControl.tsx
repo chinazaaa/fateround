@@ -64,7 +64,7 @@ const makeStyles = (theme: Theme) =>
     fontWeight: '700',
   },
   chipTextSelected: {
-    color: '#fff',
+    color: theme.primaryMuted,
   },
   hint: {
     color: theme.textFaint,

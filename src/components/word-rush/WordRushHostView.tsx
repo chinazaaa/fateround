@@ -8,6 +8,7 @@ import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
+import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
@@ -515,6 +516,9 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
         />
       )}
       {game.status !== 'finished' && <HostRulesRow gameType="word_rush" />}
+      {game.status === 'waiting' && (
+        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+      )}
       {game.status === 'waiting' && (
         <WordRushCard className="space-y-4">
           <p className="font-bold">Word Rush settings</p>

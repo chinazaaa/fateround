@@ -1,6 +1,8 @@
 import { Linking, Pressable, StyleSheet, Text } from 'react-native'
 import type { GameType } from '@fateround/shared'
 import { gameRulesUrl } from '@/lib/game-rules'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameType: GameType | string | null | undefined
@@ -8,6 +10,7 @@ type Props = {
 }
 
 export function GameRulesLink({ gameType, variant = 'inline' }: Props) {
+  const styles = useThemedStyles(makeStyles)
   if (!gameType) return null
   const url = gameRulesUrl(gameType)
   if (!url) return null
@@ -23,7 +26,8 @@ export function GameRulesLink({ gameType, variant = 'inline' }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
-  inline: { color: '#fda4af', fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
-  subtle: { color: '#9ca3af', fontSize: 12, fontWeight: '500', textDecorationLine: 'underline' },
-})
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+    inline: { color: theme.primaryMuted, fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
+    subtle: { color: theme.textMuted, fontSize: 12, fontWeight: '500', textDecorationLine: 'underline' },
+  })

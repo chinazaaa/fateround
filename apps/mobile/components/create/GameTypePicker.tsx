@@ -157,7 +157,7 @@ const makeStyles = (theme: Theme) =>
     backgroundColor: theme.primarySoft,
   },
   chipText: { color: theme.textMuted, fontSize: 13, fontWeight: '700' },
-  chipTextActive: { color: '#fff' },
+  chipTextActive: { color: theme.primaryMuted },
   empty: {
     color: theme.textMuted,
     fontSize: 14,
@@ -191,7 +191,7 @@ const makeStyles = (theme: Theme) =>
     fontWeight: '700',
     lineHeight: 20,
   },
-  nameSelected: { color: '#fff' },
+  nameSelected: { color: theme.primaryMuted },
   blurb: {
     color: theme.textFaint,
     fontSize: 12,

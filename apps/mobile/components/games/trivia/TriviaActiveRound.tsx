@@ -15,6 +15,8 @@ import { useRoundTimer } from '@/hooks/useRoundTimer'
 import { useTriviaRevealAdvance } from '@/hooks/useTriviaRevealAdvance'
 import { postTriviaAnswer } from '@/lib/game-api'
 import { playSound } from '@/lib/sounds'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type PlayScreen = 'waiting' | 'active' | 'locked' | 'revealed'
 
@@ -39,6 +41,7 @@ export function TriviaActiveRound({
   myResumeToken,
   onReload,
 }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [submitting, setSubmitting] = useState(false)
   const [submittingChoice, setSubmittingChoice] = useState<number | null>(null)
   const [lastResult, setLastResult] = useState<{ isCorrect: boolean; points: number } | null>(null)
@@ -236,47 +239,50 @@ export function TriviaActiveRound({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   scroll: { gap: 12, paddingBottom: 24 },
   header: { alignItems: 'center', gap: 8 },
-  roundMeta: { color: '#9ca3af', fontSize: 14 },
+  roundMeta: { color: theme.textMuted, fontSize: 14 },
   panel: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 12,
     padding: 16,
     gap: 12,
   },
-  panelTitle: { color: '#fff', fontSize: 20, fontWeight: '800', textAlign: 'center' },
-  panelSub: { color: '#9ca3af', textAlign: 'center' },
-  question: { color: '#fff', fontSize: 20, fontWeight: '700', lineHeight: 28 },
+  panelTitle: { color: theme.text, fontSize: 20, fontWeight: '800', textAlign: 'center' },
+  panelSub: { color: theme.textMuted, textAlign: 'center' },
+  question: { color: theme.text, fontSize: 20, fontWeight: '700', lineHeight: 28 },
   choices: { gap: 10 },
   choice: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#0b0b0f',
+    backgroundColor: theme.bg,
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
   },
-  choiceSelected: { borderColor: '#f43f5e', backgroundColor: '#3f1d2b' },
+  choiceSelected: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
   choiceBadge: {
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
+    // White on the solid rose badge — intentional, correct in both schemes.
     color: '#fff',
     textAlign: 'center',
     lineHeight: 32,
     fontWeight: '800',
   },
-  choiceText: { flex: 1, color: '#fff', fontSize: 16 },
-  submitting: { color: '#9ca3af' },
-  resultTitle: { color: '#fff', fontSize: 22, fontWeight: '800', textAlign: 'center' },
-  correct: { color: '#4ade80' },
+  choiceText: { flex: 1, color: theme.text, fontSize: 16 },
+  submitting: { color: theme.textMuted },
+  resultTitle: { color: theme.text, fontSize: 22, fontWeight: '800', textAlign: 'center' },
+  correct: { color: theme.success },
+  // Muted gray "Not quite…" state — left as a functional wrong-answer color.
   incorrect: { color: '#9ca3af' },
-  points: { color: '#d1d5db', fontSize: 16, textAlign: 'center' },
-  reveal: { color: '#fff', fontSize: 16, textAlign: 'center', lineHeight: 22 },
-  countdown: { color: '#fda4af', fontSize: 15, fontWeight: '700', textAlign: 'center' },
+  points: { color: theme.textSecondary, fontSize: 16, textAlign: 'center' },
+  reveal: { color: theme.text, fontSize: 16, textAlign: 'center', lineHeight: 22 },
+  countdown: { color: theme.primaryMuted, fontSize: 15, fontWeight: '700', textAlign: 'center' },
 })

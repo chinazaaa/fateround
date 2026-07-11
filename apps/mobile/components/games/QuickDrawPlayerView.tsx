@@ -38,6 +38,8 @@ import {
 } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { scoreListLeaderboard, toLeaderboardRows } from '@/lib/finish-leaderboards'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -48,6 +50,8 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
   const [guesses, setGuesses] = useState<QuickDrawGuessGuess[]>([])
   const [guessText, setGuessText] = useState('')
   const [acting, setActing] = useState(false)
+  const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
 
   const loadGameState = useCallback(
     async (game: Game, _players: Player[]): Promise<{ state: QuickDrawGuessSession | null; ok: boolean }> => {
@@ -346,7 +350,7 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
               value={guessText}
               onChangeText={setGuessText}
               placeholder="Type your guess"
-              placeholderTextColor="#6b7280"
+              placeholderTextColor={theme.textFaint}
               autoCapitalize="none"
               autoCorrect={false}
             />
@@ -366,40 +370,42 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   teamRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  teamRowLabel: { color: '#9ca3af', fontSize: 14 },
+  teamRowLabel: { color: theme.textMuted, fontSize: 14 },
   content: { paddingBottom: 32, gap: 12 },
-  status: { color: '#d1d5db', fontSize: 14 },
-  wordBox: { backgroundColor: '#17171d', borderRadius: 12, padding: 16, gap: 8, alignItems: 'center' },
-  wordLabel: { color: '#9ca3af', fontSize: 12, textTransform: 'uppercase' },
-  word: { color: '#fff', fontSize: 32, fontWeight: '800', textAlign: 'center' },
-  wordHint: { color: '#9ca3af', fontSize: 13, textAlign: 'center' },
+  status: { color: theme.textSecondary, fontSize: 14 },
+  wordBox: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 8, alignItems: 'center' },
+  wordLabel: { color: theme.textMuted, fontSize: 12, textTransform: 'uppercase' },
+  word: { color: theme.text, fontSize: 32, fontWeight: '800', textAlign: 'center' },
+  wordHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
   guessBox: { gap: 10 },
   input: {
-    backgroundColor: '#17171d',
-    borderColor: '#2a2a35',
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
     borderWidth: 1,
     borderRadius: 12,
-    color: '#fff',
+    color: theme.text,
     fontSize: 16,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
   primaryBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: 'center',
   },
+  // white on the solid rose button — intentional
   primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   secondaryBtn: {
-    backgroundColor: '#2a2a35',
+    backgroundColor: theme.border,
     borderRadius: 10,
     paddingVertical: 12,
     paddingHorizontal: 16,
     alignItems: 'center',
   },
-  secondaryBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  secondaryBtnText: { color: theme.text, fontWeight: '600', fontSize: 15 },
   btnDisabled: { opacity: 0.5 },
 })

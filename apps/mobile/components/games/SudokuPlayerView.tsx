@@ -11,6 +11,9 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
+import { pointsLeaderboard } from '@/lib/finish-leaderboards'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postSudokuSubmit } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
@@ -20,6 +23,7 @@ import { usePlayerSessionActions } from '@/lib/player-session'
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
 export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
+  const styles = useThemedStyles(makeStyles)
   const [puzzle, setPuzzle] = useState<number[][] | null>(null)
   const [submissions, setSubmissions] = useState<SudokuSubmission[]>([])
   const [drafts, setDrafts] = useState<number[][]>(() => Array.from({ length: 9 }, () => Array(9).fill(0)))
@@ -130,12 +134,26 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   if (!bootstrap.game) return <GameLoading />
 
   if (bootstrap.screen === 'finished') {
-    const myPoints = submissions
-      .filter((s) => s.player_id === bootstrap.myPlayerId && s.is_correct)
-      .reduce((sum, s) => sum + s.points_awarded, 0)
+    const entries = bootstrap.players
+      .filter((p) => !p.spectator)
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        points: submissions
+          .filter((s) => s.player_id === p.id && s.is_correct)
+          .reduce((sum, s) => sum + s.points_awarded, 0),
+      }))
+    const top = [...entries].sort((a, b) => b.points - a.points)[0]
+    const winnerId = top && top.points > 0 ? top.id : null
     return (
       <GameShell bootstrap={bootstrap} title={batch3GameLabel('sudoku')} subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap} title="Game over" detail={`Your score: ${myPoints}`} />
+        <GameFinishPanel
+          bootstrap={bootstrap}
+          title={winnerId ? `${top!.name} wins!` : 'Game over'}
+          subtitle="Final standings"
+          leaderboard={pointsLeaderboard(entries, bootstrap.myPlayerId)}
+          winnerPlayerId={winnerId}
+        />
       </GameShell>
     )
   }
@@ -193,8 +211,10 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
-  waiting: { color: '#9ca3af', textAlign: 'center', marginTop: 24 },
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+  waiting: { color: theme.textMuted, textAlign: 'center', marginTop: 24 },
+  // Sudoku grid is a functional board (Step D) — frame + cell state colors left as-is.
   board: { alignSelf: 'center', borderWidth: 2, borderColor: '#374151', marginTop: 8 },
   row: { flexDirection: 'row' },
   cell: {
@@ -209,18 +229,19 @@ const styles = StyleSheet.create({
   cellGiven: { backgroundColor: '#1f2937' },
   cellSolved: { backgroundColor: '#14532d' },
   cellSelected: { borderColor: '#f43f5e' },
+  // White digit on the dark grid cell — intentional (case 2).
   cellText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   pad: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 16 },
   padKey: {
     width: 44,
     height: 44,
     borderRadius: 10,
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  padText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  padText: { color: theme.text, fontSize: 18, fontWeight: '700' },
   message: { color: '#fcd34d', textAlign: 'center', marginTop: 12 },
 })

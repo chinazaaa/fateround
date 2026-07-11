@@ -5,6 +5,8 @@ import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import type { BootstrapLike } from '@/lib/bootstrap-props'
 import { shellPropsFromBootstrap } from '@/lib/bootstrap-props'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 export type FinishedLeaderboardRow = {
   name: string
@@ -26,14 +28,17 @@ function rankBadge(index: number): string {
 }
 
 export function GameLoading() {
+  const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
   return (
     <View style={styles.centered}>
-      <ActivityIndicator color="#f43f5e" size="large" />
+      <ActivityIndicator color={theme.primary} size="large" />
     </View>
   )
 }
 
 export function GameNotFound({ gameCode }: { gameCode: string }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.centered}>
       <Text style={styles.title}>Game not found</Text>
@@ -65,6 +70,7 @@ export function GameShell({
   onPromoted?: () => void | Promise<unknown>
   children: ReactNode
 }) {
+  const styles = useThemedStyles(makeStyles)
   const shell = bootstrap ? shellPropsFromBootstrap(bootstrap) : { gameCode, game, players, myPlayerId, onPromoted }
   const code = shell.gameCode
   const g = shell.game
@@ -101,6 +107,7 @@ export function GameShell({
 }
 
 export function WaitingPanel({ message }: { message: string }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.panel}>
       <Text style={styles.panelText}>{message}</Text>
@@ -125,6 +132,7 @@ export function GameFinishedScreen({
   emoji?: string
   centered?: boolean
 }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={[styles.panel, centered && styles.panelCentered]}>
       {emoji ? <Text style={styles.finishedEmoji}>{emoji}</Text> : null}
@@ -187,6 +195,7 @@ export function FinishedPanel({
 }
 
 export function TurnBanner({ text, isMyTurn }: { text: string; isMyTurn: boolean }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={[styles.turnBanner, isMyTurn && styles.turnBannerActive]}>
       <Text style={styles.turnText}>{text}</Text>
@@ -194,41 +203,42 @@ export function TurnBanner({ text, isMyTurn }: { text: string; isMyTurn: boolean
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   centered: {
     flex: 1,
-    backgroundColor: '#0b0b0f',
+    backgroundColor: theme.bg,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
     gap: 8,
   },
   title: {
-    color: '#fff',
+    color: theme.text,
     fontSize: 22,
     fontWeight: '700',
   },
   body: {
-    color: '#9ca3af',
+    color: theme.textMuted,
     fontSize: 16,
     textAlign: 'center',
   },
   shell: {
     flex: 1,
-    backgroundColor: '#0b0b0f',
+    backgroundColor: theme.bg,
     padding: 16,
     gap: 14,
   },
   shellSubtitle: {
-    color: '#9ca3af',
+    color: theme.textMuted,
     fontSize: 15,
     lineHeight: 21,
   },
   panel: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     padding: 24,
     gap: 12,
   },
@@ -236,7 +246,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   panelText: {
-    color: '#d1d5db',
+    color: theme.textSecondary,
     fontSize: 15,
     lineHeight: 22,
   },
@@ -245,7 +255,7 @@ const styles = StyleSheet.create({
     lineHeight: 52,
   },
   finishedTitle: {
-    color: '#fff',
+    color: theme.text,
     fontSize: 24,
     fontWeight: '800',
     letterSpacing: -0.3,
@@ -254,7 +264,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   finishedSubtitle: {
-    color: '#fda4af',
+    color: theme.primaryMuted,
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.6,
@@ -264,7 +274,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   finishedDetail: {
-    color: '#d1d5db',
+    color: theme.textSecondary,
     fontSize: 16,
     lineHeight: 24,
     fontWeight: '600',
@@ -284,17 +294,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#0b0b0f',
+    backgroundColor: theme.bg,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
   leaderboardHighlight: {
     borderWidth: 1,
-    borderColor: '#f43f5e',
+    borderColor: theme.primary,
   },
   leaderboardRank: {
-    color: '#6b7280',
+    color: theme.textFaint,
     fontSize: 15,
     fontWeight: '700',
     width: 26,
@@ -302,50 +312,51 @@ const styles = StyleSheet.create({
   },
   leaderboardName: {
     flex: 1,
-    color: '#fff',
+    color: theme.text,
     fontSize: 15,
     fontWeight: '600',
   },
   leaderboardYou: {
-    color: '#9ca3af',
+    color: theme.textMuted,
     fontWeight: '600',
   },
   leaderboardScore: {
-    color: '#fda4af',
+    color: theme.primaryMuted,
     fontSize: 15,
     fontWeight: '700',
   },
   leaderboardDetail: {
-    color: '#6b7280',
+    color: theme.textFaint,
     fontSize: 13,
     fontWeight: '600',
   },
   finishedButton: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
     marginTop: 4,
   },
   finishedButtonText: {
+    // White on the solid rose button — correct in both schemes.
     color: '#fff',
     fontSize: 15,
     fontWeight: '700',
   },
   turnBanner: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     paddingVertical: 14,
     paddingHorizontal: 16,
   },
   turnBannerActive: {
-    backgroundColor: '#2a1220',
-    borderColor: '#f43f5e',
+    backgroundColor: theme.primarySoft,
+    borderColor: theme.primary,
   },
   turnText: {
-    color: '#fff',
+    color: theme.text,
     fontSize: 16,
     fontWeight: '700',
     textAlign: 'center',

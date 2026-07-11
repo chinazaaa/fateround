@@ -46,10 +46,14 @@ import {
 } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { scoreListLeaderboard, toLeaderboardRows } from '@/lib/finish-leaderboards'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
 export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
+  const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
   const [session, setSession] = useState<DescribeItSession | null>(null)
   const [teamRows, setTeamRows] = useState<DescribeItPlayer[]>([])
   const [words, setWords] = useState<DescribeItWord[]>([])
@@ -349,7 +353,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
                 value={clueText}
                 onChangeText={setClueText}
                 placeholder="Send a clue (no secret word!)"
-                placeholderTextColor="#6b7280"
+                placeholderTextColor={theme.textFaint}
               />
               <View style={styles.row}>
                 <Pressable style={styles.primaryBtn} disabled={acting} onPress={sendClue}>
@@ -380,7 +384,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
                 value={guessText}
                 onChangeText={setGuessText}
                 placeholder="Type your guess"
-                placeholderTextColor="#6b7280"
+                placeholderTextColor={theme.textFaint}
                 onSubmitEditing={sendGuess}
               />
               <Pressable style={styles.primaryBtn} disabled={acting} onPress={sendGuess}>
@@ -400,39 +404,41 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   teamRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  teamRowLabel: { color: '#9ca3af', fontSize: 14 },
-  waiting: { color: '#9ca3af', fontSize: 16, textAlign: 'center', marginTop: 24 },
-  panel: { backgroundColor: '#17171d', borderRadius: 12, padding: 16, gap: 12 },
-  wordLabel: { color: '#9ca3af', fontSize: 13 },
-  word: { color: '#fff', fontSize: 28, fontWeight: '800' },
+  teamRowLabel: { color: theme.textMuted, fontSize: 14 },
+  waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
+  panel: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 12 },
+  wordLabel: { color: theme.textMuted, fontSize: 13 },
+  word: { color: theme.text, fontSize: 28, fontWeight: '800' },
   clueList: { gap: 6 },
   clueScroll: { maxHeight: 120 },
-  clueItem: { color: '#d1d5db', fontSize: 15, lineHeight: 22 },
+  clueItem: { color: theme.textSecondary, fontSize: 15, lineHeight: 22 },
   input: {
-    backgroundColor: '#0b0b0f',
+    backgroundColor: theme.bg,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#2a2a35',
-    color: '#fff',
+    borderColor: theme.border,
+    color: theme.text,
     padding: 12,
     fontSize: 16,
   },
   row: { flexDirection: 'row', gap: 8 },
   primaryBtn: {
     flex: 1,
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 10,
     padding: 14,
     alignItems: 'center',
   },
+  // white on the solid rose primary button — intentional
   primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   secondaryBtn: {
-    backgroundColor: '#2a2a35',
+    backgroundColor: theme.border,
     borderRadius: 10,
     padding: 14,
     alignItems: 'center',
   },
-  secondaryText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  secondaryText: { color: theme.text, fontWeight: '600', fontSize: 15 },
 })

@@ -4,6 +4,8 @@ import { leaveGame } from '@/lib/game-api'
 import { getPlayerSession } from '@/lib/secure-session'
 import { useToast } from '@/components/ui/Toast'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -22,6 +24,7 @@ export function LeaveGameButton({
   inLobby = false,
   quiet = true,
 }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const { error: toastError } = useToast()
   const [leaving, setLeaving] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -73,22 +76,26 @@ export function LeaveGameButton({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   quiet: {
     borderRadius: 10,
     borderWidth: 1,
+    // Translucent error-red outline (no alpha token) — reads as a soft red in both schemes.
     borderColor: '#f8717155',
     paddingVertical: 10,
     paddingHorizontal: 14,
     alignItems: 'center',
   },
-  quietText: { color: '#f87171', fontSize: 14, fontWeight: '600' },
+  quietText: { color: theme.error, fontSize: 14, fontWeight: '600' },
   loud: {
+    // Functional destructive-red fill, not in the token table — kept fixed.
     backgroundColor: '#ef4444',
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
   },
+  // White on the solid red destructive button — correct in both schemes.
   loudText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   disabled: { opacity: 0.6 },
 })

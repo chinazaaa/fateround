@@ -1,4 +1,6 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 export type LeaderboardRow = {
   id?: string
@@ -18,6 +20,7 @@ export function LeaderboardPanel({
   highlightId?: string | null
   scoreSuffix?: string
 }) {
+  const styles = useThemedStyles(makeStyles)
   if (rows.length === 0) return null
 
   return (
@@ -40,16 +43,17 @@ export function LeaderboardPanel({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   panel: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 12,
     padding: 12,
     gap: 8,
     maxHeight: 220,
   },
   title: {
-    color: '#fda4af',
+    color: theme.primaryMuted,
     fontSize: 12,
     fontWeight: '800',
     textTransform: 'uppercase',
@@ -64,24 +68,24 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#2a2a35',
+    borderBottomColor: theme.border,
   },
   rowHighlight: {
-    backgroundColor: '#3f1d2b22',
+    backgroundColor: theme.primarySoft,
   },
   rank: {
-    color: '#6b7280',
+    color: theme.textFaint,
     fontWeight: '700',
     width: 20,
   },
   name: {
     flex: 1,
-    color: '#fff',
+    color: theme.text,
     fontSize: 15,
     fontWeight: '600',
   },
   score: {
-    color: '#fda4af',
+    color: theme.primaryMuted,
     fontWeight: '700',
     fontSize: 14,
   },

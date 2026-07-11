@@ -5,6 +5,8 @@ import { normalizeGameCode } from '@fateround/shared'
 import { HostGameScreen } from '@/components/host/HostGameScreen'
 import { getHostToken, setHostToken } from '@/lib/secure-session'
 import { verifyHost } from '@/lib/game-api'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Phase = 'checking' | 'ready' | 'denied' | 'notFound'
 
@@ -15,6 +17,8 @@ type Phase = 'checking' | 'ready' | 'denied' | 'notFound'
  * against the server before the lobby renders. Host-only v1 (see HostLobbyScreen).
  */
 export default function HostScreen() {
+  const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
   const params = useLocalSearchParams<{ code: string; hostToken?: string }>()
   const router = useRouter()
   const gameCode = typeof params.code === 'string' ? normalizeGameCode(params.code) : ''
@@ -61,7 +65,7 @@ export default function HostScreen() {
   if (phase === 'checking') {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator color="#f43f5e" size="large" />
+        <ActivityIndicator color={theme.primary} size="large" />
       </View>
     )
   }
@@ -86,15 +90,16 @@ export default function HostScreen() {
   return <HostGameScreen gameCode={gameCode} hostToken={token} />
 }
 
-const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    backgroundColor: '#0b0b0f',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-    gap: 8,
-  },
-  errorText: { color: '#fff', fontSize: 18, textAlign: 'center' },
-  subText: { color: '#9ca3af', fontSize: 14, textAlign: 'center' },
-})
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+    centered: {
+      flex: 1,
+      backgroundColor: theme.bg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+      gap: 8,
+    },
+    errorText: { color: theme.text, fontSize: 18, textAlign: 'center' },
+    subText: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
+  })

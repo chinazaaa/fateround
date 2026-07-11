@@ -11,6 +11,8 @@ import {
 } from '@fateround/shared/poll-games'
 import { tallyMltVotes, tallyRoundVotes, tallyWyrVotes } from '@fateround/shared/vote-stats'
 import { ParticipantAvatar } from '@/components/ui/ParticipantAvatar'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   game: Game
@@ -22,6 +24,7 @@ type Props = {
 }
 
 export function PollRoundResults({ game, gameType, round, participants, votes, players }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const roundVotes = votes.filter((v) => v.round_id === round.id)
   const roundPeople = round.participant_ids
     ? round.participant_ids
@@ -109,6 +112,7 @@ export function PollRoundResults({ game, gameType, round, participants, votes, p
 }
 
 function ResultBar({ label, count, pct }: { label: string; count: number; pct: number }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.barWrap}>
       <View style={styles.barHeader}>
@@ -124,15 +128,16 @@ function ResultBar({ label, count, pct }: { label: string; count: number; pct: n
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   panel: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 12,
     padding: 16,
     gap: 10,
   },
   title: {
-    color: '#fff',
+    color: theme.text,
     fontSize: 18,
     fontWeight: '800',
     textAlign: 'center',
@@ -149,21 +154,21 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   personStats: { flex: 1, gap: 2 },
-  rowName: { color: '#fff', fontSize: 15, fontWeight: '600', flex: 1 },
-  rowScore: { color: '#fda4af', fontWeight: '700' },
-  meta: { color: '#9ca3af', fontSize: 13, textAlign: 'center' },
-  winner: { color: '#fda4af', fontWeight: '700', textAlign: 'center', marginTop: 4 },
+  rowName: { color: theme.text, fontSize: 15, fontWeight: '600', flex: 1 },
+  rowScore: { color: theme.primaryMuted, fontWeight: '700' },
+  meta: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
+  winner: { color: theme.primaryMuted, fontWeight: '700', textAlign: 'center', marginTop: 4 },
   barWrap: { gap: 6 },
   barHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   barTrack: {
     height: 8,
-    backgroundColor: '#0b0b0f',
+    backgroundColor: theme.bg,
     borderRadius: 4,
     overflow: 'hidden',
   },
   barFill: {
     height: '100%',
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 4,
   },
 })

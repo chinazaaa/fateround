@@ -4,6 +4,8 @@ import { patchPlayerName } from '@/lib/game-api'
 import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { notifyPlayerSessionChanged } from '@/lib/session-events'
 import { useToast } from '@/components/ui/Toast'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -23,6 +25,7 @@ export function EditNameInline({
   spectating = false,
   startEditing = false,
 }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const { success, error: toastError } = useToast()
   const [editing, setEditing] = useState(startEditing)
   const [name, setName] = useState(currentName)
@@ -90,26 +93,28 @@ export function EditNameInline({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   viewRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  label: { color: '#9ca3af', fontSize: 14, flex: 1 },
-  strong: { color: '#fff', fontWeight: '700' },
-  editLink: { color: '#fda4af', textDecorationLine: 'underline', fontSize: 13 },
+  label: { color: theme.textMuted, fontSize: 14, flex: 1 },
+  strong: { color: theme.text, fontWeight: '700' },
+  editLink: { color: theme.primaryMuted, textDecorationLine: 'underline', fontSize: 13 },
   editRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   input: {
     flex: 1,
-    backgroundColor: '#0b0b0f',
-    borderColor: '#2a2a35',
+    backgroundColor: theme.bg,
+    borderColor: theme.border,
     borderWidth: 1,
     borderRadius: 10,
-    color: '#fff',
+    color: theme.text,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
   },
-  saveBtn: { backgroundColor: '#f43f5e', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
+  saveBtn: { backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
+  // White on the solid rose Save button — correct in both schemes.
   saveText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   cancelBtn: { paddingHorizontal: 8, paddingVertical: 10 },
-  cancelText: { color: '#9ca3af', fontSize: 13 },
+  cancelText: { color: theme.textMuted, fontSize: 13 },
   btnDisabled: { opacity: 0.6 },
 })

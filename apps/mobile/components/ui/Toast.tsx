@@ -1,6 +1,8 @@
 import { createContext, ReactNode, useCallback, useContext, useMemo, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type ToastKind = 'success' | 'error' | 'info'
 
@@ -18,6 +20,7 @@ type ToastContextValue = {
 const ToastContext = createContext<ToastContextValue | null>(null)
 
 export function ToastProvider({ children }: { children: ReactNode }) {
+  const styles = useThemedStyles(makeStyles)
   const insets = useSafeAreaInsets()
   const [toast, setToast] = useState<ToastState>(null)
 
@@ -44,7 +47,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             style={[styles.toast, toast.kind === 'error' && styles.toastError, toast.kind === 'success' && styles.toastSuccess]}
             onPress={() => setToast(null)}
           >
-            <Text style={styles.text}>{toast.message}</Text>
+            <Text style={[styles.text, toast.kind === 'success' && styles.textSuccess]}>{toast.message}</Text>
           </Pressable>
         </View>
       ) : null}
@@ -64,7 +67,8 @@ export function useToast() {
   return ctx
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: {
     position: 'absolute',
     left: 16,
@@ -72,24 +76,29 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   toast: {
-    backgroundColor: '#17171d',
-    borderColor: '#2a2a35',
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
   toastError: {
-    borderColor: '#f87171',
-    backgroundColor: '#3f1d2b',
+    borderColor: theme.error,
+    backgroundColor: theme.primarySoft,
   },
   toastSuccess: {
-    borderColor: '#4ade80',
+    borderColor: theme.success,
+    // Dark success-green fill, no soft-success token — kept fixed.
     backgroundColor: '#14532d',
   },
   text: {
-    color: '#fff',
+    color: theme.text,
     fontSize: 14,
     textAlign: 'center',
+  },
+  textSuccess: {
+    // White on the fixed dark success-green fill — readable in both schemes.
+    color: '#fff',
   },
 })

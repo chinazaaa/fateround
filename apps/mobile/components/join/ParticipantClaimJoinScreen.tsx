@@ -4,6 +4,8 @@ import type { Game, Participant, Player } from '@fateround/shared'
 import { claimedParticipantIds } from '@fateround/shared/participant-mode'
 import { ShareGameCard } from '@/components/session/ShareGameCard'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -26,6 +28,8 @@ export function ParticipantClaimJoinScreen({
   hint = 'Select your name from the list',
   onJoin,
 }: Props) {
+  const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
@@ -51,7 +55,7 @@ export function ParticipantClaimJoinScreen({
       <TextInput
         style={styles.input}
         placeholder="Search your name…"
-        placeholderTextColor="#6b7280"
+        placeholderTextColor={theme.textFaint}
         value={query}
         onChangeText={setQuery}
         autoCapitalize="words"
@@ -92,6 +96,7 @@ export function ParticipantClaimJoinScreen({
         disabled={!selected || joining}
       >
         {joining ? (
+          // White spinner on the solid rose button — correct in both schemes.
           <ActivityIndicator color="#fff" />
         ) : (
           <Text style={styles.buttonText}>{selected ? `Join as ${selected.name}` : 'Select your name'}</Text>
@@ -103,102 +108,104 @@ export function ParticipantClaimJoinScreen({
   )
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    backgroundColor: '#0b0b0f',
-    padding: 24,
-    gap: 10,
-    paddingBottom: 32,
-  },
-  kicker: {
-    color: '#9ca3af',
-    fontSize: 14,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  title: {
-    color: '#fff',
-    fontSize: 22,
-    fontWeight: '800',
-  },
-  code: {
-    color: '#fda4af',
-    fontSize: 28,
-    fontWeight: '700',
-    letterSpacing: 4,
-  },
-  hint: {
-    color: '#9ca3af',
-    fontSize: 15,
-    marginBottom: 4,
-  },
-  input: {
-    backgroundColor: '#17171d',
-    borderColor: '#2a2a35',
-    borderWidth: 1,
-    borderRadius: 12,
-    color: '#fff',
-    fontSize: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  listScroll: {
-    maxHeight: 280,
-    width: '100%',
-  },
-  listContent: {
-    gap: 8,
-    paddingVertical: 4,
-  },
-  empty: {
-    color: '#6b7280',
-    fontSize: 14,
-    textAlign: 'center',
-    paddingVertical: 24,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#17171d',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#2a2a35',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  rowActive: {
-    borderColor: '#f43f5e',
-    backgroundColor: '#3f1d2b',
-  },
-  rowName: {
-    flex: 1,
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  rowCheck: {
-    color: '#fda4af',
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  error: {
-    color: '#fb7185',
-    fontSize: 14,
-  },
-  button: {
-    backgroundColor: '#f43f5e',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '600',
-  },
-})
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+    container: {
+      flexGrow: 1,
+      backgroundColor: theme.bg,
+      padding: 24,
+      gap: 10,
+      paddingBottom: 32,
+    },
+    kicker: {
+      color: theme.textMuted,
+      fontSize: 14,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+    title: {
+      color: theme.text,
+      fontSize: 22,
+      fontWeight: '800',
+    },
+    code: {
+      color: theme.primaryMuted,
+      fontSize: 28,
+      fontWeight: '700',
+      letterSpacing: 4,
+    },
+    hint: {
+      color: theme.textMuted,
+      fontSize: 15,
+      marginBottom: 4,
+    },
+    input: {
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: 12,
+      color: theme.text,
+      fontSize: 16,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+    },
+    listScroll: {
+      maxHeight: 280,
+      width: '100%',
+    },
+    listContent: {
+      gap: 8,
+      paddingVertical: 4,
+    },
+    empty: {
+      color: theme.textFaint,
+      fontSize: 14,
+      textAlign: 'center',
+      paddingVertical: 24,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+    },
+    rowActive: {
+      borderColor: theme.primary,
+      backgroundColor: theme.primarySoft,
+    },
+    rowName: {
+      flex: 1,
+      color: theme.text,
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    rowCheck: {
+      color: theme.primaryMuted,
+      fontSize: 18,
+      fontWeight: '800',
+    },
+    error: {
+      color: theme.error,
+      fontSize: 14,
+    },
+    button: {
+      backgroundColor: theme.primary,
+      borderRadius: 12,
+      paddingVertical: 16,
+      alignItems: 'center',
+      marginTop: 4,
+    },
+    buttonDisabled: {
+      opacity: 0.6,
+    },
+    buttonText: {
+      // White on the solid rose button — correct in both schemes.
+      color: '#fff',
+      fontSize: 17,
+      fontWeight: '600',
+    },
+  })

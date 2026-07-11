@@ -17,6 +17,8 @@ import { ROUND_SELECT, TRIVIA_ANSWER_SELECT } from '@/lib/supabase-selects'
 import { useTriviaAutoAdvance } from '@/hooks/useTriviaAutoAdvance'
 import { HostChrome } from '@/components/host/HostChrome'
 import { GameFinishedActions } from '@/components/lifecycle/GameFinishedActions'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -27,6 +29,7 @@ type Props = {
 }
 
 export function TriviaHostScreen({ gameCode, hostToken, game, players, onReload }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [rounds, setRounds] = useState<Round[]>([])
   const [answers, setAnswers] = useState<TriviaAnswer[]>([])
   const [forcing, setForcing] = useState(false)
@@ -203,38 +206,40 @@ export function TriviaHostScreen({ gameCode, hostToken, game, players, onReload 
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   statsRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  stat: { color: '#9ca3af', fontSize: 14, fontWeight: '600' },
+  stat: { color: theme.textMuted, fontSize: 14, fontWeight: '600' },
   card: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     padding: 16,
     gap: 8,
   },
-  cardLabel: { color: '#fda4af', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  question: { color: '#fff', fontSize: 17, fontWeight: '700', lineHeight: 24 },
-  choice: { color: '#d1d5db', fontSize: 15, lineHeight: 22 },
-  answerCount: { color: '#9ca3af', fontSize: 14, marginTop: 4 },
-  autoHint: { color: '#9ca3af', fontSize: 14, textAlign: 'center' },
+  cardLabel: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  question: { color: theme.text, fontSize: 17, fontWeight: '700', lineHeight: 24 },
+  choice: { color: theme.textSecondary, fontSize: 15, lineHeight: 22 },
+  answerCount: { color: theme.textMuted, fontSize: 14, marginTop: 4 },
+  autoHint: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
   winner: { color: '#86efac', fontSize: 16, fontWeight: '700', textAlign: 'center' },
   primaryBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
   },
+  // White on the solid rose button — intentional, correct in both schemes.
   primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   secondaryBtn: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     paddingVertical: 14,
     alignItems: 'center',
   },
-  secondaryBtnText: { color: '#fff', fontWeight: '600' },
+  secondaryBtnText: { color: theme.text, fontWeight: '600' },
   btnDisabled: { opacity: 0.5 },
-  error: { color: '#f87171', fontSize: 14 },
+  error: { color: theme.error, fontSize: 14 },
 })

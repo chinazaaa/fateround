@@ -2,12 +2,16 @@ import { useCallback, useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native'
 import { isPushMutedForGame, setPushMutedForGame } from '@/lib/push-preferences'
 import { notifyPlayerSessionChanged } from '@/lib/session-events'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
 }
 
 export function PushMuteToggle({ gameCode }: Props) {
+  const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
   const [muted, setMuted] = useState(false)
   const [loading, setLoading] = useState(true)
 
@@ -43,14 +47,15 @@ export function PushMuteToggle({ gameCode }: Props) {
         value={!muted}
         disabled={loading}
         onValueChange={(enabled) => void onToggle(!enabled)}
-        trackColor={{ false: '#3f3f46', true: '#f43f5e' }}
+        trackColor={{ false: '#3f3f46', true: theme.primary }}
         thumbColor="#fff"
       />
     </View>
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -58,9 +63,9 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#2a2a35',
+    borderBottomColor: theme.border,
   },
   copy: { flex: 1, gap: 2 },
-  label: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  hint: { color: '#9ca3af', fontSize: 13 },
+  label: { color: theme.text, fontSize: 16, fontWeight: '600' },
+  hint: { color: theme.textMuted, fontSize: 13 },
 })

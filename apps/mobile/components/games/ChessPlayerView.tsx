@@ -13,6 +13,8 @@ import {
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
@@ -40,6 +42,7 @@ const WHITE_GLYPHS: Record<string, string> = { k: '♔', q: '♕', r: '♖', b: 
 const BLACK_GLYPHS: Record<string, string> = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' }
 
 export function ChessPlayerView({ gameCode }: { gameCode: string }) {
+  const styles = useThemedStyles(makeStyles)
   const [session, setSession] = useState<ChessSession | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [acting, setActing] = useState(false)
@@ -367,6 +370,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
 }
 
 function ClockChip({ label, ms, active }: { label: string; ms: number; active: boolean }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={[styles.clockChip, active && styles.clockActive]}>
       <Text style={styles.clockLabel}>{label}</Text>
@@ -375,8 +379,9 @@ function ClockChip({ label, ms, active }: { label: string; ms: number; active: b
   )
 }
 
-const styles = StyleSheet.create({
-  board: { alignSelf: 'center', borderWidth: 2, borderColor: '#2a2a35', borderRadius: 8, overflow: 'hidden' },
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+  board: { alignSelf: 'center', borderWidth: 2, borderColor: theme.border, borderRadius: 8, overflow: 'hidden' },
   row: { flexDirection: 'row' },
   square: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   lightSquare: { backgroundColor: '#f0d9b5' },

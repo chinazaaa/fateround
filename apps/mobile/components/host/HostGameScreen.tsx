@@ -2,6 +2,8 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native'
 import { HostLobbyScreen } from '@/components/HostLobbyScreen'
 import { HostRouter } from '@/components/host/HostRouter'
 import { useHostGame } from '@/hooks/useHostGame'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -12,12 +14,14 @@ type Props = {
  * Host shell: lobby while waiting, in-game dashboard once active or finished.
  */
 export function HostGameScreen({ gameCode, hostToken }: Props) {
+  const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
   const { game, players, loading, reload } = useHostGame(gameCode)
 
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator color="#f43f5e" size="large" />
+        <ActivityIndicator color={theme.primary} size="large" />
       </View>
     )
   }
@@ -25,7 +29,7 @@ export function HostGameScreen({ gameCode, hostToken }: Props) {
   if (!game) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator color="#f43f5e" size="large" />
+        <ActivityIndicator color={theme.primary} size="large" />
       </View>
     )
   }
@@ -47,11 +51,12 @@ export function HostGameScreen({ gameCode, hostToken }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    backgroundColor: '#0b0b0f',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-})
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+    centered: {
+      flex: 1,
+      backgroundColor: theme.bg,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+  })

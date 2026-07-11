@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { pulseTurnAlert } from '@/lib/local-turn-alerts'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 export function TimerBadge({
   seconds,
@@ -11,6 +13,7 @@ export function TimerBadge({
   urgentAt?: number
   enableAlerts?: boolean
 }) {
+  const styles = useThemedStyles(makeStyles)
   const urgent = seconds <= urgentAt
   const prevSecondsRef = useRef(seconds)
 
@@ -36,18 +39,21 @@ export function TimerBadge({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   badge: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 6,
     alignSelf: 'center',
   },
   badgeUrgent: {
+    // Functional urgent-red state color, not in the token table — kept fixed.
     backgroundColor: '#dc2626',
   },
   text: {
+    // White on the solid rose/red badge — correct in both schemes.
     color: '#fff',
     fontSize: 16,
     fontWeight: '800',

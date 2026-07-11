@@ -8,6 +8,8 @@ import { ShareGameCard } from '@/components/session/ShareGameCard'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { gameLabel } from '@/lib/mobile-registry'
 import { postPlayerReady } from '@/lib/game-api'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -38,6 +40,7 @@ export function LobbyView({
   description,
   activity,
 }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const me = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const spectating = !!(me && playerIsViewer(me, game))
   const typeLabel = gameLabel(game.game_type)
@@ -132,82 +135,84 @@ export function LobbyView({
   )
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    backgroundColor: '#0b0b0f',
-    padding: 20,
-    gap: 12,
-    paddingBottom: 32,
-  },
-  hero: {
-    backgroundColor: '#3f1d2b',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#f43f5e44',
-    padding: 16,
-    alignItems: 'center',
-    gap: 6,
-  },
-  kicker: {
-    color: '#fda4af',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-  },
-  title: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  description: {
-    color: '#d1d5db',
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-  gameType: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  getReadyBtn: {
-    marginTop: 12,
-    backgroundColor: '#f43f5e',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    alignSelf: 'stretch',
-    alignItems: 'center',
-  },
-  getReadyBtnDisabled: { opacity: 0.7 },
-  getReadyText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  section: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  list: { gap: 8 },
-  row: {
-    backgroundColor: '#17171d',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  rowMe: { borderWidth: 1, borderColor: '#f43f5e55' },
-  name: { color: '#fff', fontSize: 16 },
-  badge: { color: '#9ca3af', fontSize: 12, textTransform: 'uppercase' },
-  waiting: {
-    color: '#9ca3af',
-    fontSize: 15,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-})
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+    container: {
+      flexGrow: 1,
+      backgroundColor: theme.bg,
+      padding: 20,
+      gap: 12,
+      paddingBottom: 32,
+    },
+    hero: {
+      backgroundColor: theme.primarySoft,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: theme.borderAccent,
+      padding: 16,
+      alignItems: 'center',
+      gap: 6,
+    },
+    kicker: {
+      color: theme.primaryMuted,
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 1.4,
+      textTransform: 'uppercase',
+    },
+    title: {
+      color: theme.text,
+      fontSize: 24,
+      fontWeight: '800',
+      textAlign: 'center',
+    },
+    description: {
+      color: theme.textSecondary,
+      fontSize: 14,
+      lineHeight: 20,
+      textAlign: 'center',
+    },
+    gameType: {
+      color: theme.text,
+      fontSize: 14,
+      fontWeight: '700',
+      marginTop: 4,
+    },
+    getReadyBtn: {
+      marginTop: 12,
+      backgroundColor: theme.primary,
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+      alignSelf: 'stretch',
+      alignItems: 'center',
+    },
+    getReadyBtnDisabled: { opacity: 0.7 },
+    // White on the solid rose button — correct in both schemes.
+    getReadyText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+    section: {
+      color: theme.text,
+      fontSize: 16,
+      fontWeight: '700',
+      marginTop: 4,
+    },
+    list: { gap: 8 },
+    row: {
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    rowMe: { borderWidth: 1, borderColor: theme.borderAccent },
+    name: { color: theme.text, fontSize: 16 },
+    badge: { color: theme.textMuted, fontSize: 12, textTransform: 'uppercase' },
+    waiting: {
+      color: theme.textMuted,
+      fontSize: 15,
+      textAlign: 'center',
+      marginTop: 8,
+    },
+  })

@@ -127,7 +127,7 @@ const makeStyles = (theme: Theme) =>
   rowSelected: { backgroundColor: theme.primarySoft },
   rowText: { flex: 1, gap: 2 },
   rowLabel: { color: theme.text, fontSize: 16, fontWeight: '600' },
-  rowLabelSelected: { color: '#fff', fontWeight: '800' },
+  rowLabelSelected: { color: theme.primaryMuted, fontWeight: '800' },
   rowHint: { color: theme.textFaint, fontSize: 12, lineHeight: 16 },
   check: { color: theme.primaryMuted, fontSize: 18, fontWeight: '800' },
 })

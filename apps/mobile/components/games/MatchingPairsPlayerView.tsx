@@ -23,6 +23,9 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
+import { pointsLeaderboard } from '@/lib/finish-leaderboards'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postMatchingPairsFlip } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
@@ -44,6 +47,7 @@ type BoardState = {
 }
 
 export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
+  const styles = useThemedStyles(makeStyles)
   const [round, setRound] = useState<Round | null>(null)
   const [meta, setMeta] = useState<MatchingPairsMetadata | null>(null)
   const [submissions, setSubmissions] = useState<MatchingPairsSubmission[]>([])
@@ -244,9 +248,25 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   if (!bootstrap.game) return <GameLoading />
 
   if (bootstrap.screen === 'finished') {
+    const entries = bootstrap.players
+      .filter((p) => !p.spectator)
+      .map((p) => {
+        const subs = submissions.filter((s) => s.player_id === p.id)
+        const pts = subs.reduce((max, s) => Math.max(max, s.points_after), 0)
+        const pairs = subs.filter((s) => s.is_match).length
+        return { id: p.id, name: p.name, points: pts, detail: `${pairs} pair${pairs === 1 ? '' : 's'}` }
+      })
+    const top = [...entries].sort((a, b) => b.points - a.points)[0]
+    const winnerId = top && top.points > 0 ? top.id : null
     return (
       <GameShell bootstrap={bootstrap} title={batch3GameLabel('matching_pairs')} subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap} title="Game over" detail={`Your score: ${points}`} />
+        <GameFinishPanel
+          bootstrap={bootstrap}
+          title={winnerId ? `${top!.name} wins!` : 'Game over'}
+          subtitle="Final standings"
+          leaderboard={pointsLeaderboard(entries, bootstrap.myPlayerId)}
+          winnerPlayerId={winnerId}
+        />
       </GameShell>
     )
   }
@@ -286,9 +306,11 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
-  waiting: { color: '#9ca3af', textAlign: 'center', marginTop: 24, fontSize: 16 },
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+  waiting: { color: theme.textMuted, textAlign: 'center', marginTop: 24, fontSize: 16 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignSelf: 'center', marginTop: 12 },
+  // Memory-match tiles are a functional board — card face/back colors left as-is.
   card: {
     width: 64,
     height: 64,
@@ -301,5 +323,5 @@ const styles = StyleSheet.create({
   },
   cardMatched: { opacity: 0.55 },
   cardText: { fontSize: 28 },
-  meta: { color: '#9ca3af', textAlign: 'center', marginTop: 16 },
+  meta: { color: theme.textMuted, textAlign: 'center', marginTop: 16 },
 })

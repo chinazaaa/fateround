@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Pressable, Share, StyleSheet, Text, View } from 'react-native'
 import { playerResumeUrl } from '@/lib/game-links'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -9,6 +11,7 @@ type Props = {
 }
 
 export function PlayerResumeCard({ gameCode, resumeToken, compact = false }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [open, setOpen] = useState(false)
   if (!resumeToken) return null
 
@@ -62,38 +65,39 @@ export function PlayerResumeCard({ gameCode, resumeToken, compact = false }: Pro
   )
 }
 
-const styles = StyleSheet.create({
-  compact: { color: '#6b7280', fontSize: 12 },
-  code: { color: '#d1d5db', fontWeight: '700', letterSpacing: 2 },
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+  compact: { color: theme.textFaint, fontSize: 12 },
+  code: { color: theme.textSecondary, fontWeight: '700', letterSpacing: 2 },
   collapsed: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     padding: 14,
   },
   collapsedEmoji: { fontSize: 22 },
   collapsedText: { flex: 1 },
-  collapsedTitle: { color: '#fff', fontSize: 14, fontWeight: '600' },
-  collapsedSub: { color: '#6b7280', fontSize: 12, marginTop: 2 },
-  chevron: { color: '#6b7280', fontSize: 22 },
+  collapsedTitle: { color: theme.text, fontSize: 14, fontWeight: '600' },
+  collapsedSub: { color: theme.textFaint, fontSize: 12, marginTop: 2 },
+  chevron: { color: theme.textFaint, fontSize: 22 },
   card: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     padding: 16,
     gap: 8,
   },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cardTitle: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  close: { color: '#9ca3af', fontSize: 13 },
-  cardHint: { color: '#6b7280', fontSize: 12 },
+  cardTitle: { color: theme.text, fontSize: 14, fontWeight: '700' },
+  close: { color: theme.textMuted, fontSize: 13 },
+  cardHint: { color: theme.textFaint, fontSize: 12 },
   codeLarge: {
-    color: '#fff',
+    color: theme.text,
     fontSize: 24,
     fontWeight: '800',
     letterSpacing: 4,
@@ -101,10 +105,10 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   shareBtn: {
-    backgroundColor: '#2a2a35',
+    backgroundColor: theme.border,
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
   },
-  shareText: { color: '#fff', fontWeight: '600' },
+  shareText: { color: theme.text, fontWeight: '600' },
 })

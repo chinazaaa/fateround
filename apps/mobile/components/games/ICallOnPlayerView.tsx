@@ -23,12 +23,16 @@ import { getSupabase } from '@/lib/supabase'
 import { NPAT_ANSWER_SELECT, NPAT_MARK_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
 const EMPTY_FORM = { name: '', animal: '', place: '', thing: '', food: '' }
 
 export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
+  const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
   const [rounds, setRounds] = useState<Round[]>([])
   const [answers, setAnswers] = useState<NpatAnswer[]>([])
   const [marks, setMarks] = useState<NpatMark[]>([])
@@ -211,7 +215,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
                   value={form[category]}
                   onChangeText={(text) => setForm((prev) => ({ ...prev, [category]: text }))}
                   placeholder={`${NPAT_CATEGORY_LABELS[category]} starting with ${metadata.letter}`}
-                  placeholderTextColor="#6b7280"
+                  placeholderTextColor={theme.textFaint}
                 />
               </View>
             ))}
@@ -288,51 +292,53 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
-  waiting: { color: '#9ca3af', fontSize: 16, textAlign: 'center', marginTop: 24 },
-  section: { color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 8 },
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+  waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
+  section: { color: theme.text, fontSize: 18, fontWeight: '700', marginBottom: 8 },
   letterGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   letterBtn: {
     width: 44,
     height: 44,
     borderRadius: 8,
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
   },
-  letterText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  letterText: { color: theme.text, fontSize: 18, fontWeight: '700' },
   form: { gap: 12, paddingBottom: 24 },
   fieldBlock: { gap: 6 },
-  fieldLabel: { color: '#d1d5db', fontSize: 14, fontWeight: '600' },
+  fieldLabel: { color: theme.textSecondary, fontSize: 14, fontWeight: '600' },
   input: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#2a2a35',
-    color: '#fff',
+    borderColor: theme.border,
+    color: theme.text,
     padding: 12,
     fontSize: 16,
   },
   primaryBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 10,
     padding: 14,
     alignItems: 'center',
     marginTop: 8,
   },
+  // white on the solid rose primary button — intentional
   primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  locked: { color: '#9ca3af', textAlign: 'center', marginTop: 12 },
+  locked: { color: theme.textMuted, textAlign: 'center', marginTop: 12 },
   markRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 10,
     padding: 12,
     marginBottom: 8,
   },
   markCopy: { flex: 1, paddingRight: 12 },
-  markAnswer: { color: '#fff', fontSize: 16, marginTop: 4 },
+  markAnswer: { color: theme.text, fontSize: 16, marginTop: 4 },
 })

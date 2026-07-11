@@ -250,7 +250,7 @@ const makeStyles = (theme: Theme) =>
   },
   countChipOn: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
   countText: { color: theme.textMuted, fontSize: 15, fontWeight: '800' },
-  countTextOn: { color: '#fff' },
+  countTextOn: { color: theme.primaryMuted },
   slotList: { gap: theme.space.sm },
   slotCard: {
     backgroundColor: theme.bgElevated,

@@ -47,6 +47,8 @@ import {
   ROUND_SELECT,
 } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -71,6 +73,8 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
   const [titleText, setTitleText] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const advancedDeadlineRef = useRef<string | null>(null)
+  const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
 
   const loadGameState = useCallback(async (): Promise<{ state: null; ok: boolean }> => {
     const code = gameCode.toUpperCase()
@@ -288,7 +292,7 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
                   value={titleText}
                   onChangeText={setTitleText}
                   placeholder="Write a convincing fake title"
-                  placeholderTextColor="#6b7280"
+                  placeholderTextColor={theme.textFaint}
                   maxLength={QUICK_DRAW_MAX_TITLE_LENGTH}
                 />
                 <Pressable
@@ -361,43 +365,45 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   content: { paddingBottom: 32, gap: 12 },
-  sub: { color: '#9ca3af', fontSize: 14, textAlign: 'center' },
-  card: { backgroundColor: '#17171d', borderRadius: 12, padding: 16, gap: 10 },
-  cardTitle: { color: '#fff', fontWeight: '700', textAlign: 'center' },
+  sub: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
+  card: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 10 },
+  cardTitle: { color: theme.text, fontWeight: '700', textAlign: 'center' },
   guessBox: { gap: 10 },
   input: {
-    backgroundColor: '#17171d',
-    borderColor: '#2a2a35',
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
     borderWidth: 1,
     borderRadius: 12,
-    color: '#fff',
+    color: theme.text,
     fontSize: 16,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
   primaryBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: 'center',
   },
+  // white on the solid rose button — intentional
   primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   btnDisabled: { opacity: 0.5 },
   titleBtn: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     padding: 14,
   },
-  titleBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  titleBtnText: { color: theme.text, fontSize: 16, fontWeight: '600' },
   revealRow: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 12,
     padding: 12,
     gap: 4,
   },
-  revealMeta: { color: '#9ca3af', fontSize: 13 },
+  revealMeta: { color: theme.textMuted, fontSize: 13 },
 })

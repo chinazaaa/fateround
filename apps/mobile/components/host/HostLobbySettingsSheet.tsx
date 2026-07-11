@@ -18,6 +18,8 @@ import { TimerPicker } from '@/components/create/TimerPicker'
 import { LateJoinPolicyPicker } from '@/components/create/LateJoinPolicyPicker'
 import { MaxPlayersPicker } from '@/components/create/MaxPlayersPicker'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
+import { ThemePicker } from '@/components/create/ThemePicker'
+import { themesForGameType, type ThemeId } from '@fateround/shared/create-themes'
 import {
   patchGameSettings,
   postBingoSettings,
@@ -191,6 +193,8 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
     game.timer_seconds > 0
   const showLateJoin = gameSupportsViewerSetting(gameType)
   const showMaxPlayers = isLobbyLimitGameType(gameType) && LOBBY_MAX_PLAYERS_GAMES.has(gameType)
+  const themeOptions = themesForGameType(gameType)
+  const showTheme = themeOptions.length > 1
 
   const timerOptions = Array.from(
     new Set<number>([game.timer_seconds ?? 0, ...POLL_ROUND_TIMER_OPTIONS])
@@ -199,6 +203,10 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
     .sort((a, b) => a - b)
 
   const [isPublic, setIsPublic] = useState(!!game.is_public)
+  const [themeId, setThemeId] = useState<ThemeId>(() => {
+    const current = game.theme as ThemeId | undefined
+    return current && themeOptions.some((o) => o.id === current) ? current : themeOptions[0]?.id ?? 'default'
+  })
   const [roundsCount, setRoundsCount] = useState(game.rounds_count ?? roundOptions[0] ?? 1)
   const [timerSeconds, setTimerSeconds] = useState(game.timer_seconds ?? POLL_ROUND_TIMER_OPTIONS[0])
   const [lateJoin, setLateJoin] = useState<LateJoinPolicy>(lateJoinPolicyFromGame(game))
@@ -308,6 +316,7 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
     // Visibility / rounds / timer / late-join go through PATCH (works for all games).
     const patch: LobbySettingsPatch = {}
     if (isPublic !== !!game.is_public) patch.is_public = isPublic
+    if (showTheme && themeId !== game.theme) patch.theme = themeId
     if (showRounds && roundsCount !== game.rounds_count) patch.rounds_count = roundsCount
     if (showTimer && timerSeconds !== game.timer_seconds) patch.timer_seconds = timerSeconds
     if (showLateJoin && lateJoin !== lateJoinPolicyFromGame(game)) patch.late_join_policy = lateJoin
@@ -492,6 +501,10 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
                 onChange={(v) => setIsPublic(v === 'public')}
               />
             </View>
+
+            {showTheme ? (
+              <ThemePicker gameType={gameType} value={themeId} onChange={setThemeId} />
+            ) : null}
 
             {showMaxPlayers ? (
               <View style={styles.field}>

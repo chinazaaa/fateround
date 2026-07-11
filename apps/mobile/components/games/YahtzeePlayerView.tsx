@@ -17,6 +17,8 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postYahtzeeHold, postYahtzeeRoll, postYahtzeeScore } from '@/lib/game-api'
@@ -29,6 +31,7 @@ import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
 export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
+  const styles = useThemedStyles(makeStyles)
   const [session, setSession] = useState<YahtzeeSession | null>(null)
   const [scores, setScores] = useState<YahtzeePlayerScore[]>([])
   const [localHeld, setLocalHeld] = useState<boolean[]>([false, false, false, false, false])
@@ -205,9 +208,11 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   scroll: { gap: 12, paddingBottom: 24 },
   diceRow: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
+  // Die faces are functional game pieces — colors left untouched.
   die: {
     width: 52,
     height: 52,
@@ -219,24 +224,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dieHeld: { borderColor: '#f43f5e', backgroundColor: '#3f1d2b' },
+  // White on the dark die face — intentional (case 2).
   dieText: { color: '#fff', fontSize: 22, fontWeight: '800' },
   actions: { alignItems: 'center' },
-  btn: { backgroundColor: '#f43f5e', borderRadius: 12, paddingHorizontal: 20, paddingVertical: 12 },
+  btn: { backgroundColor: theme.primary, borderRadius: 12, paddingHorizontal: 20, paddingVertical: 12 },
   btnDisabled: { opacity: 0.45 },
+  // White on the solid primary button — intentional (case 2).
   btnText: { color: '#fff', fontWeight: '800' },
-  status: { color: '#9ca3af', textAlign: 'center' },
+  status: { color: theme.textMuted, textAlign: 'center' },
   scorecard: { gap: 6 },
   scoreRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     padding: 10,
     borderRadius: 10,
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
   },
   scoreRowUsed: { opacity: 0.65 },
-  scoreLabel: { color: '#fff' },
+  scoreLabel: { color: theme.text },
   scoreValue: { color: '#fcd34d', fontWeight: '700' },
-  total: { color: '#fff', fontWeight: '800', textAlign: 'right', marginTop: 8 },
+  total: { color: theme.text, fontWeight: '800', textAlign: 'right', marginTop: 8 },
 })

@@ -18,6 +18,8 @@ import {
   strokeRenderColor,
   strokeToSvgPath,
 } from '@fateround/shared/quick-draw-strokes'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type DrawTool = 'pen' | 'eraser'
 
@@ -194,6 +196,7 @@ function Toolbar({
   strokesEmpty: boolean
   extra?: React.ReactNode
 }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.toolbar}>
       <Pressable style={[styles.toolBtn, tool === 'pen' && styles.toolBtnActive]} disabled={!canEdit} onPress={() => setTool('pen')}>
@@ -238,6 +241,7 @@ function Toolbar({
 }
 
 export function DrawingPreview({ strokeData }: { strokeData: QuickDrawDrawingStrokeData }) {
+  const styles = useThemedStyles(makeStyles)
   const data = normalizeStrokeData(strokeData)
   return (
     <View style={styles.preview}>
@@ -255,6 +259,7 @@ export function DrawingCanvas({
   onSubmit: (data: QuickDrawDrawingStrokeData) => void | Promise<void>
   submitting?: boolean
 }) {
+  const styles = useThemedStyles(makeStyles)
   const board = useDrawingBoard({})
 
   return (
@@ -312,6 +317,7 @@ export function LiveDrawingCanvas({
   skipDisabled?: boolean
   resetKey?: string
 }) {
+  const styles = useThemedStyles(makeStyles)
   const board = useDrawingBoard({ readOnly, strokeData: strokeData ?? emptyStrokeData(), resetKey, onStrokeChange })
   const data = readOnly ? normalizeStrokeData(strokeData) : null
 
@@ -357,14 +363,16 @@ export function LiveDrawingCanvas({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: 12 },
-  prompt: { color: '#9ca3af', fontSize: 14, textAlign: 'center' },
-  promptWord: { color: '#fff', fontWeight: '700' },
+  prompt: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
+  promptWord: { color: theme.text, fontWeight: '700' },
   canvasWrap: {
     aspectRatio: QUICK_DRAW_CANVAS_WIDTH / QUICK_DRAW_CANVAS_HEIGHT,
     borderRadius: 14,
     borderWidth: 2,
+    // Purple accent frame + white drawing surface — functional, fixed.
     borderColor: '#7c3aed55',
     overflow: 'hidden',
     backgroundColor: '#fff',
@@ -373,38 +381,41 @@ const styles = StyleSheet.create({
     aspectRatio: QUICK_DRAW_CANVAS_WIDTH / QUICK_DRAW_CANVAS_HEIGHT,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     overflow: 'hidden',
+    // White drawing surface — functional, fixed.
     backgroundColor: '#fff',
   },
   toolbar: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
   toolBtn: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
   },
   toolBtnActive: { borderColor: '#a78bfa' },
-  toolBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  toolBtnText: { color: theme.text, fontSize: 13, fontWeight: '600' },
   colorSwatch: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: 'transparent' },
+  // White selection ring around the active swatch — functional.
   colorSwatchActive: { borderColor: '#fff' },
   sizeRow: { flexDirection: 'row', gap: 6 },
   sizeBtn: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
   },
   submitBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
   },
+  // White on the solid rose button — correct in both schemes.
   submitText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   btnDisabled: { opacity: 0.5 },
 })

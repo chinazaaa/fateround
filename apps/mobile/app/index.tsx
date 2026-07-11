@@ -128,7 +128,7 @@ export default function HomeScreen() {
                 <View style={styles.recentMeta}>
                   <Text style={styles.recentCode}>{entry.code}</Text>
                   <Text style={styles.recentLabel} numberOfLines={1}>
-                    {entry.title || (entry.gameType ? gameLabel(entry.gameType as never) : 'Game')}
+                    {entry.gameType ? gameLabel(entry.gameType as never) : entry.title || 'Game'}
                   </Text>
                 </View>
                 <Text style={styles.recentChevron}>›</Text>

@@ -12,6 +12,8 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { postTicTacToeMove } from '@/lib/game-api'
@@ -28,6 +30,7 @@ function markGlyph(value: TicTacToeMark | null): string {
 }
 
 export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
+  const styles = useThemedStyles(makeStyles)
   const [session, setSession] = useState<TicTacToeSession | null>(null)
   const [acting, setActing] = useState(false)
 
@@ -195,6 +198,7 @@ function playerName(players: Player[], id: string): string {
 }
 
 function PlayerChip({ label, name }: { label: string; name: string }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.chip}>
       <Text style={styles.chipMark}>{label}</Text>
@@ -203,42 +207,45 @@ function PlayerChip({ label, name }: { label: string; name: string }) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   metaRow: { flexDirection: 'row', gap: 8 },
   chip: {
     flex: 1,
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 10,
     padding: 10,
     alignItems: 'center',
     gap: 4,
   },
-  chipMark: { color: '#fff', fontSize: 18, fontWeight: '800' },
-  chipName: { color: '#9ca3af', fontSize: 12 },
+  chipMark: { color: theme.text, fontSize: 18, fontWeight: '800' },
+  chipName: { color: theme.textMuted, fontSize: 12 },
   boardGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center' },
   subBoard: {
     width: '31%',
     aspectRatio: 1,
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 10,
     padding: 4,
     borderWidth: 2,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
   },
-  subBoardActive: { borderColor: '#f43f5e' },
+  subBoardActive: { borderColor: theme.primary },
   subBoardWin: { borderColor: '#fbbf24' },
   cellGrid: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 2 },
   cell: {
     width: '31%',
     aspectRatio: 1,
-    backgroundColor: '#0b0b0f',
+    backgroundColor: theme.bg,
     borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cellPlayable: { backgroundColor: '#1f2937' },
+  // Base mark color; X/O override with markX/markO below. On a dark slate playable
+  // cell (#1f2937) when shown — white on colored cell, intentional.
   cellMark: { fontSize: 16, fontWeight: '800', color: '#fff' },
   markX: { color: '#38bdf8' },
   markO: { color: '#fb923c' },
-  youAre: { color: '#9ca3af', textAlign: 'center', fontSize: 14 },
+  youAre: { color: theme.textMuted, textAlign: 'center', fontSize: 14 },
 })

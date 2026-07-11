@@ -18,6 +18,8 @@ import { postVote } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { PARTICIPANT_SELECT, ROUND_SELECT, VOTE_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -28,6 +30,7 @@ type CustomState = {
 }
 
 export function CustomPlayerView({ gameCode }: { gameCode: string }) {
+  const styles = useThemedStyles(makeStyles)
   const [state, setState] = useState<CustomState>({ rounds: [], participants: [], votes: [] })
   const [assignments, setAssignments] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
@@ -208,30 +211,32 @@ export function CustomPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   content: { gap: 14, paddingBottom: 32 },
-  wait: { color: '#9ca3af', fontSize: 15 },
-  participantRow: { backgroundColor: '#17171d', borderRadius: 12, padding: 12, gap: 10 },
-  participantName: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  wait: { color: theme.textMuted, fontSize: 15 },
+  participantRow: { backgroundColor: theme.surface, borderRadius: 12, padding: 12, gap: 10 },
+  participantName: { color: theme.text, fontSize: 17, fontWeight: '700' },
   slotRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   slotBtn: {
-    backgroundColor: '#0b0b0f',
+    backgroundColor: theme.bg,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     paddingHorizontal: 10,
     paddingVertical: 8,
     alignItems: 'center',
     minWidth: 72,
   },
   slotEmoji: { fontSize: 18 },
-  slotLabel: { color: '#d1d5db', fontSize: 11, marginTop: 2, textAlign: 'center' },
+  slotLabel: { color: theme.textSecondary, fontSize: 11, marginTop: 2, textAlign: 'center' },
   primaryBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
   },
+  // white on the solid rose submit button — intentional
   primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   btnDisabled: { opacity: 0.5 },
   error: { color: '#fb7185', fontSize: 14 },

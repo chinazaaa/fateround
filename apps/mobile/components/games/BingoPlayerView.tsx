@@ -21,12 +21,15 @@ import {
   BINGO_CLAIM_SELECT,
 } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
 
 type BingoClaim = { id: string; player_id: string; status: string }
 
 export function BingoPlayerView({ gameCode }: { gameCode: string }) {
+  const styles = useThemedStyles(makeStyles)
   const [card, setCard] = useState<BingoCard | null>(null)
   const [calledNumbers, setCalledNumbers] = useState<BingoCalledNumber[]>([])
   const [winnerClaim, setWinnerClaim] = useState<BingoClaim | null>(null)
@@ -211,6 +214,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
       {canClaim ? (
         <Pressable style={[styles.bingoBtn, claiming && styles.bingoBtnDisabled]} onPress={() => void claimBingo()} disabled={claiming}>
           {claiming ? (
+            // white on the solid rose bingo button — intentional
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.bingoBtnText}>BINGO!</Text>
@@ -237,38 +241,40 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   latestCall: {
-    backgroundColor: '#3f1d2b',
+    backgroundColor: theme.primarySoft,
     borderRadius: 12,
     padding: 14,
     alignItems: 'center',
     gap: 4,
   },
-  latestLabel: { color: '#fda4af', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  latestNumber: { color: '#fff', fontSize: 28, fontWeight: '800' },
-  waitingCall: { color: '#9ca3af', textAlign: 'center' },
-  calledTitle: { color: '#9ca3af', fontSize: 14, marginTop: 8 },
+  latestLabel: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  latestNumber: { color: theme.text, fontSize: 28, fontWeight: '800' },
+  waitingCall: { color: theme.textMuted, textAlign: 'center' },
+  calledTitle: { color: theme.textMuted, fontSize: 14, marginTop: 8 },
   calledScroll: { maxHeight: 44 },
   calledRow: { flexDirection: 'row', gap: 8, paddingVertical: 4 },
   calledChip: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
-  calledChipLatest: { borderWidth: 1, borderColor: '#f43f5e' },
-  calledText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  calledChipLatest: { borderWidth: 1, borderColor: theme.primary },
+  calledText: { color: theme.text, fontWeight: '700', fontSize: 13 },
   bingoBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
     marginTop: 8,
   },
   bingoBtnDisabled: { opacity: 0.7 },
+  // white on the solid rose bingo button — intentional
   bingoBtnText: { color: '#fff', fontSize: 20, fontWeight: '900', letterSpacing: 2 },
   error: { color: '#fb7185', textAlign: 'center', fontSize: 14 },
-  legend: { color: '#6b7280', fontSize: 12, textAlign: 'center', marginTop: 8 },
-  waitingCard: { color: '#9ca3af', textAlign: 'center', marginTop: 24 },
+  legend: { color: theme.textFaint, fontSize: 12, textAlign: 'center', marginTop: 8 },
+  waitingCard: { color: theme.textMuted, textAlign: 'center', marginTop: 24 },
 })

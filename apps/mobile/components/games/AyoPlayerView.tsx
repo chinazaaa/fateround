@@ -18,10 +18,13 @@ import { getSupabase } from '@/lib/supabase'
 import { AYO_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { ayoLeaderboard } from '@/lib/finish-leaderboards'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
 
 export function AyoPlayerView({ gameCode }: { gameCode: string }) {
+  const styles = useThemedStyles(makeStyles)
   const [session, setSession] = useState<AyoSession | null>(null)
   const [acting, setActing] = useState(false)
   const { animation, playSowAnimation } = useAyoSowAnimation({ onSeedDrop: playAyoSeedDrop })
@@ -185,6 +188,7 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
-  sideLabel: { color: '#9ca3af', textAlign: 'center' },
-})
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+    sideLabel: { color: theme.textMuted, textAlign: 'center' },
+  })

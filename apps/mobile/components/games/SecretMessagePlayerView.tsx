@@ -8,6 +8,8 @@ import { postAnonymousMessage } from '@/lib/game-api'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/secure-session'
 import { getSupabase, GAME_SELECT } from '@/lib/supabase'
 import type { Game } from '@fateround/shared'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'ready' | 'closed' | 'not_found'
 
@@ -23,6 +25,8 @@ export function SecretMessagePlayerView({ gameCode }: { gameCode: string }) {
   const [joining, setJoining] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sentCount, setSentCount] = useState(0)
+  const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
 
   const ensureSender = useCallback(async () => {
     const session = await getPlayerSession(code)
@@ -132,14 +136,14 @@ export function SecretMessagePlayerView({ gameCode }: { gameCode: string }) {
           Your message goes to the host only. No one else in the room can read it.
         </Text>
         {joining ? (
-          <ActivityIndicator color="#f43f5e" style={styles.loader} />
+          <ActivityIndicator color={theme.primary} style={styles.loader} />
         ) : null}
         <TextInput
           style={styles.input}
           value={messageInput}
           onChangeText={setMessageInput}
           placeholder="Write your secret message…"
-          placeholderTextColor="#6b7280"
+          placeholderTextColor={theme.textFaint}
           multiline
           maxLength={MAX_CHARS}
           editable={!sending && !joining}
@@ -155,6 +159,7 @@ export function SecretMessagePlayerView({ gameCode }: { gameCode: string }) {
           onPress={() => void sendMessage()}
         >
           {sending ? (
+            // white spinner on the solid rose button — intentional
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.buttonText}>Send message</Text>
@@ -165,31 +170,33 @@ export function SecretMessagePlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   content: { gap: 12, paddingBottom: 24 },
-  hint: { color: '#9ca3af', fontSize: 15, lineHeight: 22 },
+  hint: { color: theme.textMuted, fontSize: 15, lineHeight: 22 },
   loader: { marginVertical: 8 },
   input: {
-    backgroundColor: '#17171d',
-    borderColor: '#2a2a35',
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
     borderWidth: 1,
     borderRadius: 12,
-    color: '#fff',
+    color: theme.text,
     fontSize: 16,
     minHeight: 120,
     paddingHorizontal: 14,
     paddingVertical: 12,
     textAlignVertical: 'top',
   },
-  counter: { color: '#6b7280', fontSize: 12, textAlign: 'right' },
+  counter: { color: theme.textFaint, fontSize: 12, textAlign: 'right' },
   error: { color: '#fb7185', fontSize: 14 },
   sent: { color: '#86efac', fontSize: 14 },
   button: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
   },
   buttonDisabled: { opacity: 0.5 },
+  // white on the solid rose button — intentional
   buttonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 })

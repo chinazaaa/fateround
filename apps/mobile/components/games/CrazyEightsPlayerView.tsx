@@ -36,12 +36,15 @@ import { getSupabase } from '@/lib/supabase'
 import { CRAZY8_PLAYER_HANDS_SELECT, CRAZY8_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { winnerLeaderboard } from '@/lib/finish-leaderboards'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
 const SUITS: CrazyEightsCalledSuit[] = ['spades', 'clubs', 'hearts', 'diamonds']
 
 export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
+  const styles = useThemedStyles(makeStyles)
   const [session, setSession] = useState<CrazyEightsSession | null>(null)
   const [hands, setHands] = useState<CrazyEightsPlayerHand[]>([])
   const [acting, setActing] = useState(false)
@@ -250,25 +253,27 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
-  emptyTop: { color: '#fff', fontSize: 28, fontWeight: '800' },
-  section: { color: '#fff', fontSize: 16, fontWeight: '600', marginTop: 4 },
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+  emptyTop: { color: theme.text, fontSize: 28, fontWeight: '800' },
+  section: { color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 4 },
   hand: { gap: 8, paddingVertical: 8 },
   suitRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   actionBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
+  // white on the solid rose action button — intentional
   actionText: { color: '#fff', fontWeight: '700' },
   drawBtn: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 10,
     padding: 14,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
   },
-  drawText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  drawText: { color: theme.text, fontSize: 16, fontWeight: '600' },
 })

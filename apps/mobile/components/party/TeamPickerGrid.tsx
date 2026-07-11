@@ -1,6 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { TEAM_EMOJI, teamLabel } from '@fateround/shared/describe-it'
 import { teamChipStyle } from './team-colors'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 export function TeamPickerGrid({
   numTeams,
@@ -19,6 +21,7 @@ export function TeamPickerGrid({
   acting?: boolean
   help?: string
 }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.wrap}>
       {help ? <Text style={styles.help}>{help}</Text> : null}
@@ -59,9 +62,10 @@ export function TeamPickerGrid({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: 10 },
-  help: { color: '#d1d5db', fontSize: 15, marginBottom: 4 },
+  help: { color: theme.textSecondary, fontSize: 15, marginBottom: 4 },
   card: {
     borderRadius: 12,
     padding: 14,
@@ -72,9 +76,9 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   emoji: { fontSize: 24 },
   headerText: { flex: 1 },
-  teamName: { color: '#fff', fontSize: 17, fontWeight: '800' },
-  count: { color: '#9ca3af', fontSize: 13, marginTop: 2 },
-  youTag: { color: '#fda4af', fontSize: 12, fontWeight: '800' },
-  members: { color: '#d1d5db', fontSize: 13, lineHeight: 18 },
-  membersMuted: { color: '#6b7280', fontSize: 13, fontStyle: 'italic' },
+  teamName: { color: theme.text, fontSize: 17, fontWeight: '800' },
+  count: { color: theme.textMuted, fontSize: 13, marginTop: 2 },
+  youTag: { color: theme.primaryMuted, fontSize: 12, fontWeight: '800' },
+  members: { color: theme.textSecondary, fontSize: 13, lineHeight: 18 },
+  membersMuted: { color: theme.textFaint, fontSize: 13, fontStyle: 'italic' },
 })

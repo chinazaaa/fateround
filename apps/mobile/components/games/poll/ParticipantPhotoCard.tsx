@@ -4,6 +4,8 @@ import type { Participant } from '@fateround/shared'
 import { ParticipantAvatar } from '@/components/ui/ParticipantAvatar'
 import { apiUrl } from '@/lib/config'
 import { getPlayerSession } from '@/lib/secure-session'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -13,6 +15,7 @@ type Props = {
 }
 
 export function ParticipantPhotoCard({ gameCode, participantId, participant, onPhotoUpdated }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [uploading, setUploading] = useState(false)
 
   const pickPhoto = useCallback(async () => {
@@ -110,35 +113,37 @@ export function ParticipantPhotoCard({ gameCode, participantId, participant, onP
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 12,
     padding: 14,
     marginBottom: 8,
   },
   body: { flex: 1, gap: 4 },
-  title: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  hint: { color: '#6b7280', fontSize: 13 },
+  title: { color: theme.text, fontSize: 15, fontWeight: '700' },
+  hint: { color: theme.textFaint, fontSize: 13 },
   actions: { flexDirection: 'row', gap: 8, marginTop: 6 },
   btn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
     minWidth: 100,
     alignItems: 'center',
   },
+  // White on the solid rose button — correct in both schemes.
   btnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   secondaryBtn: {
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
   },
-  secondaryText: { color: '#9ca3af', fontWeight: '600', fontSize: 13 },
+  secondaryText: { color: theme.textMuted, fontWeight: '600', fontSize: 13 },
 })

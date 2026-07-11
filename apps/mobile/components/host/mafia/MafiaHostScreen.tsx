@@ -9,6 +9,8 @@ import {
 } from '@/lib/game-api'
 import { HostChrome } from '@/components/host/HostChrome'
 import { GameFinishedActions } from '@/components/lifecycle/GameFinishedActions'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type MafiaHostPlayer = {
   id: string
@@ -35,6 +37,7 @@ type Props = {
 }
 
 export function MafiaHostScreen({ gameCode, hostToken, game, players, onReload }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [state, setState] = useState<MafiaHostState | null>(null)
   const [advancing, setAdvancing] = useState(false)
   const [acting, setActing] = useState(false)
@@ -164,43 +167,45 @@ export function MafiaHostScreen({ gameCode, hostToken, game, players, onReload }
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   phaseCard: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     padding: 16,
     alignItems: 'center',
     gap: 4,
   },
-  phaseLabel: { color: '#fda4af', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  phase: { color: '#fff', fontSize: 22, fontWeight: '800', textTransform: 'capitalize' },
-  day: { color: '#9ca3af', fontSize: 14 },
+  phaseLabel: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  phase: { color: theme.text, fontSize: 22, fontWeight: '800', textTransform: 'capitalize' },
+  day: { color: theme.textMuted, fontSize: 14 },
   winner: { color: '#86efac', fontSize: 16, fontWeight: '700', marginTop: 4 },
-  sectionTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  sectionTitle: { color: theme.text, fontSize: 16, fontWeight: '700' },
   playerRow: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  playerName: { color: '#fff', fontSize: 15, fontWeight: '500' },
+  playerName: { color: theme.text, fontSize: 15, fontWeight: '500' },
   primaryBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
   },
+  // White on the solid rose button — intentional, correct in both schemes.
   primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   secondaryBtn: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     paddingVertical: 14,
     alignItems: 'center',
   },
-  secondaryBtnText: { color: '#fff', fontWeight: '600' },
+  secondaryBtnText: { color: theme.text, fontWeight: '600' },
   btnDisabled: { opacity: 0.5 },
-  error: { color: '#f87171', fontSize: 14 },
+  error: { color: theme.error, fontSize: 14 },
 })

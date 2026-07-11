@@ -13,6 +13,8 @@ import { BINGO_CALLED_NUMBER_SELECT, BINGO_CLAIM_SELECT } from '@/lib/supabase-s
 import { useBingoAutoCall } from '@/hooks/useBingoAutoCall'
 import { HostChrome } from '@/components/host/HostChrome'
 import { GameFinishedActions } from '@/components/lifecycle/GameFinishedActions'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type BingoClaim = { id: string; player_id: string; status: string }
 
@@ -25,6 +27,7 @@ type Props = {
 }
 
 export function BingoHostScreen({ gameCode, hostToken, game, players, onReload }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [calledNumbers, setCalledNumbers] = useState<BingoCalledNumber[]>([])
   const [winner, setWinner] = useState<BingoClaim | null>(null)
   const [calling, setCalling] = useState(false)
@@ -187,42 +190,44 @@ export function BingoHostScreen({ gameCode, hostToken, game, players, onReload }
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   statsRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  stat: { color: '#9ca3af', fontSize: 14, fontWeight: '600' },
+  stat: { color: theme.textMuted, fontSize: 14, fontWeight: '600' },
   latest: {
-    backgroundColor: '#2a1220',
+    backgroundColor: theme.primarySoft,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#f43f5e',
+    borderColor: theme.primary,
     padding: 16,
     alignItems: 'center',
     gap: 4,
   },
-  latestLabel: { color: '#fda4af', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  latestNumber: { color: '#fff', fontSize: 32, fontWeight: '800' },
-  autoHint: { color: '#9ca3af', fontSize: 14, textAlign: 'center' },
+  latestLabel: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  latestNumber: { color: theme.text, fontSize: 32, fontWeight: '800' },
+  autoHint: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
   winner: { color: '#86efac', fontSize: 16, fontWeight: '700', textAlign: 'center' },
-  sectionTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  sectionTitle: { color: theme.text, fontSize: 16, fontWeight: '700' },
   calledScroll: { maxHeight: 44 },
   calledRow: { flexDirection: 'row', gap: 8 },
-  chip: { backgroundColor: '#17171d', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
-  chipText: { color: '#fff', fontWeight: '700' },
+  chip: { backgroundColor: theme.surface, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  chipText: { color: theme.text, fontWeight: '700' },
   primaryBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
   },
+  // White on the solid rose button — intentional, correct in both schemes.
   primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   secondaryBtn: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     paddingVertical: 14,
     alignItems: 'center',
   },
-  secondaryBtnText: { color: '#fff', fontWeight: '600' },
+  secondaryBtnText: { color: theme.text, fontWeight: '600' },
   btnDisabled: { opacity: 0.5 },
-  error: { color: '#f87171', fontSize: 14 },
+  error: { color: theme.error, fontSize: 14 },
 })

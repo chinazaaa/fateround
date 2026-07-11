@@ -19,6 +19,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   badgeCompact: { paddingHorizontal: 6, paddingVertical: 2 },
+  // white on the solid team-colored badge — intentional
   text: { color: '#fff', fontSize: 12, fontWeight: '800' },
   textCompact: { fontSize: 10 },
 })

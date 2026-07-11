@@ -8,16 +8,19 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postWordHuntSubmit } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { ROUND_SELECT, WORD_HUNT_SUBMISSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
-import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
+import { pointsLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
 export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
+  const styles = useThemedStyles(makeStyles)
   const [roundId, setRoundId] = useState<string | null>(null)
   const [grid, setGrid] = useState<string[][] | null>(null)
   const [validWords, setValidWords] = useState<Set<string>>(new Set())
@@ -153,11 +156,21 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   if (bootstrap.screen === 'finished') {
     const scores = tallyWordHuntScores(submissions, bootstrap.players)
     const top = scores[0]
+    const entries = scores.map((s) => ({
+      id: s.player_id,
+      name: s.name,
+      points: s.points,
+      detail: `${s.word_count} word${s.word_count === 1 ? '' : 's'}`,
+    }))
+    const winnerId = top && top.points > 0 ? top.player_id : null
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('word_hunt')} subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap}
-          title="Game over"
-          detail={top ? `${top.name} — ${top.points} pts (${top.word_count} words)` : undefined}
+        <GameFinishPanel
+          bootstrap={bootstrap}
+          title={winnerId ? `${top!.name} wins!` : 'Game over'}
+          subtitle="Final standings"
+          leaderboard={pointsLeaderboard(entries, bootstrap.myPlayerId)}
+          winnerPlayerId={winnerId}
         />
       </GameShell>
     )
@@ -217,14 +230,16 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
-  waiting: { color: '#9ca3af', fontSize: 16, textAlign: 'center', marginTop: 24 },
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+  waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
     justifyContent: 'center',
   },
+  // Word-hunt letter grid is a functional board (Step D) — cell colors left as-is.
   cell: {
     width: '22%',
     aspectRatio: 1,
@@ -236,20 +251,22 @@ const styles = StyleSheet.create({
     borderColor: '#2a2a35',
   },
   cellSelected: { borderColor: '#f43f5e', backgroundColor: '#3f1d2b' },
+  // White letter on the dark board cell — intentional (case 2).
   cellText: { color: '#fff', fontSize: 22, fontWeight: '800' },
   wordRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },
-  currentWord: { color: '#fff', fontSize: 18, fontWeight: '700', flex: 1 },
+  currentWord: { color: theme.text, fontSize: 18, fontWeight: '700', flex: 1 },
   points: { color: '#fbbf24', fontWeight: '700' },
   message: { color: '#fbbf24', textAlign: 'center', marginTop: 8 },
   primaryBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 10,
     padding: 14,
     alignItems: 'center',
     marginTop: 8,
   },
   primaryBtnDisabled: { opacity: 0.5 },
+  // White on the solid primary button — intentional (case 2).
   primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   foundList: { marginTop: 12, maxHeight: 160 },
-  foundWord: { color: '#9ca3af', fontSize: 14, paddingVertical: 2 },
+  foundWord: { color: theme.textMuted, fontSize: 14, paddingVertical: 2 },
 })

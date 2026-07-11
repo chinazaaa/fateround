@@ -48,6 +48,8 @@ import {
   QUICK_DRAW_VOTE_SELECT,
   ROUND_SELECT,
 } from '@/lib/supabase-selects'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -58,6 +60,7 @@ type Props = {
 }
 
 export function QuickDrawHostScreen({ gameCode, hostToken, game, players, onReload }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const isGuess = isQuickDrawGuessVariant(game.quick_draw_variant)
   const [rounds, setRounds] = useState<Round[]>([])
   const [guessSession, setGuessSession] = useState<QuickDrawGuessSession | null>(null)
@@ -269,36 +272,38 @@ export function QuickDrawHostScreen({ gameCode, hostToken, game, players, onRelo
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   statsRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  stat: { color: '#9ca3af', fontSize: 14, fontWeight: '600' },
+  stat: { color: theme.textMuted, fontSize: 14, fontWeight: '600' },
   card: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     padding: 16,
     gap: 8,
   },
-  cardLabel: { color: '#fda4af', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  cardTitle: { color: '#fff', fontSize: 18, fontWeight: '700', textTransform: 'capitalize' },
-  secretWord: { color: '#d1d5db', fontSize: 14 },
-  meta: { color: '#9ca3af', fontSize: 14 },
+  cardLabel: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  cardTitle: { color: theme.text, fontSize: 18, fontWeight: '700', textTransform: 'capitalize' },
+  secretWord: { color: theme.textSecondary, fontSize: 14 },
+  meta: { color: theme.textMuted, fontSize: 14 },
   primaryBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
   },
+  // White on the solid rose button — intentional, correct in both schemes.
   primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   secondaryBtn: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     paddingVertical: 14,
     alignItems: 'center',
   },
-  secondaryBtnText: { color: '#fff', fontWeight: '600' },
+  secondaryBtnText: { color: theme.text, fontWeight: '600' },
   btnDisabled: { opacity: 0.5 },
-  error: { color: '#f87171', fontSize: 14 },
+  error: { color: theme.error, fontSize: 14 },
 })

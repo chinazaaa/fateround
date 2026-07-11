@@ -19,6 +19,8 @@ import { getHotSeatSubmissions, postHotSeat } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { PARTICIPANT_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -28,6 +30,8 @@ type HotSeatState = {
 }
 
 export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
+  const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
   const [state, setState] = useState<HotSeatState>({ rounds: [], participants: [] })
   const [submissionType, setSubmissionType] = useState<HotSeatSubmissionType>('compliment')
   const [text, setText] = useState('')
@@ -228,7 +232,7 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
               value={text}
               onChangeText={setText}
               placeholder={`Write a ${submissionType} about ${hotSeatName}…`}
-              placeholderTextColor="#6b7280"
+              placeholderTextColor={theme.textFaint}
               multiline
               maxLength={300}
             />
@@ -247,11 +251,12 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   content: { gap: 14, paddingBottom: 32 },
-  wait: { color: '#9ca3af', fontSize: 15 },
+  wait: { color: theme.textMuted, fontSize: 15 },
   spotlight: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#f59e0b66',
@@ -261,36 +266,37 @@ const styles = StyleSheet.create({
   },
   spotlightEmoji: { fontSize: 40 },
   spotlightLabel: { color: '#fbbf24', fontSize: 12, textTransform: 'uppercase' },
-  spotlightName: { color: '#fff', fontSize: 28, fontWeight: '800' },
-  section: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  spotlightName: { color: theme.text, fontSize: 28, fontWeight: '800' },
+  section: { color: theme.text, fontSize: 16, fontWeight: '600' },
   typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   typeBtn: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  typeBtnActive: { borderColor: '#f43f5e' },
-  typeText: { color: '#fff', fontSize: 13 },
+  typeBtnActive: { borderColor: theme.primary },
+  typeText: { color: theme.text, fontSize: 13 },
   input: {
-    backgroundColor: '#17171d',
-    borderColor: '#2a2a35',
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
     borderWidth: 1,
     borderRadius: 12,
-    color: '#fff',
+    color: theme.text,
     fontSize: 16,
     minHeight: 96,
     padding: 12,
     textAlignVertical: 'top',
   },
   primaryBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
   },
+  // white on the solid rose submit button — intentional
   primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   btnDisabled: { opacity: 0.5 },
   error: { color: '#fb7185', fontSize: 14 },
@@ -303,8 +309,8 @@ const styles = StyleSheet.create({
   },
   doneText: { color: '#86efac', fontSize: 15, fontWeight: '600', textAlign: 'center' },
   results: { gap: 10 },
-  resultRow: { backgroundColor: '#17171d', borderRadius: 10, padding: 12, gap: 4 },
-  resultMeta: { color: '#9ca3af', fontSize: 12 },
-  resultText: { color: '#fff', fontSize: 15 },
-  muted: { color: '#6b7280', fontSize: 14 },
+  resultRow: { backgroundColor: theme.surface, borderRadius: 10, padding: 12, gap: 4 },
+  resultMeta: { color: theme.textMuted, fontSize: 12 },
+  resultText: { color: theme.text, fontSize: 15 },
+  muted: { color: theme.textFaint, fontSize: 14 },
 })

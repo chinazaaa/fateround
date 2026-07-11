@@ -46,6 +46,8 @@ import {
   CODEWORDS_PLAYER_ROLE_SELECT,
 } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'pick_role' | 'playing' | 'finished' | 'not_found'
 
@@ -57,6 +59,7 @@ type CodewordsState = {
 }
 
 export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
+  const styles = useThemedStyles(makeStyles)
   const [cwState, setCwState] = useState<CodewordsState>({
     board: null,
     roles: [],
@@ -248,9 +251,25 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'finished' || board.winner) {
     const title = board.winner ? `${teamLabel(board.winner)} team wins!` : 'Game over'
+    const nameFor = (id: string) => bootstrap.players.find((p) => p.id === id)?.name ?? 'Player'
+    const leaderboard = [...cwState.roles]
+      .sort((a, b) => {
+        const aWon = a.team === board.winner ? 0 : 1
+        const bWon = b.team === board.winner ? 0 : 1
+        if (aWon !== bWon) return aWon - bWon
+        if (a.role !== b.role) return a.role === 'spymaster' ? -1 : 1
+        return nameFor(a.player_id).localeCompare(nameFor(b.player_id))
+      })
+      .map((r) => ({
+        name: nameFor(r.player_id),
+        score: teamLabel(r.team),
+        detail: roleLabel(r.role),
+        you: !!bootstrap.myPlayerId && r.player_id === bootstrap.myPlayerId,
+        highlight: !!board.winner && r.team === board.winner,
+      }))
     return (
       <GameShell bootstrap={bootstrap} title={batch7GameLabel('codewords')} subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap} title={title} />
+        <GameFinishPanel bootstrap={bootstrap} title={title} subtitle="Teams" leaderboard={leaderboard} />
       </GameShell>
     )
   }
@@ -419,18 +438,19 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
 
 const CELL = 64
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   pickHint: { color: '#a1a1aa', marginBottom: 12, textAlign: 'center' },
   pickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 12 },
   pickBtn: {
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 8,
-    backgroundColor: '#2a2a35',
+    backgroundColor: theme.border,
     minWidth: 120,
   },
-  pickBtnActive: { borderWidth: 2, borderColor: '#f43f5e' },
-  pickBtnText: { color: '#fafafa', fontWeight: '700', textAlign: 'center' },
+  pickBtnActive: { borderWidth: 2, borderColor: theme.primary },
+  pickBtnText: { color: theme.text, fontWeight: '700', textAlign: 'center' },
   scoreRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   scoreRed: { color: '#fca5a5', fontWeight: '800' },
   scoreBlue: { color: '#93c5fd', fontWeight: '800' },
@@ -454,27 +474,28 @@ const styles = StyleSheet.create({
   cellKey: { position: 'absolute', top: 2, right: 4, fontSize: 8, color: '#52525b', fontWeight: '800' },
   formBlock: { gap: 8, marginTop: 8 },
   input: {
-    backgroundColor: '#2a2a35',
+    backgroundColor: theme.border,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    color: '#fafafa',
+    color: theme.text,
   },
   inputSmall: {
-    backgroundColor: '#2a2a35',
+    backgroundColor: theme.border,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    color: '#fafafa',
+    color: theme.text,
     width: 80,
   },
   actionBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 8,
     paddingVertical: 12,
     alignItems: 'center',
   },
   endTurnBtn: { backgroundColor: '#52525b', marginTop: 8 },
+  // white on the rose / dark action buttons — intentional
   actionText: { color: '#fff', fontWeight: '800' },
   chatTitle: { color: '#a1a1aa', fontWeight: '700', marginTop: 12, marginBottom: 4 },
   chatLog: { maxHeight: 100, backgroundColor: '#1e1e28', borderRadius: 8, padding: 8 },

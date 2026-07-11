@@ -1,6 +1,8 @@
 import { StyleSheet, Text, View } from 'react-native'
 import type { MahjongPlayerState, Player } from '@fateround/shared'
 import { MAHJONG_SEAT_LABELS, playerName } from '@fateround/shared/mahjong'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 import { MahjongTileFace } from './MahjongTileFace'
 
 export function MahjongTableView({
@@ -18,6 +20,7 @@ export function MahjongTableView({
   lastDiscardTile?: string | null
   lastDiscardPlayerId?: string | null
 }) {
+  const styles = useThemedStyles(makeStyles)
   const bySeat = (seat: string) => states.find((s) => s.seat === seat)
 
   const seatPanel = (seat: 'east' | 'south' | 'west' | 'north', align: 'top' | 'bottom' | 'left' | 'right') => {
@@ -75,28 +78,30 @@ export function MahjongTableView({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   table: { gap: 8, marginVertical: 8 },
   middleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   seat: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 10,
     padding: 8,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     minWidth: 88,
   },
   seatTop: { alignSelf: 'center', maxWidth: 200 },
   seatBottom: { alignSelf: 'center', maxWidth: 200 },
   seatLeft: { flex: 1, maxWidth: 110 },
   seatRight: { flex: 1, maxWidth: 110 },
-  seatActive: { borderColor: '#f43f5e' },
-  seatLabel: { color: '#fda4af', fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
-  seatName: { color: '#fff', fontSize: 13, fontWeight: '700', marginTop: 2 },
-  seatMeta: { color: '#9ca3af', fontSize: 11, marginTop: 2 },
+  seatActive: { borderColor: theme.primary },
+  seatLabel: { color: theme.primaryMuted, fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+  seatName: { color: theme.text, fontSize: 13, fontWeight: '700', marginTop: 2 },
+  seatMeta: { color: theme.textMuted, fontSize: 11, marginTop: 2 },
   pond: {
     flex: 1,
     minHeight: 100,
+    // Green felt table — functional, fixed in both schemes.
     backgroundColor: '#14532d',
     borderRadius: 12,
     borderWidth: 2,
@@ -106,6 +111,7 @@ const styles = StyleSheet.create({
     gap: 4,
     padding: 8,
   },
+  // pondLabel/pondBy/pondEmpty sit on the fixed green felt — kept light-on-felt.
   pondLabel: { color: '#86efac', fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
   pondBy: { color: '#d1d5db', fontSize: 11 },
   pondEmpty: { color: '#6b7280', fontSize: 20 },

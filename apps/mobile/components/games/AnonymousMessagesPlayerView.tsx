@@ -27,6 +27,8 @@ import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
 import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 import { ANONYMOUS_MESSAGE_SELECT, ANONYMOUS_ROOM_BAN_SELECT } from '@/lib/supabase-selects'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
 
@@ -34,6 +36,8 @@ const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥']
 
 export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) {
   const code = gameCode.toUpperCase()
+  const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
   const [screen, setScreen] = useState<Screen>('loading')
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
@@ -226,7 +230,12 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
           <Text style={styles.joinHint}>Join with a random nickname — no account needed.</Text>
           {joinError ? <Text style={styles.error}>{joinError}</Text> : null}
           <Pressable style={[styles.joinBtn, joining && styles.btnDisabled]} disabled={joining} onPress={() => void join()}>
-            {joining ? <ActivityIndicator color="#fff" /> : <Text style={styles.joinBtnText}>Join room</Text>}
+            {joining ? (
+              // white on the solid rose join button — intentional
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.joinBtnText}>Join room</Text>
+            )}
           </Pressable>
         </View>
       </GameShell>
@@ -355,7 +364,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
               value={messageInput}
               onChangeText={setMessageInput}
               placeholder="Message…"
-              placeholderTextColor="#6b7280"
+              placeholderTextColor={theme.textFaint}
               editable={!sending}
             />
             <Pressable
@@ -374,15 +383,17 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   joinBox: { gap: 16, paddingVertical: 24 },
-  joinHint: { color: '#9ca3af', fontSize: 15, lineHeight: 22 },
+  joinHint: { color: theme.textMuted, fontSize: 15, lineHeight: 22 },
   joinBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
   },
+  // white on the solid rose join button — intentional
   joinBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   viewOnly: { color: '#fbbf24', fontSize: 13, marginBottom: 8 },
   feed: { flex: 1, maxHeight: 420 },
@@ -390,90 +401,91 @@ const styles = StyleSheet.create({
   messageRow: { alignItems: 'flex-start', maxWidth: '85%', alignSelf: 'flex-start', gap: 4 },
   messageRowMine: { alignSelf: 'flex-end', alignItems: 'flex-end' },
   message: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 12,
     padding: 10,
   },
-  messageMine: { backgroundColor: '#3f1d2b' },
-  messageAuthor: { color: '#9ca3af', fontSize: 11, marginBottom: 4 },
-  messageText: { color: '#fff', fontSize: 15 },
-  gif: { width: 180, height: 140, borderRadius: 8, backgroundColor: '#0b0b0f' },
+  messageMine: { backgroundColor: theme.primarySoft },
+  messageAuthor: { color: theme.textMuted, fontSize: 11, marginBottom: 4 },
+  messageText: { color: theme.text, fontSize: 15 },
+  gif: { width: 180, height: 140, borderRadius: 8, backgroundColor: theme.bg },
   replyQuote: {
     borderLeftWidth: 2,
-    borderLeftColor: '#fda4af',
+    borderLeftColor: theme.primaryMuted,
     paddingLeft: 8,
     marginBottom: 6,
   },
-  replyQuoteText: { color: '#9ca3af', fontSize: 12, fontStyle: 'italic' },
+  replyQuoteText: { color: theme.textMuted, fontSize: 12, fontStyle: 'italic' },
   reactionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
   reactionRowMine: { justifyContent: 'flex-end' },
   reactionChip: {
     flexDirection: 'row',
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
-  reactionChipMine: { borderColor: '#f43f5e', backgroundColor: '#3f1d2b' },
-  reactionText: { color: '#d1d5db', fontSize: 12, fontWeight: '700' },
+  reactionChipMine: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+  reactionText: { color: theme.textSecondary, fontSize: 12, fontWeight: '700' },
   emojiBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#121218',
+    backgroundColor: theme.bgElevated,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
   emojiBarItem: { fontSize: 20 },
-  emojiBarReply: { color: '#fda4af', fontSize: 13, fontWeight: '700' },
-  empty: { color: '#6b7280', textAlign: 'center', paddingVertical: 24 },
+  emojiBarReply: { color: theme.primaryMuted, fontSize: 13, fontWeight: '700' },
+  empty: { color: theme.textFaint, textAlign: 'center', paddingVertical: 24 },
   composerWrap: { marginTop: 8, gap: 6 },
   replyBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
     gap: 8,
   },
-  replyBannerText: { color: '#9ca3af', fontSize: 13, flex: 1 },
-  replyBannerClose: { color: '#9ca3af', fontSize: 14, fontWeight: '700' },
+  replyBannerText: { color: theme.textMuted, fontSize: 13, flex: 1 },
+  replyBannerClose: { color: theme.textMuted, fontSize: 14, fontWeight: '700' },
   gifBtn: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 12,
   },
-  gifBtnText: { color: '#fda4af', fontSize: 13, fontWeight: '800' },
+  gifBtnText: { color: theme.primaryMuted, fontSize: 13, fontWeight: '800' },
   composer: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   input: {
     flex: 1,
-    backgroundColor: '#17171d',
-    borderColor: '#2a2a35',
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
     borderWidth: 1,
     borderRadius: 12,
-    color: '#fff',
+    color: theme.text,
     fontSize: 16,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
   sendBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
+  // white on the solid rose send button — intentional
   sendBtnText: { color: '#fff', fontWeight: '700' },
   error: { color: '#fb7185', fontSize: 14 },
   btnDisabled: { opacity: 0.5 },

@@ -5,6 +5,8 @@ import type { LateJoinContext } from '@/lib/late-join-context'
 import { gameLabel } from '@/lib/mobile-registry'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -31,6 +33,8 @@ export function LateJoinChoiceScreen({
   onJoinAsViewer,
   onJoinAsPlayer,
 }: Props) {
+  const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
   const playersAllowed = allowLatePlayers(game)
   const canJoin = nameInput.trim().length > 0
   const label = gameLabel(game.game_type)
@@ -45,7 +49,7 @@ export function LateJoinChoiceScreen({
 
         <Text style={styles.heading}>Game in progress</Text>
         {contextLoading ? (
-          <ActivityIndicator color="#f43f5e" style={styles.loader} />
+          <ActivityIndicator color={theme.primary} style={styles.loader} />
         ) : context ? (
           <>
             <Text style={styles.statusLine}>{context.statusLine}</Text>
@@ -67,7 +71,7 @@ export function LateJoinChoiceScreen({
         <TextInput
           style={styles.input}
           placeholder="Enter your name"
-          placeholderTextColor="#6b7280"
+          placeholderTextColor={theme.textFaint}
           value={nameInput}
           onChangeText={onNameChange}
           autoCapitalize="words"
@@ -120,15 +124,16 @@ export function LateJoinChoiceScreen({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0b0b0f',
+    backgroundColor: theme.bg,
     padding: 24,
     justifyContent: 'center',
   },
   card: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 16,
     padding: 24,
     gap: 10,
@@ -139,13 +144,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   title: {
-    color: '#fff',
+    color: theme.text,
     fontSize: 24,
     fontWeight: '800',
     textAlign: 'center',
   },
   badge: {
-    color: '#fda4af',
+    color: theme.primaryMuted,
     fontSize: 13,
     fontWeight: '600',
     textTransform: 'uppercase',
@@ -153,20 +158,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   heading: {
-    color: '#fff',
+    color: theme.text,
     fontSize: 18,
     fontWeight: '700',
     textAlign: 'center',
     marginTop: 4,
   },
   statusLine: {
-    color: '#fff',
+    color: theme.text,
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
   },
   body: {
-    color: '#9ca3af',
+    color: theme.textMuted,
     fontSize: 15,
     lineHeight: 22,
     textAlign: 'center',
@@ -175,18 +180,18 @@ const styles = StyleSheet.create({
     marginVertical: 8,
   },
   fieldLabel: {
-    color: '#9ca3af',
+    color: theme.textMuted,
     fontSize: 12,
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginTop: 8,
   },
   input: {
-    backgroundColor: '#0b0b0f',
-    borderColor: '#2a2a35',
+    backgroundColor: theme.bg,
+    borderColor: theme.border,
     borderWidth: 1,
     borderRadius: 12,
-    color: '#fff',
+    color: theme.text,
     fontSize: 17,
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -204,24 +209,25 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   primaryButton: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
   },
   primaryButtonText: {
+    // white on the solid rose button — intentional
     color: '#fff',
     fontSize: 15,
     fontWeight: '700',
   },
   secondaryButton: {
-    backgroundColor: '#2a2a35',
+    backgroundColor: theme.border,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
   },
   secondaryButtonText: {
-    color: '#fff',
+    color: theme.text,
     fontSize: 15,
     fontWeight: '700',
   },
@@ -229,13 +235,13 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   detail: {
-    color: '#6b7280',
+    color: theme.textFaint,
     fontSize: 11,
     textAlign: 'center',
     lineHeight: 16,
   },
   codeLabel: {
-    color: '#6b7280',
+    color: theme.textFaint,
     fontSize: 12,
     textTransform: 'uppercase',
     letterSpacing: 1,
@@ -243,7 +249,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   code: {
-    color: '#fff',
+    color: theme.text,
     fontSize: 22,
     fontWeight: '700',
     letterSpacing: 3,

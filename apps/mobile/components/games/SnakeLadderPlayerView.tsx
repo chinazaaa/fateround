@@ -18,6 +18,8 @@ import { getSupabase } from '@/lib/supabase'
 import { SNAKE_LADDER_PLAYER_STATE_SELECT, SNAKE_LADDER_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { snakeLadderLeaderboard } from '@/lib/finish-leaderboards'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -34,6 +36,7 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
   const [session, setSession] = useState<SnakeLadderSession | null>(null)
   const [states, setStates] = useState<SnakeLadderPlayerState[]>([])
   const [acting, setActing] = useState(false)
+  const styles = useThemedStyles(makeStyles)
 
   const loadGameState = useCallback(async (): Promise<{ state: null; ok: boolean }> => {
     const [sessionRes, statesRes] = await Promise.all([
@@ -155,14 +158,16 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   list: { gap: 8, marginTop: 8 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, backgroundColor: '#17171d', borderRadius: 12 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, backgroundColor: theme.surface, borderRadius: 12 },
   dot: { width: 14, height: 14, borderRadius: 7 },
-  name: { color: '#fff', flex: 1, fontWeight: '600' },
+  name: { color: theme.text, flex: 1, fontWeight: '600' },
   pos: { color: '#fcd34d', fontWeight: '700' },
-  rollInfo: { color: '#9ca3af', textAlign: 'center', marginVertical: 12 },
-  btn: { backgroundColor: '#f43f5e', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
+  rollInfo: { color: theme.textMuted, textAlign: 'center', marginVertical: 12 },
+  btn: { backgroundColor: theme.primary, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
   btnDisabled: { opacity: 0.45 },
+  // white on the solid rose button — intentional
   btnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
 })

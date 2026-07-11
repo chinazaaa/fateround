@@ -1,4 +1,6 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 export function ActivityFeed({
   title,
@@ -9,6 +11,7 @@ export function ActivityFeed({
   items: { id: string; primary: string; secondary?: string }[]
   emptyText?: string
 }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.panel}>
       <Text style={styles.title}>{title}</Text>
@@ -28,29 +31,30 @@ export function ActivityFeed({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   panel: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 12,
     padding: 12,
     gap: 8,
     maxHeight: 160,
   },
   title: {
-    color: '#fda4af',
+    color: theme.primaryMuted,
     fontSize: 11,
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
-  empty: { color: '#6b7280', fontSize: 14, fontStyle: 'italic' },
+  empty: { color: theme.textFaint, fontSize: 14, fontStyle: 'italic' },
   list: { flexGrow: 0 },
   row: {
     paddingVertical: 6,
     borderBottomWidth: 1,
-    borderBottomColor: '#2a2a35',
+    borderBottomColor: theme.border,
     gap: 2,
   },
-  primary: { color: '#fff', fontSize: 14 },
-  secondary: { color: '#9ca3af', fontSize: 12 },
+  primary: { color: theme.text, fontSize: 14 },
+  secondary: { color: theme.textMuted, fontSize: 12 },
 })

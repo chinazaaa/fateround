@@ -42,6 +42,8 @@ import {
 } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -54,6 +56,8 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
   const [submitting, setSubmitting] = useState(false)
   const [countdown, setCountdown] = useState(0)
   const [revealCountdown, setRevealCountdown] = useState(0)
+  const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: null; ok: boolean }> => {
@@ -267,7 +271,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
               value={answerText}
               onChangeText={setAnswerText}
               placeholder="Your funny answer…"
-              placeholderTextColor="#6b7280"
+              placeholderTextColor={theme.textFaint}
               maxLength={QUIPLASH_MAX_ANSWER_LENGTH}
               multiline
             />
@@ -337,19 +341,20 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
-  waiting: { color: '#9ca3af', fontSize: 16, textAlign: 'center', marginTop: 24 },
-  prompt: { color: '#fff', fontSize: 20, fontWeight: '700', lineHeight: 28 },
-  section: { color: '#fff', fontSize: 16, fontWeight: '600', marginTop: 8 },
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+  waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
+  prompt: { color: theme.text, fontSize: 20, fontWeight: '700', lineHeight: 28 },
+  section: { color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 8 },
   submittedCard: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 12,
     padding: 14,
     gap: 6,
     marginTop: 8,
   },
-  submittedLabel: { color: '#9ca3af', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  submittedText: { color: '#fff', fontSize: 16, lineHeight: 22 },
+  submittedLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  submittedText: { color: theme.text, fontSize: 16, lineHeight: 22 },
   soloBanner: {
     backgroundColor: '#422006',
     borderRadius: 10,
@@ -360,51 +365,53 @@ const styles = StyleSheet.create({
   },
   soloText: { color: '#fcd34d', fontWeight: '700', textAlign: 'center' },
   input: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#2a2a35',
-    color: '#fff',
+    borderColor: theme.border,
+    color: theme.text,
     padding: 12,
     minHeight: 96,
     fontSize: 16,
     marginTop: 8,
   },
   primaryBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 10,
     padding: 14,
     alignItems: 'center',
     marginTop: 8,
   },
+  // white on the solid rose button — intentional
   primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   choices: { gap: 10, marginTop: 8 },
   choice: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12,
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
   },
-  choiceSelected: { borderColor: '#f43f5e', backgroundColor: '#3f1d2b' },
+  choiceSelected: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
   choiceBadge: {
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
+    // white on the solid rose badge — intentional
     color: '#fff',
     textAlign: 'center',
     lineHeight: 32,
     fontWeight: '800',
   },
-  choiceText: { color: '#fff', fontSize: 16, flex: 1, lineHeight: 22 },
-  locked: { color: '#9ca3af', textAlign: 'center', marginTop: 12 },
+  choiceText: { color: theme.text, fontSize: 16, flex: 1, lineHeight: 22 },
+  locked: { color: theme.textMuted, textAlign: 'center', marginTop: 12 },
   revealList: { gap: 10, paddingVertical: 8 },
-  revealRow: { backgroundColor: '#17171d', borderRadius: 10, padding: 12, gap: 4 },
+  revealRow: { backgroundColor: theme.surface, borderRadius: 10, padding: 12, gap: 4 },
   revealRowTop: { borderWidth: 1, borderColor: '#fbbf24', backgroundColor: '#42200633' },
-  revealText: { color: '#fff', fontSize: 16 },
-  revealMeta: { color: '#9ca3af', fontSize: 13 },
+  revealText: { color: theme.text, fontSize: 16 },
+  revealMeta: { color: theme.textMuted, fontSize: 13 },
 })

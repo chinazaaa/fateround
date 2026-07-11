@@ -48,6 +48,8 @@ import { MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT } from '@/lib/supab
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { monopolyLeaderboard } from '@/lib/finish-leaderboards'
 import { buildMonopolyStandings } from '@/lib/monopoly-standings'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -60,6 +62,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const [joinError, setJoinError] = useState<string | null>(null)
   const [joiningToken, setJoiningToken] = useState(false)
   const [timerTick, setTimerTick] = useState(0)
+  const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
 
   const loadGameState = useCallback(async (): Promise<{ state: MonopolyBoard | null; ok: boolean }> => {
     const code = gameCode.toUpperCase()
@@ -424,7 +428,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               onChangeText={setBidAmount}
               keyboardType="number-pad"
               placeholder={`Min ${auction.high_bid + 1}`}
-              placeholderTextColor="#6b7280"
+              placeholderTextColor={theme.textFaint}
             />
             <View style={styles.actionRow}>
               <Pressable
@@ -476,66 +480,68 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
-  waitingWrap: { flex: 1, backgroundColor: '#0b0b0f' },
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+  waitingWrap: { flex: 1, backgroundColor: theme.bg },
   tokenList: { paddingHorizontal: 20, paddingBottom: 24 },
-  joinWrap: { flex: 1, backgroundColor: '#0b0b0f' },
+  joinWrap: { flex: 1, backgroundColor: theme.bg },
   joinContent: { paddingBottom: 32 },
-  tokenHeading: { color: '#fff', fontSize: 16, fontWeight: '600', paddingHorizontal: 24, marginTop: 8 },
+  tokenHeading: { color: theme.text, fontSize: 16, fontWeight: '600', paddingHorizontal: 24, marginTop: 8 },
   tokenGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 16 },
   tokenBtn: {
     width: '30%',
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     padding: 10,
     alignItems: 'center',
   },
-  tokenBtnActive: { borderColor: '#f43f5e' },
+  tokenBtnActive: { borderColor: theme.primary },
   tokenBtnTaken: { opacity: 0.45 },
   tokenEmoji: { fontSize: 24 },
-  tokenLabel: { color: '#fff', fontSize: 11, marginTop: 4, textAlign: 'center' },
-  tokenOwner: { color: '#9ca3af', fontSize: 10, marginTop: 2 },
-  lobbyHint: { color: '#9ca3af', fontSize: 14, marginTop: 12 },
-  lobbyToken: { color: '#fff', fontSize: 15, marginTop: 4 },
+  tokenLabel: { color: theme.text, fontSize: 11, marginTop: 4, textAlign: 'center' },
+  tokenOwner: { color: theme.textMuted, fontSize: 10, marginTop: 2 },
+  lobbyHint: { color: theme.textMuted, fontSize: 14, marginTop: 12 },
+  lobbyToken: { color: theme.text, fontSize: 15, marginTop: 4 },
   playContent: { padding: 16, gap: 12, paddingBottom: 40 },
-  status: { color: '#d1d5db', fontSize: 14 },
-  dice: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  cardEvent: { backgroundColor: '#17171d', borderRadius: 12, padding: 12, gap: 4 },
+  status: { color: theme.textSecondary, fontSize: 14 },
+  dice: { color: theme.text, fontSize: 16, fontWeight: '600' },
+  cardEvent: { backgroundColor: theme.surface, borderRadius: 12, padding: 12, gap: 4 },
   cardKind: { color: '#fbbf24', fontSize: 12, textTransform: 'uppercase' },
-  cardText: { color: '#fff', fontSize: 14 },
+  cardText: { color: theme.text, fontSize: 14 },
   scores: { gap: 8 },
-  scoreRow: { backgroundColor: '#17171d', borderRadius: 10, padding: 10 },
-  scoreRowActive: { borderColor: '#f43f5e', borderWidth: 1 },
-  scoreName: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  scoreMeta: { color: '#9ca3af', fontSize: 13, marginTop: 2 },
-  actionPanel: { backgroundColor: '#17171d', borderRadius: 12, padding: 14, gap: 10 },
-  actionTitle: { color: '#fff', fontSize: 17, fontWeight: '700' },
-  actionSub: { color: '#9ca3af', fontSize: 13 },
+  scoreRow: { backgroundColor: theme.surface, borderRadius: 10, padding: 10 },
+  scoreRowActive: { borderColor: theme.primary, borderWidth: 1 },
+  scoreName: { color: theme.text, fontSize: 15, fontWeight: '600' },
+  scoreMeta: { color: theme.textMuted, fontSize: 13, marginTop: 2 },
+  actionPanel: { backgroundColor: theme.surface, borderRadius: 12, padding: 14, gap: 10 },
+  actionTitle: { color: theme.text, fontSize: 17, fontWeight: '700' },
+  actionSub: { color: theme.textMuted, fontSize: 13 },
   actionRow: { flexDirection: 'row', gap: 8 },
   flexBtn: { flex: 1 },
   primaryBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: 'center',
   },
+  // white on the solid rose button — intentional
   primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   secondaryBtn: {
-    backgroundColor: '#2a2a35',
+    backgroundColor: theme.border,
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: 'center',
   },
-  secondaryBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  secondaryBtnText: { color: theme.text, fontWeight: '600', fontSize: 15 },
   btnDisabled: { opacity: 0.5 },
   bidInput: {
-    backgroundColor: '#0b0b0f',
-    borderColor: '#2a2a35',
+    backgroundColor: theme.bg,
+    borderColor: theme.border,
     borderWidth: 1,
     borderRadius: 10,
-    color: '#fff',
+    color: theme.text,
     fontSize: 16,
     paddingHorizontal: 12,
     paddingVertical: 10,

@@ -28,6 +28,8 @@ import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation
 import { useGamePlayerLimits } from '@/hooks/useGamePlayerLimits'
 import { isLobbyLimitGameType } from '@fateround/shared/lobby-limits'
 import { uniqueTopic } from '@/lib/realtime'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -39,6 +41,8 @@ type Props = {
  * the game. Once active, HostGameScreen routes to the in-game host dashboard.
  */
 export function HostLobbyScreen({ gameCode, hostToken }: Props) {
+  const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
   const router = useRouter()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
@@ -170,7 +174,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator color="#f43f5e" size="large" />
+        <ActivityIndicator color={theme.primary} size="large" />
       </View>
     )
   }
@@ -296,7 +300,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
                     {!isHost ? (
                       <Pressable onPress={() => confirmRemove(p)} disabled={removingId === p.id} hitSlop={8}>
                         {removingId === p.id ? (
-                          <ActivityIndicator color="#f87171" />
+                          <ActivityIndicator color={theme.error} />
                         ) : (
                           <Text style={styles.removeText}>Remove</Text>
                         )}
@@ -330,6 +334,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
             disabled={replaying}
           >
             {replaying ? (
+              // White spinner on the solid rose Start button — correct in both schemes.
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.startButtonText}>Play again · same settings</Text>
@@ -348,6 +353,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
               disabled={starting || !meetsMinimum}
             >
               {starting ? (
+                // White spinner on the solid rose Start button — correct in both schemes.
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.startButtonText}>Start next round</Text>
@@ -367,6 +373,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
               disabled={starting || !meetsMinimum}
             >
               {starting ? (
+                // White spinner on the solid rose Start button — correct in both schemes.
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.startButtonText}>Start game</Text>
@@ -378,7 +385,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
         {!finished ? (
           <Pressable style={styles.endButton} onPress={onEndLobby} disabled={ending}>
             {ending ? (
-              <ActivityIndicator color="#f87171" />
+              <ActivityIndicator color={theme.error} />
             ) : (
               <Text style={styles.endButtonText}>End lobby</Text>
             )}
@@ -406,20 +413,21 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0b0b0f' },
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+  safe: { flex: 1, backgroundColor: theme.bg },
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   gearBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  gearIcon: { color: '#fda4af', fontSize: 20 },
+  gearIcon: { color: theme.primaryMuted, fontSize: 20 },
   manageCard: { marginBottom: 8 },
   manageHeader: {
     flexDirection: 'row',
@@ -428,78 +436,80 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   manageTitle: {
-    color: '#f43f5e',
+    color: theme.primary,
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 1,
     textTransform: 'uppercase',
   },
-  manageChevron: { color: '#9ca3af', fontSize: 16, fontWeight: '800' },
+  manageChevron: { color: theme.textMuted, fontSize: 16, fontWeight: '800' },
   manageBody: { gap: 12 },
   centered: {
     flex: 1,
-    backgroundColor: '#0b0b0f',
+    backgroundColor: theme.bg,
     alignItems: 'center',
     justifyContent: 'center',
   },
   content: { padding: 24, gap: 8, paddingBottom: 32 },
-  eyebrow: { color: '#f43f5e', fontSize: 13, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
-  title: { color: '#fff', fontSize: 28, fontWeight: '800', marginBottom: 8 },
+  eyebrow: { color: theme.primary, fontSize: 13, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+  title: { color: theme.text, fontSize: 28, fontWeight: '800', marginBottom: 8 },
   codeCard: {
-    backgroundColor: '#17171d',
-    borderColor: '#2a2a35',
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
     borderWidth: 1,
     borderRadius: 16,
     padding: 20,
     alignItems: 'center',
     marginBottom: 16,
   },
-  codeLabel: { color: '#9ca3af', fontSize: 13, marginBottom: 6 },
-  code: { color: '#fff', fontSize: 40, fontWeight: '800', letterSpacing: 8 },
+  codeLabel: { color: theme.textMuted, fontSize: 13, marginBottom: 6 },
+  code: { color: theme.text, fontSize: 40, fontWeight: '800', letterSpacing: 8 },
   rosterHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  sectionTitle: { color: '#fff', fontSize: 18, fontWeight: '700' },
-  count: { color: '#9ca3af', fontSize: 16, fontWeight: '600' },
-  empty: { color: '#6b7280', fontSize: 15, paddingVertical: 12 },
+  sectionTitle: { color: theme.text, fontSize: 18, fontWeight: '700' },
+  count: { color: theme.textMuted, fontSize: 16, fontWeight: '600' },
+  empty: { color: theme.textFaint, fontSize: 15, paddingVertical: 12 },
   playerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    backgroundColor: '#17171d',
-    borderColor: '#2a2a35',
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
   playerNameRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  readyDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4ade80' },
+  readyDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.success },
+  // Muted "off" status dot — not a theme role; left as a neutral grey.
   readyDotOff: { backgroundColor: '#4b5563' },
-  playerName: { color: '#fff', fontSize: 16, fontWeight: '500', flex: 1 },
-  playerNameDim: { color: '#9ca3af' },
-  youTag: { color: '#6b7280', fontSize: 13, fontWeight: '700' },
-  notReadyTag: { color: '#6b7280', fontSize: 13, fontWeight: '600' },
-  removeText: { color: '#f87171', fontSize: 14, fontWeight: '700' },
+  playerName: { color: theme.text, fontSize: 16, fontWeight: '500', flex: 1 },
+  playerNameDim: { color: theme.textMuted },
+  youTag: { color: theme.textFaint, fontSize: 13, fontWeight: '700' },
+  notReadyTag: { color: theme.textFaint, fontSize: 13, fontWeight: '600' },
+  removeText: { color: theme.error, fontSize: 14, fontWeight: '700' },
   finishedHint: {
-    color: '#d1d5db',
+    color: theme.textSecondary,
     fontSize: 14,
     lineHeight: 20,
     marginTop: 8,
     textAlign: 'center',
   },
   replayHint: {
-    color: '#fda4af',
+    color: theme.primaryMuted,
     fontSize: 14,
     lineHeight: 20,
     marginTop: 8,
     textAlign: 'center',
   },
-  error: { color: '#f87171', fontSize: 15, marginTop: 12 },
-  footer: { padding: 24, borderTopColor: '#1c1c24', borderTopWidth: 1, gap: 10 },
+  error: { color: theme.error, fontSize: 15, marginTop: 12 },
+  footer: { padding: 24, borderTopColor: theme.surfaceHover, borderTopWidth: 1, gap: 10 },
   endButton: { paddingVertical: 12, alignItems: 'center' },
-  endButtonText: { color: '#f87171', fontSize: 15, fontWeight: '700' },
-  minHint: { color: '#9ca3af', fontSize: 13, textAlign: 'center', marginBottom: 12 },
-  startButton: { backgroundColor: '#f43f5e', borderRadius: 12, paddingVertical: 16, alignItems: 'center' },
+  endButtonText: { color: theme.error, fontSize: 15, fontWeight: '700' },
+  minHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginBottom: 12 },
+  startButton: { backgroundColor: theme.primary, borderRadius: 12, paddingVertical: 16, alignItems: 'center' },
   startButtonDisabled: { opacity: 0.5 },
+  // White on the solid rose Start button — correct in both schemes.
   startButtonText: { color: '#fff', fontSize: 17, fontWeight: '600' },
 })

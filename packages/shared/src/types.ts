@@ -61,6 +61,7 @@ export interface Game {
   allow_viewers?: boolean | null
   allow_late_players?: boolean | null
   is_public?: boolean | null
+  theme?: string | null
   ayo_variant?: string | null
   participant_mode?: ParticipantMode | string | null
   participant_filter?: string | null
@@ -1075,8 +1076,11 @@ export interface MahjongSession {
   claim_passes: string[]
   status_message: string | null
   winner_player_id: string | null
+  winner_player_ids?: string[] | null
   winning_tile: string | null
   win_type: 'self_draw' | 'discard' | null
+  scores?: Record<string, number> | null
+  score_summary?: { payments?: { player_id: string; delta: number }[] } | null
   turn_deadline_at: string | null
   created_at: string
   updated_at: string

@@ -11,6 +11,7 @@ import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
+import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { ExitIcon } from '@/components/host/host-icons'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
@@ -573,6 +574,9 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
         />
       )}
       {game.status !== 'finished' && <HostRulesRow gameType="bingo" />}
+      {game.status === 'waiting' && (
+        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+      )}
 
       {game.status === 'waiting' && (
         <>

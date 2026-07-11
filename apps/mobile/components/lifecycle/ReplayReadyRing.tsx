@@ -2,6 +2,8 @@ import { useCallback, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { Player } from '@fateround/shared'
 import { postPlayerReady } from '@/lib/game-api'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -23,6 +25,7 @@ export function ReplayReadyRing({
   onReload,
   onRemovePlayer,
 }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -108,27 +111,28 @@ export function ReplayReadyRing({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   container: {
     padding: 16,
     gap: 12,
     alignItems: 'center',
   },
   kicker: {
-    color: '#6b7280',
+    color: theme.textFaint,
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1.2,
   },
   title: {
-    color: '#fff',
+    color: theme.text,
     fontSize: 24,
     fontWeight: '800',
     textAlign: 'center',
   },
   subtitle: {
-    color: '#9ca3af',
+    color: theme.textMuted,
     fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',
@@ -139,19 +143,19 @@ const styles = StyleSheet.create({
     height: 132,
     borderRadius: 66,
     borderWidth: 10,
-    borderColor: '#f43f5e',
+    borderColor: theme.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginVertical: 8,
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
   },
   ringCount: {
-    color: '#fff',
+    color: theme.text,
     fontSize: 32,
     fontWeight: '800',
   },
   ringLabel: {
-    color: '#6b7280',
+    color: theme.textFaint,
     fontSize: 10,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -165,51 +169,51 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     padding: 12,
   },
   rowReady: {
-    borderColor: '#f43f5e',
+    borderColor: theme.primary,
   },
   rowMe: {
-    backgroundColor: '#3f1d2b',
+    backgroundColor: theme.primarySoft,
   },
   avatar: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#0b0b0f',
+    backgroundColor: theme.bg,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    color: '#fff',
+    color: theme.text,
     fontWeight: '800',
   },
   name: {
     flex: 1,
-    color: '#fff',
+    color: theme.text,
     fontSize: 15,
     fontWeight: '600',
   },
   status: {
-    color: '#6b7280',
+    color: theme.textFaint,
     fontSize: 12,
     fontWeight: '600',
   },
   statusReady: {
-    color: '#fda4af',
+    color: theme.primaryMuted,
   },
   remove: {
-    color: '#f87171',
+    color: theme.error,
     fontSize: 13,
     fontWeight: '700',
   },
   primaryButton: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 20,
@@ -217,12 +221,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryButtonText: {
+    // white on the solid rose button — intentional
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
   },
   secondaryButton: {
-    backgroundColor: '#2a2a35',
+    backgroundColor: theme.border,
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 20,
@@ -230,7 +235,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   secondaryButtonText: {
-    color: '#fff',
+    color: theme.text,
     fontSize: 16,
     fontWeight: '700',
   },
@@ -238,7 +243,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   hint: {
-    color: '#6b7280',
+    color: theme.textFaint,
     fontSize: 12,
     textAlign: 'center',
   },

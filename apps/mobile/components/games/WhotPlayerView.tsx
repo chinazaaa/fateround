@@ -24,6 +24,8 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postWhotChooseNumber, postWhotChooseShape, postWhotDraw, postWhotPlay } from '@/lib/game-api'
@@ -39,6 +41,7 @@ const WHOT_CALL_SHAPES: WhotShape[] = ['circle', 'triangle', 'cross', 'square', 
 const WHOT_CALL_NUMBERS = [1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14]
 
 export function WhotPlayerView({ gameCode }: { gameCode: string }) {
+  const styles = useThemedStyles(makeStyles)
   const [session, setSession] = useState<WhotSession | null>(null)
   const [hands, setHands] = useState<WhotPlayerHand[]>([])
   const [acting, setActing] = useState(false)
@@ -313,30 +316,31 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
-  emptyTop: { color: '#fff', fontSize: 24, fontWeight: '800' },
-  section: { color: '#fff', fontSize: 16, fontWeight: '600', marginTop: 4 },
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+  emptyTop: { color: theme.text, fontSize: 24, fontWeight: '800' },
+  section: { color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 4 },
   choosePanel: { gap: 8 },
   shapeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  shapeHint: { color: '#9ca3af', fontSize: 12 },
+  shapeHint: { color: theme.textMuted, fontSize: 12 },
   numberRow: { gap: 6, paddingVertical: 4 },
   callBtn: {
-    backgroundColor: '#3f1d2b',
+    backgroundColor: theme.primarySoft,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 8,
     alignItems: 'center',
     gap: 4,
   },
-  callText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+  callText: { color: theme.text, fontSize: 11, fontWeight: '600' },
   hand: { gap: 8, paddingVertical: 8 },
   drawBtn: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 10,
     padding: 14,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
   },
-  drawText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  drawText: { color: theme.text, fontSize: 16, fontWeight: '600' },
 })

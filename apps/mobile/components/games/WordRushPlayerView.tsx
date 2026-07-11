@@ -17,6 +17,8 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { ActivityFeed } from '@/components/party/ActivityFeed'
 import { RoundBreakCard } from '@/components/party/RoundBreakCard'
 import { TeamBadge } from '@/components/party/TeamBadge'
@@ -35,6 +37,8 @@ import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
 export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
+  const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
   const [session, setSession] = useState<WordRushSession | null>(null)
   const [teamRows, setTeamRows] = useState<WordRushPlayer[]>([])
   const [answers, setAnswers] = useState<WordRushAnswer[]>([])
@@ -337,7 +341,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
               value={startLetter}
               onChangeText={setStartLetter}
               placeholder="Start"
-              placeholderTextColor="#6b7280"
+              placeholderTextColor={theme.textFaint}
               maxLength={1}
               autoCapitalize="characters"
             />
@@ -347,7 +351,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
               value={endLetter}
               onChangeText={setEndLetter}
               placeholder="End"
-              placeholderTextColor="#6b7280"
+              placeholderTextColor={theme.textFaint}
               maxLength={1}
               autoCapitalize="characters"
             />
@@ -366,7 +370,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
             value={wordText}
             onChangeText={setWordText}
             placeholder="Type a word"
-            placeholderTextColor="#6b7280"
+            placeholderTextColor={theme.textFaint}
             onSubmitEditing={() => void submitWord()}
           />
           <Pressable style={styles.primaryBtn} disabled={acting} onPress={() => void submitWord()}>
@@ -385,9 +389,10 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   teamRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  teamRowLabel: { color: '#9ca3af', fontSize: 14 },
+  teamRowLabel: { color: theme.textMuted, fontSize: 14 },
   promptDisplay: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -395,40 +400,41 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingVertical: 12,
   },
-  promptLetter: { color: '#fff', fontSize: 40, fontWeight: '900' },
-  promptArrow: { color: '#fda4af', fontSize: 28, fontWeight: '700' },
-  waiting: { color: '#9ca3af', fontSize: 16, textAlign: 'center', marginTop: 24 },
-  panel: { backgroundColor: '#17171d', borderRadius: 12, padding: 16, gap: 10 },
-  label: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  hint: { color: '#9ca3af', fontSize: 14 },
+  promptLetter: { color: theme.text, fontSize: 40, fontWeight: '900' },
+  promptArrow: { color: theme.primaryMuted, fontSize: 28, fontWeight: '700' },
+  waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
+  panel: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 10 },
+  label: { color: theme.text, fontSize: 16, fontWeight: '600' },
+  hint: { color: theme.textMuted, fontSize: 14 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   letterInput: {
     flex: 1,
-    backgroundColor: '#0b0b0f',
+    backgroundColor: theme.bg,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#2a2a35',
-    color: '#fff',
+    borderColor: theme.border,
+    color: theme.text,
     padding: 12,
     fontSize: 24,
     textAlign: 'center',
   },
-  arrow: { color: '#fff', fontSize: 24 },
+  arrow: { color: theme.text, fontSize: 24 },
   input: {
-    backgroundColor: '#0b0b0f',
+    backgroundColor: theme.bg,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#2a2a35',
-    color: '#fff',
+    borderColor: theme.border,
+    color: theme.text,
     padding: 12,
     fontSize: 16,
   },
   primaryBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 10,
     padding: 14,
     alignItems: 'center',
   },
+  // White on the solid primary button — intentional (case 2).
   primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   feedback: { color: '#fbbf24', textAlign: 'center' },
 })

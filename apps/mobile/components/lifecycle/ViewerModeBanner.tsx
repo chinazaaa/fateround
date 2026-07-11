@@ -3,6 +3,8 @@ import type { Game, Player } from '@fateround/shared'
 import { lobbyHasOpenPlayerSeat } from '@fateround/shared/game-limits-lite'
 import { canSwitchViewerToPlayer, playerIsViewer } from '@fateround/shared/viewers'
 import { usePromoteToPlayer } from '@/hooks/usePromoteToPlayer'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -33,6 +35,7 @@ export function ViewerModeBanner({
   playerDetail,
   onPromoted,
 }: Props) {
+  const styles = useThemedStyles(makeStyles)
   // This banner is about watching a *live* game (late-join / spectator states).
   // Once the game is over it's meaningless — and a winner marked out-of-play
   // (is_eliminated) would otherwise wrongly see "Spectating" on the results screen.
@@ -65,9 +68,10 @@ export function ViewerModeBanner({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   banner: {
-    backgroundColor: '#3f1d2b',
+    backgroundColor: theme.primarySoft,
     borderColor: '#f43f5e55',
     borderWidth: 1,
     borderRadius: 12,
@@ -75,19 +79,19 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   title: {
-    color: '#fff',
+    color: theme.text,
     fontSize: 15,
     fontWeight: '700',
     textAlign: 'center',
   },
   body: {
-    color: '#d1d5db',
+    color: theme.textSecondary,
     fontSize: 13,
     lineHeight: 18,
     textAlign: 'center',
   },
   button: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
@@ -97,12 +101,13 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   buttonText: {
+    // white on the solid rose button — intentional
     color: '#fff',
     fontSize: 14,
     fontWeight: '700',
   },
   detail: {
-    color: '#9ca3af',
+    color: theme.textMuted,
     fontSize: 11,
     textAlign: 'center',
     lineHeight: 16,

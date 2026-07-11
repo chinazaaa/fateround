@@ -8,6 +8,7 @@ import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
+import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { gameTypeConfig } from '@/lib/game-types'
 import { getTriviaHostMode, setTriviaHostMode, type TriviaHostMode } from '@/lib/trivia'
 import { useTriviaHostRoundAutomation } from '@/hooks/useTriviaHostRoundAutomation'
@@ -387,6 +388,9 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
           />
         ))}
       {game.status !== 'finished' && <HostRulesRow gameType="trivia" />}
+      {game.status === 'waiting' && (
+        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+      )}
       <TriviaHostManagePanel {...panelProps} section="manage" />
     </div>
   )

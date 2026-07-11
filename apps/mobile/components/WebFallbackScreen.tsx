@@ -2,6 +2,8 @@ import { Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import type { GameType } from '@fateround/shared'
 import { gameWebUrl } from '@/lib/config'
 import { gameLabel } from '@/lib/mobile-registry'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -10,6 +12,7 @@ type Props = {
 }
 
 export function WebFallbackScreen({ gameCode, gameType, debugReason }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const url = gameWebUrl(gameCode)
   const label = gameType ? gameLabel(gameType) : 'This game'
 
@@ -29,38 +32,41 @@ export function WebFallbackScreen({ gameCode, gameType, debugReason }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0b0b0f',
-    padding: 24,
-    justifyContent: 'center',
-    gap: 16,
-  },
-  title: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  body: {
-    color: '#9ca3af',
-    fontSize: 16,
-    lineHeight: 24,
-  },
-  debug: {
-    color: '#fbbf24',
-    fontSize: 12,
-    fontFamily: 'Menlo',
-  },
-  button: {
-    backgroundColor: '#f43f5e',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-})
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.bg,
+      padding: 24,
+      justifyContent: 'center',
+      gap: 16,
+    },
+    title: {
+      color: theme.text,
+      fontSize: 24,
+      fontWeight: '700',
+    },
+    body: {
+      color: theme.textMuted,
+      fontSize: 16,
+      lineHeight: 24,
+    },
+    debug: {
+      // Dev-only debug readout — amber isn't a theme role; left as-is.
+      color: '#fbbf24',
+      fontSize: 12,
+      fontFamily: 'Menlo',
+    },
+    button: {
+      backgroundColor: theme.primary,
+      borderRadius: 12,
+      paddingVertical: 16,
+      alignItems: 'center',
+    },
+    buttonText: {
+      // White on the solid rose button — correct in both schemes.
+      color: '#fff',
+      fontSize: 16,
+      fontWeight: '600',
+    },
+  })

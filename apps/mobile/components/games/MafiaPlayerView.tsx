@@ -22,6 +22,8 @@ import {
   postMafiaVote,
 } from '@/lib/game-api'
 import { usePlayerSessionActions } from '@/lib/player-session'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
 
@@ -33,6 +35,7 @@ const ROLE_DESC: Record<string, string> = {
 }
 
 export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
+  const styles = useThemedStyles(makeStyles)
   const [mafiaState, setMafiaState] = useState<MafiaStateResponse | null>(null)
   const [acting, setActing] = useState(false)
   const [chatDraft, setChatDraft] = useState('')
@@ -163,12 +166,25 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         : state.winningTeam === 'village'
           ? 'Village wins!'
           : 'Game over'
-    const roles = state.players
-      .map((p) => `${p.name}: ${p.role ?? '?'}`)
-      .join('\n')
+    const teamOf = (role?: string) => (role === 'mafia' ? 'mafia' : 'village')
+    const leaderboard = [...state.players]
+      .sort((a, b) => {
+        const aWon = teamOf(a.role) === state.winningTeam ? 0 : 1
+        const bWon = teamOf(b.role) === state.winningTeam ? 0 : 1
+        if (aWon !== bWon) return aWon - bWon
+        if (a.isAlive !== b.isAlive) return a.isAlive ? -1 : 1
+        return a.name.localeCompare(b.name)
+      })
+      .map((p) => ({
+        name: p.name,
+        score: p.role ? `${mafiaRoleEmoji(p.role)} ${p.role.charAt(0).toUpperCase()}${p.role.slice(1)}` : '—',
+        detail: p.isAlive ? 'Survived' : 'Eliminated',
+        you: !!bootstrap.myPlayerId && p.id === bootstrap.myPlayerId,
+        highlight: !!state.winningTeam && teamOf(p.role) === state.winningTeam,
+      }))
     return (
       <GameShell bootstrap={bootstrap} title={batch7GameLabel('mafia')} subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap} title={winner} detail={roles} />
+        <GameFinishPanel bootstrap={bootstrap} title={winner} subtitle="Roles revealed" leaderboard={leaderboard} />
       </GameShell>
     )
   }
@@ -365,7 +381,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   identityCard: {
     backgroundColor: '#1e1e28',
     borderRadius: 12,
@@ -395,14 +412,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 8,
-    backgroundColor: '#2a2a35',
+    backgroundColor: theme.border,
     minWidth: '45%',
   },
   skipBtn: { borderWidth: 1, borderColor: '#52525b' },
-  targetText: { color: '#fafafa', fontWeight: '700', textAlign: 'center' },
+  targetText: { color: theme.text, fontWeight: '700', textAlign: 'center' },
   sectionTitle: { color: '#a1a1aa', fontWeight: '700', marginBottom: 6, marginTop: 4 },
   playerList: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
-  playerChip: { color: '#fafafa', backgroundColor: '#2a2a35', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
+  playerChip: { color: theme.text, backgroundColor: theme.border, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
   playerDead: { opacity: 0.55 },
   chatLog: { maxHeight: 120, backgroundColor: '#1e1e28', borderRadius: 8, padding: 8, marginBottom: 8 },
   chatLine: { color: '#d4d4d8', fontSize: 13, marginBottom: 4 },
@@ -410,17 +427,18 @@ const styles = StyleSheet.create({
   chatRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   chatInput: {
     flex: 1,
-    backgroundColor: '#2a2a35',
+    backgroundColor: theme.border,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    color: '#fafafa',
+    color: theme.text,
   },
   chatSend: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 8,
     paddingHorizontal: 16,
     justifyContent: 'center',
   },
+  // white on the solid rose send button — intentional
   chatSendText: { color: '#fff', fontWeight: '800' },
 })

@@ -25,6 +25,8 @@ import { getSupabase } from '@/lib/supabase'
 import { SCRABBLE_PLAYER_STATE_SELECT, SCRABBLE_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -39,6 +41,7 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   const [exchangeIndices, setExchangeIndices] = useState<number[]>([])
   const [acting, setActing] = useState(false)
   const [blankPicker, setBlankPicker] = useState<{ row: number; col: number; rackIndex: number } | null>(null)
+  const styles = useThemedStyles(makeStyles)
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: ScrabbleSession | null; ok: boolean }> => {
@@ -407,6 +410,7 @@ function ActionBtn({
   disabled?: boolean
   primary?: boolean
 }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <Pressable
       style={[styles.actionBtn, primary && styles.actionPrimary, disabled && styles.actionDisabled]}
@@ -418,8 +422,9 @@ function ActionBtn({
   )
 }
 
-const styles = StyleSheet.create({
-  board: { alignSelf: 'center', borderWidth: 2, borderColor: '#2a2a35', marginVertical: 8 },
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+  board: { alignSelf: 'center', borderWidth: 2, borderColor: theme.border, marginVertical: 8 },
   boardRow: { flexDirection: 'row' },
   cell: {
     alignItems: 'center',
@@ -440,11 +445,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 8,
-    backgroundColor: '#2a2a35',
+    backgroundColor: theme.border,
   },
-  actionPrimary: { backgroundColor: '#f43f5e' },
+  actionPrimary: { backgroundColor: theme.primary },
   actionDisabled: { opacity: 0.45 },
-  actionText: { color: '#fafafa', fontWeight: '700', fontSize: 13 },
+  actionText: { color: theme.text, fontWeight: '700', fontSize: 13 },
+  // white on the solid rose primary button — intentional
   actionTextPrimary: { color: '#fff' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 16 },
   modalScroll: { backgroundColor: '#1e1e28', borderRadius: 12, padding: 16 },

@@ -16,6 +16,8 @@ import { HostChrome } from '@/components/host/HostChrome'
 import { GameFinishedActions } from '@/components/lifecycle/GameFinishedActions'
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import { mltVoteLeaderboard } from '@/lib/finish-leaderboards'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -26,6 +28,7 @@ type Props = {
 }
 
 export function PollRoundHostScreen({ gameCode, hostToken, game, players, onReload }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [rounds, setRounds] = useState<Round[]>([])
   const [participants, setParticipants] = useState<Participant[]>([])
   const [votes, setVotes] = useState<Vote[]>([])
@@ -234,37 +237,39 @@ export function PollRoundHostScreen({ gameCode, hostToken, game, players, onRelo
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   statsRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  stat: { color: '#9ca3af', fontSize: 14, fontWeight: '600' },
+  stat: { color: theme.textMuted, fontSize: 14, fontWeight: '600' },
   card: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     padding: 16,
     gap: 6,
   },
-  cardLabel: { color: '#fda4af', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  cardTitle: { color: '#fff', fontSize: 17, fontWeight: '700', lineHeight: 24 },
-  cardHint: { color: '#9ca3af', fontSize: 14, lineHeight: 20 },
+  cardLabel: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  cardTitle: { color: theme.text, fontSize: 17, fontWeight: '700', lineHeight: 24 },
+  cardHint: { color: theme.textMuted, fontSize: 14, lineHeight: 20 },
   finished: { color: '#86efac', fontSize: 16, fontWeight: '600', textAlign: 'center' },
   primaryBtn: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
   },
+  // White on the solid rose button — intentional, correct in both schemes.
   primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   secondaryBtn: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     paddingVertical: 14,
     alignItems: 'center',
   },
-  secondaryBtnText: { color: '#fff', fontWeight: '600' },
+  secondaryBtnText: { color: theme.text, fontWeight: '600' },
   btnDisabled: { opacity: 0.5 },
-  footerHint: { color: '#6b7280', fontSize: 13, textAlign: 'center' },
-  error: { color: '#f87171', fontSize: 14 },
+  footerHint: { color: theme.textFaint, fontSize: 13, textAlign: 'center' },
+  error: { color: theme.error, fontSize: 14 },
 })

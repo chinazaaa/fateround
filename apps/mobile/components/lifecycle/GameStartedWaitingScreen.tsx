@@ -3,6 +3,8 @@ import { StyleSheet, Text, View } from 'react-native'
 import type { Game } from '@fateround/shared'
 import { gameLabel } from '@/lib/mobile-registry'
 import { getSupabase, GAME_SELECT } from '@/lib/supabase'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -11,6 +13,7 @@ type Props = {
 }
 
 export function GameStartedWaitingScreen({ gameCode, game, onLobbyOpen }: Props) {
+  const styles = useThemedStyles(makeStyles)
   useEffect(() => {
     if (game?.status === 'waiting') onLobbyOpen()
   }, [game?.status, onLobbyOpen])
@@ -56,10 +59,11 @@ export function GameStartedWaitingScreen({ gameCode, game, onLobbyOpen }: Props)
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0b0b0f',
+    backgroundColor: theme.bg,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
@@ -67,7 +71,7 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 420,
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 16,
     padding: 24,
     gap: 10,
@@ -77,26 +81,26 @@ const styles = StyleSheet.create({
     fontSize: 40,
   },
   title: {
-    color: '#fff',
+    color: theme.text,
     fontSize: 24,
     fontWeight: '800',
     textAlign: 'center',
   },
   badge: {
-    color: '#fda4af',
+    color: theme.primaryMuted,
     fontSize: 13,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
   heading: {
-    color: '#fff',
+    color: theme.text,
     fontSize: 18,
     fontWeight: '700',
     marginTop: 4,
   },
   body: {
-    color: '#9ca3af',
+    color: theme.textMuted,
     fontSize: 15,
     lineHeight: 22,
     textAlign: 'center',
@@ -111,21 +115,21 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#f43f5e',
+    backgroundColor: theme.primary,
   },
   pulseText: {
-    color: '#6b7280',
+    color: theme.textFaint,
     fontSize: 14,
   },
   codeLabel: {
-    color: '#6b7280',
+    color: theme.textFaint,
     fontSize: 12,
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginTop: 12,
   },
   code: {
-    color: '#fff',
+    color: theme.text,
     fontSize: 28,
     fontWeight: '700',
     letterSpacing: 4,

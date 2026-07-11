@@ -198,6 +198,56 @@ export function monopolyLeaderboard(
   }))
 }
 
+/** Mahjong finish standings: each player's total score with this hand's delta. */
+export function mahjongLeaderboard(
+  players: Player[],
+  scores: Record<string, number> | null | undefined,
+  payments: { player_id: string; delta: number }[] | null | undefined,
+  winnerPlayerIds: string[] | null | undefined,
+  myPlayerId?: string | null
+): FinishedLeaderboardRow[] {
+  const winners = new Set(winnerPlayerIds ?? [])
+  return players
+    .map((player) => {
+      const total = scores?.[player.id]
+      const delta = payments?.find((pay) => pay.player_id === player.id)?.delta ?? null
+      const signed = (n: number) => `${n > 0 ? '+' : ''}${n}`
+      const value =
+        total != null
+          ? `${total} pts${delta != null ? ` (${signed(delta)})` : ''}`
+          : delta != null
+            ? `${signed(delta)} pts`
+            : winners.has(player.id)
+              ? 'Winner'
+              : 'Player'
+      return { player, sortKey: total ?? Number.NEGATIVE_INFINITY, value, isWinner: winners.has(player.id) }
+    })
+    .sort((a, b) => b.sortKey - a.sortKey)
+    .map((row) => ({
+      name: row.player.name,
+      score: row.value,
+      you: !!myPlayerId && row.player.id === myPlayerId,
+      highlight: row.isWinner,
+    }))
+}
+
+/** Generic per-player points standings (highest first) with "(you)" + optional detail. */
+export function pointsLeaderboard(
+  entries: Array<{ id: string; name: string; points: number; detail?: string }>,
+  myPlayerId?: string | null
+): FinishedLeaderboardRow[] {
+  return [...entries]
+    .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name))
+    .map((entry, index) => ({
+      name: entry.name,
+      score: entry.points,
+      scoreSuffix: 'pts',
+      detail: entry.detail,
+      you: !!myPlayerId && entry.id === myPlayerId,
+      highlight: index === 0,
+    }))
+}
+
 export function mltVoteLeaderboard(votes: Vote[], participants: Participant[]): FinishedLeaderboardRow[] {
   const counts = new Map<string, number>()
   for (const p of participants) counts.set(p.id, 0)

@@ -10,6 +10,8 @@ import { LIVEKIT_URL } from '@/lib/config'
 import { useVoiceRoom, type VoiceMode } from '@/hooks/useVoiceRoom'
 import type { VoiceParticipant } from '@/lib/voice-types'
 import { useToast } from '@/components/ui/Toast'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 export type VoiceRailProps = {
   gameCode: string
@@ -36,6 +38,7 @@ function ConnectedControls({
   onLeave: () => void
   presenceHint: number
 }) {
+  const styles = useThemedStyles(makeStyles)
   const { isMicrophoneEnabled, localParticipant } = useLocalParticipant()
   const participants = useParticipants()
   const [showList, setShowList] = useState(false)
@@ -93,6 +96,7 @@ function DisconnectedBar({
   isConnecting: boolean
   onJoin: () => void
 }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.bar}>
       <Pressable style={styles.joinBtn} disabled={isConnecting} onPress={onJoin}>
@@ -169,7 +173,8 @@ export function VoiceRailNative({ gameCode, mode, hostToken }: VoiceRailProps) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -177,20 +182,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#1c1c24',
-    backgroundColor: '#121218',
+    borderBottomColor: theme.surfaceHover,
+    backgroundColor: theme.bgElevated,
   },
   joinBtn: {
     flex: 1,
-    backgroundColor: '#1c1c24',
+    backgroundColor: theme.surfaceHover,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     paddingVertical: 10,
     paddingHorizontal: 14,
     alignItems: 'center',
   },
-  joinText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  joinText: { color: theme.text, fontSize: 13, fontWeight: '700' },
   mainBtn: {
     flex: 1,
     borderRadius: 999,
@@ -199,56 +204,59 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     alignItems: 'center',
   },
-  mainBtnLive: { borderColor: '#4ade80', backgroundColor: '#14532d33' },
-  mainBtnMuted: { borderColor: '#f87171', backgroundColor: '#3f1d2b33' },
-  mainBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  // Translucent state fills kept (semantic green/rose wash); borders use the
+  // success/error roles.
+  mainBtnLive: { borderColor: theme.success, backgroundColor: '#14532d33' },
+  mainBtnMuted: { borderColor: theme.error, backgroundColor: '#3f1d2b33' },
+  mainBtnText: { color: theme.text, fontSize: 13, fontWeight: '700' },
   secondaryBtn: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#2a2a35',
-    backgroundColor: '#1c1c24',
+    borderColor: theme.border,
+    backgroundColor: theme.surfaceHover,
     paddingVertical: 10,
     paddingHorizontal: 12,
   },
-  secondaryText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  leaveText: { color: '#fda4af', fontSize: 13, fontWeight: '700' },
+  secondaryText: { color: theme.text, fontSize: 13, fontWeight: '700' },
+  leaveText: { color: theme.primaryMuted, fontSize: 13, fontWeight: '700' },
   modalBackdrop: {
     flex: 1,
+    // Dark scrim over the app — intentional in both schemes.
     backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center',
     padding: 24,
   },
   modalCard: {
-    backgroundColor: '#17171d',
+    backgroundColor: theme.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     padding: 14,
   },
   modalTitle: {
-    color: '#9ca3af',
+    color: theme.textMuted,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1,
     textTransform: 'uppercase',
     marginBottom: 10,
   },
-  modalEmpty: { color: '#9ca3af', fontSize: 14, marginBottom: 8 },
+  modalEmpty: { color: theme.textMuted, fontSize: 14, marginBottom: 8 },
   modalRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 8,
   },
-  modalName: { color: '#fff', fontSize: 14, fontWeight: '600', flex: 1 },
+  modalName: { color: theme.text, fontSize: 14, fontWeight: '600', flex: 1 },
   modalState: { fontSize: 16 },
   modalFoot: {
-    color: '#6b7280',
+    color: theme.textFaint,
     fontSize: 11,
     textAlign: 'center',
     marginTop: 10,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: '#2a2a35',
+    borderTopColor: theme.border,
   },
 })
