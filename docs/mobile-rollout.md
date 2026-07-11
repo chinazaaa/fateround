@@ -22,7 +22,7 @@ Living doc for the React Native / Expo app in `apps/mobile/`.
 
 Batches 1–9 were about **coverage**: every game type can open a native screen and perform core player actions.  
 Batches 10–17 added **shell, lifecycle, notifications, voice, polish, host mode, and Drawful canvas**.  
-**Next priority:** **native create wizard** (Batches 18–22), **host + play parity** (Batch 23), + device QA / TestFlight.
+**Next priority:** **party-game create** (Batch 20), **host + play parity** (Batch 23), + device QA / TestFlight.
 
 ### Player E2E exceptions (Jul 2026)
 
@@ -31,7 +31,7 @@ Batches 10–17 added **shell, lifecycle, notifications, voice, polish, host mod
 | **40 game types** | ✅ Full player flow | Join, lobby, play, finish, play-again waiting |
 | **`custom` game type** | ✅ Play | Create needs web slot builder (until Batch 22) |
 | **Import-mode polls / hot seat** | ✅ Claim join | `ParticipantClaimJoinScreen`; host still adds names on web create |
-| **Advanced create** | ⚠️ Web | Title + type on app; per-game settings / rosters on web (Batches 18–22) |
+| **Advanced create** | ⚠️ Partial | Universal + board/card rooms on app *(Batches 18–19)*; party settings, custom content, rosters *(20–22)* |
 
 ---
 
@@ -89,7 +89,7 @@ All types in `GameType` are registered in `MOBILE_SUPPORTED_GAMES` and `mobile-c
 - [x] All player views use `usePlayerSessionActions` + `bootstrap={bootstrap}` on `GameShell`
 - [x] Rules / how-to-play links from game screens
 - [x] ⋮ overflow menu (leave, rename) in session header
-- [x] Native create (`/create`) — title + game type, stores host token, routes to host lobby
+- [x] Native create (`/create`) — wizard with lobby settings *(Batch 18)*; stores host token, routes to host lobby
 - [x] Web create link retained for advanced setup (participants, custom questions)
 
 ### Batch 11 — Create & host (MVP) ✅
@@ -163,7 +163,7 @@ Mobile can **create**, **lobby**, **start**, **run mid-game**, **play along**, a
 
 | Capability | Mobile | Web |
 |------------|--------|-----|
-| Create game (title + type) | ✅ `/create` | ✅ full settings |
+| Create game (lobby settings) | ✅ `/create` wizard *(Batch 18)* | ✅ full settings |
 | Host lobby (roster, share, start) | ✅ `/host/[code]` | ✅ |
 | Play again from lobby | ✅ | ✅ |
 | **In-game host dashboard** (trivia advance, bingo call, Mafia phase, poll round controls) | ✅ `HostGameScreen` → `HostRouter` | ✅ full dashboards |
@@ -176,7 +176,7 @@ Mobile can **create**, **lobby**, **start**, **run mid-game**, **play along**, a
 - [x] **Host playing along** — join as player while keeping host token (`HostPlayAlongCard`)
 - [x] **Bingo auto-call sync** — `useBingoAutoCall` on bingo host screen + manual call button
 
-**Still thinner than web:** host+play lobby UX and integrated tabs *(Batch 23)*; advanced create *(Batches 18–22)*; poll host animations.
+**Still thinner than web:** host+play lobby UX *(Batch 23)*; party-game create *(Batch 20)*; custom content *(Batches 21–22)*; poll host animations.
 
 ### Host + play (play along)
 
@@ -201,13 +201,16 @@ Mobile can **create**, **lobby**, **start**, **run mid-game**, **play along**, a
 
 ### App shell & session
 
-**Previously listed as open in older doc drafts — all done except advanced create:**
+**Previously listed as open in older doc drafts — all done except per-game create (19–22):**
 
 - [x] Leave game, edit name, recent games, share link / copy code
 - [x] Native create (`/create`) for all types except `custom` (`NATIVE_CREATABLE_GAMES`)
 - [x] Rules / how-to-play links (`GameRulesLink` on `GameShell` + session header)
 - [x] ⋮ overflow menu (`PlayerSessionMenu`: rename, rules, push mute, leave)
-- [ ] Advanced create on app — title + type only today; full wizard planned in **Batches 18–22** (see below)
+- [x] Create wizard shell + universal lobby *(Batch 18)* — max players, late join, public/private, theme
+- [x] Board & card room settings *(Batch 19)* — Ludo variant, chess look, Whot/Crazy8 rules, Scrabble, Mahjong, Monopoly
+- [ ] Party-game create settings — rounds, timers, bingo auto-call, etc. *(Batch 20)*
+- [ ] Custom content + participants *(Batches 21–22)*
 
 ### Lobby & lifecycle
 
@@ -265,38 +268,39 @@ Detail:
 
 ## Proposed next batches
 
-Batches 10–17 core work is **done**. Next: **native create wizard (18–22)**, **host + play parity (23)**, then device QA + TestFlight.
+Batches 10–19 core work is **done**. Next: **party-game create (20)**, **host + play parity (23)**, then device QA + TestFlight.
 
 ### Batch 17 — Drawful canvas + host polish ✅
 
 **Done (Jul 2026).** See “Batch 17” under What's done — touch canvas, Drawful player, Quick Draw host, poll host results.
 
-### Batch 18 — Create wizard shell + universal lobby settings *(planned)*
+### Batch 18 — Create wizard shell + universal lobby settings ✅
 
-**Goal:** Replace “title + type only” with a multi-step create flow; every game gets meaningful defaults + lobby knobs.
+**Done (Jul 2026).** Multi-step create with universal lobby knobs; per-game room settings land in Batches 19–20.
 
-- [ ] `CreateWizardShell` — steps: Setup → (optional People) → Create
-- [ ] Extend `createGame()` to send full API payload (not just `title` + `game_type`)
-- [ ] `CREATE_SETTINGS_REGISTRY` — `GameType → { defaults, fields, validate, toApiPayload }`
-- [ ] Universal lobby fields where web supports them: max players, late join / viewers, public vs private, theme
-- [ ] Soften web link copy — “Full import & custom slots → web” until Batch 22
+- [x] `CreateWizardShell` — Setup → (People placeholder for Who Said This) → Create
+- [x] `createGame()` accepts full API payload via `buildCreatePayload()`
+- [x] `CREATE_SETTINGS_REGISTRY` + `apps/mobile/lib/create-settings/`
+- [x] Universal lobby: max players, late join, public/private, theme
+- [x] Web link copy — custom import & slots → web until Batch 22
 
-### Batch 19 — Board & card game room settings *(planned)*
+### Batch 19 — Board & card game room settings ✅
 
-**Goal:** Match web “room” panels (e.g. Ludo traditional vs modern).
+**Done (Jul 2026).** Per-game room panels on native create for all board/card hosts in scope.
 
 | Games | Settings |
 |-------|----------|
-| Ludo | `ludo_variant` (traditional / modern), turn timer, max players, late join |
-| Snakes & Ladders, Yahtzee, Tic-tac-toe | Max players, turn timer, late join |
+| Ludo | `ludo_variant`, turn timer |
+| Snakes & Ladders, Yahtzee, Tic-tac-toe | Turn timer |
 | Chess | Board theme, piece set, clocks |
-| Checkers, Ayo | Variant, turn timer |
+| Checkers, Ayo | Variant (Ayo), turn timer |
 | Whot, Crazy 8 | Rule toggles, game duration, turn timer |
-| Scrabble | Dictionary, clock mode / seconds |
-| Mahjong | Ruleset + rule options |
+| Scrabble | Dictionary, clock mode / seconds, turn + session length |
+| Mahjong | Ruleset + default rule options |
 | Monopoly | Session duration, turn timer |
 
-Reuse `@fateround/shared` parsers (`parseLudoVariant`, `turnTimerOptionsFor`, game limits).
+- [x] `GameRoomSettingsPanel` + `CREATE_SETTINGS_REGISTRY` room payload (`board-games.ts`)
+- [x] Shared create helpers: `@fateround/shared/create-board-games`, `mahjong-rulesets`
 
 ### Batch 20 — Party & round-based game settings *(planned)*
 

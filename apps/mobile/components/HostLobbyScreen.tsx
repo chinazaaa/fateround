@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Pressable,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   View,
@@ -12,9 +11,10 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game, Player } from '@fateround/shared'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 import { startGame, postPlayAgain } from '@/lib/game-api'
-import { gameWebUrl } from '@/lib/config'
 import { gameHasMobileVoice } from '@/lib/voice-games'
 import { VoiceRail } from '@/components/voice/VoiceRail'
+import { ShareGameSheet } from '@/components/session/ShareGameSheet'
+import { getPlayerSession } from '@/lib/secure-session'
 
 type Props = {
   gameCode: string
@@ -32,6 +32,8 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
   const [starting, setStarting] = useState(false)
   const [replaying, setReplaying] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [shareOpen, setShareOpen] = useState(false)
+  const [resumeToken, setResumeToken] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const supabase = getSupabase()
@@ -65,15 +67,11 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
     }
   }, [gameCode, load])
 
-  const onShare = useCallback(async () => {
-    try {
-      await Share.share({
-        message: `Join my game on Fate Round — code ${gameCode}\n${gameWebUrl(gameCode)}`,
-      })
-    } catch {
-      // user dismissed the share sheet — nothing to do
-    }
+  useEffect(() => {
+    void getPlayerSession(gameCode).then((session) => setResumeToken(session?.resumeToken ?? null))
   }, [gameCode])
+
+  const onShare = useCallback(() => setShareOpen(true), [])
 
   const onStart = useCallback(async () => {
     setStarting(true)
@@ -124,7 +122,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
         <Text style={styles.title}>{game?.title || 'Game'}</Text>
 
         <Pressable style={styles.codeCard} onPress={onShare}>
-          <Text style={styles.codeLabel}>Game code — tap to share</Text>
+          <Text style={styles.codeLabel}>Game code — tap for link & QR</Text>
           <Text style={styles.code}>{gameCode}</Text>
         </Pressable>
 
@@ -195,6 +193,13 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
           </Pressable>
         )}
       </View>
+      <ShareGameSheet
+        visible={shareOpen}
+        gameCode={gameCode}
+        hostToken={hostToken}
+        resumeToken={resumeToken}
+        onClose={() => setShareOpen(false)}
+      />
     </SafeAreaView>
   )
 }

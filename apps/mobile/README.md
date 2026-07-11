@@ -14,10 +14,10 @@ React Native app alongside the web client. Same backend, token-based join — no
 | **Player E2E** | **40 / 40** |
 | **Batches 10–17** | **Done** (shell, lifecycle, push, voice, polish, host, Drawful) |
 | **Readiness score** | **6 / 7** — only EAS project ID + TestFlight remain |
-| **Biggest gap** | **Advanced native create** (Batches 18–22) + **host+play lobby UX** (Batch 23) + TestFlight |
+| **Biggest gap** | **Party-game create** (Batch 20) + **host+play lobby UX** (Batch 23) + TestFlight |
 
-What works: join → play → finish → play-again for all types; native create (title+type); full host lobby + in-game host + play-along; push + voice on priority games.  
-What's still web-first: **advanced create** (per-game settings, participants, custom slots); **host+play from lobby** and integrated play/manage tabs (Batch 23).
+What works: join → play → finish → play-again for all types; native create with lobby settings *(Batch 18)*; full host lobby + in-game host + play-along; push + voice on priority games.  
+What's still web-first: **party-game create** (polls, trivia, bingo settings); **custom Q&A & participant import**; **host+play from lobby** (Batch 23).
 
 ---
 
@@ -67,7 +67,9 @@ Feature flags: `GET /api/mobile-config`.
 | **11** | Host lobby, start game, play again |
 | **16** | In-game host dashboard, play-along, bingo auto-call |
 | **17** | Drawful canvas, Quick Draw host, poll host results |
-| **18–22** | Native create wizard *(planned)* — lobby settings, game rooms, custom content, participants |
+| **18** | Create wizard + universal lobby ✅ — max players, late join, visibility, theme |
+| **19** | Board & card room settings ✅ — Ludo, chess, Whot, Scrabble, Mahjong, Monopoly, … |
+| **20–22** | Party create + custom content + participants *(planned)* |
 | **23** | Host + play parity *(planned)* — lobby play-along, spectator mode, play/manage tabs, lobby auto-seat |
 | **12** | Lifecycle gates, finish scoreboards, import claim join |
 | **13** | Turn push (13+ games), per-game mute, timer haptics |

@@ -11,11 +11,20 @@ type Props = {
   currentName: string
   onRenamed: (newName: string) => void
   spectating?: boolean
+  /** Open straight into the text field (e.g. from session menu). */
+  startEditing?: boolean
 }
 
-export function EditNameInline({ gameCode, playerId, currentName, onRenamed, spectating = false }: Props) {
+export function EditNameInline({
+  gameCode,
+  playerId,
+  currentName,
+  onRenamed,
+  spectating = false,
+  startEditing = false,
+}: Props) {
   const { success, error: toastError } = useToast()
-  const [editing, setEditing] = useState(false)
+  const [editing, setEditing] = useState(startEditing)
   const [name, setName] = useState(currentName)
   const [saving, setSaving] = useState(false)
 

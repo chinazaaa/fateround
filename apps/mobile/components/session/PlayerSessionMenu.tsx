@@ -45,6 +45,7 @@ export function PlayerSessionMenu({ gameCode, gameType, playerId, playerName, on
                   gameCode={gameCode}
                   playerId={playerId}
                   currentName={playerName}
+                  startEditing
                   onRenamed={(name) => {
                     onRenamed(name)
                     setEditingName(false)

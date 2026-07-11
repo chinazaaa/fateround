@@ -1,14 +1,15 @@
-import { ReactNode } from 'react'
-import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native'
+import { ReactNode, useEffect, useState } from 'react'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game } from '@fateround/shared'
-import { gameWebUrl } from '@/lib/config'
 import { gameLabel } from '@/lib/mobile-registry'
 import { gameHasMobileVoice } from '@/lib/voice-games'
 import { VoiceRail } from '@/components/voice/VoiceRail'
+import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { HeaderAction } from '@/components/ui/HeaderAction'
 import { theme } from '@/constants/theme'
+import { getPlayerSession } from '@/lib/secure-session'
 
 type Props = {
   gameCode: string
@@ -21,16 +22,12 @@ export function HostChrome({ gameCode, hostToken, game, children }: Props) {
   const router = useRouter()
   const code = gameCode.toUpperCase()
   const typeLabel = gameLabel(game.game_type)
+  const [shareOpen, setShareOpen] = useState(false)
+  const [resumeToken, setResumeToken] = useState<string | null>(null)
 
-  const onShare = async () => {
-    try {
-      await Share.share({
-        message: `Join my game on Fate Round — code ${code}\n${gameWebUrl(gameCode)}`,
-      })
-    } catch {
-      // dismissed
-    }
-  }
+  useEffect(() => {
+    void getPlayerSession(gameCode).then((session) => setResumeToken(session?.resumeToken ?? null))
+  }, [gameCode])
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -47,7 +44,7 @@ export function HostChrome({ gameCode, hostToken, game, children }: Props) {
           >
             <Text style={styles.backIcon}>←</Text>
           </Pressable>
-          <HeaderAction label="Share code" accent onPress={() => void onShare()} />
+          <HeaderAction label="Share code" accent onPress={() => setShareOpen(true)} />
         </View>
 
         <View style={styles.meta}>
@@ -69,6 +66,13 @@ export function HostChrome({ gameCode, hostToken, game, children }: Props) {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {children}
       </ScrollView>
+      <ShareGameSheet
+        visible={shareOpen}
+        gameCode={gameCode}
+        hostToken={hostToken}
+        resumeToken={resumeToken}
+        onClose={() => setShareOpen(false)}
+      />
     </SafeAreaView>
   )
 }

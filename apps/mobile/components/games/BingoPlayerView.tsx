@@ -2,12 +2,10 @@ import { useCallback, useMemo, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { BingoCalledNumber, BingoCard, Game, Player } from '@fateround/shared'
 import {
-  BINGO_COLUMNS,
-  BINGO_DISPLAY_ORDER,
-  BINGO_FREE_INDEX,
   formatBingoNumber,
   hasBingoWin,
 } from '@fateround/shared/bingo'
+import { BingoCardGrid } from '@/components/games/bingo/BingoCardGrid'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
@@ -108,7 +106,6 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   const calledSet = useMemo(() => new Set(calledNumbers.map((n) => n.number)), [calledNumbers])
-  const marked = useMemo(() => new Set(card?.marked_indices ?? []), [card?.marked_indices])
   const lastCalled = calledNumbers.length > 0 ? calledNumbers[calledNumbers.length - 1] : null
   const canClaim = useMemo(
     () => !!card && hasBingoWin(card.cells, card.marked_indices, 'line') && bootstrap.game?.status === 'active',
@@ -220,36 +217,13 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
 
       {card ? (
         <>
-          <View style={styles.headerRow}>
-            {BINGO_COLUMNS.map((letter) => (
-              <Text key={letter} style={styles.headerLetter}>
-                {letter}
-              </Text>
-            ))}
-          </View>
-          <View style={styles.cardGrid}>
-            {BINGO_DISPLAY_ORDER.map((cellIndex) => {
-              const number = card.cells[cellIndex]
-              const isFree = cellIndex === BINGO_FREE_INDEX
-              const isMarked = marked.has(cellIndex) || isFree
-              const isCallable = isFree || calledSet.has(number)
-              const canMark = isCallable && !isMarked && !marking
-              return (
-                <Pressable
-                  key={cellIndex}
-                  style={[
-                    styles.cardCell,
-                    isMarked && styles.cardCellMarked,
-                    isCallable && !isMarked && styles.cardCellCallable,
-                  ]}
-                  disabled={!canMark}
-                  onPress={() => void markCell(cellIndex)}
-                >
-                  <Text style={styles.cardCellText}>{isFree ? 'FREE' : number}</Text>
-                </Pressable>
-              )
-            })}
-          </View>
+          <BingoCardGrid
+            cells={card.cells}
+            markedIndices={card.marked_indices}
+            calledNumbers={calledSet}
+            marking={marking}
+            onMark={(cellIndex) => void markCell(cellIndex)}
+          />
           <Text style={styles.legend}>Tap callable numbers when they are called. Center is free.</Text>
         </>
       ) : (
@@ -291,22 +265,6 @@ const styles = StyleSheet.create({
   bingoBtnDisabled: { opacity: 0.7 },
   bingoBtnText: { color: '#fff', fontSize: 20, fontWeight: '900', letterSpacing: 2 },
   error: { color: '#fb7185', textAlign: 'center', fontSize: 14 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 8 },
-  headerLetter: { color: '#f43f5e', fontSize: 18, fontWeight: '800', width: 56, textAlign: 'center' },
-  cardGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6 },
-  cardCell: {
-    width: 56,
-    height: 56,
-    borderRadius: 8,
-    backgroundColor: '#17171d',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#2a2a35',
-  },
-  cardCellCallable: { borderColor: '#3b82f6', backgroundColor: '#172554' },
-  cardCellMarked: { backgroundColor: '#14532d', borderColor: '#22c55e' },
-  cardCellText: { color: '#fff', fontSize: 12, fontWeight: '700', textAlign: 'center' },
   legend: { color: '#6b7280', fontSize: 12, textAlign: 'center', marginTop: 8 },
   waitingCard: { color: '#9ca3af', textAlign: 'center', marginTop: 24 },
 })

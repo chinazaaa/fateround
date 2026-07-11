@@ -80,7 +80,7 @@ export function LobbyView({
         })}
       </View>
 
-      <ShareGameCard gameCode={gameCode} />
+      <ShareGameCard gameCode={gameCode} resumeToken={myResumeToken} />
 
       {myPlayerId && onRenamed && onLeft ? (
         <PlayerSessionControls

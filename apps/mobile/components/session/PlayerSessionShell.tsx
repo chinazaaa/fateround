@@ -1,14 +1,14 @@
 import { ReactNode, useCallback, useEffect, useState } from 'react'
-import { Pressable, Share, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game } from '@fateround/shared'
 import { gameLabel } from '@/lib/mobile-registry'
-import { gameWebUrl } from '@/lib/config'
 import { clearPlayerSession, getHostToken, getPlayerSession } from '@/lib/secure-session'
 import { gameHasMobileVoice } from '@/lib/voice-games'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { PlayerSessionMenu } from '@/components/session/PlayerSessionMenu'
+import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { HeaderAction } from '@/components/ui/HeaderAction'
 import { theme } from '@/constants/theme'
 
@@ -27,15 +27,20 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
   const [playerId, setPlayerId] = useState<string | null>(null)
   const [playerName, setPlayerName] = useState('')
   const [hasHostToken, setHasHostToken] = useState(false)
+  const [hostToken, setHostToken] = useState<string | null>(null)
+  const [resumeToken, setResumeToken] = useState<string | null>(null)
+  const [shareOpen, setShareOpen] = useState(false)
 
   const reloadSession = useCallback(async () => {
-    const [session, hostToken] = await Promise.all([
+    const [session, storedHostToken] = await Promise.all([
       getPlayerSession(gameCode),
       getHostToken(gameCode),
     ])
     setPlayerId(session?.playerId ?? null)
     setPlayerName(session?.playerName ?? '')
-    setHasHostToken(!!hostToken)
+    setResumeToken(session?.resumeToken ?? null)
+    setHostToken(storedHostToken)
+    setHasHostToken(!!storedHostToken)
   }, [gameCode])
 
   useEffect(() => {
@@ -47,15 +52,7 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
     else router.replace('/')
   }
 
-  const onShare = async () => {
-    try {
-      await Share.share({
-        message: `Join my game on Fate Round — code ${code}\n${gameWebUrl(gameCode)}`,
-      })
-    } catch {
-      // dismissed
-    }
-  }
+  const onShare = () => setShareOpen(true)
 
   const openHost = async () => {
     const token = await getHostToken(gameCode)
@@ -76,7 +73,7 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
           </Pressable>
 
           <View style={styles.toolbarActions}>
-            <HeaderAction label="Share" onPress={() => void onShare()} />
+            <HeaderAction label="Share" onPress={onShare} />
             {hasHostToken ? (
               <HeaderAction label="Host" accent onPress={() => void openHost()} />
             ) : null}
@@ -117,6 +114,13 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
         <VoiceRail gameCode={gameCode} mode="player" />
       ) : null}
       <View style={styles.body}>{children}</View>
+      <ShareGameSheet
+        visible={shareOpen}
+        gameCode={gameCode}
+        hostToken={hostToken}
+        resumeToken={resumeToken}
+        onClose={() => setShareOpen(false)}
+      />
     </SafeAreaView>
   )
 }

@@ -47,6 +47,35 @@ export function gameSupportsViewerSetting(gameType: GameType): boolean {
   return !isSecretMessageGame(gameType)
 }
 
+export function lateJoinPolicyToFields(policy: LateJoinPolicy): {
+  allow_viewers: boolean
+  allow_late_players: boolean
+} {
+  switch (policy) {
+    case 'lobby_only':
+      return { allow_viewers: false, allow_late_players: false }
+    case 'viewers_only':
+      return { allow_viewers: true, allow_late_players: false }
+    case 'viewers_and_players':
+      return { allow_viewers: true, allow_late_players: true }
+  }
+}
+
+/** Board games only support lobby-only or watch-only late join. */
+export function clampLateJoinPolicyForGameType(policy: LateJoinPolicy, gameType: GameType): LateJoinPolicy {
+  if (!gameAllowsLatePlayerJoin(gameType) && policy === 'viewers_and_players') {
+    return 'viewers_only'
+  }
+  return policy
+}
+
+export function defaultLateJoinPolicyForGameType(gameType: GameType): LateJoinPolicy {
+  if (isDescribeItGame(gameType)) return 'viewers_and_players'
+  if (isWordRushGame(gameType)) return 'viewers_and_players'
+  if (isQuickDrawGame(gameType)) return 'viewers_and_players'
+  return 'viewers_only'
+}
+
 export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
   return (
     !isMonopolyGame(gameType) &&

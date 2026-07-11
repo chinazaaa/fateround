@@ -19,7 +19,7 @@ export const APP_VERSION = Constants.expoConfig?.version ?? '0.1.0'
 export const LIVEKIT_URL = process.env.EXPO_PUBLIC_LIVEKIT_URL?.replace(/\/$/, '') ?? ''
 
 export function gameWebUrl(gameCode: string): string {
-  return `${WEB_BASE_URL}/game/${encodeURIComponent(gameCode.toUpperCase())}`
+  return `${WEB_BASE_URL.replace(/\/$/, '')}/game/${gameCode.trim().toUpperCase()}`
 }
 
 export function apiUrl(path: string): string {

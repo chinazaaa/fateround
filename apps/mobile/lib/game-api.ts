@@ -1,5 +1,7 @@
 import { apiUrl } from '@/lib/config'
 import type { GameType } from '@fateround/shared'
+import type { GamePlayerLimitsMap } from '@fateround/shared/lobby-limits'
+import { getCodeDefaultLimits } from '@fateround/shared/lobby-limits'
 import type { MafiaStateResponse } from '@fateround/shared/mafia'
 import type { MahjongStateResponse } from '@fateround/shared/mahjong'
 
@@ -647,17 +649,25 @@ export function getMafiaHostState(gameId: string, hostToken: string) {
 
 export type CreateGameResponse = { gameCode: string; hostToken: string }
 
+export type CreateGamePayload = Record<string, unknown>
+
+export async function fetchGamePlayerLimits(): Promise<GamePlayerLimitsMap> {
+  try {
+    const res = await fetch(apiUrl('/api/game-limits'))
+    if (!res.ok) return getCodeDefaultLimits()
+    const data = (await res.json()) as { limits?: GamePlayerLimitsMap }
+    return data.limits ?? getCodeDefaultLimits()
+  } catch {
+    return getCodeDefaultLimits()
+  }
+}
+
 /**
- * Create a game and receive its code + host token. Only `title` is required by
- * the server; everything else (rounds, timers, max players) defaults per game
- * type. Native create is limited to lobby games that need no participant list
- * or custom questions — see app/create.tsx.
+ * Create a game and receive its code + host token. Pass a full create payload from
+ * the create wizard (`buildCreatePayload`) or minimal `{ title, game_type }`.
  */
-export function createGame(input: { title: string; gameType: GameType }) {
-  return postJson<CreateGameResponse>('/api/games', {
-    title: input.title,
-    game_type: input.gameType,
-  })
+export function createGame(input: CreateGamePayload) {
+  return postJson<CreateGameResponse>('/api/games', input)
 }
 
 async function jsonRequest<T>(path: string, method: string, body: Record<string, unknown>): Promise<T> {

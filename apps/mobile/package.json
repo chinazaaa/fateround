@@ -19,6 +19,7 @@
     "@supabase/supabase-js": "^2.108.1",
     "chess.js": "^1.4.0",
     "expo": "~57.0.4",
+    "expo-clipboard": "~57.0.0",
     "expo-constants": "~57.0.3",
     "expo-device": "^57.0.0",
     "expo-font": "~57.0.0",
@@ -31,6 +32,7 @@
     "expo-status-bar": "~57.0.0",
     "expo-updates": "~0.28.18",
     "livekit-client": "^2.20.1",
+    "qrcode": "^1.5.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.0",
@@ -43,6 +45,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.6",
     "@types/react": "~19.2.2",
     "typescript": "~6.0.3"
   }

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Pressable, Share, StyleSheet, Text, View } from 'react-native'
-import { gameWebUrl } from '@/lib/config'
+import { playerResumeUrl } from '@/lib/game-links'
 
 type Props = {
   gameCode: string
@@ -12,7 +12,7 @@ export function PlayerResumeCard({ gameCode, resumeToken, compact = false }: Pro
   const [open, setOpen] = useState(false)
   if (!resumeToken) return null
 
-  const url = `${gameWebUrl(gameCode)}?resumeToken=${encodeURIComponent(resumeToken)}`
+  const url = playerResumeUrl(gameCode, resumeToken)
 
   if (compact) {
     return (
