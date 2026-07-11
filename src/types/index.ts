@@ -46,6 +46,8 @@ export type GameType =
   | 'matching_pairs'
   | 'quiplash'
   | 'word_rush'
+  | 'quick_draw'
+  | 'ayo'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'
@@ -283,6 +285,12 @@ export interface Game {
   describe_it_num_teams?: number
   /** Describe It — 'team' (teams race) or 'individual' (skribbl-style solo scoring). */
   describe_it_mode?: DescribeItMode
+  /** Quick Draw — 'lie' (Drawful) or 'guess' (draw & guess charades). */
+  quick_draw_variant?: QuickDrawVariant
+  /** Quick Draw guess mode — team vs individual. */
+  quick_draw_play_mode?: QuickDrawPlayMode
+  /** Quick Draw guess mode — number of teams (2-4). */
+  quick_draw_num_teams?: number
   /** Word Rush — 'team' (teams race the clock) or 'individual' (everyone answers each round). */
   word_rush_mode?: WordRushMode
   /** Word Rush — 'automatic' (system picks letters) or 'manual' (player/host picks letters). */
@@ -320,6 +328,8 @@ export interface Game {
   crazy8_pick2_stacking?: boolean
   /** Ludo — 'modern' (start + mid-arm safe stars) or 'traditional' (no track safe squares). */
   ludo_variant?: LudoVariant
+  /** Ayo — 'traditional' (capture on 4, houses, match rounds) or 'oware' (2/3 seeds). */
+  ayo_variant?: AyoVariant
   /** Mahjong — ruleset selected before the table starts. */
   mahjong_ruleset?: MahjongRuleset | null
   /** Mahjong — house rules and match-settlement options. */
@@ -564,6 +574,8 @@ export type LudoColor = 'red' | 'green' | 'yellow' | 'blue'
 export type LudoPieceZone = 'base' | 'track' | 'home' | 'finished'
 export type LudoPhase = 'roll' | 'move' | 'finished'
 export type LudoVariant = 'modern' | 'traditional'
+
+export type AyoVariant = 'traditional' | 'oware'
 
 export interface LudoDiceRoll {
   d1: number
@@ -861,7 +873,7 @@ export interface CheckersSession {
   player_black_id: string
   /**
    * 64-char board, indexed by row*8 + col (row 0 = top, col 0 = left). Only dark
-   * squares are occupied. '.' empty, 'r'/'b' man, 'R'/'B' king. Red moves first.
+   * squares are occupied. '.' empty, 'r'/'b' man, 'R'/'B' king. Black moves first.
    */
   board: string
   current_turn: CheckersColor
@@ -881,6 +893,42 @@ export interface CheckersSession {
   last_move_to: string | null
   status: 'active' | 'finished'
   /** capture_all | no_moves | draw_moves | timeout | resignation */
+  result_reason: string | null
+  winner_player_id: string | null
+  is_draw: boolean
+  status_message: string | null
+  turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type AyoSide = 'a' | 'b'
+
+export interface AyoSession {
+  id: string
+  game_id: string
+  player_a_id: string
+  player_b_id: string
+  /** 12 pits — indices 0–5 side A, 6–11 side B. Anti-clockwise sowing. */
+  pits: number[]
+  captured_a: number
+  captured_b: number
+  /** Houses won in the current deal (traditional mode). */
+  houses_a: number
+  houses_b: number
+  /** Match round number (traditional multi-round play). */
+  match_round: number
+  /** Active houses per side (0–6); shrinks when the opponent wins a round. */
+  a_row_size: number
+  b_row_size: number
+  current_turn: AyoSide
+  a_win_streak: number
+  b_win_streak: number
+  a_time_ms: number | null
+  b_time_ms: number | null
+  turn_started_at: string | null
+  last_pit: number | null
+  status: 'active' | 'finished'
   result_reason: string | null
   winner_player_id: string | null
   is_draw: boolean
@@ -1195,6 +1243,136 @@ export interface QuiplashVote {
   voted_at: string
 }
 
+export interface QuickDrawMetadata {
+  round_number: number
+}
+
+export type QuickDrawPhase = 'drawing' | 'titling' | 'voting' | 'reveal' | 'finished'
+
+export interface QuickDrawSession {
+  id: string
+  game_id: string
+  phase: QuickDrawPhase
+  drawing_index: number
+  turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface QuickDrawAssignment {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  prompt: string
+  created_at: string
+}
+
+export interface QuickDrawStroke {
+  color: string
+  width: number
+  points: [number, number][]
+  /** Omit for pen strokes; eraser uses destination-out when replayed. */
+  tool?: 'pen' | 'eraser'
+}
+
+export interface QuickDrawDrawingStrokeData {
+  width: number
+  height: number
+  strokes: QuickDrawStroke[]
+}
+
+export interface QuickDrawDrawing {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  stroke_data: QuickDrawDrawingStrokeData
+  submitted_at: string
+}
+
+export interface QuickDrawTitle {
+  id: string
+  game_id: string
+  drawing_id: string
+  player_id: string | null
+  text: string
+  is_real: boolean
+  submitted_at: string
+}
+
+export interface QuickDrawVote {
+  id: string
+  game_id: string
+  drawing_id: string
+  player_id: string
+  chosen_title_id: string
+  voted_at: string
+}
+
+export type QuickDrawVariant = 'lie' | 'guess'
+export type QuickDrawPlayMode = 'team' | 'individual'
+
+export type QuickDrawGuessPhase = 'turn' | 'break' | 'finished'
+
+export interface QuickDrawGuessSession {
+  id: string
+  game_id: string
+  mode: QuickDrawPlayMode
+  num_teams: number
+  total_rounds: number
+  turn_seconds: number
+  roster: string[]
+  phase: QuickDrawGuessPhase
+  turn_index: number
+  current_round: number
+  active_team: number
+  drawer_player_id: string | null
+  current_word: string | null
+  current_stroke_data: QuickDrawDrawingStrokeData
+  used_words: string[]
+  turn_deadline_at: string | null
+  break_deadline_at: string | null
+  status: 'active' | 'finished'
+  status_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface QuickDrawGuessPlayer {
+  id: string
+  game_id: string
+  player_id: string
+  team: number
+  score: number
+  created_at: string
+}
+
+export interface QuickDrawGuessWord {
+  id: string
+  game_id: string
+  turn_index: number
+  round: number
+  team: number
+  drawer_player_id: string | null
+  word: string
+  status: 'guessed' | 'skipped'
+  guesser_player_id: string | null
+  created_at: string
+}
+
+export interface QuickDrawGuessGuess {
+  id: string
+  game_id: string
+  turn_index: number
+  player_id: string
+  team: number
+  text: string
+  correct: boolean
+  points: number
+  created_at: string
+}
+
 export interface Participant {
   id: string
   game_id: string
@@ -1254,6 +1432,7 @@ export interface Round {
   ttl_metadata?: TtlMetadata | null
   npat_metadata?: NpatMetadata | null
   quiplash_metadata?: QuiplashMetadata | null
+  quick_draw_metadata?: QuickDrawMetadata | null
 }
 
 export type PairFlag = 'kiss' | 'kill'

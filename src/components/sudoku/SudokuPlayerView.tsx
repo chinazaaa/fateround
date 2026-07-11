@@ -657,6 +657,8 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
+            gameCode={gameCode}
+            onLeft={handlePlayerLeft}
           />
         </GameJoinLobbyShell>
       )

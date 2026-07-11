@@ -74,12 +74,14 @@ export const gameTypeEnum = z.enum([
   'matching_pairs',
   'chess',
   'checkers',
+  'ayo',
   'describe_it',
   'scrabble',
   'snake_and_ladder',
   'mafia',
   'quiplash',
   'word_rush',
+  'quick_draw',
 ])
 
 export const participantModeEnum = z.enum(['import', 'joiners', 'voters'])

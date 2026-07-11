@@ -4,6 +4,7 @@ import { processWhotExpireTurn } from '@/lib/whot'
 import { whotActionSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { scheduleTurnNotification } from '@/lib/push'
 
 const schema = whotActionSchema.pick({ gameId: true })
 

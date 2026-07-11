@@ -3,6 +3,8 @@ import type {
   PairVoteMode,
   GameType,
   DescribeItMode,
+  QuickDrawVariant,
+  QuickDrawPlayMode,
   WordRushMode,
   WordRushPromptMode,
   WordRushDifficulty,
@@ -26,6 +28,9 @@ export interface Settings {
   isPublic: boolean
   describe_it_num_teams: number
   describe_it_mode: DescribeItMode
+  quick_draw_variant: QuickDrawVariant
+  quick_draw_play_mode: QuickDrawPlayMode
+  quick_draw_num_teams: number
   word_rush_num_teams: number
   word_rush_mode: WordRushMode
   word_rush_prompt_mode: WordRushPromptMode

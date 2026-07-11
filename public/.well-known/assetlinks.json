@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.fateround.app",
+      "sha256_cert_fingerprints": [
+        "52:14:57:14:3B:1A:60:87:2A:87:73:B5:06:F7:3D:C3:92:B9:4F:7D:14:56:94:19:08:22:C9:28:D2:A3:74:FD"
+      ]
+    }
+  }
+]

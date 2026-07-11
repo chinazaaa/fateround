@@ -5,6 +5,7 @@ import { monopolyBuySchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { scheduleTurnNotification } from '@/lib/push'
 
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, monopolyBuySchema)
@@ -27,6 +28,8 @@ export async function POST(req: NextRequest) {
 
   const { error } = await processMonopolyBuy(supabase, code, auth.player.id, decision)
   if (error) return NextResponse.json({ error }, { status: 400 })
+
+  scheduleTurnNotification(code)
 
   return NextResponse.json({ success: true })
 }

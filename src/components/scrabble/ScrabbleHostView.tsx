@@ -29,6 +29,8 @@ import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { ScrabbleGamePanel } from '@/components/scrabble/ScrabbleBoard'
 import { ScrabbleFinalResultsShareBlock } from '@/components/scrabble/ScrabbleFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { ScrabblePrimaryButton } from '@/components/scrabble/ScrabbleChrome'
 import { ScrabbleHostTimeExtension } from '@/components/scrabble/ScrabbleHostTimeExtension'
 import { ScrabbleGameTimerBar } from '@/components/scrabble/ScrabbleGameTimerBar'
@@ -66,6 +68,7 @@ function setHostMode(gameCode: string, mode: ScrabbleHostMode): void {
 
 export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError, success } = useToast()
+  const { confirm } = useConfirm()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<ScrabbleSession | null>(null)
@@ -323,24 +326,44 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
     }
   }
 
-  const playAgain = async () => {
+  const resetGame = async (sameSettings: boolean) => {
     setPlayingAgain(true)
     try {
       const res = await fetch(`/api/games/${gameCode}/play-again`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined }),
+        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined, same_settings: sameSettings }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to reset')
       if (data.game) setGame(data.game)
-      success('Ready for a new game!')
+      success(sameSettings ? 'Ready up for the next game!' : 'Back to the lobby')
       await load()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to reset')
     } finally {
       setPlayingAgain(false)
     }
+  }
+
+  const confirmPlayAgain = async () => {
+    const ok = await confirm({
+      title: 'Play again — same settings?',
+      message:
+        'Reopens the game with the same settings. Previous watchers and new people can join; everyone taps “ready” and you start the next game once enough players are in.',
+      confirmLabel: 'Play again',
+    })
+    if (ok) void resetGame(true)
+  }
+
+  const confirmReturnToLobby = async () => {
+    const ok = await confirm({
+      title: 'Return to lobby?',
+      message:
+        'Sends everyone back to the game lobby where you can tweak settings or let new people join before starting again.',
+      confirmLabel: 'Return to lobby',
+    })
+    if (ok) void resetGame(false)
   }
 
   const readyPlayers = players.filter((p) => p.spectator !== true)
@@ -371,6 +394,32 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
   const showTabs = !gameFinished
   const gameStarted = game.status === 'active' && !gameFinished
   const primaryKind: 'play' | 'watch' = hostPlays ? 'play' : 'watch'
+
+  if (game.status === 'waiting' && game.replay_pending) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--background)] px-3 py-8 text-[var(--foreground)]">
+        <ReplayReadyRing
+          players={players}
+          meId={hostPlayerId}
+          isHost
+          gameCode={gameCode}
+          hostToken={hostToken}
+          minPlayers={SCRABBLE_MIN_PLAYERS}
+          onToggleReady={() => {}}
+          onStart={() => void startGame()}
+          starting={starting}
+        />
+        <button
+          type="button"
+          onClick={() => void confirmReturnToLobby()}
+          disabled={playingAgain}
+          className="mt-1 py-2 text-sm font-medium text-muted transition-colors hover:text-body disabled:opacity-60"
+        >
+          Return to lobby instead
+        </button>
+      </div>
+    )
+  }
 
   const interactivePlay = session && hostPlayerId && game.status === 'active' && !gameFinished && (
     <div className="space-y-3">
@@ -610,10 +659,21 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
             winnerName={winner?.name}
             highlightPlayerId={hostPlayerId}
             playAgainButton={
-              <ScrabblePrimaryButton onClick={playAgain} loading={playingAgain}>
-                Play again
+              <ScrabblePrimaryButton onClick={() => void confirmPlayAgain()} loading={playingAgain}>
+                {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
               </ScrabblePrimaryButton>
             }
+            returnToLobbyButton={
+              <button
+                type="button"
+                onClick={() => void confirmReturnToLobby()}
+                disabled={playingAgain}
+                className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
+              >
+                Return to lobby
+              </button>
+            }
+            lobbyNote="Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak settings first."
           />
           {hostPlayerId && session?.winner_player_id === hostPlayerId && (
             <PostWinToCommunity

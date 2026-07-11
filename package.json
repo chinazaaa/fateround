@@ -16,6 +16,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "mobile": "npm --prefix apps/mobile start",
+    "mobile:typecheck": "npm --prefix apps/mobile run typecheck",
     "vapid:generate": "web-push generate-vapid-keys",
     "indexnow:submit": "node scripts/submit-indexnow.mjs"
   },

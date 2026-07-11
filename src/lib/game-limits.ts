@@ -19,6 +19,7 @@ import { TIC_TAC_TOE_DEFAULT_MAX_PLAYERS, TIC_TAC_TOE_MAX_PLAYERS, TIC_TAC_TOE_M
 import { WORD_HUNT_DEFAULT_MAX_PLAYERS, WORD_HUNT_MAX_PLAYERS, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
 import { CHESS_DEFAULT_MAX_PLAYERS, CHESS_MAX_PLAYERS, CHESS_MIN_PLAYERS } from '@/lib/chess'
 import { CHECKERS_DEFAULT_MAX_PLAYERS, CHECKERS_MAX_PLAYERS, CHECKERS_MIN_PLAYERS } from '@/lib/checkers'
+import { AYO_DEFAULT_MAX_PLAYERS, AYO_MAX_PLAYERS, AYO_MIN_PLAYERS } from '@/lib/ayo'
 import { SCRABBLE_MAX_PLAYERS, SCRABBLE_MIN_PLAYERS } from '@/lib/scrabble'
 import { SUDOKU_MAX_PLAYERS, SUDOKU_MIN_PLAYERS } from '@/lib/sudoku'
 import { DESCRIBE_IT_DEFAULT_MAX_PLAYERS, DESCRIBE_IT_MAX_PLAYERS, DESCRIBE_IT_MIN_PLAYERS } from '@/lib/describe-it'
@@ -34,6 +35,7 @@ import {
   MATCHING_PAIRS_DEFAULT_MAX_PLAYERS,
 } from '@/lib/memory-match'
 import { QUIPLASH_MIN_PLAYERS, QUIPLASH_MAX_PLAYERS, QUIPLASH_DEFAULT_MAX_PLAYERS } from '@/lib/quiplash'
+import { QUICK_DRAW_MIN_PLAYERS, QUICK_DRAW_MAX_PLAYERS, QUICK_DRAW_DEFAULT_MAX_PLAYERS } from '@/lib/quick-draw'
 import { WORD_RUSH_MIN_PLAYERS, WORD_RUSH_MAX_PLAYERS, WORD_RUSH_DEFAULT_MAX_PLAYERS } from '@/lib/word-rush'
 
 export const LOBBY_LIMIT_GAME_TYPES = [
@@ -60,7 +62,9 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'mafia',
   'matching_pairs',
   'quiplash',
+  'quick_draw',
   'word_rush',
+  'ayo',
 ] as const
 
 export type LobbyLimitGameType = (typeof LOBBY_LIMIT_GAME_TYPES)[number]
@@ -106,6 +110,11 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     min: QUIPLASH_MIN_PLAYERS,
     max: QUIPLASH_MAX_PLAYERS,
     default: QUIPLASH_DEFAULT_MAX_PLAYERS,
+  },
+  quick_draw: {
+    min: QUICK_DRAW_MIN_PLAYERS,
+    max: QUICK_DRAW_MAX_PLAYERS,
+    default: QUICK_DRAW_DEFAULT_MAX_PLAYERS,
   },
   monopoly: {
     min: MONOPOLY_MIN_PLAYERS,
@@ -167,6 +176,11 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     max: CHECKERS_MAX_PLAYERS,
     default: CHECKERS_DEFAULT_MAX_PLAYERS,
   },
+  ayo: {
+    min: AYO_MIN_PLAYERS,
+    max: AYO_MAX_PLAYERS,
+    default: AYO_DEFAULT_MAX_PLAYERS,
+  },
   scrabble: {
     min: SCRABBLE_MIN_PLAYERS,
     max: SCRABBLE_MAX_PLAYERS,
@@ -211,6 +225,7 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
     trivia: { ...GAME_LIMIT_CODE_DEFAULTS.trivia },
     two_truths: { ...GAME_LIMIT_CODE_DEFAULTS.two_truths },
     quiplash: { ...GAME_LIMIT_CODE_DEFAULTS.quiplash },
+    quick_draw: { ...GAME_LIMIT_CODE_DEFAULTS.quick_draw },
     monopoly: { ...GAME_LIMIT_CODE_DEFAULTS.monopoly },
     yahtzee: { ...GAME_LIMIT_CODE_DEFAULTS.yahtzee },
     whot: { ...GAME_LIMIT_CODE_DEFAULTS.whot },
@@ -223,6 +238,7 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
     word_hunt: { ...GAME_LIMIT_CODE_DEFAULTS.word_hunt },
     chess: { ...GAME_LIMIT_CODE_DEFAULTS.chess },
     checkers: { ...GAME_LIMIT_CODE_DEFAULTS.checkers },
+    ayo: { ...GAME_LIMIT_CODE_DEFAULTS.ayo },
     scrabble: { ...GAME_LIMIT_CODE_DEFAULTS.scrabble },
     describe_it: { ...GAME_LIMIT_CODE_DEFAULTS.describe_it },
     word_rush: { ...GAME_LIMIT_CODE_DEFAULTS.word_rush },

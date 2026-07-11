@@ -13,6 +13,7 @@ import {
   isTicTacToeGame,
   isChessGame,
   isCheckersGame,
+  isAyoGame,
   isScrabbleGame,
   isDescribeItGame,
   isWordRushGame,
@@ -27,6 +28,7 @@ import {
   isICallOnGame,
   isWouldYouRather,
   isQuiplashGame,
+  isQuickDrawGame,
   parseGameType,
 } from '@/lib/game-types'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -73,6 +75,7 @@ export function clampLateJoinPolicyForGameType(policy: LateJoinPolicy, gameType:
 export function defaultLateJoinPolicyForGameType(gameType: GameType): LateJoinPolicy {
   if (isDescribeItGame(gameType)) return 'viewers_and_players'
   if (isWordRushGame(gameType)) return 'viewers_and_players'
+  if (isQuickDrawGame(gameType)) return 'viewers_and_players'
   return 'viewers_only'
 }
 
@@ -94,6 +97,7 @@ export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
     !isTicTacToeGame(gameType) &&
     !isChessGame(gameType) &&
     !isCheckersGame(gameType) &&
+    !isAyoGame(gameType) &&
     !isScrabbleGame(gameType)
   )
 }
@@ -114,7 +118,8 @@ export function gameOffersLateJoinChoice(gameType: GameType): boolean {
     isTwoTruthsGame(gameType) ||
     isICallOnGame(gameType) ||
     isSudokuGame(gameType) ||
-    isQuiplashGame(gameType)
+    isQuiplashGame(gameType) ||
+    isQuickDrawGame(gameType)
   )
 }
 

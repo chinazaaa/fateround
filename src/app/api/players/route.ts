@@ -14,6 +14,7 @@ import { removeSnakeAndLadderPlayer } from '@/lib/snake-and-ladder'
 import { removeYahtzeePlayer } from '@/lib/yahtzee'
 import { removeChessPlayer } from '@/lib/chess'
 import { removeCheckersPlayer } from '@/lib/checkers'
+import { removeAyoPlayer } from '@/lib/ayo'
 import { removeTicTacToePlayer } from '@/lib/tic-tac-toe'
 import { isMonopolyTokenId } from '@/lib/monopoly-tokens'
 import { generateAnonymousDisplayName } from '@/lib/anonymous-names'
@@ -21,6 +22,7 @@ import { anonymousPlayerCanChat } from '@/lib/anonymous-messages'
 import { createBingoCardForPlayer } from '@/lib/bingo'
 import { assignCodewordsLateJoinOperative, codewordsAllowsPlayerChanges, removeCodewordsPlayer } from '@/lib/codewords'
 import { assignDescribeItLateJoinTeam } from '@/lib/describe-it'
+import { registerQuickDrawLateJoinPlayer } from '@/lib/quick-draw'
 import {
   assignWordRushLateJoinTeam,
   revertWordRushRosterAfterFailedPlayerDelete,
@@ -44,9 +46,11 @@ import {
   isTicTacToeGame,
   isChessGame,
   isCheckersGame,
+  isAyoGame,
   isScrabbleGame,
   isDescribeItGame,
   isWordRushGame,
+  isQuickDrawGame,
   isSudokuGame,
   isTwoTruthsGame,
 } from '@/lib/game-types'
@@ -238,7 +242,19 @@ export async function POST(req: NextRequest) {
         .eq('game_id', gameId)
         .eq('resume_token', token)
         .maybeSingle()
-      if (existing) return jsonPlayerJoin(roomMemberId, existing, gameRow as Game)
+      if (existing) {
+        const reclaimType = parseGameType(gameRow.game_type)
+        if (
+          isQuickDrawGame(reclaimType) &&
+          gameRow.status === 'active' &&
+          existing.spectator !== true &&
+          existing.is_eliminated !== true
+        ) {
+          const { error: assignError } = await registerQuickDrawLateJoinPlayer(getSupabaseAdmin(), gameId, existing.id)
+          if (assignError) return NextResponse.json({ error: assignError }, { status: 500 })
+        }
+        return jsonPlayerJoin(roomMemberId, existing, gameRow as Game)
+      }
     }
   }
 
@@ -651,6 +667,7 @@ export async function POST(req: NextRequest) {
     isTicTacToeGame(rowGameType) ||
     isChessGame(rowGameType) ||
     isCheckersGame(rowGameType) ||
+    isAyoGame(rowGameType) ||
     isScrabbleGame(rowGameType)
   ) {
     const joinCheck = canJoinGame(gameRow as Game)
@@ -666,9 +683,11 @@ export async function POST(req: NextRequest) {
       ? 'chess'
       : isCheckersGame(rowGameType)
         ? 'checkers'
-        : isScrabbleGame(rowGameType)
-          ? 'scrabble'
-          : 'tic_tac_toe'
+        : isAyoGame(rowGameType)
+          ? 'ayo'
+          : isScrabbleGame(rowGameType)
+            ? 'scrabble'
+            : 'tic_tac_toe'
     const maxPlayers = lobbyMaxPlayersFromGame(limitKey, gameRow, lobbyLimits)
     const { count: playerCount } = await supabase
       .from('players')
@@ -911,6 +930,14 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+
+    if (isQuickDrawGame(gameType) && game.status === 'active' && !joinSpectator) {
+      const { error: assignError } = await registerQuickDrawLateJoinPlayer(getSupabaseAdmin(), id, player.id)
+      if (assignError) {
+        await getSupabaseAdmin().from('players').delete().eq('id', player.id)
+        return NextResponse.json({ error: assignError }, { status: 500 })
+      }
+    }
 
     return jsonPlayerJoin(roomMemberId, player, game as Game)
   }
@@ -1636,6 +1663,12 @@ export async function DELETE(req: NextRequest) {
 
   if (isCheckersGame(gameType)) {
     const { error } = await removeCheckersPlayer(getSupabaseAdmin(), id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isAyoGame(gameType)) {
+    const { error } = await removeAyoPlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }

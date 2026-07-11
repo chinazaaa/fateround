@@ -4,6 +4,7 @@ import { processLudoExpireTurn } from '@/lib/ludo'
 import { ludoExpireSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { scheduleTurnNotification } from '@/lib/push'
 
 // System/timer route: any client may poke it, but it only acts once the turn
 // deadline has genuinely passed (enforced in processLudoExpireTurn), so there's
@@ -24,6 +25,8 @@ export async function POST(req: NextRequest) {
 
   const { error } = await processLudoExpireTurn(supabase, code)
   if (error) return NextResponse.json({ error }, { status: 400 })
+
+  scheduleTurnNotification(code)
 
   return NextResponse.json({ success: true })
 }

@@ -353,6 +353,8 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
+            gameCode={gameCode}
+            onLeft={handlePlayerLeft}
           />
         </GameJoinLobbyShell>
       )
@@ -419,6 +421,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
             numTeams={numTeams}
             mode={isIndividual ? 'individual' : 'team'}
             playerScores={playerScores}
+            highlightPlayerId={myPlayerId}
           />
         )}
         {myPlayerId && (

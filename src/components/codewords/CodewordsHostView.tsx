@@ -8,6 +8,7 @@ import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
+import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -617,6 +618,9 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
       )}
 
       <HostRulesRow gameType="codewords" />
+      {game.status === 'waiting' && (
+        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+      )}
 
       <CodewordsHostManagePanel
         game={game}

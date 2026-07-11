@@ -8,6 +8,10 @@ describe('defaultLateJoinPolicyForGameType', () => {
     expect(defaultLateJoinPolicyForGameType('describe_it')).toBe('viewers_and_players')
   })
 
+  it('lets late joiners play Quick Draw by default', () => {
+    expect(defaultLateJoinPolicyForGameType('quick_draw')).toBe('viewers_and_players')
+  })
+
   it('keeps the conservative watch-only default for other games', () => {
     expect(defaultLateJoinPolicyForGameType('trivia')).toBe('viewers_only')
     expect(defaultLateJoinPolicyForGameType('chess')).toBe('viewers_only')

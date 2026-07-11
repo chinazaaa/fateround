@@ -14,6 +14,7 @@ interface PackSummary {
     | 'this_or_that'
     | 'never_have_i_ever'
     | 'describe_it'
+    | 'quick_draw'
     | 'codewords'
     | 'pick_a_number'
   author_name: string
@@ -45,6 +46,10 @@ const GAME_TYPE_META: Record<string, { label: string; color: string }> = {
     label: 'Text Charades',
     color: 'text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border-indigo-500/25',
   },
+  quick_draw: {
+    label: 'Quick Draw',
+    color: 'text-violet-600 dark:text-violet-400 bg-violet-500/10 border-violet-500/25',
+  },
   codewords: {
     label: 'Codewords',
     color: 'text-red-600 dark:text-red-400 bg-red-500/10 border-red-500/25',
@@ -73,6 +78,7 @@ const GAME_TYPE_FILTERS = [
   { value: 'this_or_that', label: 'This or That' },
   { value: 'never_have_i_ever', label: 'Never Have I Ever' },
   { value: 'describe_it', label: 'Text Charades' },
+  { value: 'quick_draw', label: 'Quick Draw' },
   { value: 'codewords', label: 'Codewords' },
   { value: 'pick_a_number', label: 'Pick a Number' },
 ]

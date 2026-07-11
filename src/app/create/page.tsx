@@ -10,6 +10,7 @@ import type {
   TriviaCategory,
   TriviaQuestion,
   LudoVariant,
+  AyoVariant,
 } from '@/types'
 import type { Settings, Step, ParticipantTab, QuestionTab } from './types'
 import { LIBRARY_GAME_TYPE_MAP } from './constants'
@@ -65,6 +66,7 @@ import {
   isTicTacToeGame,
   isChessGame,
   isCheckersGame,
+  isAyoGame,
   isScrabbleGame,
   isDescribeItGame,
   isWordRushGame,
@@ -74,6 +76,7 @@ import {
   isMafiaGame,
   isMatchingPairsGame,
   isQuiplashGame,
+  isQuickDrawGame,
 } from '@/lib/game-types'
 import { BOARD_THEMES, PIECE_SETS, useChessAppearance } from '@/lib/chess-appearance'
 import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
@@ -105,6 +108,7 @@ import {
   parseStoredCodewordsWords,
   questionUploadHint,
   questionSourceOptions,
+  questionSampleFile,
   questionRoundPickerOptions,
   clampLobbyQuestionRounds,
   CODEWORDS_MIN_CUSTOM_POOL,
@@ -160,6 +164,25 @@ import {
   QUIPLASH_MAX_ROUNDS,
   clampQuiplashRounds,
 } from '@/lib/quiplash'
+import {
+  QUICK_DRAW_DEFAULT_DRAW_TIMER,
+  QUICK_DRAW_DEFAULT_MAX_PLAYERS,
+  QUICK_DRAW_DEFAULT_ROUNDS,
+  QUICK_DRAW_DEFAULT_TITLE_TIMER,
+  QUICK_DRAW_DEFAULT_VOTE_TIMER,
+  QUICK_DRAW_DRAW_TIMER_OPTIONS,
+  QUICK_DRAW_MAX_ROUNDS,
+  QUICK_DRAW_MIN_ROUNDS,
+  QUICK_DRAW_TITLE_TIMER_OPTIONS,
+  QUICK_DRAW_VOTE_TIMER_OPTIONS,
+  clampQuickDrawRounds,
+  formatQuickDrawTurnTimer,
+} from '@/lib/quick-draw'
+import {
+  QUICK_DRAW_GUESS_MIN_PLAYERS_INDIVIDUAL,
+  QUICK_DRAW_GUESS_MIN_PLAYERS_TEAM,
+  QUICK_DRAW_GUESS_TEAM_OPTIONS,
+} from '@/lib/quick-draw-guess'
 import { TTL_DEFAULT_MAX_PLAYERS, TTL_DEFAULT_TIMER, TTL_TIMER_OPTIONS } from '@/lib/two-truths'
 import {
   MONOPOLY_DEFAULT_MAX_PLAYERS,
@@ -256,6 +279,9 @@ function CreateGameInner() {
     isPublic: false,
     describe_it_num_teams: 2,
     describe_it_mode: 'team',
+    quick_draw_variant: 'lie',
+    quick_draw_play_mode: 'team',
+    quick_draw_num_teams: 2,
     word_rush_num_teams: 2,
     word_rush_mode: 'team',
     word_rush_prompt_mode: 'automatic',
@@ -264,6 +290,9 @@ function CreateGameInner() {
   const [describeItWords, setDescribeItWords] = useState('')
   const [describeItUploadError, setDescribeItUploadError] = useState<string | null>(null)
   const describeItFileRef = useRef<HTMLInputElement>(null)
+  const [quickDrawWords, setQuickDrawWords] = useState('')
+  const [quickDrawUploadError, setQuickDrawUploadError] = useState<string | null>(null)
+  const quickDrawFileRef = useRef<HTMLInputElement>(null)
   const [participants, setParticipants] = useState<ParticipantInput[]>([])
   const [nameInput, setNameInput] = useState('')
   const [defaultGender, setDefaultGender] = useState<ParticipantGender>('female')
@@ -304,6 +333,9 @@ function CreateGameInner() {
   const [triviaMaxPlayers, setTriviaMaxPlayers] = useState(TRIVIA_DEFAULT_MAX_PLAYERS)
   const [quiplashMaxPlayers, setQuiplashMaxPlayers] = useState(QUIPLASH_DEFAULT_MAX_PLAYERS)
   const [quiplashVoteTimer, setQuiplashVoteTimer] = useState(QUIPLASH_DEFAULT_VOTE_TIMER)
+  const [quickDrawMaxPlayers, setQuickDrawMaxPlayers] = useState(QUICK_DRAW_DEFAULT_MAX_PLAYERS)
+  const [quickDrawTitleTimer, setQuickDrawTitleTimer] = useState(QUICK_DRAW_DEFAULT_TITLE_TIMER)
+  const [quickDrawVoteTimer, setQuickDrawVoteTimer] = useState(QUICK_DRAW_DEFAULT_VOTE_TIMER)
   const [ttlMaxPlayers, setTtlMaxPlayers] = useState(TTL_DEFAULT_MAX_PLAYERS)
   const [monopolyMaxPlayers, setMonopolyMaxPlayers] = useState(MONOPOLY_DEFAULT_MAX_PLAYERS)
   const [monopolyGameDuration, setMonopolyGameDuration] = useState(0)
@@ -331,6 +363,7 @@ function CreateGameInner() {
   const [crazy8Pick2Stacking, setCrazy8Pick2Stacking] = useState(true)
   const [ludoMaxPlayers, setLudoMaxPlayers] = useState(LUDO_DEFAULT_MAX_PLAYERS)
   const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
+  const [ayoVariant, setAyoVariant] = useState<AyoVariant>('traditional')
   const [snakeLadderMaxPlayers, setSnakeLadderMaxPlayers] = useState(SNAKE_LADDER_DEFAULT_MAX_PLAYERS)
   const [npatMaxPlayers, setNpatMaxPlayers] = useState(NPAT_DEFAULT_MAX_PLAYERS)
   const [sudokuMaxPlayers, setSudokuMaxPlayers] = useState(20)
@@ -369,12 +402,18 @@ function CreateGameInner() {
   useEffect(() => {
     if (questionSource !== 'library') return
     const gt = LIBRARY_GAME_TYPE_MAP[settings.game_type]
-    if (!gt) return
+    if (!gt && !isQuickDrawGame(settings.game_type)) return
     setLibraryPackSearch('')
     setLibraryPacksLoading(true)
-    fetch(`/api/library?game_type=${gt}&page_size=100`)
-      .then((r) => r.json())
-      .then((d) => setLibraryPacks(d.packs ?? []))
+    const types = isQuickDrawGame(settings.game_type) ? ['quick_draw', 'describe_it'] : gt ? [gt] : []
+    Promise.all(types.map((type) => fetch(`/api/library?game_type=${type}&page_size=100`).then((r) => r.json())))
+      .then((results) => {
+        const byId = new Map<string, (typeof libraryPacks)[number]>()
+        for (const d of results) {
+          for (const pack of d.packs ?? []) byId.set(pack.id, pack)
+        }
+        setLibraryPacks([...byId.values()])
+      })
       .finally(() => setLibraryPacksLoading(false))
   }, [questionSource, settings.game_type])
 
@@ -390,6 +429,8 @@ function CreateGameInner() {
         setCustomWyrQuestions(qs as WyrQuestion[])
       else if (isDescribeItGame(settings.game_type))
         setDescribeItWords(parseDescribeItWords((qs as string[]).join('\n')).join('\n'))
+      else if (isQuickDrawGame(settings.game_type))
+        setQuickDrawWords(parseDescribeItWords((qs as string[]).join('\n')).join('\n'))
       else if (isCodewordsGame(settings.game_type)) setCustomCodewordsWords(parseStoredCodewordsWords(qs))
       else setCustomMltQuestions(qs as string[])
     }
@@ -405,6 +446,7 @@ function CreateGameInner() {
     setTriviaMaxPlayers((v) => clamp('trivia', v))
     setTtlMaxPlayers((v) => clamp('two_truths', v))
     setQuiplashMaxPlayers((v) => clamp('quiplash', v))
+    setQuickDrawMaxPlayers((v) => clamp('quick_draw', v))
     setMonopolyMaxPlayers((v) => clamp('monopoly', v))
     setYahtzeeMaxPlayers((v) => clamp('yahtzee', v))
     setWhotMaxPlayers((v) => clamp('whot', v))
@@ -464,6 +506,14 @@ function CreateGameInner() {
               anonymous: true,
               rounds_count: QUIPLASH_DEFAULT_ROUNDS,
               timer_seconds: QUIPLASH_DEFAULT_SUBMIT_TIMER,
+            }
+          : {}),
+        ...(isQuickDrawGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: QUICK_DRAW_DEFAULT_ROUNDS,
+              timer_seconds: QUICK_DRAW_DEFAULT_DRAW_TIMER,
             }
           : {}),
         ...(isTwoTruthsGame(type)
@@ -543,6 +593,14 @@ function CreateGameInner() {
               timer_seconds: 600,
             }
           : {}),
+        ...(isAyoGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+              timer_seconds: 0,
+            }
+          : {}),
         ...(isScrabbleGame(type)
           ? {
               participant_mode: 'joiners' as const,
@@ -612,6 +670,7 @@ function CreateGameInner() {
       }))
     }
     const packParam = searchParams.get('pack')
+    const packGameType = searchParams.get('type')
     if (packParam) {
       setSelectedPackId(packParam)
       fetch(`/api/library/${packParam}`)
@@ -620,10 +679,14 @@ function CreateGameInner() {
           if (!d.pack?.questions) return
           const gt = d.pack.game_type
           const qs = d.pack.questions
-          if (gt === 'describe_it') {
-            // Text Charades has its own custom-word UI, not the shared library tab
+          if (gt === 'describe_it' || gt === 'quick_draw') {
+            const words = parseDescribeItWords((qs as string[]).join('\n')).join('\n')
             setQuestionSource('custom')
-            setDescribeItWords(parseDescribeItWords((qs as string[]).join('\n')).join('\n'))
+            if (isQuickDrawGame(settings.game_type) || packGameType === 'quick_draw') {
+              setQuickDrawWords(words)
+            } else {
+              setDescribeItWords(words)
+            }
           } else if (gt === 'codewords') {
             setQuestionSource('custom')
             setCustomCodewordsWords(parseStoredCodewordsWords(qs))
@@ -653,6 +716,7 @@ function CreateGameInner() {
   const isMlt = isMostLikelyTo(settings.game_type)
   const isTrivia = isTriviaGame(settings.game_type)
   const isQuiplash = isQuiplashGame(settings.game_type)
+  const isQuickDraw = isQuickDrawGame(settings.game_type)
   const isTwoTruths = isTwoTruthsGame(settings.game_type)
   const isMonopoly = isMonopolyGame(settings.game_type)
   const isYahtzee = isYahtzeeGame(settings.game_type)
@@ -666,6 +730,7 @@ function CreateGameInner() {
   const isTicTacToe = isTicTacToeGame(settings.game_type)
   const isChess = isChessGame(settings.game_type)
   const isCheckers = isCheckersGame(settings.game_type)
+  const isAyo = isAyoGame(settings.game_type)
   const isScrabble = isScrabbleGame(settings.game_type)
   const isDescribeIt = isDescribeItGame(settings.game_type)
   const isWordRush = isWordRushGame(settings.game_type)
@@ -698,7 +763,7 @@ function CreateGameInner() {
   const canCreateImport =
     participants.length >= minPool && hasEnoughForRounds(participants, settings.game_type, participantOpts)
   const canCreateJoiners = !!settings.title.trim()
-  const isLobbyQuestions = isBinaryLobby || isMlt || isTrivia || isPan || isQuiplash
+  const isLobbyQuestions = isBinaryLobby || isMlt || isTrivia || isPan || isQuiplash || isQuickDraw
   const isPeoplePoll = isPeoplePollGame(settings.game_type)
   const isPeoplePollVoters = isPeoplePoll && settings.participant_mode === 'voters'
   const isPlayerSubmissions = (isLobbyQuestions && !isTrivia) || isPeoplePollVoters
@@ -778,6 +843,7 @@ function CreateGameInner() {
     isChess ||
     isScrabble ||
     isDescribeIt ||
+    isQuickDraw ||
     isWordRush ||
     isNpat ||
     isSudoku ||
@@ -809,6 +875,8 @@ function CreateGameInner() {
     setCustomWyrQuestions([])
     setCustomMltQuestions([])
     setCustomTriviaQuestions([])
+    setDescribeItWords('')
+    setQuickDrawWords('')
     setSelectedPackId(null)
     setLibraryPackQuestions([])
     setTriviaCategory('general')
@@ -848,6 +916,14 @@ function CreateGameInner() {
             anonymous: true,
             rounds_count: QUIPLASH_DEFAULT_ROUNDS,
             timer_seconds: QUIPLASH_DEFAULT_SUBMIT_TIMER,
+          }
+        : {}),
+      ...(isQuickDrawGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: QUICK_DRAW_DEFAULT_ROUNDS,
+            timer_seconds: QUICK_DRAW_DEFAULT_DRAW_TIMER,
           }
         : {}),
       ...(isTwoTruthsGame(type)
@@ -922,6 +998,14 @@ function CreateGameInner() {
             rounds_count: 1,
             // Cumulative per-player clock, same as Chess. Default 10 minutes each.
             timer_seconds: 600,
+          }
+        : {}),
+      ...(isAyoGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: 0,
           }
         : {}),
       ...(isICallOnGame(type)
@@ -1283,11 +1367,16 @@ function CreateGameInner() {
                 parseDescribeItWords(describeItWords).length > 0
                 ? 'custom'
                 : 'platform'
-              : isLobbyQuestions
-                ? questionSource === 'library'
+              : isQuickDraw
+                ? (questionSource === 'custom' || questionSource === 'library') &&
+                  parseDescribeItWords(quickDrawWords).length > 0
                   ? 'custom'
-                  : questionSource
-                : 'platform',
+                  : 'platform'
+                : isLobbyQuestions
+                  ? questionSource === 'library'
+                    ? 'custom'
+                    : questionSource
+                  : 'platform',
           custom_questions: isCodewords
             ? questionSource === 'custom' || questionSource === 'library'
               ? customCodewordsWords
@@ -1297,17 +1386,29 @@ function CreateGameInner() {
                 parseDescribeItWords(describeItWords).length > 0
                 ? parseDescribeItWords(describeItWords)
                 : null
-              : isLobbyQuestions && (questionSource === 'custom' || questionSource === 'library')
-                ? isWyr || isTot
-                  ? customWyrQuestions
-                  : isTrivia
-                    ? customTriviaQuestions
-                    : isQuiplash
-                      ? customMltQuestions
-                      : customMltQuestions
-                : null,
+              : isQuickDraw
+                ? (questionSource === 'custom' || questionSource === 'library') &&
+                  parseDescribeItWords(quickDrawWords).length > 0
+                  ? parseDescribeItWords(quickDrawWords)
+                  : null
+                : isLobbyQuestions && (questionSource === 'custom' || questionSource === 'library')
+                  ? isWyr || isTot
+                    ? customWyrQuestions
+                    : isTrivia
+                      ? customTriviaQuestions
+                      : isQuiplash
+                        ? customMltQuestions
+                        : customMltQuestions
+                  : null,
           trivia_category: isTrivia ? triviaCategory : undefined,
           describe_it_mode: isDescribeIt ? settings.describe_it_mode : undefined,
+          quick_draw_variant: isQuickDraw ? settings.quick_draw_variant : undefined,
+          quick_draw_play_mode:
+            isQuickDraw && settings.quick_draw_variant === 'guess' ? settings.quick_draw_play_mode : undefined,
+          quick_draw_num_teams:
+            isQuickDraw && settings.quick_draw_variant === 'guess' && settings.quick_draw_play_mode !== 'individual'
+              ? settings.quick_draw_num_teams
+              : undefined,
           word_rush_mode: isWordRush ? settings.word_rush_mode : undefined,
           word_rush_prompt_mode: isWordRush ? settings.word_rush_prompt_mode : undefined,
           word_rush_difficulty: isWordRush ? settings.word_rush_difficulty : undefined,
@@ -1328,38 +1429,42 @@ function CreateGameInner() {
                   ? triviaMaxPlayers
                   : isQuiplash
                     ? quiplashMaxPlayers
-                    : isTwoTruths
-                      ? ttlMaxPlayers
-                      : isMonopoly
-                        ? monopolyMaxPlayers
-                        : isYahtzee
-                          ? yahtzeeMaxPlayers
-                          : isWhot
-                            ? whotMaxPlayers
-                            : isCrazy8
-                              ? crazy8MaxPlayers
-                              : isLudo
-                                ? ludoMaxPlayers
-                                : isSnakeLadder
-                                  ? snakeLadderMaxPlayers
-                                  : isNpat
-                                    ? npatMaxPlayers
-                                    : isSudoku
-                                      ? sudokuMaxPlayers
-                                      : isWordHunt
-                                        ? wordHuntMaxPlayers
-                                        : isWordRush
-                                          ? wordRushMaxPlayers
-                                          : isMatchingPairs
-                                            ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
-                                            : undefined,
+                    : isQuickDraw
+                      ? quickDrawMaxPlayers
+                      : isTwoTruths
+                        ? ttlMaxPlayers
+                        : isMonopoly
+                          ? monopolyMaxPlayers
+                          : isYahtzee
+                            ? yahtzeeMaxPlayers
+                            : isWhot
+                              ? whotMaxPlayers
+                              : isCrazy8
+                                ? crazy8MaxPlayers
+                                : isLudo
+                                  ? ludoMaxPlayers
+                                  : isSnakeLadder
+                                    ? snakeLadderMaxPlayers
+                                    : isNpat
+                                      ? npatMaxPlayers
+                                      : isSudoku
+                                        ? sudokuMaxPlayers
+                                        : isWordHunt
+                                          ? wordHuntMaxPlayers
+                                          : isWordRush
+                                            ? wordRushMaxPlayers
+                                            : isMatchingPairs
+                                              ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
+                                              : undefined,
           operative_timer_seconds: isCodewords
             ? codewordsOperativeTimer
             : isNpat
               ? npatMarkingTimer
               : isQuiplash
                 ? quiplashVoteTimer
-                : undefined,
+                : isQuickDraw
+                  ? quickDrawTitleTimer
+                  : undefined,
           codewords_player_picks: isCodewords ? codewordsPlayerPicks : undefined,
           codewords_late_join: isCodewords ? lateJoinPolicy === 'viewers_and_players' : undefined,
           codewords_randomize_teams: isCodewords ? codewordsRandomizeTeams : undefined,
@@ -1384,7 +1489,9 @@ function CreateGameInner() {
                       ? sudokuGameDuration
                       : isMatchingPairs
                         ? (settings.game_duration_seconds ?? 0)
-                        : undefined,
+                        : isQuickDraw
+                          ? quickDrawVoteTimer
+                          : undefined,
           whot_pick3_enabled: isWhot ? whotPick3Enabled : undefined,
           whot_pick2_stacking: isWhot ? whotPick2Stacking : undefined,
           whot_cards_enabled: isWhot ? whotCardsEnabled : undefined,
@@ -1393,6 +1500,7 @@ function CreateGameInner() {
           crazy8_jokers: isCrazy8 ? crazy8Jokers : undefined,
           crazy8_pick2_stacking: isCrazy8 ? crazy8Pick2Stacking : undefined,
           ludo_variant: isLudo ? ludoVariant : undefined,
+          ayo_variant: isAyo ? ayoVariant : undefined,
           scrabble_dictionary_id: isScrabble ? scrabbleDictionary : undefined,
           scrabble_clock_mode: isScrabble ? scrabbleClockMode : undefined,
           scrabble_clock_seconds: isScrabble && scrabbleClockMode === 'chess' ? scrabbleClockSeconds : undefined,
@@ -1719,6 +1827,312 @@ function CreateGameInner() {
                 <p className="text-faint text-sm leading-relaxed">
                   Everyone writes a funny answer to the same prompt. Answers battle head-to-head and the group votes for
                   the funniest — you earn one point per vote.
+                </p>
+              </SettingsGroup>
+            ) : isQuickDraw ? (
+              <SettingsGroup title="Quick Draw">
+                <Field label="Game style">
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, quick_draw_variant: 'lie' })}
+                      className={[
+                        'rounded-2xl border-2 px-4 py-4 text-left',
+                        settings.quick_draw_variant !== 'guess'
+                          ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                          : 'border-[var(--border-strong)] text-muted',
+                      ].join(' ')}
+                    >
+                      <span className="font-bold block text-base">Lie</span>
+                      <span className="text-faint text-xs sm:text-sm">
+                        Drawful-style — fool everyone with fake titles
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, quick_draw_variant: 'guess' })}
+                      className={[
+                        'rounded-2xl border-2 px-4 py-4 text-left',
+                        settings.quick_draw_variant === 'guess'
+                          ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                          : 'border-[var(--border-strong)] text-muted',
+                      ].join(' ')}
+                    >
+                      <span className="font-bold block text-base">Guess</span>
+                      <span className="text-faint text-xs sm:text-sm">
+                        Draw a word — teammates guess (or solo free-for-all)
+                      </span>
+                    </button>
+                  </div>
+                </Field>
+                {settings.quick_draw_variant === 'guess' && (
+                  <>
+                    <Field label="Mode">
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setSettings({ ...settings, quick_draw_play_mode: 'team' })}
+                          className={[
+                            'rounded-2xl border-2 px-4 py-4 text-left',
+                            settings.quick_draw_play_mode !== 'individual'
+                              ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                              : 'border-[var(--border-strong)] text-muted',
+                          ].join(' ')}
+                        >
+                          <span className="font-bold block text-base">Teams</span>
+                          <span className="text-faint text-xs sm:text-sm">Teams race to guess drawings</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSettings({ ...settings, quick_draw_play_mode: 'individual' })}
+                          className={[
+                            'rounded-2xl border-2 px-4 py-4 text-left',
+                            settings.quick_draw_play_mode === 'individual'
+                              ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                              : 'border-[var(--border-strong)] text-muted',
+                          ].join(' ')}
+                        >
+                          <span className="font-bold block text-base">Individual</span>
+                          <span className="text-faint text-xs sm:text-sm">Everyone draws — fastest guess wins</span>
+                        </button>
+                      </div>
+                    </Field>
+                    {settings.quick_draw_play_mode !== 'individual' && (
+                      <Field label="Teams">
+                        <select
+                          value={settings.quick_draw_num_teams}
+                          onChange={(e) => setSettings({ ...settings, quick_draw_num_teams: Number(e.target.value) })}
+                          className="input-field w-full"
+                        >
+                          {QUICK_DRAW_GUESS_TEAM_OPTIONS.map((n) => (
+                            <option key={n} value={n}>
+                              {n} teams
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                    )}
+                  </>
+                )}
+                <Field label={`Max players (${effectiveLimits.quick_draw.min}–${effectiveLimits.quick_draw.max})`}>
+                  <select
+                    value={quickDrawMaxPlayers}
+                    onChange={(e) => setQuickDrawMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {playerCountOptions(effectiveLimits.quick_draw.min, effectiveLimits.quick_draw.max).map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Rounds">
+                  <ChipGrid>
+                    {Array.from(
+                      { length: QUICK_DRAW_MAX_ROUNDS - QUICK_DRAW_MIN_ROUNDS + 1 },
+                      (_, i) => i + QUICK_DRAW_MIN_ROUNDS
+                    ).map((n) => (
+                      <Chip
+                        key={n}
+                        active={settings.rounds_count === n}
+                        onClick={() => setSettings((prev) => ({ ...prev, rounds_count: clampQuickDrawRounds(n) }))}
+                        className="!px-0 w-full"
+                      >
+                        {n}
+                      </Chip>
+                    ))}
+                  </ChipGrid>
+                </Field>
+                <Field label={settings.quick_draw_variant === 'guess' ? 'Turn timer' : 'Draw timer'}>
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    {QUICK_DRAW_DRAW_TIMER_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {settings.quick_draw_variant === 'guess' ? formatQuickDrawTurnTimer(s) : `${s} seconds`}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {settings.quick_draw_variant !== 'guess' && (
+                  <>
+                    <Field label="Title timer">
+                      <select
+                        value={quickDrawTitleTimer}
+                        onChange={(e) => setQuickDrawTitleTimer(Number(e.target.value))}
+                        className="input-field w-full"
+                      >
+                        {QUICK_DRAW_TITLE_TIMER_OPTIONS.map((s) => (
+                          <option key={s} value={s}>
+                            {s} seconds
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Vote timer">
+                      <select
+                        value={quickDrawVoteTimer}
+                        onChange={(e) => setQuickDrawVoteTimer(Number(e.target.value))}
+                        className="input-field w-full"
+                      >
+                        {QUICK_DRAW_VOTE_TIMER_OPTIONS.map((s) => (
+                          <option key={s} value={s}>
+                            {s} seconds
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </>
+                )}
+                <Field label={settings.quick_draw_variant === 'guess' ? 'Words' : 'Prompts'}>
+                  <SegmentedControl
+                    value={questionSource}
+                    onChange={(v) => {
+                      setQuestionSource(v as QuestionSource)
+                      setSelectedPackId(null)
+                      setLibraryPackQuestions([])
+                      if (v !== 'custom') setQuickDrawWords('')
+                    }}
+                    options={questionSourceOptions('quick_draw')}
+                  />
+                </Field>
+
+                {questionSource === 'custom' && questionCustomHint && <CustomContentAiTip hint={questionCustomHint} />}
+
+                {questionSource === 'library' && (
+                  <div className="space-y-2 pt-1">
+                    <LibraryPackPicker
+                      loading={libraryPacksLoading}
+                      packs={libraryPacks}
+                      search={libraryPackSearch}
+                      onSearchChange={setLibraryPackSearch}
+                      selectedPackId={selectedPackId}
+                      onSelect={selectLibraryPack}
+                      noun={settings.quick_draw_variant === 'guess' ? 'words' : 'prompts'}
+                    />
+                    {parseDescribeItWords(quickDrawWords).length > 0 && (
+                      <p className="text-faint text-xs text-center">
+                        Loaded {parseDescribeItWords(quickDrawWords).length}{' '}
+                        {settings.quick_draw_variant === 'guess' ? 'words' : 'prompts'} from this pack.
+                      </p>
+                    )}
+                    <p className="text-faint text-[11px] text-center">
+                      Includes Quick Draw and Text Charades word packs.
+                    </p>
+                  </div>
+                )}
+
+                {questionSource === 'custom' && (
+                  <div className="space-y-4 pt-1">
+                    <SegmentedControl
+                      value={questionTab}
+                      onChange={setQuestionTab}
+                      options={[
+                        { value: 'upload', label: 'Upload file', hint: questionUploadHint('quick_draw') },
+                        {
+                          value: 'manual',
+                          label: 'Add manually',
+                          hint:
+                            settings.quick_draw_variant === 'guess'
+                              ? 'Type or paste one word per line.'
+                              : 'Type or paste one drawing prompt per line.',
+                        },
+                        {
+                          value: 'ai',
+                          label: 'Generate with AI',
+                          hint: 'Generate words with your own Claude API key.',
+                        },
+                      ]}
+                    />
+
+                    {questionTab === 'ai' ? (
+                      <AiQuestionsGenerator
+                        gameType="describe_it"
+                        noun={settings.quick_draw_variant === 'guess' ? 'words' : 'prompts'}
+                        defaultCount={30}
+                        onGenerated={(questions) => {
+                          setQuickDrawUploadError(null)
+                          setQuickDrawWords(parseDescribeItWords((questions as string[]).join('\n')).join('\n'))
+                        }}
+                      />
+                    ) : questionTab === 'upload' ? (
+                      <div className="space-y-3">
+                        <a
+                          href={questionSampleFile('quick_draw').href}
+                          download={questionSampleFile('quick_draw').download}
+                          className="inline-block text-sm text-[var(--primary)] underline"
+                        >
+                          Download sample CSV
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => quickDrawFileRef.current?.click()}
+                          className="btn-secondary w-full py-2.5 text-sm"
+                        >
+                          Choose file
+                        </button>
+                        <input
+                          ref={quickDrawFileRef}
+                          type="file"
+                          accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0]
+                            if (!file) return
+                            setQuickDrawUploadError(null)
+                            try {
+                              const lower = file.name.toLowerCase()
+                              const rows =
+                                lower.endsWith('.xlsx') || lower.endsWith('.xls')
+                                  ? await parseExcelDescribeItWords(await file.arrayBuffer())
+                                  : parseDescribeItWords(await file.text())
+                              if (rows.length === 0) throw new Error('No words found in that file')
+                              setQuickDrawWords(rows.join('\n'))
+                            } catch {
+                              setQuickDrawUploadError('Could not read that file. Try the sample CSV.')
+                            } finally {
+                              if (quickDrawFileRef.current) quickDrawFileRef.current.value = ''
+                            }
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <textarea
+                        value={quickDrawWords}
+                        onChange={(e) => setQuickDrawWords(e.target.value)}
+                        placeholder={
+                          settings.quick_draw_variant === 'guess'
+                            ? 'pizza\nrainbow\nastronaut'
+                            : 'A cat in a tuxedo\nA haunted toaster'
+                        }
+                        rows={4}
+                        className="input-field w-full resize-y text-sm"
+                      />
+                    )}
+
+                    {quickDrawUploadError && <p className="text-xs text-red-500">{quickDrawUploadError}</p>}
+                    {parseDescribeItWords(quickDrawWords).length > 0 && (
+                      <p className="text-faint text-xs text-center">
+                        {parseDescribeItWords(quickDrawWords).length}{' '}
+                        {settings.quick_draw_variant === 'guess' ? 'words' : 'prompts'} ready
+                      </p>
+                    )}
+                  </div>
+                )}
+                {showViewerToggle && (
+                  <Field label="Late joiners">
+                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
+                  </Field>
+                )}
+                <p className="text-faint text-sm leading-relaxed">
+                  {settings.quick_draw_variant === 'guess'
+                    ? settings.quick_draw_play_mode === 'individual'
+                      ? `Take turns drawing a secret word while everyone races to guess. ${QUICK_DRAW_GUESS_MIN_PLAYERS_INDIVIDUAL}+ players.`
+                      : `Teams take turns drawing while teammates guess as many words as possible. ${QUICK_DRAW_GUESS_MIN_PLAYERS_TEAM}+ players.`
+                    : 'Everyone draws a weird prompt on their phone. Others write fake titles to fool the room, then vote on which title is real — artists and fakers both earn points.'}
                 </p>
               </SettingsGroup>
             ) : isTwoTruths ? (
@@ -2222,6 +2636,41 @@ function CreateGameInner() {
                   Classic checkers — Black moves first, jumps are forced, and reaching the far row crowns a king.
                   Capture all your opponent’s pieces to win. Each player gets their own clock that only ticks on their
                   turn.
+                </p>
+              </SettingsGroup>
+            ) : isAyo ? (
+              <SettingsGroup title="Ayo room">
+                <p className="text-faint text-sm">Exactly 2 players — the host can join as one of them.</p>
+                <Field label="Rules">
+                  <select
+                    value={ayoVariant}
+                    onChange={(e) => setAyoVariant(e.target.value as AyoVariant)}
+                    className="input-field w-full"
+                  >
+                    <option value="traditional">Traditional — complete fours to win houses, multi-round match</option>
+                    <option value="oware">Oware — capture 2s and 3s with linkage, seed scoring</option>
+                  </select>
+                </Field>
+                <Field label="Time per player">
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    <option value={0}>Casual — no timer</option>
+                    <option value={30}>Ranked — 30 seconds each</option>
+                    <option value={180}>3 minutes each</option>
+                    <option value={300}>5 minutes each</option>
+                    <option value={600}>10 minutes each</option>
+                  </select>
+                </Field>
+                <Field label="Late joiners">
+                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="ayo" />
+                </Field>
+                <p className="text-faint text-sm leading-relaxed">
+                  {ayoVariant === 'traditional'
+                    ? 'Traditional Ayo Olopon — sow anti-clockwise and complete fours on your own houses to win them. If you complete a four on your opponent’s house with your last seed, you win it; if you still have seeds left to sow, they win it instead. Most houses wins the round; each round win takes one of their houses. Play until all opponent houses are gone. Winner is Ọta; three straight round wins makes an Ọta champion.'
+                    : 'Oware rules — sow anti-clockwise (skip the house you picked up), capture 2s and 3s with linkage, and feed your opponent when their row is empty. Most captured seeds wins the deal; the winner is Ọta.'}
                 </p>
               </SettingsGroup>
             ) : isScrabble ? (

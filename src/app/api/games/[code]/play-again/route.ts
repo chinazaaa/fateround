@@ -13,6 +13,7 @@ import {
   isTicTacToeGame,
   isChessGame,
   isCheckersGame,
+  isAyoGame,
   isDescribeItGame,
   isWordRushGame,
   isScrabbleGame,
@@ -34,6 +35,7 @@ import { clearSnakeAndLadderSessionData } from '@/lib/snake-and-ladder'
 import { clearTicTacToeSessionData, canTicTacToePlayAgain } from '@/lib/tic-tac-toe'
 import { clearChessSessionData, canChessPlayAgain } from '@/lib/chess'
 import { clearCheckersSessionData, canCheckersPlayAgain } from '@/lib/checkers'
+import { clearAyoSessionData, canAyoPlayAgain } from '@/lib/ayo'
 import { clearDescribeItSessionData, canDescribeItPlayAgain } from '@/lib/describe-it'
 import { clearScrabbleSessionData, canScrabblePlayAgain } from '@/lib/scrabble'
 import { clearNpatSessionData } from '@/lib/npat'
@@ -43,6 +45,7 @@ import { clearMafiaSessionData } from '@/lib/mafia'
 import { clearTriviaSessionData } from '@/lib/trivia'
 import { clearTwoTruthsSessionData } from '@/lib/two-truths'
 import { clearQuiplashSessionData } from '@/lib/quiplash'
+import { clearQuickDrawSessionData } from '@/lib/quick-draw'
 import { canWordRushPlayAgain } from '@/lib/word-rush'
 import { clearWordRushSessionData } from '@/lib/word-rush-server'
 import {
@@ -81,6 +84,7 @@ type ClearableSessionGameType = Extract<
   | 'codewords'
   | 'two_truths'
   | 'quiplash'
+  | 'quick_draw'
   | 'monopoly'
   | 'yahtzee'
   | 'whot'
@@ -90,6 +94,7 @@ type ClearableSessionGameType = Extract<
   | 'snake_and_ladder'
   | 'chess'
   | 'checkers'
+  | 'ayo'
   | 'describe_it'
   | 'word_rush'
   | 'scrabble'
@@ -112,6 +117,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   codewords: clearCodewordsRoundData,
   two_truths: clearTwoTruthsSessionData,
   quiplash: clearQuiplashSessionData,
+  quick_draw: clearQuickDrawSessionData,
   monopoly: clearMonopolySessionData,
   yahtzee: clearYahtzeeSessionData,
   whot: clearWhotSessionData,
@@ -121,6 +127,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   snake_and_ladder: clearSnakeAndLadderSessionData,
   chess: clearChessSessionData,
   checkers: clearCheckersSessionData,
+  ayo: clearAyoSessionData,
   describe_it: clearDescribeItSessionData,
   word_rush: clearWordRushSessionData,
   scrabble: clearScrabbleSessionData,
@@ -159,6 +166,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     : false
   const chessCanReplay = isChessGame(gameType) ? await canChessPlayAgain(supabase, gameId, game.status) : false
   const checkersCanReplay = isCheckersGame(gameType) ? await canCheckersPlayAgain(supabase, gameId, game.status) : false
+  const ayoCanReplay = isAyoGame(gameType) ? await canAyoPlayAgain(supabase, gameId, game.status) : false
   const describeItCanReplay = isDescribeItGame(gameType)
     ? await canDescribeItPlayAgain(supabase, gameId, game.status)
     : false
@@ -171,6 +179,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     ticTacToeCanReplay ||
     chessCanReplay ||
     checkersCanReplay ||
+    ayoCanReplay ||
     describeItCanReplay ||
     wordRushCanReplay ||
     scrabbleCanReplay ||

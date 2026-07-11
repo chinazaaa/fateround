@@ -286,6 +286,8 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
               await load()
             }}
             onStart={() => {}}
+            gameCode={gameCode}
+            onLeft={handlePlayerLeft}
           />
         </GameJoinLobbyShell>
       )

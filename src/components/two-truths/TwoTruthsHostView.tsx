@@ -8,6 +8,7 @@ import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
+import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { gameTypeConfig } from '@/lib/game-types'
 import { useTwoTruthsAdvance } from '@/hooks/useTwoTruthsAdvance'
@@ -416,6 +417,9 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
       )}
       {hostStatementSetup}
       {game.status !== 'finished' && <HostRulesRow gameType="two_truths" />}
+      {game.status === 'waiting' && (
+        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+      )}
       <TwoTruthsHostManagePanel {...panelProps} section="manage" />
     </div>
   )

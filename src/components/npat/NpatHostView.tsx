@@ -4,12 +4,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { NpatActiveRound } from '@/components/npat/NpatActiveRound'
 import { NpatFinalResultsShareBlock } from '@/components/npat/NpatFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { NpatScoreboard } from '@/components/npat/NpatScoreboard'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
+import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -49,6 +52,7 @@ type HostTab = 'play' | 'manage'
 
 export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError, success } = useToast()
+  const { confirm } = useConfirm()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [rounds, setRounds] = useState<Round[]>([])
@@ -282,27 +286,47 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     }
   }
 
-  const playAgain = async () => {
+  const resetGame = async (sameSettings: boolean) => {
     setPlayingAgain(true)
     try {
       const res = await fetch(`/api/games/${gameCode}/play-again`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined }),
+        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined, same_settings: sameSettings }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to reset')
       setRounds([])
       setAnswers([])
       setMarks([])
+      success(sameSettings ? 'Ready up for the next game!' : 'Back to the lobby')
       await load()
-      success('Lobby reopened!')
       setTab('manage')
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to reset')
     } finally {
       setPlayingAgain(false)
     }
+  }
+
+  const confirmPlayAgain = async () => {
+    const ok = await confirm({
+      title: 'Play again — same settings?',
+      message:
+        'Reopens the game with the same settings. Previous watchers and new people can join; everyone taps “ready” and you start the next game once enough players are in.',
+      confirmLabel: 'Play again',
+    })
+    if (ok) void resetGame(true)
+  }
+
+  const confirmReturnToLobby = async () => {
+    const ok = await confirm({
+      title: 'Return to lobby?',
+      message:
+        'Sends everyone back to the game lobby where you can tweak settings or let new people join before starting again.',
+      confirmLabel: 'Return to lobby',
+    })
+    if (ok) void resetGame(false)
   }
 
   const hostPlays = hostMode === 'player' && !!hostPlayerId
@@ -355,6 +379,32 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const showTabs = game.status !== 'finished'
   const gameStarted = game.status === 'active'
   const primaryKind: 'play' | 'watch' = hostPlays ? 'play' : 'watch'
+
+  if (game.status === 'waiting' && game.replay_pending) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--background)] px-3 py-8 text-[var(--foreground)]">
+        <ReplayReadyRing
+          players={players}
+          meId={hostPlayerId}
+          isHost
+          gameCode={gameCode}
+          hostToken={hostToken}
+          minPlayers={NPAT_MIN_PLAYERS}
+          onToggleReady={() => {}}
+          onStart={() => void startGame()}
+          starting={starting}
+        />
+        <button
+          type="button"
+          onClick={() => void confirmReturnToLobby()}
+          disabled={playingAgain}
+          className="mt-1 py-2 text-sm font-medium text-muted transition-colors hover:text-body disabled:opacity-60"
+        >
+          Return to lobby instead
+        </button>
+      </div>
+    )
+  }
 
   // Primary tab: interactive round for a host-player, read-only gameplay for a host-only host.
   const interactivePlay = hostPlays && hostPlayerId && game.status === 'active' && (
@@ -418,6 +468,9 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
         />
       )}
       {game.status !== 'finished' && <HostRulesRow gameType="i_call_on" />}
+      {game.status === 'waiting' && (
+        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+      )}
 
       {game.status === 'waiting' && (
         <>
@@ -541,10 +594,26 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             leaderboard={leaderboard}
             highlightPlayerId={hostPlayerId}
             playAgainButton={
-              <button type="button" onClick={playAgain} disabled={playingAgain} className="btn-primary w-full py-3">
-                {playingAgain ? 'Resetting…' : 'Play again'}
+              <button
+                type="button"
+                onClick={() => void confirmPlayAgain()}
+                disabled={playingAgain}
+                className="btn-secondary w-full py-3 text-base disabled:opacity-60"
+              >
+                {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
               </button>
             }
+            returnToLobbyButton={
+              <button
+                type="button"
+                onClick={() => void confirmReturnToLobby()}
+                disabled={playingAgain}
+                className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
+              >
+                Return to lobby
+              </button>
+            }
+            lobbyNote="Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak settings first."
           />
           {hostWonNpat && (
             <PostWinToCommunity

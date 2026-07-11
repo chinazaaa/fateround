@@ -17,6 +17,7 @@ import { SnakeLadderHostView } from '@/components/snake-and-ladder/SnakeLadderHo
 import { TicTacToeHostView } from '@/components/tic-tac-toe/TicTacToeHostView'
 import { ChessHostView } from '@/components/chess/ChessHostView'
 import { CheckersHostView } from '@/components/checkers/CheckersHostView'
+import { AyoHostView } from '@/components/ayo/AyoHostView'
 import { ScrabbleHostView } from '@/components/scrabble/ScrabbleHostView'
 import { DescribeItHostView } from '@/components/describe-it/DescribeItHostView'
 import { NpatHostView } from '@/components/npat/NpatHostView'
@@ -25,6 +26,7 @@ import { WordHuntHostView } from '@/components/word-hunt/WordHuntHostView'
 import { MafiaHostView } from '@/components/mafia/MafiaHostView'
 import { MatchingPairsHostView } from '@/components/matching-pairs/MatchingPairsHostView'
 import { QuiplashHostView } from '@/components/quiplash/QuiplashHostView'
+import { QuickDrawHostView } from '@/components/quick-draw/QuickDrawHostView'
 import { WordRushHostView } from '@/components/word-rush/WordRushHostView'
 
 export type GameHostView = ComponentType<{ gameCode: string; hostToken: string }>
@@ -53,6 +55,7 @@ export const HOST_VIEW_REGISTRY: Partial<Record<GameType, GameHostView>> = {
   tic_tac_toe: TicTacToeHostView,
   chess: ChessHostView,
   checkers: CheckersHostView,
+  ayo: AyoHostView,
   scrabble: ScrabbleHostView,
   describe_it: DescribeItHostView,
   sudoku: SudokuHostView,
@@ -61,5 +64,6 @@ export const HOST_VIEW_REGISTRY: Partial<Record<GameType, GameHostView>> = {
   anonymous_messages: AnonymousMessagesHostView,
   mafia: MafiaHostView,
   quiplash: QuiplashHostView,
+  quick_draw: QuickDrawHostView,
   word_rush: WordRushHostView,
 }

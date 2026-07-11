@@ -87,6 +87,9 @@ export const createGameSchema = z.object({
   codewords_late_join: z.boolean().optional(),
   describe_it_num_teams: z.coerce.number().int().min(2).max(4).optional(),
   describe_it_mode: z.enum(['team', 'individual']).optional(),
+  quick_draw_variant: z.enum(['lie', 'guess']).optional(),
+  quick_draw_play_mode: z.enum(['team', 'individual']).optional(),
+  quick_draw_num_teams: z.coerce.number().int().min(2).max(4).optional(),
   word_rush_num_teams: z.coerce.number().int().min(2).max(4).optional(),
   word_rush_mode: z.enum(['team', 'individual']).optional(),
   word_rush_prompt_mode: z.enum(['automatic', 'manual']).optional(),
@@ -116,6 +119,7 @@ export const createGameSchema = z.object({
   crazy8_jokers: z.boolean().optional(),
   crazy8_pick2_stacking: z.boolean().optional(),
   ludo_variant: z.enum(['modern', 'traditional']).optional(),
+  ayo_variant: z.enum(['traditional', 'oware']).optional(),
   mahjong_ruleset: mahjongRulesetEnum.optional(),
   mahjong_rule_options: mahjongRuleOptionsSchema,
   scrabble_dictionary_id: z.enum(SCRABBLE_DICTIONARY_OPTIONS).optional(),
@@ -156,6 +160,7 @@ export type CreateGameInput = z.infer<typeof createGameSchema>
 export const updateGameSchema = z.object({
   hostToken: hostTokenString(),
   is_public: z.boolean().optional(),
+  theme: themeEnum.optional(),
   rounds_count: z.coerce.number().int().min(1, 'rounds_count is required').optional(),
   timer_seconds: z.coerce.number().optional(),
   operative_timer_seconds: z.coerce.number().optional(),
@@ -260,12 +265,16 @@ export const boardGameLobbySettingsSchema = z.object({
   crazy8_jokers: z.boolean().optional(),
   crazy8_pick2_stacking: z.boolean().optional(),
   ludo_variant: z.enum(['modern', 'traditional']).optional(),
+  ayo_variant: z.enum(['traditional', 'oware']).optional(),
   mahjong_ruleset: mahjongRulesetEnum.optional(),
   mahjong_rule_options: mahjongRuleOptionsSchema,
   mafia_doctor_enabled: z.boolean().optional(),
   mafia_detective_enabled: z.boolean().optional(),
   mafia_anonymous_votes: z.boolean().optional(),
   operative_timer_seconds: z.coerce.number().optional(),
+  quick_draw_variant: z.enum(['lie', 'guess']).optional(),
+  quick_draw_play_mode: z.enum(['team', 'individual']).optional(),
+  quick_draw_num_teams: z.coerce.number().int().min(2).max(4).optional(),
 })
 
 export type BoardGameLobbySettingsInput = z.infer<typeof boardGameLobbySettingsSchema>

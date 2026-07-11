@@ -104,10 +104,13 @@ export function LibraryPackPicker({
  */
 export function LibraryPackBrowser({
   gameType,
+  alsoIncludeGameTypes = [],
   noun = 'questions',
   onPick,
 }: {
   gameType: string
+  /** Extra library game types to list alongside `gameType` (e.g. Text Charades packs for Quick Draw). */
+  alsoIncludeGameTypes?: string[]
   noun?: string
   onPick: (questions: unknown[], packId: string) => void
 }) {
@@ -115,14 +118,26 @@ export function LibraryPackBrowser({
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null)
+  const gameTypesKey = [gameType, ...alsoIncludeGameTypes].join(',')
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    fetch(`/api/library?game_type=${gameType}&page_size=100`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (!cancelled) setPacks(d.packs ?? [])
+    const types = [gameType, ...alsoIncludeGameTypes.filter((t) => t && t !== gameType)]
+    Promise.all(
+      types.map((type) =>
+        fetch(`/api/library?game_type=${encodeURIComponent(type)}&page_size=100`).then((r) => r.json())
+      )
+    )
+      .then((results) => {
+        if (cancelled) return
+        const byId = new Map<string, LibraryPackLite>()
+        for (const d of results) {
+          for (const pack of (d.packs ?? []) as LibraryPackLite[]) {
+            byId.set(pack.id, pack)
+          }
+        }
+        setPacks([...byId.values()])
       })
       .catch(() => {
         if (!cancelled) setPacks([])
@@ -133,7 +148,7 @@ export function LibraryPackBrowser({
     return () => {
       cancelled = true
     }
-  }, [gameType])
+  }, [gameType, gameTypesKey])
 
   const handleSelect = async (id: string) => {
     setSelectedPackId(id)

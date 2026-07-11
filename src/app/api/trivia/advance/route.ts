@@ -3,6 +3,7 @@ import { triviaAdvanceSchema } from '@/lib/validation'
 import { syncTriviaGameState } from '@/lib/trivia-advance'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { scheduleRoundStartedNotification } from '@/lib/push'
 
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, triviaAdvanceSchema)
@@ -33,5 +34,10 @@ export async function POST(req: NextRequest) {
 
   const idleCodes = new Set(['already_done', 'reveal_pending', 'round_active'])
   const status = result.ok || idleCodes.has(result.code) ? 200 : 409
+
+  if (result.ok && (result.code === 'advanced_next' || result.code === 'synced_pointer') && 'nextRound' in result) {
+    scheduleRoundStartedNotification(code, result.nextRound)
+  }
+
   return NextResponse.json(result, { status })
 }

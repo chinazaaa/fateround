@@ -540,6 +540,8 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
           players={players}
           meId={hostPlayerId}
           isHost
+          gameCode={gameCode}
+          hostToken={hostToken}
           minPlayers={SUDOKU_MIN_PLAYERS}
           onToggleReady={() => {}}
           onStart={() => void handleStart()}
