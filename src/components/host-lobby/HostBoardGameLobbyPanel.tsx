@@ -17,6 +17,7 @@ import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
+import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostMahjongLobbySettings } from '@/components/host-lobby/HostMahjongLobbySettings'
 import { Chip, Toggle } from '@/components/ui/PageShell'
 import { useToast } from '@/components/ui/Toast'
@@ -276,6 +277,7 @@ export function HostBoardGameLobbyPanel({
             onChange={onVisibilityChange}
           />
         </HostLobbySettingBlock>
+        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={onGameUpdate} />
         <HostLobbySettingBlock title="Turn timer">
           <HostLobbyOptionChips value={turnTimer} options={turnTimerOptions} onChange={onTurnTimerChange} />
         </HostLobbySettingBlock>

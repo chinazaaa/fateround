@@ -3,6 +3,7 @@ import { parseGameType, isWhotGame } from '@/lib/game-types'
 import { processWhotPlay } from '@/lib/whot'
 import { whotPlaySchema } from '@/lib/validation'
 import { parseJsonBody } from '@/lib/parse-body'
+import { scheduleTurnNotification } from '@/lib/push'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 
@@ -27,6 +28,8 @@ export async function POST(req: NextRequest) {
 
   const { error } = await processWhotPlay(supabase, code, auth.player.id, cardId)
   if (error) return NextResponse.json({ error }, { status: 400 })
+
+  scheduleTurnNotification(code)
 
   return NextResponse.json({ success: true })
 }

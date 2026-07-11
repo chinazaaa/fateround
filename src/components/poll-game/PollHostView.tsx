@@ -158,6 +158,7 @@ import { RematchHistory } from '@/components/RematchHistory'
 import { ShareResults } from '@/components/ShareResults'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostPlayerManageList } from '@/components/host/HostPlayerManageList'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostPageShell } from '@/components/host/HostPageShell'
@@ -1703,6 +1704,8 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             </p>
             <GameRulesLink gameType={gameType} />
           </div>
+
+          <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
 
           <div className="glass-card p-4 space-y-3">
             <p className="text-muted text-xs uppercase tracking-wider">Rounds</p>

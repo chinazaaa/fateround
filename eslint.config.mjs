@@ -6,7 +6,11 @@ import eslintConfigPrettier from 'eslint-config-prettier'
 
 export default tseslint.config(
   {
-    ignores: ['.next/', 'node_modules/', 'scripts/', 'infra/', '.claude/'],
+    // apps/mobile is a separate Expo/React Native app with its own toolchain
+    // (Metro, require()-based asset loading) — this web ESLint config doesn't
+    // apply to it and is also excluded from the web tsconfig. It should be linted
+    // with an Expo config, not here.
+    ignores: ['.next/', 'node_modules/', 'scripts/', 'infra/', '.claude/', 'apps/mobile/'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

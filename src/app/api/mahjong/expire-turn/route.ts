@@ -3,6 +3,7 @@ import { parseGameType, isMahjongGame } from '@/lib/game-types'
 import { processMahjongExpireTurn } from '@/lib/mahjong'
 import { mahjongExpireSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { scheduleTurnNotification } from '@/lib/push'
 
 export async function POST(req: NextRequest) {
   const raw = await req.json()
@@ -23,6 +24,8 @@ export async function POST(req: NextRequest) {
 
   const { error } = await processMahjongExpireTurn(supabase, code)
   if (error) return NextResponse.json({ error }, { status: 400 })
+
+  scheduleTurnNotification(code)
 
   return NextResponse.json({ success: true })
 }

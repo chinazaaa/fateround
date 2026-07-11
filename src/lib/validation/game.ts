@@ -160,6 +160,7 @@ export type CreateGameInput = z.infer<typeof createGameSchema>
 export const updateGameSchema = z.object({
   hostToken: hostTokenString(),
   is_public: z.boolean().optional(),
+  theme: themeEnum.optional(),
   rounds_count: z.coerce.number().int().min(1, 'rounds_count is required').optional(),
   timer_seconds: z.coerce.number().optional(),
   operative_timer_seconds: z.coerce.number().optional(),

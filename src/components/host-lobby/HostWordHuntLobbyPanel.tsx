@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { formatWordHuntTimer, WORD_HUNT_TIMER_OPTIONS } from '@/lib/word-hunt'
 import { lobbyMaxPlayersFromGame, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
+import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
@@ -138,6 +139,7 @@ export function HostWordHuntLobbyPanel({ gameCode, hostToken, game, playerCount,
         <HostLobbyOptionChips value={roundTimer} options={timerOptions} onChange={onRoundTimerChange} />
       </HostLobbySettingBlock>
 
+      <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={onGameUpdate} />
       {gameSupportsViewerSetting(game.game_type) && game.status === 'waiting' && (
         <HostLobbySettingBlock title="Late joiners">
           <HostAllowViewersField
