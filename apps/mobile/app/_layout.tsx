@@ -1,12 +1,9 @@
-import { registerGlobals } from '@livekit/react-native'
 import { Stack } from 'expo-router'
 import * as SplashScreen from 'expo-splash-screen'
 import { useEffect } from 'react'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import 'react-native-reanimated'
 import { ToastProvider } from '@/components/ui/Toast'
-
-registerGlobals()
 
 export { ErrorBoundary } from 'expo-router'
 

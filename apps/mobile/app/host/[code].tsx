@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { normalizeGameCode } from '@fateround/shared'
-import { HostLobbyScreen } from '@/components/HostLobbyScreen'
+import { HostGameScreen } from '@/components/host/HostGameScreen'
 import { getHostToken, setHostToken } from '@/lib/secure-session'
 import { verifyHost } from '@/lib/game-api'
 
@@ -83,7 +83,7 @@ export default function HostScreen() {
     )
   }
 
-  return <HostLobbyScreen gameCode={gameCode} hostToken={token} />
+  return <HostGameScreen gameCode={gameCode} hostToken={token} />
 }
 
 const styles = StyleSheet.create({

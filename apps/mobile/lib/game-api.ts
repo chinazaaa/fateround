@@ -547,6 +547,65 @@ export function startGame(gameId: string, hostToken: string) {
   return postJson<{ ok?: boolean }>(`/api/games/${gameId.toUpperCase()}/start`, { hostToken })
 }
 
+export function postEndRound(gameId: string, hostToken: string) {
+  return postJson<{ success?: boolean }>(`/api/games/${gameId.toUpperCase()}/end-round`, { hostToken })
+}
+
+export function postNextRound(gameId: string, hostToken: string) {
+  return postJson<{ success?: boolean }>(`/api/games/${gameId.toUpperCase()}/next-round`, { hostToken })
+}
+
+export function postFinishGame(gameId: string, hostToken: string) {
+  return postJson<{ success?: boolean }>(`/api/games/${gameId.toUpperCase()}/finish-game`, { hostToken })
+}
+
+export function postBingoCall(gameId: string, hostToken: string, opts?: { random?: boolean; number?: number }) {
+  return postJson<{ success: boolean }>('/api/bingo/call', {
+    gameId: gameId.toUpperCase(),
+    hostToken,
+    random: opts?.random ?? !opts?.number,
+    number: opts?.number,
+  })
+}
+
+export function postBingoSync(gameId: string) {
+  return postJson<{ ok?: boolean; code?: string }>('/api/bingo/sync', { gameId: gameId.toUpperCase() })
+}
+
+export function postTriviaAdvance(gameId: string, opts?: { hostToken?: string; force?: boolean }) {
+  return postJson<{ ok?: boolean; code?: string }>('/api/trivia/advance', {
+    gameId: gameId.toUpperCase(),
+    hostToken: opts?.hostToken,
+    force: opts?.force ?? false,
+  })
+}
+
+export function postTwoTruthsAdvance(gameId: string, opts?: { hostToken?: string; force?: boolean }) {
+  return postJson<{ ok?: boolean; code?: string }>('/api/two-truths/advance', {
+    gameId: gameId.toUpperCase(),
+    hostToken: opts?.hostToken,
+    force: opts?.force ?? false,
+  })
+}
+
+export function postQuickDrawGuessAdvance(gameId: string, hostToken: string) {
+  return postJson<{ ok?: boolean }>('/api/quick-draw/guess-advance', {
+    gameId: gameId.toUpperCase(),
+    hostToken,
+  })
+}
+
+export function postMafiaAdvanceHost(gameId: string, hostToken: string, nextPhase?: string) {
+  return postJson<{ success?: boolean }>(`/api/mafia/${gameId.toUpperCase()}/advance`, {
+    hostToken,
+    nextPhase,
+  })
+}
+
+export function getMafiaHostState(gameId: string, hostToken: string) {
+  return postJson<Record<string, unknown>>(`/api/mafia/${gameId.toUpperCase()}/host-state`, { hostToken })
+}
+
 export type CreateGameResponse = { gameCode: string; hostToken: string }
 
 /**

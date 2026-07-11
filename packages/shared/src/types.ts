@@ -106,6 +106,8 @@ export interface Game {
   mahjong_ruleset?: MahjongRuleset | null
   mahjong_rule_options?: MahjongRuleOptions | null
   question_source?: string | null
+  bingo_call_mode?: 'manual' | 'auto' | string | null
+  bingo_call_interval_seconds?: number | null
 }
 
 export interface Player {

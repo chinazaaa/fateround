@@ -22,10 +22,8 @@ type Props = {
 }
 
 /**
- * Generic host lobby (Batch 11, host-only v1). The host watches players arrive,
- * shares the code, and starts the game. It does NOT seat the host as a player —
- * playing along stays on web for now. Starting flips the game to `active` on the
- * server, which enforces per-game minimum-player rules; we surface that error.
+ * Generic host lobby. The host watches players arrive, shares the code, and starts
+ * the game. Once active, HostGameScreen routes to the in-game host dashboard.
  */
 export function HostLobbyScreen({ gameCode, hostToken }: Props) {
   const [game, setGame] = useState<Game | null>(null)
@@ -112,7 +110,6 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
   }
 
   const activePlayers = players.filter((p) => !p.spectator)
-  const started = game?.status && game.status !== 'waiting'
   const finished = game?.status === 'finished'
   const replayLobby = game?.status === 'waiting' && game.replay_pending === true
   const readyCount = activePlayers.length
@@ -184,10 +181,6 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
               <Text style={styles.startButtonText}>Start next round</Text>
             )}
           </Pressable>
-        ) : started ? (
-          <View style={styles.startedBanner}>
-            <Text style={styles.startedText}>Game started — players are in.</Text>
-          </View>
         ) : (
           <Pressable
             style={[styles.startButton, (starting || activePlayers.length === 0) && styles.startButtonDisabled]}
@@ -260,11 +253,4 @@ const styles = StyleSheet.create({
   startButton: { backgroundColor: '#f43f5e', borderRadius: 12, paddingVertical: 16, alignItems: 'center' },
   startButtonDisabled: { opacity: 0.5 },
   startButtonText: { color: '#fff', fontSize: 17, fontWeight: '600' },
-  startedBanner: {
-    backgroundColor: '#14532d',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  startedText: { color: '#bbf7d0', fontSize: 15, fontWeight: '600' },
 })

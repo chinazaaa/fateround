@@ -156,28 +156,28 @@ POST helpers for moves/votes/actions per game; GET for mahjong state, hot-seat r
 ## What's **not** done (known gaps)
 
 Remaining work before App Store / Play Store marketing.  
-**Host mode is the largest gap** — everything below in that section is intentional backlog; shell, lifecycle, and Batch 15 player polish are **done**.
+**Host mode core is done (Batch 16)** — remaining gaps are Drawful canvas, richer poll host UX vs web, and release QA.
 
-### Host mode (biggest gap)
+### Host mode
 
-The mobile app can **create**, **lobby**, **start**, and **play again**, but cannot **run** most games mid-session without web.
+Mobile can **create**, **lobby**, **start**, **run mid-game**, **play along**, and **play again**.
 
 | Capability | Mobile | Web |
 |------------|--------|-----|
 | Create game (title + type) | ✅ `/create` | ✅ full settings |
 | Host lobby (roster, share, start) | ✅ `/host/[code]` | ✅ |
 | Play again from lobby | ✅ | ✅ |
-| **In-game host dashboard** (trivia advance, bingo call, Mafia night, poll controls) | ❌ | ✅ |
-| **Host playing along** (seated as player while hosting) | ❌ | ✅ |
-| **Bingo auto-call sync** (`useBingoAutoCall` → `/api/bingo/sync`) | ❌ not ported | ✅ |
+| **In-game host dashboard** (trivia advance, bingo call, Mafia phase, poll round controls) | ✅ `HostGameScreen` → `HostRouter` | ✅ full dashboards |
+| **Host playing along** (seated as player while hosting) | ✅ `HostPlayAlongCard` | ✅ |
+| **Bingo auto-call sync** (`useBingoAutoCall` → `/api/bingo/sync`) | ✅ | ✅ |
 
 - [x] Host token storage + `/host/[code]` lobby (roster, share, start, play-again)
 - [x] Native create for most types + deep-link host token from web create
-- [ ] **In-game host dashboard** — see table above *(Batch 16)*
-- [ ] **Host playing along** while hosting — `HostLobbyScreen` is host-only
-- [ ] **Bingo auto-call sync** — mobile-only host cannot drive auto/manual number calls today
+- [x] **In-game host dashboard** — `HostGameScreen` routes to per-game screens during `active` / `finished` *(Batch 16)*
+- [x] **Host playing along** — join as player while keeping host token (`HostPlayAlongCard`)
+- [x] **Bingo auto-call sync** — `useBingoAutoCall` on bingo host screen + manual call button
 
-→ Proposed fix: [Batch 16 — In-game host](#batch-16--in-game-host-proposed)
+**Still thinner than web:** poll-family full results/leaderboards on host, Quick Draw Drawful canvas host, advanced create settings (participant import, custom slots).
 
 ### App shell & session
 
@@ -245,7 +245,7 @@ Detail:
 
 ## Proposed next batches
 
-Batches 10–15 core work is **done**. Prioritize **in-game host + device QA** next.
+Batches 10–16 core work is **done**. Prioritize **Drawful canvas + device QA** next.
 
 ### Batch 10 — Session & navigation shell ✅
 
@@ -253,16 +253,17 @@ Batches 10–15 core work is **done**. Prioritize **in-game host + device QA** n
 
 ### Batch 11 — Create & host (MVP) ✅
 
-**Done (Jul 2026)** for lobby + native create. Remaining: in-game host controls + host-as-player.
+**Done (Jul 2026)** for lobby + native create + in-game host (Batch 16).
 
-### Batch 16 — In-game host (proposed)
+### Batch 16 — In-game host ✅
 
-**Goal:** Host can run a full night from the phone without switching to web mid-game.
+**Done (Jul 2026).** Host can run a full night from the phone without switching to web for core controls.
 
-- Generic or per-game host overlays during `active` status (trivia advance, bingo call/sync, poll round controls)
-- Port `useBingoAutoCall` (or equivalent) to mobile
-- Optional: host-as-player stack (join own game while retaining host token)
-- Host settings that today only exist on web create (participant import, custom slots)
+- [x] `HostGameScreen` — waiting → `HostLobbyScreen`; active/finished → `HostRouter`
+- [x] Per-game host screens: bingo (call + auto-sync), trivia (auto-advance + force), poll/hot_seat/custom (end/next/finish), Mafia (phase advance), generic (board/party games + two-truths/quick-draw guess advance)
+- [x] `useBingoAutoCall`, `useTriviaAutoAdvance`, host API helpers in `game-api.ts`
+- [x] `HostPlayAlongCard` — join own game as player while retaining host token
+- [ ] Web-only host richness: full poll results dashboard, Drawful canvas host, advanced create settings
 
 ### Batch 12 — Lifecycle & finish UX ✅
 
@@ -338,6 +339,11 @@ Client check: `isGameMobileSupported()` in `apps/mobile/lib/api.ts`.
 | `apps/mobile/components/lifecycle/*` | Pre-join, replay ready, viewer banner |
 | `apps/mobile/hooks/useGameViewBootstrap.ts` | Join, load, screen FSM |
 | `apps/mobile/components/HostLobbyScreen.tsx` | Host lobby (start, play-again, roster) |
+| `apps/mobile/components/host/HostGameScreen.tsx` | Host shell: lobby vs in-game routing |
+| `apps/mobile/components/host/HostRouter.tsx` | Per-game host view dispatch |
+| `apps/mobile/components/host/HostPlayAlongCard.tsx` | Host join-as-player while keeping token |
+| `apps/mobile/hooks/useBingoAutoCall.ts` | Bingo auto-call sync polling |
+| `apps/mobile/hooks/useTriviaAutoAdvance.ts` | Trivia round auto-advance polling |
 | `apps/mobile/app/create.tsx` | Native game create |
 | `apps/mobile/lib/native-create.ts` | Creatable game types (excludes `custom`) |
 | `apps/mobile/lib/push-preferences.ts` | Per-game push mute + local alert prefs |
@@ -358,7 +364,7 @@ Client check: `isGameMobileSupported()` in `apps/mobile/lib/api.ts`.
 
 Use this before marketing “native app”:
 
-- [x] Host can **create and start** a game on device (lobby only — not full in-game host)
+- [x] Host can **create, start, and run** a game on device (lobby + in-game host dashboard)
 - [x] Player can join, play, see results, leave, rejoin (39/40 types; Drawful canvas uses cross-device panel)
 - [x] No dead-end “use web” copy on happy paths (`UnavailableFeaturePanel`, “More setup options”)
 - [x] Turn notification for async games (server push + foreground alerts + haptics on 13+ turn-based types)

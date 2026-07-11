@@ -53,7 +53,7 @@ cd apps/mobile && npm run typecheck
 - **`src/`** — Next.js web + API routes (unchanged)
 
 Player views: `components/games/*PlayerView.tsx` → `GameRouter.tsx`.  
-Host lobby: `HostLobbyScreen.tsx`.  
+Host: `HostGameScreen.tsx` → lobby (`HostLobbyScreen`) or in-game (`HostRouter` + per-game screens).  
 Feature flags: `GET /api/mobile-config`.
 
 ---
@@ -65,6 +65,7 @@ Feature flags: `GET /api/mobile-config`.
 | **1–9** | 40 native player views |
 | **10** | Session shell, ⋮ menu, rules links, native create, recent games |
 | **11** | Host lobby, start game, play again |
+| **16** | In-game host dashboard, play-along, bingo auto-call |
 | **12** | Lifecycle gates, finish scoreboards, import claim join |
 | **13** | Turn push (13+ games), per-game mute, timer haptics |
 | **14** | Voice on 14 types, rename sync, background disconnect |
@@ -74,7 +75,7 @@ Feature flags: `GET /api/mobile-config`.
 
 ## Next up
 
-See [`docs/mobile-rollout.md`](../../docs/mobile-rollout.md) → **Batch 16 (in-game host)** + TestFlight / EAS project ID.
+See [`docs/mobile-rollout.md`](../../docs/mobile-rollout.md) → **Quick Draw Drawful canvas** + TestFlight / EAS project ID.
 
 ---
 
