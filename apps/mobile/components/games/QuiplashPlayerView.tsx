@@ -358,7 +358,9 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
                     <Text style={styles.choiceBadge}>{answerOptionLabel(index)}</Text>
                     <View style={styles.choiceBody}>
                       <Text style={styles.choiceText}>{answer.text}</Text>
-                      {isPicked ? <Text style={styles.yourPick}>Your pick</Text> : null}
+                      {/* Always render (reserve the height) and just toggle
+                          visibility, so the box doesn't grow/shift when you vote. */}
+                      <Text style={[styles.yourPick, !isPicked && styles.yourPickHidden]}>Your pick</Text>
                     </View>
                   </Pressable>
                 )
@@ -495,6 +497,7 @@ const makeStyles = (theme: Theme) =>
     choiceBody: { flex: 1, gap: 4 },
     choiceText: { color: theme.text, fontSize: 16, lineHeight: 22 },
     yourPick: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700' },
+    yourPickHidden: { opacity: 0 },
     locked: { color: theme.textMuted, textAlign: 'center', marginTop: 12 },
     revealList: { gap: 10, paddingVertical: 8 },
     content: { paddingBottom: 32, gap: 14 },
