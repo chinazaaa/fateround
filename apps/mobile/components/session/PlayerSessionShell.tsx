@@ -13,6 +13,7 @@ import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { HeaderAction } from '@/components/ui/HeaderAction'
 import { SettingsButton } from '@/components/ui/SettingsSheet'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { centeredContent } from '@/constants/layout'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
@@ -232,5 +233,6 @@ const makeStyles = (theme: Theme) =>
     fontWeight: '600',
   },
   rulesRow: { marginTop: 2 },
-  body: { flex: 1 },
+  // Cap + center the game content so it doesn't stretch edge-to-edge on iPad.
+  body: { flex: 1, ...centeredContent },
 })

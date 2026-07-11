@@ -9,6 +9,7 @@ import { AppButton } from '@/components/ui/AppButton'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import { SettingsButton } from '@/components/ui/SettingsSheet'
+import { centeredContent } from '@/constants/layout'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { WEB_BASE_URL } from '@/lib/config'
@@ -160,6 +161,8 @@ const makeStyles = (theme: Theme) =>
     paddingTop: theme.space.md,
     paddingBottom: 40,
     gap: theme.space.lg,
+    // Center + cap on iPad so the home screen isn't a stretched phone layout.
+    ...centeredContent,
   },
   hero: {
     alignItems: 'center',
