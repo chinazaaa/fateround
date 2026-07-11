@@ -24,6 +24,19 @@ import {
   isCardHouseRuleGame,
   type CardHouseRulesState,
 } from '@/components/host/lobby-settings/CardHouseRulesSection'
+import {
+  BoardVariantSection,
+  isBoardVariantGame,
+  type BoardVariantState,
+} from '@/components/host/lobby-settings/BoardVariantSection'
+import {
+  MafiaLobbySection,
+  QuiplashLobbySection,
+  isMafiaLobbyGame,
+  isQuiplashLobbyGame,
+  type MafiaLobbyState,
+  type QuiplashLobbyState,
+} from '@/components/host/lobby-settings/PartyTimerToggleSections'
 import { theme } from '@/constants/theme'
 
 /** Games whose max-players is editable via the shared lobby-settings route. */
@@ -59,10 +72,14 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
   const gameType = game.game_type as GameType
   const { limits } = useGamePlayerLimits()
   const isCardGame = isCardHouseRuleGame(gameType)
+  const isVariantGame = isBoardVariantGame(gameType)
+  const isMafia = isMafiaLobbyGame(gameType)
+  const isQuiplash = isQuiplashLobbyGame(gameType)
+  const ownsTimer = isCardGame || isVariantGame || isMafia || isQuiplash
   const roundOptions = partyRoundOptions(gameType)
   const showRounds = roundOptions.length > 1 && game.rounds_count != null
-  // Card games render their own turn timer inside the house-rules section.
-  const showTimer = !isCardGame && game.timer_seconds != null && game.timer_seconds > 0
+  // Games with their own section render their own timer(s).
+  const showTimer = !ownsTimer && game.timer_seconds != null && game.timer_seconds > 0
   const showLateJoin = gameSupportsViewerSetting(gameType)
   const showMaxPlayers = isLobbyLimitGameType(gameType) && LOBBY_MAX_PLAYERS_GAMES.has(gameType)
 
@@ -87,6 +104,21 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
     crazy8ActionCards: game.crazy8_action_cards ?? true,
     crazy8Jokers: game.crazy8_jokers ?? false,
     crazy8Pick2Stacking: game.crazy8_pick2_stacking ?? true,
+  }))
+  const [variant, setVariant] = useState<BoardVariantState>(() => ({
+    timerSeconds: game.timer_seconds ?? 0,
+    ludoVariant: game.ludo_variant === 'traditional' ? 'traditional' : 'modern',
+    ayoVariant: game.ayo_variant === 'oware' ? 'oware' : 'traditional',
+  }))
+  const [mafia, setMafia] = useState<MafiaLobbyState>(() => ({
+    timerSeconds: game.timer_seconds ?? 0,
+    doctorEnabled: game.mafia_doctor_enabled ?? true,
+    detectiveEnabled: game.mafia_detective_enabled ?? true,
+    anonymousVotes: game.mafia_anonymous_votes ?? true,
+  }))
+  const [quiplash, setQuiplash] = useState<QuiplashLobbyState>(() => ({
+    timerSeconds: game.timer_seconds ?? 0,
+    voteTimer: game.operative_timer_seconds ?? 0,
   }))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -117,6 +149,21 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
         if (card.crazy8Jokers !== game.crazy8_jokers) board.crazy8_jokers = card.crazy8Jokers
         if (card.crazy8Pick2Stacking !== game.crazy8_pick2_stacking) board.crazy8_pick2_stacking = card.crazy8Pick2Stacking
       }
+    }
+    if (isVariantGame) {
+      if (variant.timerSeconds !== game.timer_seconds) board.timer_seconds = variant.timerSeconds
+      if (gameType === 'ludo' && variant.ludoVariant !== game.ludo_variant) board.ludo_variant = variant.ludoVariant
+      if (gameType === 'ayo' && variant.ayoVariant !== game.ayo_variant) board.ayo_variant = variant.ayoVariant
+    }
+    if (isMafia) {
+      if (mafia.timerSeconds !== game.timer_seconds) board.timer_seconds = mafia.timerSeconds
+      if (mafia.doctorEnabled !== game.mafia_doctor_enabled) board.mafia_doctor_enabled = mafia.doctorEnabled
+      if (mafia.detectiveEnabled !== game.mafia_detective_enabled) board.mafia_detective_enabled = mafia.detectiveEnabled
+      if (mafia.anonymousVotes !== game.mafia_anonymous_votes) board.mafia_anonymous_votes = mafia.anonymousVotes
+    }
+    if (isQuiplash) {
+      if (quiplash.timerSeconds !== game.timer_seconds) board.timer_seconds = quiplash.timerSeconds
+      if (quiplash.voteTimer !== game.operative_timer_seconds) board.operative_timer_seconds = quiplash.voteTimer
     }
 
     const hasBoard = Object.keys(board).length > 0
@@ -194,6 +241,25 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
                 gameType={gameType}
                 value={card}
                 onChange={(p) => setCard((prev) => ({ ...prev, ...p }))}
+              />
+            ) : null}
+
+            {isVariantGame ? (
+              <BoardVariantSection
+                gameType={gameType}
+                value={variant}
+                onChange={(p) => setVariant((prev) => ({ ...prev, ...p }))}
+              />
+            ) : null}
+
+            {isMafia ? (
+              <MafiaLobbySection value={mafia} onChange={(p) => setMafia((prev) => ({ ...prev, ...p }))} />
+            ) : null}
+
+            {isQuiplash ? (
+              <QuiplashLobbySection
+                value={quiplash}
+                onChange={(p) => setQuiplash((prev) => ({ ...prev, ...p }))}
               />
             ) : null}
 
