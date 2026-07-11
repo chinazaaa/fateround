@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import {
   type Game,
   type Player,
@@ -32,6 +32,7 @@ import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { PhaseStepper } from '@/components/party/PhaseStepper'
 import { PlayerSessionControls } from '@/components/session/PlayerSessionControls'
 import { RoundBreakCard } from '@/components/party/RoundBreakCard'
+import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -101,13 +102,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
 
   useGameTableSync(
     gameCode,
-    [
-      { table: 'games', column: 'id' },
-      'rounds',
-      'quiplash_sessions',
-      'quiplash_answers',
-      'quiplash_votes',
-    ],
+    [{ table: 'games', column: 'id' }, 'rounds', 'quiplash_sessions', 'quiplash_answers', 'quiplash_votes'],
     () => bootstrap.load(),
     !!bootstrap.game
   )
@@ -119,9 +114,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
     return active ?? byPointer
   }, [bootstrap.game, rounds])
 
-  const me = bootstrap.myPlayerId
-    ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) ?? null
-    : null
+  const me = bootstrap.myPlayerId ? (bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) ?? null) : null
   const cannotParticipate = !!(
     me &&
     bootstrap.game &&
@@ -275,238 +268,237 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
           : `Round ${currentRound.round_number}`
       }
     >
-      <PhaseStepper steps={['Write', 'Vote', 'Results']} activeIndex={phaseIndex} />
+      <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
+        <PhaseStepper steps={['Write', 'Vote', 'Results']} activeIndex={phaseIndex} />
 
-      {cannotParticipate && me && bootstrap.myPlayerId ? (
-        <ViewerModeBanner
-          gameCode={bootstrap.code}
-          playerId={bootstrap.myPlayerId}
-          game={bootstrap.game}
-          player={me}
-          players={bootstrap.players}
-          onPromoted={() => void bootstrap.load()}
+        {cannotParticipate && me && bootstrap.myPlayerId ? (
+          <ViewerModeBanner
+            gameCode={bootstrap.code}
+            playerId={bootstrap.myPlayerId}
+            game={bootstrap.game}
+            player={me}
+            players={bootstrap.players}
+            onPromoted={() => void bootstrap.load()}
+          />
+        ) : null}
+
+        <LeaderboardPanel
+          title="Live scores"
+          rows={liveLeaderboard.map((row) => ({
+            id: row.id,
+            name: row.name,
+            score: row.score,
+            highlight: row.id === bootstrap.myPlayerId,
+          }))}
+          highlightId={bootstrap.myPlayerId}
         />
-      ) : null}
 
-      <LeaderboardPanel
-        title="Live scores"
-        rows={liveLeaderboard.map((row) => ({
-          id: row.id,
-          name: row.name,
-          score: row.score,
-          highlight: row.id === bootstrap.myPlayerId,
-        }))}
-        highlightId={bootstrap.myPlayerId}
-      />
+        {metadata ? <Text style={styles.prompt}>{metadata.prompt}</Text> : null}
+        {session.phase === 'writing' && !cannotParticipate && !myAnswer ? (
+          <Text style={styles.helper}>Everyone writes one funny answer — yours stays secret until results.</Text>
+        ) : null}
+        {session.phase === 'reveal' ? (
+          <Text style={styles.helper}>Who wrote what — points go to every vote your answer received.</Text>
+        ) : null}
+        {countdown > 0 ? <TimerBadge seconds={countdown} /> : null}
 
-      {metadata ? <Text style={styles.prompt}>{metadata.prompt}</Text> : null}
-      {session.phase === 'writing' && !cannotParticipate && !myAnswer ? (
-        <Text style={styles.helper}>Everyone writes one funny answer — yours stays secret until results.</Text>
-      ) : null}
-      {session.phase === 'reveal' ? (
-        <Text style={styles.helper}>Who wrote what — points go to every vote your answer received.</Text>
-      ) : null}
-      {countdown > 0 ? <TimerBadge seconds={countdown} /> : null}
-
-      {session.phase === 'writing' ? (
-        cannotParticipate ? (
-          <View style={styles.submittedCard}>
-            <Text style={styles.watchEmoji}>👀</Text>
-            <Text style={styles.submittedLabel}>You're watching</Text>
-            <Text style={styles.locked}>Spectators can't submit answers — voting comes next.</Text>
-          </View>
-        ) : myAnswer ? (
-          <View style={styles.submittedCard}>
-            <Text style={styles.submittedLabel}>Your answer</Text>
-            <Text style={styles.submittedText}>{myAnswer.text}</Text>
-            <Text style={styles.locked}>Waiting for voting…</Text>
-          </View>
-        ) : (
-          <>
-            <TextInput
-              style={styles.input}
-              value={answerText}
-              onChangeText={setAnswerText}
-              placeholder="Your funny answer…"
-              placeholderTextColor={theme.textFaint}
-              maxLength={QUIPLASH_MAX_ANSWER_LENGTH}
-              multiline
-            />
-            <Text style={styles.counter}>
-              {answerText.length}/{QUIPLASH_MAX_ANSWER_LENGTH}
-            </Text>
-            <Pressable
-              style={[styles.primaryBtn, (submitting || !answerText.trim()) && styles.primaryBtnDisabled]}
-              disabled={submitting || !answerText.trim()}
-              onPress={() => void submitAnswer()}
-            >
-              <Text style={styles.primaryText}>{submitting ? 'Submitting…' : 'Submit answer'}</Text>
-            </Pressable>
-          </>
-        )
-      ) : null}
-
-      {session.phase === 'voting' ? (
-        <>
-          <Text style={styles.section}>Pick the funniest answer</Text>
-          <Text style={styles.helper}>{votingHint}</Text>
-          <View style={styles.choices}>
-            {voteOptions.map((answer, index) => {
-              const isPicked = myVote?.chosen_answer_id === answer.id
-              return (
-                <Pressable
-                  key={answer.id}
-                  style={[styles.choice, isPicked && styles.choiceSelected]}
-                  disabled={submitting || !!myVote || !canVote}
-                  onPress={() => void submitVote(answer.id)}
-                >
-                  <Text style={styles.choiceBadge}>{answerOptionLabel(index)}</Text>
-                  <View style={styles.choiceBody}>
-                    <Text style={styles.choiceText}>{answer.text}</Text>
-                    {isPicked ? <Text style={styles.yourPick}>Your pick</Text> : null}
-                  </View>
-                </Pressable>
-              )
-            })}
-          </View>
-          {myAnswer ? (
-            <Text style={styles.locked}>Your answer isn't listed — you can't vote for your own.</Text>
-          ) : null}
-          {myVote ? <Text style={styles.locked}>Vote locked in</Text> : null}
-        </>
-      ) : null}
-
-      {session.phase === 'reveal' ? (
-        <>
-          {soloRound ? (
-            <View style={styles.soloBanner}>
-              <Text style={styles.soloText}>
-                {soloWinnerIsMe
-                  ? `No one else submitted — you got ${soloPoints} pt${soloPoints === 1 ? '' : 's'}!`
-                  : 'No one else submitted this round.'}
-              </Text>
+        {session.phase === 'writing' ? (
+          cannotParticipate ? (
+            <View style={styles.submittedCard}>
+              <Text style={styles.watchEmoji}>👀</Text>
+              <Text style={styles.submittedLabel}>You're watching</Text>
+              <Text style={styles.locked}>Spectators can't submit answers — voting comes next.</Text>
             </View>
-          ) : null}
-          <ScrollView contentContainerStyle={styles.revealList}>
-            {revealAnswers.map((answer) => {
-              const tally = revealTally.find((t) => t.answerId === answer.id)
-              const votes = tally?.votes ?? 0
-              const isTop = votes > 0 && votes === topVoteCount
-              return (
-                <View key={answer.id} style={[styles.revealRow, isTop && styles.revealRowTop]}>
-                  <Text style={styles.revealText}>{answer.text}</Text>
-                  <Text style={styles.revealMeta}>
-                    {answerAuthorName(answer.id, roundAnswers, bootstrap.players)} · {votes} vote
-                    {votes === 1 ? '' : 's'}
-                    {votes > 0 ? ` · +${votes} pts` : ''}
-                  </Text>
-                </View>
-              )
-            })}
-          </ScrollView>
-          {revealCountdown > 0 ? (
-            <RoundBreakCard
-              title="Round results"
-              message="Next round starting soon…"
-              secondsLeft={revealCountdown}
-            />
-          ) : null}
-        </>
-      ) : null}
+          ) : myAnswer ? (
+            <View style={styles.submittedCard}>
+              <Text style={styles.submittedLabel}>Your answer</Text>
+              <Text style={styles.submittedText}>{myAnswer.text}</Text>
+              <Text style={styles.locked}>Waiting for voting…</Text>
+            </View>
+          ) : (
+            <>
+              <TextInput
+                style={styles.input}
+                value={answerText}
+                onChangeText={setAnswerText}
+                placeholder="Your funny answer…"
+                placeholderTextColor={theme.textFaint}
+                maxLength={QUIPLASH_MAX_ANSWER_LENGTH}
+                multiline
+              />
+              <Text style={styles.counter}>
+                {answerText.length}/{QUIPLASH_MAX_ANSWER_LENGTH}
+              </Text>
+              <Pressable
+                style={[styles.primaryBtn, (submitting || !answerText.trim()) && styles.primaryBtnDisabled]}
+                disabled={submitting || !answerText.trim()}
+                onPress={() => void submitAnswer()}
+              >
+                <Text style={styles.primaryText}>{submitting ? 'Submitting…' : 'Submit answer'}</Text>
+              </Pressable>
+            </>
+          )
+        ) : null}
 
-      {me && bootstrap.myPlayerId ? (
-        <PlayerSessionControls
-          gameCode={bootstrap.code}
-          playerId={bootstrap.myPlayerId}
-          currentName={me.name}
-          resumeToken={bootstrap.myResumeToken}
-          onRenamed={() => void bootstrap.load()}
-          onLeft={onLeft}
-          inLobby={false}
-          spectating={cannotParticipate}
-        />
-      ) : null}
+        {session.phase === 'voting' ? (
+          <>
+            <Text style={styles.section}>Pick the funniest answer</Text>
+            <Text style={styles.helper}>{votingHint}</Text>
+            <View style={styles.choices}>
+              {voteOptions.map((answer, index) => {
+                const isPicked = myVote?.chosen_answer_id === answer.id
+                return (
+                  <Pressable
+                    key={answer.id}
+                    style={[styles.choice, isPicked && styles.choiceSelected]}
+                    disabled={submitting || !!myVote || !canVote}
+                    onPress={() => void submitVote(answer.id)}
+                  >
+                    <Text style={styles.choiceBadge}>{answerOptionLabel(index)}</Text>
+                    <View style={styles.choiceBody}>
+                      <Text style={styles.choiceText}>{answer.text}</Text>
+                      {isPicked ? <Text style={styles.yourPick}>Your pick</Text> : null}
+                    </View>
+                  </Pressable>
+                )
+              })}
+            </View>
+            {myAnswer ? (
+              <Text style={styles.locked}>Your answer isn't listed — you can't vote for your own.</Text>
+            ) : null}
+            {myVote ? <Text style={styles.locked}>Vote locked in</Text> : null}
+          </>
+        ) : null}
+
+        {session.phase === 'reveal' ? (
+          <>
+            {soloRound ? (
+              <View style={styles.soloBanner}>
+                <Text style={styles.soloText}>
+                  {soloWinnerIsMe
+                    ? `No one else submitted — you got ${soloPoints} pt${soloPoints === 1 ? '' : 's'}!`
+                    : 'No one else submitted this round.'}
+                </Text>
+              </View>
+            ) : null}
+            <View style={styles.revealList}>
+              {revealAnswers.map((answer) => {
+                const tally = revealTally.find((t) => t.answerId === answer.id)
+                const votes = tally?.votes ?? 0
+                const isTop = votes > 0 && votes === topVoteCount
+                return (
+                  <View key={answer.id} style={[styles.revealRow, isTop && styles.revealRowTop]}>
+                    <Text style={styles.revealText}>{answer.text}</Text>
+                    <Text style={styles.revealMeta}>
+                      {answerAuthorName(answer.id, roundAnswers, bootstrap.players)} · {votes} vote
+                      {votes === 1 ? '' : 's'}
+                      {votes > 0 ? ` · +${votes} pts` : ''}
+                    </Text>
+                  </View>
+                )
+              })}
+            </View>
+            {revealCountdown > 0 ? (
+              <RoundBreakCard title="Round results" message="Next round starting soon…" secondsLeft={revealCountdown} />
+            ) : null}
+          </>
+        ) : null}
+
+        {me && bootstrap.myPlayerId ? (
+          <PlayerSessionControls
+            gameCode={bootstrap.code}
+            playerId={bootstrap.myPlayerId}
+            currentName={me.name}
+            resumeToken={bootstrap.myResumeToken}
+            onRenamed={() => void bootstrap.load()}
+            onLeft={onLeft}
+            inLobby={false}
+            spectating={cannotParticipate}
+          />
+        ) : null}
+      </KeyboardAwareGameScroll>
     </GameShell>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
-  prompt: { color: theme.text, fontSize: 20, fontWeight: '700', lineHeight: 28 },
-  helper: { color: theme.textMuted, fontSize: 14, lineHeight: 20, marginTop: 4 },
-  counter: { color: theme.textFaint, fontSize: 12, textAlign: 'right', marginTop: 4 },
-  section: { color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 8 },
-  submittedCard: {
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    padding: 14,
-    gap: 6,
-    marginTop: 8,
-  },
-  submittedLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  watchEmoji: { fontSize: 28, textAlign: 'center' },
-  submittedText: { color: theme.text, fontSize: 16, lineHeight: 22 },
-  soloBanner: {
-    backgroundColor: '#422006',
-    borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#fbbf24',
-    marginTop: 8,
-  },
-  soloText: { color: '#fcd34d', fontWeight: '700', textAlign: 'center' },
-  input: {
-    backgroundColor: theme.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.border,
-    color: theme.text,
-    padding: 12,
-    minHeight: 96,
-    fontSize: 16,
-    marginTop: 8,
-  },
-  primaryBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: 10,
-    padding: 14,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  primaryBtnDisabled: { opacity: 0.5 },
-  // white on the solid rose button — intentional
-  primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  choices: { gap: 10, marginTop: 8 },
-  choice: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  choiceSelected: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
-  choiceBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: theme.primary,
-    // white on the solid rose badge — intentional
-    color: '#fff',
-    textAlign: 'center',
-    lineHeight: 32,
-    fontWeight: '800',
-  },
-  choiceBody: { flex: 1, gap: 4 },
-  choiceText: { color: theme.text, fontSize: 16, lineHeight: 22 },
-  yourPick: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700' },
-  locked: { color: theme.textMuted, textAlign: 'center', marginTop: 12 },
-  revealList: { gap: 10, paddingVertical: 8 },
-  revealRow: { backgroundColor: theme.surface, borderRadius: 10, padding: 12, gap: 4 },
-  revealRowTop: { borderWidth: 1, borderColor: '#fbbf24', backgroundColor: '#42200633' },
-  revealText: { color: theme.text, fontSize: 16 },
-  revealMeta: { color: theme.textMuted, fontSize: 13 },
-})
+    waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
+    prompt: { color: theme.text, fontSize: 20, fontWeight: '700', lineHeight: 28 },
+    helper: { color: theme.textMuted, fontSize: 14, lineHeight: 20, marginTop: 4 },
+    counter: { color: theme.textFaint, fontSize: 12, textAlign: 'right', marginTop: 4 },
+    section: { color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 8 },
+    submittedCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 14,
+      gap: 6,
+      marginTop: 8,
+    },
+    submittedLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+    watchEmoji: { fontSize: 28, textAlign: 'center' },
+    submittedText: { color: theme.text, fontSize: 16, lineHeight: 22 },
+    soloBanner: {
+      backgroundColor: '#422006',
+      borderRadius: 10,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: '#fbbf24',
+      marginTop: 8,
+    },
+    soloText: { color: '#fcd34d', fontWeight: '700', textAlign: 'center' },
+    input: {
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      color: theme.text,
+      padding: 12,
+      minHeight: 96,
+      fontSize: 16,
+      marginTop: 8,
+    },
+    primaryBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 10,
+      padding: 14,
+      alignItems: 'center',
+      marginTop: 8,
+    },
+    primaryBtnDisabled: { opacity: 0.5 },
+    // white on the solid rose button — intentional
+    primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+    choices: { gap: 10, marginTop: 8 },
+    choice: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 12,
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    choiceSelected: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+    choiceBadge: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      backgroundColor: theme.primary,
+      // white on the solid rose badge — intentional
+      color: '#fff',
+      textAlign: 'center',
+      lineHeight: 32,
+      fontWeight: '800',
+    },
+    choiceBody: { flex: 1, gap: 4 },
+    choiceText: { color: theme.text, fontSize: 16, lineHeight: 22 },
+    yourPick: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700' },
+    locked: { color: theme.textMuted, textAlign: 'center', marginTop: 12 },
+    revealList: { gap: 10, paddingVertical: 8 },
+    content: { paddingBottom: 32, gap: 14 },
+    revealRow: { backgroundColor: theme.surface, borderRadius: 10, padding: 12, gap: 4 },
+    revealRowTop: { borderWidth: 1, borderColor: '#fbbf24', backgroundColor: '#42200633' },
+    revealText: { color: theme.text, fontSize: 16 },
+    revealMeta: { color: theme.textMuted, fontSize: 13 },
+  })

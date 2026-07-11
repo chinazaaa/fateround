@@ -1,11 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { BingoCalledNumber, BingoCard, Game, Player } from '@fateround/shared'
-import {
-  BINGO_MIN_PLAYERS,
-  formatBingoNumber,
-  hasBingoWin,
-} from '@fateround/shared/bingo'
+import { BINGO_MIN_PLAYERS, formatBingoNumber, hasBingoWin } from '@fateround/shared/bingo'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { BingoCardGrid } from '@/components/games/bingo/BingoCardGrid'
 import { BingoCardLegend } from '@/components/games/bingo/BingoCardLegend'
@@ -22,11 +18,7 @@ import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 import { postBingoClaim, postBingoMark } from '@/lib/game-api'
 import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
-import {
-  BINGO_CALLED_NUMBER_SELECT,
-  BINGO_CARD_SELECT,
-  BINGO_CLAIM_SELECT,
-} from '@/lib/supabase-selects'
+import { BINGO_CALLED_NUMBER_SELECT, BINGO_CARD_SELECT, BINGO_CLAIM_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -63,7 +55,11 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     async (_game: Game, _players: Player[]): Promise<{ state: null; ok: boolean }> => {
       const code = gameCode.toUpperCase()
       const [calledRes, claimRes] = await Promise.all([
-        getSupabase().from('bingo_called_numbers').select(BINGO_CALLED_NUMBER_SELECT).eq('game_id', code).order('called_at'),
+        getSupabase()
+          .from('bingo_called_numbers')
+          .select(BINGO_CALLED_NUMBER_SELECT)
+          .eq('game_id', code)
+          .order('called_at'),
         getSupabase()
           .from('bingo_claims')
           .select(BINGO_CLAIM_SELECT)
@@ -181,7 +177,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     // readiness = holding a seat (tap to ready/sit out).
     if (bootstrap.game.replay_pending) {
       return (
-        <GameShell bootstrap={bootstrap} title="Bingo" subtitle="Play again">
+        <GameShell bootstrap={bootstrap} title="Bingo">
           <ReplayReadyRing
             gameCode={bootstrap.code}
             players={bootstrap.players}
@@ -197,9 +193,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   }
   if (!bootstrap.game) return <GameLoading />
 
-  const winnerPlayer = winnerClaim
-    ? bootstrap.players.find((p) => p.id === winnerClaim.player_id)
-    : null
+  const winnerPlayer = winnerClaim ? bootstrap.players.find((p) => p.id === winnerClaim.player_id) : null
 
   if (bootstrap.screen === 'finished') {
     return (
@@ -208,13 +202,9 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
         emoji={winnerPlayer ? '🎉' : '🏁'}
         title={winnerPlayer ? `${winnerPlayer.name} wins!` : 'This game has ended'}
         subtitle={winnerPlayer ? 'Final results' : undefined}
-        detail={
-          winnerPlayer ? 'BINGO!' : 'Thanks for playing. Join a new game from the home screen.'
-        }
+        detail={winnerPlayer ? 'BINGO!' : 'Thanks for playing. Join a new game from the home screen.'}
         leaderboard={
-          winnerPlayer
-            ? winnerLeaderboard(winnerClaim?.player_id, bootstrap.players, bootstrap.myPlayerId)
-            : undefined
+          winnerPlayer ? winnerLeaderboard(winnerClaim?.player_id, bootstrap.players, bootstrap.myPlayerId) : undefined
         }
         winnerPlayerId={winnerClaim?.player_id ?? null}
         roundKey={winnerClaim?.id ?? null}
@@ -262,10 +252,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.calledScroll}>
         <View style={styles.calledRow}>
           {calledNumbers.map((entry) => (
-            <View
-              key={entry.id}
-              style={[styles.calledChip, entry.id === lastCalled?.id && styles.calledChipLatest]}
-            >
+            <View key={entry.id} style={[styles.calledChip, entry.id === lastCalled?.id && styles.calledChipLatest]}>
               <Text style={styles.calledText}>{formatBingoNumber(entry.number)}</Text>
             </View>
           ))}
@@ -273,7 +260,11 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
       </ScrollView>
 
       {canClaim ? (
-        <Pressable style={[styles.bingoBtn, claiming && styles.bingoBtnDisabled]} onPress={() => void claimBingo()} disabled={claiming}>
+        <Pressable
+          style={[styles.bingoBtn, claiming && styles.bingoBtnDisabled]}
+          onPress={() => void claimBingo()}
+          disabled={claiming}
+        >
           {claiming ? (
             // white on the solid rose bingo button — intentional
             <ActivityIndicator color="#fff" />
@@ -295,10 +286,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
           />
           <Text style={styles.legend}>Tap callable numbers when they are called. Center is free.</Text>
           <BingoCardLegend />
-          <CalledNumbersBoardSection
-            calledNumbers={calledSet}
-            lastCalled={lastCalled?.number ?? null}
-          />
+          <CalledNumbersBoardSection calledNumbers={calledSet} lastCalled={lastCalled?.number ?? null} />
         </>
       ) : isViewer ? (
         <View style={styles.viewerBoard}>
@@ -314,48 +302,48 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  latestCall: {
-    backgroundColor: theme.primarySoft,
-    borderRadius: 12,
-    padding: 14,
-    alignItems: 'center',
-    gap: 4,
-  },
-  latestLabel: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  latestNumber: { color: theme.text, fontSize: 28, fontWeight: '800' },
-  waitingCall: { color: theme.textMuted, textAlign: 'center' },
-  calledTitle: { color: theme.textMuted, fontSize: 14, marginTop: 8 },
-  calledScroll: { maxHeight: 44 },
-  calledRow: { flexDirection: 'row', gap: 8, paddingVertical: 4 },
-  calledChip: {
-    backgroundColor: theme.surface,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  calledChipLatest: { borderWidth: 1, borderColor: theme.primary },
-  calledText: { color: theme.text, fontWeight: '700', fontSize: 13 },
-  bingoBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  bingoBtnDisabled: { opacity: 0.7 },
-  // white on the solid rose bingo button — intentional
-  bingoBtnText: { color: '#fff', fontSize: 20, fontWeight: '900', letterSpacing: 2 },
-  error: { color: theme.error, textAlign: 'center', fontSize: 14 },
-  legend: { color: theme.textFaint, fontSize: 12, textAlign: 'center', marginTop: 8 },
-  waitingCard: { color: theme.textMuted, textAlign: 'center', marginTop: 24 },
-  viewerBoard: { gap: 12, marginTop: 8 },
-  viewerHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
-  finishedCard: { gap: 8, alignItems: 'center', marginTop: 4 },
-  finishedCardLabel: {
-    color: theme.textMuted,
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-})
+    latestCall: {
+      backgroundColor: theme.primarySoft,
+      borderRadius: 12,
+      padding: 14,
+      alignItems: 'center',
+      gap: 4,
+    },
+    latestLabel: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+    latestNumber: { color: theme.text, fontSize: 28, fontWeight: '800' },
+    waitingCall: { color: theme.textMuted, textAlign: 'center' },
+    calledTitle: { color: theme.textMuted, fontSize: 14, marginTop: 8 },
+    calledScroll: { maxHeight: 44 },
+    calledRow: { flexDirection: 'row', gap: 8, paddingVertical: 4 },
+    calledChip: {
+      backgroundColor: theme.surface,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    calledChipLatest: { borderWidth: 1, borderColor: theme.primary },
+    calledText: { color: theme.text, fontWeight: '700', fontSize: 13 },
+    bingoBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 12,
+      paddingVertical: 16,
+      alignItems: 'center',
+      marginTop: 8,
+    },
+    bingoBtnDisabled: { opacity: 0.7 },
+    // white on the solid rose bingo button — intentional
+    bingoBtnText: { color: '#fff', fontSize: 20, fontWeight: '900', letterSpacing: 2 },
+    error: { color: theme.error, textAlign: 'center', fontSize: 14 },
+    legend: { color: theme.textFaint, fontSize: 12, textAlign: 'center', marginTop: 8 },
+    waitingCard: { color: theme.textMuted, textAlign: 'center', marginTop: 24 },
+    viewerBoard: { gap: 12, marginTop: 8 },
+    viewerHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
+    finishedCard: { gap: 8, alignItems: 'center', marginTop: 4 },
+    finishedCardLabel: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+  })

@@ -119,11 +119,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
       const [boardRes, rolesRes, guessesRes, messagesRes] = await Promise.all([
         getSupabase().from('codewords_boards').select(CODEWORDS_BOARD_SELECT).eq('game_id', code).maybeSingle(),
         getSupabase().from('codewords_player_roles').select(CODEWORDS_PLAYER_ROLE_SELECT).eq('game_id', code),
-        getSupabase()
-          .from('codewords_guesses')
-          .select(CODEWORDS_GUESS_SELECT)
-          .eq('game_id', code)
-          .order('created_at'),
+        getSupabase().from('codewords_guesses').select(CODEWORDS_GUESS_SELECT).eq('game_id', code).order('created_at'),
         getSupabase()
           .from('codewords_messages')
           .select(CODEWORDS_MESSAGE_SELECT)
@@ -145,37 +141,30 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     [gameCode]
   )
 
-  const computeScreen = useCallback(
-    (game: Game, playerId: string | null, state: CodewordsState): Screen => {
-      if (!playerId) {
-        // No session yet: offer the platform pre-join gates (watch-or-play for a
-        // late opener, "game started — waiting for lobby", or "game ended").
-        const pre = preJoinScreen(game, false)
-        if (pre === 'game_started_waiting') return 'game_started_waiting'
-        if (pre === 'late_join_choice') return 'late_join_choice'
-        if (pre === 'game_ended') return 'game_ended'
-        return 'join'
-      }
-      if (game.status === 'waiting') {
-        const myRole = state.roles.find((r) => r.player_id === playerId)
-        if (
-          codewordsPlayerPicks(game) &&
-          !codewordsRandomizeTeams(game) &&
-          !myRole
-        ) {
-          return 'pick_role'
-        }
-        return 'waiting'
-      }
-      if (game.status === 'finished' || state.board?.winner) return 'finished'
-      if (game.status === 'active' && state.board) {
-        if (!state.roles.some((r) => r.player_id === playerId)) return 'waiting'
-        return 'playing'
+  const computeScreen = useCallback((game: Game, playerId: string | null, state: CodewordsState): Screen => {
+    if (!playerId) {
+      // No session yet: offer the platform pre-join gates (watch-or-play for a
+      // late opener, "game started — waiting for lobby", or "game ended").
+      const pre = preJoinScreen(game, false)
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
+      if (pre === 'late_join_choice') return 'late_join_choice'
+      if (pre === 'game_ended') return 'game_ended'
+      return 'join'
+    }
+    if (game.status === 'waiting') {
+      const myRole = state.roles.find((r) => r.player_id === playerId)
+      if (codewordsPlayerPicks(game) && !codewordsRandomizeTeams(game) && !myRole) {
+        return 'pick_role'
       }
       return 'waiting'
-    },
-    []
-  )
+    }
+    if (game.status === 'finished' || state.board?.winner) return 'finished'
+    if (game.status === 'active' && state.board) {
+      if (!state.roles.some((r) => r.player_id === playerId)) return 'waiting'
+      return 'playing'
+    }
+    return 'waiting'
+  }, [])
 
   const bootstrap = useGameViewBootstrap<Screen, CodewordsState>({
     gameCode,
@@ -213,10 +202,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   const myRole = roles.find((r) => r.player_id === bootstrap.myPlayerId) ?? null
   const me = bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) ?? null
   const isViewer = !!(bootstrap.game && me && playerIsViewer(me, bootstrap.game))
-  const playerNameById = useMemo(
-    () => new Map(bootstrap.players.map((p) => [p.id, p.name])),
-    [bootstrap.players]
-  )
+  const playerNameById = useMemo(() => new Map(bootstrap.players.map((p) => [p.id, p.name])), [bootstrap.players])
 
   const active = bootstrap.game?.status === 'active' && board && !board.winner
 
@@ -229,7 +215,9 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   useEffect(() => {
     if (!active || !board?.turn_deadline_at) return
     if (!isTurnExpired(board.turn_deadline_at)) return
-    void postCodewordsExpireTurn(bootstrap.code).then(() => bootstrap.load()).catch(() => {})
+    void postCodewordsExpireTurn(bootstrap.code)
+      .then(() => bootstrap.load())
+      .catch(() => {})
   }, [active, board?.turn_deadline_at, timerTick, bootstrap.code, bootstrap.load])
 
   const act = async (fn: () => Promise<unknown>, successMsg?: string) => {
@@ -295,7 +283,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'pick_role' && bootstrap.game) {
     return (
-      <GameShell bootstrap={bootstrap} title="Codewords" subtitle={`Pick your role · ${bootstrap.code}`}>
+      <GameShell bootstrap={bootstrap} title="Codewords" subtitle="Pick your role">
         <ScrollView contentContainerStyle={styles.pickScroll}>
           <Text style={styles.pickHint}>Choose your team and role before the host starts.</Text>
 
@@ -342,7 +330,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
             <Text style={styles.rulesTitle}>How to play</Text>
             {CODEWORDS_RULES.map((rule) => (
               <Text key={rule} style={styles.ruleLine}>
-                {'•'}  {rule}
+                {'•'} {rule}
               </Text>
             ))}
           </View>
@@ -351,13 +339,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  if (
-    bootstrap.game &&
-    bootstrap.game.status === 'active' &&
-    board &&
-    !board.winner &&
-    isViewer
-  ) {
+  if (bootstrap.game && bootstrap.game.status === 'active' && board && !board.winner && isViewer) {
     const spectatorTurn = waitingTurnMessage(board, roles, playerNameById)
     const specRevealed = new Set(board.revealed_indices)
     const specAttribution = guessAttributionMap(guesses, playerNameById)
@@ -366,7 +348,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     const specRedRev = countRevealedTeamCells(board.key, board.revealed_indices, 'red')
     const specBlueRev = countRevealedTeamCells(board.key, board.revealed_indices, 'blue')
     return (
-      <GameShell bootstrap={bootstrap} title="Codewords" subtitle={`Watching · ${bootstrap.code}`}>
+      <GameShell bootstrap={bootstrap} title="Codewords" subtitle="Watching">
         <ViewerModeBanner
           gameCode={bootstrap.code}
           playerId={bootstrap.myPlayerId!}
@@ -399,10 +381,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
             const cellType = board.key[index]
             const bg = cellBackground(cellType, isRevealed, false)
             return (
-              <View
-                key={index}
-                style={[styles.cell, { backgroundColor: bg }, isRevealed && styles.cellRevealed]}
-              >
+              <View key={index} style={[styles.cell, { backgroundColor: bg }, isRevealed && styles.cellRevealed]}>
                 <Text style={styles.cellWord}>{word}</Text>
                 {specAttribution[index] ? <Text style={styles.cellAttr}>{specAttribution[index]}</Text> : null}
               </View>
@@ -508,7 +487,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   const blueRev = countRevealedTeamCells(board.key, board.revealed_indices, 'blue')
 
   return (
-    <GameShell bootstrap={bootstrap} title="Codewords" subtitle={`${teamLabel(myRole.team)} ${roleLabel(myRole.role)} · ${bootstrap.code}`}>
+    <GameShell bootstrap={bootstrap} title="Codewords" subtitle={`${teamLabel(myRole.team)} ${roleLabel(myRole.role)}`}>
       <TurnBanner text={bannerText} isMyTurn={canGiveClue || canGuess} />
 
       {board.turn_deadline_at && secondsLeft > 0 ? (
@@ -526,8 +505,12 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
       ) : null}
 
       <View style={styles.scoreRow}>
-        <Text style={styles.scoreRed}>Red {redRev}/{redTotal}</Text>
-        <Text style={styles.scoreBlue}>Blue {blueRev}/{blueTotal}</Text>
+        <Text style={styles.scoreRed}>
+          Red {redRev}/{redTotal}
+        </Text>
+        <Text style={styles.scoreBlue}>
+          Blue {blueRev}/{blueTotal}
+        </Text>
       </View>
 
       {board.current_clue_word ? (
@@ -554,12 +537,8 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
               onPress={() => act(() => postCodewordsGuess(bootstrap.code, bootstrap.myResumeToken!, index))}
             >
               <Text style={styles.cellWord}>{word}</Text>
-              {cellAttribution[index] ? (
-                <Text style={styles.cellAttr}>{cellAttribution[index]}</Text>
-              ) : null}
-              {showKey && !isRevealed ? (
-                <Text style={styles.cellKey}>{cellType[0].toUpperCase()}</Text>
-              ) : null}
+              {cellAttribution[index] ? <Text style={styles.cellAttr}>{cellAttribution[index]}</Text> : null}
+              {showKey && !isRevealed ? <Text style={styles.cellKey}>{cellType[0].toUpperCase()}</Text> : null}
             </Pressable>
           )
         })}
@@ -607,9 +586,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
         <Pressable
           style={[styles.actionBtn, styles.endTurnBtn]}
           disabled={acting}
-          onPress={() =>
-            act(() => postCodewordsEndTurn(bootstrap.code, bootstrap.myResumeToken!), 'Turn ended')
-          }
+          onPress={() => act(() => postCodewordsEndTurn(bootstrap.code, bootstrap.myResumeToken!), 'Turn ended')}
         >
           <Text style={styles.actionText}>End turn early</Text>
         </Pressable>
@@ -668,108 +645,108 @@ const CELL = 64
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  pickScroll: { paddingBottom: 24 },
-  pickHint: { color: theme.textMuted, marginBottom: 12, textAlign: 'center' },
-  pickSectionLabel: {
-    color: theme.textMuted,
-    fontSize: 12,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 6,
-  },
-  pickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 16 },
-  teamBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 10,
-    minWidth: 120,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  // Functional team colors, fixed in both schemes.
-  teamBtnRed: { backgroundColor: '#dc2626' },
-  teamBtnBlue: { backgroundColor: '#2563eb' },
-  teamBtnText: { color: '#fff', fontWeight: '800', textAlign: 'center', fontSize: 16 },
-  roleColumn: { gap: 8, marginBottom: 16 },
-  roleBtn: {
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: theme.surface,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  roleBtnTitle: { color: theme.text, fontWeight: '800', fontSize: 15, marginBottom: 2 },
-  roleBtnDesc: { color: theme.textMuted, fontSize: 12, lineHeight: 16 },
-  pickBtnActive: { borderWidth: 2, borderColor: theme.primary },
-  actionBtnDisabled: { opacity: 0.5 },
-  rulesCard: {
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    padding: 14,
-    marginTop: 16,
-    gap: 6,
-  },
-  rulesTitle: {
-    color: theme.textMuted,
-    fontSize: 12,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 2,
-  },
-  ruleLine: { color: theme.textSecondary, fontSize: 13, lineHeight: 18 },
-  finishExtras: { gap: 16, marginTop: 12 },
-  scoreboardBlock: { marginTop: 12 },
-  scoreRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  scoreRed: { color: '#fca5a5', fontWeight: '800' },
-  scoreBlue: { color: '#93c5fd', fontWeight: '800' },
-  clueCard: { backgroundColor: theme.surface, borderRadius: 8, padding: 12, marginBottom: 8 },
-  clueLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '700' },
-  clueWord: { color: theme.text, fontSize: 18, fontWeight: '900' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 4, marginVertical: 8 },
-  cell: {
-    width: CELL,
-    height: CELL,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 4,
-    borderWidth: 1,
-    borderColor: '#52525b',
-  },
-  cellRevealed: { opacity: 0.95 },
-  cellWord: { color: '#171717', fontWeight: '800', fontSize: 11, textAlign: 'center' },
-  cellAttr: { color: '#52525b', fontSize: 8, marginTop: 2 },
-  cellKey: { position: 'absolute', top: 2, right: 4, fontSize: 8, color: '#52525b', fontWeight: '800' },
-  formBlock: { gap: 8, marginTop: 8 },
-  input: {
-    backgroundColor: theme.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: theme.text,
-  },
-  inputSmall: {
-    backgroundColor: theme.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: theme.text,
-    width: 80,
-  },
-  actionBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  endTurnBtn: { backgroundColor: theme.textFaint, marginTop: 8 },
-  // white on the rose / dark action buttons — intentional
-  actionText: { color: '#fff', fontWeight: '800' },
-  chatTitle: { color: theme.textMuted, fontWeight: '700', marginTop: 12, marginBottom: 4 },
-  chatLog: { maxHeight: 100, backgroundColor: theme.surface, borderRadius: 8, padding: 8 },
-  chatLine: { color: theme.textSecondary, fontSize: 13, marginBottom: 4 },
-  chatName: { color: theme.text, fontWeight: '700' },
-  chatRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 8, marginBottom: 16 },
-})
+    pickScroll: { paddingBottom: 24 },
+    pickHint: { color: theme.textMuted, marginBottom: 12, textAlign: 'center' },
+    pickSectionLabel: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginBottom: 6,
+    },
+    pickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 16 },
+    teamBtn: {
+      flex: 1,
+      paddingVertical: 14,
+      borderRadius: 10,
+      minWidth: 120,
+      borderWidth: 2,
+      borderColor: 'transparent',
+    },
+    // Functional team colors, fixed in both schemes.
+    teamBtnRed: { backgroundColor: '#dc2626' },
+    teamBtnBlue: { backgroundColor: '#2563eb' },
+    teamBtnText: { color: '#fff', fontWeight: '800', textAlign: 'center', fontSize: 16 },
+    roleColumn: { gap: 8, marginBottom: 16 },
+    roleBtn: {
+      padding: 12,
+      borderRadius: 10,
+      backgroundColor: theme.surface,
+      borderWidth: 2,
+      borderColor: 'transparent',
+    },
+    roleBtnTitle: { color: theme.text, fontWeight: '800', fontSize: 15, marginBottom: 2 },
+    roleBtnDesc: { color: theme.textMuted, fontSize: 12, lineHeight: 16 },
+    pickBtnActive: { borderWidth: 2, borderColor: theme.primary },
+    actionBtnDisabled: { opacity: 0.5 },
+    rulesCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 14,
+      marginTop: 16,
+      gap: 6,
+    },
+    rulesTitle: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginBottom: 2,
+    },
+    ruleLine: { color: theme.textSecondary, fontSize: 13, lineHeight: 18 },
+    finishExtras: { gap: 16, marginTop: 12 },
+    scoreboardBlock: { marginTop: 12 },
+    scoreRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+    scoreRed: { color: '#fca5a5', fontWeight: '800' },
+    scoreBlue: { color: '#93c5fd', fontWeight: '800' },
+    clueCard: { backgroundColor: theme.surface, borderRadius: 8, padding: 12, marginBottom: 8 },
+    clueLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '700' },
+    clueWord: { color: theme.text, fontSize: 18, fontWeight: '900' },
+    grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 4, marginVertical: 8 },
+    cell: {
+      width: CELL,
+      height: CELL,
+      borderRadius: 6,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 4,
+      borderWidth: 1,
+      borderColor: '#52525b',
+    },
+    cellRevealed: { opacity: 0.95 },
+    cellWord: { color: '#171717', fontWeight: '800', fontSize: 11, textAlign: 'center' },
+    cellAttr: { color: '#52525b', fontSize: 8, marginTop: 2 },
+    cellKey: { position: 'absolute', top: 2, right: 4, fontSize: 8, color: '#52525b', fontWeight: '800' },
+    formBlock: { gap: 8, marginTop: 8 },
+    input: {
+      backgroundColor: theme.border,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      color: theme.text,
+    },
+    inputSmall: {
+      backgroundColor: theme.border,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      color: theme.text,
+      width: 80,
+    },
+    actionBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 8,
+      paddingVertical: 12,
+      alignItems: 'center',
+    },
+    endTurnBtn: { backgroundColor: theme.textFaint, marginTop: 8 },
+    // white on the rose / dark action buttons — intentional
+    actionText: { color: '#fff', fontWeight: '800' },
+    chatTitle: { color: theme.textMuted, fontWeight: '700', marginTop: 12, marginBottom: 4 },
+    chatLog: { maxHeight: 100, backgroundColor: theme.surface, borderRadius: 8, padding: 8 },
+    chatLine: { color: theme.textSecondary, fontSize: 13, marginBottom: 4 },
+    chatName: { color: theme.text, fontWeight: '700' },
+    chatRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 8, marginBottom: 16 },
+  })
