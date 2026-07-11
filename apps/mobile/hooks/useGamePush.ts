@@ -7,9 +7,12 @@ import { subscribePlayerSession } from '@/lib/session-events'
 
 /**
  * Register this device for game lifecycle + turn push notifications once the
- * player has a resume token. Re-runs when gameCode changes.
+ * player has a resume token. Re-runs when `gameCode` changes OR when the user's
+ * global Notifications preference (`enabled`) flips — turning it off tears down
+ * the effect, which unsubscribes the device server-side (so notifications
+ * actually stop), and turning it back on re-subscribes.
  */
-export function useGamePush(gameCode: string) {
+export function useGamePush(gameCode: string, enabled: boolean) {
   const tokenRef = useRef<string | null>(null)
   const mutedRef = useRef(false)
 
@@ -25,7 +28,9 @@ export function useGamePush(gameCode: string) {
 
     const setup = async () => {
       await reloadMute()
-      if (cancelled || mutedRef.current) return
+      // Skip registration entirely when the user has notifications off or the
+      // game is muted — and leave any prior subscription to be torn down below.
+      if (cancelled || mutedRef.current || !enabled) return
 
       const session = await getPlayerSession(gameCode)
       if (cancelled || !session?.resumeToken) return
@@ -43,8 +48,9 @@ export function useGamePush(gameCode: string) {
       unsub()
       const token = tokenRef.current
       if (token) void unsubscribeGamePush(gameCode, token)
+      tokenRef.current = null
     }
-  }, [gameCode])
+  }, [gameCode, enabled])
 }
 
 /**

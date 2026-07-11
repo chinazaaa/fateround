@@ -102,6 +102,23 @@ export async function unsubscribeGamePush(gameCode: string, expoPushToken: strin
   }
 }
 
+/**
+ * Device-wide opt-out: removes this device's push subscription across all games
+ * (the Settings › Notifications master switch). Best-effort — a failure here
+ * shouldn't block the UI; the toggle also stops all future registration.
+ */
+export async function unsubscribeAllPush(expoPushToken: string): Promise<void> {
+  try {
+    await fetch(apiUrl('/api/push/expo-unsubscribe-all'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expoPushToken }),
+    })
+  } catch {
+    // best-effort
+  }
+}
+
 export async function registerGamePush(gameCode: string, resumeToken: string): Promise<boolean> {
   // Respect the user's opt-out: skip permission prompt + subscription entirely.
   if (!notificationsEnabled) return false

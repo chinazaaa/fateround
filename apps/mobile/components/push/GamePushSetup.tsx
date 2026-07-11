@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import { useForegroundPushBanner, useGamePush } from '@/hooks/useGamePush'
+import { usePreferences } from '@/constants/preferences-context'
 
 type Props = {
   gameCode: string
@@ -9,8 +10,9 @@ type Props = {
 /** Registers push tokens and surfaces foreground notification banners. */
 export function GamePushSetup({ gameCode }: Props) {
   const { show } = useToast()
+  const { notificationsEnabled } = usePreferences()
 
-  useGamePush(gameCode)
+  useGamePush(gameCode, notificationsEnabled)
 
   const onMessage = useCallback(
     (title: string, body: string) => {

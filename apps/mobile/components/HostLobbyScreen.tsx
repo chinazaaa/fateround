@@ -28,6 +28,7 @@ import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation
 import { useGamePlayerLimits } from '@/hooks/useGamePlayerLimits'
 import { isLobbyLimitGameType } from '@fateround/shared/lobby-limits'
 import { uniqueTopic } from '@/lib/realtime'
+import { centeredContent } from '@/constants/layout'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
@@ -450,7 +451,7 @@ const makeStyles = (theme: Theme) =>
     alignItems: 'center',
     justifyContent: 'center',
   },
-  content: { padding: 24, gap: 8, paddingBottom: 32 },
+  content: { padding: 24, gap: 8, paddingBottom: 32, ...centeredContent },
   eyebrow: { color: theme.primary, fontSize: 13, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
   title: { color: theme.text, fontSize: 28, fontWeight: '800', marginBottom: 8 },
   codeCard: {

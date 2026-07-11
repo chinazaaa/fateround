@@ -13,6 +13,7 @@ import { HostViewProvider } from '@/components/host/HostViewContext'
 import { GameRouter, hasMobilePlayerView } from '@/components/games/GameRouter'
 import { HeaderAction } from '@/components/ui/HeaderAction'
 import { SettingsButton } from '@/components/ui/SettingsSheet'
+import { centeredContent } from '@/constants/layout'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { getPlayerSession, type PlayerSession } from '@/lib/secure-session'
@@ -206,7 +207,7 @@ const makeStyles = (theme: Theme) =>
   tabActive: { backgroundColor: theme.primary },
   tabText: { color: theme.textMuted, fontSize: 14, fontWeight: '800' },
   tabTextActive: { color: '#fff' },
-  playBody: { flex: 1 },
+  playBody: { flex: 1, ...centeredContent },
   backBtn: {
     width: 40,
     height: 40,
@@ -262,5 +263,5 @@ const makeStyles = (theme: Theme) =>
     fontWeight: '600',
     lineHeight: 22,
   },
-  content: { padding: theme.space.lg, gap: theme.space.md, paddingBottom: 40 },
+  content: { padding: theme.space.lg, gap: theme.space.md, paddingBottom: 40, ...centeredContent },
 })
