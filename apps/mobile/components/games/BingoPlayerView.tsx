@@ -228,80 +228,83 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title="Bingo" subtitle={`Code ${bootstrap.code}`}>
-      {isViewer && bootstrap.myPlayerId && me && bootstrap.game ? (
-        <ViewerModeBanner
-          gameCode={bootstrap.code}
-          playerId={bootstrap.myPlayerId}
-          game={bootstrap.game}
-          player={me}
-          players={bootstrap.players}
-          onPromoted={() => void bootstrap.load()}
-        />
-      ) : null}
-
-      {lastCalled ? (
-        <View style={styles.latestCall}>
-          <Text style={styles.latestLabel}>Latest call</Text>
-          <Text style={styles.latestNumber}>{formatBingoNumber(lastCalled.number)}</Text>
-        </View>
-      ) : (
-        <Text style={styles.waitingCall}>Waiting for the first number…</Text>
-      )}
-
-      <Text style={styles.calledTitle}>Called ({calledNumbers.length})</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.calledScroll}>
-        <View style={styles.calledRow}>
-          {calledNumbers.map((entry) => (
-            <View key={entry.id} style={[styles.calledChip, entry.id === lastCalled?.id && styles.calledChipLatest]}>
-              <Text style={styles.calledText}>{formatBingoNumber(entry.number)}</Text>
-            </View>
-          ))}
-        </View>
-      </ScrollView>
-
-      {canClaim ? (
-        <Pressable
-          style={[styles.bingoBtn, claiming && styles.bingoBtnDisabled]}
-          onPress={() => void claimBingo()}
-          disabled={claiming}
-        >
-          {claiming ? (
-            // white on the solid rose bingo button — intentional
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.bingoBtnText}>BINGO!</Text>
-          )}
-        </Pressable>
-      ) : null}
-      {claimError ? <Text style={styles.error}>{claimError}</Text> : null}
-
-      {card ? (
-        <>
-          <BingoCardGrid
-            cells={card.cells}
-            markedIndices={card.marked_indices}
-            calledNumbers={calledSet}
-            marking={marking}
-            onMark={(cellIndex) => void markCell(cellIndex)}
+      <ScrollView contentContainerStyle={styles.content}>
+        {isViewer && bootstrap.myPlayerId && me && bootstrap.game ? (
+          <ViewerModeBanner
+            gameCode={bootstrap.code}
+            playerId={bootstrap.myPlayerId}
+            game={bootstrap.game}
+            player={me}
+            players={bootstrap.players}
+            onPromoted={() => void bootstrap.load()}
           />
-          <Text style={styles.legend}>Tap callable numbers when they are called. Center is free.</Text>
-          <BingoCardLegend />
-          <CalledNumbersBoardSection calledNumbers={calledSet} lastCalled={lastCalled?.number ?? null} />
-        </>
-      ) : isViewer ? (
-        <View style={styles.viewerBoard}>
-          <Text style={styles.viewerHint}>You&apos;re watching — no card is dealt to spectators.</Text>
-          <CalledNumbersBoard calledNumbers={calledSet} lastCalled={lastCalled?.number ?? null} />
-        </View>
-      ) : (
-        <Text style={styles.waitingCard}>Waiting for your bingo card…</Text>
-      )}
+        ) : null}
+
+        {lastCalled ? (
+          <View style={styles.latestCall}>
+            <Text style={styles.latestLabel}>Latest call</Text>
+            <Text style={styles.latestNumber}>{formatBingoNumber(lastCalled.number)}</Text>
+          </View>
+        ) : (
+          <Text style={styles.waitingCall}>Waiting for the first number…</Text>
+        )}
+
+        <Text style={styles.calledTitle}>Called ({calledNumbers.length})</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.calledScroll}>
+          <View style={styles.calledRow}>
+            {calledNumbers.map((entry) => (
+              <View key={entry.id} style={[styles.calledChip, entry.id === lastCalled?.id && styles.calledChipLatest]}>
+                <Text style={styles.calledText}>{formatBingoNumber(entry.number)}</Text>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+
+        {canClaim ? (
+          <Pressable
+            style={[styles.bingoBtn, claiming && styles.bingoBtnDisabled]}
+            onPress={() => void claimBingo()}
+            disabled={claiming}
+          >
+            {claiming ? (
+              // white on the solid rose bingo button — intentional
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.bingoBtnText}>BINGO!</Text>
+            )}
+          </Pressable>
+        ) : null}
+        {claimError ? <Text style={styles.error}>{claimError}</Text> : null}
+
+        {card ? (
+          <>
+            <BingoCardGrid
+              cells={card.cells}
+              markedIndices={card.marked_indices}
+              calledNumbers={calledSet}
+              marking={marking}
+              onMark={(cellIndex) => void markCell(cellIndex)}
+            />
+            <Text style={styles.legend}>Tap callable numbers when they are called. Center is free.</Text>
+            <BingoCardLegend />
+            <CalledNumbersBoardSection calledNumbers={calledSet} lastCalled={lastCalled?.number ?? null} />
+          </>
+        ) : isViewer ? (
+          <View style={styles.viewerBoard}>
+            <Text style={styles.viewerHint}>You&apos;re watching — no card is dealt to spectators.</Text>
+            <CalledNumbersBoard calledNumbers={calledSet} lastCalled={lastCalled?.number ?? null} />
+          </View>
+        ) : (
+          <Text style={styles.waitingCard}>Waiting for your bingo card…</Text>
+        )}
+      </ScrollView>
     </GameShell>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
+    content: { paddingBottom: 32, gap: 12 },
     latestCall: {
       backgroundColor: theme.primarySoft,
       borderRadius: 12,

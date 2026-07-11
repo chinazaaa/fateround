@@ -64,9 +64,7 @@ export function TriviaActiveRound({
   const metadata = currentRound ? parseTriviaMetadata(currentRound.trivia_metadata) : null
   const myAnswer = useMemo(
     () =>
-      currentRound
-        ? (answers.find((a) => a.player_id === myPlayerId && a.round_id === currentRound.id) ?? null)
-        : null,
+      currentRound ? (answers.find((a) => a.player_id === myPlayerId && a.round_id === currentRound.id) ?? null) : null,
     [answers, currentRound, myPlayerId]
   )
 
@@ -179,6 +177,7 @@ export function TriviaActiveRound({
       </View>
 
       <LeaderboardPanel
+        embedded
         rows={leaderboard.map((row) => ({ id: row.id, name: row.name, score: row.score }))}
         highlightId={myPlayerId}
       />
@@ -217,9 +216,7 @@ export function TriviaActiveRound({
               </Pressable>
             ))}
           </View>
-          {readOnly ? (
-            <Text style={styles.viewerNote}>Watching only — you can&apos;t answer this round.</Text>
-          ) : null}
+          {readOnly ? <Text style={styles.viewerNote}>Watching only — you can&apos;t answer this round.</Text> : null}
         </View>
       ) : null}
 
@@ -237,8 +234,7 @@ export function TriviaActiveRound({
           )}
           {showCorrectAnswer ? (
             <Text style={styles.reveal}>
-              Answer: {formatTriviaChoiceLabel(metadata.correct_index)}.{' '}
-              {metadata.choices[metadata.correct_index]}
+              Answer: {formatTriviaChoiceLabel(metadata.correct_index)}. {metadata.choices[metadata.correct_index]}
             </Text>
           ) : null}
           {waitingOnTimer && (myAnswer || lastResult) ? (
@@ -250,9 +246,7 @@ export function TriviaActiveRound({
             </Text>
           ) : null}
           {showCorrectAnswer && game.status === 'active' && revealCountdown <= 0 ? (
-            <Text style={styles.countdown}>
-              {isLastRound ? 'Showing final results…' : 'Starting next question…'}
-            </Text>
+            <Text style={styles.countdown}>{isLastRound ? 'Showing final results…' : 'Starting next question…'}</Text>
           ) : null}
         </View>
       ) : null}
@@ -262,52 +256,52 @@ export function TriviaActiveRound({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  scroll: { gap: 12, paddingBottom: 24 },
-  header: { alignItems: 'center', gap: 8 },
-  playingAs: { color: theme.textMuted, fontSize: 14 },
-  playingAsName: { color: theme.text, fontWeight: '700' },
-  roundMeta: { color: theme.textMuted, fontSize: 14 },
-  viewerNote: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
-  panel: {
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    padding: 16,
-    gap: 12,
-  },
-  panelTitle: { color: theme.text, fontSize: 20, fontWeight: '800', textAlign: 'center' },
-  panelSub: { color: theme.textMuted, textAlign: 'center' },
-  question: { color: theme.text, fontSize: 20, fontWeight: '700', lineHeight: 28 },
-  choices: { gap: 10 },
-  choice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: theme.bg,
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  choiceSelected: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
-  choiceDisabled: { opacity: 0.6 },
-  choiceBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: theme.primary,
-    // White on the solid rose badge — intentional, correct in both schemes.
-    color: '#fff',
-    textAlign: 'center',
-    lineHeight: 32,
-    fontWeight: '800',
-  },
-  choiceText: { flex: 1, color: theme.text, fontSize: 16 },
-  submitting: { color: theme.textMuted },
-  resultTitle: { color: theme.text, fontSize: 22, fontWeight: '800', textAlign: 'center' },
-  correct: { color: theme.success },
-  // Muted gray "Not quite…" state — left as a functional wrong-answer color.
-  incorrect: { color: '#9ca3af' },
-  points: { color: theme.textSecondary, fontSize: 16, textAlign: 'center' },
-  reveal: { color: theme.text, fontSize: 16, textAlign: 'center', lineHeight: 22 },
-  countdown: { color: theme.primaryMuted, fontSize: 15, fontWeight: '700', textAlign: 'center' },
-})
+    scroll: { gap: 12, paddingBottom: 24 },
+    header: { alignItems: 'center', gap: 8 },
+    playingAs: { color: theme.textMuted, fontSize: 14 },
+    playingAsName: { color: theme.text, fontWeight: '700' },
+    roundMeta: { color: theme.textMuted, fontSize: 14 },
+    viewerNote: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
+    panel: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 16,
+      gap: 12,
+    },
+    panelTitle: { color: theme.text, fontSize: 20, fontWeight: '800', textAlign: 'center' },
+    panelSub: { color: theme.textMuted, textAlign: 'center' },
+    question: { color: theme.text, fontSize: 20, fontWeight: '700', lineHeight: 28 },
+    choices: { gap: 10 },
+    choice: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: theme.bg,
+      borderRadius: 12,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    choiceSelected: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+    choiceDisabled: { opacity: 0.6 },
+    choiceBadge: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      backgroundColor: theme.primary,
+      // White on the solid rose badge — intentional, correct in both schemes.
+      color: '#fff',
+      textAlign: 'center',
+      lineHeight: 32,
+      fontWeight: '800',
+    },
+    choiceText: { flex: 1, color: theme.text, fontSize: 16 },
+    submitting: { color: theme.textMuted },
+    resultTitle: { color: theme.text, fontSize: 22, fontWeight: '800', textAlign: 'center' },
+    correct: { color: theme.success },
+    // Muted gray "Not quite…" state — left as a functional wrong-answer color.
+    incorrect: { color: '#9ca3af' },
+    points: { color: theme.textSecondary, fontSize: 16, textAlign: 'center' },
+    reveal: { color: theme.text, fontSize: 16, textAlign: 'center', lineHeight: 22 },
+    countdown: { color: theme.primaryMuted, fontSize: 15, fontWeight: '700', textAlign: 'center' },
+  })

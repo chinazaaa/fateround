@@ -63,7 +63,11 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
       const code = gameCode.toUpperCase()
       const [sessionRes, handsRes] = await Promise.all([
         getSupabase().from('whot_sessions').select(WHOT_SESSION_SELECT).eq('game_id', code).maybeSingle(),
-        getSupabase().from('whot_player_hands').select(WHOT_PLAYER_HANDS_SELECT).eq('game_id', code).order('player_order'),
+        getSupabase()
+          .from('whot_player_hands')
+          .select(WHOT_PLAYER_HANDS_SELECT)
+          .eq('game_id', code)
+          .order('player_order'),
       ])
       if (sessionRes.error || handsRes.error) return { state: null, ok: false }
       const sessionData = sessionRes.data as WhotSession | null
@@ -118,9 +122,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   //  · isOut — our dealt hand row is loaded and now empty (we played our last card
   //    and went out). Guard on the row actually being loaded so a not-yet-fetched
   //    hand isn't briefly treated as empty and flip a still-playing player to watch.
-  const me = bootstrap.myPlayerId
-    ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) ?? null
-    : null
+  const me = bootstrap.myPlayerId ? (bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) ?? null) : null
   const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
   const isOut = !!myHand && myHand.cards.length === 0 && bootstrap.game?.status === 'active'
   const isWatching = isViewer || isOut
@@ -255,7 +257,14 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
       })
     return (
       <GameShell bootstrap={bootstrap} title={batch4GameLabel('whot')} subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap} title={winner ? `${winner.name} wins!` : 'Game over'} subtitle="Final standings" leaderboard={cardHandLeaderboard(standings, session.winner_player_id, bootstrap.myPlayerId)} winnerPlayerId={session.winner_player_id} roundKey={session.id} />
+        <GameFinishPanel
+          bootstrap={bootstrap}
+          title={winner ? `${winner.name} wins!` : 'Game over'}
+          subtitle="Final standings"
+          leaderboard={cardHandLeaderboard(standings, session.winner_player_id, bootstrap.myPlayerId)}
+          winnerPlayerId={session.winner_player_id}
+          roundKey={session.id}
+        />
       </GameShell>
     )
   }
@@ -283,8 +292,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   // means you can still draw voluntarily even when holding a wild WHOT.
   const drawDepleted = isDrawPileDepleted(session)
   const canPlayNow = !!myHand && hasPlayableCard(myHand.cards, session, rules)
-  const canDraw =
-    isMyTurn && session.phase === 'playing' && !choosingWhot && !(drawDepleted && canPlayNow)
+  const canDraw = isMyTurn && session.phase === 'playing' && !choosingWhot && !(drawDepleted && canPlayNow)
   const drawLabel = drawDepleted
     ? 'Pass turn'
     : penalty?.type === 'pick2'
@@ -297,9 +305,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   // any players not seated in the turn order (e.g. pure spectators) at the end.
   const orderedPlayers = (() => {
     const byId = new Map(bootstrap.players.map((p) => [p.id, p]))
-    const seated = (session.turn_order ?? [])
-      .map((id) => byId.get(id))
-      .filter((p): p is Player => !!p)
+    const seated = (session.turn_order ?? []).map((id) => byId.get(id)).filter((p): p is Player => !!p)
     const seatedIds = new Set(seated.map((p) => p.id))
     const rest = bootstrap.players.filter((p) => !seatedIds.has(p.id))
     return [...seated, ...rest]
@@ -311,167 +317,164 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title={batch4GameLabel('whot')} subtitle={bootstrap.code}>
-      {gameDurationSeconds > 0 && gameSecondsLeft > 0 ? (
-        <GameTimerBar secondsLeft={gameSecondsLeft} durationSeconds={gameDurationSeconds} />
-      ) : null}
-      <TurnBanner
-        text={isWatching ? `Spectating — ${turnName}'s turn` : session.status_message ?? `${turnName}'s turn`}
-        isMyTurn={isMyTurn && !isWatching}
-      />
-      {timerSeconds > 0 ? <WhotTurnTimerChip turnName={turnName} seconds={timerSeconds} /> : null}
+      <ScrollView contentContainerStyle={styles.content}>
+        {gameDurationSeconds > 0 && gameSecondsLeft > 0 ? (
+          <GameTimerBar secondsLeft={gameSecondsLeft} durationSeconds={gameDurationSeconds} />
+        ) : null}
+        <TurnBanner
+          text={isWatching ? `Spectating — ${turnName}'s turn` : (session.status_message ?? `${turnName}'s turn`)}
+          isMyTurn={isMyTurn && !isWatching}
+        />
+        {timerSeconds > 0 ? <WhotTurnTimerChip turnName={turnName} seconds={timerSeconds} /> : null}
 
-      {isWatching ? (
-        <View style={styles.watchBanner}>
-          <Text style={styles.watchTitle}>{isOut ? "You're out" : 'Watching'}</Text>
-          <Text style={styles.watchSub}>
-            {isOut
-              ? 'You played all your cards — follow the rest of the game and chat.'
-              : 'Read-only spectator — you can follow the game and chat.'}
-          </Text>
-        </View>
-      ) : null}
-
-      {isWatching ? (
-        <View style={styles.rosterHead}>
-          <Text style={styles.rosterTitle}>Players · {bootstrap.players.length}</Text>
-          <Text style={styles.rosterTag}>watch-only</Text>
-        </View>
-      ) : null}
-
-      <CrazyEightsRoster
-        players={orderedPlayers}
-        turnPlayerId={turnPlayerId}
-        myPlayerId={bootstrap.myPlayerId}
-        handCounts={handCounts}
-        finishOrder={session.finish_order ?? []}
-      />
-
-      <CardTableArea
-        pileCount={session.draw_pile.length}
-        hint={tableHint || null}
-        drawAccent="#059669"
-        topCard={
-          session.top_card ? (
-            <WhotCardFace card={session.top_card} big />
-          ) : (
-            <Text style={styles.emptyTop}>—</Text>
-          )
-        }
-      />
-
-      {drawReshuffles ? (
-        <Text style={styles.reshuffleNote}>Draw pile empty — reshuffles from played cards</Text>
-      ) : null}
-
-      {isWatching ? (
-        <Text style={styles.spectateStatus}>
-          Spectating — {turnName}&apos;s turn · you can chat
-        </Text>
-      ) : null}
-
-      {!isWatching && choosingWhot && isMyTurn ? (
-        <View style={styles.choosePanel}>
-          <Text style={styles.section}>Call the next play</Text>
-          <Text style={styles.shapeHint}>Shape</Text>
-          <View style={styles.shapeRow}>
-            {WHOT_CALL_SHAPES.map((shape) => (
-              <Pressable key={shape} style={styles.callBtn} disabled={acting} onPress={() => void chooseShape(shape)}>
-                <WhotShapeIcon shape={shape} size={22} />
-                <Text style={styles.callText}>{WHOT_SHAPE_LABELS[shape]}</Text>
-              </Pressable>
-            ))}
+        {isWatching ? (
+          <View style={styles.watchBanner}>
+            <Text style={styles.watchTitle}>{isOut ? "You're out" : 'Watching'}</Text>
+            <Text style={styles.watchSub}>
+              {isOut
+                ? 'You played all your cards — follow the rest of the game and chat.'
+                : 'Read-only spectator — you can follow the game and chat.'}
+            </Text>
           </View>
-          {rules.numberCallsEnabled ? (
-            <>
-              <Text style={styles.shapeHint}>Number</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.numberRow}>
-                {WHOT_CALL_NUMBERS.map((n) => (
-                  <Pressable key={n} style={styles.callBtn} disabled={acting} onPress={() => void chooseNumber(n)}>
-                    <Text style={styles.callText}>{n}</Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </>
-          ) : null}
-        </View>
-      ) : null}
+        ) : null}
 
-      {!isWatching ? (
-        <>
-          <Text style={styles.section}>Your hand ({myHand?.cards.length ?? 0})</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hand}>
-            {(myHand?.cards ?? []).map((card) => {
-              const playable = playableIds.has(card.id)
-              return (
-                <Pressable
-                  key={card.id}
-                  disabled={acting || !isMyTurn || !playable || session.phase !== 'playing'}
-                  onPress={() => void playCard(card.id)}
-                >
-                  <WhotCardFace card={card} playable={playable && isMyTurn} />
+        {isWatching ? (
+          <View style={styles.rosterHead}>
+            <Text style={styles.rosterTitle}>Players · {bootstrap.players.length}</Text>
+            <Text style={styles.rosterTag}>watch-only</Text>
+          </View>
+        ) : null}
+
+        <CrazyEightsRoster
+          players={orderedPlayers}
+          turnPlayerId={turnPlayerId}
+          myPlayerId={bootstrap.myPlayerId}
+          handCounts={handCounts}
+          finishOrder={session.finish_order ?? []}
+        />
+
+        <CardTableArea
+          pileCount={session.draw_pile.length}
+          hint={tableHint || null}
+          drawAccent="#059669"
+          topCard={
+            session.top_card ? <WhotCardFace card={session.top_card} big /> : <Text style={styles.emptyTop}>—</Text>
+          }
+        />
+
+        {drawReshuffles ? (
+          <Text style={styles.reshuffleNote}>Draw pile empty — reshuffles from played cards</Text>
+        ) : null}
+
+        {isWatching ? (
+          <Text style={styles.spectateStatus}>Spectating — {turnName}&apos;s turn · you can chat</Text>
+        ) : null}
+
+        {!isWatching && choosingWhot && isMyTurn ? (
+          <View style={styles.choosePanel}>
+            <Text style={styles.section}>Call the next play</Text>
+            <Text style={styles.shapeHint}>Shape</Text>
+            <View style={styles.shapeRow}>
+              {WHOT_CALL_SHAPES.map((shape) => (
+                <Pressable key={shape} style={styles.callBtn} disabled={acting} onPress={() => void chooseShape(shape)}>
+                  <WhotShapeIcon shape={shape} size={22} />
+                  <Text style={styles.callText}>{WHOT_SHAPE_LABELS[shape]}</Text>
                 </Pressable>
-              )
-            })}
-          </ScrollView>
+              ))}
+            </View>
+            {rules.numberCallsEnabled ? (
+              <>
+                <Text style={styles.shapeHint}>Number</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.numberRow}>
+                  {WHOT_CALL_NUMBERS.map((n) => (
+                    <Pressable key={n} style={styles.callBtn} disabled={acting} onPress={() => void chooseNumber(n)}>
+                      <Text style={styles.callText}>{n}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </>
+            ) : null}
+          </View>
+        ) : null}
 
-          {canDraw ? (
-            <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void drawCard()}>
-              <Text style={styles.drawText}>{drawLabel}</Text>
-            </Pressable>
-          ) : null}
-        </>
-      ) : null}
+        {!isWatching ? (
+          <>
+            <Text style={styles.section}>Your hand ({myHand?.cards.length ?? 0})</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hand}>
+              {(myHand?.cards ?? []).map((card) => {
+                const playable = playableIds.has(card.id)
+                return (
+                  <Pressable
+                    key={card.id}
+                    disabled={acting || !isMyTurn || !playable || session.phase !== 'playing'}
+                    onPress={() => void playCard(card.id)}
+                  >
+                    <WhotCardFace card={card} playable={playable && isMyTurn} />
+                  </Pressable>
+                )
+              })}
+            </ScrollView>
+
+            {canDraw ? (
+              <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void drawCard()}>
+                <Text style={styles.drawText}>{drawLabel}</Text>
+              </Pressable>
+            ) : null}
+          </>
+        ) : null}
+      </ScrollView>
     </GameShell>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  emptyTop: { color: theme.text, fontSize: 24, fontWeight: '800' },
-  section: { color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 4 },
-  watchBanner: {
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.primary,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    alignItems: 'center',
-    gap: 2,
-  },
-  watchTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
-  watchSub: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
-  rosterHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 4,
-  },
-  rosterTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
-  rosterTag: { color: theme.textMuted, fontSize: 12, fontWeight: '600' },
-  spectateStatus: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 2 },
-  reshuffleNote: { color: theme.textMuted, fontSize: 12, textAlign: 'center', marginTop: -2 },
-  choosePanel: { gap: 8 },
-  shapeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  shapeHint: { color: theme.textMuted, fontSize: 12 },
-  numberRow: { gap: 6, paddingVertical: 4 },
-  callBtn: {
-    backgroundColor: theme.primarySoft,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    alignItems: 'center',
-    gap: 4,
-  },
-  callText: { color: theme.text, fontSize: 11, fontWeight: '600' },
-  hand: { gap: 8, paddingVertical: 8 },
-  drawBtn: {
-    backgroundColor: theme.surface,
-    borderRadius: 10,
-    padding: 14,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  drawText: { color: theme.text, fontSize: 16, fontWeight: '600' },
-})
+    content: { paddingBottom: 32, gap: 12 },
+    emptyTop: { color: theme.text, fontSize: 24, fontWeight: '800' },
+    section: { color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 4 },
+    watchBanner: {
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.primary,
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      alignItems: 'center',
+      gap: 2,
+    },
+    watchTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
+    watchSub: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
+    rosterHead: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: 4,
+    },
+    rosterTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
+    rosterTag: { color: theme.textMuted, fontSize: 12, fontWeight: '600' },
+    spectateStatus: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 2 },
+    reshuffleNote: { color: theme.textMuted, fontSize: 12, textAlign: 'center', marginTop: -2 },
+    choosePanel: { gap: 8 },
+    shapeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    shapeHint: { color: theme.textMuted, fontSize: 12 },
+    numberRow: { gap: 6, paddingVertical: 4 },
+    callBtn: {
+      backgroundColor: theme.primarySoft,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      alignItems: 'center',
+      gap: 4,
+    },
+    callText: { color: theme.text, fontSize: 11, fontWeight: '600' },
+    hand: { gap: 8, paddingVertical: 8 },
+    drawBtn: {
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      padding: 14,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    drawText: { color: theme.text, fontSize: 16, fontWeight: '600' },
+  })

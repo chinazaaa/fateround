@@ -42,6 +42,7 @@ import {
 } from '@/components/games/CodewordsStatsViews'
 import { codewordsOperativeLeaderboard } from '@/components/games/codewords-stats'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
@@ -349,53 +350,55 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     const specBlueRev = countRevealedTeamCells(board.key, board.revealed_indices, 'blue')
     return (
       <GameShell bootstrap={bootstrap} title="Codewords" subtitle="Watching">
-        <ViewerModeBanner
-          gameCode={bootstrap.code}
-          playerId={bootstrap.myPlayerId!}
-          game={bootstrap.game}
-          player={me!}
-          players={bootstrap.players}
-          onPromoted={() => bootstrap.load()}
-        />
-        <TurnBanner text={spectatorTurn} isMyTurn={false} />
-        <View style={styles.scoreRow}>
-          <Text style={styles.scoreRed}>
-            Red {specRedRev}/{specRedTotal}
-          </Text>
-          <Text style={styles.scoreBlue}>
-            Blue {specBlueRev}/{specBlueTotal}
-          </Text>
-        </View>
-        {board.current_clue_word ? (
-          <View style={styles.clueCard}>
-            <Text style={styles.clueLabel}>Clue</Text>
-            <Text style={styles.clueWord}>
-              {board.current_clue_word} · {board.current_clue_number}
-              {board.guesses_remaining != null ? ` (${board.guesses_remaining} left)` : ''}
+        <ScrollView contentContainerStyle={styles.content}>
+          <ViewerModeBanner
+            gameCode={bootstrap.code}
+            playerId={bootstrap.myPlayerId!}
+            game={bootstrap.game}
+            player={me!}
+            players={bootstrap.players}
+            onPromoted={() => bootstrap.load()}
+          />
+          <TurnBanner text={spectatorTurn} isMyTurn={false} />
+          <View style={styles.scoreRow}>
+            <Text style={styles.scoreRed}>
+              Red {specRedRev}/{specRedTotal}
+            </Text>
+            <Text style={styles.scoreBlue}>
+              Blue {specBlueRev}/{specBlueTotal}
             </Text>
           </View>
-        ) : null}
-        <View style={styles.grid}>
-          {board.words.map((word, index) => {
-            const isRevealed = specRevealed.has(index)
-            const cellType = board.key[index]
-            const bg = cellBackground(cellType, isRevealed, false)
-            return (
-              <View key={index} style={[styles.cell, { backgroundColor: bg }, isRevealed && styles.cellRevealed]}>
-                <Text style={styles.cellWord}>{word}</Text>
-                {specAttribution[index] ? <Text style={styles.cellAttr}>{specAttribution[index]}</Text> : null}
-              </View>
-            )
-          })}
-        </View>
-        <View style={styles.scoreboardBlock}>
-          <CodewordsScoreboard
-            board={board}
-            roles={roles}
-            playerNameById={playerNameById}
-            highlightPlayerId={bootstrap.myPlayerId}
-          />
-        </View>
+          {board.current_clue_word ? (
+            <View style={styles.clueCard}>
+              <Text style={styles.clueLabel}>Clue</Text>
+              <Text style={styles.clueWord}>
+                {board.current_clue_word} · {board.current_clue_number}
+                {board.guesses_remaining != null ? ` (${board.guesses_remaining} left)` : ''}
+              </Text>
+            </View>
+          ) : null}
+          <View style={styles.grid}>
+            {board.words.map((word, index) => {
+              const isRevealed = specRevealed.has(index)
+              const cellType = board.key[index]
+              const bg = cellBackground(cellType, isRevealed, false)
+              return (
+                <View key={index} style={[styles.cell, { backgroundColor: bg }, isRevealed && styles.cellRevealed]}>
+                  <Text style={styles.cellWord}>{word}</Text>
+                  {specAttribution[index] ? <Text style={styles.cellAttr}>{specAttribution[index]}</Text> : null}
+                </View>
+              )
+            })}
+          </View>
+          <View style={styles.scoreboardBlock}>
+            <CodewordsScoreboard
+              board={board}
+              roles={roles}
+              playerNameById={playerNameById}
+              highlightPlayerId={bootstrap.myPlayerId}
+            />
+          </View>
+        </ScrollView>
       </GameShell>
     )
   }
@@ -488,155 +491,157 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title="Codewords" subtitle={`${teamLabel(myRole.team)} ${roleLabel(myRole.role)}`}>
-      <TurnBanner text={bannerText} isMyTurn={canGiveClue || canGuess} />
+      <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
+        <TurnBanner text={bannerText} isMyTurn={canGiveClue || canGuess} />
 
-      {board.turn_deadline_at && secondsLeft > 0 ? (
-        <CodewordsTimerBar
-          label={
-            turnPhase === 'clue'
-              ? isMyTurn && isSpymaster
-                ? 'Spymaster timer'
-                : 'Waiting for clue'
-              : 'Operative timer'
-          }
-          seconds={secondsLeft}
-          enableAlerts={canGiveClue || canGuess}
-        />
-      ) : null}
+        {board.turn_deadline_at && secondsLeft > 0 ? (
+          <CodewordsTimerBar
+            label={
+              turnPhase === 'clue'
+                ? isMyTurn && isSpymaster
+                  ? 'Spymaster timer'
+                  : 'Waiting for clue'
+                : 'Operative timer'
+            }
+            seconds={secondsLeft}
+            enableAlerts={canGiveClue || canGuess}
+          />
+        ) : null}
 
-      <View style={styles.scoreRow}>
-        <Text style={styles.scoreRed}>
-          Red {redRev}/{redTotal}
-        </Text>
-        <Text style={styles.scoreBlue}>
-          Blue {blueRev}/{blueTotal}
-        </Text>
-      </View>
-
-      {board.current_clue_word ? (
-        <View style={styles.clueCard}>
-          <Text style={styles.clueLabel}>Clue</Text>
-          <Text style={styles.clueWord}>
-            {board.current_clue_word} · {board.current_clue_number}
-            {board.guesses_remaining != null ? ` (${board.guesses_remaining} left)` : ''}
+        <View style={styles.scoreRow}>
+          <Text style={styles.scoreRed}>
+            Red {redRev}/{redTotal}
+          </Text>
+          <Text style={styles.scoreBlue}>
+            Blue {blueRev}/{blueTotal}
           </Text>
         </View>
-      ) : null}
 
-      <View style={styles.grid}>
-        {board.words.map((word, index) => {
-          const isRevealed = revealed.has(index)
-          const cellType = board.key[index]
-          const bg = cellBackground(cellType, isRevealed, showKey)
-          const disabled = !canGuess || isRevealed
-          return (
-            <Pressable
-              key={index}
-              style={[styles.cell, { backgroundColor: bg }, isRevealed && styles.cellRevealed]}
-              disabled={disabled || acting}
-              onPress={() => act(() => postCodewordsGuess(bootstrap.code, bootstrap.myResumeToken!, index))}
-            >
-              <Text style={styles.cellWord}>{word}</Text>
-              {cellAttribution[index] ? <Text style={styles.cellAttr}>{cellAttribution[index]}</Text> : null}
-              {showKey && !isRevealed ? <Text style={styles.cellKey}>{cellType[0].toUpperCase()}</Text> : null}
-            </Pressable>
-          )
-        })}
-      </View>
+        {board.current_clue_word ? (
+          <View style={styles.clueCard}>
+            <Text style={styles.clueLabel}>Clue</Text>
+            <Text style={styles.clueWord}>
+              {board.current_clue_word} · {board.current_clue_number}
+              {board.guesses_remaining != null ? ` (${board.guesses_remaining} left)` : ''}
+            </Text>
+          </View>
+        ) : null}
 
-      {canGiveClue ? (
-        <View style={styles.formBlock}>
-          <TextInput
-            style={styles.input}
-            value={clueWord}
-            onChangeText={(t) => setClueWord(t.replace(/\s/g, '').slice(0, 40))}
-            placeholder="Clue word"
-            placeholderTextColor="#71717a"
-            autoCapitalize="none"
-            maxLength={40}
-          />
-          <TextInput
-            style={styles.inputSmall}
-            value={clueNumber}
-            onChangeText={setClueNumber}
-            placeholder="0-9"
-            placeholderTextColor="#71717a"
-            keyboardType="number-pad"
-            maxLength={1}
-          />
-          <Pressable
-            style={styles.actionBtn}
-            disabled={acting || !clueWord.trim()}
-            onPress={() => {
-              const n = Number.parseInt(clueNumber.trim(), 10)
-              if (Number.isNaN(n) || n < 0 || n > 9) return
-              void act(async () => {
-                await postCodewordsClue(bootstrap.code, bootstrap.myResumeToken!, clueWord.trim(), n)
-                setClueWord('')
-                setClueNumber('')
-              }, 'Clue sent')
-            }}
-          >
-            <Text style={styles.actionText}>Send clue</Text>
-          </Pressable>
+        <View style={styles.grid}>
+          {board.words.map((word, index) => {
+            const isRevealed = revealed.has(index)
+            const cellType = board.key[index]
+            const bg = cellBackground(cellType, isRevealed, showKey)
+            const disabled = !canGuess || isRevealed
+            return (
+              <Pressable
+                key={index}
+                style={[styles.cell, { backgroundColor: bg }, isRevealed && styles.cellRevealed]}
+                disabled={disabled || acting}
+                onPress={() => act(() => postCodewordsGuess(bootstrap.code, bootstrap.myResumeToken!, index))}
+              >
+                <Text style={styles.cellWord}>{word}</Text>
+                {cellAttribution[index] ? <Text style={styles.cellAttr}>{cellAttribution[index]}</Text> : null}
+                {showKey && !isRevealed ? <Text style={styles.cellKey}>{cellType[0].toUpperCase()}</Text> : null}
+              </Pressable>
+            )
+          })}
         </View>
-      ) : null}
 
-      {canGuess ? (
-        <Pressable
-          style={[styles.actionBtn, styles.endTurnBtn]}
-          disabled={acting}
-          onPress={() => act(() => postCodewordsEndTurn(bootstrap.code, bootstrap.myResumeToken!), 'Turn ended')}
-        >
-          <Text style={styles.actionText}>End turn early</Text>
-        </Pressable>
-      ) : null}
-
-      <View style={styles.scoreboardBlock}>
-        <CodewordsScoreboard
-          board={board}
-          roles={roles}
-          playerNameById={playerNameById}
-          highlightPlayerId={bootstrap.myPlayerId}
-        />
-      </View>
-
-      {isOperative ? (
-        <>
-          <Text style={styles.chatTitle}>Team chat</Text>
-          <ScrollView style={styles.chatLog} nestedScrollEnabled>
-            {teamMessages.map((m) => (
-              <Text key={m.id} style={styles.chatLine}>
-                <Text style={styles.chatName}>{playerNameById.get(m.player_id) ?? 'Player'}: </Text>
-                {m.text}
-              </Text>
-            ))}
-          </ScrollView>
-          <View style={styles.chatRow}>
+        {canGiveClue ? (
+          <View style={styles.formBlock}>
             <TextInput
               style={styles.input}
-              value={chatDraft}
-              onChangeText={setChatDraft}
-              placeholder="Message operatives…"
+              value={clueWord}
+              onChangeText={(t) => setClueWord(t.replace(/\s/g, '').slice(0, 40))}
+              placeholder="Clue word"
               placeholderTextColor="#71717a"
+              autoCapitalize="none"
+              maxLength={40}
+            />
+            <TextInput
+              style={styles.inputSmall}
+              value={clueNumber}
+              onChangeText={setClueNumber}
+              placeholder="0-9"
+              placeholderTextColor="#71717a"
+              keyboardType="number-pad"
+              maxLength={1}
             />
             <Pressable
               style={styles.actionBtn}
-              disabled={acting || !chatDraft.trim()}
+              disabled={acting || !clueWord.trim()}
               onPress={() => {
-                const text = chatDraft.trim()
-                if (!text) return
+                const n = Number.parseInt(clueNumber.trim(), 10)
+                if (Number.isNaN(n) || n < 0 || n > 9) return
                 void act(async () => {
-                  await postCodewordsChat(bootstrap.code, bootstrap.myResumeToken!, text)
-                  setChatDraft('')
-                })
+                  await postCodewordsClue(bootstrap.code, bootstrap.myResumeToken!, clueWord.trim(), n)
+                  setClueWord('')
+                  setClueNumber('')
+                }, 'Clue sent')
               }}
             >
-              <Text style={styles.actionText}>Send</Text>
+              <Text style={styles.actionText}>Send clue</Text>
             </Pressable>
           </View>
-        </>
-      ) : null}
+        ) : null}
+
+        {canGuess ? (
+          <Pressable
+            style={[styles.actionBtn, styles.endTurnBtn]}
+            disabled={acting}
+            onPress={() => act(() => postCodewordsEndTurn(bootstrap.code, bootstrap.myResumeToken!), 'Turn ended')}
+          >
+            <Text style={styles.actionText}>End turn early</Text>
+          </Pressable>
+        ) : null}
+
+        <View style={styles.scoreboardBlock}>
+          <CodewordsScoreboard
+            board={board}
+            roles={roles}
+            playerNameById={playerNameById}
+            highlightPlayerId={bootstrap.myPlayerId}
+          />
+        </View>
+
+        {isOperative ? (
+          <>
+            <Text style={styles.chatTitle}>Team chat</Text>
+            <ScrollView style={styles.chatLog} nestedScrollEnabled>
+              {teamMessages.map((m) => (
+                <Text key={m.id} style={styles.chatLine}>
+                  <Text style={styles.chatName}>{playerNameById.get(m.player_id) ?? 'Player'}: </Text>
+                  {m.text}
+                </Text>
+              ))}
+            </ScrollView>
+            <View style={styles.chatRow}>
+              <TextInput
+                style={styles.input}
+                value={chatDraft}
+                onChangeText={setChatDraft}
+                placeholder="Message operatives…"
+                placeholderTextColor="#71717a"
+              />
+              <Pressable
+                style={styles.actionBtn}
+                disabled={acting || !chatDraft.trim()}
+                onPress={() => {
+                  const text = chatDraft.trim()
+                  if (!text) return
+                  void act(async () => {
+                    await postCodewordsChat(bootstrap.code, bootstrap.myResumeToken!, text)
+                    setChatDraft('')
+                  })
+                }}
+              >
+                <Text style={styles.actionText}>Send</Text>
+              </Pressable>
+            </View>
+          </>
+        ) : null}
+      </KeyboardAwareGameScroll>
     </GameShell>
   )
 }
@@ -645,6 +650,7 @@ const CELL = 64
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
+    content: { paddingBottom: 32, gap: 12 },
     pickScroll: { paddingBottom: 24 },
     pickHint: { color: theme.textMuted, marginBottom: 12, textAlign: 'center' },
     pickSectionLabel: {

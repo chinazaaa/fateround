@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { type Game, type Round, type SudokuSubmission } from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import {
@@ -146,15 +146,10 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   const cellOwners = useMemo(() => buildCellOwnerGrid(submissions), [submissions])
   const completedNumbers = useMemo(
     () =>
-      puzzle && bootstrap.myPlayerId
-        ? completedSudokuNumbersForPlayer(puzzle, submissions, bootstrap.myPlayerId)
-        : [],
+      puzzle && bootstrap.myPlayerId ? completedSudokuNumbersForPlayer(puzzle, submissions, bootstrap.myPlayerId) : [],
     [puzzle, submissions, bootstrap.myPlayerId]
   )
-  const boardCompletion = useMemo(
-    () => (puzzle ? boardCompletionPercent(puzzle, cellOwners) : 0),
-    [puzzle, cellOwners]
-  )
+  const boardCompletion = useMemo(() => (puzzle ? boardCompletionPercent(puzzle, cellOwners) : 0), [puzzle, cellOwners])
   const completedSet = useMemo(() => new Set(completedNumbers), [completedNumbers])
   const mySolvedCells = useMemo(
     () => (bootstrap.myPlayerId ? buildPlayerSolvedGrid(submissions, bootstrap.myPlayerId) : undefined),
@@ -162,10 +157,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   // Per-player colors assigned by join order (spectators excluded, matching web).
-  const activePlayers = useMemo(
-    () => bootstrap.players.filter((p) => p.spectator !== true),
-    [bootstrap.players]
-  )
+  const activePlayers = useMemo(() => bootstrap.players.filter((p) => p.spectator !== true), [bootstrap.players])
   const playerColors = useMemo(() => {
     const map: Record<string, string> = {}
     activePlayers.forEach((p, i) => {
@@ -174,10 +166,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     return map
   }, [activePlayers])
 
-  const standings = useMemo(
-    () => tallySudokuScores(submissions, activePlayers),
-    [submissions, activePlayers]
-  )
+  const standings = useMemo(() => tallySudokuScores(submissions, activePlayers), [submissions, activePlayers])
 
   const me = bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
   const viewing = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
@@ -447,199 +436,203 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   // Viewer watches a chosen player's read-only board; a player edits their own.
   const boardGrid = viewing ? watchedGrid : displayGrid
   const boardSolvedCells = viewing ? watchedSolvedCells : mySolvedCells
-  const headerName = viewing ? watchedPlayer?.name ?? 'Player' : me?.name ?? 'Me'
+  const headerName = viewing ? (watchedPlayer?.name ?? 'Player') : (me?.name ?? 'Me')
   const headerRank = viewing ? watchedRank : myRank
   const headerCompletion = viewing ? watchedCompletion : myCompletion
   const headerTime = viewing ? watchedTime : myTime
 
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('sudoku')} subtitle={bootstrap.code}>
-      <SudokuGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} />
+      <ScrollView contentContainerStyle={styles.content}>
+        <SudokuGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} />
 
-      {toast ? (
-        <View style={[styles.toast, toast.ok ? styles.toastOk : styles.toastBad]}>
-          <Text style={styles.toastText}>{toast.msg}</Text>
-        </View>
-      ) : null}
+        {toast ? (
+          <View style={[styles.toast, toast.ok ? styles.toastOk : styles.toastBad]}>
+            <Text style={styles.toastText}>{toast.msg}</Text>
+          </View>
+        ) : null}
 
-      {/* Viewer player-picker: switch whose board you're watching. */}
-      {viewing ? (
-        activePlayers.length > 0 ? (
-          <View style={styles.watchCard}>
-            <Text style={styles.watchLabel}>Watching a player&apos;s board</Text>
-            <View style={styles.watchChips}>
-              {activePlayers.map((p) => {
-                const active = p.id === effectiveWatchedId
-                return (
+        {/* Viewer player-picker: switch whose board you're watching. */}
+        {viewing ? (
+          activePlayers.length > 0 ? (
+            <View style={styles.watchCard}>
+              <Text style={styles.watchLabel}>Watching a player&apos;s board</Text>
+              <View style={styles.watchChips}>
+                {activePlayers.map((p) => {
+                  const active = p.id === effectiveWatchedId
+                  return (
+                    <Pressable
+                      key={p.id}
+                      style={[styles.watchChip, active && styles.watchChipActive]}
+                      onPress={() => setWatchedPlayerId(p.id)}
+                    >
+                      <View
+                        style={[styles.watchChipDot, { backgroundColor: playerColors[p.id] ?? sudokuPlayerColor(0) }]}
+                      />
+                      <Text style={[styles.watchChipText, active && styles.watchChipTextActive]} numberOfLines={1}>
+                        {p.name}
+                      </Text>
+                    </Pressable>
+                  )
+                })}
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.waiting}>
+              No players have joined the puzzle yet — pick a player to watch once they do.
+            </Text>
+          )
+        ) : null}
+
+        {!boardGrid ? (
+          <Text style={styles.waiting}>Waiting for puzzle…</Text>
+        ) : (
+          <>
+            {/* Status header (mine, or the watched player's) */}
+            <View style={styles.statusRow}>
+              <View style={styles.statusLeft}>
+                <View style={[styles.swatch, { backgroundColor: SUDOKU_MY_CELL_COLOR }]} />
+                <View>
+                  <Text style={styles.statusName}>{headerName}</Text>
+                  <Text style={styles.statusMeta}>
+                    {headerRank > 0 ? ordinal(headerRank) : '—'} · {headerCompletion}%
+                  </Text>
+                </View>
+              </View>
+              {bootstrap.game?.session_started_at ? (
+                <View style={styles.timePill}>
+                  <Text style={styles.timePillText}>⏱ {formatMinutesSeconds(headerTime)}</Text>
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.board}>
+              {boardGrid.map((row, r) => (
+                <View key={r} style={styles.row}>
+                  {row.map((value, c) => {
+                    const given = puzzle![r]![c] !== 0
+                    const mine = boardSolvedCells?.[r]?.[c] === true
+                    const owner = !given && !mine ? cellOwners[r]![c] : null
+                    const ownerColor = owner ? (playerColors[owner] ?? sudokuPlayerColor(0)) : null
+                    const selectedCell = !viewing && selected?.[0] === r && selected?.[1] === c
+                    const wrong = !viewing && wrongDrafts[r]?.[c] === true && value > 0
+                    const flashing = !viewing && isCellInFlashingUnits(r, c, flashUnits)
+                    const highlighted =
+                      highlightNumber != null && value === highlightNumber && value > 0 && !selectedCell
+                    const pulsing = !viewing && pulseValue != null && value === pulseValue && value > 0
+                    const baseBg = mine ? SUDOKU_MY_CELL_COLOR : (ownerColor ?? undefined)
+                    const bg = flashing ? '#fbbf24' : highlighted ? 'rgba(56,189,248,0.30)' : baseBg
+                    return (
+                      <Pressable
+                        key={`${r}-${c}`}
+                        style={[
+                          styles.cell,
+                          given && styles.cellGiven,
+                          bg ? { backgroundColor: bg } : null,
+                          selectedCell && styles.cellSelected,
+                        ]}
+                        disabled={viewing}
+                        onPress={() => handleCellSelect(r, c)}
+                      >
+                        <Animated.Text
+                          style={[
+                            styles.cellText,
+                            mine && styles.cellTextSolved,
+                            wrong && styles.cellTextWrong,
+                            pulsing ? { transform: [{ scale: pulseAnim }] } : null,
+                          ]}
+                        >
+                          {value > 0 ? value : ''}
+                        </Animated.Text>
+                      </Pressable>
+                    )
+                  })}
+                </View>
+              ))}
+            </View>
+            {viewing ? (
+              <Text style={styles.viewingHint}>You are watching — tap a name above to switch boards.</Text>
+            ) : (
+              <>
+                {/* Toolbar: completion % star, Undo, Erase */}
+                <View style={styles.toolbar}>
+                  <View style={styles.toolBtn}>
+                    <Text style={styles.toolIcon}>★</Text>
+                    <Text style={styles.toolLabel}>{boardCompletion}%</Text>
+                  </View>
                   <Pressable
-                    key={p.id}
-                    style={[styles.watchChip, active && styles.watchChipActive]}
-                    onPress={() => setWatchedPlayerId(p.id)}
+                    style={styles.toolBtn}
+                    disabled={undoStack.length === 0 || submitting}
+                    onPress={handleUndo}
                   >
-                    <View style={[styles.watchChipDot, { backgroundColor: playerColors[p.id] ?? sudokuPlayerColor(0) }]} />
-                    <Text style={[styles.watchChipText, active && styles.watchChipTextActive]} numberOfLines={1}>
-                      {p.name}
+                    <Text style={[styles.toolIcon, (undoStack.length === 0 || submitting) && styles.toolDisabled]}>
+                      ↺
+                    </Text>
+                    <Text style={[styles.toolLabel, (undoStack.length === 0 || submitting) && styles.toolDisabled]}>
+                      Undo
                     </Text>
                   </Pressable>
-                )
-              })}
-            </View>
-          </View>
-        ) : (
-          <Text style={styles.waiting}>No players have joined the puzzle yet — pick a player to watch once they do.</Text>
-        )
-      ) : null}
+                  <Pressable style={styles.toolBtn} disabled={!selected || submitting} onPress={handleErase}>
+                    <Text style={[styles.toolIcon, (!selected || submitting) && styles.toolDisabled]}>⌫</Text>
+                    <Text style={[styles.toolLabel, (!selected || submitting) && styles.toolDisabled]}>Erase</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.pad}>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => {
+                    const complete = completedSet.has(n)
+                    return (
+                      <Pressable
+                        key={n}
+                        style={[styles.padKey, complete && styles.padKeyComplete]}
+                        disabled={!selected || submitting}
+                        onPress={() => handleNumberPress(n)}
+                      >
+                        <Text style={[styles.padText, complete && styles.padTextComplete]}>{complete ? '✓' : n}</Text>
+                      </Pressable>
+                    )
+                  })}
+                </View>
+              </>
+            )}
 
-      {!boardGrid ? (
-        <Text style={styles.waiting}>Waiting for puzzle…</Text>
-      ) : (
-        <>
-          {/* Status header (mine, or the watched player's) */}
-          <View style={styles.statusRow}>
-            <View style={styles.statusLeft}>
-              <View style={[styles.swatch, { backgroundColor: SUDOKU_MY_CELL_COLOR }]} />
-              <View>
-                <Text style={styles.statusName}>{headerName}</Text>
-                <Text style={styles.statusMeta}>
-                  {headerRank > 0 ? ordinal(headerRank) : '—'} · {headerCompletion}%
-                </Text>
-              </View>
-            </View>
-            {bootstrap.game?.session_started_at ? (
-              <View style={styles.timePill}>
-                <Text style={styles.timePillText}>⏱ {formatMinutesSeconds(headerTime)}</Text>
+            {/* Live standings */}
+            {standings.length > 0 ? (
+              <View style={styles.standings}>
+                {standings.map((rowData, i) => {
+                  const pct = puzzle ? playerCompletionPercent(puzzle, submissions, rowData.player_id) : 0
+                  const color = playerColors[rowData.player_id] ?? sudokuPlayerColor(0)
+                  const playerSolved = buildPlayerSolvedGrid(submissions, rowData.player_id)
+                  const timeSecs = getPlayerTimeSpent(
+                    bootstrap.game,
+                    submissions,
+                    rowData.player_id,
+                    pct,
+                    nowMs,
+                    activePlayers.find((p) => p.id === rowData.player_id)?.joined_at
+                  )
+                  const isMe = rowData.player_id === bootstrap.myPlayerId
+                  return (
+                    <View key={rowData.player_id} style={[styles.standRow, isMe && styles.standRowMe]}>
+                      <MiniGrid puzzle={puzzle} playerSolved={playerSolved} color={color} styles={styles} />
+                      <View style={[styles.swatchSm, { backgroundColor: color }]} />
+                      <View style={styles.standInfo}>
+                        <Text style={styles.standName} numberOfLines={1}>
+                          {rowData.name}
+                        </Text>
+                        <Text style={styles.standMeta} numberOfLines={1}>
+                          {ordinal(i + 1)} of {standings.length} · {pct}%
+                          {bootstrap.game?.session_started_at ? ` · ⏱ ${formatMinutesSeconds(timeSecs)}` : ''}
+                        </Text>
+                      </View>
+                      <Text style={styles.standPoints}>{rowData.points} pts</Text>
+                    </View>
+                  )
+                })}
               </View>
             ) : null}
-          </View>
-
-          <View style={styles.board}>
-            {boardGrid.map((row, r) => (
-              <View key={r} style={styles.row}>
-                {row.map((value, c) => {
-                  const given = puzzle![r]![c] !== 0
-                  const mine = boardSolvedCells?.[r]?.[c] === true
-                  const owner = !given && !mine ? cellOwners[r]![c] : null
-                  const ownerColor = owner ? playerColors[owner] ?? sudokuPlayerColor(0) : null
-                  const selectedCell = !viewing && selected?.[0] === r && selected?.[1] === c
-                  const wrong = !viewing && wrongDrafts[r]?.[c] === true && value > 0
-                  const flashing = !viewing && isCellInFlashingUnits(r, c, flashUnits)
-                  const highlighted =
-                    highlightNumber != null && value === highlightNumber && value > 0 && !selectedCell
-                  const pulsing = !viewing && pulseValue != null && value === pulseValue && value > 0
-                  const baseBg = mine ? SUDOKU_MY_CELL_COLOR : ownerColor ?? undefined
-                  const bg = flashing ? '#fbbf24' : highlighted ? 'rgba(56,189,248,0.30)' : baseBg
-                  return (
-                    <Pressable
-                      key={`${r}-${c}`}
-                      style={[
-                        styles.cell,
-                        given && styles.cellGiven,
-                        bg ? { backgroundColor: bg } : null,
-                        selectedCell && styles.cellSelected,
-                      ]}
-                      disabled={viewing}
-                      onPress={() => handleCellSelect(r, c)}
-                    >
-                      <Animated.Text
-                        style={[
-                          styles.cellText,
-                          mine && styles.cellTextSolved,
-                          wrong && styles.cellTextWrong,
-                          pulsing ? { transform: [{ scale: pulseAnim }] } : null,
-                        ]}
-                      >
-                        {value > 0 ? value : ''}
-                      </Animated.Text>
-                    </Pressable>
-                  )
-                })}
-              </View>
-            ))}
-          </View>
-          {viewing ? (
-            <Text style={styles.viewingHint}>You are watching — tap a name above to switch boards.</Text>
-          ) : (
-            <>
-              {/* Toolbar: completion % star, Undo, Erase */}
-              <View style={styles.toolbar}>
-                <View style={styles.toolBtn}>
-                  <Text style={styles.toolIcon}>★</Text>
-                  <Text style={styles.toolLabel}>{boardCompletion}%</Text>
-                </View>
-                <Pressable
-                  style={styles.toolBtn}
-                  disabled={undoStack.length === 0 || submitting}
-                  onPress={handleUndo}
-                >
-                  <Text style={[styles.toolIcon, (undoStack.length === 0 || submitting) && styles.toolDisabled]}>
-                    ↺
-                  </Text>
-                  <Text style={[styles.toolLabel, (undoStack.length === 0 || submitting) && styles.toolDisabled]}>
-                    Undo
-                  </Text>
-                </Pressable>
-                <Pressable style={styles.toolBtn} disabled={!selected || submitting} onPress={handleErase}>
-                  <Text style={[styles.toolIcon, (!selected || submitting) && styles.toolDisabled]}>⌫</Text>
-                  <Text style={[styles.toolLabel, (!selected || submitting) && styles.toolDisabled]}>Erase</Text>
-                </Pressable>
-              </View>
-              <View style={styles.pad}>
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => {
-                  const complete = completedSet.has(n)
-                  return (
-                    <Pressable
-                      key={n}
-                      style={[styles.padKey, complete && styles.padKeyComplete]}
-                      disabled={!selected || submitting}
-                      onPress={() => handleNumberPress(n)}
-                    >
-                      <Text style={[styles.padText, complete && styles.padTextComplete]}>
-                        {complete ? '✓' : n}
-                      </Text>
-                    </Pressable>
-                  )
-                })}
-              </View>
-            </>
-          )}
-
-          {/* Live standings */}
-          {standings.length > 0 ? (
-            <View style={styles.standings}>
-              {standings.map((rowData, i) => {
-                const pct = puzzle ? playerCompletionPercent(puzzle, submissions, rowData.player_id) : 0
-                const color = playerColors[rowData.player_id] ?? sudokuPlayerColor(0)
-                const playerSolved = buildPlayerSolvedGrid(submissions, rowData.player_id)
-                const timeSecs = getPlayerTimeSpent(
-                  bootstrap.game,
-                  submissions,
-                  rowData.player_id,
-                  pct,
-                  nowMs,
-                  activePlayers.find((p) => p.id === rowData.player_id)?.joined_at
-                )
-                const isMe = rowData.player_id === bootstrap.myPlayerId
-                return (
-                  <View key={rowData.player_id} style={[styles.standRow, isMe && styles.standRowMe]}>
-                    <MiniGrid puzzle={puzzle} playerSolved={playerSolved} color={color} styles={styles} />
-                    <View style={[styles.swatchSm, { backgroundColor: color }]} />
-                    <View style={styles.standInfo}>
-                      <Text style={styles.standName} numberOfLines={1}>
-                        {rowData.name}
-                      </Text>
-                      <Text style={styles.standMeta} numberOfLines={1}>
-                        {ordinal(i + 1)} of {standings.length} · {pct}%
-                        {bootstrap.game?.session_started_at ? ` · ⏱ ${formatMinutesSeconds(timeSecs)}` : ''}
-                      </Text>
-                    </View>
-                    <Text style={styles.standPoints}>{rowData.points} pts</Text>
-                  </View>
-                )
-              })}
-            </View>
-          ) : null}
-        </>
-      )}
+          </>
+        )}
+      </ScrollView>
     </GameShell>
   )
 }
@@ -672,6 +665,7 @@ function MiniGrid({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
+    content: { paddingBottom: 32, gap: 12 },
     waiting: { color: theme.textMuted, textAlign: 'center', marginTop: 24 },
     statusRow: {
       flexDirection: 'row',

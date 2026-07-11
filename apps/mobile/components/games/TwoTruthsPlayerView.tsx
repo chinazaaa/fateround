@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { type Game, type Player, type Round, type TtlGuess, type TtlStatement } from '@fateround/shared'
 import { batch4GameLabel } from '@fateround/shared/batch-4-games'
 import {
@@ -225,23 +225,25 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     if (myStatement && !editingStatements) {
       return (
         <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={bootstrap.code}>
-          <Text style={styles.waiting}>Statements submitted — waiting for host to start…</Text>
-          <View style={styles.reviewCard}>
-            {[myStatement.statement_a, myStatement.statement_b, myStatement.statement_c].map((text, index) => (
-              <View key={index} style={styles.reviewRow}>
-                <Text style={[styles.reviewBadge, index === myStatement.lie_index && styles.reviewBadgeLie]}>
-                  {index === myStatement.lie_index ? 'LIE' : formatTtlChoiceLabel(index)}
-                </Text>
-                <Text style={styles.reviewText}>{text}</Text>
-              </View>
-            ))}
-          </View>
-          <Pressable style={styles.secondaryBtn} onPress={startEditing}>
-            <Text style={styles.secondaryText}>Edit my statements</Text>
-          </Pressable>
-          <View style={styles.rulesRowCentered}>
-            <GameRulesLink gameType="two_truths" variant="subtle" />
-          </View>
+          <ScrollView contentContainerStyle={styles.content}>
+            <Text style={styles.waiting}>Statements submitted — waiting for host to start…</Text>
+            <View style={styles.reviewCard}>
+              {[myStatement.statement_a, myStatement.statement_b, myStatement.statement_c].map((text, index) => (
+                <View key={index} style={styles.reviewRow}>
+                  <Text style={[styles.reviewBadge, index === myStatement.lie_index && styles.reviewBadgeLie]}>
+                    {index === myStatement.lie_index ? 'LIE' : formatTtlChoiceLabel(index)}
+                  </Text>
+                  <Text style={styles.reviewText}>{text}</Text>
+                </View>
+              ))}
+            </View>
+            <Pressable style={styles.secondaryBtn} onPress={startEditing}>
+              <Text style={styles.secondaryText}>Edit my statements</Text>
+            </Pressable>
+            <View style={styles.rulesRowCentered}>
+              <GameRulesLink gameType="two_truths" variant="subtle" />
+            </View>
+          </ScrollView>
         </GameShell>
       )
     }
@@ -409,6 +411,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
 
   const liveBoard = (
     <LeaderboardPanel
+      embedded
       title="Leaderboard"
       rows={liveScores.map((row) => ({
         id: row.id,
@@ -423,34 +426,36 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   if (currentRound.status === 'finished') {
     return (
       <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={roundSubtitle}>
-        {liveBanners}
-        {submitterBadge}
-        <Text style={styles.featured}>{featuredName}&apos;s two truths &amp; a lie</Text>
-        {metadata ? (
-          <View style={styles.choices}>
-            {metadata.statements.map((text, index) => {
-              const isLie = index === metadata.lie_index
-              return (
-                <View key={index} style={[styles.choice, isLie && styles.choiceReveal]}>
-                  <Text style={styles.choiceBadge}>{formatTtlChoiceLabel(index)}</Text>
-                  <View style={styles.choiceBody}>
-                    <Text style={styles.choiceText}>{text}</Text>
-                    {isLie ? <Text style={styles.lieTag}>🤥 The lie</Text> : null}
+        <ScrollView contentContainerStyle={styles.content}>
+          {liveBanners}
+          {submitterBadge}
+          <Text style={styles.featured}>{featuredName}&apos;s two truths &amp; a lie</Text>
+          {metadata ? (
+            <View style={styles.choices}>
+              {metadata.statements.map((text, index) => {
+                const isLie = index === metadata.lie_index
+                return (
+                  <View key={index} style={[styles.choice, isLie && styles.choiceReveal]}>
+                    <Text style={styles.choiceBadge}>{formatTtlChoiceLabel(index)}</Text>
+                    <View style={styles.choiceBody}>
+                      <Text style={styles.choiceText}>{text}</Text>
+                      {isLie ? <Text style={styles.lieTag}>🤥 The lie</Text> : null}
+                    </View>
                   </View>
-                </View>
-              )
-            })}
-          </View>
-        ) : null}
-        {myGuess ? (
-          <Text style={[styles.revealResult, myGuess.is_correct && styles.revealResultWin]}>
-            {myGuess.is_correct ? `Correct! +${myGuess.points} pts` : 'Not the lie — better luck next round'}
+                )
+              })}
+            </View>
+          ) : null}
+          {myGuess ? (
+            <Text style={[styles.revealResult, myGuess.is_correct && styles.revealResultWin]}>
+              {myGuess.is_correct ? `Correct! +${myGuess.points} pts` : 'Not the lie — better luck next round'}
+            </Text>
+          ) : null}
+          <Text style={styles.waiting}>
+            {revealSeconds && revealSeconds > 0 ? `Next round in ${revealSeconds}s…` : 'Waiting for next round…'}
           </Text>
-        ) : null}
-        <Text style={styles.waiting}>
-          {revealSeconds && revealSeconds > 0 ? `Next round in ${revealSeconds}s…` : 'Waiting for next round…'}
-        </Text>
-        {liveBoard}
+          {liveBoard}
+        </ScrollView>
       </GameShell>
     )
   }
@@ -458,20 +463,22 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   if (isFeatured) {
     return (
       <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={roundSubtitle}>
-        {liveBanners}
-        {submitterBadge}
-        <Text style={styles.featured}>Your turn — others are guessing your lie</Text>
-        {metadata ? (
-          <View style={styles.choices}>
-            {metadata.statements.map((text, index) => (
-              <View key={index} style={styles.choice}>
-                <Text style={styles.choiceBadge}>{formatTtlChoiceLabel(index)}</Text>
-                <Text style={styles.choiceText}>{text}</Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
-        {liveBoard}
+        <ScrollView contentContainerStyle={styles.content}>
+          {liveBanners}
+          {submitterBadge}
+          <Text style={styles.featured}>Your turn — others are guessing your lie</Text>
+          {metadata ? (
+            <View style={styles.choices}>
+              {metadata.statements.map((text, index) => (
+                <View key={index} style={styles.choice}>
+                  <Text style={styles.choiceBadge}>{formatTtlChoiceLabel(index)}</Text>
+                  <Text style={styles.choiceText}>{text}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+          {liveBoard}
+        </ScrollView>
       </GameShell>
     )
   }
@@ -480,42 +487,45 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={roundSubtitle}>
-      {liveBanners}
-      {submitterBadge}
-      <Text style={styles.featured}>Which is {featuredName}&apos;s lie?</Text>
-      {timerActive && !myGuess && !timeExpired ? <TimerBadge seconds={secondsLeft} /> : null}
-      {metadata ? (
-        <View style={styles.choices}>
-          {metadata.statements.map((text, index) => {
-            const selected = myGuess?.guessed_index === index
-            return (
-              <Pressable
-                key={index}
-                style={[styles.choice, selected && styles.choiceSelected]}
-                disabled={submitting || !!myGuess || lockedOut || isViewer}
-                onPress={() => void submitGuess(index)}
-              >
-                <Text style={styles.choiceBadge}>{formatTtlChoiceLabel(index)}</Text>
-                <Text style={styles.choiceText}>{text}</Text>
-              </Pressable>
-            )
-          })}
-        </View>
-      ) : null}
-      {isViewer ? (
-        <Text style={styles.locked}>Watching only — you can&apos;t guess this round.</Text>
-      ) : myGuess ? (
-        <Text style={styles.locked}>Guess locked in — results when everyone finishes or time runs out.</Text>
-      ) : lockedOut ? (
-        <Text style={styles.locked}>Time&apos;s up — waiting for results…</Text>
-      ) : null}
-      {liveBoard}
+      <ScrollView contentContainerStyle={styles.content}>
+        {liveBanners}
+        {submitterBadge}
+        <Text style={styles.featured}>Which is {featuredName}&apos;s lie?</Text>
+        {timerActive && !myGuess && !timeExpired ? <TimerBadge seconds={secondsLeft} /> : null}
+        {metadata ? (
+          <View style={styles.choices}>
+            {metadata.statements.map((text, index) => {
+              const selected = myGuess?.guessed_index === index
+              return (
+                <Pressable
+                  key={index}
+                  style={[styles.choice, selected && styles.choiceSelected]}
+                  disabled={submitting || !!myGuess || lockedOut || isViewer}
+                  onPress={() => void submitGuess(index)}
+                >
+                  <Text style={styles.choiceBadge}>{formatTtlChoiceLabel(index)}</Text>
+                  <Text style={styles.choiceText}>{text}</Text>
+                </Pressable>
+              )
+            })}
+          </View>
+        ) : null}
+        {isViewer ? (
+          <Text style={styles.locked}>Watching only — you can&apos;t guess this round.</Text>
+        ) : myGuess ? (
+          <Text style={styles.locked}>Guess locked in — results when everyone finishes or time runs out.</Text>
+        ) : lockedOut ? (
+          <Text style={styles.locked}>Time&apos;s up — waiting for results…</Text>
+        ) : null}
+        {liveBoard}
+      </ScrollView>
     </GameShell>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
+    content: { paddingBottom: 32, gap: 12 },
     waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
     help: { color: theme.textSecondary, fontSize: 15, lineHeight: 22 },
     rulesRow: { alignItems: 'flex-start' },
