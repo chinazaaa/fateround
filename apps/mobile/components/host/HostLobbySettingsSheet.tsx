@@ -37,6 +37,11 @@ import {
   type MafiaLobbyState,
   type QuiplashLobbyState,
 } from '@/components/host/lobby-settings/PartyTimerToggleSections'
+import {
+  DurationGamesSection,
+  isDurationGame,
+  type DurationGameState,
+} from '@/components/host/lobby-settings/DurationGamesSection'
 import { theme } from '@/constants/theme'
 
 /** Games whose max-players is editable via the shared lobby-settings route. */
