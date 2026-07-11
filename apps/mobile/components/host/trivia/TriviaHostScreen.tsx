@@ -9,11 +9,7 @@ import {
   tallyTriviaPlayerScores,
   TRIVIA_REVEAL_SECONDS,
 } from '@fateround/shared/trivia'
-import {
-  postFinishGame,
-  postPlayAgain,
-  postTriviaAdvance,
-} from '@/lib/game-api'
+import { postFinishGame, postPlayAgain, postTriviaAdvance } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { ROUND_SELECT, TRIVIA_ANSWER_SELECT } from '@/lib/supabase-selects'
 import { useTriviaAutoAdvance } from '@/hooks/useTriviaAutoAdvance'
@@ -80,19 +76,14 @@ export function TriviaHostScreen({ gameCode, hostToken, game, players, onReload 
     onSynced: () => void load(),
   })
 
-  const activeRound = useMemo(
-    () => rounds.find((r) => r.status === 'active') ?? null,
-    [rounds]
-  )
+  const activeRound = useMemo(() => rounds.find((r) => r.status === 'active') ?? null, [rounds])
   const lastFinishedRound = useMemo(() => {
     const finished = rounds.filter((r) => r.status === 'finished')
     return finished.length ? finished[finished.length - 1] : null
   }, [rounds])
   const meta = activeRound ? parseTriviaMetadata(activeRound.trivia_metadata) : null
   const activePlayers = players.filter((p) => !p.spectator)
-  const roundAnswers = activeRound
-    ? answers.filter((a) => a.round_id === activeRound.id)
-    : []
+  const roundAnswers = activeRound ? answers.filter((a) => a.round_id === activeRound.id) : []
   const scores = tallyTriviaPlayerScores(answers, players)
   const leader = scores[0]
   const isLastRound = (game.current_round_number ?? 0) >= (game.rounds_count ?? 0)
@@ -212,6 +203,7 @@ export function TriviaHostScreen({ gameCode, hostToken, game, players, onReload 
 
       {game.status === 'active' ? (
         <LeaderboardPanel
+          embedded
           title="Live leaderboard"
           rows={scores.map((row) => ({ id: row.id, name: row.name, score: row.score }))}
         />
@@ -237,14 +229,9 @@ export function TriviaHostScreen({ gameCode, hostToken, game, players, onReload 
           disabled={forcing}
           onPress={() => void onForceAdvance()}
         >
-          {forcing ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.primaryBtnText}>Force advance</Text>
-          )}
+          {forcing ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Force advance</Text>}
         </Pressable>
       ) : null}
-
 
       {game.status === 'active' ? (
         <Pressable
@@ -281,54 +268,54 @@ export function TriviaHostScreen({ gameCode, hostToken, game, players, onReload 
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  statsRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  stat: { color: theme.textMuted, fontSize: 14, fontWeight: '600' },
-  card: {
-    backgroundColor: theme.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: 16,
-    gap: 8,
-  },
-  cardLabel: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  question: { color: theme.text, fontSize: 17, fontWeight: '700', lineHeight: 24 },
-  choice: { color: theme.textSecondary, fontSize: 15, lineHeight: 22 },
-  answerCount: { color: theme.textMuted, fontSize: 14, marginTop: 4 },
-  autoHint: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
-  correctLine: { color: theme.text, fontSize: 15, fontWeight: '600', lineHeight: 22 },
-  resultRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  resultName: { fontSize: 15, fontWeight: '600', flex: 1 },
-  resultCorrect: { color: theme.success },
-  resultWrong: { color: theme.textMuted },
-  resultPoints: { color: theme.textMuted, fontSize: 14, fontWeight: '700' },
-  revealCountdown: { color: theme.primaryMuted, fontSize: 15, fontWeight: '700', textAlign: 'center', marginTop: 4 },
-  primaryBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  // White on the solid rose button — intentional, correct in both schemes.
-  primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  secondaryBtn: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  secondaryBtnText: { color: theme.text, fontWeight: '600' },
-  btnDisabled: { opacity: 0.5 },
-  error: { color: theme.error, fontSize: 14 },
-})
+    statsRow: { flexDirection: 'row', justifyContent: 'space-between' },
+    stat: { color: theme.textMuted, fontSize: 14, fontWeight: '600' },
+    card: {
+      backgroundColor: theme.surface,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 16,
+      gap: 8,
+    },
+    cardLabel: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+    question: { color: theme.text, fontSize: 17, fontWeight: '700', lineHeight: 24 },
+    choice: { color: theme.textSecondary, fontSize: 15, lineHeight: 22 },
+    answerCount: { color: theme.textMuted, fontSize: 14, marginTop: 4 },
+    autoHint: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
+    correctLine: { color: theme.text, fontSize: 15, fontWeight: '600', lineHeight: 22 },
+    resultRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+    },
+    resultName: { fontSize: 15, fontWeight: '600', flex: 1 },
+    resultCorrect: { color: theme.success },
+    resultWrong: { color: theme.textMuted },
+    resultPoints: { color: theme.textMuted, fontSize: 14, fontWeight: '700' },
+    revealCountdown: { color: theme.primaryMuted, fontSize: 15, fontWeight: '700', textAlign: 'center', marginTop: 4 },
+    primaryBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    // White on the solid rose button — intentional, correct in both schemes.
+    primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+    secondaryBtn: {
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    secondaryBtnText: { color: theme.text, fontWeight: '600' },
+    btnDisabled: { opacity: 0.5 },
+    error: { color: theme.error, fontSize: 14 },
+  })

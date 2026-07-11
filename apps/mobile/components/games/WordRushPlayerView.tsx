@@ -377,6 +377,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
           />
         ) : (
           <LeaderboardPanel
+            embedded
             title="Leaderboard"
             rows={livePlayerScores.map((row) => ({
               id: row.id,
@@ -494,7 +495,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
         ) : null}
 
         {mode === 'team' && session.phase === 'playing' ? (
-          <ActivityFeed title="Recent correct" items={recentCorrect} emptyText="No correct words yet" />
+          <ActivityFeed embedded title="Recent correct" items={recentCorrect} emptyText="No correct words yet" />
         ) : null}
       </KeyboardAwareGameScroll>
     </GameShell>

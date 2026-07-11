@@ -70,7 +70,10 @@ export function JoinScreen({
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     container: {
-      flex: 1,
+      // Not flex:1 — that sets flexBasis:0 on the scroll's content container,
+      // pinning it to the scroll height so it can't scroll and the centered form
+      // collapses when the keyboard shrinks the area. flexGrow:1 (from
+      // KeyboardFormScreen) + justifyContent centers when it fits, scrolls when not.
       backgroundColor: theme.bg,
       padding: 24,
       justifyContent: 'center',

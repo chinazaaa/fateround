@@ -89,7 +89,9 @@ export function PollGenderJoinScreen({ gameCode, joinName, joining, error, onCha
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     container: {
-      flex: 1,
+      // flexGrow (from KeyboardFormScreen) not flex:1 — flex:1 pins the scroll
+      // content to the viewport, so it can't scroll and centered content collapses
+      // when the keyboard opens.
       backgroundColor: theme.bg,
       padding: 24,
       justifyContent: 'center',

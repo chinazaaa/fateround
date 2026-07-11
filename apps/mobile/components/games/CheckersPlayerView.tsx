@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { colorForPlayer, currentTurnPlayerId, legalStepsFromSquare } from '@fateround/shared/checkers'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
@@ -147,9 +147,7 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
     const sq = `${row}${col}`
     const mustContinue = activeSession.must_continue_from
     const legalTargets = new Set(
-      selected
-        ? legalStepsFromSquare(activeSession.board, myColor, selected, mustContinue).map((step) => step.to)
-        : []
+      selected ? legalStepsFromSquare(activeSession.board, myColor, selected, mustContinue).map((step) => step.to) : []
     )
 
     if (!selected) {
@@ -206,7 +204,26 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
       .join(' · ')
     return (
       <GameShell bootstrap={bootstrap} title="Checkers" subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap} title={title} subtitle="Final standings" detail={detail || undefined} leaderboard={activeSession.is_draw ? undefined : winnerLeaderboard(activeSession.winner_player_id, bootstrap.players, bootstrap.myPlayerId)} winnerPlayerId={activeSession.winner_player_id} roundKey={activeSession.id} notice={<CheckersFinalBoard session={activeSession} players={bootstrap.players} highlightPlayerId={bootstrap.myPlayerId} />} />
+        <GameFinishPanel
+          bootstrap={bootstrap}
+          title={title}
+          subtitle="Final standings"
+          detail={detail || undefined}
+          leaderboard={
+            activeSession.is_draw
+              ? undefined
+              : winnerLeaderboard(activeSession.winner_player_id, bootstrap.players, bootstrap.myPlayerId)
+          }
+          winnerPlayerId={activeSession.winner_player_id}
+          roundKey={activeSession.id}
+          notice={
+            <CheckersFinalBoard
+              session={activeSession}
+              players={bootstrap.players}
+              highlightPlayerId={bootstrap.myPlayerId}
+            />
+          }
+        />
       </GameShell>
     )
   }
@@ -222,103 +239,109 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title="Checkers" subtitle={`Code ${bootstrap.code}`}>
-      {isViewer && me ? (
-        <ViewerModeBanner
-          gameCode={bootstrap.code}
-          playerId={me.id}
-          game={bootstrap.game}
-          player={me}
-          players={bootstrap.players}
-          onPromoted={() => void bootstrap.load()}
+      <ScrollView contentContainerStyle={styles.content}>
+        {isViewer && me ? (
+          <ViewerModeBanner
+            gameCode={bootstrap.code}
+            playerId={me.id}
+            game={bootstrap.game}
+            player={me}
+            players={bootstrap.players}
+            onPromoted={() => void bootstrap.load()}
+          />
+        ) : null}
+
+        <TurnBanner
+          text={
+            mustJump
+              ? 'Keep jumping! — same piece must continue'
+              : selected
+                ? `Selected ${selected} — tap destination`
+                : isMyTurn
+                  ? 'Your turn — tap a piece'
+                  : `${turnPlayer?.name ?? 'Opponent'}'s turn`
+          }
+          isMyTurn={isMyTurn}
         />
-      ) : null}
 
-      <TurnBanner
-        text={
-          mustJump
-            ? 'Keep jumping! — same piece must continue'
-            : selected
-              ? `Selected ${selected} — tap destination`
-              : isMyTurn
-                ? 'Your turn — tap a piece'
-                : `${turnPlayer?.name ?? 'Opponent'}'s turn`
-        }
-        isMyTurn={isMyTurn}
-      />
-
-      {!timed ? (
-        <View style={styles.matchup}>
-          <Text style={styles.matchupSide} numberOfLines={1}>🔴 {redName}</Text>
-          <Text style={styles.matchupVs}>vs</Text>
-          <Text style={[styles.matchupSide, styles.matchupSideRight]} numberOfLines={1}>⚫ {blackName}</Text>
-        </View>
-      ) : null}
-
-      {timed ? (
-        <>
-          <View style={styles.clocks}>
-            <ClockChip
-              label={`🔴 ${redPlayer?.name ?? 'Red'}`}
-              ms={liveCheckersClockMs(activeSession, 'r')}
-              active={activeSession.current_turn === 'r'}
-            />
-            <ClockChip
-              label={`⚫ ${blackPlayer?.name ?? 'Black'}`}
-              ms={liveCheckersClockMs(activeSession, 'b')}
-              active={activeSession.current_turn === 'b'}
-            />
-          </View>
-          {timerSeconds ? (
-            <Text style={styles.clockHint}>
-              ⏱ {Math.round(timerSeconds / 60)} min each — your clock only counts down on your turn
+        {!timed ? (
+          <View style={styles.matchup}>
+            <Text style={styles.matchupSide} numberOfLines={1}>
+              🔴 {redName}
             </Text>
-          ) : null}
-        </>
-      ) : null}
+            <Text style={styles.matchupVs}>vs</Text>
+            <Text style={[styles.matchupSide, styles.matchupSideRight]} numberOfLines={1}>
+              ⚫ {blackName}
+            </Text>
+          </View>
+        ) : null}
 
-      <CheckersBoard
-        board={activeSession.board}
-        myColor={myColor}
-        isMyTurn={isMyTurn && !isViewer}
-        mustContinue={activeSession.must_continue_from}
-        selected={selected}
-        lastMoveFrom={activeSession.last_move_from}
-        lastMoveTo={activeSession.last_move_to}
-        acting={acting}
-        redName={redName}
-        blackName={blackName}
-        nameColor={theme.text}
-        mutedColor={theme.textMuted}
-        onSquarePress={(row, col) => void onSquarePress(row, col)}
-      />
+        {timed ? (
+          <>
+            <View style={styles.clocks}>
+              <ClockChip
+                label={`🔴 ${redPlayer?.name ?? 'Red'}`}
+                ms={liveCheckersClockMs(activeSession, 'r')}
+                active={activeSession.current_turn === 'r'}
+              />
+              <ClockChip
+                label={`⚫ ${blackPlayer?.name ?? 'Black'}`}
+                ms={liveCheckersClockMs(activeSession, 'b')}
+                active={activeSession.current_turn === 'b'}
+              />
+            </View>
+            {timerSeconds ? (
+              <Text style={styles.clockHint}>
+                ⏱ {Math.round(timerSeconds / 60)} min each — your clock only counts down on your turn
+              </Text>
+            ) : null}
+          </>
+        ) : null}
 
-      {myColor ? (
-        <Text style={styles.identityHint}>
-          You are <Text style={styles.identityStrong}>{myColor === 'r' ? '🔴 Red' : '⚫ Black'}</Text>
-          {isMyTurn
-            ? mustJump
-              ? ' · you must keep jumping with the same piece'
-              : ' · tap a piece, then its destination'
-            : ' · waiting for your opponent'}
-        </Text>
-      ) : null}
+        <CheckersBoard
+          board={activeSession.board}
+          myColor={myColor}
+          isMyTurn={isMyTurn && !isViewer}
+          mustContinue={activeSession.must_continue_from}
+          selected={selected}
+          lastMoveFrom={activeSession.last_move_from}
+          lastMoveTo={activeSession.last_move_to}
+          acting={acting}
+          redName={redName}
+          blackName={blackName}
+          nameColor={theme.text}
+          mutedColor={theme.textMuted}
+          onSquarePress={(row, col) => void onSquarePress(row, col)}
+        />
 
-      {myColor && !isViewer ? (
-        <Pressable style={styles.resignBtn} disabled={acting} onPress={resign}>
-          <Text style={styles.resignText}>Resign</Text>
-        </Pressable>
-      ) : null}
+        {myColor ? (
+          <Text style={styles.identityHint}>
+            You are <Text style={styles.identityStrong}>{myColor === 'r' ? '🔴 Red' : '⚫ Black'}</Text>
+            {isMyTurn
+              ? mustJump
+                ? ' · you must keep jumping with the same piece'
+                : ' · tap a piece, then its destination'
+              : ' · waiting for your opponent'}
+          </Text>
+        ) : null}
 
-      <ConfirmDialog
-        visible={resignOpen}
-        title="Resign this game?"
-        message="Your opponent will be awarded the win."
-        confirmLabel="Resign"
-        destructive
-        confirming={acting}
-        onConfirm={confirmResign}
-        onCancel={() => setResignOpen(false)}
-      />
+        {myColor && !isViewer ? (
+          <Pressable style={styles.resignBtn} disabled={acting} onPress={resign}>
+            <Text style={styles.resignText}>Resign</Text>
+          </Pressable>
+        ) : null}
+
+        <ConfirmDialog
+          visible={resignOpen}
+          title="Resign this game?"
+          message="Your opponent will be awarded the win."
+          confirmLabel="Resign"
+          destructive
+          confirming={acting}
+          onConfirm={confirmResign}
+          onCancel={() => setResignOpen(false)}
+        />
+      </ScrollView>
     </GameShell>
   )
 }
@@ -338,6 +361,7 @@ function ClockChip({ label, ms, active }: { label: string; ms: number; active: b
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
+    content: { paddingBottom: 32, gap: 12 },
     clocks: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginBottom: 8 },
     clockChip: {
       flex: 1,

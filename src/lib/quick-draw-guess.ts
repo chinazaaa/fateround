@@ -707,22 +707,14 @@ export async function assignQuickDrawGuessLateJoinTeam(
     // player list — so a late joiner who is only added to quick_draw_guess_players can guess
     // and score but never becomes the drawer. Append them to the roster so an upcoming round
     // rotates a drawing turn onto them (team mode already picks up late joiners via teamRoster).
-    const { data: sess } = await supabase
-      .from('quick_draw_guess_sessions')
-      .select('roster, status')
-      .eq('game_id', gameId)
-      .maybeSingle()
-    if (sess && sess.status !== 'finished') {
-      const roster = Array.isArray(sess.roster) ? (sess.roster as string[]) : []
-      if (!roster.includes(playerId)) {
-        const { error: rosterError } = await supabase
-          .from('quick_draw_guess_sessions')
-          .update({ roster: [...roster, playerId], updated_at: new Date().toISOString() })
-          .eq('game_id', gameId)
-        if (rosterError)
-          return { team: 1, error: internalErrorMessage('quick-draw-guess:assignLateJoinRoster', rosterError) }
-      }
-    }
+    // Done via an atomic DB-side append (single row-locked UPDATE) so two simultaneous late
+    // joins can't clobber each other's write; duplicates and finished sessions are no-ops.
+    const { error: rosterError } = await supabase.rpc('quick_draw_guess_append_roster', {
+      p_game_id: gameId,
+      p_player_id: playerId,
+    })
+    if (rosterError)
+      return { team: 1, error: internalErrorMessage('quick-draw-guess:assignLateJoinRoster', rosterError) }
     return { team: 1 }
   }
   const numTeams = clampQuickDrawNumTeams(game.quick_draw_num_teams)

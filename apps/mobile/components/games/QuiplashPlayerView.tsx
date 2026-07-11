@@ -283,6 +283,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
         ) : null}
 
         <LeaderboardPanel
+          embedded
           title="Live scores"
           rows={liveLeaderboard.map((row) => ({
             id: row.id,

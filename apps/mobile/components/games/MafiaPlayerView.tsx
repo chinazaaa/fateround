@@ -16,6 +16,7 @@ import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/g
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { getPlayerSession } from '@/lib/secure-session'
 import { postMafiaAdvance, postMafiaChat, postMafiaNightAction, postMafiaState, postMafiaVote } from '@/lib/game-api'
@@ -184,242 +185,246 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title="Mafia" subtitle={`Day ${state.dayNumber}`}>
-      <TurnBanner
-        text={`${mafiaPhaseLabel(phase)}${secondsLeft > 0 ? ` · ${secondsLeft}s` : ''}`}
-        isMyTurn={
-          phase === 'night' && amIAlive && !!myState && myState.role !== 'villager' && !myState.nightActionSubmitted
-        }
-      />
+      <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
+        <TurnBanner
+          text={`${mafiaPhaseLabel(phase)}${secondsLeft > 0 ? ` · ${secondsLeft}s` : ''}`}
+          isMyTurn={
+            phase === 'night' && amIAlive && !!myState && myState.role !== 'villager' && !myState.nightActionSubmitted
+          }
+        />
 
-      {isViewer && bootstrap.game && bootstrap.myPlayerId && myPlayerRow ? (
-        <View style={styles.bannerWrap}>
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId}
-            game={bootstrap.game}
-            player={myPlayerRow}
-            players={bootstrap.players}
-            onPromoted={() => bootstrap.load()}
-          />
-        </View>
-      ) : null}
-
-      {myState ? (
-        <View style={styles.identityCard}>
-          <Text style={styles.identityEmoji}>{mafiaRoleEmoji(myState.role)}</Text>
-          <Text style={styles.identityRole}>{myState.role.toUpperCase()}</Text>
-          <Text style={styles.identityTeam}>Team {myState.team === 'mafia' ? 'Mafia' : 'Village'}</Text>
-          <Text style={styles.identityDesc}>{ROLE_DESC[myState.role]}</Text>
-          {myState.mafiaTeammates.length > 0 ? (
-            <Text style={styles.allies}>Allies: {myState.mafiaTeammates.join(', ')}</Text>
-          ) : null}
-          {myState.detectiveResult ? (
-            <Text style={styles.investigation}>
-              {myState.detectiveResult.targetName} is{' '}
-              {myState.detectiveResult.alignment === 'mafia' ? 'Mafia' : 'Village'}
-            </Text>
-          ) : null}
-          <View style={[styles.statusPill, amIAlive ? styles.statusAlive : styles.statusDead]}>
-            <Text style={[styles.statusPillText, amIAlive ? styles.statusAliveText : styles.statusDeadText]}>
-              {amIAlive ? '💚 ALIVE' : '💀 ELIMINATED'}
-            </Text>
-          </View>
-        </View>
-      ) : amISpectator ? (
-        <View style={styles.identityCard}>
-          <Text style={styles.identityEmoji}>👁️</Text>
-          <Text style={styles.identityRole}>SPECTATING</Text>
-          <Text style={styles.identityDesc}>You are watching this game.</Text>
-        </View>
-      ) : null}
-
-      <View style={styles.phaseCard}>
-        {phase === 'role_reveal' ? (
-          <Text style={styles.phaseText}>Check your role above. Do not show your screen!</Text>
-        ) : null}
-
-        {phase === 'night' ? (
-          <>
-            {amISpectator ? (
-              <Text style={styles.phaseText}>Watching — night actions in progress…</Text>
-            ) : !amIAlive ? (
-              <Text style={styles.phaseText}>You are eliminated. Watch the night unfold…</Text>
-            ) : myState?.role === 'villager' ? (
-              <Text style={styles.phaseText}>The village sleeps…</Text>
-            ) : myState?.nightActionSubmitted ? (
-              <Text style={styles.phaseOk}>Night action submitted.</Text>
-            ) : (
-              <>
-                <Text style={styles.phaseText}>
-                  {myState?.role === 'mafia' && 'Choose a villager to eliminate.'}
-                  {myState?.role === 'doctor' && 'Choose a player to protect.'}
-                  {myState?.role === 'detective' && 'Choose a player to investigate.'}
-                </Text>
-                <View style={styles.targetGrid}>
-                  {state.players
-                    .filter((p) => p.isAlive && p.id !== bootstrap.myPlayerId)
-                    .map((p) => (
-                      <Pressable
-                        key={p.id}
-                        style={styles.targetBtn}
-                        disabled={acting}
-                        onPress={() => act(() => postMafiaNightAction(bootstrap.code, bootstrap.myResumeToken!, p.id))}
-                      >
-                        <Text style={styles.targetText}>{p.name}</Text>
-                      </Pressable>
-                    ))}
-                </View>
-              </>
-            )}
-          </>
-        ) : null}
-
-        {phase === 'day_report' ? (
-          <View style={styles.centerBlock}>
-            <Text style={styles.phaseTitle}>Sunrise</Text>
-            {killedPlayer ? (
-              <Text style={styles.phaseText}>
-                {killedPlayer.name} was eliminated
-                {killedPlayer.role ? ` (${killedPlayer.role})` : ''}.
-              </Text>
-            ) : (
-              <Text style={styles.phaseText}>
-                {state.lastNightMafiaHadTarget ? 'The Doctor saved someone!' : 'Nobody died last night.'}
-              </Text>
-            )}
+        {isViewer && bootstrap.game && bootstrap.myPlayerId && myPlayerRow ? (
+          <View style={styles.bannerWrap}>
+            <ViewerModeBanner
+              gameCode={bootstrap.code}
+              playerId={bootstrap.myPlayerId}
+              game={bootstrap.game}
+              player={myPlayerRow}
+              players={bootstrap.players}
+              onPromoted={() => bootstrap.load()}
+            />
           </View>
         ) : null}
 
-        {phase === 'day' ? (
-          <>
-            {amISpectator ? (
-              <Text style={styles.phaseText}>Watching — voting in progress…</Text>
-            ) : !amIAlive ? (
-              <Text style={styles.phaseText}>You are eliminated — watch the vote.</Text>
-            ) : (
-              <>
-                {myState?.dayVoteSubmitted ? (
-                  <View style={styles.voteCastRow}>
-                    <Text style={styles.phaseOk}>✓ Vote cast</Text>
-                    <Pressable
-                      disabled={acting}
-                      onPress={() => act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, null))}
-                    >
-                      <Text style={styles.changeVoteLink}>Change vote</Text>
-                    </Pressable>
-                  </View>
-                ) : null}
-                <View style={styles.targetGrid}>
-                  {state.players
-                    .filter((p) => p.isAlive && p.id !== bootstrap.myPlayerId)
-                    .map((p) => {
-                      const votes = showDayVotes ? (state.voteTallies[p.id] ?? 0) : 0
-                      return (
+        {myState ? (
+          <View style={styles.identityCard}>
+            <Text style={styles.identityEmoji}>{mafiaRoleEmoji(myState.role)}</Text>
+            <Text style={styles.identityRole}>{myState.role.toUpperCase()}</Text>
+            <Text style={styles.identityTeam}>Team {myState.team === 'mafia' ? 'Mafia' : 'Village'}</Text>
+            <Text style={styles.identityDesc}>{ROLE_DESC[myState.role]}</Text>
+            {myState.mafiaTeammates.length > 0 ? (
+              <Text style={styles.allies}>Allies: {myState.mafiaTeammates.join(', ')}</Text>
+            ) : null}
+            {myState.detectiveResult ? (
+              <Text style={styles.investigation}>
+                {myState.detectiveResult.targetName} is{' '}
+                {myState.detectiveResult.alignment === 'mafia' ? 'Mafia' : 'Village'}
+              </Text>
+            ) : null}
+            <View style={[styles.statusPill, amIAlive ? styles.statusAlive : styles.statusDead]}>
+              <Text style={[styles.statusPillText, amIAlive ? styles.statusAliveText : styles.statusDeadText]}>
+                {amIAlive ? '💚 ALIVE' : '💀 ELIMINATED'}
+              </Text>
+            </View>
+          </View>
+        ) : amISpectator ? (
+          <View style={styles.identityCard}>
+            <Text style={styles.identityEmoji}>👁️</Text>
+            <Text style={styles.identityRole}>SPECTATING</Text>
+            <Text style={styles.identityDesc}>You are watching this game.</Text>
+          </View>
+        ) : null}
+
+        <View style={styles.phaseCard}>
+          {phase === 'role_reveal' ? (
+            <Text style={styles.phaseText}>Check your role above. Do not show your screen!</Text>
+          ) : null}
+
+          {phase === 'night' ? (
+            <>
+              {amISpectator ? (
+                <Text style={styles.phaseText}>Watching — night actions in progress…</Text>
+              ) : !amIAlive ? (
+                <Text style={styles.phaseText}>You are eliminated. Watch the night unfold…</Text>
+              ) : myState?.role === 'villager' ? (
+                <Text style={styles.phaseText}>The village sleeps…</Text>
+              ) : myState?.nightActionSubmitted ? (
+                <Text style={styles.phaseOk}>Night action submitted.</Text>
+              ) : (
+                <>
+                  <Text style={styles.phaseText}>
+                    {myState?.role === 'mafia' && 'Choose a villager to eliminate.'}
+                    {myState?.role === 'doctor' && 'Choose a player to protect.'}
+                    {myState?.role === 'detective' && 'Choose a player to investigate.'}
+                  </Text>
+                  <View style={styles.targetGrid}>
+                    {state.players
+                      .filter((p) => p.isAlive && p.id !== bootstrap.myPlayerId)
+                      .map((p) => (
                         <Pressable
                           key={p.id}
                           style={styles.targetBtn}
                           disabled={acting}
-                          onPress={() => act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, p.id))}
+                          onPress={() =>
+                            act(() => postMafiaNightAction(bootstrap.code, bootstrap.myResumeToken!, p.id))
+                          }
                         >
-                          <View style={styles.targetHeaderRow}>
-                            <Text style={styles.targetText}>{p.name}</Text>
+                          <Text style={styles.targetText}>{p.name}</Text>
+                        </Pressable>
+                      ))}
+                  </View>
+                </>
+              )}
+            </>
+          ) : null}
+
+          {phase === 'day_report' ? (
+            <View style={styles.centerBlock}>
+              <Text style={styles.phaseTitle}>Sunrise</Text>
+              {killedPlayer ? (
+                <Text style={styles.phaseText}>
+                  {killedPlayer.name} was eliminated
+                  {killedPlayer.role ? ` (${killedPlayer.role})` : ''}.
+                </Text>
+              ) : (
+                <Text style={styles.phaseText}>
+                  {state.lastNightMafiaHadTarget ? 'The Doctor saved someone!' : 'Nobody died last night.'}
+                </Text>
+              )}
+            </View>
+          ) : null}
+
+          {phase === 'day' ? (
+            <>
+              {amISpectator ? (
+                <Text style={styles.phaseText}>Watching — voting in progress…</Text>
+              ) : !amIAlive ? (
+                <Text style={styles.phaseText}>You are eliminated — watch the vote.</Text>
+              ) : (
+                <>
+                  {myState?.dayVoteSubmitted ? (
+                    <View style={styles.voteCastRow}>
+                      <Text style={styles.phaseOk}>✓ Vote cast</Text>
+                      <Pressable
+                        disabled={acting}
+                        onPress={() => act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, null))}
+                      >
+                        <Text style={styles.changeVoteLink}>Change vote</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+                  <View style={styles.targetGrid}>
+                    {state.players
+                      .filter((p) => p.isAlive && p.id !== bootstrap.myPlayerId)
+                      .map((p) => {
+                        const votes = showDayVotes ? (state.voteTallies[p.id] ?? 0) : 0
+                        return (
+                          <Pressable
+                            key={p.id}
+                            style={styles.targetBtn}
+                            disabled={acting}
+                            onPress={() => act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, p.id))}
+                          >
+                            <View style={styles.targetHeaderRow}>
+                              <Text style={styles.targetText}>{p.name}</Text>
+                              {votes > 0 ? (
+                                <View style={styles.voteBadge}>
+                                  <Text style={styles.voteBadgeText}>{votes}</Text>
+                                </View>
+                              ) : null}
+                            </View>
                             {votes > 0 ? (
-                              <View style={styles.voteBadge}>
-                                <Text style={styles.voteBadgeText}>{votes}</Text>
+                              <View style={styles.pipRow}>
+                                {Array.from({ length: Math.min(votes, 8) }).map((_, i) => (
+                                  <Text key={i} style={styles.pip}>
+                                    ●
+                                  </Text>
+                                ))}
                               </View>
                             ) : null}
-                          </View>
-                          {votes > 0 ? (
-                            <View style={styles.pipRow}>
-                              {Array.from({ length: Math.min(votes, 8) }).map((_, i) => (
-                                <Text key={i} style={styles.pip}>
-                                  ●
-                                </Text>
-                              ))}
-                            </View>
-                          ) : null}
-                        </Pressable>
-                      )
-                    })}
-                </View>
-                <Pressable
-                  style={styles.skipFullBtn}
-                  disabled={acting}
-                  onPress={() => act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, null))}
-                >
-                  <Text style={styles.skipFullText}>⏭ Skip / No Lynch</Text>
-                </Pressable>
-              </>
-            )}
-          </>
-        ) : null}
+                          </Pressable>
+                        )
+                      })}
+                  </View>
+                  <Pressable
+                    style={styles.skipFullBtn}
+                    disabled={acting}
+                    onPress={() => act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, null))}
+                  >
+                    <Text style={styles.skipFullText}>⏭ Skip / No Lynch</Text>
+                  </Pressable>
+                </>
+              )}
+            </>
+          ) : null}
 
-        {phase === 'elimination' ? (
-          <View style={styles.centerBlock}>
-            <Text style={styles.phaseTitle}>Vote result</Text>
-            {votedPlayer ? (
-              <Text style={styles.phaseText}>
-                {votedPlayer.name} was voted out
-                {votedPlayer.role ? ` (${votedPlayer.role})` : ''}.
+          {phase === 'elimination' ? (
+            <View style={styles.centerBlock}>
+              <Text style={styles.phaseTitle}>Vote result</Text>
+              {votedPlayer ? (
+                <Text style={styles.phaseText}>
+                  {votedPlayer.name} was voted out
+                  {votedPlayer.role ? ` (${votedPlayer.role})` : ''}.
+                </Text>
+              ) : (
+                <Text style={styles.phaseText}>No one was eliminated.</Text>
+              )}
+            </View>
+          ) : null}
+        </View>
+
+        <Text style={styles.sectionTitle}>Players</Text>
+        <View style={styles.playerList}>
+          {state.players.map((p) => {
+            const rosterVotes = phase === 'day' && showDayVotes && p.isAlive ? (state.voteTallies[p.id] ?? 0) : 0
+            return (
+              <Text key={p.id} style={[styles.playerChip, !p.isAlive && styles.playerDead]}>
+                {p.isAlive ? '👤 ' : '💀 '}
+                {p.name}
+                {!p.isAlive && p.role ? ` · ${p.role}` : ''}
+                {rosterVotes > 0 ? ` · ${rosterVotes} vote${rosterVotes !== 1 ? 's' : ''}` : ''}
               </Text>
-            ) : (
-              <Text style={styles.phaseText}>No one was eliminated.</Text>
-            )}
-          </View>
+            )
+          })}
+        </View>
+
+        {/* Alive Mafia see their secret chat AND the town chat simultaneously (matches web) */}
+        {myState?.role === 'mafia' && amIAlive ? (
+          <MafiaChatSection
+            styles={styles}
+            title="Mafia secret chat"
+            accent="mafia"
+            placeholder="Whisper to allies…"
+            messages={myState.mafiaChatMessages ?? []}
+            onSend={(msg) => sendChat(msg, 'night')}
+          />
         ) : null}
-      </View>
 
-      <Text style={styles.sectionTitle}>Players</Text>
-      <View style={styles.playerList}>
-        {state.players.map((p) => {
-          const rosterVotes = phase === 'day' && showDayVotes && p.isAlive ? (state.voteTallies[p.id] ?? 0) : 0
-          return (
-            <Text key={p.id} style={[styles.playerChip, !p.isAlive && styles.playerDead]}>
-              {p.isAlive ? '👤 ' : '💀 '}
-              {p.name}
-              {!p.isAlive && p.role ? ` · ${p.role}` : ''}
-              {rosterVotes > 0 ? ` · ${rosterVotes} vote${rosterVotes !== 1 ? 's' : ''}` : ''}
-            </Text>
-          )
-        })}
-      </View>
+        {phase !== 'night' && phase !== 'role_reveal' ? (
+          <MafiaChatSection
+            styles={styles}
+            title="Town discussion"
+            placeholder="Share your thoughts…"
+            messages={state.dayChatMessages ?? []}
+            disabled={!amIAlive || amISpectator}
+            onSend={(msg) => sendChat(msg, 'day')}
+          />
+        ) : null}
 
-      {/* Alive Mafia see their secret chat AND the town chat simultaneously (matches web) */}
-      {myState?.role === 'mafia' && amIAlive ? (
-        <MafiaChatSection
-          styles={styles}
-          title="Mafia secret chat"
-          accent="mafia"
-          placeholder="Whisper to allies…"
-          messages={myState.mafiaChatMessages ?? []}
-          onSend={(msg) => sendChat(msg, 'night')}
-        />
-      ) : null}
+        {!amIAlive && bootstrap.myPlayerId ? (
+          <MafiaChatSection
+            styles={styles}
+            title="Ghost chat (only the dead can see this)"
+            placeholder="Chat with fellow ghosts…"
+            messages={state.ghostChatMessages ?? []}
+            onSend={(msg) => sendChat(msg, 'ghost')}
+          />
+        ) : null}
 
-      {phase !== 'night' && phase !== 'role_reveal' ? (
-        <MafiaChatSection
-          styles={styles}
-          title="Town discussion"
-          placeholder="Share your thoughts…"
-          messages={state.dayChatMessages ?? []}
-          disabled={!amIAlive || amISpectator}
-          onSend={(msg) => sendChat(msg, 'day')}
-        />
-      ) : null}
-
-      {!amIAlive && bootstrap.myPlayerId ? (
-        <MafiaChatSection
-          styles={styles}
-          title="Ghost chat (only the dead can see this)"
-          placeholder="Chat with fellow ghosts…"
-          messages={state.ghostChatMessages ?? []}
-          onSend={(msg) => sendChat(msg, 'ghost')}
-        />
-      ) : null}
-
-      <View style={styles.rulesRow}>
-        <GameRulesLink gameType="mafia" />
-      </View>
+        <View style={styles.rulesRow}>
+          <GameRulesLink gameType="mafia" />
+        </View>
+      </KeyboardAwareGameScroll>
     </GameShell>
   )
 }
@@ -494,6 +499,7 @@ function MafiaChatSection({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
+    content: { paddingBottom: 32, gap: 12 },
     identityCard: {
       backgroundColor: theme.surface,
       borderRadius: 12,

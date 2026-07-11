@@ -4,7 +4,6 @@ import type { Game, Player } from '@fateround/shared'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { PlayerSessionControls } from '@/components/session/PlayerSessionControls'
-import { ShareGameCard } from '@/components/session/ShareGameCard'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { gameLabel } from '@/lib/mobile-registry'
 import { postPlayerReady } from '@/lib/game-api'
@@ -108,8 +107,6 @@ export function LobbyView({
           )
         })}
       </View>
-
-      <ShareGameCard gameCode={gameCode} resumeToken={myResumeToken} />
 
       {myPlayerId && onRenamed && onLeft ? (
         <PlayerSessionControls
