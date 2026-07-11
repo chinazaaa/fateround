@@ -1,5 +1,4 @@
 import type {
-  BingoCallMode,
   DescribeItMode,
   GameType,
   PairVoteMode,
@@ -20,6 +19,7 @@ import {
   parsePairVoteMode,
 } from './poll-games'
 
+export type BingoCallMode = 'manual' | 'auto'
 export const POLL_DEFAULT_ROUNDS = 3
 export const POLL_ROUND_TIMER_OPTIONS = [15, 30, 60] as const
 export const POLL_DEFAULT_TIMER = 30

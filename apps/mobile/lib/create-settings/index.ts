@@ -19,9 +19,17 @@ import {
   gameRoomSettingsPayload,
   type GameRoomSettings,
 } from '@/lib/create-settings/board-games'
+import {
+  defaultPartyRoomSettings,
+  isPollPartyGame,
+  partyRoomSettingsPayload,
+  type PartyRoomSettings,
+} from '@/lib/create-settings/party-games'
 
 export type { GameRoomSettings } from '@/lib/create-settings/board-games'
 export { hasGameRoomSettings, BATCH_19_BOARD_GAMES } from '@/lib/create-settings/board-games'
+export type { PartyRoomSettings } from '@/lib/create-settings/party-games'
+export { hasPartyRoomSettings, BATCH_20_PARTY_GAMES, isPollPartyGame } from '@/lib/create-settings/party-games'
 
 export type CreateWizardStep = 'setup' | 'people'
 
@@ -33,6 +41,7 @@ export type CreateWizardState = {
   maxPlayers: number | null
   lateJoinPolicy: LateJoinPolicy
   room: GameRoomSettings
+  party: PartyRoomSettings
 }
 
 export type CreateSettingsRegistryEntry = {
@@ -70,6 +79,7 @@ export function createInitialState(
     maxPlayers: isLobbyLimitGameType(gameType) ? lobbyDefaultMaxPlayers(gameType, limits) : null,
     lateJoinPolicy: defaultLateJoinPolicyForGameType(gameType),
     room: defaultGameRoomSettings(gameType),
+    party: defaultPartyRoomSettings(gameType),
   }
 }
 
@@ -88,6 +98,7 @@ export function applyGameTypeChange(
       gameType
     ),
     room: defaultGameRoomSettings(gameType),
+    party: defaultPartyRoomSettings(gameType),
   }
 }
 
@@ -122,9 +133,13 @@ export function buildCreatePayload(state: CreateWizardState, limits: GamePlayerL
     question_source: 'platform',
     participants: [],
     ...(usesNativeJoinersMode(gameType)
-      ? { participant_mode: 'joiners', anonymous: true }
+      ? {
+          participant_mode: 'joiners',
+          anonymous: isPollPartyGame(gameType) ? state.party.anonymous : true,
+        }
       : { participant_mode: 'import', anonymous: true }),
     ...gameRoomSettingsPayload(gameType, state.room),
+    ...partyRoomSettingsPayload(gameType, state.party),
   }
 
   if (maxPlayers != null) payload.max_players = maxPlayers

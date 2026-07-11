@@ -22,7 +22,7 @@ Living doc for the React Native / Expo app in `apps/mobile/`.
 
 Batches 1–9 were about **coverage**: every game type can open a native screen and perform core player actions.  
 Batches 10–17 added **shell, lifecycle, notifications, voice, polish, host mode, and Drawful canvas**.  
-**Next priority:** **party-game create** (Batch 20), **host + play parity** (Batch 23), + device QA / TestFlight.
+**Next priority:** **custom content create** (Batch 21), **host + play parity** (Batch 23), + device QA / TestFlight.
 
 ### Player E2E exceptions (Jul 2026)
 
@@ -31,7 +31,7 @@ Batches 10–17 added **shell, lifecycle, notifications, voice, polish, host mod
 | **40 game types** | ✅ Full player flow | Join, lobby, play, finish, play-again waiting |
 | **`custom` game type** | ✅ Play | Create needs web slot builder (until Batch 22) |
 | **Import-mode polls / hot seat** | ✅ Claim join | `ParticipantClaimJoinScreen`; host still adds names on web create |
-| **Advanced create** | ⚠️ Partial | Universal + board/card rooms on app *(Batches 18–19)*; party settings, custom content, rosters *(20–22)* |
+| **Advanced create** | ⚠️ Partial | Universal + board/card + party rooms on app *(Batches 18–20)*; custom content, rosters *(21–22)* |
 
 ---
 
@@ -176,7 +176,7 @@ Mobile can **create**, **lobby**, **start**, **run mid-game**, **play along**, a
 - [x] **Host playing along** — join as player while keeping host token (`HostPlayAlongCard`)
 - [x] **Bingo auto-call sync** — `useBingoAutoCall` on bingo host screen + manual call button
 
-**Still thinner than web:** host+play lobby UX *(Batch 23)*; party-game create *(Batch 20)*; custom content *(Batches 21–22)*; poll host animations.
+**Still thinner than web:** host+play lobby UX *(Batch 23)*; custom content *(Batches 21–22)*; poll host animations.
 
 ### Host + play (play along)
 
@@ -209,7 +209,7 @@ Mobile can **create**, **lobby**, **start**, **run mid-game**, **play along**, a
 - [x] ⋮ overflow menu (`PlayerSessionMenu`: rename, rules, push mute, leave)
 - [x] Create wizard shell + universal lobby *(Batch 18)* — max players, late join, public/private, theme
 - [x] Board & card room settings *(Batch 19)* — Ludo variant, chess look, Whot/Crazy8 rules, Scrabble, Mahjong, Monopoly
-- [ ] Party-game create settings — rounds, timers, bingo auto-call, etc. *(Batch 20)*
+- [x] Party-game create settings *(Batch 20)* — polls, trivia, bingo, quiplash, quick draw, describe it, word rush, mafia, codewords, etc.
 - [ ] Custom content + participants *(Batches 21–22)*
 
 ### Lobby & lifecycle
@@ -268,7 +268,7 @@ Detail:
 
 ## Proposed next batches
 
-Batches 10–19 core work is **done**. Next: **party-game create (20)**, **host + play parity (23)**, then device QA + TestFlight.
+Batches 10–20 core work is **done**. Next: **custom content create (21–22)**, **host + play parity (23)**, then device QA + TestFlight.
 
 ### Batch 17 — Drawful canvas + host polish ✅
 
@@ -302,7 +302,7 @@ Batches 10–19 core work is **done**. Next: **party-game create (20)**, **host 
 - [x] `GameRoomSettingsPanel` + `CREATE_SETTINGS_REGISTRY` room payload (`board-games.ts`)
 - [x] Shared create helpers: `@fateround/shared/create-board-games`, `mahjong-rulesets`
 
-### Batch 20 — Party & round-based game settings *(planned)*
+### Batch 20 — Party & round-based game settings ✅
 
 **Goal:** Rounds, timers, and mode toggles for party games (platform question pools only — no custom editor yet).
 
@@ -310,12 +310,14 @@ Batches 10–19 core work is **done**. Next: **party-game create (20)**, **host 
 |-------|----------|
 | Poll suite | Rounds, round timer, anonymous, gender-based, pair vote mode |
 | Trivia | Rounds, timer, category, `question_source: platform` |
-| Bingo | Max players, auto vs manual call, call interval |
+| Bingo | Auto vs manual call, call interval |
 | Quick Draw | Drawful vs guess, team vs individual, teams, rounds, timers |
-| Describe It / Word Rush | Team vs individual, num teams, rounds, timer |
+| Describe It / Word Rush | Team vs individual, num teams, rounds, timer (+ WR difficulty/prompt mode) |
 | Mafia | Doctor, detective, anonymous votes |
-| Codewords | Spymaster / operative timers, late join |
+| Codewords | Spymaster / operative timers, team assignment |
 | Two Truths, Quiplash, Hot Seat, etc. | Rounds + timer where web has them |
+
+**Shipped:** `packages/shared/src/create-party-games.ts`, `apps/mobile/lib/create-settings/party-games.ts`, `PartyRoomSettingsPanel.tsx`, wired into `CreateWizardShell` + `buildCreatePayload`.
 
 ### Batch 21 — Custom content (questions & words) *(planned)*
 

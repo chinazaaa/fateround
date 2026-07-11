@@ -8,6 +8,7 @@ import { PeopleStepPlaceholder } from '@/components/create/PeopleStepPlaceholder
 import { StepIndicator } from '@/components/create/StepIndicator'
 import { UniversalLobbyFields } from '@/components/create/UniversalLobbyFields'
 import { GameRoomSettingsPanel } from '@/components/create/GameRoomSettingsPanel'
+import { PartyRoomSettingsPanel } from '@/components/create/PartyRoomSettingsPanel'
 import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
 import { FormField } from '@/components/ui/FormField'
@@ -154,6 +155,12 @@ export function CreateWizardShell() {
               gameType={state.gameType}
               room={state.room}
               onChange={(roomPatch) => patchState({ room: { ...state.room, ...roomPatch } })}
+            />
+
+            <PartyRoomSettingsPanel
+              gameType={state.gameType}
+              party={state.party}
+              onChange={(partyPatch) => patchState({ party: { ...state.party, ...partyPatch } })}
             />
           </>
         ) : (

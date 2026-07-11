@@ -54,6 +54,7 @@
     "./hot-seat": "./src/hot-seat.ts",
     "./custom-game": "./src/custom-game.ts",
     "./create-board-games": "./src/create-board-games.ts",
+    "./create-party-games": "./src/create-party-games.ts",
     "./mahjong-rulesets": "./src/mahjong-rulesets.ts",
     "./lobby-limits": "./src/lobby-limits.ts",
     "./create-themes": "./src/create-themes.ts",

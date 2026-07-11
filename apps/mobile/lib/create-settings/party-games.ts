@@ -1,5 +1,4 @@
 import type {
-  BingoCallMode,
   DescribeItMode,
   GameType,
   PairVoteMode,
@@ -10,6 +9,7 @@ import type {
   WordRushMode,
   WordRushPromptMode,
 } from '@fateround/shared'
+import type { BingoCallMode } from '@fateround/shared/create-party-games'
 import {
   clampBingoCallInterval,
   clampBingoCallMode,
@@ -29,6 +29,12 @@ import {
   QUICK_DRAW_DEFAULT_TITLE_TIMER,
   QUICK_DRAW_DEFAULT_VOTE_TIMER,
   TRIVIA_DEFAULT_TIMER,
+  BATCH_20_PARTY_GAMES,
+  BINGO_DEFAULT_CALL_INTERVAL,
+  BINGO_DEFAULT_CALL_MODE,
+  CODEWORDS_DEFAULT_OPERATIVE_TIMER,
+  CODEWORDS_DEFAULT_SPYMASTER_TIMER,
+  HOT_SEAT_DEFAULT_MAX_ROUNDS,
   type CodewordsTeamAssignment,
 } from '@fateround/shared/create-party-games'
 import {
@@ -64,14 +70,6 @@ import {
   WORD_RUSH_TEAM_OPTIONS,
 } from '@fateround/shared/word-rush'
 import { WORD_HUNT_DEFAULT_TIMER } from '@fateround/shared/word-hunt'
-import {
-  BATCH_20_PARTY_GAMES,
-  BINGO_DEFAULT_CALL_INTERVAL,
-  BINGO_DEFAULT_CALL_MODE,
-  CODEWORDS_DEFAULT_OPERATIVE_TIMER,
-  CODEWORDS_DEFAULT_SPYMASTER_TIMER,
-  HOT_SEAT_DEFAULT_MAX_ROUNDS,
-} from '@fateround/shared/create-party-games'
 
 export { BATCH_20_PARTY_GAMES, hasPartyRoomSettings, isPollPartyGame }
 

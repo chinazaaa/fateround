@@ -14,10 +14,10 @@ React Native app alongside the web client. Same backend, token-based join — no
 | **Player E2E** | **40 / 40** |
 | **Batches 10–17** | **Done** (shell, lifecycle, push, voice, polish, host, Drawful) |
 | **Readiness score** | **6 / 7** — only EAS project ID + TestFlight remain |
-| **Biggest gap** | **Party-game create** (Batch 20) + **host+play lobby UX** (Batch 23) + TestFlight |
+| **Biggest gap** | **Custom content create** (Batches 21–22) + **host+play lobby UX** (Batch 23) + TestFlight |
 
 What works: join → play → finish → play-again for all types; native create with lobby settings *(Batch 18)*; full host lobby + in-game host + play-along; push + voice on priority games.  
-What's still web-first: **party-game create** (polls, trivia, bingo settings); **custom Q&A & participant import**; **host+play from lobby** (Batch 23).
+What's still web-first: **custom Q&A & participant import** (Batches 21–22); **host+play from lobby** (Batch 23).
 
 ---
 
