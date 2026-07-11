@@ -8,7 +8,7 @@ import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
-import { ThemeModeToggle } from '@/components/ui/ThemeModeToggle'
+import { ThemeModeButton } from '@/components/ui/ThemeModeToggle'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { WEB_BASE_URL } from '@/lib/config'
@@ -72,6 +72,10 @@ export default function HomeScreen() {
           />
         }
       >
+        <View style={styles.topBar}>
+          <ThemeModeButton />
+        </View>
+
         <View style={styles.hero}>
           <Text style={styles.kicker}>Party games</Text>
           <FateRoundLogo variant="stacked" width={200} />
@@ -143,10 +147,6 @@ export default function HomeScreen() {
             ) : null}
           </View>
         ) : null}
-
-        <View style={styles.footer}>
-          <ThemeModeToggle />
-        </View>
       </KeyboardFormScreen>
     </SafeAreaView>
   )
@@ -259,5 +259,5 @@ const makeStyles = (theme: Theme) =>
   },
   recentLabel: { color: theme.textMuted, fontSize: 14 },
   recentChevron: { color: theme.textFaint, fontSize: 24, fontWeight: '300' },
-  footer: { marginTop: theme.space.sm },
+  topBar: { alignItems: 'flex-start' },
 })
