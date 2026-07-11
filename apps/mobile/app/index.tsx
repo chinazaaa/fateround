@@ -3,6 +3,7 @@ import { Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-nat
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { normalizeGameCode } from '@fateround/shared'
+import { FateRoundLogo } from '@/components/FateRoundLogo'
 import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
@@ -35,7 +36,7 @@ export default function HomeScreen() {
       <KeyboardFormScreen contentContainerStyle={styles.container}>
         <View style={styles.hero}>
           <Text style={styles.kicker}>Party games</Text>
-          <Text style={styles.brand}>Fate Round</Text>
+          <FateRoundLogo variant="stacked" width={200} />
           <Text style={styles.tagline}>Join friends with a code. No account, no fuss.</Text>
         </View>
 
@@ -118,13 +119,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 2,
     textTransform: 'uppercase',
-  },
-  brand: {
-    color: theme.text,
-    fontSize: 40,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    textAlign: 'center',
   },
   tagline: {
     color: theme.textMuted,

@@ -14,7 +14,7 @@ import { theme } from '@/constants/theme'
 
 type Props = {
   gameCode: string
-  game?: Pick<Game, 'title' | 'game_type'> | null
+  game?: Pick<Game, 'title' | 'game_type' | 'status'> | null
   children: ReactNode
 }
 
@@ -22,6 +22,7 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
   const router = useRouter()
   const code = gameCode.toUpperCase()
   const typeLabel = game ? gameLabel(game.game_type) : undefined
+  const gameEnded = game?.status === 'finished'
 
   const [playerId, setPlayerId] = useState<string | null>(null)
   const [playerName, setPlayerName] = useState('')
@@ -79,7 +80,7 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
             {hasHostToken ? (
               <HeaderAction label="Host" accent onPress={() => void openHost()} />
             ) : null}
-            {playerId ? (
+            {playerId && !gameEnded ? (
               <PlayerSessionMenu
                 gameCode={gameCode}
                 gameType={game?.game_type}

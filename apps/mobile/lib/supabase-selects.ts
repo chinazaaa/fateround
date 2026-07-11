@@ -56,7 +56,7 @@ export const AYO_SESSION_SELECT =
 
 export const BINGO_CARD_SELECT = 'id,game_id,player_id,cells,marked_indices'
 export const BINGO_CALLED_NUMBER_SELECT = 'id,game_id,number,called_at'
-export const BINGO_CLAIM_SELECT = 'id,game_id,player_id,status,claimed_at'
+export const BINGO_CLAIM_SELECT = 'id,game_id,player_id,pattern,status,created_at'
 export const TRIVIA_ANSWER_SELECT =
   'id,game_id,round_id,player_id,choice_index,is_correct,points'
 

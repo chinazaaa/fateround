@@ -10,29 +10,28 @@ Living doc for the React Native / Expo app in `apps/mobile/`.
 | Area | Status |
 |------|--------|
 | **Game types with a native player screen** | **40 / 40** (Batches 1–9) |
-| **Player E2E (join → play → finish)** | **39 / 40** — see exceptions below |
+| **Player E2E (join → play → finish)** | **40 / 40** |
 | **Production-ready mobile UX** | **No** — functional MVPs; Batch 15 polish done for priority games |
-| **Host / create / lobby** | **Batch 11 MVP** — native create + host lobby; **no in-game host UI** |
+| **Host / create / lobby** | **Batch 11 + 16–17 done** — lobby, in-game host, play-along; create is title+type only |
 | **Session shell (Batch 10)** | **Done** — header menu, rules links, keyboard forms, native create |
 | **Lifecycle & finish UX (Batch 12)** | **Done** — finish scoreboards, play-again flow, import claim join |
 | **Push notifications (Batch 13)** | **Done** — turn push for 13+ games, per-game mute, local haptics; EAS project ID deferred |
 | **Voice chat (Batch 14)** | **Done** — 14 game types, rename sync, background disconnect; device QA with TestFlight |
-| **Game UI polish (Batch 15)** | **P0–P3 core done** — poll/trivia/bingo, boards/cards, party UX, heavy games |
-| **Web fallback** | Still used when `mobile-config` disables a type or advanced create setup |
+| **Game UI polish (Batch 15–17)** | **Done** — poll/trivia/bingo, boards/cards, party UX, Drawful canvas, host dashboards |
+| **Web fallback** | Advanced create (settings, participants, custom slots) + `mobile-config` disable list |
 
 Batches 1–9 were about **coverage**: every game type can open a native screen and perform core player actions.  
-Batches 10–15 added **shell, lifecycle, notifications, voice, and visual polish**.  
-**Next priority:** in-game **host controls** + device QA before calling the app store-ready.
+Batches 10–17 added **shell, lifecycle, notifications, voice, polish, host mode, and Drawful canvas**.  
+**Next priority:** **native create wizard** (Batches 18–22), **host + play parity** (Batch 23), + device QA / TestFlight.
 
 ### Player E2E exceptions (Jul 2026)
 
 | Case | Native player? | Notes |
 |------|----------------|-------|
-| **39 game types** | ✅ Full player flow | Join, lobby, play, finish, play-again waiting |
-| **Quick Draw** | ✅ Native | Drawful (lie) + guess modes with touch canvas; host dashboard for both |
-| **`custom` game type** | ✅ Play | Create needs web slot builder |
-| **Import-mode polls / hot seat** | ✅ Claim join | `ParticipantClaimJoinScreen`; host still adds names on web |
-| **Host-driven mid-game** | ⚠️ Players OK | Trivia auto-advances from any client; bingo auto-call sync not ported to mobile |
+| **40 game types** | ✅ Full player flow | Join, lobby, play, finish, play-again waiting |
+| **`custom` game type** | ✅ Play | Create needs web slot builder (until Batch 22) |
+| **Import-mode polls / hot seat** | ✅ Claim join | `ParticipantClaimJoinScreen`; host still adds names on web create |
+| **Advanced create** | ⚠️ Web | Title + type on app; per-game settings / rosters on web (Batches 18–22) |
 
 ---
 
@@ -100,8 +99,8 @@ All types in `GameType` are registered in `MOBILE_SUPPORTED_GAMES` and `mobile-c
 - [x] Native create (`/create`) — all types except `custom` (`NATIVE_CREATABLE_GAMES`)
 - [x] Web create link retained for advanced setup (participants, custom slot builder)
 - [x] Host play-again from lobby (`postPlayAgain`)
-- [ ] In-game host controls during active games (see gaps below)
-- [ ] Host playing along while hosting (still web)
+- [x] In-game host controls during active games *(Batch 16)*
+- [x] Host playing along while hosting *(Batch 16 — see Host + play below)*
 
 ### Batch 12 — Lifecycle & finish UX ✅
 
@@ -177,7 +176,28 @@ Mobile can **create**, **lobby**, **start**, **run mid-game**, **play along**, a
 - [x] **Host playing along** — join as player while keeping host token (`HostPlayAlongCard`)
 - [x] **Bingo auto-call sync** — `useBingoAutoCall` on bingo host screen + manual call button
 
-**Still thinner than web:** advanced create settings (participant import, custom slots), poll host animations.
+**Still thinner than web:** host+play lobby UX and integrated tabs *(Batch 23)*; advanced create *(Batches 18–22)*; poll host animations.
+
+### Host + play (play along)
+
+**Yes — with a simpler flow than web.**
+
+| Capability | Mobile | Web |
+|------------|--------|-----|
+| Join own game as a player while keeping host token | ✅ | ✅ |
+| Switch back to host controls | ✅ **Host** button in player session header | ✅ Play / Manage tabs |
+| Play along from **in-game host dashboard** | ✅ `HostPlayAlongCard` on all host screens | ✅ |
+| Play along from **lobby before start** | ❌ not on `HostLobbyScreen` yet | ✅ Host joins/seats in lobby |
+| Host mode toggle (spectator vs player) | ❌ | ✅ per-game host views |
+| Integrated play+manage on one screen | ❌ separate routes (`/host` ↔ `/game`) | ✅ tabs |
+
+**Mobile flow today:**
+
+1. Host creates → `/host/[code]` lobby → starts game → in-game host dashboard (`HostGameScreen` → `HostRouter`).
+2. On the host dashboard, tap **Play along** → enter name → join as player → `/game/[code]`.
+3. While playing, tap **Host** in the session header to return to `/host/[code]` (host token stays in SecureStore).
+
+**Not yet:** see **Batch 23 — Host + play parity** below.
 
 ### App shell & session
 
@@ -187,7 +207,7 @@ Mobile can **create**, **lobby**, **start**, **run mid-game**, **play along**, a
 - [x] Native create (`/create`) for all types except `custom` (`NATIVE_CREATABLE_GAMES`)
 - [x] Rules / how-to-play links (`GameRulesLink` on `GameShell` + session header)
 - [x] ⋮ overflow menu (`PlayerSessionMenu`: rename, rules, push mute, leave)
-- [ ] Advanced create only on web (participant import, custom slot builder, per-game settings) — *by design*
+- [ ] Advanced create on app — title + type only today; full wizard planned in **Batches 18–22** (see below)
 
 ### Lobby & lifecycle
 
@@ -245,7 +265,88 @@ Detail:
 
 ## Proposed next batches
 
-Batches 10–17 core work is **done**. Prioritize **device QA + TestFlight** next.
+Batches 10–17 core work is **done**. Next: **native create wizard (18–22)**, **host + play parity (23)**, then device QA + TestFlight.
+
+### Batch 17 — Drawful canvas + host polish ✅
+
+**Done (Jul 2026).** See “Batch 17” under What's done — touch canvas, Drawful player, Quick Draw host, poll host results.
+
+### Batch 18 — Create wizard shell + universal lobby settings *(planned)*
+
+**Goal:** Replace “title + type only” with a multi-step create flow; every game gets meaningful defaults + lobby knobs.
+
+- [ ] `CreateWizardShell` — steps: Setup → (optional People) → Create
+- [ ] Extend `createGame()` to send full API payload (not just `title` + `game_type`)
+- [ ] `CREATE_SETTINGS_REGISTRY` — `GameType → { defaults, fields, validate, toApiPayload }`
+- [ ] Universal lobby fields where web supports them: max players, late join / viewers, public vs private, theme
+- [ ] Soften web link copy — “Full import & custom slots → web” until Batch 22
+
+### Batch 19 — Board & card game room settings *(planned)*
+
+**Goal:** Match web “room” panels (e.g. Ludo traditional vs modern).
+
+| Games | Settings |
+|-------|----------|
+| Ludo | `ludo_variant` (traditional / modern), turn timer, max players, late join |
+| Snakes & Ladders, Yahtzee, Tic-tac-toe | Max players, turn timer, late join |
+| Chess | Board theme, piece set, clocks |
+| Checkers, Ayo | Variant, turn timer |
+| Whot, Crazy 8 | Rule toggles, game duration, turn timer |
+| Scrabble | Dictionary, clock mode / seconds |
+| Mahjong | Ruleset + rule options |
+| Monopoly | Session duration, turn timer |
+
+Reuse `@fateround/shared` parsers (`parseLudoVariant`, `turnTimerOptionsFor`, game limits).
+
+### Batch 20 — Party & round-based game settings *(planned)*
+
+**Goal:** Rounds, timers, and mode toggles for party games (platform question pools only — no custom editor yet).
+
+| Games | Settings |
+|-------|----------|
+| Poll suite | Rounds, round timer, anonymous, gender-based, pair vote mode |
+| Trivia | Rounds, timer, category, `question_source: platform` |
+| Bingo | Max players, auto vs manual call, call interval |
+| Quick Draw | Drawful vs guess, team vs individual, teams, rounds, timers |
+| Describe It / Word Rush | Team vs individual, num teams, rounds, timer |
+| Mafia | Doctor, detective, anonymous votes |
+| Codewords | Spymaster / operative timers, late join |
+| Two Truths, Quiplash, Hot Seat, etc. | Rounds + timer where web has them |
+
+### Batch 21 — Custom content (questions & words) *(planned)*
+
+- [ ] Manual entry: custom WYR, MLT, trivia Q&A, describe-it words, quick-draw prompts
+- [ ] Optional: library question packs (read-only pick from server)
+- [ ] Trivia `question_source`: platform \| custom \| library
+
+### Batch 22 — Participants & Custom Game *(planned)*
+
+- [ ] Manual participant list (name + optional gender)
+- [ ] Joiners vs import mode where relevant
+- [ ] **Custom Game** — slot builder (`custom_slots`) + validation
+- [ ] Optional later: CSV import via document picker
+- [ ] Add `custom` to `NATIVE_CREATABLE_GAMES`; remove “go to web” for create
+
+**Architecture note:** Port per-game **config modules**, not the 4,700-line web create page. Mirror web’s `needsParticipantStep` logic for when step 2 (People) appears.
+
+### Batch 23 — Host + play parity *(planned)*
+
+**Goal:** Close the remaining gaps between mobile and web when the host wants to play their own game — without requiring the game to be active first.
+
+Batch 16 shipped **`HostPlayAlongCard`** (join from in-game host dashboard + **Host** button in player header). Batch 23 finishes the lobby and integrated UX.
+
+| Gap (vs web) | Planned work |
+|--------------|--------------|
+| Play along from **lobby before start** | Add `HostPlayAlongCard` (or shared join flow) to `HostLobbyScreen`; persist host + player sessions |
+| **Spectator vs player** host mode | Per-game or global toggle: host-only (manage) vs play-as-yourself; drop player seat when switching to spectator *(mirror web `HostModeSelector`)* |
+| **Play / Manage on one screen** | Host shell with tabs or segmented control — **Manage** (roster, start, host controls) + **Play** (embedded player view or quick switch without losing context) |
+| **Lobby auto-seat** (board games) | Chess, checkers, tic-tac-toe, ludo, etc.: host picks seat / color in lobby before start *(mirror web host lobby panels)* |
+| **Host rename while seated** | Patch player name via host token when host is also a player *(web `renameHost`)* |
+| **Replay lobby play-along** | After play-again, re-join host’s player seat without re-entering name |
+
+**Reference (web):** `HostModeSelector`, play/manage tabs in `*HostView` components, `useHostAutoReady`, `useHostPlayerReconciliation`.
+
+**Out of scope for Batch 23:** host transfer to another player (nominee claim flow) — keep web-only unless needed.
 
 ### Batch 10 — Session & navigation shell ✅
 
@@ -264,7 +365,15 @@ Batches 10–17 core work is **done**. Prioritize **device QA + TestFlight** nex
 - [x] `useBingoAutoCall`, `useTriviaAutoAdvance`, host API helpers in `game-api.ts`
 - [x] `HostPlayAlongCard` — join own game as player while retaining host token
 - [x] Poll host: round results (`PollRoundResults`), vote progress, MLT cumulative leaderboard *(Batch 17)*
-- [ ] Web-only host richness: advanced create settings
+
+### Batch 17 — Drawful canvas + host polish ✅
+
+**Done (Jul 2026).**
+
+- [x] Native touch canvas (`DrawingCanvas` + `react-native-svg`)
+- [x] Quick Draw guess: live draw + stroke sync; Drawful (lie): full player flow
+- [x] `QuickDrawHostScreen` — phase advance, drawing preview, leaderboard
+- [x] Poll host results + cumulative MLT leaderboard
 
 ### Batch 12 — Lifecycle & finish UX ✅
 
@@ -356,7 +465,8 @@ Client check: `isGameMobileSupported()` in `apps/mobile/lib/api.ts`.
 | `apps/mobile/hooks/useBingoAutoCall.ts` | Bingo auto-call sync polling |
 | `apps/mobile/hooks/useTriviaAutoAdvance.ts` | Trivia round auto-advance polling |
 | `apps/mobile/app/create.tsx` | Native game create |
-| `apps/mobile/lib/native-create.ts` | Creatable game types (excludes `custom`) |
+| `apps/mobile/lib/native-create.ts` | Creatable game types (excludes `custom` until Batch 22) |
+| `apps/mobile/components/quick-draw/DrawingCanvas.tsx` | Native sketch surface (Batch 17) |
 | `apps/mobile/lib/push-preferences.ts` | Per-game push mute + local alert prefs |
 | `apps/mobile/lib/voice-games.ts` | Mobile voice enable list (14 types) |
 | `apps/mobile/components/push/PushMuteToggle.tsx` | Session menu notification toggle |

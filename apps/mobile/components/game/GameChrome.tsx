@@ -97,18 +97,27 @@ export function GameFinishedScreen({
   subtitle,
   leaderboard,
   primaryAction,
+  emoji = '🏁',
+  centered = true,
 }: {
   title: string
   detail?: string | null
   subtitle?: string
   leaderboard?: FinishedLeaderboardRow[]
   primaryAction?: { label: string; onPress: () => void }
+  emoji?: string
+  centered?: boolean
 }) {
   return (
-    <View style={styles.panel}>
-      <Text style={styles.finishedTitle}>{title}</Text>
-      {subtitle ? <Text style={styles.finishedSubtitle}>{subtitle}</Text> : null}
-      {detail ? <Text style={styles.panelText}>{detail}</Text> : null}
+    <View style={[styles.panel, centered && styles.panelCentered]}>
+      {emoji ? <Text style={styles.finishedEmoji}>{emoji}</Text> : null}
+      <Text style={[styles.finishedTitle, centered && styles.finishedTitleCentered]}>{title}</Text>
+      {subtitle ? (
+        <Text style={[styles.finishedSubtitle, centered && styles.finishedSubtitleCentered]}>{subtitle}</Text>
+      ) : null}
+      {detail ? (
+        <Text style={[styles.finishedDetail, centered && styles.finishedDetailCentered]}>{detail}</Text>
+      ) : null}
       {leaderboard && leaderboard.length > 0 ? (
         <View style={styles.leaderboard}>
           {leaderboard.map((row, index) => (
@@ -200,26 +209,51 @@ const styles = StyleSheet.create({
   rulesWrap: { marginTop: 2, marginBottom: 4 },
   panel: {
     backgroundColor: '#17171d',
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: '#2a2a35',
-    padding: 18,
-    gap: 10,
+    padding: 24,
+    gap: 12,
+  },
+  panelCentered: {
+    alignItems: 'center',
   },
   panelText: {
     color: '#d1d5db',
     fontSize: 15,
     lineHeight: 22,
   },
+  finishedEmoji: {
+    fontSize: 44,
+    lineHeight: 52,
+  },
   finishedTitle: {
     color: '#fff',
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  finishedTitleCentered: {
+    textAlign: 'center',
   },
   finishedSubtitle: {
     color: '#fda4af',
-    fontSize: 14,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  finishedSubtitleCentered: {
+    textAlign: 'center',
+  },
+  finishedDetail: {
+    color: '#d1d5db',
+    fontSize: 16,
+    lineHeight: 24,
     fontWeight: '600',
+  },
+  finishedDetailCentered: {
+    textAlign: 'center',
   },
   leaderboard: {
     gap: 6,

@@ -63,11 +63,10 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
       }
 
       const { state, ok } = await loadGameState(gameData, playerRows)
-      if (!ok) return false
 
       setGame(gameData)
       setPlayers(playerRows)
-      setGameState(state)
+      setGameState(ok ? state : null)
 
       const session = await getPlayerSession(code)
       const playerId = session?.playerId ?? null
@@ -85,8 +84,9 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         setMyResumeToken(null)
       }
 
-      if (afterResolve) await afterResolve(gameData, playerId, state)
-      setScreen(computeScreen(gameData, playerId, state))
+      const resolvedState = ok ? state : (null as GameState)
+      if (afterResolve) await afterResolve(gameData, playerId, resolvedState)
+      setScreen(computeScreen(gameData, playerId, resolvedState))
       return true
     } catch {
       return false

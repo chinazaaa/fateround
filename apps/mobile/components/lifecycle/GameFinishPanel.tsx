@@ -5,6 +5,7 @@ import {
   type FinishedLeaderboardRow,
 } from '@/components/game/GameChrome'
 import { PlayAgainFooter } from '@/components/lifecycle/PlayAgainFooter'
+import { theme } from '@/constants/theme'
 
 type BootstrapLike = {
   code: string
@@ -22,6 +23,7 @@ type Props = {
   leaderboard?: FinishedLeaderboardRow[]
   primaryAction?: { label: string; onPress: () => void }
   showPlayAgain?: boolean
+  emoji?: string
 }
 
 export function GameFinishPanel({
@@ -32,6 +34,7 @@ export function GameFinishPanel({
   leaderboard,
   primaryAction,
   showPlayAgain = true,
+  emoji = '🏁',
 }: Props) {
   const game = bootstrap.game
   if (!game) return null
@@ -44,6 +47,7 @@ export function GameFinishPanel({
         subtitle={subtitle}
         leaderboard={leaderboard}
         primaryAction={primaryAction}
+        emoji={emoji}
       />
       {showPlayAgain ? (
         <PlayAgainFooter gameCode={bootstrap.code} game={game} onReplayReady={bootstrap.load} />
@@ -54,6 +58,9 @@ export function GameFinishPanel({
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: 0,
+    flex: 1,
+    justifyContent: 'center',
+    padding: theme.space.lg,
+    gap: theme.space.md,
   },
 })

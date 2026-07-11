@@ -12,12 +12,12 @@ React Native app alongside the web client. Same backend, token-based join — no
 |--|--|
 | **Native player screens** | **40 / 40** game types |
 | **Player E2E** | **40 / 40** |
-| **Batches 10–15** | **Done** (shell, lifecycle, push, voice, P0–P3 polish) |
+| **Batches 10–17** | **Done** (shell, lifecycle, push, voice, polish, host, Drawful) |
 | **Readiness score** | **6 / 7** — only EAS project ID + TestFlight remain |
-| **Biggest gap** | **In-game host** (lobby + start work; mid-game host dashboard does not) |
+| **Biggest gap** | **Advanced native create** (Batches 18–22) + **host+play lobby UX** (Batch 23) + TestFlight |
 
-What works: join → play → finish → play-again for almost every type; native create; host lobby; push + voice on priority games.  
-What's still web-first: **in-game host controls**, host-as-player, bingo auto-call sync, advanced create (participants / custom slots).
+What works: join → play → finish → play-again for all types; native create (title+type); full host lobby + in-game host + play-along; push + voice on priority games.  
+What's still web-first: **advanced create** (per-game settings, participants, custom slots); **host+play from lobby** and integrated play/manage tabs (Batch 23).
 
 ---
 
@@ -67,6 +67,8 @@ Feature flags: `GET /api/mobile-config`.
 | **11** | Host lobby, start game, play again |
 | **16** | In-game host dashboard, play-along, bingo auto-call |
 | **17** | Drawful canvas, Quick Draw host, poll host results |
+| **18–22** | Native create wizard *(planned)* — lobby settings, game rooms, custom content, participants |
+| **23** | Host + play parity *(planned)* — lobby play-along, spectator mode, play/manage tabs, lobby auto-seat |
 | **12** | Lifecycle gates, finish scoreboards, import claim join |
 | **13** | Turn push (13+ games), per-game mute, timer haptics |
 | **14** | Voice on 14 types, rename sync, background disconnect |

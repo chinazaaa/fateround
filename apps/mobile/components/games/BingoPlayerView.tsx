@@ -165,19 +165,20 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'finished') {
     return (
-      <GameShell bootstrap={bootstrap} title="Bingo" subtitle={bootstrap.code}>
-        <GameFinishPanel
-          bootstrap={bootstrap}
-          title={winnerPlayer ? `${winnerPlayer.name} wins!` : 'Game over'}
-          subtitle="Final results"
-          detail={winnerPlayer ? 'BINGO!' : undefined}
-          leaderboard={
-            winnerPlayer
-              ? winnerLeaderboard(winnerClaim?.player_id, bootstrap.players, bootstrap.myPlayerId)
-              : undefined
-          }
-        />
-      </GameShell>
+      <GameFinishPanel
+        bootstrap={bootstrap}
+        emoji={winnerPlayer ? '🎉' : '🏁'}
+        title={winnerPlayer ? `${winnerPlayer.name} wins!` : 'This game has ended'}
+        subtitle={winnerPlayer ? 'Final results' : undefined}
+        detail={
+          winnerPlayer ? 'BINGO!' : 'Thanks for playing. Join a new game from the home screen.'
+        }
+        leaderboard={
+          winnerPlayer
+            ? winnerLeaderboard(winnerClaim?.player_id, bootstrap.players, bootstrap.myPlayerId)
+            : undefined
+        }
+      />
     )
   }
 

@@ -1,6 +1,10 @@
 import { useEffect } from 'react'
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
+import { useRouter } from 'expo-router'
 import type { Game } from '@fateround/shared'
+import { AppButton } from '@/components/ui/AppButton'
+import { SurfaceCard } from '@/components/ui/SurfaceCard'
+import { theme } from '@/constants/theme'
 import { getSupabase } from '@/lib/supabase'
 
 type Props = {
@@ -10,10 +14,12 @@ type Props = {
 }
 
 /**
- * Shown on finish screens while status is still `finished`. When the host calls
- * play-again (`waiting` + `replay_pending`), reload so LobbyView shows ReplayReadyRing.
+ * Shown on finish screens while status is still `finished`. Silently watches for
+ * host play-again (`waiting` + `replay_pending`) and reloads when that happens.
  */
 export function PlayAgainFooter({ gameCode, game, onReplayReady }: Props) {
+  const router = useRouter()
+
   useEffect(() => {
     if (game.status !== 'finished') return
 
@@ -40,33 +46,24 @@ export function PlayAgainFooter({ gameCode, game, onReplayReady }: Props) {
   if (game.status !== 'finished') return null
 
   return (
-    <View style={styles.wrap}>
-      <ActivityIndicator color="#fda4af" size="small" />
-      <Text style={styles.text}>Waiting for the host to set up another round…</Text>
-      <Text style={styles.sub}>When they tap play again, you'll get a ready-up prompt in the lobby.</Text>
-    </View>
+    <SurfaceCard style={styles.wrap}>
+      <Text style={styles.hint}>
+        If the host starts another round, you'll get a ready-up prompt in the lobby.
+      </Text>
+      <AppButton label="Go home" variant="secondary" onPress={() => router.replace('/')} />
+    </SurfaceCard>
   )
 }
 
 const styles = StyleSheet.create({
   wrap: {
-    marginTop: 12,
-    padding: 16,
-    backgroundColor: '#17171d',
-    borderRadius: 12,
-    alignItems: 'center',
-    gap: 8,
+    alignItems: 'stretch',
+    gap: theme.space.md,
   },
-  text: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '600',
+  hint: {
+    color: theme.textFaint,
+    fontSize: 14,
+    lineHeight: 20,
     textAlign: 'center',
-  },
-  sub: {
-    color: '#6b7280',
-    fontSize: 13,
-    textAlign: 'center',
-    lineHeight: 18,
   },
 })
