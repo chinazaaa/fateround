@@ -198,7 +198,6 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
           bootstrap={bootstrap}
           title="Game over"
           detail={totals[0] ? `${totals[0].name} wins (${totals[0].total})` : undefined}
-          leaderboard={scoreListLeaderboard(totals.map((row) => ({ name: row.name, score: row.total })))}
           winnerPlayerId={scores.length > 1 ? session.winner_player_id : null}
           roundKey={session.id}
           notice={
@@ -207,6 +206,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
               players={bootstrap.players}
               winnerName={totals[0]?.name ?? null}
               highlightPlayerId={bootstrap.myPlayerId}
+              hideHeader
             />
           }
         />

@@ -320,8 +320,6 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
           emoji={hasWinner ? '🏆' : '🏁'}
           title={hasWinner ? `${top.name} wins!` : 'Final results'}
           subtitle="Final standings"
-          detail={top ? `${top.name} — ${top.score} pts` : undefined}
-          leaderboard={scoreListLeaderboard(board)}
           winnerPlayerId={hasWinner ? top.id : null}
           roundKey={session?.id ?? null}
           notice={
@@ -329,6 +327,7 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
               mode="individual"
               board={board}
               highlightPlayerId={bootstrap.myPlayerId}
+              hideHeader
             />
           }
         />
@@ -356,13 +355,13 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
         title="Final results"
         subtitle="Team scores"
         detail={winnerLabel ? `${winnerLabel} wins` : undefined}
-        leaderboard={toLeaderboardRows(scores.map((row) => ({ name: teamLabel(row.team), score: row.score })))}
         notice={
           <QuickDrawShareCard
             mode="team"
             teamScores={scores}
             winners={winners}
             topGuessers={topGuessers}
+            hideHeader
           />
         }
       />

@@ -339,7 +339,6 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
             title={top && top.score > 0 ? `${top.name} wins!` : 'Final results'}
             subtitle="Final standings"
             detail={top && top.score > 0 ? `${top.score} pts` : undefined}
-            leaderboard={scoreListLeaderboard(board)}
             winnerPlayerId={top && top.score > 0 ? top.id : null}
             roundKey={session.id}
             notice={
@@ -348,6 +347,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
                   mode="individual"
                   board={board}
                   highlightPlayerId={bootstrap.myPlayerId}
+                  hideHeader
                 />
                 {bootstrap.myPlayerId ? (
                   <DescribeItAchievementPosts
@@ -389,13 +389,13 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
           title={winnerLabel ? `${winnerLabel} wins!` : 'Final results'}
           subtitle="Team scores"
           detail={winnerLabel ? undefined : 'No words guessed'}
-          leaderboard={toLeaderboardRows(scores.map((row) => ({ name: teamLabel(row.team), score: row.score })))}
           notice={
             <DescribeItShareCard
               mode="team"
               teamScores={scores}
               winners={winners}
               topGuessers={topGuessers}
+              hideHeader
             />
           }
         />

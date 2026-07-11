@@ -30,6 +30,8 @@ type Props = {
   players: { id: string; name: string }[]
   winnerName: string | null
   highlightPlayerId?: string | null
+  /** Hide the winner hero/title on the visible card (when a parent already shows it). */
+  hideHeader?: boolean
 }
 
 /**
@@ -40,7 +42,7 @@ type Props = {
  * fixed light-themed copy to a PNG for image sharing (text fallback if capture
  * or share fails).
  */
-export function YahtzeeShareCard({ scores, players, winnerName, highlightPlayerId }: Props) {
+export function YahtzeeShareCard({ scores, players, winnerName, highlightPlayerId, hideHeader }: Props) {
   const styles = useThemedStyles(makeStyles)
   const { error: toastError } = useToast()
   const captureCardRef = useRef<View>(null)
@@ -84,8 +86,12 @@ export function YahtzeeShareCard({ scores, players, winnerName, highlightPlayerI
     <View style={styles.wrap}>
       {/* Visible, theme-aware tailored card. */}
       <View style={styles.card}>
-        <Text style={styles.hero}>🏆</Text>
-        <Text style={styles.heroTitle}>{winnerName ? `${winnerName} wins!` : 'Game over'}</Text>
+        {hideHeader ? null : (
+          <>
+            <Text style={styles.hero}>🏆</Text>
+            <Text style={styles.heroTitle}>{winnerName ? `${winnerName} wins!` : 'Game over'}</Text>
+          </>
+        )}
         <View style={styles.standings}>
           {rows.map((row, index) => {
             const isWinner = winnerId ? row.playerId === winnerId : index === 0
