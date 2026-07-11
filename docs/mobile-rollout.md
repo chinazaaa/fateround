@@ -391,8 +391,8 @@ Hosts can now edit settings from the lobby (mirrors web). **Universal four** —
 | **27** | Whot, Crazy Eights | Game length + house-rule toggles + turn timer | lobby-settings | ✅ |
 | **28** | Ludo, Ayo | Variant + turn timer | lobby-settings | ✅ |
 | **29** | Describe It, Word Rush | Mode / teams / turn / rounds (+WR prompt·difficulty) | `/describe-it`,`/word-rush`/settings | ⏳ |
-| **30** | Mafia, Quiplash | Roles / dual timers | lobby-settings | ⏳ |
-| **31** | Sudoku, Matching Pairs, Word Hunt | Time / grid / rounds | lobby-settings | ⏳ |
+| **30** | Mafia, Quiplash | Roles / dual timers | lobby-settings | ✅ |
+| **31** | Sudoku, Matching Pairs, Word Hunt | Time / grid / rounds | lobby-settings | ✅ |
 | **32** | Quick Draw | Variant/mode/teams/timers + word pool | lobby-settings + `/quick-draw/settings` | ⏳ |
 | **33** | Bingo | Call mode + interval | `/bingo/settings` | ⏳ |
 | **34** | Poll suite, Trivia, Two Truths | Pair-vote mode, player questions, AI questions | PATCH | ⏳ |
