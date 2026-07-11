@@ -22,6 +22,7 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { DescribeItAchievementPosts } from '@/components/games/DescribeItAchievementPosts'
 import { ActivityFeed } from '@/components/party/ActivityFeed'
 import { RoundBreakCard } from '@/components/party/RoundBreakCard'
 import { TeamBadge } from '@/components/party/TeamBadge'
@@ -200,12 +201,20 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
 
   const guessFeed = useMemo(() => {
     const nameById = new Map(bootstrap.players.map((p) => [p.id, p.name]))
-    return guesses.slice(0, 12).map((g) => ({
-      id: g.id,
-      primary: g.text,
-      secondary: `${nameById.get(g.player_id) ?? 'Player'}${g.correct ? ' · correct!' : ''}`,
-    }))
-  }, [guesses, bootstrap.players])
+    // Anti-cheat: in individual mode, never show another player's guess TEXT, so a
+    // slow guesser can't copy a rival's correct word off the feed. Mirrors web.
+    const hideOthersText = mode === 'individual'
+    return guesses.slice(0, 12).map((g) => {
+      const name = nameById.get(g.player_id) ?? 'Player'
+      const mask = hideOthersText && g.player_id !== bootstrap.myPlayerId
+      const primary = mask ? (g.correct ? 'guessed it ✅' : 'guessing…') : g.text
+      return {
+        id: g.id,
+        primary,
+        secondary: `${name}${g.correct && !mask ? ' · correct!' : ''}`,
+      }
+    })
+  }, [guesses, bootstrap.players, bootstrap.myPlayerId, mode])
 
   const turnSecondsLeft = useAbsoluteDeadline(
     session?.turn_deadline_at,
@@ -260,7 +269,28 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
       const top = board[0]
       return (
         <GameShell bootstrap={bootstrap} title={batch4GameLabel('describe_it')} subtitle={bootstrap.code}>
-          <GameFinishPanel bootstrap={bootstrap} title="Final results" subtitle="Final standings" detail={top ? `${top.name} — ${top.score} pts` : undefined} leaderboard={scoreListLeaderboard(board)} />
+          <GameFinishPanel
+            bootstrap={bootstrap}
+            title="Final results"
+            subtitle="Final standings"
+            detail={top ? `${top.name} — ${top.score} pts` : undefined}
+            leaderboard={scoreListLeaderboard(board)}
+            winnerPlayerId={top && top.score > 0 ? top.id : null}
+            roundKey={session.id}
+            notice={
+              bootstrap.myPlayerId ? (
+                <DescribeItAchievementPosts
+                  guesses={guesses}
+                  roster={session.roster ?? []}
+                  players={bootstrap.players}
+                  isIndividual
+                  myPlayerId={bootstrap.myPlayerId}
+                  gameCode={bootstrap.code}
+                  roundKey={session.id}
+                />
+              ) : null
+            }
+          />
         </GameShell>
       )
     }

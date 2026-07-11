@@ -16,6 +16,7 @@ import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { MahjongTableView } from '@/components/games/mahjong/MahjongTableView'
+import { MahjongResultsCard } from '@/components/games/mahjong/MahjongResultsCard'
 import { MahjongTileFace } from '@/components/games/mahjong/MahjongTileFace'
 import {
   canDeclareMahjongForRuleset,
@@ -204,6 +205,7 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
         )}
         winnerPlayerId={winnerIds[0] ?? null}
         roundKey={session?.id}
+        notice={<MahjongResultsCard session={session} />}
       />
     )
   }
@@ -249,12 +251,11 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
         {secondsLeft > 0 ? <TimerBadge seconds={secondsLeft} /> : null}
 
         <MahjongTableView
+          session={session}
           states={states}
           players={bootstrap.players}
           turnPlayerId={turnPlayerId}
           myPlayerId={bootstrap.myPlayerId}
-          lastDiscardTile={session.last_discard?.tile}
-          lastDiscardPlayerId={session.last_discard?.player_id}
         />
 
         <Text style={styles.section}>Your hand ({sortedHand.length})</Text>

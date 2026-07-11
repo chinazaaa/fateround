@@ -7,9 +7,6 @@ import {
 } from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import {
-  YAHTZEE_ALL_CATEGORIES,
-  YAHTZEE_CATEGORY_LABELS,
-  categoryScore,
   currentPlayerId,
   totalScore,
 } from '@fateround/shared/yahtzee'
@@ -17,10 +14,14 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { TimerBadge } from '@/components/ui/TimerBadge'
+import { YahtzeeScorecardGrid } from '@/components/games/YahtzeeScorecardGrid'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
+import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useYahtzeeTurnExpiry } from '@/hooks/useYahtzeeTurnExpiry'
 import { postYahtzeeHold, postYahtzeeRoll, postYahtzeeScore } from '@/lib/game-api'
 import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
@@ -87,8 +88,12 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     enabled: bootstrap.screen === 'playing',
   })
 
-  const myScore = scores.find((s) => s.player_id === bootstrap.myPlayerId)
-  const categories = myScore?.scores.categories
+  // Turn timer: count down from turn_deadline_at during the rolling phase, and
+  // ask the server to expire the turn once the deadline passes.
+  const timerActive =
+    bootstrap.screen === 'playing' && session?.phase === 'rolling' && !!session?.turn_deadline_at
+  const secondsLeft = useDeadlineCountdown(session?.turn_deadline_at, 0, timerActive)
+  useYahtzeeTurnExpiry(bootstrap.code, session, bootstrap.screen === 'playing')
 
   const roll = async () => {
     if (!bootstrap.myResumeToken || acting) return
@@ -175,6 +180,12 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
           ))}
         </View>
 
+        {timerActive ? (
+          <View style={styles.timerRow}>
+            <TimerBadge seconds={secondsLeft} urgentAt={20} enableAlerts={isMyTurn} />
+          </View>
+        ) : null}
+
         <View style={styles.actions}>
           <Pressable style={[styles.btn, !canRoll && styles.btnDisabled]} disabled={!canRoll || acting} onPress={() => void roll()}>
             <Text style={styles.btnText}>Roll ({session.rolls_remaining ?? 0} left)</Text>
@@ -183,26 +194,15 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
 
         {session.status_message ? <Text style={styles.status}>{session.status_message}</Text> : null}
 
-        {categories ? (
-          <View style={styles.scorecard}>
-            {YAHTZEE_ALL_CATEGORIES.map((cat) => {
-              const used = categories[cat] != null
-              const preview = !used && canScore ? categoryScore(dice, cat) : null
-              return (
-                <Pressable
-                  key={cat}
-                  style={[styles.scoreRow, used && styles.scoreRowUsed]}
-                  disabled={!canScore || used || acting}
-                  onPress={() => void scoreCategory(cat)}
-                >
-                  <Text style={styles.scoreLabel}>{YAHTZEE_CATEGORY_LABELS[cat]}</Text>
-                  <Text style={styles.scoreValue}>{used ? categories[cat] : preview != null ? `${preview}?` : '—'}</Text>
-                </Pressable>
-              )
-            })}
-            <Text style={styles.total}>Total: {totalScore(categories)}</Text>
-          </View>
-        ) : null}
+        <YahtzeeScorecardGrid
+          players={bootstrap.players}
+          scores={scores}
+          myPlayerId={bootstrap.myPlayerId}
+          activePlayerId={turnPlayerId}
+          dice={dice}
+          scoringEnabled={canScore && !acting}
+          onScore={(category) => void scoreCategory(category)}
+        />
       </ScrollView>
     </GameShell>
   )
@@ -226,24 +226,11 @@ const makeStyles = (theme: Theme) =>
   dieHeld: { borderColor: '#f43f5e', backgroundColor: '#3f1d2b' },
   // White on the dark die face — intentional (case 2).
   dieText: { color: '#fff', fontSize: 22, fontWeight: '800' },
+  timerRow: { alignItems: 'center' },
   actions: { alignItems: 'center' },
   btn: { backgroundColor: theme.primary, borderRadius: 12, paddingHorizontal: 20, paddingVertical: 12 },
   btnDisabled: { opacity: 0.45 },
   // White on the solid primary button — intentional (case 2).
   btnText: { color: '#fff', fontWeight: '800' },
   status: { color: theme.textMuted, textAlign: 'center' },
-  scorecard: { gap: 6 },
-  scoreRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 10,
-    borderRadius: 10,
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  scoreRowUsed: { opacity: 0.65 },
-  scoreLabel: { color: theme.text },
-  scoreValue: { color: '#fcd34d', fontWeight: '700' },
-  total: { color: theme.text, fontWeight: '800', textAlign: 'right', marginTop: 8 },
 })

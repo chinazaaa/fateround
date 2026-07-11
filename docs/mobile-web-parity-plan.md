@@ -32,9 +32,36 @@ _This markdown is the **live source of truth** for what's done. The HTML report 
 - [x] ✅ **P0.4e Snake & Ladder** — real board via react-native-svg (`snake-ladder/{board-layout,SnakeLadderBoard}`): grid, snakes, ladders, fanned tokens.
 - [x] ✅ **P0.4f I Call On / NPAT** — live scoreboard across writing/marking/review/reveal (`i_call_on/ICallOnScoreboard`). _Note: caller Valid/Invalid overrides + dispute flags are separate Phase-2 high items, not this scoreboard._
 
-**Phase 1 — shared infrastructure** · **Phase 2 — per-game high** · **Phase 3 — polish** — not started.
+**Phase 2 — per-game high-severity features** _(built 2026-07-11 — 93 items across 28 games; mobile + web typecheck clean)_
 
-> **Status:** 9 of 11 items complete, 2 partial (Poll's two fixes — core flow works, edge cases noted). All changes typecheck clean (`apps/mobile: tsc --noEmit`) and are **uncommitted on `feat/mobile-shell`** for review. On-device behavior (Expo timers, board rendering, realtime feeds) still needs a manual pass — couldn't be exercised here.
+21 games fully done, 7 partial (minor/scoped leftovers). Reused existing mobile hooks (`useDeadlineCountdown`, `TimerBadge`, leaderboard builders) rather than net-new primitives.
+
+- [x] ✅ **Monopoly** — edition theming in gameplay (currency/space names/board palette/Arctic snow) + spectator/viewer mode
+- [x] ✅ **Mahjong** — dora + wall count + opponent melds/flowers/river, riichi house-rule options, rich results score card
+- [x] ✅ **Matching Pairs** — live opponent progress, finished placement+stats screen, game time-limit bar
+- [x] ✅ **Crazy Eights** — play-direction indicator, special-card badges, contextual hints, dynamic draw/pass button, "you're out" watch state
+- [x] ✅ **Word Hunt** — drag-to-draw + path line, word-validity preview, live standings, per-player words review, reveal-all missed, viewer mode
+- [x] ✅ **Ludo** — visual dice + roll animation, bonus-six indicators, move-option list with capture warnings, turn timer
+- [x] ✅ **Yahtzee** — multiplayer scorecard grid, upper-section bonus tracker, turn timer + auto expire
+- [x] ✅ **Two Truths** — live leaderboard during play, round countdown + auto-lock, edit submitted statements
+- [x] ✅ **Word Rush** — manual-prompt-setter mode fix, min-length control, per-player word breakdown
+- [x] ✅ **Checkers** — resign button, live per-player clocks (needs migration fields already in DB)
+- [x] ✅ **Tic Tac Toe** — won sub-board overlay glyphs, turn timer + client expire
+- [x] ✅ **Ayo** — resign button
+- [x] ✅ **Mafia** — alive Mafia can now post in Town Day chat (chat-scope fix)
+- [x] ✅ **Bingo** — host-plays-along mode
+- [x] ✅ **Whot** · **Quick Draw** · **Scrabble** · **Describe It** · **Quiplash** · **Secret Message** · **Snake & Ladder** — remaining highs built
+- [x] ⚠️ **Sudoku** — timer bar + spectator watch built; _late-join-choice (viewer-vs-player) screen still needs shared bootstrap wiring_
+- [x] ⚠️ **Codewords** — MVP/leaderboard/board-reveal built; _share uses native view-shot instead of html2canvas_
+- [x] ⚠️ **Anonymous Messages** — emoji picker, free-choice reactions, timer bar, lobby detail, leave, summary built; _emoji appends vs inserts at cursor_
+- [x] ⚠️ **NPAT** — caller Valid/Invalid overrides + dispute + timers + reveal scores built; _draft auto-save not ported_
+- [x] ⚠️ **Poll family** — WST quote pool, final gender/overall leaderboards, all-rounds recap, WST/pick-a-number results, hot-takes built; _"your pick vs correct" highlight + custom/hot-seat leaderboard variants deferred_
+- [x] ⚠️ **Chess** — host board-theme/piece-set applied + per-player appearance picker + premove built; _captured-pieces tray & coord labels deferred_
+- [x] ⚠️ **Trivia** — edit source/category/pack from lobby built; _dynamic rounds-cap-from-pool deferred_
+
+**Phase 1 — shared infrastructure** · **Phase 3 — polish** — not started.
+
+> **Phase 0 status:** 9 of 11 items complete, 2 partial (Poll's two fixes — core flow works, edge cases noted). All changes typecheck clean (`apps/mobile: tsc --noEmit`) and are **uncommitted on `feat/mobile-shell`** for review. On-device behavior (Expo timers, board rendering, realtime feeds) still needs a manual pass — couldn't be exercised here.
 
 ---
 

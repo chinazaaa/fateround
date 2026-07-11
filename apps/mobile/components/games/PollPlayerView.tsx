@@ -51,6 +51,17 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ParticipantPhotoCard } from '@/components/games/poll/ParticipantPhotoCard'
 import { PollRoundResults } from '@/components/games/poll/PollRoundResults'
 import { PollGenderJoinScreen } from '@/components/games/poll/PollGenderJoinScreen'
+import { WstQuotePool } from '@/components/games/poll/WstQuotePool'
+import { ConfessionInput } from '@/components/games/poll/ConfessionInput'
+import { ConfessionsTicker } from '@/components/games/poll/ConfessionsTicker'
+import { PollFinalRounds } from '@/components/games/poll/PollFinalRounds'
+import {
+  FinalGenderBreakdown,
+  FinalGenderLeaderboards,
+  FinalOverallBreakdown,
+  FinalOverallLeaderboards,
+} from '@/components/games/poll/PollFinalLeaderboards'
+import type { Confession } from '@/components/games/poll/poll-types'
 import {
   activeVoteBanner,
   canPlayerVoteInRound,
@@ -81,10 +92,11 @@ type PollState = {
   rounds: Round[]
   participants: Participant[]
   votes: Vote[]
+  confessions: Confession[]
 }
 
 export function PollPlayerView({ gameCode }: { gameCode: string }) {
-  const [pollState, setPollState] = useState<PollState>({ rounds: [], participants: [], votes: [] })
+  const [pollState, setPollState] = useState<PollState>({ rounds: [], participants: [], votes: [], confessions: [] })
   const [wyrChoice, setWyrChoice] = useState<WyrChoice | null>(null)
   const [targetId, setTargetId] = useState<string | null>(null)
   const [animeChoice, setAnimeChoice] = useState<string | null>(null)
@@ -98,18 +110,20 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: PollState; ok: boolean }> => {
       const code = gameCode.toUpperCase()
-      const [roundsRes, participantsRes, votesRes] = await Promise.all([
+      const [roundsRes, participantsRes, votesRes, confessionsRes] = await Promise.all([
         getSupabase().from('rounds').select(ROUND_SELECT).eq('game_id', code).order('round_number'),
         getSupabase().from('participants').select(PARTICIPANT_SELECT).eq('game_id', code).order('display_order'),
         getSupabase().from('votes').select(VOTE_SELECT).eq('game_id', code),
+        getSupabase().from('confessions').select('*').eq('game_id', code).order('created_at'),
       ])
       if (roundsRes.error || participantsRes.error || votesRes.error) {
-        return { state: { rounds: [], participants: [], votes: [] }, ok: false }
+        return { state: { rounds: [], participants: [], votes: [], confessions: [] }, ok: false }
       }
       const state: PollState = {
         rounds: (roundsRes.data as Round[]) ?? [],
         participants: (participantsRes.data as Participant[]) ?? [],
         votes: (votesRes.data as Vote[]) ?? [],
+        confessions: (confessionsRes.data as Confession[]) ?? [],
       }
       setPollState(state)
       return { state, ok: true }
@@ -137,7 +151,7 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
 
   useGameTableSync(
     gameCode,
-    [{ table: 'games', column: 'id' }, 'rounds', 'participants', 'votes'],
+    [{ table: 'games', column: 'id' }, 'rounds', 'participants', 'votes', 'confessions'],
     () => bootstrap.load(),
     !!bootstrap.game
   )
@@ -390,6 +404,18 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
                 genderBased={bootstrap.game?.gender_based === true}
               />
             ) : null}
+            {hasSession && gameType && isWhoSaidThis(gameType) ? (
+              <WstQuotePool
+                gameCode={bootstrap.code}
+                resumeToken={bootstrap.myResumeToken!}
+                myPlayerId={bootstrap.myPlayerId!}
+                myParticipantId={me?.participant_id ?? null}
+                participants={pollState.participants}
+                animeMode={
+                  (bootstrap.game as { wst_quote_source?: string }).wst_quote_source === 'anime'
+                }
+              />
+            ) : null}
           </>
         }
       />
@@ -400,28 +426,30 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
   const title = pollGameLabel(gameType)
 
   if (bootstrap.screen === 'finished') {
+    const isPeoplePoll = isThreeChoiceGame(gameType) || isBinaryPeoplePollGame(gameType)
+    const genderBoards = isPeoplePoll && isGameGenderBased(bootstrap.game)
+    const overallBoards = isPeoplePoll && isGenderFreeVoting(bootstrap.game)
+
+    let panel: React.ReactNode
     if (isWhoSaidThis(gameType)) {
       const scores = tallyWstScores(pollState.rounds, pollState.votes, bootstrap.players)
       const top = scores[0]
       const winnerId = top && top.correctGuesses > 0 ? top.playerId : null
-      return (
-        <GameShell bootstrap={bootstrap} title={title} subtitle={bootstrap.code}>
-          <GameFinishPanel
-            bootstrap={bootstrap}
-            title={winnerId ? `${top!.name} wins!` : 'Game over'}
-            subtitle="Best guessers"
-            leaderboard={wstLeaderboard(scores, bootstrap.myPlayerId)}
-            winnerPlayerId={winnerId}
-          />
-        </GameShell>
+      panel = (
+        <GameFinishPanel
+          bootstrap={bootstrap}
+          title={winnerId ? `${top!.name} wins!` : 'Game over'}
+          subtitle="Best guessers"
+          leaderboard={wstLeaderboard(scores, bootstrap.myPlayerId)}
+          winnerPlayerId={winnerId}
+        />
       )
-    }
-    const leaderboard = isMostLikelyTo(gameType)
-      ? mltVoteLeaderboard(pollState.votes, pollState.participants)
-      : undefined
-    const top = leaderboard?.[0]
-    return (
-      <GameShell bootstrap={bootstrap} title={title} subtitle={bootstrap.code}>
+    } else {
+      const leaderboard = isMostLikelyTo(gameType)
+        ? mltVoteLeaderboard(pollState.votes, pollState.participants)
+        : undefined
+      const top = leaderboard?.[0]
+      panel = (
         <GameFinishPanel
           bootstrap={bootstrap}
           title="Game over"
@@ -433,6 +461,58 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
           }
           leaderboard={leaderboard && leaderboard.length > 0 ? leaderboard : undefined}
         />
+      )
+    }
+
+    return (
+      <GameShell bootstrap={bootstrap} title={title} subtitle={bootstrap.code}>
+        <ScrollView contentContainerStyle={styles.scroll}>
+          {panel}
+          {genderBoards ? (
+            <FinalGenderLeaderboards
+              gameType={gameType}
+              participants={pollState.participants}
+              rounds={pollState.rounds}
+              votes={pollState.votes}
+            />
+          ) : null}
+          {overallBoards ? (
+            <FinalOverallLeaderboards
+              gameType={gameType}
+              participants={pollState.participants}
+              rounds={pollState.rounds}
+              votes={pollState.votes}
+            />
+          ) : null}
+          {genderBoards ? (
+            <FinalGenderBreakdown
+              gameType={gameType}
+              participants={pollState.participants}
+              rounds={pollState.rounds}
+              votes={pollState.votes}
+            />
+          ) : null}
+          {overallBoards ? (
+            <FinalOverallBreakdown
+              gameType={gameType}
+              participants={pollState.participants}
+              rounds={pollState.rounds}
+              votes={pollState.votes}
+            />
+          ) : null}
+          <PollFinalRounds
+            game={bootstrap.game}
+            gameType={gameType}
+            rounds={pollState.rounds}
+            participants={pollState.participants}
+            votes={pollState.votes}
+            players={bootstrap.players}
+            myPlayerId={bootstrap.myPlayerId}
+          />
+          {pollState.confessions.length > 0 ? (
+            <ConfessionsTicker confessions={pollState.confessions} title="🔥 All Hot Takes" />
+          ) : null}
+        </ScrollView>
       </GameShell>
     )
   }
@@ -476,6 +556,16 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
             participants={pollState.participants}
             votes={pollState.votes}
             players={bootstrap.players}
+          />
+          {!isViewer && bootstrap.myResumeToken ? (
+            <ConfessionInput
+              gameCode={bootstrap.code}
+              resumeToken={bootstrap.myResumeToken}
+              roundId={currentRound.id}
+            />
+          ) : null}
+          <ConfessionsTicker
+            confessions={pollState.confessions.filter((c) => c.round_id === currentRound.id)}
           />
           <Text style={styles.waiting}>{waitMessage}</Text>
         </ScrollView>

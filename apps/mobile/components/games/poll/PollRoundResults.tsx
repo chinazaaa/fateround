@@ -67,9 +67,16 @@ export function PollRoundResults({ game, gameType, round, participants, votes, p
     const anime = round.anime_metadata
     let correctLabel: string | null = null
     let correctCount = 0
+    let distribution: { key: string; name: string; count: number; isCorrect: boolean }[] = []
     if (anime) {
       correctLabel = anime.correct_character
       correctCount = roundVotes.filter((v) => v.anime_choice === anime.correct_character).length
+      distribution = anime.choices.map((choice) => ({
+        key: choice,
+        name: choice,
+        count: roundVotes.filter((v) => v.anime_choice === choice).length,
+        isCorrect: choice === anime.correct_character,
+      }))
     } else {
       const correctId =
         round.quote_author_participant_id ??
@@ -79,6 +86,15 @@ export function PollRoundResults({ game, gameType, round, participants, votes, p
         correctLabel = participants.find((p) => p.id === correctId)?.name ?? 'Unknown'
         correctCount = roundVotes.filter((v) => v.target_participant_id === correctId).length
       }
+      distribution = participants
+        .map((p) => ({
+          key: p.id,
+          name: p.name,
+          count: roundVotes.filter((v) => v.target_participant_id === p.id).length,
+          isCorrect: p.id === correctId,
+        }))
+        .filter((row) => row.count > 0 || row.isCorrect)
+        .sort((a, b) => b.count - a.count)
     }
     return (
       <View style={styles.panel}>
@@ -91,6 +107,21 @@ export function PollRoundResults({ game, gameType, round, participants, votes, p
             <Text style={styles.meta}>
               {correctCount} guessed right of {roundVotes.length} vote{roundVotes.length === 1 ? '' : 's'}
             </Text>
+            {distribution.length > 0 ? (
+              <View style={styles.wstDistribution}>
+                {distribution.map((row) => (
+                  <View key={row.key} style={styles.row}>
+                    <Text style={[styles.rowName, row.isCorrect && styles.rowNameCorrect]}>
+                      {row.isCorrect ? '✓ ' : ''}
+                      {row.name}
+                    </Text>
+                    <Text style={styles.rowScore}>
+                      {row.count} guess{row.count === 1 ? '' : 'es'}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
           </>
         ) : (
           <Text style={styles.meta}>Answer not revealed</Text>
@@ -243,6 +274,8 @@ const makeStyles = (theme: Theme) =>
     textAlign: 'center',
   },
   wstAnswer: { color: theme.text, fontSize: 20, fontWeight: '800', textAlign: 'center' },
+  wstDistribution: { gap: 6, marginTop: 8 },
+  rowNameCorrect: { color: '#86efac', fontWeight: '700' },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',

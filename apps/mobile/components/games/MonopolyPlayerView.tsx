@@ -8,7 +8,6 @@ import {
 } from '@fateround/shared'
 import { batch8GameLabel } from '@fateround/shared/batch-8-games'
 import {
-  formatMonopolyMoney,
   MONOPOLY_JAIL_FINE,
   spaceAt,
 } from '@fateround/shared/monopoly-board'
@@ -17,6 +16,7 @@ import {
   monopolyPhaseLabel,
   secondsUntilMonopolyDeadline,
 } from '@fateround/shared/monopoly'
+import { playerIsViewer } from '@fateround/shared/viewers'
 import {
   firstAvailableMonopolyToken,
   MONOPOLY_PLAYER_TOKENS,
@@ -29,6 +29,12 @@ import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { MonopolyBoardView } from '@/components/games/monopoly/MonopolyBoardView'
+import {
+  formatThemedMoney,
+  formatThemedText,
+  themedSpaceName,
+} from '@/components/games/monopoly/monopoly-theme'
+import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -111,6 +117,11 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
+  const themeId = bootstrap.game?.theme
+  // Joining an already-active game means watching live (read-only). Monopoly never
+  // seats late players mid-game, so the active-game join is always a viewer join.
+  const joiningAsViewer = bootstrap.game?.status === 'active'
+
   useGameTableSync(
     gameCode,
     [{ table: 'games', column: 'id' }, 'monopoly_boards', 'monopoly_player_state', 'players'],
@@ -135,7 +146,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       setJoinError('Enter your name to join')
       return
     }
-    if (!selectedToken) {
+    if (!joiningAsViewer && !selectedToken) {
       setJoinError('Pick an available token')
       return
     }
@@ -148,7 +159,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         gameCode: code,
         playerName,
         resumeToken: existing?.resumeToken ?? undefined,
-        monopolyToken: selectedToken,
+        joinAsViewer: joiningAsViewer ? true : undefined,
+        monopolyToken: joiningAsViewer ? undefined : selectedToken,
       })
       await setPlayerSession(code, data.playerId, data.playerName, data.playerGender ?? 'both', data.resumeToken ?? null)
       await bootstrap.load()
@@ -161,7 +173,9 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
   const turnPlayerId = board ? currentPlayerId(board) : null
   const myState = states.find((s) => s.player_id === bootstrap.myPlayerId)
-  const isMyTurn = turnPlayerId === bootstrap.myPlayerId && !myState?.bankrupt
+  const me = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
+  const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
+  const isMyTurn = turnPlayerId === bootstrap.myPlayerId && !myState?.bankrupt && !isViewer
 
   useGameTurnAlerts({
     gameCode: bootstrap.code,
@@ -234,6 +248,15 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   if (bootstrap.screen === 'join' && bootstrap.game) {
     return (
       <ScrollView style={styles.joinWrap} contentContainerStyle={styles.joinContent}>
+        {joiningAsViewer ? (
+          <View style={styles.viewerNote}>
+            <Text style={styles.viewerNoteTitle}>Watching live</Text>
+            <Text style={styles.viewerNoteBody}>
+              This game is already in progress — enter your name and join as a viewer to watch the board update in
+              real time (read-only).
+            </Text>
+          </View>
+        ) : null}
         <JoinScreen
           gameCode={bootstrap.code}
           joinName={bootstrap.joinName}
@@ -242,26 +265,30 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           onChangeName={bootstrap.setJoinName}
           onJoin={() => void joinWithToken()}
         />
-        <Text style={styles.tokenHeading}>Pick your token</Text>
-        <View style={styles.tokenGrid}>
-          {MONOPOLY_PLAYER_TOKENS.map((token) => {
-            const owner = tokenOwners.get(token.id)
-            const taken = !!owner
-            const selected = selectedToken === token.id
-            return (
-              <Pressable
-                key={token.id}
-                style={[styles.tokenBtn, selected && styles.tokenBtnActive, taken && styles.tokenBtnTaken]}
-                disabled={taken || bootstrap.joining || joiningToken}
-                onPress={() => setSelectedToken(token.id)}
-              >
-                <Text style={styles.tokenEmoji}>{token.emoji}</Text>
-                <Text style={styles.tokenLabel}>{token.label}</Text>
-                {owner ? <Text style={styles.tokenOwner}>{owner}</Text> : null}
-              </Pressable>
-            )
-          })}
-        </View>
+        {joiningAsViewer ? null : (
+          <>
+            <Text style={styles.tokenHeading}>Pick your token</Text>
+            <View style={styles.tokenGrid}>
+              {MONOPOLY_PLAYER_TOKENS.map((token) => {
+                const owner = tokenOwners.get(token.id)
+                const taken = !!owner
+                const selected = selectedToken === token.id
+                return (
+                  <Pressable
+                    key={token.id}
+                    style={[styles.tokenBtn, selected && styles.tokenBtnActive, taken && styles.tokenBtnTaken]}
+                    disabled={taken || bootstrap.joining || joiningToken}
+                    onPress={() => setSelectedToken(token.id)}
+                  >
+                    <Text style={styles.tokenEmoji}>{token.emoji}</Text>
+                    <Text style={styles.tokenLabel}>{token.label}</Text>
+                    {owner ? <Text style={styles.tokenOwner}>{owner}</Text> : null}
+                  </Pressable>
+                )
+              })}
+            </View>
+          </>
+        )}
       </ScrollView>
     )
   }
@@ -332,7 +359,20 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           }
         />
 
-        {board.status_message ? <Text style={styles.status}>{board.status_message}</Text> : null}
+        {isViewer && me ? (
+          <ViewerModeBanner
+            gameCode={bootstrap.code}
+            playerId={bootstrap.myPlayerId!}
+            game={bootstrap.game}
+            player={me}
+            players={bootstrap.players}
+            onPromoted={() => void bootstrap.load()}
+          />
+        ) : null}
+
+        {board.status_message ? (
+          <Text style={styles.status}>{formatThemedText(board.status_message, themeId)}</Text>
+        ) : null}
 
         <MonopolyBoardView
           states={states}
@@ -340,6 +380,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           propertyOwners={board.property_owners}
           pendingSpace={board.pending_space}
           myPlayerId={bootstrap.myPlayerId}
+          themeId={themeId}
         />
 
         {secondsLeft > 0 ? <TimerBadge seconds={secondsLeft} /> : null}
@@ -354,7 +395,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         {board.last_card_event ? (
           <View style={styles.cardEvent}>
             <Text style={styles.cardKind}>{board.last_card_event.kind === 'chance' ? 'Chance' : 'Community Chest'}</Text>
-            <Text style={styles.cardText}>{board.last_card_event.card_message}</Text>
+            <Text style={styles.cardText}>{formatThemedText(board.last_card_event.card_message, themeId)}</Text>
           </View>
         ) : null}
 
@@ -369,7 +410,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
                   {state.bankrupt ? ' (bankrupt)' : ''}
                 </Text>
                 <Text style={styles.scoreMeta}>
-                  {formatMonopolyMoney(state.cash)} · {space.name}
+                  {formatThemedMoney(state.cash, themeId)} · {themedSpaceName(space.name, state.position, themeId)}
                   {state.in_jail ? ' · Jail' : ''}
                 </Text>
               </View>
@@ -389,8 +430,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
         {showBuy && pendingSpace ? (
           <View style={styles.actionPanel}>
-            <Text style={styles.actionTitle}>{pendingSpace.name}</Text>
-            <Text style={styles.actionSub}>Price {formatMonopolyMoney(pendingSpace.price ?? 0)}</Text>
+            <Text style={styles.actionTitle}>{themedSpaceName(pendingSpace.name, pendingSpace.index, themeId)}</Text>
+            <Text style={styles.actionSub}>Price {formatThemedMoney(pendingSpace.price ?? 0, themeId)}</Text>
             <View style={styles.actionRow}>
               <Pressable
                 style={[styles.primaryBtn, styles.flexBtn, acting && styles.btnDisabled]}
@@ -419,7 +460,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
         {showRent && pendingSpace ? (
           <View style={styles.actionPanel}>
-            <Text style={styles.actionTitle}>Pay rent — {pendingSpace.name}</Text>
+            <Text style={styles.actionTitle}>Pay rent — {themedSpaceName(pendingSpace.name, pendingSpace.index, themeId)}</Text>
             <Pressable
               style={[styles.primaryBtn, acting && styles.btnDisabled]}
               disabled={acting}
@@ -434,7 +475,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           <View style={styles.actionPanel}>
             <Text style={styles.actionTitle}>In jail</Text>
             <Text style={styles.actionSub}>
-              Attempt {(myState?.jail_turns ?? 0) + 1}/3 — roll for doubles or pay {formatMonopolyMoney(MONOPOLY_JAIL_FINE)}.
+              Attempt {(myState?.jail_turns ?? 0) + 1}/3 — roll for doubles or pay {formatThemedMoney(MONOPOLY_JAIL_FINE, themeId)}.
             </Text>
             <View style={styles.actionRow}>
               <Pressable
@@ -466,9 +507,9 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
         {showAuction && auction && auctionSpace ? (
           <View style={styles.actionPanel}>
-            <Text style={styles.actionTitle}>Auction — {auctionSpace.name}</Text>
+            <Text style={styles.actionTitle}>Auction — {themedSpaceName(auctionSpace.name, auction.space_index, themeId)}</Text>
             <Text style={styles.actionSub}>
-              High bid: {auction.high_bid > 0 ? formatMonopolyMoney(auction.high_bid) : 'None'}
+              High bid: {auction.high_bid > 0 ? formatThemedMoney(auction.high_bid, themeId) : 'None'}
             </Text>
             <TextInput
               style={styles.bidInput}
@@ -503,8 +544,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
         {showRaiseFunds && debt ? (
           <View style={styles.actionPanel}>
-            <Text style={styles.actionTitle}>Raise {formatMonopolyMoney(debt.amount)}</Text>
-            <Text style={styles.actionSub}>{debt.reason}</Text>
+            <Text style={styles.actionTitle}>Raise {formatThemedMoney(debt.amount, themeId)}</Text>
+            <Text style={styles.actionSub}>{formatThemedText(debt.reason, themeId)}</Text>
             <View style={styles.actionRow}>
               <Pressable
                 style={[styles.primaryBtn, styles.flexBtn, acting && styles.btnDisabled]}
@@ -526,19 +567,22 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
         {manageError ? <Text style={styles.errorText}>{manageError}</Text> : null}
 
-        <MonopolyManagePanel
-          board={board}
-          myPlayerId={bootstrap.myPlayerId}
-          myState={myState}
-          states={states}
-          players={bootstrap.players}
-          acting={acting}
-          onBuild={onBuild}
-          onMortgage={onMortgage}
-          onProposeTrade={onProposeTrade}
-          onCancelTrade={onCancelTrade}
-          onRepairTrade={onRepairTrade}
-        />
+        {isViewer ? null : (
+          <MonopolyManagePanel
+            board={board}
+            myPlayerId={bootstrap.myPlayerId}
+            myState={myState}
+            states={states}
+            players={bootstrap.players}
+            acting={acting}
+            themeId={themeId}
+            onBuild={onBuild}
+            onMortgage={onMortgage}
+            onProposeTrade={onProposeTrade}
+            onCancelTrade={onCancelTrade}
+            onRepairTrade={onRepairTrade}
+          />
+        )}
       </ScrollView>
 
       {incomingTrade ? (
@@ -546,6 +590,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           trade={incomingTrade}
           players={bootstrap.players}
           acting={acting}
+          themeId={themeId}
           onRespond={onRespondTrade}
         />
       ) : null}
@@ -559,6 +604,18 @@ const makeStyles = (theme: Theme) =>
   tokenList: { paddingHorizontal: 20, paddingBottom: 24 },
   joinWrap: { flex: 1, backgroundColor: theme.bg },
   joinContent: { paddingBottom: 32 },
+  viewerNote: {
+    marginHorizontal: 20,
+    marginTop: 16,
+    backgroundColor: theme.primarySoft,
+    borderColor: theme.borderAccent,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    gap: 4,
+  },
+  viewerNoteTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
+  viewerNoteBody: { color: theme.textSecondary, fontSize: 13, lineHeight: 18 },
   tokenHeading: { color: theme.text, fontSize: 16, fontWeight: '600', paddingHorizontal: 24, marginTop: 8 },
   tokenGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 16 },
   tokenBtn: {

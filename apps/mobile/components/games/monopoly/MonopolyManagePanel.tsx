@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import type { MonopolyBoard, MonopolyPlayerState, Player } from '@fateround/shared'
 import {
-  formatMonopolyMoney,
   mortgageValue,
   unmortgageCost,
   type MonopolyColorGroup,
@@ -10,6 +9,7 @@ import {
 import { MONOPOLY_COLOR_HEX } from '@fateround/shared/monopoly-board-layout'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
+import { formatThemedMoney, themedSpaceName } from './monopoly-theme'
 import { MonopolyTradeReview } from './MonopolyTradeReview'
 import {
   buildColorGroupStatuses,
@@ -49,6 +49,7 @@ export function MonopolyManagePanel({
   states,
   players,
   acting,
+  themeId,
   onBuild,
   onMortgage,
   onProposeTrade,
@@ -61,6 +62,7 @@ export function MonopolyManagePanel({
   states: MonopolyPlayerState[]
   players: Player[]
   acting: boolean
+  themeId?: string | null
   onBuild: (spaceIndex: number, action: BuildAction) => void
   onMortgage: (spaceIndex: number, action: MortgageAction) => void
   onProposeTrade: (proposal: TradeProposal) => void
@@ -183,14 +185,14 @@ export function MonopolyManagePanel({
         ) : null}
         <View style={styles.propBody}>
           <View style={styles.propHeader}>
-            <Text style={styles.propName}>{space.name}</Text>
+            <Text style={styles.propName}>{themedSpaceName(space.name, space.index, themeId)}</Text>
             <Text style={styles.propMeta}>{isMortgaged ? 'Mortgaged' : levelLabel}</Text>
           </View>
           <Text style={styles.propRent}>
             {isMortgaged
-              ? `No rent while mortgaged · unmortgage for ${formatMonopolyMoney(unmortgageCost(space))}`
+              ? `No rent while mortgaged · unmortgage for ${formatThemedMoney(unmortgageCost(space), themeId)}`
               : currentRent != null
-                ? `Current rent ${formatMonopolyMoney(currentRent)}`
+                ? `Current rent ${formatThemedMoney(currentRent, themeId)}`
                 : ''}
           </Text>
           <View style={styles.propActions}>
@@ -200,7 +202,7 @@ export function MonopolyManagePanel({
                 onPress={() => onBuild(space.index, 'buy_house')}
                 style={[styles.chip, styles.chipPrimary, acting && styles.disabled]}
               >
-                <Text style={styles.chipPrimaryText}>+ House {formatMonopolyMoney(space.houseCost ?? 0)}</Text>
+                <Text style={styles.chipPrimaryText}>+ House {formatThemedMoney(space.houseCost ?? 0, themeId)}</Text>
               </Pressable>
             ) : null}
             {canHotel ? (
@@ -236,7 +238,7 @@ export function MonopolyManagePanel({
                 onPress={() => onMortgage(space.index, 'mortgage')}
                 style={[styles.chip, styles.chipSecondary, acting && styles.disabled]}
               >
-                <Text style={styles.chipSecondaryText}>Mortgage {formatMonopolyMoney(mortgageValue(space))}</Text>
+                <Text style={styles.chipSecondaryText}>Mortgage {formatThemedMoney(mortgageValue(space), themeId)}</Text>
               </Pressable>
             ) : null}
             {isMortgaged ? (
@@ -265,7 +267,7 @@ export function MonopolyManagePanel({
         <View style={[styles.checkbox, checked && styles.checkboxOn]}>
           {checked ? <Text style={styles.checkMark}>✓</Text> : null}
         </View>
-        <Text style={styles.checkLabel}>{space.name}</Text>
+        <Text style={styles.checkLabel}>{themedSpaceName(space.name, space.index, themeId)}</Text>
       </Pressable>
     )
   }
@@ -364,6 +366,7 @@ export function MonopolyManagePanel({
               to accept or decline:
             </Text>
             <MonopolyTradeReview
+              themeId={themeId}
               giveLabel="You give"
               getLabel="You get"
               giveCash={activePendingTrade.offer_cash}
@@ -393,6 +396,7 @@ export function MonopolyManagePanel({
               — review all items in the popup before accepting:
             </Text>
             <MonopolyTradeReview
+              themeId={themeId}
               giveLabel="You pay"
               getLabel="You receive"
               giveCash={activePendingTrade.request_cash}
@@ -526,6 +530,7 @@ export function MonopolyManagePanel({
                 </View>
 
                 <MonopolyTradeReview
+                  themeId={themeId}
                   giveLabel="You give"
                   getLabel={`You get from ${targetName}`}
                   giveCash={parsedOfferCash}
@@ -568,6 +573,7 @@ export function MonopolyManagePanel({
                   <View style={styles.confirmBox}>
                     <Text style={styles.strong}>Send this offer to {targetName}?</Text>
                     <MonopolyTradeReview
+                      themeId={themeId}
                       giveLabel="You give"
                       getLabel={`You get from ${targetName}`}
                       giveCash={parsedOfferCash}

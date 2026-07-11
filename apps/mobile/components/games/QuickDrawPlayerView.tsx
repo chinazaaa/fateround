@@ -175,12 +175,19 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
 
   const guessFeed = useMemo(() => {
     const nameById = new Map(bootstrap.players.map((p) => [p.id, p.name]))
-    return guesses.slice(0, 12).map((g) => ({
-      id: g.id,
-      primary: g.text,
-      secondary: `${nameById.get(g.player_id) ?? 'Player'}${g.correct ? ` · +${g.points}` : ''}`,
-    }))
-  }, [guesses, bootstrap.players])
+    return guesses.slice(0, 12).map((g) => {
+      // Individual mode masks other players' guess text so no one can copy a
+      // correct answer — you only see 'guessing…' / 'guessed it ✅'. Mirrors web
+      // GuessFeed hideOthersText (QuickDrawGuessPlay.tsx).
+      const mask = mode === 'individual' && g.player_id !== bootstrap.myPlayerId
+      const primary = mask ? (g.correct ? 'guessed it ✅' : 'guessing…') : g.text
+      return {
+        id: g.id,
+        primary,
+        secondary: `${nameById.get(g.player_id) ?? 'Player'}${g.correct ? ` · +${g.points}` : ''}`,
+      }
+    })
+  }, [guesses, bootstrap.players, bootstrap.myPlayerId, mode])
 
   const turnSecondsLeft = useAbsoluteDeadline(
     session?.turn_deadline_at,

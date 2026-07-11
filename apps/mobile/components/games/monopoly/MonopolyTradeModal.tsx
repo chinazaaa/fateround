@@ -9,11 +9,13 @@ export function MonopolyTradeModal({
   trade,
   players,
   acting,
+  themeId,
   onRespond,
 }: {
   trade: MonopolyPendingTrade
   players: Player[]
   acting: boolean
+  themeId?: string | null
   onRespond: (accept: boolean) => void
 }) {
   const styles = useThemedStyles(makeStyles)
@@ -46,6 +48,7 @@ export function MonopolyTradeModal({
               </Text>
             ) : null}
             <MonopolyTradeReview
+              themeId={themeId}
               giveLabel="You pay"
               getLabel="You receive"
               giveCash={trade.request_cash}

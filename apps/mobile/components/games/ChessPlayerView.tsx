@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Chess, type Square } from 'chess.js'
 import type { ChessSession, Game, Player } from '@fateround/shared'
@@ -25,6 +25,15 @@ import { getSupabase } from '@/lib/supabase'
 import { CHESS_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { winnerLeaderboard } from '@/lib/finish-leaderboards'
+import { useChessAppearance, type ChessPieceType } from './chess/chess-appearance'
+import { ChessPieceGlyph } from './chess/ChessPieceGlyph'
+import { ChessAppearancePicker } from './chess/ChessAppearancePicker'
+import {
+  type Premove,
+  premoveNeedsPromotion,
+  premoveTargets,
+  type PremovePiece,
+} from './chess/chess-premove'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
 type Promotion = 'q' | 'r' | 'b' | 'n'
@@ -38,15 +47,13 @@ const PROMOTION_OPTIONS: { piece: Promotion; label: string }[] = [
   { piece: 'n', label: 'Knight' },
 ]
 
-const WHITE_GLYPHS: Record<string, string> = { k: '♔', q: '♕', r: '♖', b: '♗', n: '♘', p: '♙' }
-const BLACK_GLYPHS: Record<string, string> = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' }
-
 export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
   const [session, setSession] = useState<ChessSession | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [acting, setActing] = useState(false)
-  const [promotionMove, setPromotionMove] = useState<{ from: string; to: string } | null>(null)
+  const [promotionMove, setPromotionMove] = useState<{ from: string; to: string; isPremove?: boolean } | null>(null)
+  const [premove, setPremove] = useState<Premove | null>(null)
   const [clockTick, setClockTick] = useState(0)
   const [resignOpen, setResignOpen] = useState(false)
 
@@ -98,6 +105,14 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   const turnPlayerId = activeSession ? currentTurnPlayerId(activeSession) : null
   const isMyTurn = bootstrap.myPlayerId != null && turnPlayerId === bootstrap.myPlayerId
   const flipped = myColor === 'b'
+  // Off-turn interactivity: queue a premove while the opponent is thinking.
+  const canPremove = !isMyTurn && !!myColor && activeSession?.status === 'active'
+
+  const appearanceDefaults = useMemo(
+    () => ({ boardTheme: bootstrap.game?.chess_board_theme, pieceSet: bootstrap.game?.chess_piece_set }),
+    [bootstrap.game?.chess_board_theme, bootstrap.game?.chess_piece_set]
+  )
+  const { boardTheme, pieceSet } = useChessAppearance(appearanceDefaults)
 
   useGameTurnAlerts({
     gameCode: bootstrap.code,
@@ -116,14 +131,29 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   }, [activeSession?.fen])
 
   const legalTargets = useMemo(() => {
-    if (!chess || !selected || !isMyTurn) return new Set<string>()
-    try {
-      const moves = chess.moves({ square: selected as Square, verbose: true })
-      return new Set(moves.map((m) => m.to))
-    } catch {
-      return new Set<string>()
+    const map = new Map<string, { promotion: boolean }>()
+    if (!chess || !selected) return map
+    if (isMyTurn) {
+      try {
+        for (const m of chess.moves({ square: selected as Square, verbose: true })) {
+          const prev = map.get(m.to)
+          map.set(m.to, { promotion: (prev?.promotion ?? false) || m.flags.includes('p') })
+        }
+      } catch {
+        // invalid square — ignore
+      }
+    } else if (canPremove && myColor) {
+      const piece = chess.get(selected as Square)
+      if (piece && piece.color === myColor) {
+        for (const to of premoveTargets(selected, piece.type as PremovePiece, myColor)) {
+          // Keep taps on our own pieces meaning "reselect", not "premove onto it".
+          if (chess.get(to as Square)?.color === myColor) continue
+          map.set(to, { promotion: premoveNeedsPromotion(to, piece.type as PremovePiece, myColor) })
+        }
+      }
     }
-  }, [chess, selected, isMyTurn])
+    return map
+  }, [chess, selected, isMyTurn, canPremove, myColor])
 
   const inCheckSquare = useMemo(() => {
     if (!chess || !activeSession?.in_check) return null
@@ -153,48 +183,106 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
     void postChessExpireTurn(bootstrap.code).then(() => bootstrap.load()).catch(() => {})
   }, [activeSession, timed, clockTick, bootstrap.code, bootstrap.load])
 
-  const submitMove = async (from: string, to: string, promotion?: Promotion) => {
-    if (!bootstrap.myResumeToken || acting) return
-    setActing(true)
-    try {
-      playSound('move')
-      await postChessMove(bootstrap.code, bootstrap.myResumeToken, from, to, promotion)
-      setSelected(null)
-      setPromotionMove(null)
-      await bootstrap.load()
-    } catch {
-      setSelected(null)
-      setPromotionMove(null)
-    } finally {
-      setActing(false)
+  const submitMove = useCallback(
+    async (from: string, to: string, promotion?: Promotion) => {
+      if (!bootstrap.myResumeToken || acting) return
+      setActing(true)
+      try {
+        playSound('move')
+        await postChessMove(bootstrap.code, bootstrap.myResumeToken, from, to, promotion)
+        setSelected(null)
+        setPromotionMove(null)
+        await bootstrap.load()
+      } catch {
+        setSelected(null)
+        setPromotionMove(null)
+      } finally {
+        setActing(false)
+      }
+    },
+    [bootstrap.myResumeToken, bootstrap.code, bootstrap.load, acting]
+  )
+
+  // Fire the queued premove as soon as it's our turn. Re-validate against the
+  // position the opponent left us — if the queued move is no longer legal
+  // (piece captured, king now in check, path blocked) it's silently dropped.
+  const firedPremove = useRef<Premove | null>(null)
+  // The session's updated_at when the premove was queued. A strictly newer row
+  // means a genuine turn advance (the opponent actually moved); an equal one
+  // means nothing real happened (e.g. our own move failed + rolled back).
+  const premoveAt = useRef<string | null>(null)
+  useEffect(() => {
+    if (!premove) return
+    if (activeSession?.status === 'finished' || !myColor) {
+      setPremove(null)
+      return
     }
-  }
+    if (!isMyTurn || acting || !chess || !activeSession) return
+    if (premoveAt.current && Date.parse(activeSession.updated_at) <= Date.parse(premoveAt.current)) {
+      setPremove(null)
+      return
+    }
+    if (firedPremove.current === premove) return // guard double-run before state settles
+    firedPremove.current = premove
+    const legal = (() => {
+      try {
+        return chess
+          .moves({ square: premove.from as Square, verbose: true })
+          .some((m) => m.to === premove.to && (m.promotion ?? undefined) === premove.promotion)
+      } catch {
+        return false
+      }
+    })()
+    setPremove(null)
+    if (legal) void submitMove(premove.from, premove.to, premove.promotion)
+  }, [premove, isMyTurn, acting, chess, myColor, activeSession, submitMove])
 
   const onSquarePress = (square: string) => {
-    if (!chess || !isMyTurn || acting || !myColor) return
+    if (!chess || !myColor || (!isMyTurn && !canPremove)) return
     const piece = chess.get(square as Square)
     const pieceColor = piece?.color ?? null
+
+    // Any tap while a premove is queued cancels it; the tap still falls through,
+    // so tapping one of your pieces starts lining up a fresh one.
+    if (premove) setPremove(null)
 
     if (selected === square) {
       setSelected(null)
       return
     }
 
-    if (selected && legalTargets.has(square)) {
-      const movingPiece = chess.get(selected as Square)
-      const rank = square[1]
-      const needsPromotion =
-        movingPiece?.type === 'p' && ((myColor === 'w' && rank === '8') || (myColor === 'b' && rank === '1'))
-      if (needsPromotion) {
-        setPromotionMove({ from: selected, to: square })
-        return
+    const target = selected ? legalTargets.get(square) : undefined
+    if (selected && target) {
+      if (isMyTurn) {
+        if (target.promotion) setPromotionMove({ from: selected, to: square })
+        else void submitMove(selected, square)
+      } else {
+        // Queue a premove for when it becomes our turn.
+        if (target.promotion) {
+          setPromotionMove({ from: selected, to: square, isPremove: true })
+        } else if (activeSession) {
+          premoveAt.current = activeSession.updated_at
+          setPremove({ from: selected, to: square })
+          setSelected(null)
+        }
       }
-      void submitMove(selected, square)
       return
     }
 
     if (pieceColor === myColor) setSelected(square)
     else setSelected(null)
+  }
+
+  const confirmPromotion = (piece: Promotion) => {
+    if (!promotionMove) return
+    if (promotionMove.isPremove) {
+      if (activeSession) premoveAt.current = activeSession.updated_at
+      setPremove({ from: promotionMove.from, to: promotionMove.to, promotion: piece })
+      setPromotionMove(null)
+      setSelected(null)
+    } else {
+      void submitMove(promotionMove.from, promotionMove.to, piece)
+    }
   }
 
   const resign = () => {
@@ -266,7 +354,11 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
               ? `Selected ${selected} — tap destination`
               : isMyTurn
                 ? 'Your turn'
-                : `${turnPlayer?.name ?? 'Opponent'}'s turn`
+                : premove
+                  ? `Premove ${premove.from}→${premove.to} queued — tap the board to cancel`
+                  : canPremove
+                    ? `${turnPlayer?.name ?? 'Opponent'}'s turn — tap a piece to queue a premove`
+                    : `${turnPlayer?.name ?? 'Opponent'}'s turn`
         }
         isMyTurn={isMyTurn}
       />
@@ -291,36 +383,34 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           <View key={rank} style={styles.row}>
             {displayFiles.map((file) => {
               const square = `${file}${rank}`
-              const dark = (file.charCodeAt(0) - 97 + rank) % 2 === 0
+              const isLight = (file.charCodeAt(0) - 97 + rank) % 2 === 0
               const piece = chess.get(square as Square)
               const isSelected = selected === square
               const isTarget = legalTargets.has(square)
-              const isLastFrom = activeSession.last_move_from === square
-              const isLastTo = activeSession.last_move_to === square
+              const isLastMove = activeSession.last_move_from === square || activeSession.last_move_to === square
               const isKingInCheck = square === inCheckSquare
-              const glyph = piece
-                ? piece.color === 'w'
-                  ? WHITE_GLYPHS[piece.type]
-                  : BLACK_GLYPHS[piece.type]
-                : null
+              const isPremove = premove?.from === square || premove?.to === square
               return (
                 <Pressable
                   key={square}
-                  style={[
-                    styles.square,
-                    dark ? styles.darkSquare : styles.lightSquare,
-                    isSelected && styles.selectedSquare,
-                    isTarget && styles.targetSquare,
-                    (isLastFrom || isLastTo) && styles.lastMoveSquare,
-                    isKingInCheck && styles.checkSquare,
-                  ]}
-                  disabled={acting || !isMyTurn}
+                  style={[styles.square, { backgroundColor: isLight ? boardTheme.light : boardTheme.dark }]}
+                  disabled={acting || (!isMyTurn && !canPremove)}
                   onPress={() => onSquarePress(square)}
                 >
-                  {glyph ? (
-                    <Text style={[styles.piece, piece!.color === 'w' ? styles.whitePiece : styles.blackPiece]}>
-                      {glyph}
-                    </Text>
+                  {isLastMove ? <View style={[styles.overlay, styles.lastMoveOverlay]} /> : null}
+                  {isKingInCheck ? <View style={[styles.overlay, styles.checkOverlay]} /> : null}
+                  {isPremove ? <View style={[styles.overlay, styles.premoveOverlay]} /> : null}
+                  {isSelected ? <View style={[styles.overlay, styles.selectedOverlay]} /> : null}
+                  {piece ? (
+                    <ChessPieceGlyph
+                      set={pieceSet}
+                      color={piece.color}
+                      type={piece.type as ChessPieceType}
+                      size={36}
+                    />
+                  ) : null}
+                  {isTarget ? (
+                    piece ? <View style={styles.captureRing} /> : <View style={styles.moveDot} />
                   ) : null}
                 </Pressable>
               )
@@ -329,7 +419,9 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
         ))}
       </View>
 
-      {isMyTurn ? (
+      <ChessAppearancePicker defaults={appearanceDefaults} />
+
+      {myColor ? (
         <Pressable style={styles.resignBtn} disabled={acting} onPress={resign}>
           <Text style={styles.resignText}>Resign</Text>
         </Pressable>
@@ -338,13 +430,11 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       <Modal visible={!!promotionMove} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Promote pawn to</Text>
+            <Text style={styles.modalTitle}>
+              {promotionMove?.isPremove ? 'Premove — promote pawn to' : 'Promote pawn to'}
+            </Text>
             {PROMOTION_OPTIONS.map(({ piece, label }) => (
-              <Pressable
-                key={piece}
-                style={styles.promoBtn}
-                onPress={() => promotionMove && void submitMove(promotionMove.from, promotionMove.to, piece)}
-              >
+              <Pressable key={piece} style={styles.promoBtn} onPress={() => confirmPromotion(piece)}>
                 <Text style={styles.promoBtnText}>{label}</Text>
               </Pressable>
             ))}
@@ -384,15 +474,22 @@ const makeStyles = (theme: Theme) =>
   board: { alignSelf: 'center', borderWidth: 2, borderColor: theme.border, borderRadius: 8, overflow: 'hidden' },
   row: { flexDirection: 'row' },
   square: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  lightSquare: { backgroundColor: '#f0d9b5' },
-  darkSquare: { backgroundColor: '#b58863' },
-  selectedSquare: { borderWidth: 2, borderColor: '#f43f5e' },
-  targetSquare: { backgroundColor: 'rgba(34,197,94,0.35)' },
-  lastMoveSquare: { backgroundColor: 'rgba(250,204,21,0.35)' },
-  checkSquare: { backgroundColor: 'rgba(220,38,38,0.45)' },
-  piece: { fontSize: 28, fontWeight: '800' },
-  whitePiece: { color: '#fafafa' },
-  blackPiece: { color: '#171717' },
+  overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  lastMoveOverlay: { backgroundColor: 'rgba(250,204,21,0.4)' },
+  checkOverlay: { backgroundColor: 'rgba(244,63,94,0.5)' },
+  premoveOverlay: { backgroundColor: 'rgba(14,165,233,0.45)' },
+  selectedOverlay: { borderWidth: 3, borderColor: theme.primary },
+  moveDot: { position: 'absolute', width: 12, height: 12, borderRadius: 6, backgroundColor: 'rgba(0,0,0,0.35)' },
+  captureRing: {
+    position: 'absolute',
+    top: 3,
+    left: 3,
+    right: 3,
+    bottom: 3,
+    borderRadius: 20,
+    borderWidth: 4,
+    borderColor: 'rgba(0,0,0,0.3)',
+  },
   clocks: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginBottom: 8 },
   clockChip: {
     flex: 1,

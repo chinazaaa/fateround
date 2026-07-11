@@ -10,6 +10,8 @@ import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ScrabbleTile } from '@/components/games/scrabble/ScrabbleTile'
+import { ScrabbleGameTimerBar } from '@/components/games/scrabble/ScrabbleGameTimerBar'
+import { formatScrabbleClock, useScrabbleChessClock } from '@/components/games/scrabble/useScrabbleChessClock'
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
@@ -120,19 +122,32 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
     activeSession?.turn_deadline_at,
     activeSession?.clock_mode === 'standard' && activeSession?.phase === 'playing'
   )
+  const chessClock = useScrabbleChessClock(activeSession ?? null, playerStates, () => {
+    void postScrabbleExpireTurn(bootstrap.code).then(() => bootstrap.load()).catch(() => {})
+  })
 
+  const isChess = chessClock.isChess
   const scoreRows = useMemo(
     () =>
       playerStates
         .slice()
         .sort((a, b) => b.score - a.score)
-        .map((s) => ({
-          id: s.player_id,
-          name: bootstrap.players.find((p) => p.id === s.player_id)?.name ?? 'Player',
-          score: s.score,
-          highlight: s.player_id === bootstrap.myPlayerId,
-        })),
-    [playerStates, bootstrap.players, bootstrap.myPlayerId]
+        .map((s) => {
+          // In chess-clock mode surface each player's live time bank next to their score
+          // (mirrors web BoardScores clockLabel). Timed-out seats read "⏳ out".
+          const clockText = isChess
+            ? s.timed_out
+              ? '⏳ out'
+              : formatScrabbleClock(chessClock.clocksByPlayer.get(s.player_id) ?? (s.clock_ms_remaining ?? 0) / 1000)
+            : null
+          return {
+            id: s.player_id,
+            name: bootstrap.players.find((p) => p.id === s.player_id)?.name ?? 'Player',
+            score: clockText ? `${s.score} pts · ${clockText}` : s.score,
+            highlight: s.player_id === bootstrap.myPlayerId,
+          }
+        }),
+    [playerStates, bootstrap.players, bootstrap.myPlayerId, isChess, chessClock.clocksByPlayer]
   )
 
   useEffect(() => {
@@ -261,7 +276,21 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
         isMyTurn={isMyTurn}
       />
 
-      {turnSecondsLeft > 0 ? <TimerBadge seconds={turnSecondsLeft} /> : null}
+      <ScrabbleGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} />
+
+      {isChess ? (
+        chessClock.activeSecondsLeft > 0 ? (
+          <TimerBadge seconds={chessClock.activeSecondsLeft} urgentAt={15} />
+        ) : null
+      ) : turnSecondsLeft > 0 ? (
+        <TimerBadge seconds={turnSecondsLeft} />
+      ) : null}
+
+      {isChess && myState?.timed_out ? (
+        <Text style={styles.timedOutBanner}>
+          ⏳ You&apos;re out of time — spectating. The game ends when every clock runs out.
+        </Text>
+      ) : null}
 
       <LeaderboardPanel title="Scores" rows={scoreRows} highlightId={bootstrap.myPlayerId} />
 
@@ -424,6 +453,18 @@ function ActionBtn({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
+  timedOutBanner: {
+    color: theme.textMuted,
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    textAlign: 'center',
+    fontSize: 13,
+    fontWeight: '600',
+  },
   board: { alignSelf: 'center', borderWidth: 2, borderColor: theme.border, marginVertical: 8 },
   boardRow: { flexDirection: 'row' },
   cell: {

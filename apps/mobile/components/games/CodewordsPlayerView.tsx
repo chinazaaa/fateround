@@ -27,6 +27,12 @@ import {
 } from '@fateround/shared/codewords'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
+import {
+  CodewordsBoardReveal,
+  CodewordsEndGameStats,
+  CodewordsScoreboard,
+} from '@/components/games/CodewordsStatsViews'
+import { codewordsOperativeLeaderboard } from '@/components/games/codewords-stats'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -251,25 +257,35 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'finished' || board.winner) {
     const title = board.winner ? `${teamLabel(board.winner)} team wins!` : 'Game over'
-    const nameFor = (id: string) => bootstrap.players.find((p) => p.id === id)?.name ?? 'Player'
-    const leaderboard = [...cwState.roles]
-      .sort((a, b) => {
-        const aWon = a.team === board.winner ? 0 : 1
-        const bWon = b.team === board.winner ? 0 : 1
-        if (aWon !== bWon) return aWon - bWon
-        if (a.role !== b.role) return a.role === 'spymaster' ? -1 : 1
-        return nameFor(a.player_id).localeCompare(nameFor(b.player_id))
-      })
-      .map((r) => ({
-        name: nameFor(r.player_id),
-        score: teamLabel(r.team),
-        detail: roleLabel(r.role),
-        you: !!bootstrap.myPlayerId && r.player_id === bootstrap.myPlayerId,
-        highlight: !!board.winner && r.team === board.winner,
-      }))
+    const players = bootstrap.players.map((p) => ({ id: p.id, name: p.name }))
+    const leaderboard = codewordsOperativeLeaderboard(guesses, roles, players, bootstrap.myPlayerId)
+    const finishAttribution = guessAttributionMap(guesses, playerNameById)
     return (
       <GameShell bootstrap={bootstrap} title={batch7GameLabel('codewords')} subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap} title={title} subtitle="Teams" leaderboard={leaderboard} />
+        <GameFinishPanel
+          bootstrap={bootstrap}
+          title={title}
+          subtitle="Operatives"
+          leaderboard={leaderboard}
+          notice={
+            <View style={styles.finishExtras}>
+              <CodewordsEndGameStats
+                guesses={guesses}
+                roles={roles}
+                players={players}
+                highlightPlayerId={bootstrap.myPlayerId}
+                winner={board.winner}
+              />
+              <CodewordsScoreboard
+                board={board}
+                roles={roles}
+                playerNameById={playerNameById}
+                highlightPlayerId={bootstrap.myPlayerId}
+              />
+              <CodewordsBoardReveal board={board} cellAttribution={finishAttribution} />
+            </View>
+          }
+        />
       </GameShell>
     )
   }
@@ -396,6 +412,15 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
         </Pressable>
       ) : null}
 
+      <View style={styles.scoreboardBlock}>
+        <CodewordsScoreboard
+          board={board}
+          roles={roles}
+          playerNameById={playerNameById}
+          highlightPlayerId={bootstrap.myPlayerId}
+        />
+      </View>
+
       {isOperative ? (
         <>
           <Text style={styles.chatTitle}>Team chat</Text>
@@ -451,6 +476,8 @@ const makeStyles = (theme: Theme) =>
   },
   pickBtnActive: { borderWidth: 2, borderColor: theme.primary },
   pickBtnText: { color: theme.text, fontWeight: '700', textAlign: 'center' },
+  finishExtras: { gap: 16, marginTop: 12 },
+  scoreboardBlock: { marginTop: 12 },
   scoreRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   scoreRed: { color: '#fca5a5', fontWeight: '800' },
   scoreBlue: { color: '#93c5fd', fontWeight: '800' },

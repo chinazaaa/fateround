@@ -28,10 +28,13 @@ export function PlayingCardFace({
   card,
   compact,
   playable,
+  specialLabel,
 }: {
   card: CrazyEightsCard
   compact?: boolean
   playable?: boolean
+  /** Action badge (e.g. "PICK 2", "SKIP", "REVERSE", "WILD") shown at the card foot. */
+  specialLabel?: string | null
 }) {
   const joker = isJoker(card)
   const suitColor = joker ? '#7c3aed' : SUIT_COLOR[card.suit] ?? '#111827'
@@ -49,6 +52,13 @@ export function PlayingCardFace({
     >
       <Text style={[styles.rank, { color: suitColor }]}>{label}</Text>
       <Text style={[styles.suit, { color: suitColor }]}>{glyph}</Text>
+      {specialLabel && !compact ? (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText} numberOfLines={1}>
+            {specialLabel.toUpperCase()}
+          </Text>
+        </View>
+      ) : null}
     </View>
   )
 }
@@ -74,4 +84,18 @@ const styles = StyleSheet.create({
   jokerCard: { backgroundColor: '#faf5ff' },
   rank: { fontSize: 16, fontWeight: '800' },
   suit: { fontSize: 22, alignSelf: 'center' },
+  badge: {
+    alignSelf: 'center',
+    backgroundColor: 'rgba(15,23,42,0.78)',
+    borderRadius: 4,
+    paddingHorizontal: 3,
+    paddingVertical: 1,
+    maxWidth: '100%',
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 7,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
 })

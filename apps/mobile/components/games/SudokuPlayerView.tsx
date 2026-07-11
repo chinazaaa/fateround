@@ -8,10 +8,12 @@ import {
   parseSudokuMetadata,
   playerHasSolvedCell,
 } from '@fateround/shared/sudoku'
+import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { SudokuGameTimerBar } from '@/components/games/sudoku/SudokuGameTimerBar'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { pointsLeaderboard } from '@/lib/finish-leaderboards'
@@ -33,6 +35,9 @@ import {
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
+// Shared read-only "no local drafts" grid for rendering a watched player's board.
+const EMPTY_DRAFTS: number[][] = Array.from({ length: 9 }, () => Array(9).fill(0))
+
 export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
   const [puzzle, setPuzzle] = useState<number[][] | null>(null)
@@ -42,6 +47,8 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [nowMs, setNowMs] = useState<number>(() => Date.now())
+  // Viewers watch one player's board at a time (null = auto-pick the leader).
+  const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
 
   const loadGameState = useCallback(
     async (game: Game): Promise<{ state: boolean; ok: boolean }> => {
@@ -139,7 +146,42 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     [submissions, activePlayers]
   )
 
+  const me = bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
+  const viewing = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
+
+  // Viewer watches one active player's personal board (their solved cells filled +
+  // highlighted, everyone else's just claimed). Defaults to the current leader.
+  const effectiveWatchedId =
+    (watchedPlayerId && activePlayers.some((p) => p.id === watchedPlayerId) ? watchedPlayerId : null) ??
+    standings.find((row) => activePlayers.some((p) => p.id === row.player_id))?.player_id ??
+    activePlayers[0]?.id ??
+    null
+  const watchedPlayer = bootstrap.players.find((p) => p.id === effectiveWatchedId)
+  const watchedGrid = useMemo(
+    () =>
+      puzzle && effectiveWatchedId
+        ? buildPlayerDisplayGrid(puzzle, submissions, effectiveWatchedId, EMPTY_DRAFTS)
+        : puzzle,
+    [puzzle, submissions, effectiveWatchedId]
+  )
+  const watchedSolvedCells = useMemo(
+    () => (effectiveWatchedId ? buildPlayerSolvedGrid(submissions, effectiveWatchedId) : undefined),
+    [submissions, effectiveWatchedId]
+  )
+  const watchedRank = standings.findIndex((r) => r.player_id === effectiveWatchedId) + 1
+  const watchedCompletion =
+    puzzle && effectiveWatchedId ? playerCompletionPercent(puzzle, submissions, effectiveWatchedId) : 0
+  const watchedTime = getPlayerTimeSpent(
+    bootstrap.game,
+    submissions,
+    effectiveWatchedId || '',
+    watchedCompletion,
+    nowMs,
+    watchedPlayer?.joined_at
+  )
+
   const pickNumber = async (value: number) => {
+    if (viewing) return
     if (!selected || !puzzle || !bootstrap.myResumeToken || !bootstrap.myPlayerId || submitting) return
     const [row, col] = selected
     if (puzzle[row]![col] !== 0) return
@@ -202,7 +244,6 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  const me = bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
   const myRank = standings.findIndex((r) => r.player_id === bootstrap.myPlayerId) + 1
   const myCompletion =
     puzzle && bootstrap.myPlayerId ? playerCompletionPercent(puzzle, submissions, bootstrap.myPlayerId) : 0
@@ -215,39 +256,77 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     me?.joined_at
   )
 
+  // Viewer watches a chosen player's read-only board; a player edits their own.
+  const boardGrid = viewing ? watchedGrid : displayGrid
+  const boardSolvedCells = viewing ? watchedSolvedCells : mySolvedCells
+  const headerName = viewing ? watchedPlayer?.name ?? 'Player' : me?.name ?? 'Me'
+  const headerRank = viewing ? watchedRank : myRank
+  const headerCompletion = viewing ? watchedCompletion : myCompletion
+  const headerTime = viewing ? watchedTime : myTime
+
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('sudoku')} subtitle={bootstrap.code}>
-      {!displayGrid ? (
+      <SudokuGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} />
+
+      {/* Viewer player-picker: switch whose board you're watching. */}
+      {viewing ? (
+        activePlayers.length > 0 ? (
+          <View style={styles.watchCard}>
+            <Text style={styles.watchLabel}>Watching a player&apos;s board</Text>
+            <View style={styles.watchChips}>
+              {activePlayers.map((p) => {
+                const active = p.id === effectiveWatchedId
+                return (
+                  <Pressable
+                    key={p.id}
+                    style={[styles.watchChip, active && styles.watchChipActive]}
+                    onPress={() => setWatchedPlayerId(p.id)}
+                  >
+                    <View style={[styles.watchChipDot, { backgroundColor: playerColors[p.id] ?? sudokuPlayerColor(0) }]} />
+                    <Text style={[styles.watchChipText, active && styles.watchChipTextActive]} numberOfLines={1}>
+                      {p.name}
+                    </Text>
+                  </Pressable>
+                )
+              })}
+            </View>
+          </View>
+        ) : (
+          <Text style={styles.waiting}>No players have joined the puzzle yet — pick a player to watch once they do.</Text>
+        )
+      ) : null}
+
+      {!boardGrid ? (
         <Text style={styles.waiting}>Waiting for puzzle…</Text>
       ) : (
         <>
-          {/* My status header */}
+          {/* Status header (mine, or the watched player's) */}
           <View style={styles.statusRow}>
             <View style={styles.statusLeft}>
               <View style={[styles.swatch, { backgroundColor: SUDOKU_MY_CELL_COLOR }]} />
               <View>
-                <Text style={styles.statusName}>{me?.name ?? 'Me'}</Text>
+                <Text style={styles.statusName}>{headerName}</Text>
                 <Text style={styles.statusMeta}>
-                  {myRank > 0 ? ordinal(myRank) : '—'} · {myCompletion}%
+                  {headerRank > 0 ? ordinal(headerRank) : '—'} · {headerCompletion}%
                 </Text>
               </View>
             </View>
             {bootstrap.game?.session_started_at ? (
               <View style={styles.timePill}>
-                <Text style={styles.timePillText}>⏱ {formatMinutesSeconds(myTime)}</Text>
+                <Text style={styles.timePillText}>⏱ {formatMinutesSeconds(headerTime)}</Text>
               </View>
             ) : null}
           </View>
 
           <View style={styles.board}>
-            {displayGrid.map((row, r) => (
+            {boardGrid.map((row, r) => (
               <View key={r} style={styles.row}>
                 {row.map((value, c) => {
                   const given = puzzle![r]![c] !== 0
-                  const mine = mySolvedCells?.[r]?.[c] === true
+                  const mine = boardSolvedCells?.[r]?.[c] === true
                   const owner = !given && !mine ? cellOwners[r]![c] : null
                   const ownerColor = owner ? playerColors[owner] ?? sudokuPlayerColor(0) : null
-                  const selectedCell = selected?.[0] === r && selected?.[1] === c
+                  const selectedCell = !viewing && selected?.[0] === r && selected?.[1] === c
                   const bg = mine ? SUDOKU_MY_CELL_COLOR : ownerColor ?? undefined
                   return (
                     <Pressable
@@ -258,7 +337,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
                         bg ? { backgroundColor: bg } : null,
                         selectedCell && styles.cellSelected,
                       ]}
-                      disabled={given || mine}
+                      disabled={viewing || given || mine}
                       onPress={() => setSelected([r, c])}
                     >
                       <Text style={[styles.cellText, mine && styles.cellTextSolved]}>
@@ -270,19 +349,25 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
               </View>
             ))}
           </View>
-          <View style={styles.pad}>
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-              <Pressable
-                key={n}
-                style={styles.padKey}
-                disabled={!selected || submitting}
-                onPress={() => void pickNumber(n)}
-              >
-                <Text style={styles.padText}>{n}</Text>
-              </Pressable>
-            ))}
-          </View>
-          {message ? <Text style={styles.message}>{message}</Text> : null}
+          {viewing ? (
+            <Text style={styles.viewingHint}>You are watching — tap a name above to switch boards.</Text>
+          ) : (
+            <>
+              <View style={styles.pad}>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                  <Pressable
+                    key={n}
+                    style={styles.padKey}
+                    disabled={!selected || submitting}
+                    onPress={() => void pickNumber(n)}
+                  >
+                    <Text style={styles.padText}>{n}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              {message ? <Text style={styles.message}>{message}</Text> : null}
+            </>
+          )}
 
           {/* Live standings */}
           {standings.length > 0 ? (
@@ -375,6 +460,39 @@ const makeStyles = (theme: Theme) =>
       paddingVertical: 4,
     },
     timePillText: { color: theme.textMuted, fontWeight: '600', fontSize: 13 },
+    watchCard: {
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 12,
+      padding: 12,
+      gap: 8,
+    },
+    watchLabel: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+    watchChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    watchChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surfaceHover,
+    },
+    watchChipActive: { backgroundColor: theme.primary, borderColor: theme.primary },
+    watchChipDot: { width: 10, height: 10, borderRadius: 3 },
+    watchChipText: { color: theme.textSecondary, fontSize: 13, fontWeight: '700', maxWidth: 120 },
+    // White label on the solid rose active chip — intentional.
+    watchChipTextActive: { color: '#fff' },
+    viewingHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 16 },
     // Sudoku grid is a functional board (Step D) — frame + cell state colors left as-is.
     board: { alignSelf: 'center', borderWidth: 2, borderColor: '#374151', marginTop: 8 },
     row: { flexDirection: 'row' },

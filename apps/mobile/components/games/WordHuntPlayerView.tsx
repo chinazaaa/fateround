@@ -2,8 +2,9 @@ import { useCallback, useMemo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { type Game, type Player, type Round, type WordHuntSubmission } from '@fateround/shared'
 import { batch5GameLabel } from '@fateround/shared/batch-5-games'
-import { parseWordHuntMetadata, tallyWordHuntScores, wordFromPath, wordHuntPoints } from '@fateround/shared/word-hunt'
-import { toggleWordHuntPath, validateWordHuntSubmissionClient, validWordsSetFromMetadata } from '@fateround/shared/word-hunt-client'
+import { parseWordHuntMetadata, tallyWordHuntScores, wordHuntPoints } from '@fateround/shared/word-hunt'
+import { validateWordHuntSubmissionClient, validWordsSetFromMetadata } from '@fateround/shared/word-hunt-client'
+import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
@@ -17,6 +18,9 @@ import { ROUND_SELECT, WORD_HUNT_SUBMISSION_SELECT } from '@/lib/supabase-select
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { pointsLeaderboard } from '@/lib/finish-leaderboards'
 import { useWordHuntTimer } from '@/components/games/word-hunt/useWordHuntTimer'
+import { WordHuntPlaySurface } from '@/components/games/word-hunt/WordHuntPlaySurface'
+import { WordHuntResultsReview } from '@/components/games/word-hunt/WordHuntResultsReview'
+import { WordHuntPersonalResults } from '@/components/games/word-hunt/WordHuntPersonalResults'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -29,6 +33,8 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   const [selectedPath, setSelectedPath] = useState<number[]>([])
   const [message, setMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [standingsOpen, setStandingsOpen] = useState(false)
+  const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
 
   const loadGameState = useCallback(
     async (game: Game, _players: Player[]): Promise<{ state: null; ok: boolean }> => {
@@ -98,7 +104,12 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     bootstrap.game,
     () => void bootstrap.load()
   )
-  const urgent = secondsLeft <= 10
+
+  const me = useMemo(
+    () => bootstrap.players.find((p) => p.id === bootstrap.myPlayerId),
+    [bootstrap.players, bootstrap.myPlayerId]
+  )
+  const isViewer = !!(bootstrap.game && me && playerIsViewer(me, bootstrap.game))
 
   const mySubmissions = useMemo(
     () => submissions.filter((s) => s.player_id === bootstrap.myPlayerId),
@@ -108,40 +119,55 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     () => new Set(mySubmissions.map((s) => s.word.toLowerCase())),
     [mySubmissions]
   )
-  const currentWord = grid ? wordFromPath(grid, selectedPath) : ''
-  const previewPoints = currentWord ? wordHuntPoints(currentWord.length) : 0
+  const myPoints = useMemo(() => mySubmissions.reduce((sum, s) => sum + s.points_awarded, 0), [mySubmissions])
 
-  const tapCell = (index: number) => {
-    if (timeUp) return
-    setSelectedPath((path) => toggleWordHuntPath(path, index))
-    setMessage(null)
-  }
+  const leaderboard = useMemo(
+    () => tallyWordHuntScores(submissions, bootstrap.players),
+    [submissions, bootstrap.players]
+  )
 
-  const submitWord = async () => {
-    if (!bootstrap.myResumeToken || !grid || !roundId || submitting || timeUp) return
-    const check = validateWordHuntSubmissionClient(grid, selectedPath, validWords, foundWords)
-    if (!check.ok) {
-      setMessage(check.error)
-      if (check.clearPath) setSelectedPath([])
-      return
-    }
-    setSubmitting(true)
-    try {
-      const result = await postWordHuntSubmit(
-        bootstrap.code,
-        bootstrap.myResumeToken,
-        check.normalized,
-        selectedPath
-      )
-      setSelectedPath([])
-      setMessage(`+${result.pointsAwarded ?? wordHuntPoints(check.normalized.length)} pts`)
-      await bootstrap.load()
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Submit failed')
-    } finally {
-      setSubmitting(false)
-    }
-  }
+  // Viewers watch one player's hunt at a time — the shared grid is static, so the
+  // interesting part is a chosen player's words and score filling in live.
+  const watchablePlayers = useMemo(
+    () => (bootstrap.game ? bootstrap.players.filter((p) => !playerIsViewer(p, bootstrap.game!)) : []),
+    [bootstrap.players, bootstrap.game]
+  )
+  const effectiveWatchedId =
+    (watchedPlayerId && watchablePlayers.some((p) => p.id === watchedPlayerId) ? watchedPlayerId : null) ??
+    leaderboard.find((row) => watchablePlayers.some((p) => p.id === row.player_id))?.player_id ??
+    watchablePlayers[0]?.id ??
+    null
+  const watchedSubmissions = useMemo(
+    () => (effectiveWatchedId ? submissions.filter((s) => s.player_id === effectiveWatchedId) : []),
+    [submissions, effectiveWatchedId]
+  )
+  const watchedFoundWords = watchedSubmissions.map((s) => s.word)
+  const watchedPoints = watchedSubmissions.reduce((sum, s) => sum + s.points_awarded, 0)
+
+  const submitWord = useCallback(
+    async (pathOverride?: number[]) => {
+      const path = pathOverride ?? selectedPath
+      if (!bootstrap.myResumeToken || !grid || !roundId || submitting || timeUp) return
+      const check = validateWordHuntSubmissionClient(grid, path, validWords, foundWords)
+      if (!check.ok) {
+        setMessage(check.error)
+        if (check.clearPath) setSelectedPath([])
+        return
+      }
+      setSubmitting(true)
+      try {
+        const result = await postWordHuntSubmit(bootstrap.code, bootstrap.myResumeToken, check.normalized, path)
+        setSelectedPath([])
+        setMessage(`+${result.pointsAwarded ?? wordHuntPoints(check.normalized.length)} pts`)
+        await bootstrap.load()
+      } catch (err) {
+        setMessage(err instanceof Error ? err.message : 'Submit failed')
+      } finally {
+        setSubmitting(false)
+      }
+    },
+    [bootstrap, grid, roundId, submitting, timeUp, validWords, foundWords, selectedPath]
+  )
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
@@ -163,15 +189,15 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   if (!bootstrap.game) return <GameLoading />
 
   if (bootstrap.screen === 'finished') {
-    const scores = tallyWordHuntScores(submissions, bootstrap.players)
-    const top = scores[0]
-    const entries = scores.map((s) => ({
+    const top = leaderboard[0]
+    const entries = leaderboard.map((s) => ({
       id: s.player_id,
       name: s.name,
       points: s.points,
       detail: `${s.word_count} word${s.word_count === 1 ? '' : 's'}`,
     }))
-    const winnerId = top && top.points > 0 ? top.player_id : null
+    const winnerId = top && top.points > 0 && leaderboard.length > 1 ? top.player_id : null
+    const validWordsArray = validWords.size > 0 ? Array.from(validWords) : undefined
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('word_hunt')} subtitle={bootstrap.code}>
         <GameFinishPanel
@@ -180,6 +206,20 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
           subtitle="Final standings"
           leaderboard={pointsLeaderboard(entries, bootstrap.myPlayerId)}
           winnerPlayerId={winnerId}
+          notice={
+            <View style={styles.finishExtras}>
+              {submissions.length > 0 ? (
+                <WordHuntResultsReview
+                  submissions={submissions}
+                  leaderboard={leaderboard}
+                  highlightPlayerId={bootstrap.myPlayerId}
+                />
+              ) : null}
+              {!isViewer ? (
+                <WordHuntPersonalResults submissions={mySubmissions} validWords={validWordsArray} />
+              ) : null}
+            </View>
+          }
         />
       </GameShell>
     )
@@ -194,57 +234,88 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   return (
-    <GameShell bootstrap={bootstrap} title={batch5GameLabel('word_hunt')} subtitle={`${mySubmissions.length} words found`}>
-      <View style={[styles.timerPill, urgent && styles.timerPillUrgent, timeUp && styles.timerPillUp]}>
-        <Text style={[styles.timerText, urgent && styles.timerTextUrgent]}>
-          {timeUp ? '0:00' : timeLabel}
-        </Text>
-      </View>
-
-      {timeUp ? <Text style={styles.timeUpNotice}>Time's up!</Text> : null}
-
-      <View style={[styles.grid, timeUp && styles.gridDisabled]}>
-        {grid.flatMap((row, rowIndex) =>
-          row.map((letter, colIndex) => {
-            const index = rowIndex * 4 + colIndex
-            const selected = !timeUp && selectedPath.includes(index)
-            return (
-              <Pressable
-                key={index}
-                style={[styles.cell, selected && styles.cellSelected]}
-                disabled={timeUp}
-                onPress={() => tapCell(index)}
-              >
-                <Text style={styles.cellText}>{letter}</Text>
-              </Pressable>
-            )
-          })
-        )}
-      </View>
-
-      <View style={styles.wordRow}>
-        <Text style={styles.currentWord}>
-          {timeUp ? 'Time is up' : currentWord || 'Tap letters in order'}
-        </Text>
-        {!timeUp && currentWord ? <Text style={styles.points}>{previewPoints} pts</Text> : null}
-      </View>
-
-      {message ? <Text style={styles.message}>{message}</Text> : null}
-
-      <Pressable
-        style={[styles.primaryBtn, (!currentWord || submitting || timeUp) && styles.primaryBtnDisabled]}
-        disabled={!currentWord || submitting || timeUp}
-        onPress={() => void submitWord()}
+    <GameShell
+      bootstrap={bootstrap}
+      title={batch5GameLabel('word_hunt')}
+      subtitle={isViewer ? 'Watching' : `${mySubmissions.length} words found`}
+    >
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.primaryText}>Submit word</Text>
-      </Pressable>
+        {isViewer ? (
+          watchablePlayers.length > 0 ? (
+            <View style={styles.watchCard}>
+              <Text style={styles.watchLabel}>Watching a player&apos;s board</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.watchChips}>
+                {watchablePlayers.map((p) => {
+                  const active = p.id === effectiveWatchedId
+                  return (
+                    <Pressable
+                      key={p.id}
+                      onPress={() => setWatchedPlayerId(p.id)}
+                      style={[styles.watchChip, active && styles.watchChipActive]}
+                    >
+                      <Text style={[styles.watchChipText, active && styles.watchChipTextActive]}>{p.name}</Text>
+                    </Pressable>
+                  )
+                })}
+              </ScrollView>
+            </View>
+          ) : (
+            <Text style={styles.watchEmpty}>
+              No players have joined the hunt yet — you&apos;ll see their board here once they do.
+            </Text>
+          )
+        ) : null}
 
-      <ScrollView style={styles.foundList}>
-        {mySubmissions.map((sub) => (
-          <Text key={sub.id} style={styles.foundWord}>
-            {sub.word} · {sub.points_awarded}
-          </Text>
-        ))}
+        <WordHuntPlaySurface
+          grid={grid}
+          selectedPath={isViewer ? [] : selectedPath}
+          onPathChange={(path) => {
+            setSelectedPath(path)
+            setMessage(null)
+          }}
+          onStrokeEnd={(path) => void submitWord(path)}
+          foundWords={isViewer ? watchedFoundWords : mySubmissions.map((s) => s.word)}
+          validWords={validWords}
+          myPoints={isViewer ? watchedPoints : myPoints}
+          timeLabel={timeUp ? '0:00' : timeLabel}
+          timeUp={timeUp}
+          secondsLeft={secondsLeft}
+          disabled={timeUp || isViewer}
+        />
+
+        {message ? <Text style={styles.message}>{message}</Text> : null}
+
+        <Pressable style={styles.standingsToggle} onPress={() => setStandingsOpen((v) => !v)}>
+          <View>
+            <Text style={styles.standingsTitle}>Live standings</Text>
+            {!standingsOpen ? <Text style={styles.standingsHint}>See who&apos;s ahead</Text> : null}
+          </View>
+          <Text style={styles.standingsChevron}>{standingsOpen ? '▲' : '▾'}</Text>
+        </Pressable>
+        {standingsOpen ? (
+          <View style={styles.standingsList}>
+            {leaderboard.slice(0, 8).map((row, i) => {
+              const isMe = row.player_id === bootstrap.myPlayerId
+              return (
+                <View key={row.player_id} style={styles.standingsRow}>
+                  <View style={styles.standingsLeft}>
+                    <Text style={styles.standingsRank}>{i + 1}</Text>
+                    <Text style={[styles.standingsName, isMe && styles.standingsNameMe]} numberOfLines={1}>
+                      {row.name}
+                    </Text>
+                  </View>
+                  <Text style={[styles.standingsMeta, isMe && styles.standingsNameMe]}>
+                    {row.points} pts · {row.word_count}w
+                  </Text>
+                </View>
+              )
+            })}
+          </View>
+        ) : null}
       </ScrollView>
     </GameShell>
   )
@@ -252,68 +323,81 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
-  timerPill: {
-    alignSelf: 'center',
-    backgroundColor: theme.surface,
-    borderRadius: 999,
-    paddingHorizontal: 18,
-    paddingVertical: 6,
-    marginBottom: 12,
-  },
-  // Functional urgent-red state color, not in the token table — kept fixed.
-  timerPillUrgent: { backgroundColor: '#dc2626' },
-  timerPillUp: { backgroundColor: '#dc2626' },
-  timerText: {
-    color: theme.text,
-    fontSize: 20,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-  },
-  // White on the solid red urgent pill — correct in both schemes.
-  timerTextUrgent: { color: '#fff' },
-  timeUpNotice: {
-    color: '#dc2626',
-    fontSize: 15,
-    fontWeight: '800',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    justifyContent: 'center',
-  },
-  gridDisabled: { opacity: 0.5 },
-  // Word-hunt letter grid is a functional board (Step D) — cell colors left as-is.
-  cell: {
-    width: '22%',
-    aspectRatio: 1,
-    backgroundColor: '#17171d',
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#2a2a35',
-  },
-  cellSelected: { borderColor: '#f43f5e', backgroundColor: '#3f1d2b' },
-  // White letter on the dark board cell — intentional (case 2).
-  cellText: { color: '#fff', fontSize: 22, fontWeight: '800' },
-  wordRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },
-  currentWord: { color: theme.text, fontSize: 18, fontWeight: '700', flex: 1 },
-  points: { color: '#fbbf24', fontWeight: '700' },
-  message: { color: '#fbbf24', textAlign: 'center', marginTop: 8 },
-  primaryBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: 10,
-    padding: 14,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  primaryBtnDisabled: { opacity: 0.5 },
-  // White on the solid primary button — intentional (case 2).
-  primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  foundList: { marginTop: 12, maxHeight: 160 },
-  foundWord: { color: theme.textMuted, fontSize: 14, paddingVertical: 2 },
-})
+    waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
+    scroll: { flex: 1 },
+    scrollContent: { gap: 12, paddingBottom: 24 },
+    message: { color: theme.primaryMuted, textAlign: 'center', fontWeight: '600' },
+    watchCard: {
+      borderRadius: theme.radius.lg,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surface,
+      padding: 12,
+      gap: 8,
+    },
+    watchLabel: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontWeight: '700',
+      letterSpacing: 1,
+      textTransform: 'uppercase',
+    },
+    watchChips: { gap: 8 },
+    watchChip: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surfaceHover,
+    },
+    watchChipActive: { backgroundColor: theme.primarySoft, borderColor: theme.borderAccent },
+    watchChipText: { color: theme.textMuted, fontSize: 12, fontWeight: '700' },
+    watchChipTextActive: { color: theme.primaryMuted },
+    watchEmpty: {
+      color: theme.textMuted,
+      fontSize: 12,
+      textAlign: 'center',
+      borderRadius: theme.radius.lg,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surface,
+      padding: 12,
+    },
+    standingsToggle: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      borderRadius: theme.radius.lg,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surface,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+    standingsTitle: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontWeight: '700',
+      letterSpacing: 1,
+      textTransform: 'uppercase',
+    },
+    standingsHint: { color: theme.textFaint, fontSize: 11, marginTop: 2 },
+    standingsChevron: { color: theme.textMuted, fontSize: 16 },
+    standingsList: {
+      borderRadius: theme.radius.lg,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surface,
+      padding: 12,
+      gap: 8,
+      marginTop: -4,
+    },
+    standingsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+    standingsLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 },
+    standingsRank: { color: theme.textFaint, fontSize: 13, width: 20, fontVariant: ['tabular-nums'] },
+    standingsName: { color: theme.textMuted, fontSize: 14, flexShrink: 1 },
+    standingsNameMe: { color: theme.text, fontWeight: '800' },
+    standingsMeta: { color: theme.textMuted, fontSize: 12, fontVariant: ['tabular-nums'] },
+    finishExtras: { gap: 12 },
+  })

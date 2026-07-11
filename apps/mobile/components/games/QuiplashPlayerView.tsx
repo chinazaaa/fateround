@@ -23,10 +23,12 @@ import {
   soloRoundPoints,
   tallyQuiplashScores,
 } from '@fateround/shared/quiplash'
+import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { PhaseStepper } from '@/components/party/PhaseStepper'
 import { RoundBreakCard } from '@/components/party/RoundBreakCard'
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
@@ -116,6 +118,15 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
     return active ?? byPointer
   }, [bootstrap.game, rounds])
 
+  const me = bootstrap.myPlayerId
+    ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) ?? null
+    : null
+  const cannotParticipate = !!(
+    me &&
+    bootstrap.game &&
+    (me.spectator === true || me.is_eliminated === true || playerIsViewer(me, bootstrap.game))
+  )
+
   const metadata = currentRound ? parseQuiplashMetadata(currentRound.quiplash_metadata) : null
   const roundAnswers = currentRound ? answers.filter((a) => a.round_id === currentRound.id) : []
   const myAnswer = roundAnswers.find((a) => a.player_id === bootstrap.myPlayerId)
@@ -126,7 +137,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
   const canVote =
     session?.phase === 'voting' &&
     !!bootstrap.myPlayerId &&
-    canPlayerVoteInRound(roundAnswers, bootstrap.myPlayerId)
+    canPlayerVoteInRound(roundAnswers, bootstrap.myPlayerId, { readOnly: cannotParticipate })
   const revealTally = currentRound ? countVotesForRound(currentRound.id, votes) : []
   const topVoteCount = revealTally[0]?.votes ?? 0
   const soloRound = roundAnswers.length === 1
@@ -151,7 +162,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
   const votingHint = quiplashRoundVotingHint({
     canVote,
     hasVoted: !!myVote,
-    cannotParticipate: !bootstrap.myPlayerId,
+    cannotParticipate: cannotParticipate || !bootstrap.myPlayerId,
     answerCount: roundAnswers.length,
   })
 
@@ -178,6 +189,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
   }, [session?.phase, currentRound?.ended_at])
 
   const submitAnswer = async () => {
+    if (cannotParticipate) return
     if (!bootstrap.myResumeToken || !currentRound || submitting || myAnswer) return
     const text = answerText.trim()
     if (!text) return
@@ -192,6 +204,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   const submitVote = async (chosenAnswerId: string) => {
+    if (cannotParticipate || !canVote) return
     if (!bootstrap.myResumeToken || !currentRound || submitting || myVote) return
     setSubmitting(true)
     try {
@@ -224,9 +237,19 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
   if (bootstrap.screen === 'finished') {
     const scores = tallyQuiplashScores([], answers, bootstrap.players, votes)
     const top = scores[0]
+    const hasWinner = !!top && top.score > 0
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('quiplash')} subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap} title="Game over" subtitle="Final standings" detail={top ? `${top.name} — ${top.score} pts` : undefined} leaderboard={scoreListLeaderboard(scores)} />
+        <GameFinishPanel
+          bootstrap={bootstrap}
+          title={hasWinner ? `${top.name} wins!` : 'Game over'}
+          subtitle="Final standings"
+          detail={top ? `${top.name} — ${top.score} pt${top.score === 1 ? '' : 's'}` : undefined}
+          emoji={hasWinner ? '🏆' : '🏁'}
+          leaderboard={scoreListLeaderboard(scores)}
+          winnerPlayerId={hasWinner ? top.id : null}
+          roundKey={bootstrap.game.session_started_at ?? null}
+        />
       </GameShell>
     )
   }
@@ -243,6 +266,17 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
     <GameShell bootstrap={bootstrap} title={batch5GameLabel('quiplash')} subtitle={`Round ${currentRound.round_number}`}>
       <PhaseStepper steps={['Write', 'Vote', 'Results']} activeIndex={phaseIndex} />
 
+      {cannotParticipate && me && bootstrap.myPlayerId ? (
+        <ViewerModeBanner
+          gameCode={bootstrap.code}
+          playerId={bootstrap.myPlayerId}
+          game={bootstrap.game}
+          player={me}
+          players={bootstrap.players}
+          onPromoted={() => void bootstrap.load()}
+        />
+      ) : null}
+
       <LeaderboardPanel
         title="Live scores"
         rows={liveLeaderboard.map((row) => ({
@@ -258,7 +292,13 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
       {countdown > 0 ? <TimerBadge seconds={countdown} /> : null}
 
       {session.phase === 'writing' ? (
-        myAnswer ? (
+        cannotParticipate ? (
+          <View style={styles.submittedCard}>
+            <Text style={styles.watchEmoji}>👀</Text>
+            <Text style={styles.submittedLabel}>You're watching</Text>
+            <Text style={styles.locked}>Spectators can't submit answers — voting comes next.</Text>
+          </View>
+        ) : myAnswer ? (
           <View style={styles.submittedCard}>
             <Text style={styles.submittedLabel}>Your answer</Text>
             <Text style={styles.submittedText}>{myAnswer.text}</Text>
@@ -354,6 +394,7 @@ const makeStyles = (theme: Theme) =>
     marginTop: 8,
   },
   submittedLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  watchEmoji: { fontSize: 28, textAlign: 'center' },
   submittedText: { color: theme.text, fontSize: 16, lineHeight: 22 },
   soloBanner: {
     backgroundColor: '#422006',

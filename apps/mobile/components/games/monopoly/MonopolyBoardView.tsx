@@ -10,10 +10,11 @@ import {
 } from '@fateround/shared/monopoly-board-layout'
 import { spaceAt } from '@fateround/shared/monopoly-board'
 import { monopolyTokenEmoji } from '@fateround/shared/monopoly-tokens'
+import { getBoardPalette, themedSpaceIcon, themedSpaceName } from './monopoly-theme'
 
 const TOKEN_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899']
 
-function spaceIcon(type: string): string {
+function defaultSpaceIcon(type: string): string {
   switch (type) {
     case 'go':
       return '→'
@@ -38,22 +39,37 @@ function spaceIcon(type: string): string {
   }
 }
 
+// Ambient snowflakes for the Arctic edition — fixed positions (percent of board).
+const SNOWFLAKES = [
+  { top: '8%', left: '14%', size: 9, opacity: 0.75 },
+  { top: '22%', left: '58%', size: 7, opacity: 0.6 },
+  { top: '40%', left: '30%', size: 10, opacity: 0.7 },
+  { top: '54%', left: '72%', size: 8, opacity: 0.55 },
+  { top: '68%', left: '20%', size: 7, opacity: 0.65 },
+  { top: '80%', left: '50%', size: 9, opacity: 0.6 },
+  { top: '34%', left: '84%', size: 6, opacity: 0.5 },
+  { top: '62%', left: '44%', size: 6, opacity: 0.5 },
+] as const
+
 export function MonopolyBoardView({
   states,
   players,
   propertyOwners,
   pendingSpace,
   myPlayerId,
+  themeId,
 }: {
   states: MonopolyPlayerState[]
   players: Player[]
   propertyOwners: Record<string, string>
   pendingSpace?: number | null
   myPlayerId?: string | null
+  themeId?: string | null
 }) {
   const { width } = useWindowDimensions()
   const cellSize = Math.min(Math.floor((width - 24) / MONOPOLY_GRID_SIZE), 34)
   const boardPx = cellSize * MONOPOLY_GRID_SIZE
+  const palette = getBoardPalette(themeId)
 
   const tokensBySpace = useMemo(() => {
     const map = new Map<number, { emoji: string; playerId: string }[]>()
@@ -70,7 +86,12 @@ export function MonopolyBoardView({
   }, [states, players])
 
   return (
-    <View style={[styles.board, { width: boardPx, height: boardPx }]}>
+    <View
+      style={[
+        styles.board,
+        { width: boardPx, height: boardPx, backgroundColor: palette.boardBg, borderColor: palette.boardBorder },
+      ]}
+    >
       {Array.from({ length: MONOPOLY_GRID_SIZE }, (_, rowIndex) => {
         const row = rowIndex + 1
         return (
@@ -80,7 +101,10 @@ export function MonopolyBoardView({
               const isCenter = col > 1 && col < MONOPOLY_GRID_SIZE && row > 1 && row < MONOPOLY_GRID_SIZE
               if (isCenter) {
                 return (
-                  <View key={col} style={[styles.centerCell, { width: cellSize, height: cellSize }]} />
+                  <View
+                    key={col}
+                    style={[{ width: cellSize, height: cellSize, backgroundColor: palette.centerBg }]}
+                  />
                 )
               }
 
@@ -96,15 +120,20 @@ export function MonopolyBoardView({
               const ownerOrder = states.find((s) => s.player_id === ownerId)?.player_order ?? 0
               const tokens = tokensBySpace.get(spaceIndex) ?? []
               const highlighted = pendingSpace === spaceIndex
+              const displayName = themedSpaceName(space.name, spaceIndex, themeId)
+              const icon = themedSpaceIcon(space.type, themeId) || defaultSpaceIcon(space.type)
 
               return (
                 <View
                   key={col}
                   style={[
                     styles.space,
-                    { width: cellSize, height: cellSize },
-                    highlighted && styles.spaceHighlight,
-                    isCorner && styles.cornerSpace,
+                    {
+                      width: cellSize,
+                      height: cellSize,
+                      backgroundColor: isCorner ? palette.cornerBg : palette.tileBg,
+                    },
+                    highlighted && { borderColor: palette.highlightBorder, borderWidth: 2 },
                   ]}
                 >
                   {space.color ? (
@@ -118,12 +147,10 @@ export function MonopolyBoardView({
                       ]}
                     />
                   ) : null}
-                  <Text style={styles.spaceName} numberOfLines={2}>
-                    {shortMonopolySpaceName(space.name, isCorner ? 6 : 7)}
+                  <Text style={[styles.spaceName, { color: palette.tileText }]} numberOfLines={2}>
+                    {shortMonopolySpaceName(displayName, isCorner ? 6 : 7)}
                   </Text>
-                  {space.type !== 'property' ? (
-                    <Text style={styles.spaceIcon}>{spaceIcon(space.type)}</Text>
-                  ) : null}
+                  {space.type !== 'property' ? <Text style={styles.spaceIcon}>{icon}</Text> : null}
                   {ownerId ? (
                     <View
                       style={[
@@ -153,6 +180,22 @@ export function MonopolyBoardView({
           </View>
         )
       })}
+
+      {palette.decoration === 'arctic' ? (
+        <View pointerEvents="none" style={styles.snowLayer}>
+          {SNOWFLAKES.map((flake, i) => (
+            <Text
+              key={i}
+              style={[
+                styles.snowflake,
+                { top: flake.top as `${number}%`, left: flake.left as `${number}%`, fontSize: flake.size, opacity: flake.opacity },
+              ]}
+            >
+              ❄️
+            </Text>
+          ))}
+        </View>
+      ) : null}
     </View>
   )
 }
@@ -160,17 +203,13 @@ export function MonopolyBoardView({
 const styles = StyleSheet.create({
   board: {
     alignSelf: 'center',
-    backgroundColor: '#14532d',
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: '#166534',
     overflow: 'hidden',
     marginVertical: 8,
   },
   row: { flexDirection: 'row' },
-  centerCell: { backgroundColor: '#166534' },
   space: {
-    backgroundColor: '#f5f5dc',
     borderWidth: 0.5,
     borderColor: '#a3a3a3',
     overflow: 'hidden',
@@ -178,15 +217,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 1,
   },
-  cornerSpace: { backgroundColor: '#fef9c3' },
-  spaceHighlight: { borderColor: '#f43f5e', borderWidth: 2 },
   colorBar: { position: 'absolute' },
   colorBarHorizontal: { top: 0, left: 0, right: 0, height: 4 },
   colorBarVertical: { top: 0, bottom: 0, left: 0, width: 4 },
   spaceName: {
     fontSize: 6,
     fontWeight: '800',
-    color: '#171717',
     textAlign: 'center',
     lineHeight: 7,
   },
@@ -211,4 +247,6 @@ const styles = StyleSheet.create({
     textShadowRadius: 2,
     textShadowOffset: { width: 0, height: 0 },
   },
+  snowLayer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  snowflake: { position: 'absolute' },
 })

@@ -13,6 +13,7 @@ import {
   parseWhotRules,
   whotSecondsLeft,
 } from '@fateround/shared/whot'
+import { playerIsViewer } from '@fateround/shared/viewers'
 import { CardTableArea } from '@/components/games/cards/CardTableArea'
 import { GameTimerBar } from '@/components/games/cards/GameTimerBar'
 import { PlayerTurnRail } from '@/components/games/cards/PlayerTurnRail'
@@ -92,6 +93,18 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const isMyTurn = turnPlayerId === bootstrap.myPlayerId
   const myHand = hands.find((h) => h.player_id === bootstrap.myPlayerId)
 
+  // Watch-only surface (mirrors web isWatching = isViewer || isOut):
+  //  · isViewer — joined mid-game / eliminated / flagged spectator (read-only).
+  //  · isOut — our dealt hand row is loaded and now empty (we played our last card
+  //    and went out). Guard on the row actually being loaded so a not-yet-fetched
+  //    hand isn't briefly treated as empty and flip a still-playing player to watch.
+  const me = bootstrap.myPlayerId
+    ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) ?? null
+    : null
+  const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
+  const isOut = !!myHand && myHand.cards.length === 0 && bootstrap.game?.status === 'active'
+  const isWatching = isViewer || isOut
+
   useGameTurnAlerts({
     gameCode: bootstrap.code,
     status: bootstrap.game?.status,
@@ -161,6 +174,10 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
   if (bootstrap.screen === 'join' && bootstrap.game) {
+    // Mid-game: the only way in is as a read-only viewer (whot never seats late
+    // joiners as players — spectatorForActiveJoin forces spectator). Present the
+    // join form as a viewer flow so the intent is clear before submitting.
+    const joiningAsViewer = bootstrap.game.status === 'active'
     return (
       <JoinScreen
         gameCode={bootstrap.code}
@@ -168,7 +185,14 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
         joining={bootstrap.joining}
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
-        onJoin={() => void bootstrap.join()}
+        onJoin={() => void bootstrap.join(undefined, joiningAsViewer ? { joinAsViewer: true } : undefined)}
+        kicker={joiningAsViewer ? 'Watch game' : 'Join game'}
+        hint={
+          joiningAsViewer
+            ? 'Game in progress — enter a name to watch as a viewer (read-only).'
+            : 'No account needed — enter a display name and play.'
+        }
+        submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
       />
     )
   }
@@ -241,8 +265,29 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
       {gameDurationSeconds > 0 && gameSecondsLeft > 0 ? (
         <GameTimerBar secondsLeft={gameSecondsLeft} durationSeconds={gameDurationSeconds} />
       ) : null}
-      <TurnBanner text={session.status_message ?? `${turnName}'s turn`} isMyTurn={isMyTurn} />
+      <TurnBanner
+        text={isWatching ? `Spectating — ${turnName}'s turn` : session.status_message ?? `${turnName}'s turn`}
+        isMyTurn={isMyTurn && !isWatching}
+      />
       {timerSeconds > 0 ? <TimerBadge seconds={timerSeconds} /> : null}
+
+      {isWatching ? (
+        <View style={styles.watchBanner}>
+          <Text style={styles.watchTitle}>{isOut ? "You're out" : 'Watching'}</Text>
+          <Text style={styles.watchSub}>
+            {isOut
+              ? 'You played all your cards — follow the rest of the game and chat.'
+              : 'Read-only spectator — you can follow the game and chat.'}
+          </Text>
+        </View>
+      ) : null}
+
+      {isWatching ? (
+        <View style={styles.rosterHead}>
+          <Text style={styles.rosterTitle}>Players · {bootstrap.players.length}</Text>
+          <Text style={styles.rosterTag}>watch-only</Text>
+        </View>
+      ) : null}
 
       <PlayerTurnRail
         players={bootstrap.players}
@@ -264,7 +309,13 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
         }
       />
 
-      {choosingWhot && isMyTurn ? (
+      {isWatching ? (
+        <Text style={styles.spectateStatus}>
+          Spectating — {turnName}&apos;s turn · you can chat
+        </Text>
+      ) : null}
+
+      {!isWatching && choosingWhot && isMyTurn ? (
         <View style={styles.choosePanel}>
           <Text style={styles.section}>Call the next play</Text>
           <Text style={styles.shapeHint}>Shape</Text>
@@ -291,26 +342,30 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
         </View>
       ) : null}
 
-      <Text style={styles.section}>Your hand ({myHand?.cards.length ?? 0})</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hand}>
-        {(myHand?.cards ?? []).map((card) => {
-          const playable = playableIds.has(card.id)
-          return (
-            <Pressable
-              key={card.id}
-              disabled={acting || !isMyTurn || !playable || session.phase !== 'playing'}
-              onPress={() => void playCard(card.id)}
-            >
-              <WhotCardFace card={card} playable={playable && isMyTurn} />
-            </Pressable>
-          )
-        })}
-      </ScrollView>
+      {!isWatching ? (
+        <>
+          <Text style={styles.section}>Your hand ({myHand?.cards.length ?? 0})</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hand}>
+            {(myHand?.cards ?? []).map((card) => {
+              const playable = playableIds.has(card.id)
+              return (
+                <Pressable
+                  key={card.id}
+                  disabled={acting || !isMyTurn || !playable || session.phase !== 'playing'}
+                  onPress={() => void playCard(card.id)}
+                >
+                  <WhotCardFace card={card} playable={playable && isMyTurn} />
+                </Pressable>
+              )
+            })}
+          </ScrollView>
 
-      {canDraw ? (
-        <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void drawCard()}>
-          <Text style={styles.drawText}>{drawLabel}</Text>
-        </Pressable>
+          {canDraw ? (
+            <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void drawCard()}>
+              <Text style={styles.drawText}>{drawLabel}</Text>
+            </Pressable>
+          ) : null}
+        </>
       ) : null}
     </GameShell>
   )
@@ -320,6 +375,27 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
   emptyTop: { color: theme.text, fontSize: 24, fontWeight: '800' },
   section: { color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 4 },
+  watchBanner: {
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.primary,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    alignItems: 'center',
+    gap: 2,
+  },
+  watchTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
+  watchSub: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
+  rosterHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  rosterTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
+  rosterTag: { color: theme.textMuted, fontSize: 12, fontWeight: '600' },
+  spectateStatus: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 2 },
   choosePanel: { gap: 8 },
   shapeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   shapeHint: { color: theme.textMuted, fontSize: 12 },

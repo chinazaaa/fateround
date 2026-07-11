@@ -13,6 +13,7 @@ import {
   type LateJoinPolicy,
 } from '@fateround/shared/viewers'
 import { isLobbyLimitGameType } from '@fateround/shared/lobby-limits'
+import { parseMahjongRuleOptions } from '@fateround/shared/mahjong-rulesets'
 import { RoundCountPicker } from '@/components/create/RoundCountPicker'
 import { TimerPicker } from '@/components/create/TimerPicker'
 import { LateJoinPolicyPicker } from '@/components/create/LateJoinPolicyPicker'
@@ -27,6 +28,7 @@ import {
   postCodewordsTimers,
   postDescribeItSettings,
   postLobbySettings,
+  postTriviaLobbySettings,
   postWordRushSettings,
   type BoardLobbyPatch,
   type LobbySettingsPatch,
@@ -96,6 +98,16 @@ import {
   isCodewordsLobbyGame,
   type CodewordsLobbyState,
 } from '@/components/host/lobby-settings/CodewordsLobbySection'
+import {
+  TriviaLobbySection,
+  isTriviaLobbyGame,
+  type TriviaLobbyState,
+} from '@/components/host/lobby-settings/TriviaLobbySection'
+import {
+  customContentStateFromGame,
+  customContentPayload,
+  customContentCount,
+} from '@/lib/create-settings/custom-content'
 import { isPairGame } from '@fateround/shared/poll-games'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -160,6 +172,7 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
   const showPollQuestions = hasPollQuestionSettings(gameType)
   const isBingo = isBingoLobbyGame(gameType)
   const isMahjong = isMahjongLobbyGame(gameType)
+  const isTrivia = isTriviaLobbyGame(gameType)
   const ownsTimer =
     isCardGame ||
     isVariantGame ||
@@ -271,6 +284,7 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
   const [mahjong, setMahjong] = useState<MahjongLobbyState>(() => ({
     timerSeconds: game.timer_seconds ?? 0,
     ruleset: game.mahjong_ruleset ?? 'fate_round',
+    ruleOptions: parseMahjongRuleOptions(game.mahjong_rule_options),
   }))
   const [quickDraw, setQuickDraw] = useState<QuickDrawLobbyState>(() => ({
     variant: game.quick_draw_variant === 'guess' ? 'guess' : 'lie',
@@ -292,6 +306,10 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
   const [codewords, setCodewords] = useState<CodewordsLobbyState>(() => ({
     spymasterTimer: game.timer_seconds ?? 0,
     operativeTimer: game.operative_timer_seconds ?? 0,
+  }))
+  const [trivia, setTrivia] = useState<TriviaLobbyState>(() => ({
+    category: game.trivia_category === 'tech' ? 'tech' : 'general',
+    custom: customContentStateFromGame(game),
   }))
   const [shuffling, setShuffling] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -317,8 +335,9 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
     const patch: LobbySettingsPatch = {}
     if (isPublic !== !!game.is_public) patch.is_public = isPublic
     if (showTheme && themeId !== game.theme) patch.theme = themeId
-    if (showRounds && roundsCount !== game.rounds_count) patch.rounds_count = roundsCount
-    if (showTimer && timerSeconds !== game.timer_seconds) patch.timer_seconds = timerSeconds
+    // Trivia routes rounds/timer through lobby-pool (below) alongside source/category/pool.
+    if (showRounds && !isTrivia && roundsCount !== game.rounds_count) patch.rounds_count = roundsCount
+    if (showTimer && !isTrivia && timerSeconds !== game.timer_seconds) patch.timer_seconds = timerSeconds
     if (showLateJoin && lateJoin !== lateJoinPolicyFromGame(game)) patch.late_join_policy = lateJoin
     if (isScrabble) {
       if (scrabble.clockMode !== game.scrabble_clock_mode) patch.scrabble_clock_mode = scrabble.clockMode
@@ -368,6 +387,8 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
     if (isMahjong) {
       if (mahjong.timerSeconds !== game.timer_seconds) board.timer_seconds = mahjong.timerSeconds
       if (mahjong.ruleset !== game.mahjong_ruleset) board.mahjong_ruleset = mahjong.ruleset
+      if (JSON.stringify(mahjong.ruleOptions) !== JSON.stringify(game.mahjong_rule_options ?? null))
+        board.mahjong_rule_options = mahjong.ruleOptions
     }
     if (isQuickDraw) {
       if (quickDraw.variant !== game.quick_draw_variant) board.quick_draw_variant = quickDraw.variant
@@ -458,10 +479,46 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
         cwPatch.operativeTimerSeconds = codewords.operativeTimer
     }
 
+    // Trivia — source / category / custom-or-library pool / timer / rounds all
+    // go through the dedicated lobby-pool route (mirrors web saveLobbySettings).
+    let triviaCall: (() => Promise<unknown>) | null = null
+    if (isTrivia) {
+      const usesCustomPool = trivia.custom.source !== 'platform'
+      if (usesCustomPool) {
+        const count = customContentCount('trivia', trivia.custom)
+        if (count === 0) {
+          setError(trivia.custom.source === 'library' ? 'Pick a library pack' : 'Upload at least one question')
+          return
+        }
+        if (count < roundsCount) {
+          setError(`Need at least ${roundsCount} questions for ${roundsCount} rounds`)
+          return
+        }
+      }
+      const tp: {
+        question_source?: string
+        trivia_category?: string
+        timer_seconds?: number
+        rounds_count?: number
+        custom_questions?: unknown[]
+      } = {}
+      const nextSource = usesCustomPool ? 'custom' : 'platform'
+      if (nextSource !== (game.question_source ?? 'platform')) tp.question_source = nextSource
+      const currentCategory = game.trivia_category === 'tech' ? 'tech' : 'general'
+      if (trivia.category !== currentCategory) tp.trivia_category = trivia.category
+      if (usesCustomPool) {
+        const built = customContentPayload('trivia', trivia.custom)
+        if (Array.isArray(built.custom_questions)) tp.custom_questions = built.custom_questions
+      }
+      if (showTimer && timerSeconds !== game.timer_seconds) tp.timer_seconds = timerSeconds
+      if (showRounds && roundsCount !== game.rounds_count) tp.rounds_count = roundsCount
+      if (Object.keys(tp).length > 0) triviaCall = () => postTriviaLobbySettings(gameCode, hostToken, tp)
+    }
+
     const hasBoard = Object.keys(board).length > 0
     const hasBingo = Object.keys(bingoPatch).length > 0
     const hasCw = Object.keys(cwPatch).length > 0
-    if (Object.keys(patch).length === 0 && !hasBoard && !hasBingo && !teamCall && !hasCw) {
+    if (Object.keys(patch).length === 0 && !hasBoard && !hasBingo && !teamCall && !hasCw && !triviaCall) {
       onClose()
       return
     }
@@ -473,6 +530,7 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
       if (hasBingo) await postBingoSettings(gameCode, hostToken, bingoPatch)
       if (teamCall) await teamCall()
       if (hasCw) await postCodewordsTimers(gameCode, hostToken, cwPatch)
+      if (triviaCall) await triviaCall()
       onSaved()
       onClose()
     } catch (err) {
@@ -618,6 +676,14 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
                 canShuffle={game.codewords_randomize_teams === true}
                 shuffling={shuffling}
                 onShuffle={() => void onShuffle()}
+              />
+            ) : null}
+
+            {isTrivia ? (
+              <TriviaLobbySection
+                value={trivia}
+                roundsCount={roundsCount}
+                onChange={(p) => setTrivia((prev) => ({ ...prev, ...p }))}
               />
             ) : null}
 

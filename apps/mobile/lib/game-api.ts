@@ -20,12 +20,28 @@ export function postTicTacToeMove(gameId: string, resumeToken: string, cellIndex
   return postJson<{ success: boolean }>('/api/tic-tac-toe/move', { gameId, resumeToken, cellIndex })
 }
 
+export function postTicTacToeExpireTurn(gameId: string) {
+  return postJson<{ success: boolean }>('/api/tic-tac-toe/expire-turn', { gameId })
+}
+
 export function postCheckersMove(gameId: string, resumeToken: string, from: string, to: string) {
   return postJson<{ success: boolean }>('/api/checkers/move', { gameId, resumeToken, from, to })
 }
 
+export function postCheckersResign(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/checkers/resign', { gameId, resumeToken })
+}
+
+export function postCheckersExpireTurn(gameId: string) {
+  return postJson<{ success: boolean }>('/api/checkers/expire-turn', { gameId })
+}
+
 export function postAyoMove(gameId: string, resumeToken: string, pitIndex: number) {
   return postJson<{ success: boolean }>('/api/ayo/move', { gameId, resumeToken, pitIndex })
+}
+
+export function postAyoResign(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/ayo/resign', { gameId, resumeToken })
 }
 
 export function expireAyoTurn(gameId: string) {
@@ -127,6 +143,10 @@ export function postYahtzeeHold(gameId: string, resumeToken: string, held: boole
 
 export function postYahtzeeScore(gameId: string, resumeToken: string, category: string) {
   return postJson<{ success: boolean }>('/api/yahtzee/score', { gameId, resumeToken, category })
+}
+
+export function postYahtzeeExpireTurn(gameId: string) {
+  return postJson<{ ok: boolean; skipped?: boolean }>('/api/yahtzee/expire-turn', { gameId })
 }
 
 export function postSnakeLadderRoll(gameId: string, resumeToken: string) {
@@ -893,6 +913,27 @@ export function postWordRushSettings(
     gameId: gameCode.toUpperCase(),
     hostToken,
     ...patch,
+  })
+}
+
+/**
+ * Trivia lobby settings — question source / category / custom-or-library pool /
+ * timer / rounds through the shared lobby-pool route (web saveLobbySettings).
+ */
+export function postTriviaLobbySettings(
+  gameCode: string,
+  hostToken: string,
+  payload: {
+    question_source?: string
+    trivia_category?: string
+    timer_seconds?: number
+    rounds_count?: number
+    custom_questions?: unknown[]
+  }
+) {
+  return postJson<{ ok?: boolean }>(`/api/games/${gameCode.toUpperCase()}/lobby-pool`, {
+    hostToken,
+    ...payload,
   })
 }
 

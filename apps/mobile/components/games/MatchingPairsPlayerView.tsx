@@ -40,6 +40,9 @@ import {
   ROUND_SELECT,
 } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
+import { MatchingPairsGameTimerBar } from '@/components/games/matching-pairs/MatchingPairsGameTimerBar'
+import { MatchingPairsOpponentStrip } from '@/components/games/matching-pairs/MatchingPairsOpponentStrip'
+import { MatchingPairsWaitingForOthers } from '@/components/games/matching-pairs/MatchingPairsWaitingForOthers'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 type CardState = 'hidden' | 'flipped' | 'matched'
@@ -60,6 +63,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   const [meta, setMeta] = useState<MatchingPairsMetadata | null>(null)
   const [submissions, setSubmissions] = useState<MatchingPairsSubmission[]>([])
   const [progress, setProgress] = useState<MatchingPairsProgress | null>(null)
+  const [allProgress, setAllProgress] = useState<MatchingPairsProgress[]>([])
+  const [finishRank, setFinishRank] = useState<number | null>(null)
   const [board, setBoard] = useState<BoardState | null>(null)
   const [points, setPoints] = useState(0)
   const [streak, setStreak] = useState(0)
@@ -139,13 +144,15 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         getSupabase()
           .from('memory_match_progress')
           .select(MEMORY_MATCH_PROGRESS_SELECT)
-          .eq('round_id', roundData.id)
-          .eq('player_id', playerId)
-          .maybeSingle(),
+          .eq('round_id', roundData.id),
       ])
 
       const mySubs = ((subs as MatchingPairsSubmission[]) ?? []).filter((s) => s.player_id === playerId)
-      setProgress((prog as MatchingPairsProgress | null) ?? null)
+      const roundProgress = (prog as MatchingPairsProgress[]) ?? []
+      const myProg = roundProgress.find((p) => p.player_id === playerId) ?? null
+      setAllProgress(roundProgress)
+      setProgress(myProg)
+      setFinishRank(myProg?.finish_rank ?? null)
 
       const cardOrder = getPlayerBoard(parsedMeta, playerId)
       if (!cardOrder) return
@@ -210,6 +217,12 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
   const finished = progress?.finished ?? false
   const memorizing = memorizeCountdown !== null
+  const wrongAttempts = mySubs.filter((s) => !s.is_match).length
+  const pairsMatched = mySubs.filter((s) => s.is_match).length
+  const playerNameOf = useCallback(
+    (id: string) => bootstrap.players.find((p) => p.id === id)?.name ?? 'Player',
+    [bootstrap.players]
+  )
   const layout = meta ? matchingPairsGridLayout(meta.gridSizePairs) : { cols: 4, rows: 4 }
 
   // ── Multi-round state ─────────────────────────────────────────────────────
@@ -372,41 +385,70 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       title={batch3GameLabel('matching_pairs')}
       subtitle={`${roundLabel}Score ${points} · Streak ${streak}`}
     >
-      {memorizing && (
-        <View style={styles.memorizeBanner}>
-          <Text style={styles.memorizeText}>Memorize card positions!</Text>
-          <Text style={styles.memorizeCount}>{memorizeCountdown}s</Text>
-        </View>
-      )}
-      {!board || !meta ? (
-        <Text style={styles.waiting}>Loading board…</Text>
-      ) : finished ? (
-        <Text style={styles.waiting}>Board complete — waiting for others…</Text>
+      <MatchingPairsGameTimerBar
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        roundStartedAt={round?.started_at ?? null}
+      />
+      {finished && meta ? (
+        <MatchingPairsWaitingForOthers
+          pairsMatched={pairsMatched}
+          gridSizePairs={meta.gridSizePairs}
+          finishRank={finishRank}
+          allProgress={allProgress}
+          myPlayerId={bootstrap.myPlayerId}
+          playerName={playerNameOf}
+          totalPoints={points}
+          wrongAttempts={wrongAttempts}
+          currentStreak={streak}
+          roundId={round?.id ?? null}
+        />
       ) : (
-        <View style={[styles.grid, { width: layout.cols * 72 }]}>
-          {board.cardOrder.map((pairIndex, index) => {
-            const state = board.cardStates[index]
-            const showFace = memorizing || state === 'flipped' || state === 'matched'
-            return (
-              <Pressable
-                key={index}
-                style={[
-                  styles.card,
-                  showFace && { borderColor: pairColor(meta, pairIndex), backgroundColor: '#1f2937' },
-                  state === 'matched' && styles.cardMatched,
-                ]}
-                disabled={memorizing || state === 'matched' || board.locked}
-                onPress={() => void onCardPress(index)}
-              >
-                <Text style={styles.cardText}>{showFace ? pairIcon(meta, pairIndex) : '?'}</Text>
-              </Pressable>
-            )
-          })}
-        </View>
+        <>
+          {memorizing && (
+            <View style={styles.memorizeBanner}>
+              <Text style={styles.memorizeText}>Memorize card positions!</Text>
+              <Text style={styles.memorizeCount}>{memorizeCountdown}s</Text>
+            </View>
+          )}
+          {!board || !meta ? (
+            <Text style={styles.waiting}>Loading board…</Text>
+          ) : (
+            <View style={[styles.grid, { width: layout.cols * 72 }]}>
+              {board.cardOrder.map((pairIndex, index) => {
+                const state = board.cardStates[index]
+                const showFace = memorizing || state === 'flipped' || state === 'matched'
+                return (
+                  <Pressable
+                    key={index}
+                    style={[
+                      styles.card,
+                      showFace && { borderColor: pairColor(meta, pairIndex), backgroundColor: '#1f2937' },
+                      state === 'matched' && styles.cardMatched,
+                    ]}
+                    disabled={memorizing || state === 'matched' || board.locked}
+                    onPress={() => void onCardPress(index)}
+                  >
+                    <Text style={styles.cardText}>{showFace ? pairIcon(meta, pairIndex) : '?'}</Text>
+                  </Pressable>
+                )
+              })}
+            </View>
+          )}
+          <Text style={styles.meta}>
+            Matched {pairsMatched}/{meta?.gridSizePairs ?? 0}
+          </Text>
+          {meta && allProgress.length > 1 && (
+            <MatchingPairsOpponentStrip
+              allProgress={allProgress}
+              myPlayerId={bootstrap.myPlayerId}
+              playerName={playerNameOf}
+              gridSizePairs={meta.gridSizePairs}
+              roundId={round?.id ?? null}
+            />
+          )}
+        </>
       )}
-      <Text style={styles.meta}>
-        Matched {mySubs.filter((s) => s.is_match).length}/{meta?.gridSizePairs ?? 0}
-      </Text>
     </GameShell>
   )
 }

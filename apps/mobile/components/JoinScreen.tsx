@@ -11,16 +11,32 @@ type Props = {
   error: string | null
   onChangeName: (value: string) => void
   onJoin: () => void
+  /** Overrides the "Join game" kicker (e.g. "Watch game" for viewer joins). */
+  kicker?: string
+  /** Overrides the sub-code hint line. */
+  hint?: string
+  /** Overrides the submit button label (e.g. "Join as viewer"). */
+  submitLabel?: string
 }
 
-export function JoinScreen({ gameCode, joinName, joining, error, onChangeName, onJoin }: Props) {
+export function JoinScreen({
+  gameCode,
+  joinName,
+  joining,
+  error,
+  onChangeName,
+  onJoin,
+  kicker = 'Join game',
+  hint = 'No account needed — enter a display name and play.',
+  submitLabel = 'Join game',
+}: Props) {
   const styles = useThemedStyles(makeStyles)
   const theme = useTheme()
   return (
     <KeyboardFormScreen contentContainerStyle={styles.container}>
-      <Text style={styles.kicker}>Join game</Text>
+      <Text style={styles.kicker}>{kicker}</Text>
       <Text style={styles.code}>{gameCode}</Text>
-      <Text style={styles.hint}>No account needed — enter a display name and play.</Text>
+      <Text style={styles.hint}>{hint}</Text>
 
       <TextInput
         style={styles.input}
@@ -37,7 +53,7 @@ export function JoinScreen({ gameCode, joinName, joining, error, onChangeName, o
 
       <Pressable style={[styles.button, joining && styles.buttonDisabled]} onPress={onJoin} disabled={joining}>
         {/* White spinner on the solid rose button — correct in both schemes. */}
-        {joining ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Join game</Text>}
+        {joining ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{submitLabel}</Text>}
       </Pressable>
 
       <ShareGameCard gameCode={gameCode} />

@@ -1,6 +1,14 @@
-import { StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { ScrollView } from 'react-native'
-import { type NpatAnswer, type NpatCategory, type NpatMark, type NpatMetadata, type Player } from '@fateround/shared'
+import {
+  type NpatAnswer,
+  type NpatCategory,
+  type NpatMark,
+  type NpatMetadata,
+  type Player,
+} from '@fateround/shared'
+
+type NpatDispute = NonNullable<NpatMetadata['disputes']>[number]
 import {
   NPAT_CATEGORIES,
   NPAT_CATEGORY_LABELS,
@@ -12,6 +20,7 @@ import {
 } from '@fateround/shared/npat'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
+import { isInCatalogue } from './npat-catalogue'
 
 // ---- scoring helpers (ported from web src/lib/npat.ts) ----------------------
 
@@ -87,6 +96,8 @@ function scoreReasonLabel(reason: NpatScoreReason): string {
 
 const AMBER = '#d97706'
 const RED = '#ef4444'
+const ORANGE = '#f97316'
+const EMERALD = '#059669'
 
 export function ICallOnScoreboard({
   letter,
@@ -96,7 +107,13 @@ export function ICallOnScoreboard({
   metadata,
   showScores,
   maskAnswers = false,
+  hostReview = false,
+  hostOverrides,
+  onSetValid,
+  disputes,
   myPlayerId,
+  showDisputeButtons = false,
+  onDispute,
 }: {
   letter: string | null
   players: Player[]
@@ -105,7 +122,13 @@ export function ICallOnScoreboard({
   metadata: NpatMetadata | null
   showScores: boolean
   maskAnswers?: boolean
+  hostReview?: boolean
+  hostOverrides?: NpatMetadata['host_overrides']
+  onSetValid?: (playerId: string, category: NpatCategory, answerText: string, valid: boolean) => void
+  disputes?: NpatDispute[]
   myPlayerId?: string | null
+  showDisputeButtons?: boolean
+  onDispute?: (targetPlayerId: string, category: NpatCategory) => void
 }) {
   const styles = useThemedStyles(makeStyles)
 
@@ -137,7 +160,7 @@ export function ICallOnScoreboard({
     <View style={styles.card}>
       <View style={styles.headerRow}>
         <Text style={styles.labelCaps}>
-          {maskAnswers ? 'Submission status' : 'Live scoreboard'}
+          {hostReview ? 'Review board' : maskAnswers ? 'Submission status' : 'Live scoreboard'}
         </Text>
         {letter ? (
           <View style={styles.letterBadge}>
@@ -146,9 +169,11 @@ export function ICallOnScoreboard({
         ) : null}
       </View>
       <Text style={styles.subtext}>
-        {maskAnswers
-          ? `${lockedInCount}/${activePlayers.length} locked in — answers stay hidden until marking starts.`
-          : 'Duplicates score 5 automatically. Reviewers mark whether each answer fits its category.'}
+        {hostReview
+          ? 'Tap Valid or Invalid on anything you want to override. Empty, wrong-letter, single-letter, and duplicate answers are locked invalid.'
+          : maskAnswers
+            ? `${lockedInCount}/${activePlayers.length} locked in — answers stay hidden until marking starts.`
+            : 'Duplicates score 5 automatically. Reviewers mark whether each answer fits its category.'}
       </Text>
 
       <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={styles.tableInner}>
@@ -212,8 +237,16 @@ export function ICallOnScoreboard({
                   const hasMark = mark?.marked_at != null
                   const forcedInvalid = isForcedInvalidAnswer(text, letter, isDuplicate)
                   const hostOverride = metadata?.host_overrides?.[player.id]?.[category]
-                  const effectiveValid =
-                    typeof hostOverride === 'boolean' ? hostOverride : markedValid !== false
+                  const hostValid = hostReview ? hostOverrides?.[player.id]?.[category] : undefined
+                  const effectiveValid = hostReview
+                    ? typeof hostValid === 'boolean'
+                      ? hostValid
+                      : typeof hostOverride === 'boolean'
+                        ? hostOverride
+                        : markedValid !== false
+                    : typeof hostOverride === 'boolean'
+                      ? hostOverride
+                      : markedValid !== false
 
                   let reason: NpatScoreReason
                   let points: number
@@ -251,21 +284,95 @@ export function ICallOnScoreboard({
                         {isDuplicate && normalized ? (
                           <Text style={[styles.flag, { color: RED }]}>Duplicate</Text>
                         ) : null}
-                        {(hasMark || typeof hostOverride === 'boolean') &&
+                        {normalized && !forcedInvalid && !isDuplicate ? (
+                          isInCatalogue(category, text) ? (
+                            <Text style={[styles.flag, styles.emerald]}>📚 Known</Text>
+                          ) : (
+                            <Text style={[styles.flag, { color: ORANGE }]}>⚠️ Not in catalogue</Text>
+                          )
+                        ) : null}
+                        {hostReview && !forcedInvalid ? (
+                          <View style={styles.overrideRow}>
+                            <Pressable
+                              style={[styles.overrideBtn, effectiveValid && styles.overrideBtnValid]}
+                              onPress={() => onSetValid?.(player.id, category, text, true)}
+                            >
+                              <Text style={[styles.overrideBtnText, effectiveValid && styles.overrideBtnTextValid]}>
+                                Valid
+                              </Text>
+                            </Pressable>
+                            <Pressable
+                              style={[styles.overrideBtn, !effectiveValid && styles.overrideBtnInvalid]}
+                              onPress={() => onSetValid?.(player.id, category, text, false)}
+                            >
+                              <Text style={[styles.overrideBtnText, !effectiveValid && styles.overrideBtnTextInvalid]}>
+                                Invalid
+                              </Text>
+                            </Pressable>
+                          </View>
+                        ) : null}
+                        {!hostReview &&
+                        (hasMark || typeof hostOverride === 'boolean') &&
                         !effectiveValid &&
                         !forcedInvalid ? (
                           <Text style={[styles.flag, { color: AMBER }]}>Invalid</Text>
                         ) : null}
-                        {(hasMark || typeof hostOverride === 'boolean') &&
+                        {!hostReview &&
+                        (hasMark || typeof hostOverride === 'boolean') &&
                         effectiveValid &&
                         normalized &&
                         !isDuplicate &&
                         !forcedInvalid ? (
                           <Text style={[styles.flag, styles.emerald]}>Valid</Text>
                         ) : null}
-                        {!hasMark && metadata?.phase === 'marking' && normalized ? (
+                        {!hostReview && !hasMark && metadata?.phase === 'marking' && normalized ? (
                           <Text style={[styles.flag, styles.faint]}>Awaiting mark…</Text>
                         ) : null}
+                        {(() => {
+                          if (!normalized || forcedInvalid) return null
+                          const cellDisputes = (disputes ?? []).filter(
+                            (d) => d.target_player_id === player.id && d.category === category
+                          )
+                          const disputeCount = cellDisputes.length
+                          const iDisputedThis = cellDisputes.some((d) => d.challenger_id === myPlayerId)
+
+                          if (hostReview && disputeCount > 0) {
+                            return (
+                              <Text style={[styles.flag, styles.bold, { color: ORANGE }]}>
+                                ⚑ {disputeCount} dispute{disputeCount !== 1 ? 's' : ''}
+                              </Text>
+                            )
+                          }
+
+                          if (showDisputeButtons && player.id !== myPlayerId) {
+                            return (
+                              <Pressable
+                                style={[styles.disputeBtn, iDisputedThis && styles.disputeBtnActive]}
+                                onPress={() => onDispute?.(player.id, category)}
+                              >
+                                <Text
+                                  style={[styles.disputeBtnText, iDisputedThis && styles.disputeBtnTextActive]}
+                                >
+                                  {iDisputedThis
+                                    ? `⚑ Disputed${disputeCount > 1 ? ` (${disputeCount})` : ''}`
+                                    : disputeCount > 0
+                                      ? `⚑ Dispute (${disputeCount})`
+                                      : '⚑ Dispute'}
+                                </Text>
+                              </Pressable>
+                            )
+                          }
+
+                          if (!showDisputeButtons && !hostReview && disputeCount > 0) {
+                            return (
+                              <Text style={[styles.flag, styles.bold, { color: ORANGE }]}>
+                                ⚑ {disputeCount} dispute{disputeCount !== 1 ? 's' : ''}
+                              </Text>
+                            )
+                          }
+
+                          return null
+                        })()}
                         {showScores ? (
                           <Text
                             style={[
@@ -367,4 +474,30 @@ const makeStyles = (theme: Theme) =>
     muted: { color: theme.textMuted },
     faint: { color: theme.textFaint },
     roundTotal: { color: theme.text, fontWeight: '900', fontSize: 15 },
+    overrideRow: { flexDirection: 'row', gap: 4, marginTop: 2 },
+    overrideBtn: {
+      flex: 1,
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingVertical: 4,
+      alignItems: 'center',
+    },
+    overrideBtnValid: { borderColor: EMERALD, backgroundColor: 'rgba(5,150,105,0.15)' },
+    overrideBtnInvalid: { borderColor: AMBER, backgroundColor: 'rgba(217,119,6,0.15)' },
+    overrideBtnText: { fontSize: 11, fontWeight: '800', color: theme.textMuted },
+    overrideBtnTextValid: { color: EMERALD },
+    overrideBtnTextInvalid: { color: AMBER },
+    disputeBtn: {
+      alignSelf: 'flex-start',
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      marginTop: 2,
+    },
+    disputeBtnActive: { borderColor: ORANGE, backgroundColor: 'rgba(249,115,22,0.15)' },
+    disputeBtnText: { fontSize: 11, fontWeight: '700', color: theme.textFaint },
+    disputeBtnTextActive: { color: ORANGE },
   })

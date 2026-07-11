@@ -7,10 +7,11 @@ import {
   subBoardCells,
 } from '@fateround/shared/tic-tac-toe'
 import { currentTurnPlayerId } from '@fateround/shared/tic-tac-toe'
-import type { Game, Player, TicTacToeMark, TicTacToeSession } from '@fateround/shared'
+import type { Game, Player, TicTacToeBoardResult, TicTacToeMark, TicTacToeSession } from '@fateround/shared'
+import { useTicTacToeTurnTimer } from './tic-tac-toe/useTicTacToeTurnTimer'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -88,6 +89,15 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
     enabled: bootstrap.screen === 'active',
   })
 
+  // Live per-turn countdown. Any client may drive the expiry poke (server
+  // re-checks the deadline), so we enable it whenever this table is active.
+  const { secondsLeft, hasTimer, urgent } = useTicTacToeTurnTimer(
+    bootstrap.code,
+    activeSessionEarly,
+    bootstrap.screen === 'active',
+    bootstrap.load
+  )
+
   const move = async (cellIndex: number) => {
     if (!bootstrap.myResumeToken) return
     setActing(true)
@@ -144,49 +154,67 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title="Tic Tac Toe" subtitle={`Code ${bootstrap.code}`}>
-      <TurnBanner
+      <TicTacToeTurnBar
         text={isMyTurn ? 'Your turn' : `${turnPlayer?.name ?? 'Opponent'}'s turn`}
         isMyTurn={isMyTurn}
+        secondsLeft={secondsLeft}
+        hasTimer={hasTimer}
+        urgent={urgent}
       />
       <View style={styles.metaRow}>
         <PlayerChip label={markGlyph('X')} name={playerName(bootstrap.players, activeSession.player_x_id)} />
         <PlayerChip label={markGlyph('O')} name={playerName(bootstrap.players, activeSession.player_o_id)} />
       </View>
       <View style={styles.boardGrid}>
-        {Array.from({ length: 9 }, (_, boardIndex) => (
-          <View
-            key={boardIndex}
-            style={[
-              styles.subBoard,
-              boardInPlay(activeSession, boardIndex) && styles.subBoardActive,
-              winLine.has(boardIndex) && styles.subBoardWin,
-            ]}
-          >
-            <View style={styles.cellGrid}>
-              {subBoardCells(activeSession.board, boardIndex).map((cell, pos) => {
-                const globalIndex = boardIndex * 9 + pos
-                const playable =
-                  isMyTurn &&
-                  !acting &&
-                  boardInPlay(activeSession, boardIndex) &&
-                  !cell &&
-                  activeSession.board_winners[boardIndex] == null
-                return (
-                  <Pressable
-                    key={pos}
-                    style={[styles.cell, playable && styles.cellPlayable]}
-                    disabled={!playable}
-                    onPress={() => void move(globalIndex)}
-                  >
-                    <Text style={[styles.cellMark, cell === 'X' ? styles.markX : cell === 'O' ? styles.markO : null]}>
-                      {markGlyph(cell)}
+        {Array.from({ length: 9 }, (_, boardIndex) => {
+          const result: TicTacToeBoardResult = activeSession.board_winners[boardIndex] ?? null
+          const decided = result != null
+          return (
+            <View
+              key={boardIndex}
+              style={[
+                styles.subBoard,
+                boardInPlay(activeSession, boardIndex) && styles.subBoardActive,
+                winLine.has(boardIndex) && styles.subBoardWin,
+              ]}
+            >
+              <View style={styles.cellGrid}>
+                {subBoardCells(activeSession.board, boardIndex).map((cell, pos) => {
+                  const globalIndex = boardIndex * 9 + pos
+                  const playable =
+                    isMyTurn &&
+                    !acting &&
+                    boardInPlay(activeSession, boardIndex) &&
+                    !cell &&
+                    !decided
+                  return (
+                    <Pressable
+                      key={pos}
+                      style={[styles.cell, playable && styles.cellPlayable, decided && styles.cellDim]}
+                      disabled={!playable}
+                      onPress={() => void move(globalIndex)}
+                    >
+                      <Text style={[styles.cellMark, cell === 'X' ? styles.markX : cell === 'O' ? styles.markO : null]}>
+                        {markGlyph(cell)}
+                      </Text>
+                    </Pressable>
+                  )
+                })}
+              </View>
+              {decided ? (
+                <View style={styles.decidedOverlay} pointerEvents="none">
+                  {result === 'draw' ? (
+                    <Text style={styles.decidedDraw}>🤝</Text>
+                  ) : (
+                    <Text style={[styles.decidedMark, result === 'X' ? styles.markX : styles.markO]}>
+                      {markGlyph(result)}
                     </Text>
-                  </Pressable>
-                )
-              })}
+                  )}
+                </View>
+              ) : null}
             </View>
-          </View>
-        ))}
+          )
+        })}
       </View>
       {myMark ? <Text style={styles.youAre}>You are {markGlyph(myMark)}</Text> : null}
     </GameShell>
@@ -195,6 +223,30 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
 
 function playerName(players: Player[], id: string): string {
   return players.find((p) => p.id === id)?.name ?? 'Player'
+}
+
+function TicTacToeTurnBar({
+  text,
+  isMyTurn,
+  secondsLeft,
+  hasTimer,
+  urgent,
+}: {
+  text: string
+  isMyTurn: boolean
+  secondsLeft: number
+  hasTimer: boolean
+  urgent: boolean
+}) {
+  const styles = useThemedStyles(makeStyles)
+  return (
+    <View style={[styles.turnBar, isMyTurn && styles.turnBarMine, urgent && styles.turnBarUrgent]}>
+      <Text style={styles.turnBarText}>{text}</Text>
+      {hasTimer && secondsLeft > 0 ? (
+        <Text style={[styles.turnBarSeconds, urgent && styles.turnBarSecondsUrgent]}>{secondsLeft}s</Text>
+      ) : null}
+    </View>
+  )
 }
 
 function PlayerChip({ label, name }: { label: string; name: string }) {
@@ -231,8 +283,25 @@ const makeStyles = (theme: Theme) =>
     borderColor: theme.border,
   },
   subBoardActive: { borderColor: theme.primary },
-  subBoardWin: { borderColor: '#fbbf24' },
+  subBoardWin: { borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.15)' },
   cellGrid: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 2 },
+  // A decided sub-board dims its small cells and overlays a big winning glyph so
+  // the meta-board reads at a glance (mirrors web's SubBoard decided overlay).
+  cellDim: { opacity: 0.4 },
+  decidedOverlay: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    right: 4,
+    bottom: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    // Translucent scrim over the dimmed cells; fixed rgba works in both schemes.
+    backgroundColor: 'rgba(0,0,0,0.18)',
+  },
+  decidedMark: { fontSize: 48, fontWeight: '900' },
+  decidedDraw: { fontSize: 34 },
   cell: {
     width: '31%',
     aspectRatio: 1,
@@ -248,4 +317,28 @@ const makeStyles = (theme: Theme) =>
   markX: { color: '#38bdf8' },
   markO: { color: '#fb923c' },
   youAre: { color: theme.textMuted, textAlign: 'center', fontSize: 14 },
+  turnBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    backgroundColor: theme.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.border,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  turnBarMine: {
+    backgroundColor: theme.primarySoft,
+    borderColor: theme.primary,
+  },
+  turnBarUrgent: {
+    // Amber urgent state, matches web's turn bar. Fixed color, both schemes.
+    borderColor: 'rgba(251,191,36,0.6)',
+    backgroundColor: 'rgba(245,158,11,0.12)',
+  },
+  turnBarText: { color: theme.text, fontSize: 16, fontWeight: '700' },
+  turnBarSeconds: { color: theme.text, fontSize: 16, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  turnBarSecondsUrgent: { color: '#f59e0b' },
 })

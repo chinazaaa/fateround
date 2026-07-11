@@ -1,17 +1,21 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text } from 'react-native'
-import { type LudoPlayerState, type LudoSession } from '@fateround/shared'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { type LudoDiceRoll, type LudoPlayerState, type LudoSession } from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import {
   buildLudoStandings,
   currentPlayerId,
   dedupeLudoMovesForUi,
+  parseLudoDice,
   parseLudoVariant,
   resolveLudoMovesForTurn,
   resolveRemainingDice,
 } from '@fateround/shared/ludo'
 import { moveDestinationCell } from '@fateround/shared/ludo-board-layout'
 import { LudoBoard } from '@/components/games/ludo/LudoBoard'
+import { LudoDicePair, LudoRemainingDice } from '@/components/games/ludo/LudoDice'
+import { LudoMoveList } from '@/components/games/ludo/LudoMoveList'
+import { LudoTurnBar } from '@/components/games/ludo/LudoTurnBar'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
@@ -29,11 +33,15 @@ import { ludoLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
+const ROLL_MIN_MS = 700
+
 export function LudoPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
   const [session, setSession] = useState<LudoSession | null>(null)
   const [states, setStates] = useState<LudoPlayerState[]>([])
   const [acting, setActing] = useState(false)
+  const [rolling, setRolling] = useState(false)
+  const [displayDice, setDisplayDice] = useState<LudoDiceRoll | null>(null)
 
   const loadGameState = useCallback(async (): Promise<{ state: null; ok: boolean }> => {
     const [sessionRes, statesRes] = await Promise.all([
@@ -107,11 +115,18 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
   const roll = async () => {
     if (!bootstrap.myResumeToken || acting || !isMyTurn) return
     setActing(true)
+    setRolling(true)
+    setDisplayDice(null)
+    const rollStart = Date.now()
     try {
       playSound('dice')
-      await postLudoRoll(bootstrap.code, bootstrap.myResumeToken)
+      const res = await postLudoRoll(bootstrap.code, bootstrap.myResumeToken)
+      if (res?.dice) setDisplayDice(parseLudoDice(res.dice as LudoDiceRoll | number))
       await bootstrap.load()
     } finally {
+      const wait = Math.max(0, ROLL_MIN_MS - (Date.now() - rollStart))
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait))
+      setRolling(false)
       setActing(false)
     }
   }
@@ -179,11 +194,13 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
       onPromoted={() => bootstrap.load()}
     >
       <ScrollView contentContainerStyle={styles.scroll}>
-        {session.status_message ? <Text style={styles.status}>{session.status_message}</Text> : null}
-
-        {remainingDice.length > 0 ? (
-          <Text style={styles.dice}>Dice to play: {remainingDice.join(', ')}</Text>
-        ) : null}
+        <LudoTurnBar
+          gameCode={bootstrap.code}
+          session={session}
+          turnPlayerName={turnName}
+          isMyTurn={isMyTurn}
+          active={bootstrap.game.status === 'active'}
+        />
 
         <LudoBoard
           states={states}
@@ -196,10 +213,40 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
           acting={acting}
         />
 
+        <View style={styles.diceCard}>
+          {session.phase === 'move' && remainingDice.length > 0 ? (
+            <LudoRemainingDice remaining={remainingDice} />
+          ) : (
+            <LudoDicePair
+              dice={rolling ? null : (displayDice ?? parseLudoDice(session.last_dice))}
+              rolling={rolling}
+            />
+          )}
+          {session.consecutive_sixes > 0 ? (
+            <Text style={styles.bonus}>Bonus: {session.consecutive_sixes}/3</Text>
+          ) : null}
+        </View>
+
+        {session.status_message ? <Text style={styles.status}>{session.status_message}</Text> : null}
+
         {isMyTurn && session.phase === 'roll' ? (
           <Pressable style={[styles.btn, acting && styles.btnDisabled]} disabled={acting} onPress={() => void roll()}>
-            <Text style={styles.btnText}>{acting ? 'Rolling…' : 'Roll dice'}</Text>
+            <Text style={styles.btnText}>{acting ? 'Rolling…' : '🎲 Roll dice'}</Text>
           </Pressable>
+        ) : null}
+
+        {isMyTurn && session.phase === 'move' && legalMoves.length > 0 ? (
+          <LudoMoveList
+            moves={legalMoves}
+            myColor={myState?.color}
+            remainingDice={remainingDice}
+            acting={acting}
+            onMovePiece={(pieceId, diceIndex) => void movePiece(pieceId, diceIndex)}
+          />
+        ) : null}
+
+        {isMyTurn && session.phase === 'move' && legalMoves.length === 0 ? (
+          <Text style={styles.noMoves}>No legal moves for this roll — the turn will pass.</Text>
         ) : null}
 
         {!isMyTurn ? <Text style={styles.hint}>Waiting for {turnName}…</Text> : null}
@@ -212,10 +259,20 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
   scroll: { gap: 12, paddingBottom: 24 },
   status: { color: theme.textMuted, textAlign: 'center' },
-  dice: { color: '#fcd34d', textAlign: 'center', fontWeight: '700' },
+  diceCard: {
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: 12,
+    paddingVertical: 12,
+  },
+  bonus: { color: '#fcd34d', fontWeight: '800', fontSize: 12, fontVariant: ['tabular-nums'] },
   btn: { backgroundColor: theme.primary, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   btnDisabled: { opacity: 0.45 },
   // White on the solid primary button — intentional (case 2).
   btnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  noMoves: { color: '#fcd34d', textAlign: 'center', fontWeight: '600', fontSize: 13 },
   hint: { color: theme.textMuted, textAlign: 'center' },
 })

@@ -45,6 +45,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
   const [wordText, setWordText] = useState('')
   const [startLetter, setStartLetter] = useState('')
   const [endLetter, setEndLetter] = useState('')
+  const [minLengthText, setMinLengthText] = useState('')
   const [acting, setActing] = useState(false)
   const [lastMessage, setLastMessage] = useState<string | null>(null)
 
@@ -59,7 +60,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
           .select(WORD_RUSH_ANSWER_SELECT)
           .eq('game_id', code)
           .order('created_at', { ascending: false })
-          .limit(80),
+          .limit(400),
       ])
       if (sessionRes.error || teamRes.error || answerRes.error) return { state: null, ok: false }
       const sessionData = sessionRes.data as WordRushSession | null
@@ -229,6 +230,16 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
                 : { name: teamLabel(row.team), score: row.score }
             )
           )}
+          notice={
+            <WordRushBreakdown
+              mode={mode}
+              players={bootstrap.players}
+              teamRows={teamRows}
+              answers={answers}
+              numTeams={numTeams}
+              myPlayerId={bootstrap.myPlayerId ?? null}
+            />
+          }
         />
       </GameShell>
     )
@@ -254,18 +265,32 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
 
   const setPrompt = async () => {
     if (!startLetter.trim() || !endLetter.trim()) return
+    const parsed = Math.round(Number(minLengthText))
+    const chosenMin =
+      minLengthText.trim() && Number.isFinite(parsed)
+        ? Math.min(20, Math.max(minLength, parsed))
+        : minLength
     await act(() =>
       postWordRushPrompt(
         bootstrap.code,
         bootstrap.myResumeToken!,
         startLetter.trim(),
         endLetter.trim(),
-        minLength
+        chosenMin
       )
     )
     setStartLetter('')
     setEndLetter('')
+    setMinLengthText('')
   }
+
+  // In individual + manual prompt mode the prompt-setter does NOT guess this
+  // round — they earn mirror points from other players' scores instead.
+  const isIndividualManualSetter =
+    mode === 'individual' && isPromptSetter && session.prompt_mode === 'manual'
+  const canAnswer =
+    (mode === 'individual' && !isIndividualManualSetter) ||
+    (mode === 'team' && onMyTeam && !isPromptSetter)
 
   const teamRound =
     mode === 'team' && session ? currentTeamRoundNumber(session.turn_index, numTeams) : session.current_round
@@ -356,15 +381,27 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
               autoCapitalize="characters"
             />
           </View>
+          <Text style={styles.hint}>Min letters (at least {minLength})</Text>
+          <TextInput
+            style={styles.input}
+            value={minLengthText}
+            onChangeText={setMinLengthText}
+            placeholder={String(minLength)}
+            placeholderTextColor={theme.textFaint}
+            keyboardType="number-pad"
+            maxLength={2}
+          />
           <Pressable style={styles.primaryBtn} disabled={acting} onPress={() => void setPrompt()}>
             <Text style={styles.primaryText}>Set prompt</Text>
           </Pressable>
         </View>
       ) : null}
 
-      {session.phase === 'playing' && onMyTeam ? (
+      {session.phase === 'playing' && canAnswer ? (
         <View style={styles.panel}>
-          <Text style={styles.hint}>Min {minLength} letters · starts & ends with shown letters</Text>
+          <Text style={styles.hint}>
+            Min {session.min_word_length ?? minLength} letters · starts & ends with shown letters
+          </Text>
           <TextInput
             style={styles.input}
             value={wordText}
@@ -378,6 +415,13 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
           </Pressable>
           {lastMessage ? <Text style={styles.feedback}>{lastMessage}</Text> : null}
         </View>
+      ) : session.phase === 'playing' && isIndividualManualSetter ? (
+        <View style={styles.panel}>
+          <Text style={styles.setterNote}>
+            You set the letters this round — others are guessing. You earn mirror points from their
+            scores.
+          </Text>
+        </View>
       ) : session.phase === 'playing' ? (
         <Text style={styles.waiting}>Watch and wait for your turn…</Text>
       ) : null}
@@ -388,6 +432,157 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     </GameShell>
   )
 }
+
+/** Each player's correct words with the round + letter pair (e.g. "GLORY  R2 · G…Y"). */
+function WordRushCorrectWords({
+  answers,
+  emptyLabel = 'No correct words',
+}: {
+  answers: WordRushAnswer[]
+  emptyLabel?: string
+}) {
+  const styles = useThemedStyles(makeBreakdownStyles)
+  const correct = useMemo(
+    () =>
+      answers
+        .filter((a) => a.correct)
+        .sort((a, b) => a.round - b.round || a.text.localeCompare(b.text)),
+    [answers]
+  )
+  if (correct.length === 0) return <Text style={styles.empty}>{emptyLabel}</Text>
+  return (
+    <View style={styles.wordList}>
+      {correct.map((a, index) => (
+        <View key={`${a.round}-${a.text}-${index}`} style={styles.wordRow}>
+          <Text style={styles.wordText}>{a.text.toUpperCase()}</Text>
+          <Text style={styles.wordMeta}>
+            R{a.round} · {a.start_letter.toUpperCase()}…{a.end_letter.toUpperCase()}
+          </Text>
+        </View>
+      ))}
+    </View>
+  )
+}
+
+/** Expandable per-player (or per-team) correct-word breakdown for the finished screen. */
+function WordRushBreakdown({
+  mode,
+  players,
+  teamRows,
+  answers,
+  numTeams,
+  myPlayerId,
+}: {
+  mode: 'team' | 'individual'
+  players: Player[]
+  teamRows: WordRushPlayer[]
+  answers: WordRushAnswer[]
+  numTeams: number
+  myPlayerId: string | null
+}) {
+  const styles = useThemedStyles(makeBreakdownStyles)
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const nameById = useMemo(() => new Map(players.map((p) => [p.id, p.name])), [players])
+
+  const rows = useMemo(() => {
+    if (mode === 'individual') {
+      return computeWordRushPlayerScores(players, teamRows).map((r) => ({
+        key: r.id,
+        title: r.name,
+        score: `${r.score} ${r.score === 1 ? 'pt' : 'pts'}`,
+        mine: r.id === myPlayerId,
+      }))
+    }
+    return computeWordRushTeamScores(answers, numTeams).map((r) => ({
+      key: `team-${r.team}`,
+      title: teamLabel(r.team),
+      score: `${r.score} ${r.score === 1 ? 'word' : 'words'}`,
+      mine: false,
+    }))
+  }, [mode, players, teamRows, answers, numTeams, myPlayerId])
+
+  const renderMembers = (team: number) => {
+    const memberIds = teamRows.filter((row) => row.team === team).map((row) => row.player_id)
+    if (memberIds.length === 0) return <Text style={styles.empty}>No players on this team</Text>
+    return (
+      <View style={styles.memberList}>
+        {memberIds.map((pid) => (
+          <View key={pid} style={styles.member}>
+            <Text style={styles.memberName}>{nameById.get(pid) ?? 'Player'}</Text>
+            <WordRushCorrectWords
+              answers={answers.filter((a) => a.player_id === pid)}
+              emptyLabel="No words"
+            />
+          </View>
+        ))}
+      </View>
+    )
+  }
+
+  if (rows.length === 0) return null
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.heading}>Correct words</Text>
+      {rows.map((row) => {
+        const isOpen = expanded === row.key
+        return (
+          <View key={row.key} style={styles.rowWrap}>
+            <Pressable
+              style={styles.rowHeader}
+              onPress={() => setExpanded(isOpen ? null : row.key)}
+            >
+              <Text style={[styles.rowTitle, row.mine && styles.rowTitleMine]} numberOfLines={1}>
+                {row.title}
+              </Text>
+              <View style={styles.rowRight}>
+                <Text style={styles.rowScore}>{row.score}</Text>
+                <Text style={styles.chevron}>{isOpen ? '▾' : '▸'}</Text>
+              </View>
+            </Pressable>
+            {isOpen ? (
+              <View style={styles.rowBody}>
+                {mode === 'individual' ? (
+                  <WordRushCorrectWords answers={answers.filter((a) => a.player_id === row.key)} />
+                ) : (
+                  renderMembers(Number(row.key.replace('team-', '')))
+                )}
+              </View>
+            ) : null}
+          </View>
+        )
+      })}
+    </View>
+  )
+}
+
+const makeBreakdownStyles = (theme: Theme) =>
+  StyleSheet.create({
+    card: { backgroundColor: theme.surface, borderRadius: 12, padding: 12, gap: 4 },
+    heading: { color: theme.textMuted, fontSize: 13, fontWeight: '700', marginBottom: 4 },
+    rowWrap: { borderTopWidth: 1, borderTopColor: theme.border },
+    rowHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 10,
+      gap: 8,
+    },
+    rowTitle: { color: theme.text, fontSize: 15, fontWeight: '600', flexShrink: 1 },
+    rowTitleMine: { color: theme.primary },
+    rowRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    rowScore: { color: theme.textMuted, fontSize: 14, fontWeight: '600' },
+    chevron: { color: theme.textFaint, fontSize: 14, width: 14, textAlign: 'center' },
+    rowBody: { paddingBottom: 10, paddingLeft: 4 },
+    wordList: { gap: 6 },
+    wordRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+    wordText: { color: theme.text, fontSize: 14, fontWeight: '600', flexShrink: 1 },
+    wordMeta: { color: theme.textFaint, fontSize: 12 },
+    empty: { color: theme.textFaint, fontSize: 13 },
+    memberList: { gap: 10 },
+    member: { gap: 4 },
+    memberName: { color: theme.text, fontSize: 13, fontWeight: '700' },
+  })
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -437,4 +632,5 @@ const makeStyles = (theme: Theme) =>
   // White on the solid primary button — intentional (case 2).
   primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   feedback: { color: '#fbbf24', textAlign: 'center' },
+  setterNote: { color: theme.textMuted, fontSize: 14, textAlign: 'center', lineHeight: 20 },
 })

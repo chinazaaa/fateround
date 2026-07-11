@@ -5,11 +5,14 @@ import {
   formatBingoNumber,
   hasBingoWin,
 } from '@fateround/shared/bingo'
+import { playerIsViewer } from '@fateround/shared/viewers'
 import { BingoCardGrid } from '@/components/games/bingo/BingoCardGrid'
+import { CalledNumbersBoard } from '@/components/games/bingo/CalledNumbersBoard'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 import { postBingoClaim, postBingoMark } from '@/lib/game-api'
@@ -111,9 +114,19 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
 
   const calledSet = useMemo(() => new Set(calledNumbers.map((n) => n.number)), [calledNumbers])
   const lastCalled = calledNumbers.length > 0 ? calledNumbers[calledNumbers.length - 1] : null
+  const me = useMemo(
+    () => bootstrap.players.find((p) => p.id === bootstrap.myPlayerId),
+    [bootstrap.players, bootstrap.myPlayerId]
+  )
+  // A spectator/late-joiner watches called numbers instead of holding a card.
+  const isViewer = !!(bootstrap.game && me && playerIsViewer(me, bootstrap.game))
   const canClaim = useMemo(
-    () => !!card && hasBingoWin(card.cells, card.marked_indices, 'line') && bootstrap.game?.status === 'active',
-    [card, bootstrap.game?.status]
+    () =>
+      !isViewer &&
+      !!card &&
+      hasBingoWin(card.cells, card.marked_indices, 'line') &&
+      bootstrap.game?.status === 'active',
+    [isViewer, card, bootstrap.game?.status]
   )
 
   const markCell = async (cellIndex: number) => {
@@ -188,6 +201,17 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title="Bingo" subtitle={`Code ${bootstrap.code}`}>
+      {isViewer && bootstrap.myPlayerId && me && bootstrap.game ? (
+        <ViewerModeBanner
+          gameCode={bootstrap.code}
+          playerId={bootstrap.myPlayerId}
+          game={bootstrap.game}
+          player={me}
+          players={bootstrap.players}
+          onPromoted={() => void bootstrap.load()}
+        />
+      ) : null}
+
       {lastCalled ? (
         <View style={styles.latestCall}>
           <Text style={styles.latestLabel}>Latest call</Text>
@@ -234,6 +258,11 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
           />
           <Text style={styles.legend}>Tap callable numbers when they are called. Center is free.</Text>
         </>
+      ) : isViewer ? (
+        <View style={styles.viewerBoard}>
+          <Text style={styles.viewerHint}>You&apos;re watching — no card is dealt to spectators.</Text>
+          <CalledNumbersBoard calledNumbers={calledSet} lastCalled={lastCalled?.number ?? null} />
+        </View>
       ) : (
         <Text style={styles.waitingCard}>Waiting for your bingo card…</Text>
       )}
@@ -277,4 +306,6 @@ const makeStyles = (theme: Theme) =>
   error: { color: theme.error, textAlign: 'center', fontSize: 14 },
   legend: { color: theme.textFaint, fontSize: 12, textAlign: 'center', marginTop: 8 },
   waitingCard: { color: theme.textMuted, textAlign: 'center', marginTop: 24 },
+  viewerBoard: { gap: 12, marginTop: 8 },
+  viewerHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
 })

@@ -18,6 +18,7 @@ import {
   hasPlayableCard,
   isDrawPileDepleted,
   parseCrazyEightsRules,
+  specialCardShortLabel,
 } from '@fateround/shared/crazy-eights'
 import { CardTableArea } from '@/components/games/cards/CardTableArea'
 import { PlayerTurnRail } from '@/components/games/cards/PlayerTurnRail'
@@ -188,16 +189,61 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   ]
     .filter(Boolean)
     .join(' · ')
-  const canDraw =
-    isMyTurn &&
-    session.phase === 'playing' &&
-    !choosingSuit &&
-    (!myHand || !hasPlayableCard(myHand.cards, session, rules) || isDrawPileDepleted(session))
+
+  const drawDepleted = isDrawPileDepleted(session)
+  const myCanPlay = myHand ? hasPlayableCard(myHand.cards, session, rules) : false
+  const suitCallActive = hasActiveSuitCall(session)
+
+  // "Out" = our dealt hand row is loaded and now empty (we played our last card and went
+  // out). Guard on the row actually being loaded — a not-yet-fetched hand is briefly empty
+  // and must not flip a still-playing player into the watch-only UI.
+  const isOut = !!myHand && myHand.cards.length === 0 && session.phase !== 'choose_suit'
+
+  // Web shows the draw/pass button whenever it's your turn, except when the pile is depleted
+  // AND you have a playable card (then you must play). Its label reflects pass vs. penalty.
+  const canDraw = isMyTurn && session.phase === 'playing' && !choosingSuit && !(drawDepleted && myCanPlay)
+  const drawLabel = drawDepleted
+    ? 'Pass turn'
+    : penalties.pickTwo > 0
+      ? `Draw ${penalties.pickTwo} (Pick 2)`
+      : penalties.jokerPenalty > 0
+        ? `Draw ${penalties.jokerPenalty} (Joker)`
+        : `Draw 1 card`
+
+  const turnHint =
+    drawDepleted && myCanPlay
+      ? 'Draw pile empty — play a highlighted card.'
+      : drawDepleted && !myCanPlay
+        ? 'Draw pile empty — pass your turn if you cannot play.'
+        : penalties.pickTwo > 0
+          ? 'Pick 2 active — play a 2 or draw the penalty.'
+          : penalties.jokerPenalty > 0
+            ? 'Joker — draw the penalty, no defending.'
+            : suitCallActive
+              ? 'Match the called suit, play an 8 / Joker to name a new one, or draw from the pile.'
+              : 'Tap a highlighted card to play, or draw from the pile.'
+
+  const directionReversed = session.direction < 0
+  const directionChip = (
+    <View style={styles.dirChip}>
+      <Text style={styles.dirGlyph}>{directionReversed ? '↺' : '↻'}</Text>
+      <Text style={styles.dirText}>{directionReversed ? 'Reversed' : 'Forward'}</Text>
+    </View>
+  )
 
   return (
     <GameShell bootstrap={bootstrap} title={batch4GameLabel('crazy_eights')} subtitle={bootstrap.code}>
-      <TurnBanner text={session.status_message ?? `${turnName}'s turn`} isMyTurn={isMyTurn} />
+      <TurnBanner text={session.status_message ?? `${turnName}'s turn`} isMyTurn={isMyTurn && !isOut} />
       {timerSeconds > 0 ? <TimerBadge seconds={timerSeconds} /> : null}
+
+      {isOut ? (
+        <View style={styles.outBanner}>
+          <Text style={styles.outTitle}>You&apos;re out</Text>
+          <Text style={styles.outSub}>You played all your cards — watch until the game ends.</Text>
+        </View>
+      ) : null}
+
+      {directionChip}
 
       <PlayerTurnRail
         players={bootstrap.players}
@@ -211,7 +257,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
         hint={tableHint || null}
         topCard={
           session.top_card ? (
-            <PlayingCardFace card={session.top_card} />
+            <PlayingCardFace card={session.top_card} specialLabel={specialCardShortLabel(session.top_card, rules)} />
           ) : (
             <Text style={styles.emptyTop}>—</Text>
           )
@@ -228,27 +274,37 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
         </View>
       ) : null}
 
-      <Text style={styles.section}>Your hand ({myHand?.cards.length ?? 0})</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hand}>
-        {(myHand?.cards ?? []).map((card) => {
-          const playable = playableIds.has(card.id)
-          return (
-            <Pressable
-              key={card.id}
-              disabled={acting || !isMyTurn || !playable || session.phase !== 'playing'}
-              onPress={() => void playCard(card.id)}
-            >
-              <PlayingCardFace card={card} playable={playable && isMyTurn} />
-            </Pressable>
-          )
-        })}
-      </ScrollView>
+      {isOut ? null : (
+        <>
+          {isMyTurn && session.phase === 'playing' ? <Text style={styles.turnHint}>{turnHint}</Text> : null}
 
-      {canDraw ? (
-        <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void drawCard()}>
-          <Text style={styles.drawText}>Draw card</Text>
-        </Pressable>
-      ) : null}
+          <Text style={styles.section}>Your hand ({myHand?.cards.length ?? 0})</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hand}>
+            {(myHand?.cards ?? []).map((card) => {
+              const playable = playableIds.has(card.id)
+              return (
+                <Pressable
+                  key={card.id}
+                  disabled={acting || !isMyTurn || !playable || session.phase !== 'playing'}
+                  onPress={() => void playCard(card.id)}
+                >
+                  <PlayingCardFace
+                    card={card}
+                    playable={playable && isMyTurn}
+                    specialLabel={specialCardShortLabel(card, rules)}
+                  />
+                </Pressable>
+              )
+            })}
+          </ScrollView>
+
+          {canDraw ? (
+            <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void drawCard()}>
+              <Text style={styles.drawText}>{drawLabel}</Text>
+            </Pressable>
+          ) : null}
+        </>
+      )}
     </GameShell>
   )
 }
@@ -257,6 +313,33 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
   emptyTop: { color: theme.text, fontSize: 28, fontWeight: '800' },
   section: { color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 4 },
+  turnHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center', paddingHorizontal: 8, marginTop: 2 },
+  dirChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    gap: 6,
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  dirGlyph: { color: theme.primary, fontSize: 16, fontWeight: '800' },
+  dirText: { color: theme.primary, fontSize: 13, fontWeight: '700' },
+  outBanner: {
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.primary,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    alignItems: 'center',
+    gap: 2,
+  },
+  outTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
+  outSub: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
   hand: { gap: 8, paddingVertical: 8 },
   suitRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   actionBtn: {

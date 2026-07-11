@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { normalizeGameCode, type Game, type Player } from '@fateround/shared'
 import {
+  type MafiaChatMessage,
   type MafiaStateResponse,
   mafiaPhaseLabel,
   mafiaRoleEmoji,
@@ -38,7 +39,6 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
   const [mafiaState, setMafiaState] = useState<MafiaStateResponse | null>(null)
   const [acting, setActing] = useState(false)
-  const [chatDraft, setChatDraft] = useState('')
   const [timerTick, setTimerTick] = useState(0)
 
   const loadGameState = useCallback(
@@ -87,6 +87,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   const state = mafiaState ?? bootstrap.gameState
   const myState = state?.myState ?? null
   const amIAlive = state?.players.find((p) => p.id === bootstrap.myPlayerId)?.isAlive ?? false
+  const amISpectator =
+    !!bootstrap.myPlayerId && !!state && !state.players.some((p) => p.id === bootstrap.myPlayerId)
   const killedPlayer = state?.lastNightKillPlayerId
     ? state.players.find((p) => p.id === state.lastNightKillPlayerId)
     : undefined
@@ -120,23 +122,15 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   const showDayVotes =
     state?.phase === 'day' && !(state.anonymousVotes && !myState?.dayVoteSubmitted)
 
-  const chatScope = useMemo((): 'night' | 'day' | 'ghost' | null => {
-    if (!myState || !state) return null
-    if (!amIAlive && state.phase !== 'game_over') return 'ghost'
-    if (myState.role === 'mafia' && amIAlive) return 'night'
-    if (amIAlive && (state.phase === 'day_report' || state.phase === 'day' || state.phase === 'elimination')) {
-      return 'day'
-    }
-    return null
-  }, [myState, state, amIAlive])
-
-  const chatMessages = useMemo(() => {
-    if (!state) return []
-    if (chatScope === 'ghost') return state.ghostChatMessages ?? []
-    if (chatScope === 'day') return state.dayChatMessages ?? []
-    if (chatScope === 'night') return myState?.mafiaChatMessages ?? []
-    return []
-  }, [state, chatScope, myState])
+  const sendChat = useCallback(
+    async (msg: string, scope: 'night' | 'day' | 'ghost') => {
+      const token = bootstrap.myResumeToken
+      if (!token) return
+      await postMafiaChat(bootstrap.code, token, msg, scope)
+      await bootstrap.load()
+    },
+    [bootstrap.myResumeToken, bootstrap.code, bootstrap.load]
+  )
 
   void timerTick
 
@@ -339,45 +333,107 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         ))}
       </View>
 
-      {chatScope ? (
-        <>
-          <Text style={styles.sectionTitle}>
-            {chatScope === 'ghost' ? 'Ghost chat' : chatScope === 'day' ? 'Day chat' : 'Mafia chat'}
-          </Text>
-          <ScrollView style={styles.chatLog} nestedScrollEnabled>
-            {chatMessages.map((m) => (
-              <Text key={m.id} style={styles.chatLine}>
-                <Text style={styles.chatName}>{m.sender_name}: </Text>
-                {m.message}
-              </Text>
-            ))}
-          </ScrollView>
-          <View style={styles.chatRow}>
-            <TextInput
-              style={styles.chatInput}
-              value={chatDraft}
-              onChangeText={setChatDraft}
-              placeholder="Message…"
-              placeholderTextColor="#71717a"
-            />
-            <Pressable
-              style={styles.chatSend}
-              disabled={acting || !chatDraft.trim()}
-              onPress={() => {
-                const msg = chatDraft.trim()
-                if (!msg || !bootstrap.myResumeToken || !chatScope) return
-                void act(async () => {
-                  await postMafiaChat(bootstrap.code, bootstrap.myResumeToken!, msg, chatScope)
-                  setChatDraft('')
-                })
-              }}
-            >
-              <Text style={styles.chatSendText}>Send</Text>
-            </Pressable>
-          </View>
-        </>
+      {/* Alive Mafia see their secret chat AND the town chat simultaneously (matches web) */}
+      {myState?.role === 'mafia' && amIAlive ? (
+        <MafiaChatSection
+          styles={styles}
+          title="Mafia secret chat"
+          accent="mafia"
+          placeholder="Whisper to allies…"
+          messages={myState.mafiaChatMessages ?? []}
+          onSend={(msg) => sendChat(msg, 'night')}
+        />
+      ) : null}
+
+      {phase !== 'night' && phase !== 'role_reveal' ? (
+        <MafiaChatSection
+          styles={styles}
+          title="Town discussion"
+          placeholder="Share your thoughts…"
+          messages={state.dayChatMessages ?? []}
+          disabled={!amIAlive || amISpectator}
+          onSend={(msg) => sendChat(msg, 'day')}
+        />
+      ) : null}
+
+      {!amIAlive && bootstrap.myPlayerId ? (
+        <MafiaChatSection
+          styles={styles}
+          title="Ghost chat (only the dead can see this)"
+          placeholder="Chat with fellow ghosts…"
+          messages={state.ghostChatMessages ?? []}
+          onSend={(msg) => sendChat(msg, 'ghost')}
+        />
       ) : null}
     </GameShell>
+  )
+}
+
+function MafiaChatSection({
+  styles,
+  title,
+  messages,
+  placeholder,
+  onSend,
+  disabled = false,
+  accent,
+}: {
+  styles: ReturnType<typeof makeStyles>
+  title: string
+  messages: MafiaChatMessage[]
+  placeholder: string
+  onSend: (msg: string) => Promise<void> | void
+  disabled?: boolean
+  accent?: 'mafia'
+}) {
+  const [draft, setDraft] = useState('')
+  const [sending, setSending] = useState(false)
+
+  const submit = async () => {
+    const msg = draft.trim()
+    if (!msg || sending || disabled) return
+    setSending(true)
+    try {
+      await onSend(msg)
+      setDraft('')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <>
+      <Text style={[styles.sectionTitle, accent === 'mafia' && styles.mafiaChatTitle]}>{title}</Text>
+      <ScrollView style={styles.chatLog} nestedScrollEnabled>
+        {messages.length === 0 ? (
+          <Text style={styles.chatEmpty}>No messages yet.</Text>
+        ) : (
+          messages.map((m) => (
+            <Text key={m.id} style={styles.chatLine}>
+              <Text style={styles.chatName}>{m.sender_name}: </Text>
+              {m.message}
+            </Text>
+          ))
+        )}
+      </ScrollView>
+      <View style={styles.chatRow}>
+        <TextInput
+          style={styles.chatInput}
+          value={draft}
+          onChangeText={setDraft}
+          editable={!disabled}
+          placeholder={disabled ? 'You cannot chat right now' : placeholder}
+          placeholderTextColor="#71717a"
+        />
+        <Pressable
+          style={styles.chatSend}
+          disabled={disabled || sending || !draft.trim()}
+          onPress={() => void submit()}
+        >
+          <Text style={styles.chatSendText}>Send</Text>
+        </Pressable>
+      </View>
+    </>
   )
 }
 
@@ -418,11 +474,13 @@ const makeStyles = (theme: Theme) =>
   skipBtn: { borderWidth: 1, borderColor: theme.border },
   targetText: { color: theme.text, fontWeight: '700', textAlign: 'center' },
   sectionTitle: { color: theme.textMuted, fontWeight: '700', marginBottom: 6, marginTop: 4 },
+  mafiaChatTitle: { color: '#f87171' },
   playerList: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
   playerChip: { color: theme.text, backgroundColor: theme.border, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
   playerDead: { opacity: 0.55 },
   chatLog: { maxHeight: 120, backgroundColor: theme.surface, borderRadius: 8, padding: 8, marginBottom: 8 },
   chatLine: { color: theme.textSecondary, fontSize: 13, marginBottom: 4 },
+  chatEmpty: { color: theme.textMuted, fontSize: 12, fontStyle: 'italic', textAlign: 'center', paddingVertical: 16 },
   chatName: { color: theme.text, fontWeight: '700' },
   chatRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   chatInput: {

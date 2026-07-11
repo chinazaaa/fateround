@@ -1,10 +1,20 @@
 import { StyleSheet, Text, View } from 'react-native'
-import { formatMonopolyMoney } from '@fateround/shared/monopoly-board'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
+import { formatThemedMoney, themedSpaceName } from './monopoly-theme'
 import { buildTradeSideItems, tradeSideCountLabel, tradeSideHasValue } from './manage-logic'
 
-function TradeSideItems({ cash, propertyIndexes, jailCards }: { cash: number; propertyIndexes: unknown; jailCards: number }) {
+function TradeSideItems({
+  cash,
+  propertyIndexes,
+  jailCards,
+  themeId,
+}: {
+  cash: number
+  propertyIndexes: unknown
+  jailCards: number
+  themeId?: string | null
+}) {
   const styles = useThemedStyles(makeStyles)
   const items = buildTradeSideItems(cash, propertyIndexes, jailCards)
   if (items.length === 0) return <Text style={styles.nothing}>Nothing</Text>
@@ -15,14 +25,14 @@ function TradeSideItems({ cash, propertyIndexes, jailCards }: { cash: number; pr
           return (
             <Text key="cash" style={styles.item}>
               <Text style={styles.itemMuted}>Cash </Text>
-              {formatMonopolyMoney(item.amount)}
+              {formatThemedMoney(item.amount, themeId)}
             </Text>
           )
         }
         if (item.kind === 'property') {
           return (
             <Text key={`prop-${item.index}`} style={styles.item}>
-              {item.name}
+              {themedSpaceName(item.name, item.index, themeId)}
             </Text>
           )
         }
@@ -45,6 +55,7 @@ export function MonopolyTradeReview({
   getProps,
   giveJailCards = 0,
   getJailCards = 0,
+  themeId,
 }: {
   giveLabel: string
   getLabel: string
@@ -54,6 +65,7 @@ export function MonopolyTradeReview({
   getProps: unknown
   giveJailCards?: number
   getJailCards?: number
+  themeId?: string | null
 }) {
   const styles = useThemedStyles(makeStyles)
   const oneSidedGift =
@@ -71,14 +83,14 @@ export function MonopolyTradeReview({
             <Text style={[styles.sideLabel, styles.giveLabel]}>{giveLabel}</Text>
             {giveCountLabel ? <Text style={[styles.countLabel, styles.giveLabel]}>{giveCountLabel}</Text> : null}
           </View>
-          <TradeSideItems cash={giveCash} propertyIndexes={giveProps} jailCards={giveJailCards} />
+          <TradeSideItems cash={giveCash} propertyIndexes={giveProps} jailCards={giveJailCards} themeId={themeId} />
         </View>
         <View style={[styles.side, styles.getSide]}>
           <View style={styles.sideHeader}>
             <Text style={[styles.sideLabel, styles.getLabel]}>{getLabel}</Text>
             {getCountLabel ? <Text style={[styles.countLabel, styles.getLabel]}>{getCountLabel}</Text> : null}
           </View>
-          <TradeSideItems cash={getCash} propertyIndexes={getProps} jailCards={getJailCards} />
+          <TradeSideItems cash={getCash} propertyIndexes={getProps} jailCards={getJailCards} themeId={themeId} />
         </View>
       </View>
       {oneSidedGift ? (

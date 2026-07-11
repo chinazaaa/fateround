@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { type Game, type Player, type Round, type TtlGuess, type TtlStatement } from '@fateround/shared'
 import { batch4GameLabel } from '@fateround/shared/batch-4-games'
@@ -14,6 +14,9 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
+import { TimerBadge } from '@/components/ui/TimerBadge'
+import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postTtlGuess, postTtlStatements } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
@@ -34,6 +37,8 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   const [stmtC, setStmtC] = useState('')
   const [lieIndex, setLieIndex] = useState(0)
   const [submitting, setSubmitting] = useState(false)
+  const [editingStatements, setEditingStatements] = useState(false)
+  const [timeExpired, setTimeExpired] = useState(false)
   const styles = useThemedStyles(makeStyles)
   const theme = useTheme()
 
@@ -99,6 +104,27 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   const revealSeconds =
     currentRound?.status === 'finished' ? revealCountdownSeconds(currentRound.ended_at) : null
 
+  // Running standings shown throughout play (mirrors web's live PaginatedLeaderboard).
+  const liveScores = useMemo(
+    () => tallyTtlScores(guesses, bootstrap.players, rounds),
+    [guesses, bootstrap.players, rounds]
+  )
+
+  // Round countdown + auto-lock when the guessing time runs out.
+  const timerSeconds = bootstrap.game?.timer_seconds ?? 0
+  const timerActive =
+    !!currentRound && currentRound.status === 'active' && !isFeatured && timerSeconds > 0
+  const secondsLeft = useDeadlineCountdown(currentRound?.started_at, timerSeconds, timerActive)
+
+  // Reset the per-round expiry flag whenever the round changes.
+  useEffect(() => {
+    setTimeExpired(false)
+  }, [currentRound?.id])
+
+  useEffect(() => {
+    if (timerActive && !myGuess && secondsLeft <= 0) setTimeExpired(true)
+  }, [timerActive, myGuess, secondsLeft])
+
   const submitStatements = async () => {
     if (!bootstrap.myResumeToken || submitting) return
     setSubmitting(true)
@@ -111,10 +137,20 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
         stmtC.trim(),
         lieIndex
       )
+      setEditingStatements(false)
       await bootstrap.load()
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const startEditing = () => {
+    if (!myStatement) return
+    setStmtA(myStatement.statement_a)
+    setStmtB(myStatement.statement_b)
+    setStmtC(myStatement.statement_c)
+    setLieIndex(myStatement.lie_index)
+    setEditingStatements(true)
   }
 
   const submitGuess = async (index: number) => {
@@ -143,15 +179,34 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
   if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
-    if (myStatement) {
+    if (myStatement && !editingStatements) {
       return (
         <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={bootstrap.code}>
           <Text style={styles.waiting}>Statements submitted — waiting for host to start…</Text>
+          <View style={styles.reviewCard}>
+            {[myStatement.statement_a, myStatement.statement_b, myStatement.statement_c].map(
+              (text, index) => (
+                <View key={index} style={styles.reviewRow}>
+                  <Text style={[styles.reviewBadge, index === myStatement.lie_index && styles.reviewBadgeLie]}>
+                    {index === myStatement.lie_index ? 'LIE' : formatTtlChoiceLabel(index)}
+                  </Text>
+                  <Text style={styles.reviewText}>{text}</Text>
+                </View>
+              )
+            )}
+          </View>
+          <Pressable style={styles.secondaryBtn} onPress={startEditing}>
+            <Text style={styles.secondaryText}>Edit my statements</Text>
+          </Pressable>
         </GameShell>
       )
     }
     return (
-      <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle="Submit your statements">
+      <GameShell
+        bootstrap={bootstrap}
+        title={batch4GameLabel('two_truths')}
+        subtitle={editingStatements ? 'Update your statements' : 'Submit your statements'}
+      >
         <ScrollView contentContainerStyle={styles.form}>
           <Text style={styles.help}>Write two truths and one lie. Tap which one is the lie.</Text>
           {[0, 1, 2].map((index) => {
@@ -177,8 +232,23 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
             )
           })}
           <Pressable style={styles.primaryBtn} disabled={submitting} onPress={() => void submitStatements()}>
-            <Text style={styles.primaryText}>{submitting ? 'Submitting…' : 'Submit statements'}</Text>
+            <Text style={styles.primaryText}>
+              {submitting
+                ? 'Submitting…'
+                : editingStatements
+                  ? 'Update statements'
+                  : 'Submit statements'}
+            </Text>
           </Pressable>
+          {editingStatements && myStatement ? (
+            <Pressable
+              style={styles.secondaryBtn}
+              disabled={submitting}
+              onPress={() => setEditingStatements(false)}
+            >
+              <Text style={styles.secondaryText}>Cancel</Text>
+            </Pressable>
+          ) : null}
         </ScrollView>
       </GameShell>
     )
@@ -205,6 +275,19 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
 
   const featuredName = playerDisplayName(currentRound.submitter_player_id, bootstrap.players)
 
+  const liveBoard = (
+    <LeaderboardPanel
+      title="Leaderboard"
+      rows={liveScores.map((row) => ({
+        id: row.id,
+        name: row.name,
+        score: row.score,
+        highlight: row.id === bootstrap.myPlayerId,
+      }))}
+      highlightId={bootstrap.myPlayerId}
+    />
+  )
+
   if (currentRound.status === 'finished') {
     return (
       <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={`Round ${currentRound.round_number}`}>
@@ -225,6 +308,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
         <Text style={styles.waiting}>
           {revealSeconds && revealSeconds > 0 ? `Next round in ${revealSeconds}s…` : 'Waiting for next round…'}
         </Text>
+        {liveBoard}
       </GameShell>
     )
   }
@@ -243,13 +327,17 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
             ))}
           </View>
         ) : null}
+        {liveBoard}
       </GameShell>
     )
   }
 
+  const lockedOut = !myGuess && timeExpired
+
   return (
     <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={`Round ${currentRound.round_number}`}>
       <Text style={styles.featured}>Which is {featuredName}&apos;s lie?</Text>
+      {timerActive && !myGuess && !timeExpired ? <TimerBadge seconds={secondsLeft} /> : null}
       {metadata ? (
         <View style={styles.choices}>
           {metadata.statements.map((text, index) => {
@@ -258,7 +346,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
               <Pressable
                 key={index}
                 style={[styles.choice, selected && styles.choiceSelected]}
-                disabled={submitting || !!myGuess}
+                disabled={submitting || !!myGuess || lockedOut}
                 onPress={() => void submitGuess(index)}
               >
                 <Text style={styles.choiceBadge}>{formatTtlChoiceLabel(index)}</Text>
@@ -272,7 +360,10 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
         <Text style={styles.locked}>
           Guess locked — {myGuess.is_correct ? 'correct!' : 'wrong'}
         </Text>
+      ) : lockedOut ? (
+        <Text style={styles.locked}>Time&apos;s up — waiting for results…</Text>
       ) : null}
+      {liveBoard}
     </GameShell>
   )
 }
@@ -314,6 +405,40 @@ const makeStyles = (theme: Theme) =>
   },
   // white on the solid rose button — intentional
   primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  secondaryBtn: {
+    backgroundColor: theme.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  secondaryText: { color: theme.text, fontWeight: '700', fontSize: 15 },
+  reviewCard: {
+    backgroundColor: theme.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: 14,
+    gap: 10,
+    marginTop: 16,
+  },
+  reviewRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  reviewBadge: {
+    color: theme.textMuted,
+    fontWeight: '800',
+    fontSize: 12,
+    backgroundColor: theme.bg,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    minWidth: 34,
+    textAlign: 'center',
+  },
+  // white text on the solid rose "LIE" badge — intentional
+  reviewBadgeLie: { color: '#fff', backgroundColor: theme.primary },
+  reviewText: { color: theme.text, fontSize: 15, flex: 1, lineHeight: 21 },
   featured: { color: theme.text, fontSize: 18, fontWeight: '700' },
   choices: { gap: 10, marginTop: 8 },
   choice: {

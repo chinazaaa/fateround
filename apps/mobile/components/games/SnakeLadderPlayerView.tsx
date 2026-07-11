@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import {
   type SnakeLadderPlayerState,
@@ -21,8 +21,14 @@ import { snakeLadderLeaderboard } from '@/lib/finish-leaderboards'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { SnakeLadderBoard } from '@/components/games/snake-ladder/SnakeLadderBoard'
+import { SnakeLadderDie } from '@/components/games/snake-ladder/SnakeLadderDie'
+import { SnakeLadderTurnBar } from '@/components/games/snake-ladder/SnakeLadderTurnBar'
+import { useAbsoluteDeadline } from '@/components/party/useAbsoluteDeadline'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+
+/** Minimum time the die keeps spinning after a roll, so the moment reads as tactile. */
+const ROLL_MIN_MS = 700
 
 const COLOR_HEX: Record<string, string> = {
   red: '#ef4444',
@@ -37,6 +43,8 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
   const [session, setSession] = useState<SnakeLadderSession | null>(null)
   const [states, setStates] = useState<SnakeLadderPlayerState[]>([])
   const [acting, setActing] = useState(false)
+  const [rolling, setRolling] = useState(false)
+  const rollStartedRef = useRef(0)
   const styles = useThemedStyles(makeStyles)
 
   const loadGameState = useCallback(async (): Promise<{ state: null; ok: boolean }> => {
@@ -83,6 +91,11 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
 
   const turnPlayerId = session ? currentPlayerId(session) : null
   const isMyTurn = turnPlayerId === bootstrap.myPlayerId
+  const turnPlayerName = bootstrap.players.find((p) => p.id === turnPlayerId)?.name ?? null
+
+  const timerActive = bootstrap.screen === 'playing' && session?.phase !== 'finished'
+  const hasTimer = timerActive && !!session?.turn_deadline_at
+  const secondsLeft = useAbsoluteDeadline(session?.turn_deadline_at, hasTimer)
 
   useGameTurnAlerts({
     gameCode: bootstrap.code,
@@ -96,12 +109,18 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
   const roll = async () => {
     if (!bootstrap.myResumeToken || acting || !isMyTurn) return
     setActing(true)
+    setRolling(true)
+    rollStartedRef.current = Date.now()
     try {
       playSound('dice')
       await postSnakeLadderRoll(bootstrap.code, bootstrap.myResumeToken)
       await bootstrap.load()
     } finally {
       setActing(false)
+      // Keep the die visibly spinning for at least ROLL_MIN_MS before it settles.
+      const wait = Math.max(0, ROLL_MIN_MS - (Date.now() - rollStartedRef.current))
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait))
+      setRolling(false)
     }
   }
 
@@ -135,6 +154,15 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('snake_and_ladder')} subtitle={session.status_message ?? bootstrap.code}>
+      <View style={styles.turnBarWrap}>
+        <SnakeLadderTurnBar
+          turnPlayerName={turnPlayerName}
+          isMyTurn={isMyTurn}
+          secondsLeft={secondsLeft}
+          hasTimer={hasTimer}
+        />
+      </View>
+
       <SnakeLadderBoard states={states} highlightSquare={session.last_to} />
 
       <View style={styles.list}>
@@ -154,15 +182,18 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
         })}
       </View>
 
-      {session.last_roll ? (
-        <Text style={styles.rollInfo}>
-          Last roll: {session.last_roll}
-          {session.last_from != null && session.last_to != null ? ` (${session.last_from} → ${session.last_to})` : ''}
-        </Text>
-      ) : null}
+      <View style={styles.dieRow}>
+        <SnakeLadderDie value={session.last_roll ?? 1} rolling={rolling} />
+        {session.last_roll && !rolling ? (
+          <Text style={styles.rollInfo}>
+            Last roll: {session.last_roll}
+            {session.last_from != null && session.last_to != null ? `\n${session.last_from} → ${session.last_to}` : ''}
+          </Text>
+        ) : null}
+      </View>
 
-      <Pressable style={[styles.btn, (!isMyTurn || acting) && styles.btnDisabled]} disabled={!isMyTurn || acting} onPress={() => void roll()}>
-        <Text style={styles.btnText}>{isMyTurn ? (acting ? 'Rolling…' : 'Roll dice') : 'Waiting for turn…'}</Text>
+      <Pressable style={[styles.btn, (!isMyTurn || acting || rolling) && styles.btnDisabled]} disabled={!isMyTurn || acting || rolling} onPress={() => void roll()}>
+        <Text style={styles.btnText}>{isMyTurn ? (acting || rolling ? 'Rolling…' : '🎲 Roll dice') : 'Waiting for turn…'}</Text>
       </Pressable>
     </GameShell>
   )
@@ -176,7 +207,9 @@ const makeStyles = (theme: Theme) =>
   dot: { width: 14, height: 14, borderRadius: 7 },
   name: { color: theme.text, flex: 1, fontWeight: '600' },
   pos: { color: '#fcd34d', fontWeight: '700' },
-  rollInfo: { color: theme.textMuted, textAlign: 'center', marginVertical: 12 },
+  turnBarWrap: { marginBottom: 12 },
+  dieRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14, marginVertical: 12 },
+  rollInfo: { color: theme.textMuted, textAlign: 'center' },
   btn: { backgroundColor: theme.primary, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
   btnDisabled: { opacity: 0.45 },
   // white on the solid rose button — intentional

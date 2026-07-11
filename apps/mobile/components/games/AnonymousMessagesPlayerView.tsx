@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { uniqueTopic } from '@/lib/realtime'
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -14,17 +16,19 @@ import { type AnonymousMessage, type Game, type Player } from '@fateround/shared
 import { batch9GameLabel } from '@fateround/shared/batch-9-games'
 import {
   anonymousPlayerCanPost,
-  anonymousSessionSecondsLeft,
-  formatSessionCountdown,
   isPlayerBanned,
 } from '@fateround/shared/anonymous-messages'
 import { GameLoading, GameNotFound, GameShell, WaitingPanel } from '@/components/game/GameChrome'
-import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { GifPickerSheet } from '@/components/games/anonymous/GifPickerSheet'
+import { EmojiPickerSheet } from '@/components/games/anonymous/EmojiPickerSheet'
+import { AnonymousSessionTimerBar } from '@/components/games/anonymous/AnonymousSessionTimerBar'
+import { AnonymousRoomSessionSummary } from '@/components/games/anonymous/AnonymousRoomSessionSummary'
+import { AnonymousLobbyDetail } from '@/components/games/anonymous/AnonymousLobbyDetail'
+import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { autoJoinGame } from '@/lib/api'
-import { postAnonymousGif, postAnonymousMessage } from '@/lib/game-api'
+import { leaveGame, postAnonymousGif, postAnonymousMessage } from '@/lib/game-api'
 import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
-import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
+import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 import { ANONYMOUS_MESSAGE_SELECT, ANONYMOUS_ROOM_BAN_SELECT } from '@/lib/supabase-selects'
 import type { Theme } from '@/constants/theme'
@@ -53,6 +57,11 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   const [replyTo, setReplyTo] = useState<AnonymousMessage | null>(null)
   const [gifOpen, setGifOpen] = useState(false)
   const [reactingId, setReactingId] = useState<string | null>(null)
+  // 'composer' inserts into the message text; a messageId opens a free-choice
+  // reaction picker for that message.
+  const [emojiTarget, setEmojiTarget] = useState<'composer' | { messageId: string } | null>(null)
+  const [shareOpen, setShareOpen] = useState(false)
+  const [leaving, setLeaving] = useState(false)
 
   const { reactions, broadcastReaction } = useAnonymousReactions(code, screen === 'active')
 
@@ -154,8 +163,6 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     }
   }, [code, loadMessages, myPlayerId, screen, syncScreen])
 
-  void timerTick
-  const sessionSeconds = anonymousSessionSecondsLeft(game?.session_started_at)
   const myPlayer = players.find((p) => p.id === myPlayerId)
   const canPost =
     !!game &&
@@ -218,6 +225,42 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     setReactingId(null)
   }
 
+  const handleEmojiPick = (emoji: string) => {
+    if (emojiTarget === 'composer') {
+      setMessageInput((prev) => prev + emoji)
+    } else if (emojiTarget && typeof emojiTarget === 'object') {
+      toggleReaction(emojiTarget.messageId, emoji)
+    }
+    setEmojiTarget(null)
+  }
+
+  const confirmLeave = () => {
+    Alert.alert('Leave this room?', 'You can rejoin later if there is room.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Leave', style: 'destructive', onPress: () => void doLeave() },
+    ])
+  }
+
+  const doLeave = async () => {
+    if (leaving) return
+    const session = await getPlayerSession(code)
+    if (!session?.resumeToken || !myPlayerId) {
+      setJoinError('Your session expired — rejoin to continue')
+      return
+    }
+    setLeaving(true)
+    try {
+      await leaveGame(code, myPlayerId, session.resumeToken)
+      await clearPlayerSession(code)
+      setMyPlayerId(null)
+      setScreen('join')
+    } catch (err) {
+      setJoinError(err instanceof Error ? err.message : 'Failed to leave')
+    } finally {
+      setLeaving(false)
+    }
+  }
+
   const playerCount = useMemo(() => players.filter((p) => !p.spectator).length, [players])
 
   if (screen === 'loading') return <GameLoading />
@@ -245,31 +288,44 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   if (screen === 'waiting' && game) {
     return (
       <GameShell title={game.title || batch9GameLabel('anonymous_messages')} subtitle="Lobby">
-        <WaitingPanel message={`Waiting for host to start… ${playerCount} in room`} />
+        <ScrollView contentContainerStyle={styles.lobbyScroll}>
+          <WaitingPanel message="Waiting for the host to start the session…" />
+          <AnonymousLobbyDetail game={game} players={players} myName={myName} />
+          <Pressable style={styles.shareBtn} onPress={() => setShareOpen(true)}>
+            <Text style={styles.shareBtnText}>Invite others</Text>
+          </Pressable>
+          {myPlayerId ? (
+            <Pressable
+              style={[styles.leaveBtn, leaving && styles.btnDisabled]}
+              disabled={leaving}
+              onPress={confirmLeave}
+            >
+              <Text style={styles.leaveBtnText}>{leaving ? 'Leaving…' : 'Leave room'}</Text>
+            </Pressable>
+          ) : null}
+          {joinError ? <Text style={styles.error}>{joinError}</Text> : null}
+        </ScrollView>
+        <ShareGameSheet visible={shareOpen} gameCode={code} onClose={() => setShareOpen(false)} />
       </GameShell>
     )
   }
 
   if (screen === 'finished' && game) {
     return (
-      <GameFinishPanel
-        bootstrap={{ code, game, players, myPlayerId, load }}
-        title="Session ended"
-        detail="This anonymous room has closed."
-        showPlayAgain={false}
-      />
+      <GameShell title={game.title || batch9GameLabel('anonymous_messages')} subtitle="Session ended">
+        <ScrollView contentContainerStyle={styles.lobbyScroll}>
+          <AnonymousRoomSessionSummary game={game} playerCount={players.length} />
+        </ScrollView>
+      </GameShell>
     )
   }
 
   return (
     <GameShell
       title={game?.title || batch9GameLabel('anonymous_messages')}
-      subtitle={
-        game?.session_started_at
-          ? `Time left ${formatSessionCountdown(sessionSeconds)}`
-          : `${playerCount} in room`
-      }
+      subtitle={`${playerCount} in room`}
     >
+      <AnonymousSessionTimerBar game={game} tick={timerTick} />
       {!canChat ? (
         <Text style={styles.viewOnly}>View only — you joined after the session started.</Text>
       ) : null}
@@ -331,6 +387,15 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
                       <Text style={styles.emojiBarItem}>{e}</Text>
                     </Pressable>
                   ))}
+                  <Pressable
+                    onPress={() => {
+                      setReactingId(null)
+                      setEmojiTarget({ messageId: item.id })
+                    }}
+                    hitSlop={4}
+                  >
+                    <Text style={styles.emojiBarReply}>＋ React</Text>
+                  </Pressable>
                   <Pressable onPress={() => setReplyTo(item)} hitSlop={4}>
                     <Text style={styles.emojiBarReply}>↩ Reply</Text>
                   </Pressable>
@@ -356,6 +421,9 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
             </View>
           ) : null}
           <View style={styles.composer}>
+            <Pressable style={styles.gifBtn} onPress={() => setEmojiTarget('composer')} disabled={sending}>
+              <Text style={styles.emojiBtnText}>😀</Text>
+            </Pressable>
             <Pressable style={styles.gifBtn} onPress={() => setGifOpen(true)} disabled={sending}>
               <Text style={styles.gifBtnText}>GIF</Text>
             </Pressable>
@@ -378,7 +446,22 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         </View>
       ) : null}
 
+      {myPlayerId ? (
+        <Pressable
+          style={[styles.leaveBtnQuiet, leaving && styles.btnDisabled]}
+          disabled={leaving}
+          onPress={confirmLeave}
+        >
+          <Text style={styles.leaveBtnText}>{leaving ? 'Leaving…' : 'Leave room'}</Text>
+        </Pressable>
+      ) : null}
+
       <GifPickerSheet visible={gifOpen} onPick={(url) => void sendGif(url)} onClose={() => setGifOpen(false)} />
+      <EmojiPickerSheet
+        visible={emojiTarget !== null}
+        onPick={handleEmojiPick}
+        onClose={() => setEmojiTarget(null)}
+      />
     </GameShell>
   )
 }
@@ -467,6 +550,33 @@ const makeStyles = (theme: Theme) =>
     paddingVertical: 12,
   },
   gifBtnText: { color: theme.primaryMuted, fontSize: 13, fontWeight: '800' },
+  emojiBtnText: { fontSize: 18 },
+  lobbyScroll: { gap: 12, paddingVertical: 8 },
+  shareBtn: {
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  shareBtnText: { color: theme.primaryMuted, fontSize: 15, fontWeight: '700' },
+  leaveBtn: {
+    borderWidth: 1,
+    borderColor: theme.error,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  leaveBtnQuiet: {
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  leaveBtnText: { color: theme.error, fontSize: 15, fontWeight: '700' },
   composer: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   input: {
     flex: 1,

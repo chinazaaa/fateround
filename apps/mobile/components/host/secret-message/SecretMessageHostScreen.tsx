@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Platform, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native'
+import { captureRef } from 'react-native-view-shot'
+import * as Sharing from 'expo-sharing'
 import type { AnonymousMessage, Game, Player } from '@fateround/shared'
 import { postFinishGame, postPlayAgain } from '@/lib/game-api'
 import { apiUrl } from '@/lib/config'
+import { gameTypeMeta } from '@/lib/game-type-meta'
 import { HostChrome } from '@/components/host/HostChrome'
 import { GameFinishedActions } from '@/components/lifecycle/GameFinishedActions'
 import { useSecretMessageInbox } from '@/components/host/secret-message/useSecretMessageInbox'
+import { ShareMessageCard } from '@/components/host/secret-message/ShareMessageCard'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
@@ -29,8 +33,13 @@ export function SecretMessageHostScreen({ gameCode, hostToken, game, players, on
   const { messages, loading, removeMessage } = useSecretMessageInbox(gameCode, isOpen)
   const [acting, setActing] = useState(false)
   const [removingId, setRemovingId] = useState<string | null>(null)
+  const [sharingId, setSharingId] = useState<string | null>(null)
+  const [shareTarget, setShareTarget] = useState<AnonymousMessage | null>(null)
   const [error, setError] = useState<string | null>(null)
   const scrollRef = useRef<ScrollView | null>(null)
+  const cardRef = useRef<View>(null)
+  const sharingLock = useRef(false)
+  const headerEmoji = gameTypeMeta('secret_message').emoji
 
   // Auto-scroll the inbox to the newest message as it arrives.
   useEffect(() => {
@@ -80,6 +89,36 @@ export function SecretMessageHostScreen({ gameCode, hostToken, game, players, on
       setError(err instanceof Error ? err.message : 'Failed to remove message')
     } finally {
       setRemovingId(null)
+    }
+  }
+
+  const shareMessage = async (message: AnonymousMessage) => {
+    const text = message.text?.trim()
+    if (!text || sharingLock.current) return
+    sharingLock.current = true
+    setShareTarget(message)
+    setSharingId(message.id)
+    setError(null)
+    try {
+      // Let the off-screen card re-render with this message before snapshotting.
+      await new Promise((resolve) => setTimeout(resolve, 80))
+      const uri = await captureRef(cardRef, { format: 'png', quality: 1 })
+      if (Platform.OS === 'ios') {
+        await Share.share({ url: uri, message: text })
+      } else if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Share message' })
+      } else {
+        await Share.share({ message: text })
+      }
+    } catch (err) {
+      // A user-cancelled share dialog throws on some platforms — don't surface it.
+      const msg = err instanceof Error ? err.message : ''
+      if (!/cancel|dismiss/i.test(msg)) {
+        setError('Could not share image')
+      }
+    } finally {
+      sharingLock.current = false
+      setSharingId(null)
     }
   }
 
@@ -156,18 +195,34 @@ export function SecretMessageHostScreen({ gameCode, hostToken, game, players, on
                     )}
                     <Text style={styles.messageTime}>{formatTime(message.created_at)}</Text>
                   </View>
-                  <Pressable
-                    style={styles.removeBtn}
-                    disabled={removingId === message.id}
-                    onPress={() => void deleteMessage(message)}
-                    hitSlop={8}
-                  >
-                    {removingId === message.id ? (
-                      <ActivityIndicator color={styles.removeBtnText.color} />
-                    ) : (
-                      <Text style={styles.removeBtnText}>Remove</Text>
-                    )}
-                  </Pressable>
+                  <View style={styles.messageActions}>
+                    {message.text?.trim() ? (
+                      <Pressable
+                        style={styles.actionBtn}
+                        disabled={sharingId === message.id}
+                        onPress={() => void shareMessage(message)}
+                        hitSlop={8}
+                      >
+                        {sharingId === message.id ? (
+                          <ActivityIndicator color={styles.shareBtnText.color} />
+                        ) : (
+                          <Text style={styles.shareBtnText}>Share</Text>
+                        )}
+                      </Pressable>
+                    ) : null}
+                    <Pressable
+                      style={styles.actionBtn}
+                      disabled={removingId === message.id}
+                      onPress={() => void deleteMessage(message)}
+                      hitSlop={8}
+                    >
+                      {removingId === message.id ? (
+                        <ActivityIndicator color={styles.removeBtnText.color} />
+                      ) : (
+                        <Text style={styles.removeBtnText}>Remove</Text>
+                      )}
+                    </Pressable>
+                  </View>
                 </View>
               ))}
             </ScrollView>
@@ -180,6 +235,17 @@ export function SecretMessageHostScreen({ gameCode, hostToken, game, players, on
       ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
+
+      {/* Off-screen story card snapshotted for image sharing. */}
+      <View style={styles.offscreen} pointerEvents="none">
+        <View ref={cardRef} collapsable={false}>
+          <ShareMessageCard
+            messageText={shareTarget?.text ?? ''}
+            gameTitle={game.title || 'Secret Message'}
+            headerEmoji={headerEmoji}
+          />
+        </View>
+      </View>
     </HostChrome>
   )
 }
@@ -249,7 +315,10 @@ const makeStyles = (theme: Theme) =>
     messageBody: { flex: 1, gap: 4 },
     messageText: { color: theme.text, fontSize: 15, lineHeight: 21 },
     messageTime: { color: theme.textFaint, fontSize: 11 },
-    removeBtn: { paddingVertical: 2, paddingHorizontal: 4 },
+    messageActions: { alignItems: 'flex-end', gap: 8 },
+    actionBtn: { paddingVertical: 2, paddingHorizontal: 4 },
+    shareBtnText: { color: theme.primaryMuted, fontSize: 13, fontWeight: '700' },
     removeBtnText: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },
     error: { color: theme.error, fontSize: 14 },
+    offscreen: { position: 'absolute', left: -10000, top: 0 },
   })

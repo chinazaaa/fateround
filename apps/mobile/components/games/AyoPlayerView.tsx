@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { StyleSheet, Text } from 'react-native'
+import { Pressable, StyleSheet, Text } from 'react-native'
 import { legalMovesForSide, sideForPlayer, currentTurnPlayerId } from '@fateround/shared/ayo'
 import type { AyoSession, Game, Player } from '@fateround/shared'
 import { JoinScreen } from '@/components/JoinScreen'
@@ -13,7 +13,8 @@ import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/g
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
-import { postAyoMove } from '@/lib/game-api'
+import { postAyoMove, postAyoResign } from '@/lib/game-api'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { getSupabase } from '@/lib/supabase'
 import { AYO_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
@@ -27,6 +28,7 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
   const [session, setSession] = useState<AyoSession | null>(null)
   const [acting, setActing] = useState(false)
+  const [resignOpen, setResignOpen] = useState(false)
   const { animation, playSowAnimation } = useAyoSowAnimation({ onSeedDrop: playAyoSeedDrop })
 
   const loadGameState = useCallback(
@@ -113,6 +115,21 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
+  const confirmResign = () => {
+    const token = bootstrap.myResumeToken
+    if (!token) return
+    void (async () => {
+      setActing(true)
+      try {
+        await postAyoResign(bootstrap.code, token)
+        setResignOpen(false)
+        await bootstrap.load()
+      } finally {
+        setActing(false)
+      }
+    })()
+  }
+
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
   if (bootstrap.screen === 'join' && bootstrap.game) {
@@ -184,6 +201,27 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
       {mySide && bootstrap.myPlayerId ? (
         <Text style={styles.sideLabel}>You are {nameOf(bootstrap.myPlayerId)}</Text>
       ) : null}
+      {mySide ? (
+        <Pressable
+          style={styles.resignBtn}
+          disabled={acting || animation.animating}
+          onPress={() => {
+            if (bootstrap.myResumeToken) setResignOpen(true)
+          }}
+        >
+          <Text style={styles.resignText}>Resign</Text>
+        </Pressable>
+      ) : null}
+      <ConfirmDialog
+        visible={resignOpen}
+        title="Resign this game?"
+        message="Your opponent will be crowned Ọta."
+        confirmLabel="Resign"
+        destructive
+        confirming={acting}
+        onConfirm={confirmResign}
+        onCancel={() => setResignOpen(false)}
+      />
     </GameShell>
   )
 }
@@ -191,4 +229,13 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     sideLabel: { color: theme.textMuted, textAlign: 'center' },
+    resignBtn: {
+      alignSelf: 'center',
+      marginTop: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 8,
+      backgroundColor: '#3f1515',
+    },
+    resignText: { color: '#fca5a5', fontWeight: '700' },
   })
