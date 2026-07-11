@@ -21,6 +21,7 @@ import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { HostLobbySettingsSheet } from '@/components/host/HostLobbySettingsSheet'
 import { CodewordsHostLobby } from '@/components/host/lobby/CodewordsHostLobby'
 import { TeamRosterHostLobby } from '@/components/host/lobby/TeamRosterHostLobby'
+import { WordPoolLobbyEditor, supportsLobbyWordPool } from '@/components/host/lobby/WordPoolLobbyEditor'
 import { clearPlayerSession, getPlayerSession, type PlayerSession } from '@/lib/secure-session'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
@@ -188,6 +189,9 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
       (game.game_type === 'quick_draw' &&
         game.quick_draw_variant === 'guess' &&
         game.quick_draw_play_mode !== 'individual'))
+  const hasWordPool = !!game && !finished && !replayLobby && supportsLobbyWordPool(game.game_type)
+  const manageTitle =
+    hasTeamManagement && hasWordPool ? 'Teams & pool' : hasTeamManagement ? 'Manage teams' : 'Question pool'
   const readyCount = activePlayers.length
   const gameType = game?.game_type
   const minPlayers = gameType && isLobbyLimitGameType(gameType) ? limits[gameType].min : 1
@@ -237,19 +241,29 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
           />
         ) : null}
 
-        {hasTeamManagement && game ? (
+        {(hasTeamManagement || hasWordPool) && game ? (
           <View style={styles.manageCard}>
             <Pressable style={styles.manageHeader} onPress={() => setManageOpen((v) => !v)}>
-              <Text style={styles.manageTitle}>Manage teams</Text>
+              <Text style={styles.manageTitle}>{manageTitle}</Text>
               <Text style={styles.manageChevron}>{manageOpen ? '▾' : '▸'}</Text>
             </Pressable>
             {manageOpen ? (
               <View style={styles.manageBody}>
-                {game.game_type === 'codewords' ? (
-                  <CodewordsHostLobby gameCode={gameCode} hostToken={hostToken} game={game} players={players} />
-                ) : (
-                  <TeamRosterHostLobby gameCode={gameCode} hostToken={hostToken} game={game} players={players} />
-                )}
+                {hasTeamManagement ? (
+                  game.game_type === 'codewords' ? (
+                    <CodewordsHostLobby gameCode={gameCode} hostToken={hostToken} game={game} players={players} />
+                  ) : (
+                    <TeamRosterHostLobby gameCode={gameCode} hostToken={hostToken} game={game} players={players} />
+                  )
+                ) : null}
+                {hasWordPool ? (
+                  <WordPoolLobbyEditor
+                    gameCode={gameCode}
+                    hostToken={hostToken}
+                    game={game}
+                    onSaved={() => void load()}
+                  />
+                ) : null}
               </View>
             ) : null}
           </View>
@@ -421,7 +435,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   manageChevron: { color: '#9ca3af', fontSize: 16, fontWeight: '800' },
-  manageBody: {},
+  manageBody: { gap: 12 },
   centered: {
     flex: 1,
     backgroundColor: '#0b0b0f',

@@ -11,7 +11,8 @@ import {
 } from 'react-native'
 import { Image } from 'expo-image'
 import { searchGifs, type GifItem } from '@/lib/api'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   visible: boolean
@@ -20,6 +21,8 @@ type Props = {
 }
 
 export function GifPickerSheet({ visible, onPick, onClose }: Props) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   const [query, setQuery] = useState('')
   const [items, setItems] = useState<GifItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -86,7 +89,8 @@ export function GifPickerSheet({ visible, onPick, onClose }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: '#000000aa', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: theme.bgElevated,

@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 function formatClock(total: number): string {
   const s = Math.max(0, Math.floor(total))
@@ -18,6 +19,7 @@ export function GameTimerBar({
   durationSeconds: number
   label?: string
 }) {
+  const styles = useThemedStyles(makeStyles)
   const pct = durationSeconds > 0 ? Math.max(0, Math.min(100, (secondsLeft / durationSeconds) * 100)) : 0
   const low = secondsLeft <= 60
 
@@ -34,7 +36,8 @@ export function GameTimerBar({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: 5, alignSelf: 'stretch' },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   label: {

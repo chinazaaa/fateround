@@ -1,5 +1,6 @@
 import { StyleSheet, Switch, Text, View } from 'react-native'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   label: string
@@ -10,6 +11,8 @@ type Props = {
 }
 
 export function SettingToggle({ label, description, value, onChange, disabled }: Props) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={[styles.row, disabled && styles.disabled]}>
       <View style={styles.copy}>
@@ -27,7 +30,8 @@ export function SettingToggle({ label, description, value, onChange, disabled }:
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',

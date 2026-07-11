@@ -4,7 +4,8 @@ import type { GameType } from '@fateround/shared'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { LibraryPackPicker } from '@/components/create/LibraryPackPicker'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { parseListCsv, parseTriviaCsv, parseWyrCsv, pickCsvText } from '@/lib/file-import'
 import {
   MAX_TRIVIA_CHOICES,
@@ -30,6 +31,7 @@ type Props = {
 }
 
 export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [importError, setImportError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
 
@@ -158,6 +160,8 @@ function ListEditor({
   placeholder: string
   onChange: Props['onChange']
 }) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   const setItem = (idx: number, value: string) =>
     onChange({ prompts: custom.prompts.map((p, i) => (i === idx ? value : p)) })
   const removeItem = (idx: number) =>
@@ -192,6 +196,8 @@ function PairEditor({
   custom: CustomContentState
   onChange: Props['onChange']
 }) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   const setPair = (idx: number, patch: Partial<WyrPairDraft>) =>
     onChange({ pairs: custom.pairs.map((p, i) => (i === idx ? { ...p, ...patch } : p)) })
   const removePair = (idx: number) => onChange({ pairs: custom.pairs.filter((_, i) => i !== idx) })
@@ -233,6 +239,8 @@ function TriviaEditor({
   custom: CustomContentState
   onChange: Props['onChange']
 }) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   const setQ = (idx: number, patch: Partial<TriviaDraft>) =>
     onChange({ trivia: custom.trivia.map((q, i) => (i === idx ? { ...q, ...patch } : q)) })
   const removeQ = (idx: number) => onChange({ trivia: custom.trivia.filter((_, i) => i !== idx) })
@@ -319,6 +327,7 @@ function TriviaEditor({
 }
 
 function RemoveButton({ onPress }: { onPress: () => void }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <Pressable style={styles.remove} onPress={onPress} hitSlop={8}>
       <Text style={styles.removeText}>✕</Text>
@@ -326,7 +335,8 @@ function RemoveButton({ onPress }: { onPress: () => void }) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.md },
   heading: {
     color: theme.text,

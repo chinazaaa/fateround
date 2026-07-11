@@ -10,7 +10,8 @@ import {
 import { WORD_HUNT_TIMER_OPTIONS } from '@fateround/shared/word-hunt'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { TimerPicker } from '@/components/create/TimerPicker'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 export type DurationGameState = {
   /** word_hunt / matching_pairs time limit */
@@ -32,6 +33,7 @@ type Props = {
 }
 
 export function DurationGamesSection({ gameType, value, onChange }: Props) {
+  const styles = useThemedStyles(makeStyles)
   if (gameType === 'sudoku') {
     return (
       <TimerPicker
@@ -81,7 +83,8 @@ export function DurationGamesSection({ gameType, value, onChange }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.md },
   field: { gap: theme.space.sm },
   label: { color: theme.text, fontSize: 16, fontWeight: '800' },

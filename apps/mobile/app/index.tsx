@@ -8,7 +8,9 @@ import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
-import { theme } from '@/constants/theme'
+import { ThemeModeToggle } from '@/components/ui/ThemeModeToggle'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { WEB_BASE_URL } from '@/lib/config'
 import { gameLabel } from '@/lib/mobile-registry'
 import { getRecentGames, type RecentGame } from '@/lib/recent-games'
@@ -17,6 +19,8 @@ const RECENT_COLLAPSED_COUNT = 3
 
 export default function HomeScreen() {
   const router = useRouter()
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   const [gameCode, setGameCode] = useState('')
   const [recent, setRecent] = useState<RecentGame[]>([])
   const [showAllRecent, setShowAllRecent] = useState(false)
@@ -139,13 +143,18 @@ export default function HomeScreen() {
             ) : null}
           </View>
         ) : null}
+
+        <View style={styles.footer}>
+          <ThemeModeToggle />
+        </View>
       </KeyboardFormScreen>
     </SafeAreaView>
   )
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.bg },
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: theme.bg },
   container: {
     paddingHorizontal: theme.space.lg,
     paddingTop: theme.space.md,
@@ -250,4 +259,5 @@ const styles = StyleSheet.create({
   },
   recentLabel: { color: theme.textMuted, fontSize: 14 },
   recentChevron: { color: theme.textFaint, fontSize: 24, fontWeight: '300' },
+  footer: { marginTop: theme.space.sm },
 })

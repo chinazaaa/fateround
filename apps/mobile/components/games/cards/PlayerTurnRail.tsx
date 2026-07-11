@@ -1,6 +1,7 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { Player } from '@fateround/shared'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 export function PlayerTurnRail({
   players,
@@ -13,6 +14,7 @@ export function PlayerTurnRail({
   myPlayerId: string | null
   handCounts: Record<string, number>
 }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
       {players.map((player) => {
@@ -41,7 +43,8 @@ export function PlayerTurnRail({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   rail: { gap: theme.space.sm, paddingVertical: 4 },
   chip: {
     flexDirection: 'row',

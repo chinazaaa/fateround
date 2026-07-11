@@ -1,5 +1,6 @@
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   visible: boolean
@@ -31,6 +32,8 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: Props) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <Pressable style={styles.backdrop} onPress={confirming ? undefined : onCancel}>
@@ -66,7 +69,8 @@ export function ConfirmDialog({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',

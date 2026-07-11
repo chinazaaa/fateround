@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 export type SelectOption<T extends string> = {
   value: T
@@ -23,6 +24,7 @@ type Props<T extends string> = {
  * visible and the full list is one tap away.
  */
 export function SelectField<T extends string>({ value, options, onChange, disabled, title }: Props<T>) {
+  const styles = useThemedStyles(makeStyles)
   const [open, setOpen] = useState(false)
   const current = options.find((o) => o.value === value)
 
@@ -73,7 +75,8 @@ export function SelectField<T extends string>({ value, options, onChange, disabl
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   trigger: {
     flexDirection: 'row',
     alignItems: 'center',

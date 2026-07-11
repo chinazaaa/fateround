@@ -4,7 +4,8 @@ import { formatBoardGameTurnTimer, turnTimerOptionsFor } from '@fateround/shared
 import { MAHJONG_RULESETS, MAHJONG_RULESET_LABELS } from '@fateround/shared/mahjong-rulesets'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { TimerPicker } from '@/components/create/TimerPicker'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 export type MahjongLobbyState = {
   timerSeconds: number
@@ -21,6 +22,7 @@ type Props = {
 }
 
 export function MahjongLobbySection({ value, onChange }: Props) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.wrap}>
       <TimerPicker
@@ -47,7 +49,8 @@ export function MahjongLobbySection({ value, onChange }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.md },
   field: { gap: theme.space.sm },
   label: { color: theme.text, fontSize: 16, fontWeight: '800' },

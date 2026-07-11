@@ -10,7 +10,8 @@ import {
 } from '@fateround/shared/poll-games'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { SettingToggle } from '@/components/create/SettingToggle'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 export type PairVoteMode = 'one_each' | 'any'
 export type PlayerQuestionsOrder = 'players_first' | 'uploaded_first' | 'mixed'
@@ -48,6 +49,7 @@ type Props = {
 }
 
 export function PollQuestionsSection({ gameType, value, onChange }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const showPair = isPairGame(gameType)
   const showPlayer = supportsPlayerQuestions(gameType)
 
@@ -88,7 +90,8 @@ export function PollQuestionsSection({ gameType, value, onChange }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.md },
   field: { gap: theme.space.sm },
   label: { color: theme.text, fontSize: 16, fontWeight: '800' },

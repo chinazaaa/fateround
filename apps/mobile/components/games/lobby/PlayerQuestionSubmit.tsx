@@ -14,7 +14,8 @@ import {
   postPlayerQuestionWyr,
 } from '@/lib/game-api'
 import { uniqueTopic } from '@/lib/realtime'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type QuestionRow = {
   id: string
@@ -41,6 +42,8 @@ type Props = {
 }
 
 export function PlayerQuestionSubmit({ gameCode, gameType, playerId, resumeToken }: Props) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   const isBinary = isBinaryChoiceGame(gameType)
   const [mine, setMine] = useState<QuestionRow[]>([])
   const [optionA, setOptionA] = useState('')
@@ -186,7 +189,8 @@ export function PlayerQuestionSubmit({ gameCode, gameType, playerId, resumeToken
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   card: {
     backgroundColor: theme.surface,
     borderRadius: theme.radius.lg,

@@ -2,7 +2,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import type { GameType } from '@fateround/shared'
 import { CODEWORDS_TIMER_OPTIONS, formatPollRoundTimer } from '@fateround/shared/create-party-games'
 import { TimerPicker } from '@/components/create/TimerPicker'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 export type CodewordsLobbyState = {
   spymasterTimer: number
@@ -22,6 +23,7 @@ type Props = {
 }
 
 export function CodewordsLobbySection({ value, onChange, canShuffle, shuffling, onShuffle }: Props) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.wrap}>
       <TimerPicker
@@ -47,7 +49,8 @@ export function CodewordsLobbySection({ value, onChange, canShuffle, shuffling, 
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.md },
   shuffle: {
     backgroundColor: theme.bgElevated,

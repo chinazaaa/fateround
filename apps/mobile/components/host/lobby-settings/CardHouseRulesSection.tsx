@@ -10,7 +10,8 @@ import {
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { SettingToggle } from '@/components/create/SettingToggle'
 import { TimerPicker } from '@/components/create/TimerPicker'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 /** Editable card-game lobby fields (Whot / Crazy Eights) — routed via lobby-settings. */
 export type CardHouseRulesState = {
@@ -36,6 +37,7 @@ type Props = {
 }
 
 export function CardHouseRulesSection({ gameType, value, onChange }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const isWhot = gameType === 'whot'
   const durationOptions = isWhot ? WHOT_GAME_DURATION_OPTIONS : CRAZY8_GAME_DURATION_OPTIONS
 
@@ -118,7 +120,8 @@ export function CardHouseRulesSection({ gameType, value, onChange }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.md },
   field: { gap: theme.space.sm },
   label: { color: theme.text, fontSize: 16, fontWeight: '800' },

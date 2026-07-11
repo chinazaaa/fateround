@@ -8,7 +8,8 @@ import {
   formatNpatGameDuration,
 } from '@fateround/shared/npat'
 import { TimerPicker } from '@/components/create/TimerPicker'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 export type ICallOnLobbyState = {
   gameDurationSeconds: number
@@ -26,6 +27,7 @@ type Props = {
 }
 
 export function ICallOnLobbySection({ value, onChange }: Props) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.wrap}>
       <TimerPicker
@@ -53,6 +55,7 @@ export function ICallOnLobbySection({ value, onChange }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.md },
 })

@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   label: string
@@ -21,6 +22,7 @@ function RoundStepper({
   max: number
   onChange: (value: number) => void
 }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.stepperRow}>
       <Pressable
@@ -46,6 +48,7 @@ function RoundStepper({
 }
 
 export function RoundCountPicker({ label, hint, value, options, onChange }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const min = options[0] ?? 1
   const max = options[options.length - 1] ?? value
 
@@ -69,7 +72,8 @@ export function RoundCountPicker({ label, hint, value, options, onChange }: Prop
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   field: { gap: theme.space.sm },
   label: {
     color: theme.text,

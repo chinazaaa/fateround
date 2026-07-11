@@ -198,7 +198,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
       })
     return (
       <GameShell bootstrap={bootstrap} title={batch4GameLabel('whot')} subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap} title="Game over" subtitle="Final standings" detail={winner ? `${winner.name} wins` : undefined} leaderboard={cardHandLeaderboard(standings, session.winner_player_id, bootstrap.myPlayerId)} />
+        <GameFinishPanel bootstrap={bootstrap} title={winner ? `${winner.name} wins!` : 'Game over'} subtitle="Final standings" leaderboard={cardHandLeaderboard(standings, session.winner_player_id, bootstrap.myPlayerId)} winnerPlayerId={session.winner_player_id} roundKey={session.id} />
       </GameShell>
     )
   }

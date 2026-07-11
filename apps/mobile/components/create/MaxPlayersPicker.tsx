@@ -4,7 +4,8 @@ import type { GamePlayerLimitsMap } from '@fateround/shared/lobby-limits'
 import { playerCountOptions } from '@fateround/shared/lobby-limits'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { supportsMaxPlayersSetting } from '@/lib/create-settings'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameType: GameType
@@ -24,6 +25,7 @@ function MaxPlayersStepper({
   max: number
   onChange: (value: number) => void
 }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.stepperRow}>
       <Pressable
@@ -73,7 +75,8 @@ export function MaxPlayersPicker({ gameType, value, limits, onChange }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   stepperRow: {
     flexDirection: 'row',
     alignItems: 'center',

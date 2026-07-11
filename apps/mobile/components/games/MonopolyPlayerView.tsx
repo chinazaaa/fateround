@@ -46,7 +46,8 @@ import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { getSupabase } from '@/lib/supabase'
 import { MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
-import { winnerLeaderboard } from '@/lib/finish-leaderboards'
+import { monopolyLeaderboard } from '@/lib/finish-leaderboards'
+import { buildMonopolyStandings } from '@/lib/monopoly-standings'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -242,10 +243,21 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'finished' && bootstrap.game) {
     const winner = bootstrap.players.find((p) => p.id === board?.winner_player_id)
+    const standings = buildMonopolyStandings(
+      states,
+      bootstrap.players,
+      board?.property_owners,
+      board?.property_buildings,
+      board?.mortgaged_properties
+    )
     return (
-      <GameFinishPanel bootstrap={bootstrap}
-        title={batch8GameLabel('monopoly')}
-        detail={winner ? `${winner.name} wins!` : 'Game over'}
+      <GameFinishPanel
+        bootstrap={bootstrap}
+        title={winner ? `${winner.name} wins!` : 'Game over'}
+        subtitle="Final standings"
+        leaderboard={monopolyLeaderboard(standings, bootstrap.myPlayerId)}
+        winnerPlayerId={board?.winner_player_id}
+        roundKey={board?.id}
       />
     )
   }

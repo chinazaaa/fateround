@@ -12,7 +12,8 @@ import { HostNominationBanner } from '@/components/session/HostNominationBanner'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { HeaderAction } from '@/components/ui/HeaderAction'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -22,6 +23,8 @@ type Props = {
 
 export function PlayerSessionShell({ gameCode, game, children }: Props) {
   const router = useRouter()
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   const code = gameCode.toUpperCase()
   const typeLabel = game ? gameLabel(game.game_type) : undefined
   const gameEnded = game?.status === 'finished'
@@ -153,7 +156,8 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.bg },
   redirecting: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: {

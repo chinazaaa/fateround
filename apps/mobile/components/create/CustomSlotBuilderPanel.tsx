@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import type { GameType } from '@fateround/shared'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import {
   CUSTOM_SLOT_COLORS,
   CUSTOM_SLOT_EMOJI,
@@ -26,6 +27,8 @@ type Props = {
 const COUNT_OPTIONS = [2, 3, 4, 5]
 
 export function CustomSlotBuilderPanel({ gameType, people, onChange }: Props) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   const slots = people.slots
   const [showTemplates, setShowTemplates] = useState(() => slots.every((s) => !s.label.trim()))
   const [editingEmoji, setEditingEmoji] = useState<number | null>(null)
@@ -212,7 +215,8 @@ export function CustomSlotBuilderPanel({ gameType, people, onChange }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.md },
   heading: { color: theme.text, fontSize: 18, fontWeight: '800' },
   hint: { color: theme.textFaint, fontSize: 13, lineHeight: 18 },

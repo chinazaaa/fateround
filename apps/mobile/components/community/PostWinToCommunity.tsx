@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Linking, Pressable, StyleSheet, Text } from 'react-native'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import { apiUrl, WEB_BASE_URL } from '@/lib/config'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   /** Leaderboard entry to post to — usually the game type, e.g. "ayo". */
@@ -24,6 +25,7 @@ const posted = new Set<string>()
  * PostWinToCommunity.
  */
 export function PostWinToCommunity({ gameType, gameCode, winnerName, roundKey }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [status, setStatus] = useState<'idle' | 'posted' | 'error' | 'untracked'>('idle')
   const [retry, setRetry] = useState(0)
   const key = `${gameCode}_${roundKey ?? 'default'}`
@@ -100,7 +102,8 @@ export function PostWinToCommunity({ gameType, gameCode, winnerName, roundKey }:
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   card: { alignItems: 'center', gap: 8 },
   added: { color: theme.success, fontSize: 14, fontWeight: '800', textAlign: 'center' },
   muted: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },

@@ -22,6 +22,22 @@ export function gameWebUrl(gameCode: string): string {
   return `${WEB_BASE_URL.replace(/\/$/, '')}/game/${gameCode.trim().toUpperCase()}`
 }
 
+/**
+ * Bare host shown in shared results ("Play at …"). Mirrors the web's
+ * `appDomain()`: use the configured app URL's host, but never a local address —
+ * shares go to other people, so fall back to the production domain.
+ */
+export function shareDomain(): string {
+  const raw = process.env.EXPO_PUBLIC_APP_URL || WEB_BASE_URL
+  try {
+    const host = new URL(raw).host
+    if (host && !/localhost|127\.|0\.0\.0\.0|192\.168\.|10\.|\.local/.test(host)) return host
+  } catch {
+    // fall through
+  }
+  return 'fateround.com'
+}
+
 export function apiUrl(path: string): string {
   const normalized = path.startsWith('/') ? path : `/${path}`
   return `${API_BASE_URL}${normalized}`

@@ -18,7 +18,8 @@ import {
   postWordRushTeamHost,
 } from '@/lib/game-api'
 import { uniqueTopic } from '@/lib/realtime'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 const TEAM_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#eab308']
 
@@ -73,6 +74,7 @@ type Props = {
 
 /** Host lobby N-team roster for Describe It / Word Rush / Quick Draw (guess). */
 export function TeamRosterHostLobby({ gameCode, hostToken, game, players }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const config = useMemo(() => teamLobbyConfig(game, gameCode, hostToken), [game, gameCode, hostToken])
   const [rows, setRows] = useState<TeamRow[]>([])
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -185,7 +187,8 @@ export function TeamRosterHostLobby({ gameCode, hostToken, game, players }: Prop
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   card: {
     backgroundColor: theme.surface,
     borderRadius: theme.radius.lg,

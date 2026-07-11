@@ -5,7 +5,8 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { GameTypePicker } from '@/components/create/GameTypePicker'
 import { gameLabel } from '@/lib/mobile-registry'
 import { gameTypeMeta } from '@/lib/game-type-meta'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   options: GameType[]
@@ -19,6 +20,7 @@ type Props = {
  * inline in the create form.
  */
 export function GameTypePickerField({ options, value, onChange }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [open, setOpen] = useState(false)
   const meta = gameTypeMeta(value)
 
@@ -66,7 +68,8 @@ export function GameTypePickerField({ options, value, onChange }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   trigger: {
     flexDirection: 'row',
     alignItems: 'center',

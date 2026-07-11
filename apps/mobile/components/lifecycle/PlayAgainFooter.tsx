@@ -3,7 +3,8 @@ import { uniqueTopic } from '@/lib/realtime'
 import { StyleSheet, Text } from 'react-native'
 import type { Game } from '@fateround/shared'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 import { getSupabase } from '@/lib/supabase'
 import { useIsHostView } from '@/components/host/HostViewContext'
 
@@ -18,6 +19,7 @@ type Props = {
  * host play-again (`waiting` + `replay_pending`) and reloads when that happens.
  */
 export function PlayAgainFooter({ gameCode, game, onReplayReady }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const isHost = useIsHostView()
 
   useEffect(() => {
@@ -56,7 +58,8 @@ export function PlayAgainFooter({ gameCode, game, onReplayReady }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: {
     alignItems: 'stretch',
     gap: theme.space.md,

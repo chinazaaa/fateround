@@ -2,7 +2,8 @@ import { StyleSheet, Text, View } from 'react-native'
 import type { GameType } from '@fateround/shared'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 import {
   emptyParticipant,
   participantModeOptions,
@@ -17,6 +18,7 @@ type Props = {
 }
 
 export function PlayerModePanel({ gameType, people, onChange }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const options = participantModeOptions(gameType)
   if (!options) return null
 
@@ -44,7 +46,8 @@ export function PlayerModePanel({ gameType, people, onChange }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.sm },
   heading: { color: theme.text, fontSize: 18, fontWeight: '800' },
 })

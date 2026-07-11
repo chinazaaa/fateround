@@ -1,5 +1,6 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, ViewStyle } from 'react-native'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Variant = 'primary' | 'secondary' | 'ghost'
 
@@ -20,6 +21,8 @@ export function AppButton({
   loading = false,
   style,
 }: Props) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   const isPrimary = variant === 'primary'
   const isSecondary = variant === 'secondary'
 
@@ -54,7 +57,8 @@ export function AppButton({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   base: {
     borderRadius: theme.radius.md,
     paddingVertical: 16,

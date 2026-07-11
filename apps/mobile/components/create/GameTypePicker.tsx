@@ -8,7 +8,8 @@ import {
   gameTypeMeta,
   type GameCategory,
 } from '@/lib/game-type-meta'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   options: GameType[]
@@ -19,6 +20,8 @@ type Props = {
 type Filter = GameCategory | 'all'
 
 export function GameTypePicker({ options, value, onChange }: Props) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
 
@@ -115,6 +118,7 @@ function FilterChip({
   active: boolean
   onPress: () => void
 }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <Pressable style={[styles.chip, active && styles.chipActive]} onPress={onPress}>
       <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
@@ -122,7 +126,8 @@ function FilterChip({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.sm },
   search: {
     backgroundColor: theme.bgElevated,

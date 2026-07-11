@@ -4,7 +4,8 @@ import { useRouter } from 'expo-router'
 import { postClaimHost, postDeclineHost } from '@/lib/game-api'
 import { setHostToken } from '@/lib/secure-session'
 import { useHostNomination } from '@/hooks/useHostNomination'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -18,6 +19,7 @@ type Props = {
  */
 export function HostNominationBanner({ gameCode, playerId, resumeToken }: Props) {
   const router = useRouter()
+  const styles = useThemedStyles(makeStyles)
   const { pendingHostPlayerId, refetch } = useHostNomination(gameCode)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -80,7 +82,8 @@ export function HostNominationBanner({ gameCode, playerId, resumeToken }: Props)
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   banner: {
     backgroundColor: theme.primarySoft,
     borderColor: theme.borderAccent,

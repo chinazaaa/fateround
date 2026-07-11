@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { BINGO_COLUMNS, BINGO_DISPLAY_ORDER, BINGO_FREE_INDEX } from '@fateround/shared/bingo'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 const GRID_MAX_WIDTH = 320
 const CELL_GAP = 6
@@ -14,6 +15,8 @@ type Props = {
 }
 
 export function BingoCardGrid({ cells, markedIndices, calledNumbers, marking = false, onMark }: Props) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   const { width: screenWidth } = useWindowDimensions()
   const gridWidth = Math.min(screenWidth - theme.space.lg * 2, GRID_MAX_WIDTH)
   const cellSize = (gridWidth - CELL_GAP * 4) / 5
@@ -65,7 +68,8 @@ export function BingoCardGrid({ cells, markedIndices, calledNumbers, marking = f
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: {
     alignSelf: 'center',
     gap: CELL_GAP,

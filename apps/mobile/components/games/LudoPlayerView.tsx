@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text } from 'react-native'
 import { type LudoPlayerState, type LudoSession } from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import {
+  buildLudoStandings,
   currentPlayerId,
   dedupeLudoMovesForUi,
   parseLudoVariant,
@@ -22,7 +23,7 @@ import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { LUDO_PLAYER_STATE_SELECT, LUDO_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
-import { winnerLeaderboard } from '@/lib/finish-leaderboards'
+import { ludoLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -147,14 +148,16 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'finished') {
     const winner = bootstrap.players.find((p) => p.id === session.winner_player_id)
+    const standings = buildLudoStandings(states, bootstrap.players, session.winner_player_id)
     return (
       <GameShell bootstrap={bootstrap} title={batch3GameLabel('ludo')} subtitle={bootstrap.code}>
         <GameFinishPanel
           bootstrap={bootstrap}
-          title="Game over"
+          title={winner ? `${winner.name} wins!` : 'Game over'}
           subtitle="Final standings"
-          detail={winner ? `${winner.name} wins!` : undefined}
-          leaderboard={winnerLeaderboard(session.winner_player_id, bootstrap.players, bootstrap.myPlayerId)}
+          leaderboard={ludoLeaderboard(standings, bootstrap.myPlayerId)}
+          winnerPlayerId={session.winner_player_id}
+          roundKey={session.id}
         />
       </GameShell>
     )

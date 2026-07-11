@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import type { GameType } from '@fateround/shared'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { parseParticipantsCsv, pickCsvText } from '@/lib/file-import'
 import {
   emptyParticipant,
@@ -26,6 +27,8 @@ const GENDER_OPTIONS: { value: ParticipantGender; label: string }[] = [
 ]
 
 export function ParticipantListEditor({ gameType, people, onChange }: Props) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   const [importError, setImportError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const rows = people.participants
@@ -123,7 +126,8 @@ export function ParticipantListEditor({ gameType, people, onChange }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.md },
   heading: { color: theme.text, fontSize: 18, fontWeight: '800' },
   subtitle: { color: theme.textMuted, fontSize: 14, lineHeight: 20 },

@@ -1,8 +1,10 @@
 import { StyleSheet, View } from 'react-native'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 /** Soft rose/violet glow behind marketing screens. */
 export function AmbientBackground() {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <View style={styles.spotTop} />
@@ -11,7 +13,8 @@ export function AmbientBackground() {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   spotTop: {
     position: 'absolute',
     top: -80,

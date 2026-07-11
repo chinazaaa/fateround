@@ -7,7 +7,8 @@ import { PushMuteToggle } from '@/components/push/PushMuteToggle'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { gameLabel } from '@/lib/mobile-registry'
 
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -19,6 +20,7 @@ type Props = {
 }
 
 export function PlayerSessionMenu({ gameCode, gameType, playerId, playerName, onRenamed, onLeft }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [open, setOpen] = useState(false)
   const [editingName, setEditingName] = useState(false)
 
@@ -99,7 +101,8 @@ export function PlayerSessionMenu({ gameCode, gameType, playerId, playerName, on
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   menuBtn: {
     width: 36,
     height: 36,

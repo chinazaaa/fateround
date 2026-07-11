@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, ViewStyle } from 'react-native'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   label: string
@@ -9,6 +10,7 @@ type Props = {
 }
 
 export function HeaderAction({ label, onPress, accent = false, style }: Props) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <Pressable
       style={({ pressed }) => [
@@ -25,7 +27,8 @@ export function HeaderAction({ label, onPress, accent = false, style }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   btn: {
     borderRadius: theme.radius.pill,
     borderWidth: 1,

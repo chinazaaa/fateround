@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native'
 import type { ReactNode } from 'react'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 export function CardTableArea({
   topCard,
@@ -14,6 +15,7 @@ export function CardTableArea({
   hint?: string | null
   drawAccent?: string
 }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.wrap}>
       <View style={styles.felt}>
@@ -47,7 +49,8 @@ export function CardTableArea({
 const CARD_W = 60
 const CARD_H = 86
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { alignItems: 'center', gap: 10 },
   felt: {
     alignSelf: 'stretch',

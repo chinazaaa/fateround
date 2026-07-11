@@ -1,6 +1,7 @@
 import { ReactNode } from 'react'
 import { StyleSheet, View, ViewStyle } from 'react-native'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   children: ReactNode
@@ -9,10 +10,12 @@ type Props = {
 }
 
 export function SurfaceCard({ children, style, accent = false }: Props) {
+  const styles = useThemedStyles(makeStyles)
   return <View style={[styles.card, accent && styles.accent, style]}>{children}</View>
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   card: {
     backgroundColor: theme.surface,
     borderRadius: theme.radius.lg,

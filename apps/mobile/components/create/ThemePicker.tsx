@@ -2,7 +2,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { GameType } from '@fateround/shared'
 import type { ThemeId } from '@fateround/shared/create-themes'
 import { themesForGameType } from '@fateround/shared/create-themes'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameType: GameType
@@ -11,6 +12,7 @@ type Props = {
 }
 
 export function ThemePicker({ gameType, value, onChange }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const options = themesForGameType(gameType)
 
   return (
@@ -37,7 +39,8 @@ export function ThemePicker({ gameType, value, onChange }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.sm },
   heading: {
     color: theme.text,

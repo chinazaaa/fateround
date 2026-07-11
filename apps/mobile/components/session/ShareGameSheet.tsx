@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import { Modal, Pressable, ScrollView, StyleSheet, Text } from 'react-native'
 import { ShareGameInviteContent } from '@/components/session/ShareGameInviteContent'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 import { buildShareLinks, shareSheetSubtitle } from '@/lib/game-links'
 
 type Props = {
@@ -13,6 +14,7 @@ type Props = {
 }
 
 export function ShareGameSheet({ visible, gameCode, hostToken, resumeToken, onClose }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const subtitle = useMemo(
     () => shareSheetSubtitle(buildShareLinks({ gameCode, hostToken, resumeToken })),
     [gameCode, hostToken, resumeToken]
@@ -41,7 +43,8 @@ export function ShareGameSheet({ visible, gameCode, hostToken, resumeToken, onCl
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.55)',

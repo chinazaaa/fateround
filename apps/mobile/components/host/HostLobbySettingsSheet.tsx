@@ -4,6 +4,7 @@ import type { Game, GameType } from '@fateround/shared'
 import {
   POLL_ROUND_TIMER_OPTIONS,
   formatPollRoundTimer,
+  hasPartyRoomSettings,
   partyRoundOptions,
 } from '@fateround/shared/create-party-games'
 import {
@@ -94,7 +95,8 @@ import {
   type CodewordsLobbyState,
 } from '@/components/host/lobby-settings/CodewordsLobbySection'
 import { isPairGame } from '@fateround/shared/poll-games'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 /** Games whose max-players is editable via the shared lobby-settings route. */
 const LOBBY_MAX_PLAYERS_GAMES = new Set<GameType>([
@@ -112,6 +114,20 @@ const LOBBY_MAX_PLAYERS_GAMES = new Set<GameType>([
   'ayo',
 ])
 
+/** Party games that play a single round — no editable "Rounds" control (mirrors web create). */
+const ROUNDLESS_GAMES = new Set<GameType>([
+  'codewords',
+  'bingo',
+  'two_truths',
+  'word_hunt',
+  'sudoku',
+  'i_call_on',
+  'mafia',
+])
+
+/** Party games with no round/turn timer on `timer_seconds` (bingo uses a call interval). */
+const TIMERLESS_GAMES = new Set<GameType>(['bingo'])
+
 type Props = {
   gameCode: string
   hostToken: string
@@ -126,6 +142,7 @@ type Props = {
  * (mirrors web's PATCH /api/games/[code]): visibility, rounds, timer, late-join.
  */
 export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onClose, onSaved }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const gameType = game.game_type as GameType
   const { limits } = useGamePlayerLimits()
   const isCardGame = isCardHouseRuleGame(gameType)
@@ -154,9 +171,24 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
     isQuickDraw ||
     isCodewords
   const roundOptions = partyRoundOptions(gameType)
-  const showRounds = !isTeamRound && !isQuickDraw && roundOptions.length > 1 && game.rounds_count != null
-  // Games with their own section render their own timer(s).
-  const showTimer = !ownsTimer && game.timer_seconds != null && game.timer_seconds > 0
+  // Rounds apply only to multi-round party games — never single-round ones
+  // (codewords, bingo, two truths, word hunt, sudoku, i-call-on, mafia) or board
+  // games, and not to games that render their own rounds control (team/quick-draw).
+  const showRounds =
+    hasPartyRoomSettings(gameType) &&
+    !ROUNDLESS_GAMES.has(gameType) &&
+    !isTeamRound &&
+    !isQuickDraw &&
+    roundOptions.length > 1 &&
+    game.rounds_count != null
+  // The universal "time per round" only applies to round-timed party games that
+  // don't own their own timer section (poll suite, trivia, two truths, hot seat).
+  const showTimer =
+    !ownsTimer &&
+    hasPartyRoomSettings(gameType) &&
+    !TIMERLESS_GAMES.has(gameType) &&
+    game.timer_seconds != null &&
+    game.timer_seconds > 0
   const showLateJoin = gameSupportsViewerSetting(gameType)
   const showMaxPlayers = isLobbyLimitGameType(gameType) && LOBBY_MAX_PLAYERS_GAMES.has(gameType)
 
@@ -604,7 +636,8 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: '#000000aa', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: theme.bgElevated,

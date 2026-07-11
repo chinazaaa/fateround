@@ -13,7 +13,8 @@ import {
 import { RoundCountPicker } from '@/components/create/RoundCountPicker'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { TimerPicker } from '@/components/create/TimerPicker'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 export type TeamRoundState = {
   mode: 'team' | 'individual'
@@ -37,6 +38,7 @@ type Props = {
 }
 
 export function TeamRoundGamesSection({ gameType, value, onChange }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const isWordRush = gameType === 'word_rush'
 
   return (
@@ -109,7 +111,8 @@ export function TeamRoundGamesSection({ gameType, value, onChange }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.md },
   field: { gap: theme.space.sm },
   label: { color: theme.text, fontSize: 16, fontWeight: '800' },

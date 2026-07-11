@@ -12,7 +12,8 @@ import { QUICK_DRAW_GUESS_TEAM_OPTIONS } from '@fateround/shared/quick-draw-gues
 import { RoundCountPicker } from '@/components/create/RoundCountPicker'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { TimerPicker } from '@/components/create/TimerPicker'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 export type QuickDrawLobbyState = {
   variant: 'lie' | 'guess'
@@ -34,6 +35,7 @@ type Props = {
 }
 
 export function QuickDrawLobbySection({ value, onChange }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const isGuess = value.variant === 'guess'
 
   return (
@@ -113,7 +115,8 @@ export function QuickDrawLobbySection({ value, onChange }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.md },
   field: { gap: theme.space.sm },
   label: { color: theme.text, fontSize: 16, fontWeight: '800' },

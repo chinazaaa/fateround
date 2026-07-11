@@ -9,7 +9,8 @@ import {
   setPlayerSession,
   type PlayerSession,
 } from '@/lib/secure-session'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -32,6 +33,8 @@ export function HostLobbyPlayCard({
   onSessionChange,
   onReload,
 }: Props) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   const [name, setName] = useState(session?.playerName ?? '')
   const [busy, setBusy] = useState(false)
   const [renaming, setRenaming] = useState(false)
@@ -213,7 +216,8 @@ export function HostLobbyPlayCard({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   card: {
     backgroundColor: theme.surface,
     borderRadius: theme.radius.lg,

@@ -1,5 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 export type SegmentOption<T extends string> = {
   value: T
@@ -15,6 +16,7 @@ type Props<T extends string> = {
 }
 
 export function SegmentedControl<T extends string>({ value, options, onChange, disabled }: Props<T>) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={[styles.wrap, disabled && styles.disabled]}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
@@ -39,7 +41,8 @@ export function SegmentedControl<T extends string>({ value, options, onChange, d
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.xs },
   disabled: { opacity: 0.5 },
   row: { flexDirection: 'row', gap: theme.space.xs },

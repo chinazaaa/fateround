@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native'
 import { SelectField } from '@/components/create/SelectField'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   label: string
@@ -12,6 +13,7 @@ type Props = {
 }
 
 export function TimerPicker({ label, hint, value, options, format, onChange }: Props) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
@@ -29,7 +31,8 @@ export function TimerPicker({ label, hint, value, options, format, onChange }: P
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   field: { gap: theme.space.sm },
   label: {
     color: theme.text,

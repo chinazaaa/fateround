@@ -9,7 +9,8 @@ import {
 } from '@fateround/shared/create-board-games'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { TimerPicker } from '@/components/create/TimerPicker'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 export type BoardVariantState = {
   timerSeconds: number
@@ -28,6 +29,7 @@ type Props = {
 }
 
 export function BoardVariantSection({ gameType, value, onChange }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const isLudo = gameType === 'ludo'
 
   return (
@@ -60,7 +62,8 @@ export function BoardVariantSection({ gameType, value, onChange }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.md },
   field: { gap: theme.space.sm },
   label: { color: theme.text, fontSize: 16, fontWeight: '800' },

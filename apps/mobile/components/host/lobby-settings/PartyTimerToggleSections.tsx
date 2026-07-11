@@ -8,7 +8,8 @@ import {
 import { QUIPLASH_SUBMIT_TIMER_OPTIONS, QUIPLASH_VOTE_TIMER_OPTIONS } from '@fateround/shared/quiplash'
 import { SettingToggle } from '@/components/create/SettingToggle'
 import { TimerPicker } from '@/components/create/TimerPicker'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 // --- Mafia ---------------------------------------------------------------
 
@@ -26,6 +27,7 @@ export function MafiaLobbySection({
   value: MafiaLobbyState
   onChange: (patch: Partial<MafiaLobbyState>) => void
 }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.wrap}>
       <TimerPicker
@@ -73,6 +75,7 @@ export function QuiplashLobbySection({
   value: QuiplashLobbyState
   onChange: (patch: Partial<QuiplashLobbyState>) => void
 }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.wrap}>
       <TimerPicker
@@ -101,7 +104,8 @@ export function isQuiplashLobbyGame(gameType: GameType): boolean {
   return gameType === 'quiplash'
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.md },
   toggles: { gap: theme.space.sm },
 })

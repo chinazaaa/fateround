@@ -8,7 +8,8 @@ import { MaxPlayersPicker } from '@/components/create/MaxPlayersPicker'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { ThemePicker } from '@/components/create/ThemePicker'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 import { gameSupportsViewerSetting } from '@fateround/shared/viewers'
 
 type Props = {
@@ -18,6 +19,7 @@ type Props = {
 }
 
 export function UniversalLobbyFields({ state, limits, onChange }: Props) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.stack}>
       <SurfaceCard>
@@ -72,7 +74,8 @@ export function UniversalLobbyFields({ state, limits, onChange }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   stack: { gap: theme.space.md },
   field: { gap: theme.space.sm },
   label: {

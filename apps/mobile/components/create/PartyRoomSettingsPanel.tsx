@@ -49,7 +49,8 @@ import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { SettingToggle } from '@/components/create/SettingToggle'
 import { TimerPicker } from '@/components/create/TimerPicker'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 import { DESCRIBE_IT_TEAM_OPTIONS, type PartyRoomSettings } from '@/lib/create-settings/party-games'
 import { gameLabel } from '@/lib/mobile-registry'
 
@@ -60,6 +61,7 @@ type Props = {
 }
 
 export function PartyRoomSettingsPanel({ gameType, party, onChange }: Props) {
+  const styles = useThemedStyles(makeStyles)
   if (!hasPartyRoomSettings(gameType)) return null
 
   const title = `${gameLabel(gameType)} room`
@@ -564,7 +566,8 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.md },
   heading: {
     color: theme.text,

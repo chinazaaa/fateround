@@ -9,7 +9,8 @@ import {
   postCodewordsRandomizeTeams,
 } from '@/lib/game-api'
 import { uniqueTopic } from '@/lib/realtime'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Team = 'red' | 'blue'
 type Role = 'spymaster' | 'operative'
@@ -32,6 +33,7 @@ const ASSIGN: { team: Team; role: Role; label: string }[] = [
 
 /** Host lobby team/role manager for Codewords (assign / bench / shuffle). */
 export function CodewordsHostLobby({ gameCode, hostToken, game, players }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const [roles, setRoles] = useState<RoleRow[]>([])
   const [busyId, setBusyId] = useState<string | null>(null)
   const [shuffling, setShuffling] = useState(false)
@@ -171,7 +173,8 @@ export function CodewordsHostLobby({ gameCode, hostToken, game, players }: Props
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   card: {
     backgroundColor: theme.surface,
     borderRadius: theme.radius.lg,

@@ -12,7 +12,8 @@ import { HostControlsSheet } from '@/components/host/HostControlsSheet'
 import { HostViewProvider } from '@/components/host/HostViewContext'
 import { GameRouter, hasMobilePlayerView } from '@/components/games/GameRouter'
 import { HeaderAction } from '@/components/ui/HeaderAction'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 import { getPlayerSession, type PlayerSession } from '@/lib/secure-session'
 
 type Props = {
@@ -35,6 +36,7 @@ type HostTab = 'manage' | 'play'
 
 export function HostChrome({ gameCode, hostToken, game, children, playFirst, players, onReload }: Props) {
   const router = useRouter()
+  const styles = useThemedStyles(makeStyles)
   const code = gameCode.toUpperCase()
   const typeLabel = gameLabel(game.game_type)
   const [shareOpen, setShareOpen] = useState(false)
@@ -169,7 +171,8 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.bg },
   header: {
     borderBottomWidth: 1,

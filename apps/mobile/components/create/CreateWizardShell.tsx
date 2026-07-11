@@ -17,7 +17,8 @@ import { AppButton } from '@/components/ui/AppButton'
 import { FormField } from '@/components/ui/FormField'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 import { useGamePlayerLimits } from '@/hooks/useGamePlayerLimits'
 import {
   applyGameTypeChange,
@@ -42,6 +43,7 @@ const STEP_LABELS: Record<CreateWizardStep, string> = {
 
 export function CreateWizardShell() {
   const router = useRouter()
+  const styles = useThemedStyles(makeStyles)
   const { limits } = useGamePlayerLimits()
   const [state, setState] = useState<CreateWizardState>(() =>
     createInitialState(NATIVE_CREATABLE_GAMES[0] ?? 'trivia', limits)
@@ -218,7 +220,8 @@ export function CreateWizardShell() {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.bg },
   container: {
     paddingHorizontal: theme.space.lg,

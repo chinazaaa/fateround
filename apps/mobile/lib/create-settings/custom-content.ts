@@ -1,4 +1,4 @@
-import type { GameType, TriviaCategory } from '@fateround/shared'
+import type { Game, GameType, TriviaCategory } from '@fateround/shared'
 import {
   isBinaryChoiceGame,
   isMostLikelyTo,
@@ -112,6 +112,19 @@ export function packQuestionsToState(
     .map((p) => p.trim())
     .filter(Boolean)
   return { source: 'library', libraryPackTitle: title, prompts: prompts.length ? prompts : [''] }
+}
+
+/** Build editor state from a game's stored pool (for lobby word-pool editing). */
+export function customContentStateFromGame(game: Pick<Game, 'game_type' | 'question_source' | 'custom_questions'>): CustomContentState {
+  const base = defaultCustomContentState()
+  const isCustom = game.question_source === 'custom' && Array.isArray(game.custom_questions) && game.custom_questions.length > 0
+  if (!isCustom) return base
+  return {
+    ...base,
+    ...packQuestionsToState(game.game_type, game.custom_questions as unknown[], ''),
+    source: 'custom',
+    libraryPackTitle: null,
+  }
 }
 
 /**

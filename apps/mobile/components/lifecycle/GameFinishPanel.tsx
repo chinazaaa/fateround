@@ -10,7 +10,8 @@ import { PlayAgainFooter } from '@/components/lifecycle/PlayAgainFooter'
 import { HostFinishedActions } from '@/components/lifecycle/HostFinishedActions'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { useHostView } from '@/components/host/HostViewContext'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type BootstrapLike = {
   code: string
@@ -53,6 +54,7 @@ export function GameFinishPanel({
   winnerPlayerId,
   roundKey,
 }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const game = bootstrap.game
   const host = useHostView()
   if (!game) return null
@@ -94,13 +96,15 @@ export function GameFinishPanel({
         gameTitle={game.title}
         resultTitle={title}
         resultDetail={detail}
+        emoji={winner ? '🏆' : '🏁'}
         leaderboard={leaderboard}
       />
     </ScrollView>
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   scroll: {
     flex: 1,
   },

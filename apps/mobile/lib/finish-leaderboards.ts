@@ -1,6 +1,14 @@
 import type { AyoSession, AyoSide, Participant, Player, TriviaAnswer, Vote } from '@fateround/shared'
+import type { LudoStanding } from '@fateround/shared/ludo'
+import type { SnakeLadderStanding } from '@fateround/shared/snake-and-ladder'
+import { formatMonopolyMoney } from '@fateround/shared/monopoly-board'
 import type { FinishedLeaderboardRow } from '@/components/game/GameChrome'
 import type { AyoVariant } from '@/lib/ayo-sow'
+import type { MonopolyStanding } from '@/lib/monopoly-standings'
+
+function titleCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
 
 export function toLeaderboardRows(
   entries: Array<{ name: string; score: number | string }>,
@@ -90,10 +98,12 @@ export function winnerLeaderboard(
   if (!winner) return []
   const others = players.filter((p) => p.id !== winnerPlayerId && !p.spectator)
   const rows: FinishedLeaderboardRow[] = [
-    { name: winner.name, score: 'Winner', highlight: winner.id === myPlayerId },
+    { name: winner.name, score: 'Winner', you: winner.id === myPlayerId, highlight: winner.id === myPlayerId },
   ]
   for (const p of others) {
-    rows.push({ name: p.name, score: '—', highlight: p.id === myPlayerId })
+    // No score for non-winners — the rank badge already orders them, so leaving
+    // this blank avoids an ugly "—" next to their name.
+    rows.push({ name: p.name, score: '', you: p.id === myPlayerId, highlight: p.id === myPlayerId })
   }
   return rows
 }
@@ -143,6 +153,49 @@ export function ayoLeaderboard(
       you: !!myPlayerId && row.pid === myPlayerId,
       highlight: row.pid === session.winner_player_id,
     }))
+}
+
+/** Ludo finish standings: pieces home out of 4, per color, winner first. */
+export function ludoLeaderboard(
+  standings: LudoStanding[],
+  myPlayerId?: string | null
+): FinishedLeaderboardRow[] {
+  return standings.map((row) => ({
+    name: row.name,
+    score: `${row.finishedCount}/4`,
+    scoreSuffix: 'home',
+    detail: titleCase(row.color),
+    you: !!myPlayerId && row.playerId === myPlayerId,
+    highlight: row.rank === 1,
+  }))
+}
+
+/** Snake & Ladder finish standings: board square reached, per color, winner first. */
+export function snakeLadderLeaderboard(
+  standings: SnakeLadderStanding[],
+  myPlayerId?: string | null
+): FinishedLeaderboardRow[] {
+  return standings.map((row) => ({
+    name: row.name,
+    score: row.position >= 100 ? 'Home' : row.position === 0 ? 'Start' : `Sq ${row.position}`,
+    detail: titleCase(row.color),
+    you: !!myPlayerId && row.playerId === myPlayerId,
+    highlight: row.rank === 1,
+  }))
+}
+
+/** Monopoly finish standings: total net worth, with property count + cash detail. */
+export function monopolyLeaderboard(
+  standings: MonopolyStanding[],
+  myPlayerId?: string | null
+): FinishedLeaderboardRow[] {
+  return standings.map((row) => ({
+    name: row.name,
+    score: formatMonopolyMoney(row.netWorth),
+    detail: `${row.propertyCount} propert${row.propertyCount === 1 ? 'y' : 'ies'} · Cash ${formatMonopolyMoney(row.cash)}`,
+    you: !!myPlayerId && row.playerId === myPlayerId,
+    highlight: row.rank === 1,
+  }))
 }
 
 export function mltVoteLeaderboard(votes: Vote[], participants: Participant[]): FinishedLeaderboardRow[] {

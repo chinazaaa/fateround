@@ -7,8 +7,9 @@ import type { GameType } from '@fateround/shared'
 import { AppButton } from '@/components/ui/AppButton'
 import { useToast } from '@/components/ui/Toast'
 import { gameLabel } from '@/lib/mobile-registry'
-import { WEB_BASE_URL } from '@/lib/config'
-import { theme } from '@/constants/theme'
+import { WEB_BASE_URL, shareDomain } from '@/lib/config'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 import { ShareResultCard } from '@/components/lifecycle/ShareResultCard'
 import type { FinishedLeaderboardRow } from '@/components/game/GameChrome'
 
@@ -20,18 +21,21 @@ type Props = {
   resultTitle?: string
   /** Sub-headline, e.g. "BINGO!". */
   resultDetail?: string | null
+  /** Hero emoji — 🏆 for a winner, 🏁 otherwise. */
+  emoji?: string
   leaderboard?: FinishedLeaderboardRow[]
 }
 
-function buildShareText({ gameCode, gameType, gameTitle, resultTitle, leaderboard }: Props): string {
+function buildShareText({ gameType, gameTitle, resultTitle, resultDetail, emoji = '🏆', leaderboard }: Props): string {
   const label = gameType ? gameLabel(gameType as GameType) : undefined
   const lines: string[] = []
   if (gameTitle) lines.push(gameTitle)
   if (label) lines.push(label)
   lines.push('')
-  if (resultTitle) lines.push(`🏆 ${resultTitle}`)
+  if (resultTitle) lines.push(`${emoji} ${resultTitle}`)
+  if (resultDetail) lines.push(resultDetail)
   if (leaderboard && leaderboard.length > 0) {
-    lines.push('', 'Final leaderboard:')
+    lines.push('', 'Final standings:')
     leaderboard.slice(0, 8).forEach((row, i) => {
       const name = row.you ? `${row.name} (you)` : row.name
       const rawScore = `${row.score}`.trim()
@@ -43,7 +47,7 @@ function buildShareText({ gameCode, gameType, gameTitle, resultTitle, leaderboar
       lines.push(hasScore ? `  ${i + 1}. ${name} — ${score}${detail}` : `  ${i + 1}. ${name}${detail}`)
     })
   }
-  lines.push('', `Play at ${WEB_BASE_URL.replace(/^https?:\/\//, '')}`)
+  lines.push('', `Play at ${shareDomain()}`)
   return lines.join('\n')
 }
 
@@ -52,7 +56,8 @@ function buildShareText({ gameCode, gameType, gameTitle, resultTitle, leaderboar
  * results footer (Share results · Create a new game · View history · Back home).
  */
 export function GameFinishedActions(props: Props) {
-  const { gameCode, gameType, gameTitle, resultTitle, resultDetail } = props
+  const { gameCode, gameType, gameTitle, resultTitle, resultDetail, emoji, leaderboard } = props
+  const styles = useThemedStyles(makeStyles)
   const router = useRouter()
   const { error: toastError } = useToast()
   const cardRef = useRef<View>(null)
@@ -93,6 +98,8 @@ export function GameFinishedActions(props: Props) {
             gameTitle={gameTitle}
             resultTitle={resultTitle}
             resultDetail={resultDetail}
+            emoji={emoji}
+            leaderboard={leaderboard}
           />
         </View>
       </View>
@@ -108,7 +115,8 @@ export function GameFinishedActions(props: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: {
     gap: theme.space.sm,
   },

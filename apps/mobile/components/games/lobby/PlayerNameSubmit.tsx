@@ -5,7 +5,8 @@ import { getSupabase } from '@/lib/supabase'
 import { PARTICIPANT_SELECT } from '@/lib/supabase-selects'
 import { deletePlayerParticipant, postPlayerParticipant } from '@/lib/game-api'
 import { uniqueTopic } from '@/lib/realtime'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Row = { id: string; name: string; gender: 'male' | 'female'; submitted_by_player_id: string | null }
 
@@ -22,6 +23,8 @@ type Props = {
 }
 
 export function PlayerNameSubmit({ gameCode, playerId, resumeToken, genderBased }: Props) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   const [mine, setMine] = useState<Row[]>([])
   const [name, setName] = useState('')
   const [gender, setGender] = useState<'male' | 'female'>('female')
@@ -140,7 +143,8 @@ export function PlayerNameSubmit({ gameCode, playerId, resumeToken, genderBased 
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   card: {
     backgroundColor: theme.surface,
     borderRadius: theme.radius.lg,

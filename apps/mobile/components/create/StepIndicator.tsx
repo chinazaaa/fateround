@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   steps: string[]
@@ -7,6 +8,7 @@ type Props = {
 }
 
 export function StepIndicator({ steps, currentIndex }: Props) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.row}>
       {steps.map((label, index) => {
@@ -25,7 +27,8 @@ export function StepIndicator({ steps, currentIndex }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: theme.space.md,

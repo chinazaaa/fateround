@@ -3,7 +3,8 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import type { GameType } from '@fateround/shared'
 import { fetchLibraryPack, fetchLibraryPacks, type LibraryPackSummary } from '@/lib/api'
 import { packQuestionsToState, type CustomContentState } from '@/lib/create-settings/custom-content'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameType: GameType
@@ -12,6 +13,8 @@ type Props = {
 }
 
 export function LibraryPackPicker({ gameType, custom, onChange }: Props) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   const [packs, setPacks] = useState<LibraryPackSummary[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loadingId, setLoadingId] = useState<string | null>(null)
@@ -99,7 +102,8 @@ export function LibraryPackPicker({ gameType, custom, onChange }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   centered: { paddingVertical: theme.space.lg, alignItems: 'center' },
   error: { color: theme.error, fontSize: 13 },
   empty: { color: theme.textFaint, fontSize: 14, lineHeight: 20 },

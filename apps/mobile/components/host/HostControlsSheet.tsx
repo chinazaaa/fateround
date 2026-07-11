@@ -6,7 +6,8 @@ import { gameSupportsViewerSetting, lateJoinPolicyFromGame } from '@fateround/sh
 import { patchGameSettings, postFinishGame, postPlayAgain, removePlayerAsHost } from '@/lib/game-api'
 import { SettingToggle } from '@/components/create/SettingToggle'
 import { LateJoinPolicyPicker } from '@/components/create/LateJoinPolicyPicker'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   visible: boolean
@@ -37,6 +38,8 @@ export function HostControlsSheet({
   onReload,
   onTransfer,
 }: Props) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -193,7 +196,8 @@ export function HostControlsSheet({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   sheet: { flex: 1, backgroundColor: theme.bg },
   header: {
     flexDirection: 'row',

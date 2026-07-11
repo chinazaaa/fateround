@@ -14,7 +14,8 @@ import { getSupabase, PLAYER_SELECT } from '@/lib/supabase'
 import { postTransferHost, verifyHost } from '@/lib/game-api'
 import { clearHostToken, getPlayerSession } from '@/lib/secure-session'
 import { useHostNomination } from '@/hooks/useHostNomination'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -30,6 +31,8 @@ type Props = {
  */
 export function TransferHostSheet({ gameCode, hostToken, visible, onClose }: Props) {
   const router = useRouter()
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   const { pendingHostPlayerId } = useHostNomination(gameCode)
   const [players, setPlayers] = useState<Player[]>([])
   const [ownPlayerId, setOwnPlayerId] = useState<string | null>(null)
@@ -166,7 +169,8 @@ export function TransferHostSheet({ gameCode, hostToken, visible, onClose }: Pro
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: '#000000aa', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: theme.bgElevated,

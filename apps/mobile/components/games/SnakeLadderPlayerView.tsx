@@ -17,7 +17,7 @@ import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { SNAKE_LADDER_PLAYER_STATE_SELECT, SNAKE_LADDER_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
-import { winnerLeaderboard } from '@/lib/finish-leaderboards'
+import { snakeLadderLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -124,7 +124,7 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
     const winner = bootstrap.players.find((p) => p.id === session.winner_player_id)
     return (
       <GameShell bootstrap={bootstrap} title={batch3GameLabel('snake_and_ladder')} subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap} title="Game over" subtitle="Final standings" detail={winner ? `${winner.name} wins!` : undefined} leaderboard={winnerLeaderboard(session.winner_player_id, bootstrap.players, bootstrap.myPlayerId)} winnerPlayerId={session.winner_player_id} roundKey={session.id} />
+        <GameFinishPanel bootstrap={bootstrap} title={winner ? `${winner.name} wins!` : 'Game over'} subtitle="Final standings" leaderboard={snakeLadderLeaderboard(standings, bootstrap.myPlayerId)} winnerPlayerId={session.winner_player_id} roundKey={session.id} />
       </GameShell>
     )
   }

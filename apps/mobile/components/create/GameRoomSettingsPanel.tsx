@@ -25,7 +25,8 @@ import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { SettingToggle } from '@/components/create/SettingToggle'
 import { TimerPicker } from '@/components/create/TimerPicker'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 import {
   AYO_VARIANT_OPTIONS,
   boardGameTimerKey,
@@ -41,6 +42,7 @@ type Props = {
 }
 
 export function GameRoomSettingsPanel({ gameType, room, onChange }: Props) {
+  const styles = useThemedStyles(makeStyles)
   if (!hasGameRoomSettings(gameType)) return null
 
   const timerKey = boardGameTimerKey(gameType)
@@ -367,7 +369,8 @@ export function GameRoomSettingsPanel({ gameType, room, onChange }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.md },
   heading: {
     color: theme.text,

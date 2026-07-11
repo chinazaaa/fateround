@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import { postPlayAgain } from '@/lib/game-api'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import type { HostViewValue } from '@/components/host/HostViewContext'
 
 type Props = {
@@ -16,6 +17,8 @@ type Props = {
  * view context is present.
  */
 export function HostFinishedActions({ gameCode, host }: Props) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   const [busy, setBusy] = useState<'replay' | 'lobby' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -61,7 +64,8 @@ export function HostFinishedActions({ gameCode, host }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.sm },
   primaryBtn: {
     backgroundColor: theme.primary,

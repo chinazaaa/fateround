@@ -3,7 +3,8 @@ import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-nati
 import * as Clipboard from 'expo-clipboard'
 import { AppButton } from '@/components/ui/AppButton'
 import { GameLinkQrCode } from '@/components/session/GameLinkQrCode'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles } from '@/constants/theme-context'
 import {
   buildShareLinks,
   displayGameUrl,
@@ -25,6 +26,7 @@ export function ShareGameInviteContent({
   resumeToken,
   compact = false,
 }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const code = gameCode.toUpperCase()
   const links = useMemo(
     () => buildShareLinks({ gameCode, hostToken, resumeToken }),
@@ -119,7 +121,8 @@ export function ShareGameInviteContent({
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: {
     gap: theme.space.md,
   },

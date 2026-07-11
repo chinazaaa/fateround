@@ -259,6 +259,24 @@ export function postDescribeItBalance(gameCode: string, hostToken: string) {
   return postJson<{ ok?: boolean }>('/api/describe-it/balance', { gameId: gameCode.toUpperCase(), hostToken })
 }
 
+/** Describe It word pool (newline-joined words; empty resets to platform). */
+export function postDescribeItWords(gameCode: string, hostToken: string, words: string) {
+  return postJson<{ question_source?: string; custom_questions?: unknown[] }>('/api/describe-it/settings', {
+    gameId: gameCode.toUpperCase(),
+    hostToken,
+    words,
+  })
+}
+
+/** Quick Draw word/prompt pool (newline-joined; empty resets to platform). */
+export function postQuickDrawWords(gameCode: string, hostToken: string, words: string) {
+  return postJson<{ question_source?: string; custom_questions?: unknown[] }>('/api/quick-draw/settings', {
+    gameId: gameCode.toUpperCase(),
+    hostToken,
+    words,
+  })
+}
+
 export function postWordRushTeamHost(gameCode: string, hostToken: string, playerId: string, team: number) {
   return postJson<{ success?: boolean }>('/api/word-rush/team', {
     gameId: gameCode.toUpperCase(),
@@ -792,6 +810,18 @@ export function postWordRushSettings(
 ) {
   return postJson<{ ok?: boolean }>('/api/word-rush/settings', {
     gameId: gameCode.toUpperCase(),
+    hostToken,
+    ...patch,
+  })
+}
+
+/** Update the word/question pool (platform / custom / library) in the lobby. */
+export function postLobbyPool(
+  gameCode: string,
+  hostToken: string,
+  patch: { question_source?: string; custom_questions?: unknown[] }
+) {
+  return postJson<{ ok?: boolean }>(`/api/games/${gameCode.toUpperCase()}/lobby-pool`, {
     hostToken,
     ...patch,
   })

@@ -1,6 +1,7 @@
 import { ReactNode } from 'react'
 import { StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native'
-import { theme } from '@/constants/theme'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Props = TextInputProps & {
   label: string
@@ -9,6 +10,8 @@ type Props = TextInputProps & {
 }
 
 export function FormField({ label, hint, footer, style, ...inputProps }: Props) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.wrap}>
       <Text style={styles.label}>{label}</Text>
@@ -23,7 +26,8 @@ export function FormField({ label, hint, footer, style, ...inputProps }: Props) 
   )
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
   wrap: { gap: theme.space.xs },
   label: {
     color: theme.textSecondary,
