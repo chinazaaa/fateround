@@ -36,9 +36,11 @@ import {
   getMahjongState,
   postMahjongClaim,
   postMahjongDiscard,
+  postMahjongExpireTurn,
   postMahjongPass,
   postMahjongRiichi,
 } from '@/lib/game-api'
+import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { mahjongLeaderboard } from '@/lib/finish-leaderboards'
 import { mahjongMeldClaims, isSeatAfterDiscarder, type MeldClaim } from '@/lib/mahjong-claims'
@@ -125,6 +127,14 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
   const sortedHand = myState ? sortMahjongTiles(myState.hand ?? []) : []
   void timerTick
   const secondsLeft = mahjongSecondsLeft(session?.turn_deadline_at)
+
+  // Advance a stalled turn when the per-turn timer runs out (current player, plus
+  // any seat during the claim window — matches web). Server is idempotent.
+  useTurnExpiryTimer({
+    deadlineAt: session?.turn_deadline_at,
+    enabled: bootstrap.screen === 'playing' && (isMyTurn || session?.phase === 'claim'),
+    onExpire: () => postMahjongExpireTurn(bootstrap.code).then(() => bootstrap.load()),
+  })
 
   const act = async (fn: () => Promise<unknown>) => {
     if (!bootstrap.myPlayerId || !bootstrap.myResumeToken || acting) return

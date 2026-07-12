@@ -16,6 +16,7 @@ import { Image } from 'expo-image'
 import { type AnonymousMessage, type Game, type Player } from '@fateround/shared'
 import { batch9GameLabel } from '@fateround/shared/batch-9-games'
 import {
+  ANONYMOUS_ROOM_SESSION_SECONDS,
   anonymousPlayerCanPost,
   isPlayerBanned,
 } from '@fateround/shared/anonymous-messages'
@@ -33,7 +34,8 @@ import { AnonymousBanCountdownBar } from '@/components/games/anonymous/Anonymous
 import { anonymousRoomMaxPlayers } from '@/components/games/anonymous/anonymous-room-helpers'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { autoJoinGame } from '@/lib/api'
-import { leaveGame, postAnonymousGif, postAnonymousMessage, postPlayerReady } from '@/lib/game-api'
+import { leaveGame, postAnonymousGif, postAnonymousMessage, postExpireSession, postPlayerReady } from '@/lib/game-api'
+import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
@@ -332,6 +334,18 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   }, [messages.length, showScrollBtn])
 
   const playerCount = useMemo(() => players.filter((p) => !p.spectator).length, [players])
+
+  // End the room when its 15-minute session window elapses — any active client
+  // pokes the idempotent expire-session route. The timer bar was display-only, so
+  // an all-mobile room never actually finished. Matches web.
+  const anonSessionDeadlineAt = game?.session_started_at
+    ? new Date(new Date(game.session_started_at).getTime() + ANONYMOUS_ROOM_SESSION_SECONDS * 1000).toISOString()
+    : null
+  useTurnExpiryTimer({
+    deadlineAt: anonSessionDeadlineAt,
+    enabled: game?.status === 'active',
+    onExpire: () => postExpireSession(code).then(() => load()),
+  })
 
   if (screen === 'loading') return <GameLoading />
   if (screen === 'not_found') return <GameNotFound gameCode={code} />

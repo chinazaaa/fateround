@@ -39,7 +39,14 @@ import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { postWordRushPrompt, postWordRushSubmit, postWordRushTeam } from '@/lib/game-api'
+import {
+  postWordRushAdvance,
+  postWordRushExpireTurn,
+  postWordRushPrompt,
+  postWordRushSubmit,
+  postWordRushTeam,
+} from '@/lib/game-api'
+import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { getSupabase } from '@/lib/supabase'
 import { WORD_RUSH_ANSWER_SELECT, WORD_RUSH_PLAYER_SELECT, WORD_RUSH_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
@@ -186,6 +193,24 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     session?.intermission_deadline_at,
     session?.phase === 'intermission'
   )
+
+  // Drive the round forward when a phase timer runs out — any active non-viewer
+  // client fires (idempotent + deadline-gated server-side), matching web. The turn
+  // deadline covers both the playing and awaiting-prompt phases.
+  const canDriveTimers = bootstrap.game?.status === 'active' && !isViewer
+  useTurnExpiryTimer({
+    deadlineAt:
+      session?.phase === 'playing' || session?.phase === 'awaiting_prompt'
+        ? session?.turn_deadline_at
+        : null,
+    enabled: canDriveTimers,
+    onExpire: () => postWordRushExpireTurn(bootstrap.code).then(() => bootstrap.load()),
+  })
+  useTurnExpiryTimer({
+    deadlineAt: session?.phase === 'intermission' ? session?.intermission_deadline_at : null,
+    enabled: canDriveTimers,
+    onExpire: () => postWordRushAdvance(bootstrap.code).then(() => bootstrap.load()),
+  })
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />

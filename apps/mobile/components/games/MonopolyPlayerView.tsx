@@ -56,11 +56,13 @@ import {
   postMonopolyForfeit,
   postMonopolyJail,
   postMonopolyMortgage,
+  postMonopolyExpireTurn,
   postMonopolyRent,
   postMonopolyRoll,
   postMonopolySettleDebt,
   postMonopolyTrade,
 } from '@/lib/game-api'
+import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import {
   MonopolyManagePanel,
   type BuildAction,
@@ -306,6 +308,16 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
   void timerTick
   const secondsLeft = secondsUntilMonopolyDeadline(board?.turn_deadline_at)
+
+  // Opponent-driven fallback: the local auto-advance below only fires for the
+  // player whose action it is (and only while their app is open). So any active
+  // client also pokes the idempotent /expire-turn route once the deadline passes,
+  // matching web — otherwise a disconnected player's turn hangs forever.
+  useTurnExpiryTimer({
+    deadlineAt: board?.turn_deadline_at,
+    enabled: bootstrap.game?.status === 'active' && board?.phase !== 'finished',
+    onExpire: () => postMonopolyExpireTurn(gameCode).then(() => bootstrap.load()),
+  })
 
   const act = async (fn: () => Promise<unknown>) => {
     if (!bootstrap.myResumeToken || acting) return
