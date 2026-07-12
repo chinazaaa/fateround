@@ -210,18 +210,14 @@ export function HostLobbyPlayCard({
                 {busy ? '…' : 'Stop playing'}
               </Text>
             </Pressable>
-            {onTransfer ? (
-              <Pressable
-                style={[styles.secondary, styles.flex, busy && styles.disabled]}
-                disabled={busy}
-                onPress={onTransfer}
-              >
-                <Text style={styles.secondaryText} numberOfLines={1}>
-                  Transfer host
-                </Text>
-              </Pressable>
-            ) : null}
           </View>
+          {onTransfer ? (
+            <Pressable style={[styles.secondary, busy && styles.disabled]} disabled={busy} onPress={onTransfer}>
+              <Text style={styles.secondaryText} numberOfLines={1}>
+                Transfer host
+              </Text>
+            </Pressable>
+          ) : null}
         </>
       )}
     </View>
