@@ -2733,7 +2733,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     features: [
       {
         title: 'Race the grid',
-        description: 'Solve Across and Down clues live — completed words lock in green as you go.',
+        description: 'Solve Across and Down clues live — completed words lock in your colour as you go.',
         emoji: '🧩',
       },
       SHARED_FEATURES.realtime,
