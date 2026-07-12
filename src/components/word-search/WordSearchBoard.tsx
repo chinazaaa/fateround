@@ -178,13 +178,22 @@ export function WordSearchBoard({
         {Array.from({ length: size }, (_, row) =>
           Array.from({ length: size }, (_, col) => {
             const letter = metadata.grid[row]?.[col] ?? ''
-            const owner = cellOwners?.[row]?.[col] ?? null
             const iFound = !!myFoundCells?.[row]?.[col]
+            const owner = cellOwners?.[row]?.[col] ?? null
             const inDrag = dragCells.has(cellKey(row, col))
             const invalid = invalidCells?.has(cellKey(row, col)) ?? false
 
+            // A player's board (myFoundCells supplied) shows ONLY their own finds — everyone
+            // races their own copy, so a reveal/find never appears on another player's board.
+            // The host watch board (no myFoundCells) shows every player's finds by owner colour.
             const ownerColor = owner ? (owner === myPlayerId ? myColor : (playerColors[owner] ?? '#94a3b8')) : null
-            const baseBg = ownerColor ? { backgroundColor: `${ownerColor}${iFound ? '55' : '33'}` } : undefined
+            const baseBg = myFoundCells
+              ? iFound
+                ? { backgroundColor: `${myColor}55` }
+                : undefined
+              : ownerColor
+                ? { backgroundColor: `${ownerColor}55` }
+                : undefined
             const bgStyle = invalid
               ? { backgroundColor: 'rgba(239, 68, 68, 0.35)' }
               : inDrag

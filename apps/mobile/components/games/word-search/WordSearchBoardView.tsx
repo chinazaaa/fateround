@@ -172,16 +172,20 @@ export function WordSearchBoardView({
         <View key={row} style={styles.row}>
           {Array.from({ length: size }, (_, col) => {
             const letter = metadata.grid[row]?.[col] ?? ''
-            const owner = cellOwners?.[row]?.[col] ?? null
             const iFound = !!myFoundCells?.[row]?.[col]
+            const owner = cellOwners?.[row]?.[col] ?? null
             const inPreview = preview.has(cellKey(row, col))
 
-            const ownerColor = owner
-              ? owner === myPlayerId
-                ? WORD_SEARCH_MY_CELL_COLOR
-                : playerColors[owner] ?? wordSearchPlayerColor(0)
-              : null
-            const baseBg = ownerColor ? withAlpha(ownerColor, iFound ? '55' : '33') : undefined
+            // A player's board (myFoundCells supplied) shows ONLY their own finds — everyone
+            // races their own copy, so a reveal/find never appears on another player's board.
+            // The host watch board (no myFoundCells) shows every player's finds by owner colour.
+            const baseBg = myFoundCells
+              ? iFound
+                ? withAlpha(WORD_SEARCH_MY_CELL_COLOR, '55')
+                : undefined
+              : owner
+                ? withAlpha(owner === myPlayerId ? WORD_SEARCH_MY_CELL_COLOR : (playerColors[owner] ?? wordSearchPlayerColor(0)), '55')
+                : undefined
             const bg = inPreview ? 'rgba(99,102,241,0.35)' : baseBg
 
             return (

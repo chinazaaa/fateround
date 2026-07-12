@@ -83,14 +83,23 @@ export function CrosswordBoard({
 
             const number = metadata.numbers?.[row]?.[col] ?? 0
             const letter = letterGrid[row]?.[col] ?? ''
-            const owner = cellOwners?.[row]?.[col] ?? null
             const iSolved = !!mySolvedCells?.[row]?.[col]
+            const owner = cellOwners?.[row]?.[col] ?? null
             const isWrong = !!wrongCells?.[row]?.[col]
             const isSelected = selectedCell?.[0] === row && selectedCell?.[1] === col
             const isActive = activeCells?.has(cellKey(row, col)) ?? false
 
+            // A player's board (mySolvedCells supplied) shows ONLY their own solved cells —
+            // everyone races their own copy. The host watch board (no mySolvedCells) shows
+            // every player's progress by owner colour.
             const ownerColor = owner ? (owner === myPlayerId ? myColor : (playerColors[owner] ?? '#94a3b8')) : null
-            const baseBg = ownerColor ? { backgroundColor: `${ownerColor}${iSolved ? '55' : '33'}` } : undefined
+            const baseBg = mySolvedCells
+              ? iSolved
+                ? { backgroundColor: `${myColor}55` }
+                : undefined
+              : ownerColor
+                ? { backgroundColor: `${ownerColor}55` }
+                : undefined
 
             const bgStyle = isSelected
               ? { backgroundColor: 'rgba(99, 102, 241, 0.35)' }
