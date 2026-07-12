@@ -211,6 +211,34 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
         if (result.alreadyFound) showToast(`Already found ${result.word}`, true)
         else if (hint) showToast(`Revealed ${result.word} · ${WORD_SEARCH_HINT_PENALTY} pts`, false)
         else showToast(`Found ${result.word}!`, true)
+        // Optimistically highlight the word right away — otherwise it doesn't appear until
+        // the refetch below finishes (two round-trips), which reads as a lag.
+        const pid = bootstrap.myPlayerId
+        if (pid && result.word && result.start && result.end && !result.alreadyFound) {
+          const [sr, sc] = result.start
+          const [er, ec] = result.end
+          const word = result.word
+          setFound((prev) =>
+            prev.some((f) => f.player_id === pid && f.word === word)
+              ? prev
+              : [
+                  ...prev,
+                  {
+                    id: `optimistic-${word}`,
+                    game_id: bootstrap.code,
+                    round_id: '',
+                    player_id: pid,
+                    word,
+                    start_row: sr,
+                    start_col: sc,
+                    end_row: er,
+                    end_col: ec,
+                    via_hint: hint,
+                    found_at: new Date().toISOString(),
+                  },
+                ]
+          )
+        }
       } else if (!hint) {
         showToast('No hidden word there', false)
       }
