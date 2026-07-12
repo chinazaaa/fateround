@@ -17,8 +17,13 @@ import {
   isCodewordsGame,
   isDescribeItGame,
   isQuickDrawGame,
+  isCrosswordGame,
+  isWordSearchGame,
   parseGameType,
 } from '@/lib/game-types'
+import { parseCsvRows } from '@/lib/csv-parse'
+import { parseCrosswordEntries } from '@/lib/crossword-puzzles'
+import { parseWordSearchEntries } from '@/lib/word-search-puzzles'
 import { pickLeastUsed } from '@/lib/question-picker'
 import {
   CODEWORDS_MIN_CUSTOM_POOL,
@@ -319,6 +324,94 @@ export function parseTriviaQuestionRows(text: string, defaultCategory: TriviaCat
   return parseTriviaQuestionImport(text, defaultCategory).questions
 }
 
+// ── Crossword / Word Search custom pools ──────────────────────────────────────
+// Both store their pool in games.custom_questions and the start route packs a grid from it:
+// Crossword needs {answer, clue} rows; Word Search needs {word} rows. A library pack's
+// `questions` JSONB uses the same shapes, so it folds straight into custom_questions.
+
+export type EntryImportResult<T> = {
+  questions: T[]
+  totalRows: number
+  skippedRows: number
+  duplicateRows: number
+}
+
+export type CrosswordEntry = { answer: string; clue: string }
+export type WordSearchEntry = { word: string }
+
+/** Parse a crossword CSV (answer,clue header) into deduped {answer, clue} entries + counts. */
+export function parseCrosswordEntryImport(text: string): EntryImportResult<CrosswordEntry> {
+  const rows = parseCsvRows(text)
+  const parsed = parseCrosswordEntries(rows)
+  const seen = new Set<string>()
+  const questions: CrosswordEntry[] = []
+  let duplicateRows = 0
+  for (const e of parsed) {
+    const key = e.answer.trim().toUpperCase()
+    if (seen.has(key)) {
+      duplicateRows++
+      continue
+    }
+    seen.add(key)
+    questions.push({ answer: e.answer.trim(), clue: e.clue.trim() })
+  }
+  return { questions, totalRows: rows.length, skippedRows: rows.length - parsed.length, duplicateRows }
+}
+
+/** Parse a word-search CSV (word header) into deduped {word} entries + counts. */
+export function parseWordSearchEntryImport(text: string): EntryImportResult<WordSearchEntry> {
+  const rows = parseCsvRows(text)
+  const parsed = parseWordSearchEntries(rows)
+  const seen = new Set<string>()
+  const questions: WordSearchEntry[] = []
+  let duplicateRows = 0
+  for (const e of parsed) {
+    const word = e.word.trim().toUpperCase()
+    if (!word) continue
+    if (seen.has(word)) {
+      duplicateRows++
+      continue
+    }
+    seen.add(word)
+    questions.push({ word })
+  }
+  return { questions, totalRows: rows.length, skippedRows: rows.length - parsed.length, duplicateRows }
+}
+
+/** Restore a stored crossword pool (from custom_questions or a library pack). */
+export function parseStoredCrosswordEntries(raw: unknown): CrosswordEntry[] {
+  if (!Array.isArray(raw)) return []
+  return parseCrosswordEntries(raw as Record<string, string>[]).map((e) => ({
+    answer: e.answer.trim(),
+    clue: e.clue.trim(),
+  }))
+}
+
+/** Restore a stored word-search pool (from custom_questions or a library pack). */
+export function parseStoredWordSearchEntries(raw: unknown): WordSearchEntry[] {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<string>()
+  const out: WordSearchEntry[] = []
+  for (const e of parseWordSearchEntries(raw as Record<string, string>[])) {
+    const word = e.word.trim().toUpperCase()
+    if (word && !seen.has(word)) {
+      seen.add(word)
+      out.push({ word })
+    }
+  }
+  return out
+}
+
+/** Shared "N skipped · M duplicates removed" summary for the entry importers above. */
+export function formatEntryImportSummary(result: { skippedRows: number; duplicateRows: number }): string | null {
+  const parts: string[] = []
+  if (result.skippedRows > 0) parts.push(`${result.skippedRows} row${result.skippedRows === 1 ? '' : 's'} skipped`)
+  if (result.duplicateRows > 0) {
+    parts.push(`${result.duplicateRows} duplicate${result.duplicateRows === 1 ? '' : 's'} removed`)
+  }
+  return parts.length ? parts.join(' · ') : null
+}
+
 export async function parseExcelTriviaQuestions(
   buffer: ArrayBuffer,
   defaultCategory: TriviaCategory = 'general'
@@ -393,6 +486,9 @@ export function parseQuestionSource(raw: unknown, gameType?: GameType | string):
   // Describe It supports uploaded ('custom') words only — it has no library tier,
   // so never persist 'library' (gameplay would silently fall back to the platform pool).
   if (isDescribeItGame(gameType)) return raw === 'custom' ? 'custom' : 'platform'
+  // Crossword / Word Search: library is folded into 'custom' at create (the start route just
+  // checks custom_questions), so only 'platform'/'custom' persist.
+  if (isCrosswordGame(gameType) || isWordSearchGame(gameType)) return raw === 'custom' ? 'custom' : 'platform'
   return 'platform'
 }
 
@@ -522,6 +618,12 @@ export function questionSampleFile(gameType?: GameType | string): { href: string
   if (isMostLikelyTo(gameType)) {
     return { href: '/mlt-questions-sample.csv', download: 'mlt-questions-sample.csv' }
   }
+  if (isCrosswordGame(gameType)) {
+    return { href: '/crossword-answers-sample.csv', download: 'crossword-answers-sample.csv' }
+  }
+  if (isWordSearchGame(gameType)) {
+    return { href: '/word-search-words-sample.csv', download: 'word-search-words-sample.csv' }
+  }
   return { href: '/wyr-questions-sample.csv', download: 'wyr-questions-sample.csv' }
 }
 
@@ -549,6 +651,12 @@ export function questionUploadHint(gameType?: GameType | string): string {
   }
   if (isMostLikelyTo(gameType)) {
     return '.csv or .xlsx — one question per row (question column)'
+  }
+  if (isCrosswordGame(gameType)) {
+    return '.csv — answer and clue columns (header row required). 4+ answers.'
+  }
+  if (isWordSearchGame(gameType)) {
+    return '.csv — one word per row under a "word" header. 4+ words.'
   }
   return '.csv or .xlsx — option_a and option_b columns'
 }
@@ -731,6 +839,20 @@ export function questionSourceOptions(gameType: GameType | string): {
         label: 'Your own',
         hint: 'Upload a CSV or add your own words and prompts.',
       },
+    ]
+  }
+  if (isCrosswordGame(gameType)) {
+    return [
+      { value: 'platform', label: 'Platform', hint: 'Use our built-in themed word banks.' },
+      { value: 'library', label: 'Library', hint: 'Pick a community answer/clue pack.' },
+      { value: 'custom', label: 'Your own', hint: 'Upload a CSV of answer + clue rows (4+ answers).' },
+    ]
+  }
+  if (isWordSearchGame(gameType)) {
+    return [
+      { value: 'platform', label: 'Platform', hint: 'Use our built-in themed word banks.' },
+      { value: 'library', label: 'Library', hint: 'Pick a community word pack.' },
+      { value: 'custom', label: 'Your own', hint: 'Upload a CSV of words (4+ words).' },
     ]
   }
   const platformCount = isTriviaGame(gameType)

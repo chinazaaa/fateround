@@ -1,7 +1,8 @@
 export const GAME_SELECT =
-  'id,title,game_type,status,current_round_number,timer_seconds,max_players,allow_viewers,allow_late_players,is_public,theme,replay_pending,pending_host_player_id,tournament_id,ayo_variant,participant_mode,pair_vote_mode,player_questions_enabled,player_questions_order,custom_questions,custom_slots,gender_based,ludo_variant,rounds_count,question_source,trivia_category,created_at,describe_it_num_teams,describe_it_mode,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,word_rush_mode,word_rush_num_teams,word_rush_prompt_mode,word_rush_difficulty,session_started_at,game_duration_seconds,anonymous_messages_trimmed_at,chess_board_theme,chess_piece_set,scrabble_dictionary_id,scrabble_clock_mode,scrabble_clock_seconds,operative_timer_seconds,codewords_player_picks,codewords_late_join,codewords_randomize_teams,mafia_doctor_enabled,mafia_detective_enabled,mafia_anonymous_votes,quick_draw_variant,quick_draw_play_mode,quick_draw_num_teams,mahjong_ruleset,mahjong_rule_options,bingo_call_mode,bingo_call_interval_seconds'
+  'id,title,game_type,status,current_round_number,timer_seconds,max_players,allow_viewers,allow_late_players,is_public,theme,replay_pending,pending_host_player_id,tournament_id,ayo_variant,participant_mode,pair_vote_mode,player_questions_enabled,player_questions_order,custom_questions,custom_slots,gender_based,ludo_variant,rounds_count,question_source,trivia_category,created_at,describe_it_num_teams,describe_it_mode,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,word_rush_mode,word_rush_num_teams,word_rush_prompt_mode,word_rush_difficulty,session_started_at,game_duration_seconds,anonymous_messages_trimmed_at,chess_board_theme,chess_piece_set,scrabble_dictionary_id,scrabble_clock_mode,scrabble_clock_seconds,operative_timer_seconds,codewords_player_picks,codewords_late_join,codewords_randomize_teams,mafia_doctor_enabled,mafia_detective_enabled,mafia_anonymous_votes,quick_draw_variant,quick_draw_play_mode,quick_draw_num_teams,mahjong_ruleset,mahjong_rule_options,bingo_call_mode,bingo_call_interval_seconds,crossword_theme,crossword_difficulty,word_search_theme,word_search_difficulty'
 
-export const PLAYER_SELECT = 'id,game_id,name,gender,joined_at,spectator,is_eliminated,lives_remaining,eliminated_at,monopoly_token,participant_id'
+export const PLAYER_SELECT =
+  'id,game_id,name,gender,joined_at,spectator,is_eliminated,lives_remaining,eliminated_at,monopoly_token,participant_id'
 
 export const PARTICIPANT_SELECT =
   'id,game_id,name,gender,photo_url,description,display_order,in_mlt_poll,submitted_by_player_id'
@@ -63,8 +64,7 @@ export const AYO_SESSION_SELECT =
 export const BINGO_CARD_SELECT = 'id,game_id,player_id,cells,marked_indices'
 export const BINGO_CALLED_NUMBER_SELECT = 'id,game_id,number,called_at'
 export const BINGO_CLAIM_SELECT = 'id,game_id,player_id,pattern,status,created_at'
-export const TRIVIA_ANSWER_SELECT =
-  'id,game_id,round_id,player_id,choice_index,is_correct,points'
+export const TRIVIA_ANSWER_SELECT = 'id,game_id,round_id,player_id,choice_index,is_correct,points'
 
 export const CRAZY8_SESSION_SELECT =
   'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at'
@@ -109,8 +109,7 @@ export const WORD_RUSH_PLAYER_SELECT = 'id,game_id,player_id,team,score,created_
 export const WORD_RUSH_ANSWER_SELECT =
   'id,game_id,turn_index,round,team,team_turn_index,prompt_index,start_letter,end_letter,player_id,text,correct,created_at'
 
-export const WORD_HUNT_SUBMISSION_SELECT =
-  'id,game_id,round_id,player_id,word,path,points_awarded,submitted_at'
+export const WORD_HUNT_SUBMISSION_SELECT = 'id,game_id,round_id,player_id,word,path,points_awarded,submitted_at'
 
 export const NPAT_ANSWER_SELECT =
   'id,game_id,round_id,player_id,name,animal,place,thing,food,submitted_at,score_name,score_animal,score_place,score_thing,score_food'
@@ -123,8 +122,7 @@ export const CODEWORDS_BOARD_SELECT =
 
 export const CODEWORDS_PLAYER_ROLE_SELECT = 'id,game_id,player_id,team,role,created_at'
 
-export const HOT_SEAT_SUBMISSIONS_SELECT =
-  'id,game_id,round_id,player_id,text,submission_type,created_at'
+export const HOT_SEAT_SUBMISSIONS_SELECT = 'id,game_id,round_id,player_id,text,submission_type,created_at'
 
 export const CODEWORDS_GUESS_SELECT =
   'id,game_id,board_id,player_id,cell_index,word,cell_type,clue_word,clue_number,team,created_at'

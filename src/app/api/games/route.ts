@@ -54,6 +54,7 @@ import {
   isQuickDrawGame,
   isCrosswordGame,
   isWordSearchGame,
+  isWordScrambleGame,
 } from '@/lib/game-types'
 import { wstAutoRoundCount } from '@/lib/who-said-this'
 import { parseLudoVariant } from '@/lib/ludo'
@@ -141,6 +142,12 @@ import { clampSudokuGameDuration } from '@/lib/sudoku'
 import { parseCrosswordDifficulty, clampCrosswordGameDuration, CROSSWORD_DEFAULT_DURATION } from '@/lib/crossword'
 import { findCrosswordTheme } from '@/lib/crossword-puzzles'
 import { parseWordSearchDifficulty, clampWordSearchGameDuration, WORD_SEARCH_DEFAULT_DURATION } from '@/lib/word-search'
+import {
+  parseWordScrambleDifficulty,
+  clampWordScrambleGameDuration,
+  WORD_SCRAMBLE_DEFAULT_DURATION,
+} from '@/lib/word-scramble'
+import { findWordScrambleTheme } from '@/lib/word-scramble-puzzles'
 import { findWordSearchTheme } from '@/lib/word-search-puzzles'
 import { clampChessTimer, clampChessBoardTheme, clampChessPieceSet } from '@/lib/chess'
 import { clampCheckersTimer } from '@/lib/checkers'
@@ -396,6 +403,8 @@ export async function POST(req: NextRequest) {
     crossword_difficulty: rawCrosswordDifficulty,
     word_search_theme: rawWordSearchTheme,
     word_search_difficulty: rawWordSearchDifficulty,
+    word_scramble_theme: rawWordScrambleTheme,
+    word_scramble_difficulty: rawWordScrambleDifficulty,
   } = parsed.data
 
   const elimParsed = eliminationConfigSchema.safeParse((body as Record<string, unknown>).elimination_config)
@@ -461,7 +470,8 @@ export async function POST(req: NextRequest) {
     isDescribeItGame(game_type) ||
     isWordRushGame(game_type) ||
     isCrosswordGame(game_type) ||
-    isWordSearchGame(game_type)
+    isWordSearchGame(game_type) ||
+    isWordScrambleGame(game_type)
       ? 'joiners'
       : isWhoSaidThis(game_type)
         ? 'import'
@@ -717,7 +727,13 @@ export async function POST(req: NextRequest) {
                                                             rawMaxPlayers,
                                                             lobbyDefaultMaxPlayers('word_search', lobbyLimits)
                                                           )
-                                                        : null
+                                                        : isWordScrambleGame(game_type)
+                                                          ? resolveMaxPlayers(
+                                                              'word_scramble',
+                                                              rawMaxPlayers,
+                                                              lobbyDefaultMaxPlayers('word_scramble', lobbyLimits)
+                                                            )
+                                                          : null
   const isSecret = isSecretMessageGame(game_type)
   const lateJoinFields = gameSupportsViewerSetting(game_type)
     ? rawLateJoinPolicy
@@ -843,6 +859,12 @@ export async function POST(req: NextRequest) {
       ? {
           word_search_theme: findWordSearchTheme(rawWordSearchTheme).id,
           word_search_difficulty: parseWordSearchDifficulty(rawWordSearchDifficulty),
+        }
+      : {}),
+    ...(isWordScrambleGame(game_type)
+      ? {
+          word_scramble_theme: findWordScrambleTheme(rawWordScrambleTheme).id,
+          word_scramble_difficulty: parseWordScrambleDifficulty(rawWordScrambleDifficulty),
         }
       : {}),
     ...(gameSupportsViewerSetting(game_type)
@@ -978,13 +1000,19 @@ export async function POST(req: NextRequest) {
                               rawGameDurationSeconds ?? WORD_SEARCH_DEFAULT_DURATION
                             ),
                           }
-                        : isMafiaGame(game_type)
+                        : isWordScrambleGame(game_type)
                           ? {
-                              mafia_doctor_enabled: parsed.data.mafia_doctor_enabled !== false,
-                              mafia_detective_enabled: parsed.data.mafia_detective_enabled !== false,
-                              mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
+                              game_duration_seconds: clampWordScrambleGameDuration(
+                                rawGameDurationSeconds ?? WORD_SCRAMBLE_DEFAULT_DURATION
+                              ),
                             }
-                          : {}),
+                          : isMafiaGame(game_type)
+                            ? {
+                                mafia_doctor_enabled: parsed.data.mafia_doctor_enabled !== false,
+                                mafia_detective_enabled: parsed.data.mafia_detective_enabled !== false,
+                                mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
+                              }
+                            : {}),
     ...(isCustomGame(game_type) && parsed.data.custom_slots
       ? {
           custom_slots: {

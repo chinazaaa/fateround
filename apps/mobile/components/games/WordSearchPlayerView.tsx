@@ -218,6 +218,18 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
     return owners
   }, [found, boardPlayerId])
 
+  // Words for the top strip: unfound first, found pushed to the end, then chunked into
+  // columns of two so they lay out in two horizontally-scrolling rows.
+  const wordColumns = useMemo(() => {
+    const todo: string[] = []
+    const done: string[] = []
+    for (const w of metadata?.words ?? []) (wordOwners.has(w) ? done : todo).push(w)
+    const ordered = [...todo, ...done]
+    const cols: string[][] = []
+    for (let i = 0; i < ordered.length; i += 2) cols.push(ordered.slice(i, i + 2))
+    return cols
+  }, [metadata, wordOwners])
+
   // Surface the difficulty as a header pill during play instead of a floating subtitle.
   const difficultyLabel = metadata?.difficulty
     ? metadata.difficulty.charAt(0).toUpperCase() + metadata.difficulty.slice(1)
@@ -415,7 +427,10 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
                       onPress={() => setWatchedPlayerId(p.id)}
                     >
                       <View
-                        style={[styles.watchChipDot, { backgroundColor: playerColors[p.id] ?? wordSearchPlayerColor(0) }]}
+                        style={[
+                          styles.watchChipDot,
+                          { backgroundColor: playerColors[p.id] ?? wordSearchPlayerColor(0) },
+                        ]}
                       />
                       <Text style={[styles.watchChipText, active && styles.watchChipTextActive]} numberOfLines={1}>
                         {p.name}
@@ -468,9 +483,60 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
             </View>
 
             {!viewing ? (
-              <View style={styles.previewBar}>
-                <Text style={styles.previewText}>{previewWord || 'Drag across the letters to spell a word'}</Text>
+              <View style={styles.wordStrip}>
+                <View style={styles.wordStripHeader}>
+                  <Text style={styles.wordStripTitle}>Words to find</Text>
+                  <Text style={styles.wordStripCount}>
+                    {myFoundWordSet.size}/{metadata.words.length}
+                  </Text>
+                </View>
+                <View style={styles.wordStripRow}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.wordStripScroll}
+                    contentContainerStyle={styles.wordStripScrollContent}
+                  >
+                    {wordColumns.map((col, ci) => (
+                      <View key={ci} style={styles.wordStripCol}>
+                        {col.map((word) => (
+                          <Text
+                            key={word}
+                            numberOfLines={1}
+                            style={[styles.stripWord, wordOwners.has(word) && styles.stripWordFound]}
+                          >
+                            {word}
+                          </Text>
+                        ))}
+                      </View>
+                    ))}
+                  </ScrollView>
+                  <Pressable
+                    style={[styles.revealIcon, (submitting || allWordsFound) && styles.revealBtnDisabled]}
+                    disabled={submitting || allWordsFound}
+                    onPress={handleReveal}
+                    accessibilityLabel="Reveal a hidden word"
+                  >
+                    <Text style={styles.revealIconText}>💡</Text>
+                  </Pressable>
+                </View>
               </View>
+            ) : null}
+
+            {!viewing ? (
+              allWordsFound ? (
+                <View style={styles.doneBanner}>
+                  <Text style={styles.doneTitle}>🎉 All words found!</Text>
+                  <Text style={styles.doneSub}>
+                    Nicely done — waiting for the other players
+                    {bootstrap.game?.game_duration_seconds ? ' or the timer' : ''} to finish.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.previewBar}>
+                  <Text style={styles.previewText}>{previewWord || 'Drag across the letters to spell a word'}</Text>
+                </View>
+              )
             ) : null}
 
             <WordSearchBoardView
@@ -488,50 +554,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
             {viewing ? (
               <Text style={styles.viewingHint}>You are watching — tap a name above to switch boards.</Text>
             ) : (
-              <>
-                <View style={styles.hintRow}>
-                  <Text style={styles.hintHelp}>Press a word&apos;s first letter and drag to its last letter.</Text>
-                  <Pressable
-                    style={[styles.revealBtn, (submitting || allWordsFound) && styles.revealBtnDisabled]}
-                    disabled={submitting || allWordsFound}
-                    onPress={handleReveal}
-                  >
-                    <Text style={styles.revealText}>💡 Reveal</Text>
-                  </Pressable>
-                </View>
-
-                {/* Word list — struck through as words are found, coloured to first finder. */}
-                <View style={styles.wordList}>
-                  {metadata.words.map((word) => {
-                    const owner = wordOwners.get(word)
-                    const foundByMe = myFoundWordSet.has(word)
-                    const color = owner
-                      ? owner === bootstrap.myPlayerId
-                        ? WORD_SEARCH_MY_CELL_COLOR
-                        : playerColors[owner] ?? wordSearchPlayerColor(0)
-                      : null
-                    return (
-                      <View
-                        key={word}
-                        style={[
-                          styles.wordChip,
-                          owner ? { borderColor: color ?? undefined, backgroundColor: `${color}22` } : null,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.wordChipText,
-                            owner && styles.wordChipTextFound,
-                            foundByMe && { color: color ?? undefined },
-                          ]}
-                        >
-                          {word}
-                        </Text>
-                      </View>
-                    )
-                  })}
-                </View>
-              </>
+              <Text style={styles.hintHelp}>Press a word&apos;s first letter and drag to its last letter.</Text>
             )}
 
             {/* Live standings */}
@@ -649,32 +672,57 @@ const makeStyles = (theme: Theme) =>
       justifyContent: 'center',
     },
     previewText: { color: theme.text, fontSize: 20, fontWeight: '800', letterSpacing: 3 },
-    hintRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      marginTop: 12,
-    },
-    hintHelp: { flex: 1, minWidth: 0, color: theme.textMuted, fontSize: 13 },
-    revealBtn: {
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      borderRadius: 10,
-      backgroundColor: 'rgba(245,158,11,0.15)',
-    },
-    revealBtnDisabled: { opacity: 0.4 },
-    revealText: { color: '#b45309', fontWeight: '800', fontSize: 13 },
-    wordList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
-    wordChip: {
-      paddingHorizontal: 12,
-      paddingVertical: 7,
-      borderRadius: 999,
+    doneBanner: {
+      alignSelf: 'stretch',
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderRadius: 12,
+      backgroundColor: theme.surface,
       borderWidth: 1,
       borderColor: theme.border,
-      backgroundColor: theme.surfaceHover,
+      alignItems: 'center',
+      gap: 2,
     },
-    wordChipText: { color: theme.textSecondary, fontSize: 13, fontWeight: '700', letterSpacing: 0.5 },
-    wordChipTextFound: { textDecorationLine: 'line-through' },
+    doneTitle: { color: theme.text, fontSize: 16, fontWeight: '800' },
+    doneSub: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
+    hintHelp: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
+    revealBtnDisabled: { opacity: 0.4 },
+    // Compact word strip that sits above the board (two rows, horizontal scroll).
+    wordStrip: {
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 12,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      gap: 6,
+    },
+    wordStripHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    wordStripTitle: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+    wordStripCount: { color: theme.textMuted, fontSize: 12, fontWeight: '700' },
+    wordStripRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    wordStripScroll: { flex: 1 },
+    wordStripScrollContent: { flexDirection: 'row', gap: 14, paddingRight: 8 },
+    wordStripCol: { gap: 2 },
+    stripWord: { color: theme.textSecondary, fontSize: 13, fontWeight: '700', letterSpacing: 0.5 },
+    stripWordFound: { color: WORD_SEARCH_MY_CELL_COLOR, textDecorationLine: 'line-through', opacity: 0.7 },
+    revealIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 999,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(245,158,11,0.15)',
+      borderWidth: 1,
+      borderColor: 'rgba(245,158,11,0.35)',
+    },
+    revealIconText: { fontSize: 17 },
     toast: {
       alignSelf: 'center',
       marginTop: 8,

@@ -24,6 +24,7 @@ import {
   isSudokuGame,
   isCrosswordGame,
   isWordSearchGame,
+  isWordScrambleGame,
   isThisOrThat,
   isTriviaGame,
   isTwoTruthsGame,
@@ -108,7 +109,8 @@ export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
     !isScrabbleGame(gameType) &&
     !isSudokuGame(gameType) &&
     !isCrosswordGame(gameType) &&
-    !isWordSearchGame(gameType)
+    !isWordSearchGame(gameType) &&
+    !isWordScrambleGame(gameType)
   )
 }
 

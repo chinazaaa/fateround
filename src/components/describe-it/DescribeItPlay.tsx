@@ -140,7 +140,11 @@ export function DescribeItPlayPanel({
   const myTeam = teamRows.find((r) => r.player_id === myPlayerId)?.team ?? null
   const isDescriber = !!myPlayerId && session.describer_player_id === myPlayerId
   const onActiveTeam = myTeam === activeTeam
-  const inRoster = !!myPlayerId && session.roster.includes(myPlayerId)
+  // Gate on the LIVE roster (describe_it_players/teamRows), not the frozen session.roster.
+  // Late joiners are seeded into describe_it_players but never into session.roster, so
+  // checking the snapshot hid the guess input from them — they could only watch. This mirrors
+  // the server's live-roster check in processIndividualGuess.
+  const inRoster = !!myPlayerId && teamRows.some((r) => r.player_id === myPlayerId)
   const myGuessedThisTurn = guesses.some(
     (g) => g.turn_index === session.turn_index && g.player_id === myPlayerId && g.correct
   )

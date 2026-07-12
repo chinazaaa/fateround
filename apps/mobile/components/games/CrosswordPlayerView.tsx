@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import * as SecureStore from 'expo-secure-store'
-import { type Game, type Round, type CrosswordSubmission, type CrosswordClue, type CrosswordDirection } from '@fateround/shared'
+import {
+  type Game,
+  type Round,
+  type CrosswordSubmission,
+  type CrosswordClue,
+  type CrosswordDirection,
+} from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import {
   buildCellOwnerGrid,
@@ -241,12 +247,10 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     return map
   }, [activePlayers])
 
-  const cellOwners = useMemo(
-    () => (metadata ? buildCellOwnerGrid(metadata, submissions) : []),
-    [metadata, submissions]
-  )
+  const cellOwners = useMemo(() => (metadata ? buildCellOwnerGrid(metadata, submissions) : []), [metadata, submissions])
   const mySolvedCells = useMemo(
-    () => (metadata && bootstrap.myPlayerId ? buildPlayerSolvedGrid(metadata, submissions, bootstrap.myPlayerId) : undefined),
+    () =>
+      metadata && bootstrap.myPlayerId ? buildPlayerSolvedGrid(metadata, submissions, bootstrap.myPlayerId) : undefined,
     [metadata, submissions, bootstrap.myPlayerId]
   )
   const displayGrid = useMemo(() => {
@@ -312,7 +316,8 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     [metadata, submissions, effectiveWatchedId]
   )
   const watchedSolvedCells = useMemo(
-    () => (metadata && effectiveWatchedId ? buildPlayerSolvedGrid(metadata, submissions, effectiveWatchedId) : undefined),
+    () =>
+      metadata && effectiveWatchedId ? buildPlayerSolvedGrid(metadata, submissions, effectiveWatchedId) : undefined,
     [metadata, submissions, effectiveWatchedId]
   )
   const watchedCompletion =
@@ -451,20 +456,16 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     if (viewing || submitting || !selectedCell) return
     const [row, col] = selectedCell
     if (!isCellEditable(row, col)) return
-    Alert.alert(
-      'Reveal this letter?',
-      `Fills the correct letter here for a ${CROSSWORD_HINT_PENALTY}-point penalty.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reveal letter',
-          onPress: () => {
-            void submitLetter(row, col, localLetters[row]?.[col] || 'A', true)
-            advanceCursor(row, col)
-          },
+    Alert.alert('Reveal this letter?', `Fills the correct letter here for a ${CROSSWORD_HINT_PENALTY}-point penalty.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Reveal letter',
+        onPress: () => {
+          void submitLetter(row, col, localLetters[row]?.[col] || 'A', true)
+          advanceCursor(row, col)
         },
-      ]
-    )
+      },
+    ])
   }
 
   if (bootstrap.screen === 'loading') return <GameLoading />
@@ -561,228 +562,241 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('crossword')} subtitle={bootstrap.code}>
       <View style={styles.playArea}>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-        <CrosswordGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} />
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+          <CrosswordGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} />
 
-        {toast ? (
-          <View style={[styles.toast, toast.ok ? styles.toastOk : styles.toastBad]}>
-            <Text style={styles.toastText}>{toast.msg}</Text>
-          </View>
-        ) : null}
-
-        {/* Viewer player-picker: switch whose board you're watching. */}
-        {viewing ? (
-          activePlayers.length > 0 ? (
-            <View style={styles.watchCard}>
-              <Text style={styles.watchLabel}>Watching a player&apos;s board</Text>
-              <View style={styles.watchChips}>
-                {activePlayers.map((p) => {
-                  const active = p.id === effectiveWatchedId
-                  return (
-                    <Pressable
-                      key={p.id}
-                      style={[styles.watchChip, active && styles.watchChipActive]}
-                      onPress={() => setWatchedPlayerId(p.id)}
-                    >
-                      <View
-                        style={[styles.watchChipDot, { backgroundColor: playerColors[p.id] ?? crosswordPlayerColor(0) }]}
-                      />
-                      <Text style={[styles.watchChipText, active && styles.watchChipTextActive]} numberOfLines={1}>
-                        {p.name}
-                      </Text>
-                    </Pressable>
-                  )
-                })}
-              </View>
+          {toast ? (
+            <View style={[styles.toast, toast.ok ? styles.toastOk : styles.toastBad]}>
+              <Text style={styles.toastText}>{toast.msg}</Text>
             </View>
-          ) : (
-            <Text style={styles.waiting}>
-              No players have joined the puzzle yet — pick a player to watch once they do.
-            </Text>
-          )
-        ) : null}
+          ) : null}
 
-        {!metadata || boardGrid.length === 0 ? (
-          <Text style={styles.waiting}>Waiting for puzzle…</Text>
-        ) : (
-          <>
-            {/* Status header (mine, or the watched player's) */}
-            <View style={styles.statusRow}>
-              <View style={styles.statusLeft}>
-                <View style={[styles.swatch, { backgroundColor: CROSSWORD_MY_CELL_COLOR }]} />
-                <View>
-                  <Text style={styles.statusName}>{headerName}</Text>
-                  <Text style={styles.statusMeta}>
-                    {!viewing && myRank > 0 ? `${ordinal(myRank)} · ` : ''}
-                    {headerCompletion}%
-                  </Text>
+          {/* Viewer player-picker: switch whose board you're watching. */}
+          {viewing ? (
+            activePlayers.length > 0 ? (
+              <View style={styles.watchCard}>
+                <Text style={styles.watchLabel}>Watching a player&apos;s board</Text>
+                <View style={styles.watchChips}>
+                  {activePlayers.map((p) => {
+                    const active = p.id === effectiveWatchedId
+                    return (
+                      <Pressable
+                        key={p.id}
+                        style={[styles.watchChip, active && styles.watchChipActive]}
+                        onPress={() => setWatchedPlayerId(p.id)}
+                      >
+                        <View
+                          style={[
+                            styles.watchChipDot,
+                            { backgroundColor: playerColors[p.id] ?? crosswordPlayerColor(0) },
+                          ]}
+                        />
+                        <Text style={[styles.watchChipText, active && styles.watchChipTextActive]} numberOfLines={1}>
+                          {p.name}
+                        </Text>
+                      </Pressable>
+                    )
+                  })}
                 </View>
               </View>
-              {bootstrap.game?.session_started_at ? (
-                <View style={styles.timePill}>
-                  <Text style={styles.timePillText}>
-                    ⏱{' '}
-                    {formatMinutesSeconds(
-                      getPlayerTimeSpent(
-                        bootstrap.game,
-                        submissions,
-                        (viewing ? effectiveWatchedId : bootstrap.myPlayerId) || '',
-                        headerCompletion,
-                        nowMs,
-                        (viewing ? watchedPlayer : me)?.joined_at
-                      )
-                    )}
+            ) : (
+              <Text style={styles.waiting}>
+                No players have joined the puzzle yet — pick a player to watch once they do.
+              </Text>
+            )
+          ) : null}
+
+          {!metadata || boardGrid.length === 0 ? (
+            <Text style={styles.waiting}>Waiting for puzzle…</Text>
+          ) : (
+            <>
+              {/* Status header (mine, or the watched player's) */}
+              <View style={styles.statusRow}>
+                <View style={styles.statusLeft}>
+                  <View style={[styles.swatch, { backgroundColor: CROSSWORD_MY_CELL_COLOR }]} />
+                  <View>
+                    <Text style={styles.statusName}>{headerName}</Text>
+                    <Text style={styles.statusMeta}>
+                      {!viewing && myRank > 0 ? `${ordinal(myRank)} · ` : ''}
+                      {headerCompletion}%
+                    </Text>
+                  </View>
+                </View>
+                {bootstrap.game?.session_started_at ? (
+                  <View style={styles.timePill}>
+                    <Text style={styles.timePillText}>
+                      ⏱{' '}
+                      {formatMinutesSeconds(
+                        getPlayerTimeSpent(
+                          bootstrap.game,
+                          submissions,
+                          (viewing ? effectiveWatchedId : bootstrap.myPlayerId) || '',
+                          headerCompletion,
+                          nowMs,
+                          (viewing ? watchedPlayer : me)?.joined_at
+                        )
+                      )}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+
+              {!viewing && myCompletion >= 100 ? (
+                <View style={styles.doneBanner}>
+                  <Text style={styles.doneTitle}>🎉 Puzzle complete!</Text>
+                  <Text style={styles.doneSub}>
+                    Nicely done — waiting for the other players
+                    {bootstrap.game?.game_duration_seconds ? ' or the timer' : ''} to finish.
                   </Text>
                 </View>
               ) : null}
-            </View>
 
-            <CrosswordBoardView
-              metadata={metadata}
-              letterGrid={boardGrid}
-              cellOwners={cellOwners}
-              mySolvedCells={boardSolvedCells}
-              playerColors={playerColors}
-              myPlayerId={viewing ? effectiveWatchedId : bootstrap.myPlayerId}
-              selectedCell={viewing ? null : selectedCell}
-              activeCells={viewing ? undefined : activeCells}
-              wrongCells={viewing ? undefined : wrongDrafts}
-              onCellSelect={handleCellSelect}
-              readOnly={viewing}
-            />
+              <CrosswordBoardView
+                metadata={metadata}
+                letterGrid={boardGrid}
+                cellOwners={cellOwners}
+                mySolvedCells={boardSolvedCells}
+                playerColors={playerColors}
+                myPlayerId={viewing ? effectiveWatchedId : bootstrap.myPlayerId}
+                selectedCell={viewing ? null : selectedCell}
+                activeCells={viewing ? undefined : activeCells}
+                wrongCells={viewing ? undefined : wrongDrafts}
+                onCellSelect={handleCellSelect}
+                readOnly={viewing}
+              />
 
-            {viewing ? (
-              <Text style={styles.viewingHint}>You are watching — tap a name above to switch boards.</Text>
-            ) : (
-              <>
-                {/* Clue lists */}
-                <View style={styles.clueLists}>
-                  <ClueList
-                    title="Across"
-                    clues={acrossClues}
-                    submissions={submissions}
-                    myPlayerId={bootstrap.myPlayerId}
-                    activeNumber={activeClue?.direction === 'across' ? activeClue.number : null}
-                    onSelect={selectClue}
-                    styles={styles}
-                  />
-                  <ClueList
-                    title="Down"
-                    clues={downClues}
-                    submissions={submissions}
-                    myPlayerId={bootstrap.myPlayerId}
-                    activeNumber={activeClue?.direction === 'down' ? activeClue.number : null}
-                    onSelect={selectClue}
-                    styles={styles}
-                  />
-                </View>
-              </>
-            )}
-
-            {/* Live standings */}
-            {standings.length > 0 ? (
-              <View style={styles.standings}>
-                {standings.map((rowData, i) => {
-                  const pct = metadata ? playerCompletionPercent(metadata, submissions, rowData.player_id) : 0
-                  const color = playerColors[rowData.player_id] ?? crosswordPlayerColor(0)
-                  const timeSecs = getPlayerTimeSpent(
-                    bootstrap.game,
-                    submissions,
-                    rowData.player_id,
-                    pct,
-                    nowMs,
-                    activePlayers.find((p) => p.id === rowData.player_id)?.joined_at
-                  )
-                  const isMe = rowData.player_id === bootstrap.myPlayerId
-                  return (
-                    <View key={rowData.player_id} style={[styles.standRow, isMe && styles.standRowMe]}>
-                      <View style={[styles.swatchSm, { backgroundColor: color }]} />
-                      <View style={styles.standInfo}>
-                        <Text style={styles.standName} numberOfLines={1}>
-                          {rowData.name}
-                        </Text>
-                        <Text style={styles.standMeta} numberOfLines={1}>
-                          {ordinal(i + 1)} of {standings.length} · {rowData.wordsCompleted} words · {pct}%
-                          {bootstrap.game?.session_started_at ? ` · ⏱ ${formatMinutesSeconds(timeSecs)}` : ''}
-                        </Text>
-                      </View>
-                      <Text style={styles.standPoints}>{rowData.points} pts</Text>
-                    </View>
-                  )
-                })}
-              </View>
-            ) : null}
-          </>
-        )}
-
-        <View style={styles.rulesRow}>
-          <GameRulesLink gameType="crossword" variant="subtle" />
-        </View>
-      </ScrollView>
-
-      {/* Pinned input dock — always visible so every key (and Erase) is reachable. */}
-      {metadata && boardGrid.length > 0 && !viewing && bootstrap.game?.status !== 'finished' ? (
-        <View style={styles.inputDock}>
-          <View style={styles.clueBar}>
-            <View style={styles.clueBarText}>
-              {activeClue ? (
-                <Text style={styles.clueBarLine} numberOfLines={2}>
-                  <Text style={styles.clueBarNum}>
-                    {activeClue.number} {activeClue.direction === 'across' ? 'Across' : 'Down'}
-                  </Text>
-                  {'  '}
-                  {activeClue.clue}
-                </Text>
+              {viewing ? (
+                <Text style={styles.viewingHint}>You are watching — tap a name above to switch boards.</Text>
               ) : (
-                <Text style={styles.clueBarHint}>Tap a cell to start filling the grid.</Text>
+                <>
+                  {/* Clue lists */}
+                  <View style={styles.clueLists}>
+                    <ClueList
+                      title="Across"
+                      clues={acrossClues}
+                      submissions={submissions}
+                      myPlayerId={bootstrap.myPlayerId}
+                      activeNumber={activeClue?.direction === 'across' ? activeClue.number : null}
+                      onSelect={selectClue}
+                      styles={styles}
+                    />
+                    <ClueList
+                      title="Down"
+                      clues={downClues}
+                      submissions={submissions}
+                      myPlayerId={bootstrap.myPlayerId}
+                      activeNumber={activeClue?.direction === 'down' ? activeClue.number : null}
+                      onSelect={selectClue}
+                      styles={styles}
+                    />
+                  </View>
+                </>
               )}
-            </View>
-            <Pressable
-              style={[
-                styles.revealBtn,
-                (!selectedCell || submitting || !isCellEditable(selectedCell[0], selectedCell[1])) &&
-                  styles.revealBtnDisabled,
-              ]}
-              disabled={!selectedCell || submitting || !isCellEditable(selectedCell[0], selectedCell[1])}
-              onPress={handleReveal}
-            >
-              <Text style={styles.revealText}>💡 Reveal</Text>
-            </Pressable>
-          </View>
 
-          {/* On-screen keyboard (QWERTY or A–Z, player's choice) */}
-          <View style={styles.keyboard}>
-            <Pressable style={styles.layoutToggle} onPress={toggleKeyboardLayout} hitSlop={8}>
-              <Text style={styles.layoutToggleText}>
-                ⌨ {keyboardLayout === 'qwerty' ? 'Switch to A–Z' : 'Switch to QWERTY'}
-              </Text>
-            </Pressable>
-            {KEY_LAYOUTS[keyboardLayout].map((rowLetters, ri) => (
-              <View key={ri} style={styles.keyRow}>
-                {rowLetters.split('').map((letter) => (
-                  <Pressable
-                    key={letter}
-                    style={[styles.key, !selectedCell && styles.keyDisabled]}
-                    disabled={!selectedCell}
-                    onPress={() => handleTypeLetter(letter)}
-                  >
-                    <Text style={styles.keyText}>{letter}</Text>
-                  </Pressable>
-                ))}
-                {ri === KEY_LAYOUTS[keyboardLayout].length - 1 ? (
-                  <Pressable
-                    style={[styles.key, styles.keyErase, !selectedCell && styles.keyDisabled]}
-                    disabled={!selectedCell}
-                    onPress={handleBackspace}
-                  >
-                    <Text style={styles.keyEraseText}>⌫ Erase</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            ))}
+              {/* Live standings */}
+              {standings.length > 0 ? (
+                <View style={styles.standings}>
+                  {standings.map((rowData, i) => {
+                    const pct = metadata ? playerCompletionPercent(metadata, submissions, rowData.player_id) : 0
+                    const color = playerColors[rowData.player_id] ?? crosswordPlayerColor(0)
+                    const timeSecs = getPlayerTimeSpent(
+                      bootstrap.game,
+                      submissions,
+                      rowData.player_id,
+                      pct,
+                      nowMs,
+                      activePlayers.find((p) => p.id === rowData.player_id)?.joined_at
+                    )
+                    const isMe = rowData.player_id === bootstrap.myPlayerId
+                    return (
+                      <View key={rowData.player_id} style={[styles.standRow, isMe && styles.standRowMe]}>
+                        <View style={[styles.swatchSm, { backgroundColor: color }]} />
+                        <View style={styles.standInfo}>
+                          <Text style={styles.standName} numberOfLines={1}>
+                            {rowData.name}
+                          </Text>
+                          <Text style={styles.standMeta} numberOfLines={1}>
+                            {ordinal(i + 1)} of {standings.length} · {rowData.wordsCompleted} words · {pct}%
+                            {bootstrap.game?.session_started_at ? ` · ⏱ ${formatMinutesSeconds(timeSecs)}` : ''}
+                          </Text>
+                        </View>
+                        <Text style={styles.standPoints}>{rowData.points} pts</Text>
+                      </View>
+                    )
+                  })}
+                </View>
+              ) : null}
+            </>
+          )}
+
+          <View style={styles.rulesRow}>
+            <GameRulesLink gameType="crossword" variant="subtle" />
           </View>
-        </View>
-      ) : null}
+        </ScrollView>
+
+        {/* Pinned input dock — always visible so every key (and Erase) is reachable. */}
+        {metadata && boardGrid.length > 0 && !viewing && bootstrap.game?.status !== 'finished' ? (
+          <View style={styles.inputDock}>
+            <View style={styles.clueBar}>
+              <View style={styles.clueBarText}>
+                {activeClue ? (
+                  <Text style={styles.clueBarLine} numberOfLines={2}>
+                    <Text style={styles.clueBarNum}>
+                      {activeClue.number} {activeClue.direction === 'across' ? 'Across' : 'Down'}
+                    </Text>
+                    {'  '}
+                    {activeClue.clue}
+                  </Text>
+                ) : (
+                  <Text style={styles.clueBarHint}>Tap a cell to start filling the grid.</Text>
+                )}
+              </View>
+              <Pressable
+                style={[
+                  styles.revealBtn,
+                  (!selectedCell || submitting || !isCellEditable(selectedCell[0], selectedCell[1])) &&
+                    styles.revealBtnDisabled,
+                ]}
+                disabled={!selectedCell || submitting || !isCellEditable(selectedCell[0], selectedCell[1])}
+                onPress={handleReveal}
+              >
+                <Text style={styles.revealText}>💡 Reveal</Text>
+              </Pressable>
+            </View>
+
+            {/* On-screen keyboard (QWERTY or A–Z, player's choice) */}
+            <View style={styles.keyboard}>
+              <Pressable style={styles.layoutToggle} onPress={toggleKeyboardLayout} hitSlop={8}>
+                <Text style={styles.layoutToggleText}>
+                  ⌨ {keyboardLayout === 'qwerty' ? 'Switch to A–Z' : 'Switch to QWERTY'}
+                </Text>
+              </Pressable>
+              {KEY_LAYOUTS[keyboardLayout].map((rowLetters, ri) => (
+                <View key={ri} style={styles.keyRow}>
+                  {rowLetters.split('').map((letter) => (
+                    <Pressable
+                      key={letter}
+                      style={[styles.key, !selectedCell && styles.keyDisabled]}
+                      disabled={!selectedCell}
+                      onPress={() => handleTypeLetter(letter)}
+                    >
+                      <Text style={styles.keyText}>{letter}</Text>
+                    </Pressable>
+                  ))}
+                  {ri === KEY_LAYOUTS[keyboardLayout].length - 1 ? (
+                    <Pressable
+                      style={[styles.key, styles.keyErase, !selectedCell && styles.keyDisabled]}
+                      disabled={!selectedCell}
+                      onPress={handleBackspace}
+                    >
+                      <Text style={styles.keyEraseText}>⌫ Erase</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
       </View>
     </GameShell>
   )
@@ -898,6 +912,20 @@ const makeStyles = (theme: Theme) =>
     watchChipText: { color: theme.textSecondary, fontSize: 13, fontWeight: '700', maxWidth: 120 },
     watchChipTextActive: { color: '#fff' },
     viewingHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 12 },
+    doneBanner: {
+      alignSelf: 'stretch',
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderRadius: 12,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      alignItems: 'center',
+      gap: 2,
+      marginBottom: 12,
+    },
+    doneTitle: { color: theme.text, fontSize: 16, fontWeight: '800' },
+    doneSub: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
     clueBar: {
       flexDirection: 'row',
       alignItems: 'center',

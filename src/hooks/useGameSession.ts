@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
 import { resolvePlayerSession } from '@/lib/player-resume'
-import { parseThemeId, THEME_MAP } from '@/lib/themes'
+import { parseThemeId } from '@/lib/themes'
 import { playRoundStartSound, playVoteSubmittedSound, playRoundEndSound, playGameFinishedSound } from '@/lib/sounds'
 import { getRoundParticipantGender, canPlayerVoteInRound, playerVoteGenderForRound } from '@/lib/participants'
 import {
@@ -382,19 +382,20 @@ export function useGameSession(deps: GameSessionDeps) {
     if (parsed) setMyPlayerGender(parsed)
   }, [myPlayerId, players, participants])
 
-  // ── Theme CSS variables effect ──────────────────────────────────────────
+  // ── Game theme effect ───────────────────────────────────────────────────
+  // Each theme's palette (light + dark) lives in globals.css under
+  // `[data-game-theme='<id>']`; just toggle the attribute so CSS resolves the
+  // right colors for the active light/dark mode.
   useEffect(() => {
     const themeId = parseThemeId(game?.theme)
-    const vars = THEME_MAP[themeId]?.cssVars ?? {}
     const root = document.documentElement
-    const keys = Object.keys(vars)
-    keys.forEach((k) => root.style.setProperty(k, vars[k]))
-    if (Object.keys(vars).length > 0) {
-      root.style.setProperty('background', vars['--background'] ?? '')
+    if (themeId === 'default') {
+      root.removeAttribute('data-game-theme')
+      return
     }
+    root.setAttribute('data-game-theme', themeId)
     return () => {
-      keys.forEach((k) => root.style.removeProperty(k))
-      root.style.removeProperty('background')
+      root.removeAttribute('data-game-theme')
     }
   }, [game?.theme])
 

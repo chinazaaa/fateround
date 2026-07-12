@@ -159,7 +159,10 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   const isDescriber = session?.describer_player_id === bootstrap.myPlayerId
   const mePlayer = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
   const isViewer = !!(mePlayer && bootstrap.game && playerIsViewer(mePlayer, bootstrap.game))
-  const inRoster = !!bootstrap.myPlayerId && (session?.roster?.includes(bootstrap.myPlayerId) ?? false)
+  // Gate on the LIVE roster (describe_it_players/teamRows), not the frozen session.roster —
+  // late joiners are seeded into describe_it_players but never into session.roster, so the
+  // snapshot hid the guess input from them. Mirrors the server's processIndividualGuess check.
+  const inRoster = !!bootstrap.myPlayerId && teamRows.some((r) => r.player_id === bootstrap.myPlayerId)
   const onMyTeam = mode === 'individual' ? inRoster : myTeamRow?.team === session?.active_team
   // Whether I'm eligible to guess this turn — the clue-gate is a *display* concern
   // handled in the guess panel (mirrors web `canGuess`).

@@ -30,6 +30,7 @@ import { QuickDrawHostView } from '@/components/quick-draw/QuickDrawHostView'
 import { WordRushHostView } from '@/components/word-rush/WordRushHostView'
 import { CrosswordHostView } from '@/components/crossword/CrosswordHostView'
 import { WordSearchHostView } from '@/components/word-search/WordSearchHostView'
+import { WordScrambleHostView } from '@/components/word-scramble/WordScrambleHostView'
 
 export type GameHostView = ComponentType<{ gameCode: string; hostToken: string }>
 
@@ -70,4 +71,5 @@ export const HOST_VIEW_REGISTRY: Partial<Record<GameType, GameHostView>> = {
   word_rush: WordRushHostView,
   crossword: CrosswordHostView,
   word_search: WordSearchHostView,
+  word_scramble: WordScrambleHostView,
 }
