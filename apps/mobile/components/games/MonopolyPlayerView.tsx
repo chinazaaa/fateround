@@ -30,6 +30,7 @@ import {
   takenMonopolyTokens,
   type MonopolyTokenId,
 } from '@fateround/shared/monopoly-tokens'
+import { MONOPOLY_EDITION_THEMES } from '@fateround/shared/create-themes'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
@@ -42,6 +43,7 @@ import {
   formatThemedText,
   themedSpaceName,
 } from '@/components/games/monopoly/monopoly-theme'
+import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -172,6 +174,10 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   const themeId = bootstrap.game?.theme
+  // Surface the chosen edition (🎩 Classic, 🇳🇬 Naija, …) as the header mode pill
+  // so it's visible on every Monopoly screen, not just the create/lobby picker.
+  const edition = MONOPOLY_EDITION_THEMES.find((t) => t.id === (themeId ?? 'default')) ?? MONOPOLY_EDITION_THEMES[0]
+  useHeaderBadge(bootstrap.game ? `${edition.emoji} ${edition.label}` : null)
   // Joining an already-active game means watching live (read-only). Monopoly never
   // seats late players mid-game, so the active-game join is always a viewer join.
   const joiningAsViewer = bootstrap.game?.status === 'active'
@@ -425,9 +431,13 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         <LobbyView {...lobbyProps!} onLeft={onLeft} />
         <View style={styles.tokenList}>
           <Text style={styles.lobbyHint}>Tokens in lobby:</Text>
-          {/* Wrapping chips so a full 6-player lobby stays compact (≈3 rows of
-              two) instead of stretching into six full-width lines. */}
-          <View style={styles.lobbyTokenRow}>
+          {/* One horizontal row of chips that scrolls sideways, so a full
+              6-player lobby stays on a single line instead of wrapping down. */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.lobbyTokenRow}
+          >
             {bootstrap.players
               .filter((p) => !p.spectator)
               .map((p: Player, index: number) => (
@@ -438,7 +448,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
                   </Text>
                 </View>
               ))}
-          </View>
+          </ScrollView>
         </View>
       </View>
     )
@@ -894,7 +904,7 @@ const makeStyles = (theme: Theme) =>
   tokenLabel: { color: theme.text, fontSize: 11, marginTop: 4, textAlign: 'center' },
   tokenOwner: { color: theme.textMuted, fontSize: 10, marginTop: 2 },
   lobbyHint: { color: theme.textMuted, fontSize: 14, marginTop: 12 },
-  lobbyTokenRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  lobbyTokenRow: { flexDirection: 'row', gap: 8, marginTop: 8, paddingRight: 8 },
   lobbyTokenChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -905,7 +915,6 @@ const makeStyles = (theme: Theme) =>
     borderRadius: theme.radius.pill,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    maxWidth: '48%',
   },
   lobbyTokenEmoji: { fontSize: 18 },
   lobbyTokenName: { color: theme.text, fontSize: 14, fontWeight: '600', flexShrink: 1 },
