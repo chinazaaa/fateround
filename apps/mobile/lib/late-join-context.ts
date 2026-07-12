@@ -13,6 +13,7 @@ import {
   isWordHuntGame,
   isWordRushGame,
   isWordSearchGame,
+  isWordScrambleGame,
   isYahtzeeGame,
   parseGameType,
 } from '@fateround/shared/game-type-checks'
@@ -108,6 +109,14 @@ export async function fetchLateJoinContext(
       statusLine: 'Puzzle in progress',
       playerDetail: 'Jump into the same grid and race to find the words still hidden.',
       viewerDetail: "Watch the words get found and live scores — you can't hunt the grid.",
+    }
+  }
+
+  if (isWordScrambleGame(type)) {
+    return {
+      statusLine: 'Race in progress',
+      playerDetail: 'Jump into the same scrambles and race to unscramble the words.',
+      viewerDetail: "Watch the live scores — you can't play this round.",
     }
   }
 

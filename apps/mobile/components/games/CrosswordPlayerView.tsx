@@ -233,6 +233,9 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     setWrongDrafts(gridSize > 0 ? emptyBooleans(gridSize) : [])
     setSelectedCell(null)
     setDirection('across')
+    // Drop the previous game's answer grid too, so a replay's finish screen refetches the new
+    // puzzle's solution instead of pairing new clues with stale letters (garbled answer key).
+    setSolutionGrid(null)
   }, [sessionKey, gridSize])
 
   const me = bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)

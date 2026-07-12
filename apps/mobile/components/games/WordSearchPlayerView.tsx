@@ -151,6 +151,13 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
     return () => clearInterval(id)
   }, [bootstrap.screen])
 
+  // A replay reuses this component with a fresh puzzle — drop the previous game's word
+  // placements so the finished screen refetches the new answer key instead of highlighting
+  // stale positions over the new grid.
+  useEffect(() => {
+    setPlacements(null)
+  }, [bootstrap.game?.session_started_at])
+
   // Fetch the answer key once the hunt is over (routes gate on finished + service role).
   useEffect(() => {
     if (bootstrap.game?.status !== 'finished' || placements) return

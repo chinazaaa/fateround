@@ -51,6 +51,7 @@ export type GameType =
   | 'ayo'
   | 'crossword'
   | 'word_search'
+  | 'word_scramble'
 
 export interface Game {
   id: string
@@ -299,6 +300,7 @@ export interface Round {
   npat_metadata?: NpatMetadata | null
   crossword_metadata?: CrosswordMetadata | null
   word_search_metadata?: WordSearchMetadata | null
+  word_scramble_metadata?: WordScrambleMetadata | null
 }
 
 export interface VoteAssignment {
@@ -506,6 +508,17 @@ export interface WordSearchPlacement {
   row: number
   col: number
   direction: WordSearchDirection
+}
+
+export type WordScrambleDifficulty = 'easy' | 'medium' | 'hard'
+
+/** Client-readable Word Scramble data (rounds.word_scramble_metadata). Answers stay server-side. */
+export interface WordScrambleMetadata {
+  scrambles: string[]
+  count: number
+  theme?: string
+  difficulty?: WordScrambleDifficulty
+  hints?: string[]
 }
 
 export interface WordSearchFound {

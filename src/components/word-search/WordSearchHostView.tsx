@@ -168,6 +168,13 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
     else if (game?.status === 'finished') setTab('manage')
   }, [game?.status])
 
+  // A replay reuses this view with a fresh round — drop the previous game's word placements so
+  // the finish screen refetches the new puzzle's answer key instead of highlighting stale
+  // positions over the new grid.
+  useEffect(() => {
+    setPlacements(null)
+  }, [roundId])
+
   // Pull the answer key once the game is finished, so it can show below the leaderboard.
   useEffect(() => {
     if (game?.status !== 'finished' || placements) return

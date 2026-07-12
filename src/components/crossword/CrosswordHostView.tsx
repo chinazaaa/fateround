@@ -159,6 +159,13 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
     else if (game?.status === 'finished') setTab('manage')
   }, [game?.status])
 
+  // A replay reuses this view with a fresh round — drop the previous game's answer grid so the
+  // finish screen refetches the new puzzle's solution instead of pairing new clues with stale
+  // letters (which garbles every word in the answer key).
+  useEffect(() => {
+    setSolutionGrid(null)
+  }, [roundId])
+
   // Pull the answer grid once the game is finished, so it can show below the leaderboard.
   useEffect(() => {
     if (game?.status !== 'finished' || solutionGrid) return

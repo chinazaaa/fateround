@@ -108,6 +108,10 @@ export function isWordSearchGame(gameType: GameType | string | undefined): boole
   return eq(gameType, 'word_search')
 }
 
+export function isWordScrambleGame(gameType: GameType | string | undefined): boolean {
+  return eq(gameType, 'word_scramble')
+}
+
 export function isQuiplashGame(gameType: GameType | string | undefined): boolean {
   return eq(gameType, 'quiplash')
 }
