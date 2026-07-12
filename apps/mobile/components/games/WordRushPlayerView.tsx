@@ -317,9 +317,16 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
         setSubmitError(result.message ?? `"${text}" isn't in the dictionary for this letter pair`)
       } else {
         setWordText('')
-        setLastMessage(`+${result.points ?? 0} pts`)
+        // Team mode scores +1 to the team and returns no per-word points, so
+        // "+0 pts" was misleading — show a plain "Correct!" unless we have a real
+        // individual-mode point value.
+        setLastMessage(result.points && result.points > 0 ? `+${result.points} pts` : 'Correct! ✓')
       }
       await bootstrap.load()
+    } catch (err) {
+      // Without this a thrown request (e.g. a 4xx like "not your team's turn")
+      // vanished silently — surface it in the same red field message.
+      setSubmitError(err instanceof Error ? err.message : 'Could not submit your word')
     } finally {
       setActing(false)
     }
@@ -359,7 +366,9 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     <GameShell
       bootstrap={bootstrap}
       title={batch5GameLabel('word_rush')}
-      subtitle={session.status_message ?? bootstrap.code}
+      // Just the code here — the round/team/letters (status_message) is already
+      // shown in the middle (turn banner + score grid), so it read as a duplicate.
+      subtitle={bootstrap.code}
     >
       <KeyboardAwareGameScroll ref={scrollRef} contentContainerStyle={styles.content}>
         <TurnBanner
