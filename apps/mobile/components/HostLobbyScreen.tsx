@@ -6,6 +6,7 @@ import type { Game, Player } from '@fateround/shared'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 import { startGame, postPlayAgain, postFinishGame, removePlayerAsHost } from '@/lib/game-api'
 import { gameHasMobileVoice } from '@/lib/voice-games'
+import { gameLabel } from '@/lib/mobile-registry'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { HostLobbyPlayCard } from '@/components/host/HostLobbyPlayCard'
@@ -208,7 +209,14 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.topBar}>
-          <Text style={styles.eyebrow}>Hosting</Text>
+          <View style={styles.eyebrowRow}>
+            <Text style={styles.eyebrow}>Hosting</Text>
+            {game ? (
+              <View style={styles.typePill}>
+                <Text style={styles.typePillText}>{gameLabel(game.game_type)}</Text>
+              </View>
+            ) : null}
+          </View>
           {game && !finished ? (
             <Pressable style={styles.gearBtn} onPress={() => setSettingsOpen(true)} hitSlop={8}>
               <Text style={styles.gearIcon}>⚙</Text>
@@ -334,7 +342,6 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
             Play again lobby open — {readyCount} player{readyCount === 1 ? '' : 's'} ready. Start when everyone is in.
           </Text>
         ) : null}
-
       </ScrollView>
 
       <View style={styles.footer}>
@@ -479,7 +486,23 @@ const makeStyles = (theme: Theme) =>
     // Cancel the content's 24px horizontal padding so the voice bar spans edge to
     // edge like the pinned rails on the other chromes.
     voiceRailWrap: { marginHorizontal: -24 },
+    eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1, flexWrap: 'wrap' },
     eyebrow: { color: theme.primary, fontSize: 13, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+    typePill: {
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.primarySoft,
+      borderWidth: 1,
+      borderColor: theme.borderAccent,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+    },
+    typePillText: {
+      color: theme.primaryMuted,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+    },
     title: { color: theme.text, fontSize: 28, fontWeight: '800', marginBottom: 8 },
     codeCard: {
       backgroundColor: theme.surface,
