@@ -90,6 +90,12 @@ VAPID_SUBJECT=$(get_param_opt --name "/$PREFIX/VAPID_SUBJECT")
 # In-game music (optional). Only present when configured; missing = feature off.
 SPOTIFY_CLIENT_SECRET=$(get_param_opt --with-decryption --name "/$PREFIX/SPOTIFY_CLIENT_SECRET")
 
+# OpenTelemetry export (optional). Present only when an OTLP backend is configured;
+# missing = telemetry off (the app's instrumentation.ts no-ops without an endpoint).
+OTEL_EXPORTER_OTLP_ENDPOINT=$(get_param_opt --name "/$PREFIX/OTEL_EXPORTER_OTLP_ENDPOINT")
+OTEL_EXPORTER_OTLP_HEADERS=$(get_param_opt --with-decryption --name "/$PREFIX/OTEL_EXPORTER_OTLP_HEADERS")
+OTEL_RESOURCE_ATTRIBUTES=$(get_param_opt --name "/$PREFIX/OTEL_RESOURCE_ATTRIBUTES")
+
 # With Caddy (origin TLS) the app is private behind Caddy on localhost:8080.
 # Without it, the app is published directly on :80.
 if [ "$ENABLE_CADDY" = "true" ]; then PORT_PUBLISH="127.0.0.1:8080:$APP_PORT"; else PORT_PUBLISH="80:$APP_PORT"; fi
@@ -115,6 +121,9 @@ docker run -d --name app --restart always \
   -e VAPID_PRIVATE_KEY="$VAPID_PRIVATE_KEY" \
   -e VAPID_SUBJECT="$VAPID_SUBJECT" \
   -e SPOTIFY_CLIENT_SECRET="$SPOTIFY_CLIENT_SECRET" \
+  -e OTEL_EXPORTER_OTLP_ENDPOINT="$OTEL_EXPORTER_OTLP_ENDPOINT" \
+  -e OTEL_EXPORTER_OTLP_HEADERS="$OTEL_EXPORTER_OTLP_HEADERS" \
+  -e OTEL_RESOURCE_ATTRIBUTES="$OTEL_RESOURCE_ATTRIBUTES" \
   "$REPO:$TAG"
 
 # Reclaim disk from the now-untagged previous image.

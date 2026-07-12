@@ -21,8 +21,8 @@ export async function register() {
   // Not configured for this environment → do nothing.
   if (!process.env.OTEL_EXPORTER_OTLP_ENDPOINT) return
 
-  const { registerOTel } = await import('@vercel/otel')
-  registerOTel({
-    serviceName: process.env.OTEL_SERVICE_NAME || 'fateround',
-  })
+  // Import a Node-only submodule (relative path — the standalone tracer DOES follow this) that
+  // statically imports @vercel/otel, so the exporter + its OpenTelemetry deps get bundled into
+  // `.next/standalone`. A bare `import('@vercel/otel')` here is not traced and ships nothing.
+  await import('./instrumentation.node')
 }

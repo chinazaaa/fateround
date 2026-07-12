@@ -199,6 +199,25 @@ variable "vapid_subject" {
   default     = ""
 }
 
+variable "otel_exporter_otlp_endpoint" {
+  description = "OTEL_EXPORTER_OTLP_ENDPOINT — OTLP/HTTP base URL for trace+metric export (e.g. https://otlp-gateway-<region>.grafana.net/otlp for Grafana Cloud). Empty disables all OpenTelemetry export; src/instrumentation.ts no-ops without it. (An on-box collector would need a container-reachable host — host.docker.internal or host networking, not the container's own localhost — but the MVP exports directly to the backend and runs no collector.)"
+  type        = string
+  default     = ""
+}
+
+variable "otel_exporter_otlp_headers" {
+  description = "OTEL_EXPORTER_OTLP_HEADERS — comma-separated OTLP headers, typically the backend auth (e.g. \"Authorization=Basic <base64(instanceID:token)>\" for Grafana Cloud). Empty when the endpoint needs no auth (e.g. a local collector)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "otel_resource_attributes" {
+  description = "OTEL_RESOURCE_ATTRIBUTES — comma-separated resource attributes stamped on every span/metric (e.g. \"deployment.environment=prod\"). service.name defaults to \"fateround\" in code; empty is fine."
+  type        = string
+  default     = ""
+}
+
 variable "enable_origin_tls" {
   description = "Run Caddy on the instance to terminate HTTPS with a Cloudflare Origin Certificate (Full-strict). When false, the app serves plain HTTP:80 (Flexible)."
   type        = bool
