@@ -148,6 +148,28 @@ describe('tallyCrosswordScores', () => {
     expect(p1.wordsCompleted).toBe(1)
   })
 
+  it('breaks a score tie by finish time — the faster solver ranks higher', () => {
+    // Both complete both words (each first on one → equal points). p2's last correct cell is
+    // earlier, so p2 finished sooner and must rank first.
+    const submissions = [
+      // p1: across first (@1-3), down later (@10-11).
+      sub({ player_id: 'p1', cell_row: 0, cell_col: 0, submitted_at: '2026-07-12T00:00:01.000Z' }),
+      sub({ player_id: 'p1', cell_row: 0, cell_col: 1, submitted_at: '2026-07-12T00:00:02.000Z' }),
+      sub({ player_id: 'p1', cell_row: 0, cell_col: 2, submitted_at: '2026-07-12T00:00:03.000Z' }),
+      sub({ player_id: 'p1', cell_row: 1, cell_col: 0, submitted_at: '2026-07-12T00:00:10.000Z' }),
+      sub({ player_id: 'p1', cell_row: 2, cell_col: 0, submitted_at: '2026-07-12T00:00:11.000Z' }),
+      // p2: down first (@4-6), across later (@7-8) → finishes at :08.
+      sub({ player_id: 'p2', cell_row: 0, cell_col: 0, submitted_at: '2026-07-12T00:00:04.000Z' }),
+      sub({ player_id: 'p2', cell_row: 1, cell_col: 0, submitted_at: '2026-07-12T00:00:05.000Z' }),
+      sub({ player_id: 'p2', cell_row: 2, cell_col: 0, submitted_at: '2026-07-12T00:00:06.000Z' }),
+      sub({ player_id: 'p2', cell_row: 0, cell_col: 1, submitted_at: '2026-07-12T00:00:07.000Z' }),
+      sub({ player_id: 'p2', cell_row: 0, cell_col: 2, submitted_at: '2026-07-12T00:00:08.000Z' }),
+    ]
+    const scores = tallyCrosswordScores(META, submissions, PLAYERS)
+    expect(scores[0].points).toBe(scores[1].points)
+    expect(scores[0].player_id).toBe('p2')
+  })
+
   it('applies the hint penalty', () => {
     const submissions = [
       sub({ player_id: 'p1', cell_row: 0, cell_col: 0, via_hint: true }),
