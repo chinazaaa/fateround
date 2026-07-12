@@ -167,8 +167,20 @@ function ListEditor({
   const removeItem = (idx: number) =>
     onChange({ prompts: custom.prompts.filter((_, i) => i !== idx) })
 
+  const filledCount = custom.prompts.filter((p) => p.trim()).length
+
   return (
     <View style={styles.list}>
+      {custom.prompts.length > 1 ? (
+        <View style={styles.listHeader}>
+          <Text style={styles.listCount}>
+            {filledCount} {filledCount === 1 ? 'word' : 'words'}
+          </Text>
+          <Pressable onPress={() => onChange({ prompts: [''] })} hitSlop={8}>
+            <Text style={styles.clearAll}>Clear all</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {custom.prompts.map((value, idx) => (
         <View key={idx} style={styles.row}>
           <TextInput
@@ -355,6 +367,14 @@ const makeStyles = (theme: Theme) =>
     lineHeight: 18,
   },
   list: { gap: theme.space.sm },
+  listHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 2,
+  },
+  listCount: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },
+  clearAll: { color: theme.primary, fontSize: 13, fontWeight: '800' },
   row: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
   rowInput: {
     flex: 1,
