@@ -104,7 +104,21 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
   const afterResolve = useCallback(
     async (gameData: Game, playerId: string | null): Promise<WordSearchGameState> => {
       // Finished games show the final leaderboard to everyone — even a session-less visitor.
+      // Load the round metadata too: without it, `metadata` is null on a refresh of the
+      // finished screen and the leaderboard (and answer key) blank out because the tally
+      // can't run.
       if (gameData.status === 'finished') {
+        const { data: roundData } = await supabase
+          .from('rounds')
+          .select('id, word_search_metadata')
+          .eq('game_id', gameCode)
+          .eq('round_number', 1)
+          .maybeSingle()
+        if (roundData) {
+          const meta = parseWordSearchMetadata((roundData as Record<string, unknown>).word_search_metadata)
+          if (meta) setMetadata(meta)
+          setRoundId(roundData.id as string)
+        }
         const { data: rows } = await supabase
           .from('word_search_found')
           .select(WORD_SEARCH_FOUND_SELECT)

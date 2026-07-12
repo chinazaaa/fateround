@@ -138,7 +138,21 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
   const afterResolve = useCallback(
     async (gameData: Game, playerId: string | null): Promise<CrosswordGameState> => {
       // Finished games show the final leaderboard to everyone — even a session-less visitor.
+      // Load the round metadata too: without it, `metadata` is null on a refresh of the
+      // finished screen and the leaderboard (and answer key) blank out because the tally
+      // can't run.
       if (gameData.status === 'finished') {
+        const { data: roundData } = await supabase
+          .from('rounds')
+          .select(ROUND_SELECT)
+          .eq('game_id', gameCode)
+          .eq('round_number', 1)
+          .maybeSingle()
+        if (roundData) {
+          const meta = parseCrosswordMetadata((roundData as Record<string, unknown>).crossword_metadata)
+          if (meta) setMetadata(meta)
+          setRoundId(roundData.id as string)
+        }
         const { data: subs } = await supabase
           .from('crossword_submissions')
           .select(CROSSWORD_SUBMISSION_SELECT)
