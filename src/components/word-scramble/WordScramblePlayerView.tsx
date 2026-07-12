@@ -574,13 +574,11 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
                 </div>
 
                 {/* Scramble tiles */}
-                <div
-                  className={`flex flex-wrap gap-2 justify-center py-4 transition-transform ${wrongFlash ? 'animate-[shake_0.4s]' : ''}`}
-                >
+                <div className="flex flex-wrap gap-2 justify-center py-4">
                   {(currentScramble ?? '').split('').map((ch, i) => (
                     <span
                       key={i}
-                      className="w-11 h-12 sm:w-12 sm:h-14 flex items-center justify-center rounded-lg bg-white dark:bg-slate-800 border-2 border-[var(--border-strong)] text-2xl font-black text-[var(--foreground)] shadow-sm"
+                      className={`w-11 h-12 sm:w-12 sm:h-14 flex items-center justify-center rounded-lg bg-white dark:bg-slate-800 border-2 text-2xl font-black text-[var(--foreground)] shadow-sm transition-colors ${wrongFlash ? 'border-red-500 bg-red-50 dark:bg-red-900/30' : 'border-[var(--border-strong)]'}`}
                     >
                       {ch}
                     </span>
@@ -652,20 +650,6 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
           </>
         )}
       </main>
-      <style jsx global>{`
-        @keyframes shake {
-          0%,
-          100% {
-            transform: translateX(0);
-          }
-          25% {
-            transform: translateX(-6px);
-          }
-          75% {
-            transform: translateX(6px);
-          }
-        }
-      `}</style>
     </div>
   )
 }
