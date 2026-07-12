@@ -47,6 +47,7 @@ import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useGameExpiryTimer } from '@/hooks/useGameExpiryTimer'
 import { joinGame } from '@/lib/api'
 import {
   postMonopolyAuction,
@@ -188,6 +189,10 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     () => bootstrap.load(),
     !!bootstrap.game
   )
+
+  // End the game when the whole-game duration runs out. Without this the timer
+  // bar drains to 0:00 but nothing tells the server to finish — matches web.
+  useGameExpiryTimer({ endpoint: `/api/games/${gameCode}/expire-monopoly`, game: bootstrap.game })
 
   useEffect(() => {
     const id = setInterval(() => setTimerTick((t) => t + 1), 1000)

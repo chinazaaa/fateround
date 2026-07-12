@@ -16,6 +16,7 @@ import {
 import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { CardTableArea } from '@/components/games/cards/CardTableArea'
 import { GameTimerBar } from '@/components/games/cards/GameTimerBar'
+import { useGameExpiryTimer } from '@/hooks/useGameExpiryTimer'
 import { CrazyEightsRoster } from '@/components/games/cards/CrazyEightsRoster'
 import { WhotCardFace } from '@/components/games/cards/WhotCardFace'
 import { WhotShapeIcon } from '@/components/games/cards/WhotShapeIcon'
@@ -159,6 +160,10 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     gameDeadlineAt,
     !!gameDeadlineAt && bootstrap.game?.status === 'active'
   )
+
+  // End the game when the whole-game duration runs out (the timer bar otherwise
+  // just drains to 0:00 with nothing telling the server to finish). Matches web.
+  useGameExpiryTimer({ endpoint: `/api/games/${gameCode}/expire-whot`, game: bootstrap.game })
 
   const handCounts = useMemo(() => {
     const counts: Record<string, number> = {}

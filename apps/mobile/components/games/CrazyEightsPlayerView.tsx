@@ -26,6 +26,7 @@ import { playerIsViewer } from '@fateround/shared/viewers'
 import { CardTableArea } from '@/components/games/cards/CardTableArea'
 import { CrazyEightsRoster } from '@/components/games/cards/CrazyEightsRoster'
 import { GameTimerBar } from '@/components/games/cards/GameTimerBar'
+import { useGameExpiryTimer } from '@/hooks/useGameExpiryTimer'
 import { PlayingCardFace } from '@/components/games/cards/PlayingCardFace'
 import { useTurnDeadlineSeconds } from '@/components/games/cards/useTurnDeadlineSeconds'
 import { TimerBadge } from '@/components/ui/TimerBadge'
@@ -154,6 +155,10 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     gameDeadlineAt,
     !!gameDeadlineAt && bootstrap.game?.status === 'active'
   )
+
+  // End the game when the whole-game duration runs out (the timer bar otherwise
+  // just drains to 0:00 with nothing telling the server to finish). Matches web.
+  useGameExpiryTimer({ endpoint: `/api/games/${gameCode}/expire-crazy-eights`, game: bootstrap.game })
 
   const handCounts = useMemo(() => {
     const counts: Record<string, number> = {}
