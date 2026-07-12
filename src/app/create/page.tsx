@@ -239,7 +239,9 @@ import { crosswordThemeOptions, CROSSWORD_DEFAULT_THEME } from '@/lib/crossword-
 import { MATCHING_PAIRS_GAME_DURATION_OPTIONS, formatMatchingPairsGameDuration } from '@/lib/memory-match'
 import {
   DESCRIBE_IT_DEFAULT_ROUNDS,
+  DESCRIBE_IT_DEFAULT_MAX_PLAYERS,
   DESCRIBE_IT_DEFAULT_TURN_SECONDS,
+  DESCRIBE_IT_MAX_PLAYER_OPTIONS,
   DESCRIBE_IT_MIN_PLAYERS,
   DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
   DESCRIBE_IT_ROUND_OPTIONS,
@@ -384,6 +386,7 @@ function CreateGameInner() {
   const [crosswordDifficulty, setCrosswordDifficulty] = useState<CrosswordDifficulty>(CROSSWORD_DEFAULT_DIFFICULTY)
   const [wordHuntMaxPlayers, setWordHuntMaxPlayers] = useState(WORD_HUNT_DEFAULT_MAX_PLAYERS)
   const [wordRushMaxPlayers, setWordRushMaxPlayers] = useState(WORD_RUSH_DEFAULT_MAX_PLAYERS)
+  const [describeItMaxPlayers, setDescribeItMaxPlayers] = useState(DESCRIBE_IT_DEFAULT_MAX_PLAYERS)
   const [wordHuntTimer, setWordHuntTimer] = useState(WORD_HUNT_DEFAULT_TIMER)
   const [npatGameDuration, setNpatGameDuration] = useState(NPAT_DEFAULT_GAME_DURATION)
   const [npatMarkingTimer, setNpatMarkingTimer] = useState(NPAT_DEFAULT_MARKING_TIMER)
@@ -469,6 +472,7 @@ function CreateGameInner() {
     setSnakeLadderMaxPlayers((v) => clamp('snake_and_ladder', v))
     setNpatMaxPlayers((v) => clamp('i_call_on', v))
     setWordRushMaxPlayers((v) => clamp('word_rush', v))
+    setDescribeItMaxPlayers((v) => clamp('describe_it', v))
   }, [lobbyLimits])
 
   useEffect(() => {
@@ -1478,9 +1482,11 @@ function CreateGameInner() {
                                             ? wordHuntMaxPlayers
                                             : isWordRush
                                               ? wordRushMaxPlayers
-                                              : isMatchingPairs
-                                                ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
-                                                : undefined,
+                                              : isDescribeIt
+                                                ? describeItMaxPlayers
+                                                : isMatchingPairs
+                                                  ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
+                                                  : undefined,
           operative_timer_seconds: isCodewords
             ? codewordsOperativeTimer
             : isNpat
@@ -2839,6 +2845,19 @@ function CreateGameInner() {
                     </select>
                   </Field>
                 )}
+                <Field label={`Max players (up to ${DESCRIBE_IT_MAX_PLAYER_OPTIONS.at(-1)})`}>
+                  <select
+                    value={describeItMaxPlayers}
+                    onChange={(e) => setDescribeItMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {DESCRIBE_IT_MAX_PLAYER_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
                 <Field
                   label={
                     settings.describe_it_mode === 'individual'

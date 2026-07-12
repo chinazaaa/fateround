@@ -22,7 +22,11 @@ import { CHECKERS_DEFAULT_MAX_PLAYERS, CHECKERS_MAX_PLAYERS, CHECKERS_MIN_PLAYER
 import { AYO_DEFAULT_MAX_PLAYERS, AYO_MAX_PLAYERS, AYO_MIN_PLAYERS } from '@/lib/ayo'
 import { SCRABBLE_MAX_PLAYERS, SCRABBLE_MIN_PLAYERS } from '@/lib/scrabble'
 import { SUDOKU_MAX_PLAYERS, SUDOKU_MIN_PLAYERS } from '@/lib/sudoku'
-import { DESCRIBE_IT_DEFAULT_MAX_PLAYERS, DESCRIBE_IT_MAX_PLAYERS, DESCRIBE_IT_MIN_PLAYERS } from '@/lib/describe-it'
+import {
+  DESCRIBE_IT_DEFAULT_MAX_PLAYERS,
+  DESCRIBE_IT_MAX_PLAYERS,
+  DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
+} from '@/lib/describe-it'
 import {
   SNAKE_LADDER_DEFAULT_MAX_PLAYERS,
   SNAKE_LADDER_MAX_PLAYERS,
@@ -189,7 +193,9 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     default: SCRABBLE_MAX_PLAYERS,
   },
   describe_it: {
-    min: DESCRIBE_IT_MIN_PLAYERS,
+    // Absolute floor for the max-players cap; individual mode can run with 2.
+    // Team mode's higher start minimum is enforced server-side at game start.
+    min: DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
     max: DESCRIBE_IT_MAX_PLAYERS,
     default: DESCRIBE_IT_DEFAULT_MAX_PLAYERS,
   },

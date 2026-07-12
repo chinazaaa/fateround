@@ -5,8 +5,8 @@ import type { DescribeItGuess, DescribeItMode, DescribeItSession, DescribeItWord
 import { DESCRIBE_IT_WORD_POOL, parseStoredDescribeItWords, pickDescribeWord } from '@/lib/describe-it-words'
 
 export const DESCRIBE_IT_MIN_PLAYERS = 4
-/** Individual mode only needs a describer + two guessers, so it can start with fewer. */
-export const DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL = 3
+/** Individual mode only needs a describer + one guesser, so it can start with fewer. */
+export const DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL = 2
 export const DESCRIBE_IT_MAX_PLAYERS = 20
 export const DESCRIBE_IT_DEFAULT_MAX_PLAYERS = 12
 
@@ -62,7 +62,7 @@ export function clampDescribeItTurnSeconds(value: unknown): number {
 export function clampDescribeItMaxPlayers(value: unknown): number {
   const n = Math.round(Number(value))
   if (!Number.isFinite(n)) return DESCRIBE_IT_DEFAULT_MAX_PLAYERS
-  return Math.min(DESCRIBE_IT_MAX_PLAYERS, Math.max(DESCRIBE_IT_MIN_PLAYERS, n))
+  return Math.min(DESCRIBE_IT_MAX_PLAYERS, Math.max(DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL, n))
 }
 
 /**
