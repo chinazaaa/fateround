@@ -4,6 +4,7 @@ import type { GamePlayerLimitsMap } from '@fateround/shared/lobby-limits'
 import { getCodeDefaultLimits } from '@fateround/shared/lobby-limits'
 import type { MafiaStateResponse } from '@fateround/shared/mafia'
 import type { MahjongStateResponse } from '@fateround/shared/mahjong'
+import type { WordSearchPlacement } from '@fateround/shared'
 
 async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(apiUrl(path), {
@@ -230,6 +231,35 @@ export function postWordSearchFound(
       hint,
     }
   )
+}
+
+// Answer keys — only populated once the game is finished (the routes gate on status
+// and read the RLS-protected solution tables with the service role). Return null
+// while the game is still live or if the fetch fails, so callers just hide the panel.
+export async function fetchCrosswordSolution(gameId: string): Promise<string[][] | null> {
+  try {
+    const res = await fetch(apiUrl(`/api/crossword/solution?gameId=${encodeURIComponent(gameId)}`), {
+      cache: 'no-store',
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { solution?: string[][] | null }
+    return Array.isArray(data.solution) ? data.solution : null
+  } catch {
+    return null
+  }
+}
+
+export async function fetchWordSearchSolution(gameId: string): Promise<WordSearchPlacement[] | null> {
+  try {
+    const res = await fetch(apiUrl(`/api/word-search/solution?gameId=${encodeURIComponent(gameId)}`), {
+      cache: 'no-store',
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { placements?: WordSearchPlacement[] | null }
+    return Array.isArray(data.placements) ? data.placements : null
+  } catch {
+    return null
+  }
 }
 
 export function postYahtzeeRoll(gameId: string, resumeToken: string) {

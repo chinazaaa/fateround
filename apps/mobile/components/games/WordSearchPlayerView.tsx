@@ -6,11 +6,13 @@ import {
   buildFoundOwnerGrid,
   buildPlayerFoundCells,
   parseWordSearchMetadata,
+  placementCells,
   playerFoundWords,
   tallyWordSearchScores,
   wordSearchCompletionPercent,
   WORD_SEARCH_HINT_PENALTY,
   type WordSearchMetadata,
+  type WordSearchPlacement,
 } from '@fateround/shared/word-search'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
@@ -25,7 +27,7 @@ import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { pointsLeaderboard } from '@/lib/finish-leaderboards'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { postWordSearchFound } from '@/lib/game-api'
+import { postWordSearchFound, fetchWordSearchSolution } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { ROUND_SELECT, WORD_SEARCH_FOUND_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
@@ -49,6 +51,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [nowMs, setNowMs] = useState<number>(() => Date.now())
   const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
+  const [placements, setPlacements] = useState<WordSearchPlacement[] | null>(null)
 
   const showToast = useCallback((msg: string, ok: boolean) => {
     setToast({ msg, ok })
@@ -148,6 +151,18 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
     return () => clearInterval(id)
   }, [bootstrap.screen])
 
+  // Fetch the answer key once the hunt is over (routes gate on finished + service role).
+  useEffect(() => {
+    if (bootstrap.game?.status !== 'finished' || placements) return
+    let cancelled = false
+    void fetchWordSearchSolution(gameCode).then((p) => {
+      if (!cancelled && p) setPlacements(p)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [bootstrap.game?.status, gameCode, placements])
+
   const me = bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
   const viewing = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
 
@@ -192,13 +207,16 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
     [metadata, found, boardPlayerId]
   )
 
-  // First finder per word (earliest found), for word-list colouring.
+  // Individual-board race: the word list must match the board on screen — my finds while
+  // playing, the watched player's finds while viewing. Using every player's finds would
+  // strike words off my list the moment anyone else found them, hiding my own progress.
   const wordOwners = useMemo(() => {
     const owners = new Map<string, string>()
-    const sorted = [...found].sort((a, b) => new Date(a.found_at).getTime() - new Date(b.found_at).getTime())
-    for (const f of sorted) if (!owners.has(f.word)) owners.set(f.word, f.player_id)
+    if (boardPlayerId) {
+      for (const w of playerFoundWords(found, boardPlayerId)) owners.set(w, boardPlayerId)
+    }
     return owners
-  }, [found])
+  }, [found, boardPlayerId])
 
   // Surface the difficulty as a header pill during play instead of a floating subtitle.
   const difficultyLabel = metadata?.difficulty
@@ -327,6 +345,32 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
     // anything falls back to "Game over".
     const leader = standings[0]
     const winnerId = leader && leader.wordsFound > 0 ? leader.player_id : null
+    const answerCells =
+      placements && metadata
+        ? (() => {
+            const g = metadata.grid.map((r) => r.map(() => false))
+            for (const p of placements) {
+              for (const [r, c] of placementCells(p)) {
+                if (g[r]) g[r][c] = true
+              }
+            }
+            return g
+          })()
+        : null
+    const answersNotice =
+      answerCells && metadata ? (
+        <View style={styles.answersCard}>
+          <Text style={styles.answersTitle}>Answer key</Text>
+          <WordSearchBoardView metadata={metadata} myFoundCells={answerCells} readOnly />
+          <View style={styles.answerChips}>
+            {placements!.map((p) => (
+              <View key={p.word} style={styles.answerChip}>
+                <Text style={styles.answerChipText}>{p.word}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null
     return (
       <GameShell bootstrap={bootstrap} title={batch3GameLabel('word_search')} subtitle={bootstrap.code}>
         <GameFinishPanel
@@ -336,6 +380,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
           leaderboard={pointsLeaderboard(entries, bootstrap.myPlayerId)}
           winnerPlayerId={winnerId}
           roundKey={bootstrap.game?.session_started_at ?? undefined}
+          notice={answersNotice}
         />
       </GameShell>
     )
@@ -660,4 +705,30 @@ const makeStyles = (theme: Theme) =>
     standPoints: { color: theme.text, fontWeight: '700', fontSize: 14 },
     swatchSm: { width: 12, height: 12, borderRadius: 3 },
     rulesRow: { alignItems: 'center', marginTop: 16 },
+    answersCard: {
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 12,
+      padding: 12,
+      marginTop: 12,
+      gap: 10,
+      alignItems: 'center',
+    },
+    answersTitle: {
+      alignSelf: 'flex-start',
+      color: theme.textMuted,
+      fontSize: 11,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+    answerChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center' },
+    answerChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+      backgroundColor: theme.surfaceHover,
+    },
+    answerChipText: { color: theme.textSecondary, fontSize: 12, fontWeight: '700' },
   })

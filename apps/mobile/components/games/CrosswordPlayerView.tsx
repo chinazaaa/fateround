@@ -29,7 +29,7 @@ import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { pointsLeaderboard } from '@/lib/finish-leaderboards'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { postCrosswordSubmit } from '@/lib/game-api'
+import { postCrosswordSubmit, fetchCrosswordSolution } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { ROUND_SELECT, CROSSWORD_SUBMISSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
@@ -93,6 +93,7 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
   const [nowMs, setNowMs] = useState<number>(() => Date.now())
   const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
   const [keyboardLayout, setKeyboardLayout] = useState<KeyboardLayout>('qwerty')
+  const [solutionGrid, setSolutionGrid] = useState<string[][] | null>(null)
 
   // Load the saved keyboard-layout preference (per device).
   useEffect(() => {
@@ -205,6 +206,18 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     const id = setInterval(() => setNowMs(Date.now()), 1000)
     return () => clearInterval(id)
   }, [bootstrap.screen])
+
+  // Pull the answer grid once the game is finished, so the finished screen can show the key.
+  useEffect(() => {
+    if (bootstrap.game?.status !== 'finished' || solutionGrid) return
+    let cancelled = false
+    void fetchCrosswordSolution(bootstrap.code).then((grid) => {
+      if (!cancelled && grid) setSolutionGrid(grid)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [bootstrap.game?.status, bootstrap.code, solutionGrid])
 
   // Reset the local working grid whenever a new session (incl. a replay) starts.
   const sessionKey = bootstrap.game?.session_started_at ?? null
@@ -494,6 +507,35 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     // anything falls back to "Game over".
     const leader = standings[0]
     const winnerId = leader && leader.wordsCompleted > 0 ? leader.player_id : null
+    const answersNotice =
+      solutionGrid && metadata ? (
+        <View style={styles.answersCard}>
+          <Text style={styles.answersTitle}>Answers</Text>
+          {(['across', 'down'] as const).map((dir) => {
+            const clues = metadata.clues.filter((c) => c.direction === dir)
+            if (clues.length === 0) return null
+            return (
+              <View key={dir} style={{ gap: 4 }}>
+                <Text style={styles.answerGroupTitle}>{dir}</Text>
+                {clues.map((c) => {
+                  const word = crosswordWordCells(c)
+                    .map(([r, col]) => solutionGrid[r]?.[col] ?? '')
+                    .join('')
+                  return (
+                    <View key={`${c.number}-${c.direction}`} style={styles.answerRow}>
+                      <Text style={styles.answerClue}>
+                        <Text style={styles.answerNum}>{c.number}. </Text>
+                        {c.clue}
+                      </Text>
+                      <Text style={styles.answerWord}>{word}</Text>
+                    </View>
+                  )
+                })}
+              </View>
+            )
+          })}
+        </View>
+      ) : null
     return (
       <GameShell bootstrap={bootstrap} title={batch3GameLabel('crossword')} subtitle={bootstrap.code}>
         <GameFinishPanel
@@ -503,6 +545,7 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
           leaderboard={pointsLeaderboard(entries, bootstrap.myPlayerId)}
           winnerPlayerId={winnerId}
           roundKey={bootstrap.game?.session_started_at ?? undefined}
+          notice={answersNotice}
         />
       </GameShell>
     )
@@ -961,4 +1004,32 @@ const makeStyles = (theme: Theme) =>
     standPoints: { color: theme.text, fontWeight: '700', fontSize: 14 },
     swatchSm: { width: 12, height: 12, borderRadius: 3 },
     rulesRow: { alignItems: 'center', marginTop: 16 },
+    answersCard: {
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 12,
+      padding: 12,
+      marginTop: 12,
+      gap: 8,
+    },
+    answersTitle: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+    answerRow: { flexDirection: 'row', gap: 6 },
+    answerClue: { flex: 1, color: theme.textSecondary, fontSize: 13 },
+    answerNum: { color: theme.text, fontWeight: '800' },
+    answerWord: { color: theme.text, fontWeight: '800', fontSize: 13 },
+    answerGroupTitle: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+      marginTop: 4,
+    },
   })
