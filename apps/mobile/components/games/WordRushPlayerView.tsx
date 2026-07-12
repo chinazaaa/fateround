@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from 'react'
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import {
   type Game,
   type Player,
@@ -66,6 +66,9 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
   const [acting, setActing] = useState(false)
   const [lastMessage, setLastMessage] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const scrollRef = useRef<ScrollView>(null)
+  // Lift a focused input above the keyboard (it sits low in the content).
+  const scrollInputIntoView = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: WordRushSession | null; ok: boolean }> => {
@@ -198,10 +201,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
   // deadline covers both the playing and awaiting-prompt phases.
   const canDriveTimers = bootstrap.game?.status === 'active' && !isViewer
   useTurnExpiryTimer({
-    deadlineAt:
-      session?.phase === 'playing' || session?.phase === 'awaiting_prompt'
-        ? session?.turn_deadline_at
-        : null,
+    deadlineAt: session?.phase === 'playing' || session?.phase === 'awaiting_prompt' ? session?.turn_deadline_at : null,
     enabled: canDriveTimers,
     onExpire: () => postWordRushExpireTurn(bootstrap.code).then(() => bootstrap.load()),
   })
@@ -361,7 +361,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
       title={batch5GameLabel('word_rush')}
       subtitle={session.status_message ?? bootstrap.code}
     >
-      <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
+      <KeyboardAwareGameScroll ref={scrollRef} contentContainerStyle={styles.content}>
         <TurnBanner
           text={
             session.phase === 'intermission'
@@ -440,6 +440,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
                 placeholderTextColor={theme.textFaint}
                 maxLength={1}
                 autoCapitalize="characters"
+                onFocus={scrollInputIntoView}
               />
               <Text style={styles.arrow}>→</Text>
               <TextInput
@@ -450,6 +451,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
                 placeholderTextColor={theme.textFaint}
                 maxLength={1}
                 autoCapitalize="characters"
+                onFocus={scrollInputIntoView}
               />
             </View>
             <Text style={styles.hint}>Min letters (at least {minLength})</Text>
@@ -461,6 +463,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
               placeholderTextColor={theme.textFaint}
               keyboardType="number-pad"
               maxLength={2}
+              onFocus={scrollInputIntoView}
             />
             <Pressable style={styles.primaryBtn} disabled={acting} onPress={() => void setPrompt()}>
               <Text style={styles.primaryText}>Set prompt</Text>
@@ -483,6 +486,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
               placeholder="Type a word"
               placeholderTextColor={theme.textFaint}
               onSubmitEditing={() => void submitWord()}
+              onFocus={scrollInputIntoView}
             />
             <Pressable style={styles.primaryBtn} disabled={acting} onPress={() => void submitWord()}>
               <Text style={styles.primaryText}>Submit</Text>
