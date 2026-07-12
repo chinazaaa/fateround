@@ -165,6 +165,7 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
           game={game}
           players={players ?? []}
           hostPlayerId={hostPlayerId}
+          hostResumeToken={resumeToken}
           onReload={() => onReload?.()}
           onTransfer={() => {
             setControlsOpen(false)
