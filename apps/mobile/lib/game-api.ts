@@ -253,6 +253,14 @@ export function postWordScrambleSubmit(
   )
 }
 
+export function postWordScrambleHint(gameId: string, resumeToken: string, scrambleIndex: number) {
+  return postJson<{ available: boolean; clue: string; letters?: number }>('/api/word-scramble/hint', {
+    gameId,
+    resumeToken,
+    scrambleIndex,
+  })
+}
+
 export async function fetchWordScrambleSolution(gameId: string): Promise<string[] | null> {
   try {
     const res = await fetch(apiUrl(`/api/word-scramble/solution?gameId=${encodeURIComponent(gameId)}`), {

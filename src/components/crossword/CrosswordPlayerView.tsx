@@ -41,6 +41,7 @@ import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
@@ -761,6 +762,7 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
             title={game?.title ?? 'Crossword'}
             gameType="crossword"
             subtitle="Race to fill the grid before your friends."
+            meta={<GameInfoChips game={game} />}
           />
         }
       >
@@ -822,6 +824,7 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          game={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={me?.name ?? ''}
@@ -948,7 +951,7 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
         className="fixed top-0 left-0 h-px w-px opacity-0"
       />
       <main className="pt-16 flex-1 px-3 py-4 max-w-lg mx-auto w-full space-y-4">
-        <CrosswordGameTimerBar gameCode={gameCode} game={game} />
+        <CrosswordGameTimerBar gameCode={gameCode} game={game} onExpired={load} />
 
         {isViewer ? (
           <>

@@ -44,6 +44,7 @@ export const WORD_SEARCH_FOUND_SELECT =
   'id,game_id,round_id,player_id,word,start_row,start_col,end_row,end_col,via_hint,found_at'
 
 export const WORD_SCRAMBLE_SOLVE_SELECT = 'id,game_id,round_id,player_id,scramble_index,word,via_hint,solved_at'
+export const WORD_SCRAMBLE_HINT_SELECT = 'player_id,scramble_index,letters'
 
 export const TIC_TAC_TOE_SESSION_SELECT =
   'id,game_id,player_x_id,player_o_id,board,board_winners,active_board,current_turn_mark,status,winner_player_id,is_draw,status_message,turn_deadline_at'

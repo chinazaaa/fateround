@@ -122,6 +122,8 @@ export interface Game {
   crossword_difficulty?: CrosswordDifficulty | string | null
   word_search_theme?: string | null
   word_search_difficulty?: WordSearchDifficulty | string | null
+  word_scramble_theme?: string | null
+  word_scramble_difficulty?: WordScrambleDifficulty | string | null
 }
 
 export interface Player {
