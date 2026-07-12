@@ -21,7 +21,7 @@ export const WORD_SEARCH_MAX_PLAYERS = 20
 export const WORD_SEARCH_DEFAULT_MAX_PLAYERS = 20
 
 export const WORD_SEARCH_DEFAULT_DURATION = 600 // 10 minutes
-export const WORD_SEARCH_GAME_DURATION_OPTIONS = [0, 300, 600, 900, 1200, 1800] as const
+export const WORD_SEARCH_GAME_DURATION_OPTIONS = [0, 120, 180, 300, 600, 900, 1200, 1800] as const
 
 /** Base points for finding a listed word. */
 export const WORD_SEARCH_WORD_POINTS = 10

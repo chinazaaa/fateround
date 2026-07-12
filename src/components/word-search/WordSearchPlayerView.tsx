@@ -686,6 +686,19 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
 
         {metadata && (
           <>
+            <WordList
+              words={metadata.words}
+              wordOwners={wordOwners}
+              myPlayerId={myPlayerId}
+              myColor={WORD_SEARCH_MY_CELL_COLOR}
+              playerColors={playerColors}
+              onWordFlash={handleWordFlash}
+              flashedWord={flashedWord}
+              onReveal={isViewer ? undefined : () => void handleHint()}
+              revealDisabled={hinting || allFound}
+              revealTitle={`Reveal a hidden word (${WORD_SEARCH_HINT_PENALTY} pts)`}
+            />
+
             {!isViewer && (
               <div className="mx-auto min-h-[3rem] min-w-[10rem] px-4 flex items-center justify-center glass-card">
                 <span className="text-2xl font-extrabold tracking-[0.25em] text-[var(--foreground)]">
@@ -707,33 +720,6 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
               onSelect={handleSelect}
               onPreviewChange={setPreviewWord}
               readOnly={isViewer}
-            />
-
-            {!isViewer && (
-              <div className="flex items-center gap-2">
-                <p className="flex-1 min-w-0 glass-card px-3 py-2 text-sm text-slate-600 dark:text-slate-300">
-                  Drag from a word&apos;s first letter to its last.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => void handleHint()}
-                  disabled={hinting || allFound}
-                  className="shrink-0 px-3 py-2 rounded-lg text-sm font-bold bg-amber-100/80 text-amber-800 dark:bg-amber-900/35 dark:text-amber-200 disabled:opacity-40 transition-colors hover:bg-amber-100"
-                  title={`Reveal a hidden word (${WORD_SEARCH_HINT_PENALTY} pts)`}
-                >
-                  💡 Reveal
-                </button>
-              </div>
-            )}
-
-            <WordList
-              words={metadata.words}
-              wordOwners={wordOwners}
-              myPlayerId={myPlayerId}
-              myColor={WORD_SEARCH_MY_CELL_COLOR}
-              playerColors={playerColors}
-              onWordFlash={handleWordFlash}
-              flashedWord={flashedWord}
             />
           </>
         )}

@@ -7,7 +7,7 @@ import { clearSessionTables } from './session-clear'
 export const SUDOKU_MIN_PLAYERS = 1
 export const SUDOKU_MAX_PLAYERS = 20
 export const SUDOKU_DEFAULT_DURATION = 900 // 15 minutes
-export const SUDOKU_GAME_DURATION_OPTIONS = [0, 300, 600, 900, 1200, 1800] as const
+export const SUDOKU_GAME_DURATION_OPTIONS = [0, 120, 180, 300, 600, 900, 1200, 1800] as const
 
 /** Points by order of correct submission per cell: 1st=10, 2nd=6, 3rd=4, 4th+=2 */
 export const SUDOKU_CELL_SCORING = [10, 6, 4, 2] as const

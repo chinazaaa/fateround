@@ -25,6 +25,8 @@ import {
   fillableCellCount,
   playerCompletionPercent,
   CROSSWORD_MIN_PLAYERS,
+  CROSSWORD_GAME_DURATION_OPTIONS,
+  formatCrosswordGameDuration,
   type CrosswordMetadata,
   type CrosswordSubmission,
 } from '@/lib/crossword'
@@ -526,6 +528,8 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
             game={game}
             playerCount={players.length}
             onGameUpdate={setGame}
+            durationChoices={CROSSWORD_GAME_DURATION_OPTIONS}
+            formatDuration={formatCrosswordGameDuration}
           />
         ) : (
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />

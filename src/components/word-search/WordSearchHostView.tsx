@@ -23,6 +23,8 @@ import {
   tallyWordSearchScores,
   wordSearchCompletionPercent,
   WORD_SEARCH_MIN_PLAYERS,
+  WORD_SEARCH_GAME_DURATION_OPTIONS,
+  formatWordSearchGameDuration,
   type WordSearchMetadata,
   type WordSearchFound,
 } from '@/lib/word-search'
@@ -515,6 +517,8 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
             game={game}
             playerCount={players.length}
             onGameUpdate={setGame}
+            durationChoices={WORD_SEARCH_GAME_DURATION_OPTIONS}
+            formatDuration={formatWordSearchGameDuration}
           />
         ) : (
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
