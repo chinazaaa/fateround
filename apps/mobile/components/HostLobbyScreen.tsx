@@ -235,7 +235,10 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
           </View>
         ) : null}
 
-        {replayLobby && hostPlayerId ? (
+        {/* Not gated on hostPlayerId: a host-only viewer (not seated / "stopped
+            playing") must still see the ring to watch players ready up and start.
+            The ring is null-safe on myPlayerId, and isHost hides the ready toggle. */}
+        {replayLobby ? (
           <ReplayReadyRing
             gameCode={gameCode}
             players={players}
