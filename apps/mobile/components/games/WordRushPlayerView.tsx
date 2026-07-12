@@ -494,6 +494,12 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
               }}
               placeholder="Type a word"
               placeholderTextColor={theme.textFaint}
+              // Submit straight from the keyboard's "Go" key — reliable on the
+              // first press (the Submit button can sit behind the keyboard, where a
+              // first tap only dismisses it). blurOnSubmit=false keeps the keyboard
+              // up so team mode can fire off several words in a row.
+              returnKeyType="go"
+              blurOnSubmit={false}
               onSubmitEditing={() => void submitWord()}
               onFocus={scrollInputIntoView}
             />
