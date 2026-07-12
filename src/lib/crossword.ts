@@ -483,12 +483,16 @@ export function tallyCrosswordScores(
   }
 
   // When did each (player, cell) become correct? Earliest correct submission per cell.
+  // `lastCorrect` is each player's latest correct submission — their finish time, used to
+  // break score ties so a faster solver outranks a slower one on equal points.
   const cellTime = new Map<string, number>()
+  const lastCorrect = new Map<string, number>()
   for (const s of submissions) {
     if (!s.is_correct || !activeIds.has(s.player_id)) continue
     const key = `${s.player_id}|${s.cell_row}-${s.cell_col}`
     const t = new Date(s.submitted_at).getTime()
     if (!cellTime.has(key) || t < cellTime.get(key)!) cellTime.set(key, t)
+    if (t > (lastCorrect.get(s.player_id) ?? -Infinity)) lastCorrect.set(s.player_id, t)
   }
 
   for (const clue of metadata.clues) {
@@ -531,7 +535,13 @@ export function tallyCrosswordScores(
       points: points.get(p.id) ?? 0,
       wordsCompleted: wordsCompleted.get(p.id) ?? 0,
     }))
-    .sort((a, b) => b.points - a.points || b.wordsCompleted - a.wordsCompleted || a.name.localeCompare(b.name))
+    .sort(
+      (a, b) =>
+        b.points - a.points ||
+        b.wordsCompleted - a.wordsCompleted ||
+        (lastCorrect.get(a.player_id) ?? Infinity) - (lastCorrect.get(b.player_id) ?? Infinity) ||
+        a.name.localeCompare(b.name)
+    )
 }
 
 // ── Duration / timer ────────────────────────────────────────────────────────────

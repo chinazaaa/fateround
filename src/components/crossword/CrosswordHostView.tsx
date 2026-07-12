@@ -13,6 +13,7 @@ import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostSudokuLobbyPanel } from '@/components/host-lobby/HostSudokuLobbyPanel'
+import { HostPuzzleSettings } from '@/components/host-lobby/HostPuzzleSettings'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
@@ -22,6 +23,7 @@ import {
   buildCellOwnerGrid,
   buildPlayerLetterGrid,
   buildPlayerSolvedGrid,
+  crosswordWordCells,
   fillableCellCount,
   playerCompletionPercent,
   CROSSWORD_MIN_PLAYERS,
@@ -80,6 +82,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
   const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
   const [nowMs, setNowMs] = useState<number>(Date.now())
+  const [solutionGrid, setSolutionGrid] = useState<string[][] | null>(null)
 
   useEffect(() => {
     if (game?.status === 'active') {
@@ -119,6 +122,20 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
         setSubmissions((subs ?? []) as CrosswordSubmission[])
       }
     } else if (gameData.status === 'finished') {
+      // Load the round metadata too, not just the submissions — on a refresh of the finished
+      // screen without it, `metadata` stays null and the leaderboard (and answer key) go
+      // blank because tallyCrosswordScores can't run.
+      const { data: roundData } = await supabase
+        .from('rounds')
+        .select(ROUND_SELECT)
+        .eq('game_id', gameCode)
+        .eq('round_number', 1)
+        .maybeSingle()
+      if (roundData) {
+        const meta = parseCrosswordMetadata((roundData as Record<string, unknown>).crossword_metadata)
+        if (meta) setMetadata(meta)
+        setRoundId(roundData.id as string)
+      }
       const { data: subs } = await supabase
         .from('crossword_submissions')
         .select(CROSSWORD_SUBMISSION_SELECT)
@@ -141,6 +158,21 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
     if (game?.status === 'active') setTab('play')
     else if (game?.status === 'finished') setTab('manage')
   }, [game?.status])
+
+  // Pull the answer grid once the game is finished, so it can show below the leaderboard.
+  useEffect(() => {
+    if (game?.status !== 'finished' || solutionGrid) return
+    let cancelled = false
+    fetch(`/api/crossword/solution?gameId=${gameCode.toUpperCase()}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!cancelled && j?.solution) setSolutionGrid(j.solution as string[][])
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [game?.status, solutionGrid, gameCode])
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
@@ -530,6 +562,15 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
             onGameUpdate={setGame}
             durationChoices={CROSSWORD_GAME_DURATION_OPTIONS}
             formatDuration={formatCrosswordGameDuration}
+            puzzleSettings={
+              <HostPuzzleSettings
+                gameCode={gameCode}
+                hostToken={hostToken}
+                game={game}
+                onGameUpdate={setGame}
+                kind="crossword"
+              />
+            }
           />
         ) : (
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
@@ -664,6 +705,31 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
               winnerName={hostRow?.name ?? ''}
               roundKey={game?.session_started_at ?? undefined}
             />
+          )}
+          {solutionGrid && metadata && (
+            <div className="glass-card p-4 space-y-3">
+              <p className="label-caps text-xs">Answers</p>
+              <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1">
+                {(['across', 'down'] as const).map((dir) => (
+                  <div key={dir} className="space-y-1">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-muted">{dir}</p>
+                    {metadata.clues
+                      .filter((c) => c.direction === dir)
+                      .map((c) => {
+                        const word = crosswordWordCells(c)
+                          .map(([r, col]) => solutionGrid[r]?.[col] ?? '')
+                          .join('')
+                        return (
+                          <p key={`${c.number}-${c.direction}`} className="text-sm text-muted">
+                            <span className="font-semibold text-[var(--foreground)]">{c.number}.</span> {c.clue} —{' '}
+                            <span className="font-bold text-[var(--foreground)]">{word}</span>
+                          </p>
+                        )
+                      })}
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </>
       }
