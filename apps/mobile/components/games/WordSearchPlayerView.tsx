@@ -58,7 +58,12 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
   const loadGameState = useCallback(
     async (game: Game): Promise<{ state: boolean; ok: boolean }> => {
       if (game.status !== 'active') {
-        setMetadata(null)
+        // Don't null the metadata here. On the finished screen every realtime
+        // reload runs through this branch, and blanking metadata mid-reload
+        // empties `standings` (points → 0 → winnerId → null), which flips the
+        // finish title to "Game over" until afterResolve restores it — the
+        // title flickers between "Game over" and "<name> wins!". Leave whatever
+        // metadata we have; afterResolve refetches it for the finished screen.
         return { state: false, ok: true }
       }
       const { data: roundData } = await getSupabase()
@@ -92,19 +97,24 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
     afterResolve: async (game, playerId) => {
       // Finished games show the leaderboard to everyone; active games load the round's finds.
       if (game.status === 'finished') {
-        const { data: roundData } = await getSupabase()
-          .from('rounds')
-          .select(ROUND_SELECT)
-          .eq('game_id', gameCode.toUpperCase())
-          .eq('round_number', 1)
-          .maybeSingle()
-        const meta = roundData ? parseWordSearchMetadata((roundData as Round).word_search_metadata) : null
+        // Fetch round + finds together and commit both in the same tick so the
+        // finished screen never renders with metadata set but finds empty
+        // (which would zero the standings and flash the "Game over" title).
+        const [roundRes, rowsRes] = await Promise.all([
+          getSupabase()
+            .from('rounds')
+            .select(ROUND_SELECT)
+            .eq('game_id', gameCode.toUpperCase())
+            .eq('round_number', 1)
+            .maybeSingle(),
+          getSupabase()
+            .from('word_search_found')
+            .select(WORD_SEARCH_FOUND_SELECT)
+            .eq('game_id', gameCode.toUpperCase()),
+        ])
+        const meta = roundRes.data ? parseWordSearchMetadata((roundRes.data as Round).word_search_metadata) : null
         if (meta) setMetadata(meta)
-        const { data: rows } = await getSupabase()
-          .from('word_search_found')
-          .select(WORD_SEARCH_FOUND_SELECT)
-          .eq('game_id', gameCode.toUpperCase())
-        setFound((rows as WordSearchFound[]) ?? [])
+        setFound((rowsRes.data as WordSearchFound[]) ?? [])
         return
       }
       if (!playerId || game.status !== 'active') return
@@ -310,13 +320,18 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
           detail: bootstrap.game?.session_started_at ? `⏱ ${formatMinutesSeconds(timeSecs)}` : undefined,
         }
       })
-    const top = [...entries].sort((a, b) => b.points - a.points)[0]
-    const winnerId = top && top.points > 0 ? top.id : null
+    // `standings` is already sorted best-first with full tiebreaks (points → words →
+    // name), so its leader is the winner. Declare them the winner whenever they found
+    // at least one word — net points can dip to/below 0 after hint penalties, and a
+    // real winner shouldn't collapse to "Game over". Only a hunt where nobody found
+    // anything falls back to "Game over".
+    const leader = standings[0]
+    const winnerId = leader && leader.wordsFound > 0 ? leader.player_id : null
     return (
       <GameShell bootstrap={bootstrap} title={batch3GameLabel('word_search')} subtitle={bootstrap.code}>
         <GameFinishPanel
           bootstrap={bootstrap}
-          title={winnerId ? `${top!.name} wins!` : 'Game over'}
+          title={winnerId ? `${leader!.name} wins!` : 'Game over'}
           subtitle="Final standings"
           leaderboard={pointsLeaderboard(entries, bootstrap.myPlayerId)}
           winnerPlayerId={winnerId}

@@ -487,13 +487,18 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
           detail: bootstrap.game?.session_started_at ? `⏱ ${formatMinutesSeconds(timeSecs)}` : undefined,
         }
       })
-    const top = [...entries].sort((a, b) => b.points - a.points)[0]
-    const winnerId = top && top.points > 0 ? top.id : null
+    // `standings` is already sorted best-first with full tiebreaks (points → words →
+    // name), so its leader is the winner. Declare them the winner whenever they solved
+    // at least one word — net points can dip to/below 0 after hint penalties, and a
+    // real winner shouldn't collapse to "Game over". Only a puzzle where nobody solved
+    // anything falls back to "Game over".
+    const leader = standings[0]
+    const winnerId = leader && leader.wordsCompleted > 0 ? leader.player_id : null
     return (
       <GameShell bootstrap={bootstrap} title={batch3GameLabel('crossword')} subtitle={bootstrap.code}>
         <GameFinishPanel
           bootstrap={bootstrap}
-          title={winnerId ? `${top!.name} wins!` : 'Game over'}
+          title={winnerId ? `${leader!.name} wins!` : 'Game over'}
           subtitle="Final standings"
           leaderboard={pointsLeaderboard(entries, bootstrap.myPlayerId)}
           winnerPlayerId={winnerId}
