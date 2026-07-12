@@ -335,10 +335,13 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
           </Text>
         ) : null}
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
 
       <View style={styles.footer}>
+        {/* Error lives in the pinned footer, next to the Start button, so a failed
+            Start is visible immediately (it used to render at the bottom of the
+            scroll, out of view). */}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
         {finished ? (
           <Pressable
             style={[styles.startButton, replaying && styles.startButtonDisabled]}
@@ -528,7 +531,7 @@ const makeStyles = (theme: Theme) =>
       marginTop: 8,
       textAlign: 'center',
     },
-    error: { color: theme.error, fontSize: 15, marginTop: 12 },
+    error: { color: theme.error, fontSize: 14, textAlign: 'center' },
     footer: { padding: 24, borderTopColor: theme.surfaceHover, borderTopWidth: 1, gap: 10 },
     endButton: { paddingVertical: 12, alignItems: 'center' },
     endButtonText: { color: theme.error, fontSize: 15, fontWeight: '700' },
