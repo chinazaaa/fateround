@@ -545,6 +545,9 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     setLetterDraft(row, col, upper, false)
     void submitLetter(row, col, upper, false)
     advanceCursor(row, col)
+    // Re-assert focus so the mobile keyboard stays up after each letter (iOS otherwise
+    // dismisses it once the controlled input resets to '').
+    focusInput()
   }
 
   // Mobile keyboards (Gboard etc.) often skip keydown for letter keys and only fire an
@@ -802,7 +805,9 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
         value=""
         onChange={handleInputChange}
         onKeyDown={handleKeyDown}
-        className="absolute -left-[9999px] top-0 h-px w-px opacity-0"
+        // Kept in-viewport (top-left, 1px, invisible) rather than off-screen: iOS Safari
+        // dismisses the on-screen keyboard for an input parked outside the viewport.
+        className="fixed top-0 left-0 h-px w-px opacity-0 pointer-events-none"
       />
       <main className="pt-16 flex-1 px-3 py-4 max-w-lg mx-auto w-full space-y-4">
         <CrosswordGameTimerBar gameCode={gameCode} game={game} />
