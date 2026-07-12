@@ -267,7 +267,28 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
         (payload) => {
           setSubmissions((prev) => {
             const next = payload.new as CrosswordSubmission
-            return prev.some((s) => s.id === next.id) ? prev : [...prev, next]
+            if (prev.some((s) => s.id === next.id)) return prev
+            // Absorb the optimistic own-cell row (added on submit) so we don't keep a duplicate.
+            if (
+              next.is_correct &&
+              prev.some(
+                (s) =>
+                  s.id.startsWith('optimistic-') &&
+                  s.player_id === next.player_id &&
+                  s.cell_row === next.cell_row &&
+                  s.cell_col === next.cell_col
+              )
+            ) {
+              return prev.map((s) =>
+                s.id.startsWith('optimistic-') &&
+                s.player_id === next.player_id &&
+                s.cell_row === next.cell_row &&
+                s.cell_col === next.cell_col
+                  ? next
+                  : s
+              )
+            }
+            return [...prev, next]
           })
         }
       )
@@ -587,6 +608,31 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
       const resolved = String(json.letter ?? letter).toUpperCase()
       if (json.isCorrect) {
         setLetterDraft(row, col, resolved, false)
+        // Optimistically record my own correct cell so my completion % (and the "puzzle
+        // complete" state) update instantly — the realtime INSERT can lag with many players,
+        // which left finished players stuck showing a stale % until they refreshed.
+        setSubmissions((prev) => {
+          if (
+            prev.some((s) => s.player_id === myPlayerId && s.cell_row === row && s.cell_col === col && s.is_correct)
+          ) {
+            return prev
+          }
+          return [
+            ...prev,
+            {
+              id: `optimistic-${row}-${col}-${Date.now()}`,
+              game_id: gameCode,
+              round_id: roundId,
+              player_id: myPlayerId,
+              cell_row: row,
+              cell_col: col,
+              submitted_letter: resolved,
+              is_correct: true,
+              via_hint: hint,
+              submitted_at: new Date().toISOString(),
+            } as CrosswordSubmission,
+          ]
+        })
         if (hint) showToast(`Revealed ${resolved} · ${CROSSWORD_HINT_PENALTY} pts`, false)
       } else {
         setLetterDraft(row, col, resolved, true)
