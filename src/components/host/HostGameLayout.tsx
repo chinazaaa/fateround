@@ -2,7 +2,9 @@
 
 import { HostPageShell, hostPlayLayoutFlags } from '@/components/host/HostPageShell'
 import { EyeIcon, PlayIcon, SlidersIcon } from '@/components/host/host-icons'
-import type { GameStatus } from '@/types'
+import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { playerIsViewer } from '@/lib/viewers'
+import type { Game, GameStatus, Player } from '@/types'
 
 export type HostTab = 'play' | 'manage'
 
@@ -29,6 +31,10 @@ export function HostGameLayout({
   primary,
   manage,
   finished,
+  game,
+  players,
+  hostPlayerId,
+  onHostRejoined,
 }: {
   gameCode: string
   status: GameStatus | undefined
@@ -47,10 +53,31 @@ export function HostGameLayout({
   manage: React.ReactNode
   /** Results screen for finished games. Falls back to `manage` when omitted. */
   finished?: React.ReactNode
+  /** Current game — enables the mid-game "Join as player" banner when the host is dropped to spectator. */
+  game?: Game | null
+  /** Full roster — used to detect the host's own player row and open-seat availability. */
+  players?: ReadonlyArray<Player>
+  /** The host's own player row id (when the host joined to play along). */
+  hostPlayerId?: string | null
+  /** Called after the host promotes back to a player, to re-fetch game state. */
+  onHostRejoined?: () => void | Promise<unknown>
 }) {
   const isFinished = status === 'finished'
   const layout = hostPlayLayoutFlags(tab, showTabs, status)
   const primaryLabel = primaryKind === 'play' ? 'Play' : 'Watch'
+
+  // A host who joined to play can be flipped to spectator mid-game (e.g. a play-again lobby
+  // reset re-seats everyone). Unlike the player views, the host scaffold never surfaced a way
+  // back in — so mirror the player-side ViewerModeBanner here, gated to an active game where
+  // the host actually holds a (now-spectating) player row.
+  const hostPlayer = hostPlayerId && players ? (players.find((p) => p.id === hostPlayerId) ?? null) : null
+  const showHostRejoin = !!(
+    !isFinished &&
+    game &&
+    game.status === 'active' &&
+    hostPlayer &&
+    playerIsViewer(hostPlayer, game)
+  )
 
   let body: React.ReactNode
   if (isFinished) {
@@ -73,6 +100,17 @@ export function HostGameLayout({
           the shared image), so the page header would just duplicate it. */}
       {!isFinished && header}
       {!isFinished && aboveTabs}
+
+      {showHostRejoin && game && hostPlayer && (
+        <ViewerModeBanner
+          gameCode={gameCode}
+          playerId={hostPlayerId}
+          game={game}
+          player={hostPlayer}
+          players={players}
+          onPromoted={onHostRejoined}
+        />
+      )}
 
       {showTabs && !isFinished && (
         <div className="grid grid-cols-2 gap-1.5 p-1.5 rounded-2xl bg-[var(--surface-inset-bg)] border border-[var(--border)]">

@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'expo-router'
 import { uniqueTopic } from '@/lib/realtime'
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { batch9GameLabel } from '@fateround/shared/batch-9-games'
 import { GameLoading, GameShell } from '@/components/game/GameChrome'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
@@ -38,6 +38,8 @@ export function SecretMessagePlayerView({ gameCode }: { gameCode: string }) {
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
   const [messageInput, setMessageInput] = useState('')
   const [sending, setSending] = useState(false)
+  const scrollRef = useRef<ScrollView>(null)
+  const scrollInputIntoView = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)
   const [joining, setJoining] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sentCount, setSentCount] = useState(0)
@@ -171,7 +173,7 @@ export function SecretMessagePlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell title={game?.title || GAME_LABEL} subtitle="Send anonymously">
-      <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
+      <KeyboardAwareGameScroll ref={scrollRef} contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <Text style={styles.headerEmoji}>{GAME_EMOJI}</Text>
           {game?.title ? <Text style={styles.headerTitle}>{game.title}</Text> : null}
@@ -187,6 +189,7 @@ export function SecretMessagePlayerView({ gameCode }: { gameCode: string }) {
           onChangeText={setMessageInput}
           placeholder="Write your secret message…"
           placeholderTextColor={theme.textFaint}
+          onFocus={scrollInputIntoView}
           multiline
           maxLength={MAX_CHARS}
           editable={!sending && !joining}

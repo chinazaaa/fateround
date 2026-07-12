@@ -431,7 +431,7 @@ export async function processWordRushSubmit(
     return { error: 'Your team already solved this pair — check the new letters' }
   }
 
-  await supabase.from('word_rush_answers').insert({
+  const { error: answerError } = await supabase.from('word_rush_answers').insert({
     game_id: gameId,
     turn_index: session.turn_index,
     round: session.current_round,
@@ -444,6 +444,11 @@ export async function processWordRushSubmit(
     text: guess.slice(0, 80),
     correct: true,
   })
+  // Don't swallow a failed insert: the team score is a count of answer rows, so a
+  // dropped row silently stalls the score even though the word was accepted.
+  if (answerError) {
+    return internalFailure('word-rush team answer', answerError, 'Could not record your answer')
+  }
 
   return { correct: true }
 }

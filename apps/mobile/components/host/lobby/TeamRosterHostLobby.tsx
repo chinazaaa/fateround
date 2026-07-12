@@ -154,37 +154,88 @@ export function TeamRosterHostLobby({ gameCode, hostToken, game, players }: Prop
   return (
     <View style={styles.card}>
       <Text style={styles.title}>Teams</Text>
-      <Text style={styles.hint}>Tap a team to move a player. Players can also pick their own.</Text>
+      <Text style={styles.hint}>
+        Tap the number beside a player to move them to that team. Players can also pick their own.
+      </Text>
 
       {active.length === 0 ? (
         <Text style={styles.empty}>Waiting for players to join…</Text>
       ) : (
-        active.map((p) => {
-          const current = teamFor(p.id)
-          return (
-            <View key={p.id} style={styles.row}>
-              <Text style={styles.name} numberOfLines={1}>
-                {p.name}
-              </Text>
-              <View style={styles.chips}>
-                {teams.map((t) => {
-                  const on = current === t
-                  const color = TEAM_COLORS[(t - 1) % TEAM_COLORS.length]
-                  return (
-                    <Pressable
-                      key={t}
-                      style={[styles.chip, on && { borderColor: color, backgroundColor: `${color}22` }]}
-                      disabled={busyId === p.id}
-                      onPress={() => void assign(p.id, t)}
-                    >
-                      <Text style={[styles.chipText, on && { color }]}>Team {t}</Text>
-                    </Pressable>
-                  )
-                })}
-              </View>
+        <>
+          {/* Two-column team cards (mirrors web): players grouped by team so the
+              roster stays compact instead of one row per player. The small number
+              buttons beside each name move that player to another team. */}
+          <View style={styles.grid}>
+            {teams.map((team) => {
+              const color = TEAM_COLORS[(team - 1) % TEAM_COLORS.length]
+              const members = active.filter((p) => teamFor(p.id) === team)
+              return (
+                <View key={team} style={[styles.teamCard, { borderColor: color }]}>
+                  <View style={styles.teamHeader}>
+                    <View style={[styles.badge, { backgroundColor: color }]}>
+                      <Text style={styles.badgeText}>Team {team}</Text>
+                    </View>
+                    <Text style={styles.count}>{members.length}</Text>
+                  </View>
+                  <View style={styles.memberList}>
+                    {members.length > 0 ? (
+                      members.map((p) => (
+                        <View key={p.id} style={styles.memberRow}>
+                          <Text style={styles.memberName} numberOfLines={1}>
+                            {p.name}
+                          </Text>
+                          <View style={styles.moveBtns}>
+                            {teams
+                              .filter((t) => t !== team)
+                              .map((t) => (
+                                <Pressable
+                                  key={t}
+                                  style={styles.moveBtn}
+                                  disabled={busyId === p.id}
+                                  onPress={() => void assign(p.id, t)}
+                                >
+                                  <Text style={styles.moveBtnText}>{t}</Text>
+                                </Pressable>
+                              ))}
+                          </View>
+                        </View>
+                      ))
+                    ) : (
+                      <Text style={styles.membersMuted}>No players yet</Text>
+                    )}
+                  </View>
+                </View>
+              )
+            })}
+          </View>
+
+          {active.filter((p) => teamFor(p.id) == null).length > 0 ? (
+            <View style={styles.unassigned}>
+              <Text style={styles.unassignedLabel}>Unassigned</Text>
+              {active
+                .filter((p) => teamFor(p.id) == null)
+                .map((p) => (
+                  <View key={p.id} style={styles.memberRow}>
+                    <Text style={styles.memberName} numberOfLines={1}>
+                      {p.name}
+                    </Text>
+                    <View style={styles.moveBtns}>
+                      {teams.map((t) => (
+                        <Pressable
+                          key={t}
+                          style={styles.moveBtn}
+                          disabled={busyId === p.id}
+                          onPress={() => void assign(p.id, t)}
+                        >
+                          <Text style={styles.moveBtnText}>{t}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+                ))}
             </View>
-          )
-        })
+          ) : null}
+        </>
       )}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -221,23 +272,47 @@ const makeStyles = (theme: Theme) =>
   title: { color: theme.text, fontSize: 17, fontWeight: '800' },
   hint: { color: theme.textMuted, fontSize: 13, lineHeight: 18 },
   empty: { color: theme.textFaint, fontSize: 14, paddingVertical: theme.space.sm },
-  row: {
-    borderTopWidth: 1,
-    borderTopColor: theme.border,
-    paddingTop: theme.space.sm,
-    gap: 6,
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  teamCard: {
+    flexGrow: 1,
+    flexBasis: '47%',
+    // minWidth:0 so the two-column grid survives inside the padded lobby scroll
+    // (a 150px floor forced one column on narrow phones).
+    minWidth: 0,
+    borderWidth: 1,
+    borderRadius: theme.radius.md,
+    padding: 10,
+    gap: 8,
   },
-  name: { color: theme.text, fontSize: 15, fontWeight: '700' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+  teamHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  badge: { borderRadius: theme.radius.pill, paddingHorizontal: 10, paddingVertical: 3, alignSelf: 'flex-start' },
+  badgeText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  count: { color: theme.textMuted, fontSize: 13, fontWeight: '700' },
+  memberList: { gap: 6, minHeight: 22 },
+  memberRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  memberName: { color: theme.text, fontSize: 14, flexShrink: 1 },
+  moveBtns: { flexDirection: 'row', gap: 4 },
+  moveBtn: {
+    minWidth: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: theme.radius.sm,
     borderWidth: 1,
     borderColor: theme.border,
     backgroundColor: theme.bgElevated,
+    paddingHorizontal: 6,
   },
-  chipText: { color: theme.textMuted, fontSize: 12, fontWeight: '700' },
+  moveBtnText: { color: theme.textSecondary, fontSize: 12, fontWeight: '800' },
+  membersMuted: { color: theme.textFaint, fontSize: 12, fontStyle: 'italic' },
+  unassigned: { borderTopWidth: 1, borderTopColor: theme.border, paddingTop: theme.space.sm, gap: 6 },
+  unassignedLabel: {
+    color: theme.textMuted,
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   error: { color: theme.error, fontSize: 13 },
   autoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: theme.space.xs },
   autoFlex: { flexGrow: 1, flexBasis: 0, marginTop: 0 },

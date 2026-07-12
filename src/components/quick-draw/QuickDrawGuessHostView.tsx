@@ -524,6 +524,10 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
       primary={hostPlays ? interactivePlay : watchPanel}
       manage={manage}
       finished={finished}
+      game={game}
+      players={players}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={load}
     />
   )
 }

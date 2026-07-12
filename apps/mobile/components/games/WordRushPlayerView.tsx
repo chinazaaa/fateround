@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from 'react'
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import {
   type Game,
   type Player,
@@ -66,6 +66,9 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
   const [acting, setActing] = useState(false)
   const [lastMessage, setLastMessage] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const scrollRef = useRef<ScrollView>(null)
+  // Lift a focused input above the keyboard (it sits low in the content).
+  const scrollInputIntoView = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: WordRushSession | null; ok: boolean }> => {
@@ -198,10 +201,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
   // deadline covers both the playing and awaiting-prompt phases.
   const canDriveTimers = bootstrap.game?.status === 'active' && !isViewer
   useTurnExpiryTimer({
-    deadlineAt:
-      session?.phase === 'playing' || session?.phase === 'awaiting_prompt'
-        ? session?.turn_deadline_at
-        : null,
+    deadlineAt: session?.phase === 'playing' || session?.phase === 'awaiting_prompt' ? session?.turn_deadline_at : null,
     enabled: canDriveTimers,
     onExpire: () => postWordRushExpireTurn(bootstrap.code).then(() => bootstrap.load()),
   })
@@ -305,7 +305,9 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
 
   const submitWord = async () => {
     const text = wordText.trim()
-    if (!text || !bootstrap.myResumeToken) return
+    // `acting` guard: the keyboard "Go" path can re-fire while the first submit
+    // is still in flight (blurOnSubmit=false keeps focus), so block re-entry.
+    if (!text || !bootstrap.myResumeToken || acting) return
     setLastMessage(null)
     setSubmitError(null)
     setActing(true)
@@ -317,9 +319,16 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
         setSubmitError(result.message ?? `"${text}" isn't in the dictionary for this letter pair`)
       } else {
         setWordText('')
-        setLastMessage(`+${result.points ?? 0} pts`)
+        // Team mode scores +1 to the team and returns no per-word points, so
+        // "+0 pts" was misleading — show a plain "Correct!" unless we have a real
+        // individual-mode point value.
+        setLastMessage(result.points && result.points > 0 ? `+${result.points} pts` : 'Correct! ✓')
       }
       await bootstrap.load()
+    } catch (err) {
+      // Without this a thrown request (e.g. a 4xx like "not your team's turn")
+      // vanished silently — surface it in the same red field message.
+      setSubmitError(err instanceof Error ? err.message : 'Could not submit your word')
     } finally {
       setActing(false)
     }
@@ -359,9 +368,11 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     <GameShell
       bootstrap={bootstrap}
       title={batch5GameLabel('word_rush')}
-      subtitle={session.status_message ?? bootstrap.code}
+      // Just the code here — the round/team/letters (status_message) is already
+      // shown in the middle (turn banner + score grid), so it read as a duplicate.
+      subtitle={bootstrap.code}
     >
-      <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
+      <KeyboardAwareGameScroll ref={scrollRef} contentContainerStyle={styles.content}>
         <TurnBanner
           text={
             session.phase === 'intermission'
@@ -440,6 +451,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
                 placeholderTextColor={theme.textFaint}
                 maxLength={1}
                 autoCapitalize="characters"
+                onFocus={scrollInputIntoView}
               />
               <Text style={styles.arrow}>→</Text>
               <TextInput
@@ -450,6 +462,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
                 placeholderTextColor={theme.textFaint}
                 maxLength={1}
                 autoCapitalize="characters"
+                onFocus={scrollInputIntoView}
               />
             </View>
             <Text style={styles.hint}>Min letters (at least {minLength})</Text>
@@ -461,6 +474,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
               placeholderTextColor={theme.textFaint}
               keyboardType="number-pad"
               maxLength={2}
+              onFocus={scrollInputIntoView}
             />
             <Pressable style={styles.primaryBtn} disabled={acting} onPress={() => void setPrompt()}>
               <Text style={styles.primaryText}>Set prompt</Text>
@@ -482,7 +496,14 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
               }}
               placeholder="Type a word"
               placeholderTextColor={theme.textFaint}
+              // Submit straight from the keyboard's "Go" key — reliable on the
+              // first press (the Submit button can sit behind the keyboard, where a
+              // first tap only dismisses it). blurOnSubmit=false keeps the keyboard
+              // up so team mode can fire off several words in a row.
+              returnKeyType="go"
+              blurOnSubmit={false}
               onSubmitEditing={() => void submitWord()}
+              onFocus={scrollInputIntoView}
             />
             <Pressable style={styles.primaryBtn} disabled={acting} onPress={() => void submitWord()}>
               <Text style={styles.primaryText}>Submit</Text>

@@ -814,6 +814,10 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
       tab={tab}
       onTabChange={setTab}
       primaryKind={primaryKind}
+      game={game}
+      players={players}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={load}
       showTabs={game.status !== 'finished'}
       gameStarted={game.status === 'active'}
       header={<HostGameHeader game={game} />}
