@@ -1,10 +1,11 @@
 import { ReactNode, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import type { Game, Player } from '@fateround/shared'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { PlayerSessionControls } from '@/components/session/PlayerSessionControls'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { gameLabel } from '@/lib/mobile-registry'
 import { postPlayerReady } from '@/lib/game-api'
 import type { Theme } from '@/constants/theme'
@@ -75,7 +76,7 @@ export function LobbyView({
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <KeyboardAwareGameScroll contentContainerStyle={styles.container}>
       <View style={styles.hero}>
         <Text style={styles.kicker}>{spectating ? 'New round' : "You're in"}</Text>
         <Text style={styles.title}>{title}</Text>
@@ -128,7 +129,7 @@ export function LobbyView({
             ? 'Game in progress'
             : 'This game has finished.'}
       </Text>
-    </ScrollView>
+    </KeyboardAwareGameScroll>
   )
 }
 
