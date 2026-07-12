@@ -20,7 +20,12 @@ import { isMonopolyTokenId } from '@/lib/monopoly-tokens'
 import { generateAnonymousDisplayName } from '@/lib/anonymous-names'
 import { anonymousPlayerCanChat } from '@/lib/anonymous-messages'
 import { createBingoCardForPlayer } from '@/lib/bingo'
-import { assignCodewordsLateJoinOperative, codewordsAllowsPlayerChanges, removeCodewordsPlayer } from '@/lib/codewords'
+import {
+  assignCodewordsLateJoinOperative,
+  codewordsAllowsPlayerChanges,
+  reconcileCodewordsTeamAfterRemoval,
+  removeCodewordsPlayer,
+} from '@/lib/codewords'
 import { assignDescribeItLateJoinTeam } from '@/lib/describe-it'
 import { registerQuickDrawLateJoinPlayer } from '@/lib/quick-draw'
 import {
@@ -1600,9 +1605,27 @@ export async function DELETE(req: NextRequest) {
   const gameType = parseGameType((game as { game_type?: string }).game_type)
 
   if (isCodewordsGame(gameType)) {
+    // Capture the team before deletion — the role row is FK-cascaded away with the player.
+    const { data: roleRow } = await getSupabaseAdmin()
+      .from('codewords_player_roles')
+      .select('team')
+      .eq('game_id', id)
+      .eq('player_id', playerId)
+      .maybeSingle()
+    const removedTeam = (roleRow?.team as 'red' | 'blue' | undefined) ?? null
+
     const { error } = await removeCodewordsPlayer(getSupabaseAdmin(), id, playerId)
     if (error) return NextResponse.json({ error }, { status: 500 })
-    return NextResponse.json({ success: true })
+
+    // Keep the round playable (or end it) when the departure breaks a team's roster.
+    const { error: reconcileError, outcome } = await reconcileCodewordsTeamAfterRemoval(
+      getSupabaseAdmin(),
+      id,
+      removedTeam
+    )
+    if (reconcileError) return NextResponse.json({ error: reconcileError }, { status: 500 })
+
+    return NextResponse.json({ success: true, ...outcome })
   }
 
   if (isMonopolyGame(gameType)) {

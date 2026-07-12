@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import type {
   CodewordsBoard,
@@ -215,6 +215,39 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   const playerNameById = useMemo(() => new Map(bootstrap.players.map((p) => [p.id, p.name])), [bootstrap.players])
 
   const active = bootstrap.game?.status === 'active' && board && !board.winner
+
+  // Notify remaining teammates when a team member leaves/is removed, and flag an
+  // auto-promotion to spymaster. useGameTableSync only re-fetches, so we diff here.
+  const prevTeamMatesRef = useRef<Map<string, string> | null>(null)
+  const prevMyRoleRef = useRef<CodewordsRole | null>(null)
+  useEffect(() => {
+    const myTeam = myRole?.team ?? null
+    if (bootstrap.game?.status === 'active' && myTeam) {
+      const teamMates = new Map<string, string>()
+      for (const r of roles) {
+        if (r.team === myTeam && r.player_id !== bootstrap.myPlayerId) {
+          teamMates.set(r.player_id, playerNameById.get(r.player_id) ?? 'A teammate')
+        }
+      }
+      const prev = prevTeamMatesRef.current
+      if (prev) {
+        for (const [id, name] of prev) {
+          if (!teamMates.has(id) && roles.every((r) => r.player_id !== id)) {
+            toast.show(`${name} left your team`, 'info')
+          }
+        }
+      }
+      prevTeamMatesRef.current = teamMates
+    } else {
+      prevTeamMatesRef.current = null
+    }
+
+    const prevRole = prevMyRoleRef.current
+    if (prevRole === 'operative' && myRole?.role === 'spymaster') {
+      toast.show("You're now your team's spymaster", 'info')
+    }
+    prevMyRoleRef.current = myRole?.role ?? null
+  }, [roles, myRole, playerNameById, bootstrap.game?.status, bootstrap.myPlayerId, toast])
 
   useEffect(() => {
     if (!active || !board?.turn_deadline_at) return

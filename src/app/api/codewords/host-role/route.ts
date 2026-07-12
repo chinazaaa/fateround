@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { z } from 'zod'
 import { parseGameType, isCodewordsGame } from '@/lib/game-types'
-import { codewordsAllowsPlayerChanges, removeCodewordsPlayerRole } from '@/lib/codewords'
+import {
+  codewordsAllowsPlayerChanges,
+  reconcileCodewordsTeamAfterRemoval,
+  removeCodewordsPlayerRole,
+} from '@/lib/codewords'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
 
@@ -110,7 +114,7 @@ export async function DELETE(req: NextRequest) {
 
   const { data: role } = await supabase
     .from('codewords_player_roles')
-    .select('id')
+    .select('id, team')
     .eq('game_id', code)
     .eq('player_id', playerId)
     .maybeSingle()
@@ -118,5 +122,14 @@ export async function DELETE(req: NextRequest) {
 
   const { error } = await removeCodewordsPlayerRole(supabase, code, playerId)
   if (error) return NextResponse.json({ error }, { status: 500 })
-  return NextResponse.json({ success: true })
+
+  // Benching mid-round can strip a team of its spymaster/operative — end or repair.
+  const { error: reconcileError, outcome } = await reconcileCodewordsTeamAfterRemoval(
+    supabase,
+    code,
+    (role.team as 'red' | 'blue' | undefined) ?? null
+  )
+  if (reconcileError) return NextResponse.json({ error: reconcileError }, { status: 500 })
+
+  return NextResponse.json({ success: true, ...outcome })
 }
