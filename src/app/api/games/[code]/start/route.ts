@@ -29,6 +29,7 @@ import {
   isMatchingPairsGame,
   isQuiplashGame,
   isQuickDrawGame,
+  isCrosswordGame,
 } from '@/lib/game-types'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { getCustomSlotCount } from '@/lib/custom-game'
@@ -100,6 +101,9 @@ import { WORD_RUSH_MIN_PLAYERS, WORD_RUSH_MIN_PLAYERS_INDIVIDUAL } from '@/lib/w
 import { initializeWordRushGame } from '@/lib/word-rush-server'
 import { buildNpatInitialRound, NPAT_MIN_PLAYERS, shufflePlayerOrder as npatShufflePlayerOrder } from '@/lib/npat'
 import { buildSudokuRoundRow, SUDOKU_MIN_PLAYERS } from '@/lib/sudoku'
+import { buildCrosswordRoundRow, CROSSWORD_MIN_PLAYERS, generateCrossword } from '@/lib/crossword'
+import type { CrosswordMetadata } from '@/lib/crossword'
+import { buildCrosswordPuzzle, parseCrosswordEntries } from '@/lib/crossword-puzzles'
 import { buildWordHuntRoundRow, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
 import { buildWordHuntMetadata } from '@/lib/word-hunt-dictionary'
 import {
@@ -684,6 +688,59 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     // Solution is stored separately (RLS hides it from players); never in the round metadata.
     const { error: solutionError } = await supabase
       .from('sudoku_solutions')
+      .insert({ round_id: insertedRound.id, solution })
+    if (solutionError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', solutionError) }, { status: 500 })
+
+    const { error: gameError } = await getSupabaseAdmin()
+      .from('games')
+      .update({
+        status: 'active',
+        session_started_at: sessionStartedAt,
+        current_round_number: 1,
+        rounds_count: 1,
+      })
+      .eq('id', code.toUpperCase())
+
+    if (gameError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isCrosswordGame(gameType)) {
+    const playingPlayers = playersData.filter((p) => p.spectator !== true)
+    if (playingPlayers.length < CROSSWORD_MIN_PLAYERS) {
+      return NextResponse.json({ error: `Need at least ${CROSSWORD_MIN_PLAYERS} players to start` }, { status: 400 })
+    }
+
+    const seed = Date.now() ^ Math.floor(Math.random() * 0xffffffff)
+
+    // Custom content pool (a stored answer/clue list) overrides the platform theme; the
+    // same generator packs both. Falls back to the platform theme if custom is empty.
+    let built: { metadata: CrosswordMetadata; solution: string[][] } | null = null
+    const customRows = Array.isArray(game.custom_questions) ? (game.custom_questions as Record<string, string>[]) : []
+    if (customRows.length > 0) {
+      const entries = parseCrosswordEntries(customRows)
+      if (entries.length >= 4) {
+        built = generateCrossword(entries, { size: 12, seed, targetWords: 12, minWords: 4 })
+      }
+    }
+    const puzzle = built ?? buildCrosswordPuzzle(game.crossword_theme, game.crossword_difficulty, seed)
+
+    const { roundRow, solution } = buildCrosswordRoundRow(code.toUpperCase(), puzzle.metadata, puzzle.solution)
+
+    const { data: insertedRound, error: roundError } = await getSupabaseAdmin()
+      .from('rounds')
+      .insert(roundRow)
+      .select('id')
+      .single()
+    if (roundError || !insertedRound) {
+      return NextResponse.json({ error: roundError?.message ?? 'Failed to create round' }, { status: 500 })
+    }
+
+    // Solution letters are stored separately (RLS hides them from players).
+    const { error: solutionError } = await supabase
+      .from('crossword_solutions')
       .insert({ round_id: insertedRound.id, solution })
     if (solutionError)
       return NextResponse.json({ error: internalErrorMessage('games/code/start', solutionError) }, { status: 500 })

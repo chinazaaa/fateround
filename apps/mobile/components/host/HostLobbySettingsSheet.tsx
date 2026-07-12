@@ -133,6 +133,7 @@ const LOBBY_MAX_PLAYERS_GAMES = new Set<GameType>([
   'describe_it',
   'quick_draw',
   'word_rush',
+  'crossword',
 ])
 
 /** Party games that play a single round — no editable "Rounds" control (mirrors web create). */
@@ -144,6 +145,7 @@ const ROUNDLESS_GAMES = new Set<GameType>([
   'sudoku',
   'i_call_on',
   'mafia',
+  'crossword',
 ])
 
 /** Party games with no round/turn timer on `timer_seconds` (bingo uses a call interval). */
@@ -443,7 +445,7 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
       if (quiplash.voteTimer !== game.operative_timer_seconds) board.operative_timer_seconds = quiplash.voteTimer
     }
     if (isDuration) {
-      if (gameType === 'sudoku') {
+      if (gameType === 'sudoku' || gameType === 'crossword') {
         if (duration.gameDurationSeconds !== game.game_duration_seconds)
           board.game_duration_seconds = duration.gameDurationSeconds
       } else if (gameType === 'word_hunt') {

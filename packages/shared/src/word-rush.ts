@@ -9,7 +9,7 @@ import type {
 import { WORD_HUNT_MIN_WORD_LENGTH } from './word-hunt'
 
 export const WORD_RUSH_MIN_PLAYERS = 4
-export const WORD_RUSH_MIN_PLAYERS_INDIVIDUAL = 2
+export const WORD_RUSH_MIN_PLAYERS_INDIVIDUAL = 1
 export const WORD_RUSH_MAX_PLAYERS = 20
 export const WORD_RUSH_DEFAULT_MAX_PLAYERS = 12
 

@@ -9,7 +9,12 @@ import {
 } from '@fateround/shared/monopoly-board-layout'
 import { spaceAt } from '@fateround/shared/monopoly-board'
 import { monopolyTokenEmoji } from '@fateround/shared/monopoly-tokens'
-import { formatThemedMoney, getBoardPalette, themedSpaceIcon, themedSpaceName } from './monopoly-theme'
+import {
+  formatThemedMoney,
+  getBoardPalette,
+  mobileBoardSpaceLines,
+  themedSpaceIcon,
+} from './monopoly-theme'
 
 export const TOKEN_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899']
 
@@ -123,8 +128,9 @@ export function MonopolyBoardView({
               const ownerOrder = states.find((s) => s.player_id === ownerId)?.player_order ?? 0
               const tokens = tokensBySpace.get(spaceIndex) ?? []
               const highlighted = pendingSpace === spaceIndex
-              const displayName = themedSpaceName(space.name, spaceIndex, themeId)
+              const nameLines = mobileBoardSpaceLines(space.name, space.type, spaceIndex, themeId)
               const icon = themedSpaceIcon(space.type, themeId) || defaultSpaceIcon(space.type)
+              const showIcon = space.price == null && space.type !== 'property' && !!icon
 
               return (
                 <View
@@ -150,31 +156,31 @@ export function MonopolyBoardView({
                       ]}
                     />
                   ) : null}
-                  {space.price != null && !ownerId ? (
-                    <Text style={[styles.spacePrice, { color: palette.tileText }]} numberOfLines={1}>
-                      {formatThemedMoney(space.price, themeId)}
-                    </Text>
-                  ) : null}
-                  <Text
-                    style={[styles.spaceName, { color: palette.tileText }]}
-                    numberOfLines={2}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.7}
-                  >
-                    {displayName}
-                  </Text>
-                  {space.price == null && space.type !== 'property' ? (
-                    <Text style={styles.spaceIcon}>{icon}</Text>
-                  ) : null}
-                  {space.price != null ? (
-                    <Text style={[styles.spaceRent, { color: palette.tileText }]} numberOfLines={1}>
-                      {space.type === 'utility'
-                        ? '4×/10×'
-                        : space.rent != null
-                          ? formatThemedMoney(space.rent, themeId)
-                          : ''}
-                    </Text>
-                  ) : null}
+                  <View style={styles.tileContent}>
+                    {space.price != null && !ownerId ? (
+                      <Text style={[styles.spacePrice, { color: palette.tileText }]} numberOfLines={1}>
+                        {formatThemedMoney(space.price, themeId)}
+                      </Text>
+                    ) : null}
+                    <View style={styles.nameBlock}>
+                      {nameLines.map((line, i) => (
+                        <Text
+                          key={i}
+                          style={[
+                            styles.spaceName,
+                            isCorner && styles.spaceNameCorner,
+                            { color: palette.tileText },
+                          ]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.6}
+                        >
+                          {line}
+                        </Text>
+                      ))}
+                      {showIcon ? <Text style={styles.spaceIcon}>{icon}</Text> : null}
+                    </View>
+                  </View>
                   {ownerId ? (
                     <View
                       style={[
@@ -255,11 +261,29 @@ const styles = StyleSheet.create({
   colorBar: { position: 'absolute' },
   colorBarHorizontal: { top: 0, left: 0, right: 0, height: 4 },
   colorBarVertical: { top: 0, bottom: 0, left: 0, width: 4 },
+  tileContent: {
+    flex: 1,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 1,
+    paddingVertical: 2,
+  },
+  nameBlock: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    maxWidth: '100%',
+  },
   spaceName: {
-    fontSize: 7,
+    fontSize: 7.5,
     fontWeight: '800',
     textAlign: 'center',
-    lineHeight: 8,
+    lineHeight: 8.5,
+    letterSpacing: -0.3,
+  },
+  spaceNameCorner: {
+    fontSize: 9,
+    lineHeight: 10,
   },
   spacePrice: {
     fontSize: 7,
@@ -267,15 +291,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 8,
     opacity: 0.95,
+    marginBottom: 1,
   },
-  spaceRent: {
-    fontSize: 6,
-    fontWeight: '600',
-    textAlign: 'center',
-    lineHeight: 7,
-    opacity: 0.7,
-  },
-  spaceIcon: { fontSize: 8, marginTop: 1 },
+  spaceIcon: { fontSize: 9, marginTop: 1 },
   ownerDot: {
     position: 'absolute',
     bottom: 2,

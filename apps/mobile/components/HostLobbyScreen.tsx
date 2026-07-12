@@ -27,6 +27,7 @@ import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useGamePlayerLimits } from '@/hooks/useGamePlayerLimits'
 import { isLobbyLimitGameType } from '@fateround/shared/lobby-limits'
+import { WORD_RUSH_MIN_PLAYERS_INDIVIDUAL } from '@fateround/shared/word-rush'
 import { uniqueTopic } from '@/lib/realtime'
 import { centeredContent } from '@/constants/layout'
 import type { Theme } from '@/constants/theme'
@@ -199,7 +200,13 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
     hasTeamManagement && hasWordPool ? 'Teams & pool' : hasTeamManagement ? 'Manage teams' : 'Question pool'
   const readyCount = activePlayers.length
   const gameType = game?.game_type
-  const minPlayers = gameType && isLobbyLimitGameType(gameType) ? limits[gameType].min : 1
+  const lobbyMin = gameType && isLobbyLimitGameType(gameType) ? limits[gameType].min : 1
+  // Word Rush individual mode is solo-friendly (play by yourself); team mode keeps
+  // the higher lobby minimum since it needs enough players to fill the teams.
+  const minPlayers =
+    gameType === 'word_rush' && game?.word_rush_mode === 'individual'
+      ? WORD_RUSH_MIN_PLAYERS_INDIVIDUAL
+      : lobbyMin
   const meetsMinimum = activePlayers.length >= minPlayers
 
   return (

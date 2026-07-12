@@ -15,6 +15,7 @@
     "./poll-games": "./src/poll-games.ts",
     "./memory-match": "./src/memory-match.ts",
     "./sudoku": "./src/sudoku.ts",
+    "./crossword": "./src/crossword.ts",
     "./yahtzee": "./src/yahtzee.ts",
     "./snake-and-ladder": "./src/snake-and-ladder.ts",
     "./ludo": "./src/ludo.ts",

@@ -49,6 +49,7 @@ export type GameType =
   | 'word_rush'
   | 'quick_draw'
   | 'ayo'
+  | 'crossword'
 
 export interface Game {
   id: string
@@ -115,6 +116,8 @@ export interface Game {
   created_at?: string | null
   bingo_call_mode?: 'manual' | 'auto' | string | null
   bingo_call_interval_seconds?: number | null
+  crossword_theme?: string | null
+  crossword_difficulty?: CrosswordDifficulty | string | null
 }
 
 export interface Player {
@@ -291,6 +294,7 @@ export interface Round {
   quiplash_metadata?: QuiplashMetadata | null
   word_hunt_metadata?: WordHuntMetadata | null
   npat_metadata?: NpatMetadata | null
+  crossword_metadata?: CrosswordMetadata | null
 }
 
 export interface VoteAssignment {
@@ -426,6 +430,47 @@ export interface SudokuSubmission {
   is_correct: boolean
   points_awarded: number
   submitted_at?: string | null
+}
+
+export type CrosswordDirection = 'across' | 'down'
+export type CrosswordDifficulty = 'easy' | 'medium' | 'hard'
+
+/** A single clue: where its first letter sits, which way it runs, its length + text. */
+export interface CrosswordClue {
+  number: number
+  direction: CrosswordDirection
+  row: number
+  col: number
+  length: number
+  clue: string
+}
+
+/**
+ * Client-readable puzzle description stored on `rounds.crossword_metadata`. It carries
+ * everything needed to render and play the grid EXCEPT the answer letters.
+ */
+export interface CrosswordMetadata {
+  size: number
+  /** true = black / unused cell; false = a fillable cell. */
+  blocked: boolean[][]
+  /** Clue number shown in a cell, or 0 for none. */
+  numbers: number[][]
+  clues: CrosswordClue[]
+  theme?: string
+  difficulty?: CrosswordDifficulty
+}
+
+export interface CrosswordSubmission {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  cell_row: number
+  cell_col: number
+  submitted_letter: string
+  is_correct: boolean
+  via_hint: boolean
+  submitted_at: string
 }
 
 export type SnakeLadderColor = 'red' | 'blue' | 'green' | 'yellow' | 'purple' | 'orange'

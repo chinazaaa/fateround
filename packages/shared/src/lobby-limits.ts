@@ -1,6 +1,7 @@
 import { ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS } from './anonymous-messages'
 import { BINGO_DEFAULT_MAX_PLAYERS, BINGO_MAX_PLAYERS, BINGO_MIN_PLAYERS } from './bingo'
 import { CODEWORDS_MAX_PLAYERS, CODEWORDS_MIN_PLAYERS } from './codewords'
+import { CROSSWORD_DEFAULT_MAX_PLAYERS, CROSSWORD_MAX_PLAYERS, CROSSWORD_MIN_PLAYERS } from './crossword'
 import { CRAZY8_DEFAULT_MAX_PLAYERS, CRAZY8_MAX_PLAYERS, CRAZY8_MIN_PLAYERS } from './crazy-eights'
 import { DESCRIBE_IT_DEFAULT_MAX_PLAYERS, DESCRIBE_IT_MAX_PLAYERS, DESCRIBE_IT_MIN_PLAYERS } from './describe-it'
 import { LUDO_DEFAULT_MAX_PLAYERS, LUDO_MAX_PLAYERS, LUDO_MIN_PLAYERS } from './ludo'
@@ -43,6 +44,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'quick_draw',
   'word_rush',
   'ayo',
+  'crossword',
 ] as const
 
 export type LobbyLimitGameType = (typeof LOBBY_LIMIT_GAME_TYPES)[number]
@@ -149,6 +151,7 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     max: MATCHING_PAIRS_MAX_PLAYERS,
     default: MATCHING_PAIRS_DEFAULT_MAX_PLAYERS,
   },
+  crossword: { min: CROSSWORD_MIN_PLAYERS, max: CROSSWORD_MAX_PLAYERS, default: CROSSWORD_DEFAULT_MAX_PLAYERS },
 }
 
 export function isLobbyLimitGameType(value: string): value is LobbyLimitGameType {

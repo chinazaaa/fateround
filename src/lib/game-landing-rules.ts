@@ -1404,4 +1404,31 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
   ],
+  crossword: [
+    {
+      title: 'Objective',
+      points: [
+        'Everyone races on the same crossword grid.',
+        'Fill every white cell with the correct letters from the Across and Down clues.',
+        'First player to complete the whole grid correctly wins — or the highest score when the timer ends.',
+      ],
+    },
+    {
+      title: 'How it works',
+      points: [
+        '1 to 20 players join with their name; the host picks a theme, difficulty, and optional time limit.',
+        'Tap a cell to highlight its word, then type the answer. Correct letters lock in green.',
+        'Each completed word scores 10 points, plus a 5-point speed bonus for finishing that word first.',
+        'Need a nudge? Reveal a letter as a hint — but each hint costs 2 points.',
+      ],
+    },
+    {
+      title: 'Tips',
+      points: [
+        'Start with the clues you’re sure of — crossing letters unlock the harder ones.',
+        'Finishing a word first is worth extra, so keep moving.',
+        'Spectators can watch the grid fill in but can’t enter letters.',
+      ],
+    },
+  ],
 }

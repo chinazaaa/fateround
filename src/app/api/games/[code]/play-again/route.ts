@@ -21,6 +21,7 @@ import {
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
+  isCrosswordGame,
 } from '@/lib/game-types'
 import { clearAnonymousRoomSessionData, reopenSecretMessageBoard } from '@/lib/anonymous-messages'
 import { clearBingoSessionData } from '@/lib/bingo'
@@ -40,6 +41,7 @@ import { clearDescribeItSessionData, canDescribeItPlayAgain } from '@/lib/descri
 import { clearScrabbleSessionData, canScrabblePlayAgain } from '@/lib/scrabble'
 import { clearNpatSessionData } from '@/lib/npat'
 import { clearSudokuSessionData } from '@/lib/sudoku'
+import { clearCrosswordSessionData } from '@/lib/crossword'
 import { clearWordHuntSessionData } from '@/lib/word-hunt'
 import { clearMafiaSessionData } from '@/lib/mafia'
 import { clearTriviaSessionData } from '@/lib/trivia'
@@ -103,6 +105,7 @@ type ClearableSessionGameType = Extract<
   | 'sudoku'
   | 'word_hunt'
   | 'mafia'
+  | 'crossword'
 >
 
 /**
@@ -136,6 +139,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   sudoku: clearSudokuSessionData,
   word_hunt: clearWordHuntSessionData,
   mafia: clearMafiaSessionData,
+  crossword: clearCrosswordSessionData,
 }
 
 async function handlePost(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
@@ -188,7 +192,8 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     (isTwoTruthsGame(gameType) && game.status === 'active') ||
     (isICallOnGame(gameType) && game.status === 'active') ||
     (isSudokuGame(gameType) && game.status === 'active') ||
-    (isWordHuntGame(gameType) && game.status === 'active')
+    (isWordHuntGame(gameType) && game.status === 'active') ||
+    (isCrosswordGame(gameType) && game.status === 'active')
   if (!canReturnToLobby) {
     return NextResponse.json({ error: 'Game must be finished before playing again' }, { status: 400 })
   }

@@ -1,4 +1,5 @@
 import type {
+  CrosswordDifficulty,
   DescribeItMode,
   GameType,
   PairVoteMode,
@@ -9,6 +10,13 @@ import type {
   WordRushMode,
   WordRushPromptMode,
 } from '@fateround/shared'
+import {
+  CROSSWORD_DEFAULT_DIFFICULTY,
+  CROSSWORD_DEFAULT_DURATION,
+  CROSSWORD_DEFAULT_THEME,
+  clampCrosswordGameDuration,
+  parseCrosswordDifficulty,
+} from '@fateround/shared/crossword'
 import type { BingoCallMode } from '@fateround/shared/create-party-games'
 import {
   clampBingoCallInterval,
@@ -102,6 +110,8 @@ export type PartyRoomSettings = {
   npatMarkingTimer: number
   gameDurationSeconds: number
   matchingPairsLargeGrid: boolean
+  crosswordTheme: string
+  crosswordDifficulty: CrosswordDifficulty
 }
 
 export function defaultPartyRoomSettings(gameType: GameType): PartyRoomSettings {
@@ -132,8 +142,15 @@ export function defaultPartyRoomSettings(gameType: GameType): PartyRoomSettings 
     mafiaDetectiveEnabled: true,
     mafiaAnonymousVotes: true,
     npatMarkingTimer: NPAT_DEFAULT_MARKING_TIMER,
-    gameDurationSeconds: gameType === 'i_call_on' ? NPAT_DEFAULT_GAME_DURATION : 0,
+    gameDurationSeconds:
+      gameType === 'i_call_on'
+        ? NPAT_DEFAULT_GAME_DURATION
+        : gameType === 'crossword'
+          ? CROSSWORD_DEFAULT_DURATION
+          : 0,
     matchingPairsLargeGrid: false,
+    crosswordTheme: CROSSWORD_DEFAULT_THEME,
+    crosswordDifficulty: CROSSWORD_DEFAULT_DIFFICULTY,
   }
 }
 
@@ -259,6 +276,14 @@ export function partyRoomSettingsPayload(gameType: GameType, party: PartyRoomSet
   if (gameType === 'sudoku') {
     payload.rounds_count = 1
     payload.game_duration_seconds = party.gameDurationSeconds
+    return payload
+  }
+
+  if (gameType === 'crossword') {
+    payload.rounds_count = 1
+    payload.game_duration_seconds = clampCrosswordGameDuration(party.gameDurationSeconds)
+    payload.crossword_theme = party.crosswordTheme
+    payload.crossword_difficulty = parseCrosswordDifficulty(party.crosswordDifficulty)
     return payload
   }
 

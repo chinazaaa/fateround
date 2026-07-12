@@ -1,0 +1,1061 @@
+'use client'
+
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { supabase } from '@/lib/supabase'
+import { GamePlayerChrome } from '@/components/GamePlayerChrome'
+import { CrosswordBoard, crosswordPlayerColor, CROSSWORD_MY_CELL_COLOR } from '@/components/crossword/CrosswordBoard'
+import { CrosswordGameTimerBar } from '@/components/crossword/CrosswordGameTimerBar'
+import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import {
+  parseCrosswordMetadata,
+  crosswordWordCells,
+  tallyCrosswordScores,
+  buildCellOwnerGrid,
+  buildPlayerSolvedGrid,
+  buildPlayerLetterGrid,
+  playerCompletionPercent,
+  playerHasSolvedCell,
+  CROSSWORD_MIN_PLAYERS,
+  CROSSWORD_HINT_PENALTY,
+  type CrosswordMetadata,
+  type CrosswordClue,
+  type CrosswordDirection,
+  type CrosswordSubmission,
+} from '@/lib/crossword'
+import { getPlayerTimeSpent } from '@/lib/sudoku'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+import { PLAYER_SELECT, ROUND_SELECT, CROSSWORD_SUBMISSION_SELECT } from '@/lib/supabase-selects'
+import { clearPlayerSession } from '@/lib/utils'
+import { formatMinutesSeconds } from '@/lib/timer-format'
+import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
+import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
+import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
+import { useLateJoinContext } from '@/hooks/useLateJoinContext'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
+import { LateJoinChoice } from '@/components/LateJoinChoice'
+import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
+import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
+import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { gameTypeConfig } from '@/lib/game-types'
+import type { Game, Player } from '@/types'
+
+const GRID_KEY = (roundId: string, playerId: string) => `crossword_grid_${roundId}_${playerId}`
+
+function loadSavedLetters(roundId: string, playerId: string, size: number): string[][] | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(GRID_KEY(roundId, playerId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (
+      Array.isArray(parsed) &&
+      parsed.length === size &&
+      parsed.every((r) => Array.isArray(r) && r.length === size && r.every((v) => typeof v === 'string'))
+    ) {
+      return parsed as string[][]
+    }
+  } catch {
+    // Corrupt entry — ignore and start fresh.
+  }
+  return null
+}
+
+function saveLetters(roundId: string, playerId: string, grid: string[][]) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(GRID_KEY(roundId, playerId), JSON.stringify(grid))
+  } catch {
+    // non-fatal
+  }
+}
+
+function emptyLetters(size: number): string[][] {
+  return Array.from({ length: size }, () => Array(size).fill(''))
+}
+
+function emptyBooleans(size: number): boolean[][] {
+  return Array.from({ length: size }, () => Array(size).fill(false))
+}
+
+const cellKey = (row: number, col: number) => `${row}-${col}`
+
+/** Find the clue whose word runs through [row,col] in the given direction. */
+function findClueAt(
+  metadata: CrosswordMetadata,
+  row: number,
+  col: number,
+  direction: CrosswordDirection
+): CrosswordClue | null {
+  for (const clue of metadata.clues) {
+    if (clue.direction !== direction) continue
+    if (crosswordWordCells(clue).some(([r, c]) => r === row && c === col)) return clue
+  }
+  return null
+}
+
+type View = 'loading' | 'join' | 'late_join_choice' | 'waiting' | 'playing' | 'finished'
+type CrosswordGameState = { hasValidRound: boolean }
+
+export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
+  const cfg = gameTypeConfig('crossword')
+  const { confirm } = useConfirm()
+  const [roundId, setRoundId] = useState<string | null>(null)
+  const [metadata, setMetadata] = useState<CrosswordMetadata | null>(null)
+  const [localLetters, setLocalLetters] = useState<string[][]>([])
+  const [wrongDrafts, setWrongDrafts] = useState<boolean[][]>([])
+  const [nowMs, setNowMs] = useState<number>(Date.now())
+  const [selectedCell, setSelectedCell] = useState<[number, number] | null>(null)
+  const [direction, setDirection] = useState<CrosswordDirection>('across')
+  const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
+  const [submissions, setSubmissions] = useState<CrosswordSubmission[]>([])
+  const [submitting, setSubmitting] = useState(false)
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
+
+  function showToast(msg: string, ok: boolean) {
+    setToast({ msg, ok })
+    setTimeout(() => setToast(null), 2500)
+  }
+
+  const loadGameState = useCallback(async (): Promise<{ state: CrosswordGameState; ok: boolean }> => {
+    return { state: { hasValidRound: false }, ok: true }
+  }, [])
+
+  const afterResolve = useCallback(
+    async (gameData: Game, playerId: string | null): Promise<CrosswordGameState> => {
+      // Finished games show the final leaderboard to everyone — even a session-less visitor.
+      if (gameData.status === 'finished') {
+        const { data: subs } = await supabase
+          .from('crossword_submissions')
+          .select(CROSSWORD_SUBMISSION_SELECT)
+          .eq('game_id', gameCode)
+        setSubmissions((subs ?? []) as CrosswordSubmission[])
+        return { hasValidRound: false }
+      }
+
+      if (!playerId) return { hasValidRound: false }
+      if (gameData.status === 'waiting') return { hasValidRound: false }
+
+      const { data: roundData } = await supabase
+        .from('rounds')
+        .select(ROUND_SELECT)
+        .eq('game_id', gameCode)
+        .eq('round_number', 1)
+        .maybeSingle()
+      if (!roundData) return { hasValidRound: false }
+
+      const meta = parseCrosswordMetadata((roundData as Record<string, unknown>).crossword_metadata)
+      if (!meta) return { hasValidRound: false }
+
+      setMetadata(meta)
+      setRoundId(roundData.id as string)
+
+      const { data: subs } = await supabase
+        .from('crossword_submissions')
+        .select(CROSSWORD_SUBMISSION_SELECT)
+        .eq('round_id', roundData.id)
+      setSubmissions((subs ?? []) as CrosswordSubmission[])
+
+      const saved = loadSavedLetters(roundData.id as string, playerId, meta.size)
+      setLocalLetters(saved ?? emptyLetters(meta.size))
+      setWrongDrafts(emptyBooleans(meta.size))
+      return { hasValidRound: true }
+    },
+    [gameCode]
+  )
+
+  const computeScreen = useCallback(
+    (gameData: Game, playerId: string | null, state: CrosswordGameState): View => {
+      if (gameData.status === 'finished') return 'finished'
+      if (!playerId) {
+        const pre = preJoinScreen(gameData, false)
+        return pre === 'late_join_choice' ? 'late_join_choice' : 'join'
+      }
+      if (gameData.status === 'waiting') return 'waiting'
+      return state.hasValidRound ? 'playing' : 'waiting'
+    },
+    []
+  )
+
+  const {
+    screen: view,
+    game,
+    setGame,
+    players,
+    setPlayers,
+    myPlayerId,
+    setMyPlayerId,
+    myResumeToken,
+    setMyResumeToken,
+    joinName,
+    setJoinName,
+    joining,
+    load,
+    join,
+  } = useGameViewBootstrap<View, CrosswordGameState>({
+    gameCode,
+    loadingScreen: 'loading',
+    notFoundScreen: 'loading',
+    loadGameState,
+    computeScreen,
+    afterResolve,
+    joinExtras,
+    onJoinError: (message) => showToast(message, false),
+  })
+
+  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
+  useTurnNotifications({ status: game?.status })
+
+  useEffect(() => {
+    if (view === 'playing') {
+      const interval = setInterval(() => setNowMs(Date.now()), 1000)
+      return () => clearInterval(interval)
+    }
+  }, [view])
+
+  useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
+
+  useEffect(() => {
+    const ch = supabase
+      .channel(`crossword_game_${gameCode}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
+        (payload) => {
+          setGame(payload.new as Game)
+          load()
+        }
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(ch)
+    }
+  }, [gameCode, load, setGame])
+
+  useEffect(() => {
+    if (!roundId) return
+    const ch = supabase
+      .channel(`crossword_subs_${roundId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'crossword_submissions', filter: `round_id=eq.${roundId}` },
+        (payload) => {
+          setSubmissions((prev) => {
+            const next = payload.new as CrosswordSubmission
+            return prev.some((s) => s.id === next.id) ? prev : [...prev, next]
+          })
+        }
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(ch)
+    }
+  }, [roundId])
+
+  useEffect(() => {
+    const ch = supabase
+      .channel(`crossword_players_${gameCode}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
+        () => {
+          supabase
+            .from('players')
+            .select(PLAYER_SELECT)
+            .eq('game_id', gameCode)
+            .order('joined_at')
+            .then(({ data }) => {
+              if (data) setPlayers(data as Player[])
+            })
+        }
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(ch)
+    }
+  }, [gameCode, setPlayers])
+
+  useRoomMemberAutoJoin({
+    gameCode,
+    displayName: roomDisplayName,
+    resolving: resolvingRoomMember,
+    screen: view,
+    gameStatus: game?.status,
+    hasPlayerSession: !!myPlayerId,
+    joining,
+    onJoin: (name) => join({ name }),
+  })
+
+  async function handleReady() {
+    if (!myResumeToken) return
+    await fetch('/api/players/ready', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken }),
+    })
+    await load()
+  }
+
+  const [replayReadyPending, setReplayReadyPending] = useState(false)
+  async function toggleReplayReady(ready: boolean) {
+    if (!myResumeToken) {
+      showToast('Your player session expired — rejoin to continue', false)
+      return
+    }
+    setReplayReadyPending(true)
+    try {
+      await fetch('/api/players/ready', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ready }),
+      })
+      await load()
+    } finally {
+      setReplayReadyPending(false)
+    }
+  }
+
+  function handlePlayerLeft() {
+    clearPlayerSession(gameCode)
+    setMyPlayerId(null)
+    setMyResumeToken(null)
+    setJoinName('')
+    void load()
+  }
+
+  const activePlayers = useMemo(() => players.filter((p) => p.spectator !== true), [players])
+  const playerColors = useMemo(() => {
+    const map: Record<string, string> = {}
+    activePlayers.forEach((p, i) => {
+      map[p.id] = crosswordPlayerColor(i)
+    })
+    return map
+  }, [activePlayers])
+
+  const cellOwners = useMemo(
+    () => (metadata ? buildCellOwnerGrid(metadata, submissions) : []),
+    [metadata, submissions]
+  )
+  const mySolvedCells = useMemo(
+    () => (metadata && myPlayerId ? buildPlayerSolvedGrid(metadata, submissions, myPlayerId) : undefined),
+    [metadata, submissions, myPlayerId]
+  )
+  const displayGrid = useMemo(() => {
+    if (!metadata || !myPlayerId) return localLetters
+    return buildPlayerLetterGrid(metadata, submissions, myPlayerId, localLetters)
+  }, [metadata, submissions, myPlayerId, localLetters])
+
+  const leaderboard = metadata ? tallyCrosswordScores(metadata, submissions, players) : []
+  const me = players.find((p) => p.id === myPlayerId)
+  const isSpectator = me?.spectator === true
+  const isViewer = !!(game && me && playerIsViewer(me, game))
+  const myRank = leaderboard.findIndex((r) => r.player_id === myPlayerId) + 1
+  const myCompletion = metadata && myPlayerId ? playerCompletionPercent(metadata, submissions, myPlayerId) : 0
+
+  // Active word (across/down) covering the selected cell.
+  const activeClue = useMemo(() => {
+    if (!metadata || !selectedCell) return null
+    return findClueAt(metadata, selectedCell[0], selectedCell[1], direction)
+  }, [metadata, selectedCell, direction])
+  const activeCells = useMemo(() => {
+    const set = new Set<string>()
+    if (activeClue) for (const [r, c] of crosswordWordCells(activeClue)) set.add(cellKey(r, c))
+    return set
+  }, [activeClue])
+
+  // Viewer watching one player's personal board.
+  const effectiveWatchedId =
+    (watchedPlayerId && activePlayers.some((p) => p.id === watchedPlayerId) ? watchedPlayerId : null) ??
+    leaderboard.find((row) => activePlayers.some((p) => p.id === row.player_id))?.player_id ??
+    activePlayers[0]?.id ??
+    null
+  const watchedPlayer = players.find((p) => p.id === effectiveWatchedId)
+  const watchedGrid = useMemo(
+    () =>
+      metadata && effectiveWatchedId
+        ? buildPlayerLetterGrid(metadata, submissions, effectiveWatchedId, emptyLetters(metadata.size))
+        : [],
+    [metadata, submissions, effectiveWatchedId]
+  )
+  const watchedSolvedCells =
+    metadata && effectiveWatchedId ? buildPlayerSolvedGrid(metadata, submissions, effectiveWatchedId) : undefined
+  const watchedCompletion =
+    metadata && effectiveWatchedId ? playerCompletionPercent(metadata, submissions, effectiveWatchedId) : 0
+
+  const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
+    gameCode,
+    game,
+    view === 'late_join_choice',
+    submissions.length
+  )
+  const { context: viewerPromoteContext } = useLateJoinContext(
+    gameCode,
+    game,
+    isViewer && view === 'playing',
+    submissions.length
+  )
+
+  function isCellEditable(row: number, col: number): boolean {
+    if (isViewer) return false
+    if (!metadata || !myPlayerId) return false
+    if (metadata.blocked[row]?.[col]) return false
+    return !playerHasSolvedCell(submissions, myPlayerId, row, col)
+  }
+
+  function focusInput() {
+    // Focusing the hidden input pops the mobile keyboard while capturing physical keys.
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }
+
+  function handleCellSelect(row: number, col: number) {
+    if (!metadata || metadata.blocked[row]?.[col]) return
+    // Re-tapping the active cell flips across/down.
+    if (selectedCell && selectedCell[0] === row && selectedCell[1] === col) {
+      setDirection((d) => {
+        const next: CrosswordDirection = d === 'across' ? 'down' : 'across'
+        return findClueAt(metadata, row, col, next) ? next : d
+      })
+      focusInput()
+      return
+    }
+    // Prefer a direction that actually has a word through this cell.
+    if (!findClueAt(metadata, row, col, direction)) {
+      const other: CrosswordDirection = direction === 'across' ? 'down' : 'across'
+      if (findClueAt(metadata, row, col, other)) setDirection(other)
+    }
+    setSelectedCell([row, col])
+    focusInput()
+  }
+
+  function selectClue(clue: CrosswordClue) {
+    setDirection(clue.direction)
+    setSelectedCell([clue.row, clue.col])
+    focusInput()
+  }
+
+  function setLetterDraft(row: number, col: number, letter: string, wrong: boolean) {
+    setLocalLetters((prev) => {
+      const next = prev.map((r) => [...r])
+      if (next[row]) next[row][col] = letter
+      if (roundId && myPlayerId) saveLetters(roundId, myPlayerId, next)
+      return next
+    })
+    setWrongDrafts((prev) => {
+      const next = prev.map((r) => [...r])
+      if (next[row]) next[row][col] = wrong
+      return next
+    })
+  }
+
+  /** Move the cursor to the next un-solved cell along the active word. */
+  function advanceCursor(row: number, col: number) {
+    if (!metadata) return
+    const clue = findClueAt(metadata, row, col, direction)
+    if (!clue) return
+    const cells = crosswordWordCells(clue)
+    const idx = cells.findIndex(([r, c]) => r === row && c === col)
+    for (let i = idx + 1; i < cells.length; i++) {
+      const [r, c] = cells[i]
+      if (isCellEditable(r, c)) {
+        setSelectedCell([r, c])
+        return
+      }
+    }
+    // Fall back to the very next cell even if solved, so the cursor visibly moves.
+    if (idx + 1 < cells.length) setSelectedCell(cells[idx + 1])
+  }
+
+  function stepBack(row: number, col: number) {
+    if (!metadata) return
+    const clue = findClueAt(metadata, row, col, direction)
+    if (!clue) return
+    const cells = crosswordWordCells(clue)
+    const idx = cells.findIndex(([r, c]) => r === row && c === col)
+    if (idx > 0) setSelectedCell(cells[idx - 1])
+  }
+
+  function moveInDirection(row: number, col: number, dRow: number, dCol: number) {
+    if (!metadata) return
+    let r = row + dRow
+    let c = col + dCol
+    while (r >= 0 && r < metadata.size && c >= 0 && c < metadata.size) {
+      if (!metadata.blocked[r]?.[c]) {
+        setSelectedCell([r, c])
+        return
+      }
+      r += dRow
+      c += dCol
+    }
+  }
+
+  async function submitLetter(row: number, col: number, letter: string, hint: boolean) {
+    if (!myPlayerId || !roundId || submitting) return
+    if (!myResumeToken) {
+      showToast('Your session has expired — please rejoin', false)
+      return
+    }
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/crossword/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, row, col, letter, hint }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        // Timer expiry (or a finish race) flips the game — refetch to land on results.
+        if (typeof json.error === 'string' && json.error.toLowerCase().includes('time')) {
+          await load()
+        } else {
+          showToast(json.error ?? 'Submission failed', false)
+        }
+        return
+      }
+      const resolved = String(json.letter ?? letter).toUpperCase()
+      if (json.isCorrect) {
+        setLetterDraft(row, col, resolved, false)
+        if (hint) showToast(`Revealed ${resolved} · ${CROSSWORD_HINT_PENALTY} pts`, false)
+      } else {
+        setLetterDraft(row, col, resolved, true)
+      }
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  function handleTypeLetter(letter: string) {
+    if (!selectedCell) return
+    const [row, col] = selectedCell
+    if (!isCellEditable(row, col)) return
+    const upper = letter.toUpperCase()
+    setLetterDraft(row, col, upper, false)
+    void submitLetter(row, col, upper, false)
+    advanceCursor(row, col)
+  }
+
+  // Mobile keyboards (Gboard etc.) often skip keydown for letter keys and only fire an
+  // input event — capture the typed character here. The input value stays controlled at ''.
+  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const char = e.target.value.slice(-1)
+    if (/^[a-zA-Z]$/.test(char)) handleTypeLetter(char)
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!selectedCell) return
+    const [row, col] = selectedCell
+    if (/^[a-zA-Z]$/.test(e.key)) {
+      e.preventDefault()
+      handleTypeLetter(e.key)
+      return
+    }
+    switch (e.key) {
+      case 'Backspace': {
+        e.preventDefault()
+        if (isCellEditable(row, col) && localLetters[row]?.[col]) {
+          setLetterDraft(row, col, '', false)
+        } else {
+          stepBack(row, col)
+        }
+        break
+      }
+      case 'ArrowRight':
+        e.preventDefault()
+        setDirection('across')
+        moveInDirection(row, col, 0, 1)
+        break
+      case 'ArrowLeft':
+        e.preventDefault()
+        setDirection('across')
+        moveInDirection(row, col, 0, -1)
+        break
+      case 'ArrowDown':
+        e.preventDefault()
+        setDirection('down')
+        moveInDirection(row, col, 1, 0)
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        setDirection('down')
+        moveInDirection(row, col, -1, 0)
+        break
+      case ' ':
+      case 'Tab': {
+        e.preventDefault()
+        if (metadata) {
+          const next: CrosswordDirection = direction === 'across' ? 'down' : 'across'
+          if (findClueAt(metadata, row, col, next)) setDirection(next)
+        }
+        break
+      }
+      default:
+        break
+    }
+  }
+
+  async function handleHint() {
+    if (!selectedCell || submitting) return
+    const [row, col] = selectedCell
+    if (!isCellEditable(row, col)) return
+    const ok = await confirm({
+      title: 'Reveal this letter?',
+      message: `Fills the correct letter here for a ${CROSSWORD_HINT_PENALTY}-point penalty.`,
+      confirmLabel: 'Reveal letter',
+    })
+    if (!ok) return
+    await submitLetter(row, col, localLetters[row]?.[col] || 'A', true)
+    advanceCursor(row, col)
+  }
+
+  if (view === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-muted">Loading…</p>
+      </div>
+    )
+  }
+
+  if (view === 'join') {
+    if (resolvingRoomMember) {
+      return (
+        <div className="min-h-screen flex items-center justify-center">
+          <p className="text-muted text-lg">Joining from your game room…</p>
+        </div>
+      )
+    }
+    return (
+      <GameJoinLobbyShell
+        gameCode={gameCode}
+        header={
+          <GameJoinHeader
+            emoji={cfg.headerEmoji}
+            title={game?.title ?? 'Crossword'}
+            gameType="crossword"
+            subtitle="Race to fill the grid before your friends."
+          />
+        }
+      >
+        <NameJoinForm
+          value={joinName}
+          onChange={setJoinName}
+          onSubmit={() => void join()}
+          joining={joining}
+          gameType="crossword"
+          submitLabel="Join game"
+          footer={
+            <p className="text-center pt-1">
+              <GameRulesLink gameType="crossword" variant="subtle" />
+            </p>
+          }
+        />
+      </GameJoinLobbyShell>
+    )
+  }
+
+  if (view === 'late_join_choice' && game) {
+    return (
+      <LateJoinChoice
+        gameCode={gameCode}
+        game={game}
+        context={lateJoinContext}
+        contextLoading={lateJoinContextLoading}
+        playersAllowed={allowLatePlayers(game)}
+        showNameField
+        nameInput={joinName}
+        onNameChange={setJoinName}
+        joining={joining}
+        onJoinAsViewer={() => void join({ joinAsViewer: true })}
+        onJoinAsPlayer={() => void join({ joinAsViewer: false })}
+      />
+    )
+  }
+
+  if (view === 'waiting') {
+    if (game?.replay_pending) {
+      return (
+        <GameJoinLobbyShell gameCode={gameCode} onResumed={load}>
+          <ReplayReadyRing
+            players={players}
+            meId={myPlayerId}
+            isHost={false}
+            minPlayers={CROSSWORD_MIN_PLAYERS}
+            onToggleReady={(ready) => void toggleReplayReady(ready)}
+            onStart={() => {}}
+            pending={replayReadyPending}
+            gameCode={gameCode}
+            onLeft={handlePlayerLeft}
+          />
+        </GameJoinLobbyShell>
+      )
+    }
+    return (
+      <GameJoinLobbyShell gameCode={gameCode} onResumed={load}>
+        <GameLobbyWaitingPanel
+          gameCode={gameCode}
+          gameType={game?.game_type}
+          players={players}
+          myPlayerId={myPlayerId}
+          myPlayerName={me?.name ?? ''}
+          onRenamed={() => void load()}
+          onLeft={handlePlayerLeft}
+          title={game?.title ?? 'Crossword'}
+          description="Waiting for the host to start the puzzle…"
+          rulesLink={<GameRulesLink gameType="crossword" variant="subtle" />}
+          isSpectator={isSpectator}
+          onReady={handleReady}
+        />
+      </GameJoinLobbyShell>
+    )
+  }
+
+  if (view === 'finished') {
+    const myRow = leaderboard.find((row) => row.player_id === myPlayerId)
+    const iWon =
+      !!myRow &&
+      leaderboard.length > 1 &&
+      leaderboard[0] != null &&
+      myRow.points === leaderboard[0].points &&
+      leaderboard[0].points > 0
+    return (
+      <div className="min-h-screen flex flex-col">
+        <GamePlayerChrome />
+        <main className="pt-16 flex-1 px-4 py-8 max-w-lg mx-auto w-full space-y-6">
+          <div className="glass-card-strong p-8 text-center space-y-2">
+            <p className="text-4xl">🏆</p>
+            <p className="text-2xl font-black">Puzzle complete!</p>
+            {leaderboard[0] && (
+              <p className="text-muted text-base">
+                {leaderboard[0].name} wins with {leaderboard[0].points} pts
+              </p>
+            )}
+          </div>
+          <PaginatedLeaderboard
+            title="Final leaderboard"
+            rows={leaderboard.map((row, i) => {
+              const pct = metadata ? playerCompletionPercent(metadata, submissions, row.player_id) : 0
+              const timeSecs = getPlayerTimeSpent(
+                game,
+                submissions,
+                row.player_id,
+                pct,
+                nowMs,
+                players.find((p) => p.id === row.player_id)?.joined_at
+              )
+              return {
+                id: row.player_id,
+                name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,
+                score: row.points,
+                rank: i + 1,
+              }
+            })}
+            highlightId={myPlayerId ?? undefined}
+            scoreLabel={(n) => `${n} pts`}
+          />
+          {iWon && (
+            <PostWinToCommunity
+              gameType="crossword"
+              gameCode={gameCode}
+              winnerName={myRow?.name ?? ''}
+              roundKey={game?.session_started_at ?? undefined}
+            />
+          )}
+        </main>
+      </div>
+    )
+  }
+
+  const acrossClues = metadata?.clues.filter((c) => c.direction === 'across') ?? []
+  const downClues = metadata?.clues.filter((c) => c.direction === 'down') ?? []
+
+  return (
+    <div className="min-h-screen flex flex-col bg-slate-50/80 dark:bg-slate-950/50">
+      <GamePlayerChrome />
+      {toast && (
+        <div
+          className={`fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full text-sm font-semibold shadow-lg ${toast.ok ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}
+        >
+          {toast.msg}
+        </div>
+      )}
+      {/* Off-screen input drives the on-device keyboard while capturing physical keys. */}
+      <input
+        ref={inputRef}
+        type="text"
+        inputMode="text"
+        autoCapitalize="characters"
+        autoCorrect="off"
+        aria-hidden
+        tabIndex={-1}
+        value=""
+        onChange={handleInputChange}
+        onKeyDown={handleKeyDown}
+        className="absolute -left-[9999px] top-0 h-px w-px opacity-0"
+      />
+      <main className="pt-16 flex-1 px-3 py-4 max-w-lg mx-auto w-full space-y-4">
+        <CrosswordGameTimerBar gameCode={gameCode} game={game} />
+
+        {isViewer ? (
+          <>
+            <ViewerModeBanner
+              gameCode={gameCode}
+              playerId={myPlayerId}
+              game={game}
+              player={me}
+              playerDetail={viewerPromoteContext?.playerDetail}
+              onPromoted={load}
+            />
+            {activePlayers.length > 0 ? (
+              <div className="glass-card p-3 space-y-2">
+                <p className="label-caps text-xs">Watching a player&apos;s board</p>
+                <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {activePlayers.map((p) => {
+                    const active = p.id === effectiveWatchedId
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setWatchedPlayerId(p.id)}
+                        className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+                          active
+                            ? 'bg-slate-800 text-white border-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:border-slate-100'
+                            : 'bg-slate-100/70 text-slate-600 border-slate-200 hover:text-slate-900 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-700'
+                        }`}
+                      >
+                        <span
+                          className="w-2.5 h-2.5 rounded-sm shrink-0"
+                          style={{ backgroundColor: playerColors[p.id] ?? '#94a3b8' }}
+                        />
+                        {p.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              <p className="glass-card p-3 text-center text-xs text-muted">
+                No players have joined the puzzle yet — pick a player to watch once they do.
+              </p>
+            )}
+          </>
+        ) : (
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-3">
+              <div className="w-4 h-4 rounded-sm shrink-0" style={{ backgroundColor: CROSSWORD_MY_CELL_COLOR }} />
+              <div>
+                <p className="font-bold text-slate-800 dark:text-slate-100 leading-tight">{me?.name ?? 'Me'}</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {myRank > 0 ? ordinal(myRank) : '—'} | {myCompletion}%
+                </p>
+              </div>
+            </div>
+            {game?.session_started_at && (
+              <div className="text-sm font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-md">
+                ⏱️ {formatMinutesSeconds(getPlayerTimeSpent(game, submissions, myPlayerId || '', myCompletion, nowMs, me?.joined_at))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {metadata &&
+          (isViewer ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 rounded-sm shrink-0" style={{ backgroundColor: CROSSWORD_MY_CELL_COLOR }} />
+                  <div>
+                    <p className="font-bold text-slate-800 dark:text-slate-100 leading-tight">
+                      {watchedPlayer?.name ?? 'Player'}
+                    </p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">{watchedCompletion}% complete</p>
+                  </div>
+                </div>
+              </div>
+              <CrosswordBoard
+                metadata={metadata}
+                letterGrid={watchedGrid}
+                cellOwners={cellOwners}
+                mySolvedCells={watchedSolvedCells}
+                playerColors={playerColors}
+                myPlayerId={effectiveWatchedId}
+                readOnly
+              />
+            </div>
+          ) : (
+            <>
+              <CrosswordBoard
+                metadata={metadata}
+                letterGrid={displayGrid}
+                cellOwners={cellOwners}
+                mySolvedCells={mySolvedCells}
+                playerColors={playerColors}
+                myPlayerId={myPlayerId}
+                selectedCell={selectedCell}
+                activeCells={activeCells}
+                wrongCells={wrongDrafts}
+                onCellSelect={handleCellSelect}
+              />
+
+              {/* Active clue + hint */}
+              <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0 glass-card px-3 py-2">
+                  {activeClue ? (
+                    <p className="text-sm text-slate-800 dark:text-slate-100">
+                      <span className="font-bold">
+                        {activeClue.number} {activeClue.direction === 'across' ? 'Across' : 'Down'}
+                      </span>
+                      <span className="mx-1.5 text-slate-400">·</span>
+                      {activeClue.clue}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted">Tap a cell to start filling the grid.</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleHint()}
+                  disabled={!selectedCell || submitting}
+                  className="shrink-0 px-3 py-2 rounded-lg text-sm font-bold bg-amber-100/80 text-amber-800 dark:bg-amber-900/35 dark:text-amber-200 disabled:opacity-40 transition-colors hover:bg-amber-100"
+                  title={`Reveal the selected letter (${CROSSWORD_HINT_PENALTY} pts)`}
+                >
+                  💡 Reveal
+                </button>
+              </div>
+
+              {/* Clue lists */}
+              <div className="grid grid-cols-2 gap-3">
+                <ClueList
+                  title="Across"
+                  clues={acrossClues}
+                  submissions={submissions}
+                  myPlayerId={myPlayerId}
+                  activeNumber={activeClue?.direction === 'across' ? activeClue.number : null}
+                  onSelect={selectClue}
+                />
+                <ClueList
+                  title="Down"
+                  clues={downClues}
+                  submissions={submissions}
+                  myPlayerId={myPlayerId}
+                  activeNumber={activeClue?.direction === 'down' ? activeClue.number : null}
+                  onSelect={selectClue}
+                />
+              </div>
+            </>
+          ))}
+
+        {/* Live standings */}
+        <div className="space-y-2">
+          {leaderboard.map((row, i) => {
+            const pct = metadata ? playerCompletionPercent(metadata, submissions, row.player_id) : 0
+            const color = playerColors[row.player_id] ?? '#94a3b8'
+            const timeSecs = getPlayerTimeSpent(
+              game,
+              submissions,
+              row.player_id,
+              pct,
+              nowMs,
+              players.find((p) => p.id === row.player_id)?.joined_at
+            )
+            return (
+              <div
+                key={row.player_id}
+                className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 ${
+                  row.player_id === myPlayerId
+                    ? 'border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-900'
+                    : 'border-transparent bg-slate-100/60 dark:bg-slate-900/40'
+                }`}
+              >
+                <div className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: color }} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate">{row.name}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {ordinal(i + 1)} of {leaderboard.length} · {row.wordsCompleted} words · {pct}%
+                    {game?.session_started_at ? ` · ⏱️ ${formatMinutesSeconds(timeSecs)}` : ''}
+                  </p>
+                </div>
+                <span className="text-sm font-bold text-slate-600 dark:text-slate-300 tabular-nums">
+                  {row.points} pts
+                </span>
+              </div>
+            )
+          })}
+        </div>
+
+        {myPlayerId && (
+          <PlayerSessionControls
+            gameCode={gameCode}
+            playerId={myPlayerId}
+            currentName={me?.name ?? ''}
+            onRenamed={() => void load()}
+            onLeft={handlePlayerLeft}
+            leaveOnly={isViewer}
+          />
+        )}
+      </main>
+    </div>
+  )
+}
+
+function ordinal(n: number): string {
+  const j = n % 10
+  const k = n % 100
+  if (j === 1 && k !== 11) return `${n}st`
+  if (j === 2 && k !== 12) return `${n}nd`
+  if (j === 3 && k !== 13) return `${n}rd`
+  return `${n}th`
+}
+
+function ClueList({
+  title,
+  clues,
+  submissions,
+  myPlayerId,
+  activeNumber,
+  onSelect,
+}: {
+  title: string
+  clues: CrosswordClue[]
+  submissions: CrosswordSubmission[]
+  myPlayerId: string | null
+  activeNumber: number | null
+  onSelect: (clue: CrosswordClue) => void
+}) {
+  return (
+    <div className="glass-card p-2.5">
+      <p className="label-caps text-[10px] mb-1.5">{title}</p>
+      <ul className="space-y-0.5 max-h-56 overflow-y-auto">
+        {clues.map((clue) => {
+          const done = myPlayerId
+            ? crosswordWordCells(clue).every(([r, c]) => playerHasSolvedCell(submissions, myPlayerId, r, c))
+            : false
+          const isActive = clue.number === activeNumber
+          return (
+            <li key={`${clue.number}-${clue.direction}`}>
+              <button
+                type="button"
+                onClick={() => onSelect(clue)}
+                className={[
+                  'w-full text-left flex gap-1.5 rounded-md px-1.5 py-1 text-xs transition-colors',
+                  isActive
+                    ? 'bg-indigo-100/80 text-indigo-900 dark:bg-indigo-900/40 dark:text-indigo-100'
+                    : 'hover:bg-slate-100/70 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-200',
+                  done ? 'line-through opacity-55' : '',
+                ].join(' ')}
+              >
+                <span className="font-bold tabular-nums shrink-0">{clue.number}.</span>
+                <span className="min-w-0">{clue.clue}</span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}

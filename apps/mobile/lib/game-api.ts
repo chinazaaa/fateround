@@ -133,6 +133,27 @@ export function postSudokuSubmit(
   })
 }
 
+export function postCrosswordSubmit(
+  gameId: string,
+  resumeToken: string,
+  row: number,
+  col: number,
+  letter: string,
+  hint?: boolean
+) {
+  return postJson<{ success: boolean; isCorrect: boolean; letter?: string; hint?: boolean; alreadySolved?: boolean }>(
+    '/api/crossword/submit',
+    {
+      gameId,
+      resumeToken,
+      row,
+      col,
+      letter,
+      hint,
+    }
+  )
+}
+
 export function postYahtzeeRoll(gameId: string, resumeToken: string) {
   return postJson<{ success: boolean }>('/api/yahtzee/roll', { gameId, resumeToken })
 }

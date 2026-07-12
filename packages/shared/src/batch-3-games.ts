@@ -6,6 +6,7 @@ export const BATCH_3_GAMES: GameType[] = [
   'yahtzee',
   'snake_and_ladder',
   'ludo',
+  'crossword',
 ]
 
 export function batch3GameLabel(gameType: GameType | string): string {
@@ -15,6 +16,7 @@ export function batch3GameLabel(gameType: GameType | string): string {
     yahtzee: 'Yahtzee',
     snake_and_ladder: 'Snakes & Ladders',
     ludo: 'Ludo',
+    crossword: 'Crossword',
   }
   return labels[gameType as GameType] ?? String(gameType).replace(/_/g, ' ')
 }

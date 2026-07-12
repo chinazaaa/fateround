@@ -27,6 +27,7 @@ import {
   MONOPOLY_PLAYER_TOKENS,
   monopolyTokenEmoji,
   monopolyTokenOwners,
+  takenMonopolyTokens,
   type MonopolyTokenId,
 } from '@fateround/shared/monopoly-tokens'
 import { JoinScreen } from '@/components/JoinScreen'
@@ -187,10 +188,16 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     return () => clearInterval(id)
   }, [])
 
+  // Seed a default token, but never clobber the player's own pick. This effect
+  // re-runs on every realtime `players` update (heartbeats, other joins), so it
+  // must preserve `selectedToken` as long as it's still free — only fall back to
+  // the first available token when nothing is picked yet or the pick got taken.
   useEffect(() => {
     if (bootstrap.screen !== 'join') return
-    const free = firstAvailableMonopolyToken(bootstrap.players)
-    setSelectedToken(free)
+    const taken = takenMonopolyTokens(bootstrap.players)
+    setSelectedToken((current) =>
+      current && !taken.has(current) ? current : firstAvailableMonopolyToken(bootstrap.players)
+    )
   }, [bootstrap.players, bootstrap.screen])
 
   // Transient event notifications — whichever event (cash/rent/trade/card) most
@@ -418,13 +425,20 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         <LobbyView {...lobbyProps!} onLeft={onLeft} />
         <View style={styles.tokenList}>
           <Text style={styles.lobbyHint}>Tokens in lobby:</Text>
-          {bootstrap.players
-            .filter((p) => !p.spectator)
-            .map((p: Player, index: number) => (
-              <Text key={p.id} style={styles.lobbyToken}>
-                {monopolyTokenEmoji(p.monopoly_token, index)} {p.name}
-              </Text>
-            ))}
+          {/* Wrapping chips so a full 6-player lobby stays compact (≈3 rows of
+              two) instead of stretching into six full-width lines. */}
+          <View style={styles.lobbyTokenRow}>
+            {bootstrap.players
+              .filter((p) => !p.spectator)
+              .map((p: Player, index: number) => (
+                <View key={p.id} style={styles.lobbyTokenChip}>
+                  <Text style={styles.lobbyTokenEmoji}>{monopolyTokenEmoji(p.monopoly_token, index)}</Text>
+                  <Text style={styles.lobbyTokenName} numberOfLines={1}>
+                    {p.name}
+                  </Text>
+                </View>
+              ))}
+          </View>
         </View>
       </View>
     )
@@ -880,7 +894,21 @@ const makeStyles = (theme: Theme) =>
   tokenLabel: { color: theme.text, fontSize: 11, marginTop: 4, textAlign: 'center' },
   tokenOwner: { color: theme.textMuted, fontSize: 10, marginTop: 2 },
   lobbyHint: { color: theme.textMuted, fontSize: 14, marginTop: 12 },
-  lobbyToken: { color: theme.text, fontSize: 15, marginTop: 4 },
+  lobbyTokenRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  lobbyTokenChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: theme.radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    maxWidth: '48%',
+  },
+  lobbyTokenEmoji: { fontSize: 18 },
+  lobbyTokenName: { color: theme.text, fontSize: 14, fontWeight: '600', flexShrink: 1 },
   playContent: { padding: 16, gap: 12, paddingBottom: 40 },
   chromeRow: { flexDirection: 'row', gap: 8 },
   chromeSpace: {

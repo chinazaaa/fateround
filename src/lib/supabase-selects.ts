@@ -22,12 +22,15 @@ export const PARTICIPANT_SELECT =
   'id,game_id,name,gender,photo_url,description,display_order,in_mlt_poll,submitted_by_player_id'
 
 export const ROUND_SELECT =
-  'id,game_id,round_number,participant_ids,wyr_option_a,wyr_option_b,mlt_question,submitter_player_id,quote_text,quote_author_participant_id,quote_submitted_at,status,started_at,ended_at,anime_metadata,trivia_metadata,ttl_metadata,npat_metadata,sudoku_metadata,word_hunt_metadata,memory_match_metadata,quiplash_metadata,quick_draw_metadata'
+  'id,game_id,round_number,participant_ids,wyr_option_a,wyr_option_b,mlt_question,submitter_player_id,quote_text,quote_author_participant_id,quote_submitted_at,status,started_at,ended_at,anime_metadata,trivia_metadata,ttl_metadata,npat_metadata,sudoku_metadata,word_hunt_metadata,memory_match_metadata,quiplash_metadata,quick_draw_metadata,crossword_metadata'
 
 export const SUDOKU_SUBMISSION_SELECT =
   'id,game_id,round_id,player_id,block_index,cell_row,cell_col,submitted_value,is_correct,points_awarded,submitted_at'
 
 export const WORD_HUNT_SUBMISSION_SELECT = 'id,game_id,round_id,player_id,word,path,points_awarded,submitted_at'
+
+export const CROSSWORD_SUBMISSION_SELECT =
+  'id,game_id,round_id,player_id,cell_row,cell_col,submitted_letter,is_correct,via_hint,submitted_at'
 
 export const VOTE_SELECT =
   'id,player_id,round_id,game_id,kiss_participant_id,marry_participant_id,kill_participant_id,pair_assignments,wyr_choice,target_player_id,target_participant_id,anime_choice,picked_number,created_at'
