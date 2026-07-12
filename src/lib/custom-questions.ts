@@ -19,11 +19,13 @@ import {
   isQuickDrawGame,
   isCrosswordGame,
   isWordSearchGame,
+  isWordScrambleGame,
   parseGameType,
 } from '@/lib/game-types'
 import { parseCsvRows } from '@/lib/csv-parse'
 import { parseCrosswordEntries } from '@/lib/crossword-puzzles'
 import { parseWordSearchEntries } from '@/lib/word-search-puzzles'
+import { parseWordScrambleEntries } from '@/lib/word-scramble-puzzles'
 import { pickLeastUsed } from '@/lib/question-picker'
 import {
   CODEWORDS_MIN_CUSTOM_POOL,
@@ -338,6 +340,7 @@ export type EntryImportResult<T> = {
 
 export type CrosswordEntry = { answer: string; clue: string }
 export type WordSearchEntry = { word: string }
+export type WordScrambleEntry = { word: string; hint?: string }
 
 /** Parse a crossword CSV (answer,clue header) into deduped {answer, clue} entries + counts. */
 export function parseCrosswordEntryImport(text: string): EntryImportResult<CrosswordEntry> {
@@ -376,6 +379,41 @@ export function parseWordSearchEntryImport(text: string): EntryImportResult<Word
     questions.push({ word })
   }
   return { questions, totalRows: rows.length, skippedRows: rows.length - parsed.length, duplicateRows }
+}
+
+/** Parse a word-scramble CSV (word[,hint] header) into deduped {word, hint?} entries + counts. */
+export function parseWordScrambleEntryImport(text: string): EntryImportResult<WordScrambleEntry> {
+  const rows = parseCsvRows(text)
+  const parsed = parseWordScrambleEntries(rows)
+  const seen = new Set<string>()
+  const questions: WordScrambleEntry[] = []
+  let duplicateRows = 0
+  for (const e of parsed) {
+    const word = e.word.trim().toUpperCase()
+    if (!word) continue
+    if (seen.has(word)) {
+      duplicateRows++
+      continue
+    }
+    seen.add(word)
+    questions.push(e.hint ? { word, hint: e.hint } : { word })
+  }
+  return { questions, totalRows: rows.length, skippedRows: rows.length - parsed.length, duplicateRows }
+}
+
+/** Restore a stored word-scramble pool (from custom_questions or a library pack). */
+export function parseStoredWordScrambleEntries(raw: unknown): WordScrambleEntry[] {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<string>()
+  const out: WordScrambleEntry[] = []
+  for (const e of parseWordScrambleEntries(raw as Record<string, string>[])) {
+    const word = e.word.trim().toUpperCase()
+    if (word && !seen.has(word)) {
+      seen.add(word)
+      out.push(e.hint ? { word, hint: e.hint } : { word })
+    }
+  }
+  return out
 }
 
 /** Restore a stored crossword pool (from custom_questions or a library pack). */
@@ -623,6 +661,9 @@ export function questionSampleFile(gameType?: GameType | string): { href: string
   }
   if (isWordSearchGame(gameType)) {
     return { href: '/word-search-words-sample.csv', download: 'word-search-words-sample.csv' }
+  }
+  if (isWordScrambleGame(gameType)) {
+    return { href: '/word-scramble-words-sample.csv', download: 'word-scramble-words-sample.csv' }
   }
   return { href: '/wyr-questions-sample.csv', download: 'wyr-questions-sample.csv' }
 }

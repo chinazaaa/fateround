@@ -200,6 +200,13 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
     }
   }, [view])
 
+  // A replay reuses this component with a fresh round — drop the previous game's word
+  // placements so the finish screen refetches the new puzzle's answer key instead of
+  // highlighting stale positions over the new grid.
+  useEffect(() => {
+    setPlacements(null)
+  }, [roundId])
+
   useEffect(() => {
     if (view !== 'finished' || placements) return
     let cancelled = false

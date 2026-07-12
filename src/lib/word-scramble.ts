@@ -261,6 +261,7 @@ export function buildWordScrambleRoundRow(gameId: string, metadata: WordScramble
     game_id: gameId,
     round_number: 1,
     status: 'active' as const,
+    participant_ids: [] as string[],
     word_scramble_metadata: metadata,
   }
 }

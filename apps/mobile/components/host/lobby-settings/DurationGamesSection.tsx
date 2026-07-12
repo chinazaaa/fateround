@@ -18,6 +18,11 @@ import {
   WORD_SEARCH_THEME_OPTIONS,
   formatWordSearchGameDuration,
 } from '@fateround/shared/word-search'
+import {
+  WORD_SCRAMBLE_GAME_DURATION_OPTIONS,
+  WORD_SCRAMBLE_THEME_OPTIONS,
+  formatWordScrambleGameDuration,
+} from '@fateround/shared/word-scramble'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { SelectField } from '@/components/create/SelectField'
 import { TimerPicker } from '@/components/create/TimerPicker'
@@ -51,7 +56,8 @@ export function isDurationGame(gameType: GameType): boolean {
     gameType === 'word_hunt' ||
     gameType === 'matching_pairs' ||
     gameType === 'crossword' ||
-    gameType === 'word_search'
+    gameType === 'word_search' ||
+    gameType === 'word_scramble'
   )
 }
 
@@ -131,6 +137,37 @@ export function DurationGamesSection({ gameType, value, onChange }: Props) {
           value={value.gameDurationSeconds}
           options={WORD_SEARCH_GAME_DURATION_OPTIONS}
           format={formatWordSearchGameDuration}
+          onChange={(gameDurationSeconds) => onChange({ gameDurationSeconds })}
+        />
+      </View>
+    )
+  }
+
+  if (gameType === 'word_scramble') {
+    return (
+      <View style={styles.wrap}>
+        <View style={styles.field}>
+          <Text style={styles.label}>Theme</Text>
+          <SelectField
+            title="Word Scramble theme"
+            value={value.theme}
+            options={WORD_SCRAMBLE_THEME_OPTIONS.map((o) => ({ value: o.id, label: o.label }))}
+            onChange={(theme) => onChange({ theme })}
+          />
+        </View>
+        <View style={styles.field}>
+          <Text style={styles.label}>Difficulty</Text>
+          <SegmentedControl
+            value={value.difficulty}
+            options={DIFFICULTY_OPTIONS}
+            onChange={(v) => onChange({ difficulty: v as PuzzleDifficulty })}
+          />
+        </View>
+        <TimerPicker
+          label="Max time limit"
+          value={value.gameDurationSeconds}
+          options={WORD_SCRAMBLE_GAME_DURATION_OPTIONS}
+          format={formatWordScrambleGameDuration}
           onChange={(gameDurationSeconds) => onChange({ gameDurationSeconds })}
         />
       </View>

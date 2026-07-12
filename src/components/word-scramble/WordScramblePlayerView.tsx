@@ -35,6 +35,7 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { gameTypeConfig } from '@/lib/game-types'
 import type { Game, Player } from '@/types'
 
@@ -56,6 +57,7 @@ type WordScrambleGameState = { hasValidRound: boolean }
 
 export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
   const cfg = gameTypeConfig('word_scramble')
+  const { confirm } = useConfirm()
   const [roundId, setRoundId] = useState<string | null>(null)
   const [metadata, setMetadata] = useState<WordScrambleMetadata | null>(null)
   const [solves, setSolves] = useState<WordScrambleSolve[]>([])
@@ -307,6 +309,16 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
     view === 'late_join_choice',
     solves.length
   )
+
+  async function revealWithConfirm() {
+    const ok = await confirm({
+      title: 'Reveal the answer?',
+      message: `This shows the word but costs you ${Math.abs(WORD_SCRAMBLE_HINT_PENALTY)} points.`,
+      confirmLabel: 'Reveal',
+      cancelLabel: 'Keep trying',
+    })
+    if (ok) void submit(true)
+  }
 
   async function submit(hint: boolean) {
     if (!myPlayerId || !roundId || !myResumeToken || !metadata) return
@@ -619,7 +631,7 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
                   </p>
                   <button
                     type="button"
-                    onClick={() => void submit(true)}
+                    onClick={() => void revealWithConfirm()}
                     disabled={submitting}
                     className="shrink-0 px-3 py-2 rounded-lg text-sm font-bold bg-amber-100/80 text-amber-800 dark:bg-amber-900/35 dark:text-amber-200 disabled:opacity-40 transition-colors hover:bg-amber-100"
                     title={`Reveal the answer (${WORD_SCRAMBLE_HINT_PENALTY} pts)`}

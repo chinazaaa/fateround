@@ -14,6 +14,7 @@ const META: Partial<Record<GameType, GameMeta>> = {
   crazy_eights: { emoji: '🃏', blurb: 'Shed your hand', category: 'cards' },
   crossword: { emoji: '📝', blurb: 'Race to fill the grid', category: 'puzzle' },
   word_search: { emoji: '🔍', blurb: 'Hunt the hidden words', category: 'puzzle' },
+  word_scramble: { emoji: '🔀', blurb: 'Unscramble the words', category: 'puzzle' },
   describe_it: { emoji: '💬', blurb: 'Describe without saying', category: 'trivia' },
   i_call_on: { emoji: '🙋', blurb: 'Pick who answers', category: 'party' },
   ludo: { emoji: '🎲', blurb: 'Race your pieces home', category: 'board' },
