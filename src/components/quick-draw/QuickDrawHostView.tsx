@@ -529,6 +529,10 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
       primary={hostPlays ? interactivePlay : watchRound}
       manage={manage}
       finished={finished}
+      game={game}
+      players={players}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={load}
     />
   )
 }

@@ -442,6 +442,10 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
       tab={tab}
       onTabChange={setTab}
       primaryKind={primaryKind}
+      game={game}
+      players={players}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={load}
       showTabs={showTabs}
       gameStarted={gameStarted}
       header={gameFinished ? undefined : <HostGameHeader game={game} />}

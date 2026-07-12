@@ -523,6 +523,10 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
       tab={tab}
       onTabChange={setTab}
       primaryKind={primaryKind}
+      game={game}
+      players={players}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={load}
       showTabs={showTabs}
       gameStarted={gameStarted}
       header={gameFinished ? undefined : <HostGameHeader game={game} />}
