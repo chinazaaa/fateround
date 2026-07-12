@@ -5,15 +5,38 @@ import { getCodeDefaultLimits } from '@fateround/shared/lobby-limits'
 import type { MafiaStateResponse } from '@fateround/shared/mafia'
 import type { MahjongStateResponse } from '@fateround/shared/mahjong'
 
+/**
+ * Read a fetch Response as JSON, defensively. Every API route returns JSON, so a
+ * non-JSON body means the request never reached it (an HTML/plain-text 500 page,
+ * a proxy or deployment-protection notice, an empty body). Surface the HTTP
+ * status and a short snippet instead of a cryptic "JSON Parse error: unexpected
+ * character", which otherwise masks every server-side failure app-wide.
+ */
+async function readJsonResponse<T>(res: Response): Promise<T & { error?: string }> {
+  const raw = await res.text()
+  let data: (T & { error?: string }) | null = null
+  try {
+    data = raw ? (JSON.parse(raw) as T & { error?: string }) : null
+  } catch {
+    const snippet = raw.trim().replace(/\s+/g, ' ').slice(0, 120)
+    throw new Error(
+      res.ok
+        ? 'Server returned an unexpected response.'
+        : `Server error (${res.status})${snippet ? `: ${snippet}` : ''}`
+    )
+  }
+  if (!res.ok) throw new Error(data?.error ?? `Request failed (${res.status})`)
+  if (!data) throw new Error('Server returned an empty response.')
+  return data
+}
+
 async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(apiUrl(path), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  const data = (await res.json()) as T & { error?: string }
-  if (!res.ok) throw new Error(data.error ?? 'Request failed')
-  return data
+  return readJsonResponse<T>(res)
 }
 
 export function postTicTacToeMove(gameId: string, resumeToken: string, cellIndex: number) {
@@ -1177,9 +1200,7 @@ async function jsonRequest<T>(path: string, method: string, body: Record<string,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  const data = (await res.json()) as T & { error?: string }
-  if (!res.ok) throw new Error(data.error ?? 'Request failed')
-  return data
+  return readJsonResponse<T>(res)
 }
 
 export function patchPlayerName(
