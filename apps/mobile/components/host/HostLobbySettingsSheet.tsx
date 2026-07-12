@@ -238,7 +238,9 @@ export function HostLobbySettingsSheet({
   const showLateJoin = gameSupportsViewerSetting(gameType)
   const showMaxPlayers = isLobbyLimitGameType(gameType) && LOBBY_MAX_PLAYERS_GAMES.has(gameType)
   const themeOptions = themesForGameType(gameType)
-  const showTheme = themeOptions.length > 1
+  // Crossword / Word Search show their own word-theme picker in DurationGamesSection, so hide
+  // the generic visual-theme picker for them (they don't use a visual skin).
+  const showTheme = themeOptions.length > 1 && gameType !== 'crossword' && gameType !== 'word_search'
 
   const timerOptions = Array.from(
     new Set<number>([game.timer_seconds ?? 0, ...POLL_ROUND_TIMER_OPTIONS, ...(isTrivia ? [10] : [])])
@@ -281,11 +283,18 @@ export function HostLobbySettingsSheet({
     timerSeconds: game.timer_seconds ?? 0,
     voteTimer: game.operative_timer_seconds ?? 0,
   }))
-  const [duration, setDuration] = useState<DurationGameState>(() => ({
-    timerSeconds: game.timer_seconds ?? 0,
-    gameDurationSeconds: game.game_duration_seconds ?? 0,
-    largeGrid: (game.game_duration_seconds ?? 0) >= 16,
-  }))
+  const [duration, setDuration] = useState<DurationGameState>(() => {
+    const g = game as unknown as Record<string, string | null | undefined>
+    const themeField = gameType === 'crossword' ? 'crossword_theme' : 'word_search_theme'
+    const diffField = gameType === 'crossword' ? 'crossword_difficulty' : 'word_search_difficulty'
+    return {
+      timerSeconds: game.timer_seconds ?? 0,
+      gameDurationSeconds: game.game_duration_seconds ?? 0,
+      largeGrid: (game.game_duration_seconds ?? 0) >= 16,
+      theme: g[themeField] ?? '',
+      difficulty: (g[diffField] as 'easy' | 'medium' | 'hard') ?? 'medium',
+    }
+  })
   const [scrabble, setScrabble] = useState<ScrabbleLobbyState>(() => ({
     clockMode: game.scrabble_clock_mode === 'chess' ? 'chess' : 'standard',
     clockSeconds: game.scrabble_clock_seconds ?? 600,
@@ -488,6 +497,16 @@ export function HostLobbySettingsSheet({
       if (gameType === 'sudoku' || gameType === 'crossword' || gameType === 'word_search') {
         if (duration.gameDurationSeconds !== game.game_duration_seconds)
           board.game_duration_seconds = duration.gameDurationSeconds
+        const g = game as unknown as Record<string, string | null | undefined>
+        if (gameType === 'crossword') {
+          if (duration.theme && duration.theme !== g.crossword_theme) board.crossword_theme = duration.theme
+          if (duration.difficulty !== (g.crossword_difficulty ?? 'medium'))
+            board.crossword_difficulty = duration.difficulty
+        } else if (gameType === 'word_search') {
+          if (duration.theme && duration.theme !== g.word_search_theme) board.word_search_theme = duration.theme
+          if (duration.difficulty !== (g.word_search_difficulty ?? 'medium'))
+            board.word_search_difficulty = duration.difficulty
+        }
       } else if (gameType === 'word_hunt') {
         if (duration.timerSeconds !== game.timer_seconds) board.timer_seconds = duration.timerSeconds
       } else {

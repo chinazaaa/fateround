@@ -415,7 +415,10 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
                       onPress={() => setWatchedPlayerId(p.id)}
                     >
                       <View
-                        style={[styles.watchChipDot, { backgroundColor: playerColors[p.id] ?? wordSearchPlayerColor(0) }]}
+                        style={[
+                          styles.watchChipDot,
+                          { backgroundColor: playerColors[p.id] ?? wordSearchPlayerColor(0) },
+                        ]}
                       />
                       <Text style={[styles.watchChipText, active && styles.watchChipTextActive]} numberOfLines={1}>
                         {p.name}
@@ -468,9 +471,19 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
             </View>
 
             {!viewing ? (
-              <View style={styles.previewBar}>
-                <Text style={styles.previewText}>{previewWord || 'Drag across the letters to spell a word'}</Text>
-              </View>
+              allWordsFound ? (
+                <View style={styles.doneBanner}>
+                  <Text style={styles.doneTitle}>🎉 All words found!</Text>
+                  <Text style={styles.doneSub}>
+                    Nicely done — waiting for the other players
+                    {bootstrap.game?.game_duration_seconds ? ' or the timer' : ''} to finish.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.previewBar}>
+                  <Text style={styles.previewText}>{previewWord || 'Drag across the letters to spell a word'}</Text>
+                </View>
+              )
             ) : null}
 
             <WordSearchBoardView
@@ -508,7 +521,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
                     const color = owner
                       ? owner === bootstrap.myPlayerId
                         ? WORD_SEARCH_MY_CELL_COLOR
-                        : playerColors[owner] ?? wordSearchPlayerColor(0)
+                        : (playerColors[owner] ?? wordSearchPlayerColor(0))
                       : null
                     return (
                       <View
@@ -649,6 +662,19 @@ const makeStyles = (theme: Theme) =>
       justifyContent: 'center',
     },
     previewText: { color: theme.text, fontSize: 20, fontWeight: '800', letterSpacing: 3 },
+    doneBanner: {
+      alignSelf: 'stretch',
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderRadius: 12,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      alignItems: 'center',
+      gap: 2,
+    },
+    doneTitle: { color: theme.text, fontSize: 16, fontWeight: '800' },
+    doneSub: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
     hintRow: {
       flexDirection: 'row',
       alignItems: 'center',
