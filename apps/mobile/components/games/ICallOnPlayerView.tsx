@@ -467,14 +467,24 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   if (bootstrap.screen === 'finished') {
     const scores = tallyNpatScores(answers, bootstrap.players)
     const top = scores[0]
-    const winnerId = top && top.score > 0 ? top.id : null
+    // Everyone sharing the top score ties for first (parity with web's npatWinnerLabel).
+    // Only a round where nobody scored anything falls back to "Game over".
+    const topScore = top?.score ?? 0
+    const winners = topScore > 0 ? scores.filter((s) => s.score === topScore) : []
+    const winnerId = winners.length === 1 ? winners[0]!.id : null
+    const title =
+      winners.length === 0
+        ? 'Game over'
+        : winners.length === 1
+          ? `${winners[0]!.name} wins!`
+          : `${winners.map((w) => w.name).join(' & ')} tie for first!`
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={bootstrap.code}>
         <GameFinishPanel
           bootstrap={bootstrap}
-          title={winnerId ? `${top.name} wins!` : 'Game over'}
+          title={title}
           subtitle="Final standings"
-          detail={top ? `${top.name} — ${top.score} pts` : undefined}
+          detail={winners.length === 1 ? `${winners[0]!.name} — ${winners[0]!.score} pts` : undefined}
           leaderboard={scoreListLeaderboard(scores)}
           winnerPlayerId={winnerId}
           roundKey={bootstrap.game?.session_started_at ?? null}

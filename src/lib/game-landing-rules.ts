@@ -1417,9 +1417,9 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'How it works',
       points: [
         '1 to 20 players join with their name; the host picks a theme, difficulty, and optional time limit.',
-        'Tap a cell to highlight its word, then type the answer. Correct letters lock in green.',
+        'Tap a cell to highlight its word, then type the answer. Correct letters lock in your colour.',
         'Each completed word scores 10 points, plus a 5-point speed bonus for finishing that word first.',
-        'Need a nudge? Reveal a letter as a hint — but each hint costs 2 points.',
+        'Need a nudge? Reveal a letter as a hint — but each revealed letter costs 3 points.',
       ],
     },
     {
@@ -1446,7 +1446,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         '1 to 20 players join with their name; the host picks a theme, difficulty, and optional time limit.',
         'Drag from a word’s first letter to its last to select it. Correct finds lock in your colour and strike off the list.',
         'Each word found scores 10 points, plus a 5-point speed bonus for finding that word first.',
-        'Stuck? Reveal a word’s location as a hint — but each hint costs 2 points.',
+        'Stuck? Reveal one of the remaining words — but each reveal costs 10 points.',
       ],
     },
     {
