@@ -5,6 +5,8 @@ import {
   POLL_ROUND_TIMER_OPTIONS,
   TRIVIA_MAX_ROUNDS,
   TRIVIA_MIN_ROUNDS,
+  codewordsTeamAssignmentFlags,
+  codewordsTeamAssignmentFromFlags,
   formatPollRoundTimer,
   hasPartyRoomSettings,
   partyRoundOptions,
@@ -334,6 +336,10 @@ export function HostLobbySettingsSheet({
   const [codewords, setCodewords] = useState<CodewordsLobbyState>(() => ({
     spymasterTimer: game.timer_seconds ?? 0,
     operativeTimer: game.operative_timer_seconds ?? 0,
+    teamAssignment: codewordsTeamAssignmentFromFlags(
+      game.codewords_player_picks === true,
+      game.codewords_randomize_teams === true
+    ),
   }))
   const [trivia, setTrivia] = useState<TriviaLobbyState>(() => ({
     category: game.trivia_category === 'tech' ? 'tech' : 'general',
@@ -377,6 +383,18 @@ export function HostLobbySettingsSheet({
     const patch: LobbySettingsPatch = {}
     if (isPublic !== !!game.is_public) patch.is_public = isPublic
     if (showTheme && themeId !== game.theme) patch.theme = themeId
+    // Codewords team-assignment mode → the two game flags (lobby-only).
+    if (isCodewords) {
+      const currentAssignment = codewordsTeamAssignmentFromFlags(
+        game.codewords_player_picks === true,
+        game.codewords_randomize_teams === true
+      )
+      if (codewords.teamAssignment !== currentAssignment) {
+        const flags = codewordsTeamAssignmentFlags(codewords.teamAssignment)
+        patch.codewords_player_picks = flags.codewords_player_picks
+        patch.codewords_randomize_teams = flags.codewords_randomize_teams
+      }
+    }
     // Trivia routes rounds/timer through lobby-pool (below) alongside source/category/pool.
     if (showRounds && !isTrivia && roundsCount !== game.rounds_count) patch.rounds_count = roundsCount
     if (showTimer && !isTrivia && timerSeconds !== game.timer_seconds) patch.timer_seconds = timerSeconds

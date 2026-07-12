@@ -912,6 +912,8 @@ export type LobbySettingsPatch = {
   scrabble_dictionary_id?: string
   scrabble_clock_mode?: 'standard' | 'chess'
   scrabble_clock_seconds?: number
+  codewords_player_picks?: boolean
+  codewords_randomize_teams?: boolean
   pair_vote_mode?: 'one_each' | 'any'
   player_questions_enabled?: boolean
   player_questions_order?: 'players_first' | 'uploaded_first' | 'mixed'

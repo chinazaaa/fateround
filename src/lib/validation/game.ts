@@ -187,6 +187,10 @@ export const updateGameSchema = z.object({
   allow_viewers: z.boolean().optional(),
   allow_late_players: z.boolean().optional(),
   late_join_policy: z.enum(['lobby_only', 'viewers_only', 'viewers_and_players']).optional(),
+  // Codewords team-assignment mode (edit in the lobby): players pick / host
+  // assigns / randomize, stored as these two flags.
+  codewords_player_picks: z.boolean().optional(),
+  codewords_randomize_teams: z.boolean().optional(),
 })
 
 export type UpdateGameInput = z.infer<typeof updateGameSchema>

@@ -55,6 +55,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     scrabble_dictionary_id: rawScrabbleDictionaryId,
     scrabble_clock_mode: rawScrabbleClockMode,
     scrabble_clock_seconds: rawScrabbleClockSeconds,
+    codewords_player_picks: rawCwPlayerPicks,
+    codewords_randomize_teams: rawCwRandomize,
     participant_filter,
   } = body
 
@@ -89,6 +91,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   // to a known theme id, matching how create handles it.
   if (rawTheme !== undefined) {
     updatePayload.theme = parseThemeId(rawTheme)
+  }
+
+  // Codewords team-assignment mode (players pick / host assigns / randomize),
+  // stored as two flags. Lobby-only: assertHostGameSettings already restricts
+  // this PATCH to a game that hasn't started.
+  if (gameType === 'codewords') {
+    if (rawCwPlayerPicks !== undefined) updatePayload.codewords_player_picks = rawCwPlayerPicks
+    if (rawCwRandomize !== undefined) updatePayload.codewords_randomize_teams = rawCwRandomize
   }
 
   if (rawRoundsCount !== undefined) {

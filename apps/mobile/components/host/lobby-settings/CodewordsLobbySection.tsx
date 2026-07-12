@@ -1,6 +1,10 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import type { GameType } from '@fateround/shared'
-import { CODEWORDS_TIMER_OPTIONS, formatPollRoundTimer } from '@fateround/shared/create-party-games'
+import {
+  CODEWORDS_TIMER_OPTIONS,
+  formatPollRoundTimer,
+  type CodewordsTeamAssignment,
+} from '@fateround/shared/create-party-games'
 import { TimerPicker } from '@/components/create/TimerPicker'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import type { Theme } from '@/constants/theme'
@@ -9,7 +13,14 @@ import { useThemedStyles } from '@/constants/theme-context'
 export type CodewordsLobbyState = {
   spymasterTimer: number
   operativeTimer: number
+  teamAssignment: CodewordsTeamAssignment
 }
+
+const TEAM_ASSIGNMENT_OPTIONS: { value: CodewordsTeamAssignment; label: string }[] = [
+  { value: 'players', label: 'Players pick' },
+  { value: 'host', label: 'Host assigns' },
+  { value: 'randomize', label: 'Random' },
+]
 
 export function isCodewordsLobbyGame(gameType: GameType): boolean {
   return gameType === 'codewords'
@@ -45,6 +56,15 @@ export function CodewordsLobbySection({
   const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.wrap}>
+      <View style={styles.field}>
+        <Text style={styles.label}>Team assignment</Text>
+        <SegmentedControl
+          value={value.teamAssignment}
+          options={TEAM_ASSIGNMENT_OPTIONS}
+          onChange={(teamAssignment) => onChange({ teamAssignment })}
+        />
+      </View>
+
       {onFirstTeamChange ? (
         <View style={styles.field}>
           <Text style={styles.label}>Goes first</Text>
