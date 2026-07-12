@@ -525,7 +525,7 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
       showTabs={showTabs}
       gameStarted={gameStarted}
       header={<HostGameHeader game={game} />}
-      primary={hostPlays ? interactivePlay : watchBoard}
+      primary={<div className="max-w-lg mx-auto w-full">{hostPlays ? interactivePlay : watchBoard}</div>}
       manage={manage}
       finished={
         holdWin && session ? (

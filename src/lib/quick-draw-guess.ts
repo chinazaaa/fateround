@@ -15,9 +15,11 @@ import {
   describeItIndividualLeaderboard,
   describeItLobbyReady,
   describeItRoleLeaderboards,
+  describeItPlayableTeams,
   describerForIndividualTurn,
   describerForTurn,
   nextIndividualDescriberIndex,
+  nextPlayableTeamIndex,
   normalizeGuess,
   teamForTurn,
   teamLabel,
@@ -611,6 +613,14 @@ export async function processQuickDrawGuessAdvance(
         session.total_rounds
       )
       nextIndex = nextIndividualDescriberIndex(session.roster, nextIndex, liveIds, totalTurns)
+    } else {
+      // Skip any team that can no longer field a turn (a drawer + a guesser);
+      // once only one team can still play, end the match.
+      const playable = new Set(describeItPlayableTeams(roster, session.num_teams))
+      nextIndex =
+        playable.size <= 1
+          ? session.num_teams * session.total_rounds
+          : nextPlayableTeamIndex(nextIndex, session.num_teams, session.total_rounds, playable)
     }
 
     const nextTurn = buildTurn({
@@ -665,6 +675,47 @@ export async function processQuickDrawGuessAdvance(
     return internalFailure('quick-draw-guess:advance', updateError)
   }
   return {}
+}
+
+/**
+ * A player left or was removed in team mode. If their team can no longer field a
+ * turn, resolve it now: skip the collapsed team's remaining turn, and once only
+ * one team can still play, end the match. Safe no-op when the game is fine or not
+ * in team play. Best-effort — never blocks the leave.
+ */
+export async function reconcileQuickDrawGuessAfterRemoval(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error?: string; internal?: boolean }> {
+  const { session, error, internal } = await loadSession(supabase, gameId)
+  if (error) return { error, internal }
+  if (!session || session.status !== 'active' || session.mode === 'individual') return {}
+  if (session.phase !== 'turn' && session.phase !== 'break') return {}
+
+  const teamRows = await loadTeamRows(supabase, gameId)
+  const playable = new Set(describeItPlayableTeams(teamRoster(teamRows), session.num_teams))
+  // With 2+ teams still able to play, only a collapse of the CURRENT live turn's
+  // team needs handling now — a pending break will skip unplayable teams on its
+  // own. (In 'break', active_team is the team that just finished, so ignore it.)
+  if (playable.size >= 2 && (session.phase !== 'turn' || playable.has(session.active_team))) return {}
+
+  // Collapse the dead turn into an immediate break, then let advance skip the
+  // unplayable team (or finish when only one team is left).
+  if (session.phase === 'turn') {
+    const { error: breakError } = await supabase
+      .from('quick_draw_guess_sessions')
+      .update({
+        phase: 'break',
+        turn_deadline_at: null,
+        break_deadline_at: deadline(0),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('game_id', gameId)
+      .eq('phase', 'turn')
+      .eq('turn_index', session.turn_index)
+    if (breakError) return internalFailure('quick-draw-guess:reconcile', breakError)
+  }
+  return processQuickDrawGuessAdvance(supabase, gameId, { force: true })
 }
 
 export function computeQuickDrawGuessTeamScores(

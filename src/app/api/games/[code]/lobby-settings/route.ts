@@ -18,6 +18,7 @@ import {
   isQuickDrawGame,
   isAyoGame,
   isCrosswordGame,
+  isWordSearchGame,
   parseGameType,
 } from '@/lib/game-types'
 import { clampAyoTimer, parseAyoVariant } from '@/lib/ayo'
@@ -29,6 +30,7 @@ import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { parseMahjongRuleOptions, parseMahjongRuleset } from '@/lib/mahjong-rulesets'
 import { clampSudokuGameDuration } from '@/lib/sudoku'
 import { clampCrosswordGameDuration } from '@/lib/crossword'
+import { clampWordSearchGameDuration } from '@/lib/word-search'
 import { MATCHING_PAIRS_GAME_DURATION_OPTIONS } from '@/lib/memory-match'
 import { clampQuiplashRounds, clampQuiplashSubmitTimer, clampQuiplashVoteTimer } from '@/lib/quiplash'
 import {
@@ -39,7 +41,12 @@ import {
   clampQuickDrawVoteTimer,
 } from '@/lib/quick-draw'
 import { clampQuickDrawNumTeams, clampQuickDrawPlayMode } from '@/lib/quick-draw-guess'
-import { clampLobbyMaxPlayers, fetchGamePlayerLimits, type LobbyLimitGameType } from '@/lib/game-limits'
+import {
+  clampLobbyMaxPlayers,
+  fetchGamePlayerLimits,
+  isLobbyLimitGameType,
+  type LobbyLimitGameType,
+} from '@/lib/game-limits'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = getSupabaseAnon()
@@ -73,6 +80,7 @@ function limitOnlyLobbyType(gameType: string): LobbyLimitGameType | null {
   if (isSudokuGame(parsed)) return 'sudoku'
   if (isMatchingPairsGame(parsed)) return 'matching_pairs'
   if (isCrosswordGame(parsed)) return 'crossword'
+  if (isWordSearchGame(parsed)) return 'word_search'
   return null
 }
 
@@ -156,13 +164,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const quiplashLobby = isQuiplashGame(parseGameType(game.game_type))
   const quickDrawLobby = isQuickDrawGame(parseGameType(game.game_type))
   const ayoLobby = ayoLobbyType(game.game_type)
-  if (!boardLobbyType && !timedLobbyType && !limitOnlyType && !quiplashLobby && !quickDrawLobby && !ayoLobby) {
+  // max_players + is_public are generic to every lobby-limit game; the more
+  // specific classifications below only gate the per-game fields (timers, rules,
+  // etc.). So accept any lobby-limit game here — otherwise games with their own
+  // settings routes (codewords, describe_it, trivia…) were rejected outright when
+  // the mobile sheet sent max_players through this route.
+  if (
+    !boardLobbyType &&
+    !timedLobbyType &&
+    !limitOnlyType &&
+    !quiplashLobby &&
+    !quickDrawLobby &&
+    !ayoLobby &&
+    !isLobbyLimitGameType(game.game_type)
+  ) {
     return NextResponse.json({ error: 'This game type does not support lobby settings here' }, { status: 400 })
   }
 
   const lobbyLimits = await fetchGamePlayerLimits(supabase)
   const limitKey = (
-    quiplashLobby ? 'quiplash' : quickDrawLobby ? 'quick_draw' : (timedLobbyType ?? limitOnlyType ?? boardLobbyType)
+    quiplashLobby
+      ? 'quiplash'
+      : quickDrawLobby
+        ? 'quick_draw'
+        : (timedLobbyType ?? limitOnlyType ?? boardLobbyType ?? parseGameType(game.game_type))
   ) as LobbyLimitGameType
   const gameUpdate: Record<string, unknown> = {}
 
@@ -250,6 +275,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.game_duration_seconds = clampSudokuGameDuration(game_duration_seconds)
     } else if (limitOnlyType === 'crossword') {
       gameUpdate.game_duration_seconds = clampCrosswordGameDuration(game_duration_seconds)
+    } else if (limitOnlyType === 'word_search') {
+      gameUpdate.game_duration_seconds = clampWordSearchGameDuration(game_duration_seconds)
     } else if (limitOnlyType === 'matching_pairs') {
       // Matching Pairs stores grid size as game_duration_seconds (0=8 pairs, 16=16 pairs)
       gameUpdate.game_duration_seconds = game_duration_seconds === 16 ? 16 : 0

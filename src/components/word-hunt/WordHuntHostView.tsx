@@ -634,7 +634,7 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
       showTabs={showTabs}
       gameStarted={gameStarted}
       header={<HostGameHeader game={game} />}
-      primary={hostPlays ? interactivePlay : watchRound}
+      primary={<div className="max-w-2xl mx-auto w-full">{hostPlays ? interactivePlay : watchRound}</div>}
       manage={manage}
       finished={finished}
     />

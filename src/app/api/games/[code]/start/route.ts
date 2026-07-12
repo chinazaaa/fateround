@@ -30,6 +30,7 @@ import {
   isQuiplashGame,
   isQuickDrawGame,
   isCrosswordGame,
+  isWordSearchGame,
 } from '@/lib/game-types'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { getCustomSlotCount } from '@/lib/custom-game'
@@ -101,9 +102,24 @@ import { WORD_RUSH_MIN_PLAYERS, WORD_RUSH_MIN_PLAYERS_INDIVIDUAL } from '@/lib/w
 import { initializeWordRushGame } from '@/lib/word-rush-server'
 import { buildNpatInitialRound, NPAT_MIN_PLAYERS, shufflePlayerOrder as npatShufflePlayerOrder } from '@/lib/npat'
 import { buildSudokuRoundRow, SUDOKU_MIN_PLAYERS } from '@/lib/sudoku'
-import { buildCrosswordRoundRow, CROSSWORD_MIN_PLAYERS, generateCrossword } from '@/lib/crossword'
+import {
+  buildCrosswordRoundRow,
+  CROSSWORD_MIN_PLAYERS,
+  generateCrossword,
+  CROSSWORD_DIFFICULTY_SPECS,
+  parseCrosswordDifficulty,
+} from '@/lib/crossword'
 import type { CrosswordMetadata } from '@/lib/crossword'
-import { buildCrosswordPuzzle, parseCrosswordEntries } from '@/lib/crossword-puzzles'
+import { buildCrosswordPuzzle, parseCrosswordEntries, findCrosswordTheme } from '@/lib/crossword-puzzles'
+import {
+  buildWordSearchRoundRow,
+  WORD_SEARCH_MIN_PLAYERS,
+  generateWordSearch,
+  WORD_SEARCH_DIFFICULTY_SPECS,
+  parseWordSearchDifficulty,
+} from '@/lib/word-search'
+import type { WordSearchMetadata, WordSearchPlacement } from '@/lib/word-search'
+import { buildWordSearchPuzzle, parseWordSearchEntries, findWordSearchTheme } from '@/lib/word-search-puzzles'
 import { buildWordHuntRoundRow, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
 import { buildWordHuntMetadata } from '@/lib/word-hunt-dictionary'
 import {
@@ -725,7 +741,28 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
         built = generateCrossword(entries, { size: 12, seed, targetWords: 12, minWords: 4 })
       }
     }
-    const puzzle = built ?? buildCrosswordPuzzle(game.crossword_theme, game.crossword_difficulty, seed)
+    // Best-effort replay variety: exclude answers used in earlier games of this room
+    // (tracked in pool_usage), resetting the cycle once the bank runs low.
+    let nextCrosswordUsage: Record<string, number> | undefined
+    let puzzle: { metadata: CrosswordMetadata; solution: string[][] }
+    if (built) {
+      puzzle = built
+    } else {
+      const poolUsage = parsePoolUsage(game.pool_usage)
+      const theme = findCrosswordTheme(game.crossword_theme)
+      const spec = CROSSWORD_DIFFICULTY_SPECS[parseCrosswordDifficulty(game.crossword_difficulty)]
+      const usedCounts = { ...(poolUsage.crossword ?? {}) }
+      let used = new Set(Object.keys(usedCounts).map((w) => w.toUpperCase()))
+      if (theme.entries.filter((e) => !used.has(e.answer.toUpperCase())).length < spec.targetWords) {
+        used = new Set() // cycle exhausted — start fresh
+      }
+      puzzle = buildCrosswordPuzzle(theme.id, game.crossword_difficulty, seed, [...used])
+      const clueTexts = new Set(puzzle.metadata.clues.map((c) => c.clue))
+      const usedAnswers = theme.entries.filter((e) => clueTexts.has(e.clue)).map((e) => e.answer.toUpperCase())
+      const base = used.size === 0 ? {} : usedCounts
+      for (const a of usedAnswers) base[a] = (base[a] ?? 0) + 1
+      nextCrosswordUsage = base
+    }
 
     const { roundRow, solution } = buildCrosswordRoundRow(code.toUpperCase(), puzzle.metadata, puzzle.solution)
 
@@ -752,6 +789,89 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
         session_started_at: sessionStartedAt,
         current_round_number: 1,
         rounds_count: 1,
+        ...(nextCrosswordUsage
+          ? { pool_usage: { ...parsePoolUsage(game.pool_usage), crossword: nextCrosswordUsage } }
+          : {}),
+      })
+      .eq('id', code.toUpperCase())
+
+    if (gameError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isWordSearchGame(gameType)) {
+    const playingPlayers = playersData.filter((p) => p.spectator !== true)
+    if (playingPlayers.length < WORD_SEARCH_MIN_PLAYERS) {
+      return NextResponse.json({ error: `Need at least ${WORD_SEARCH_MIN_PLAYERS} players to start` }, { status: 400 })
+    }
+
+    const seed = Date.now() ^ Math.floor(Math.random() * 0xffffffff)
+
+    // A custom word pool (stored word list) overrides the platform theme; both feed the same
+    // generator. Falls back to the platform theme if custom is empty or too small.
+    let built: { metadata: WordSearchMetadata; solution: WordSearchPlacement[] } | null = null
+    const customRows = Array.isArray(game.custom_questions) ? (game.custom_questions as Record<string, string>[]) : []
+    if (customRows.length > 0) {
+      const entries = parseWordSearchEntries(customRows)
+      if (entries.length >= 4) {
+        const spec = WORD_SEARCH_DIFFICULTY_SPECS[parseWordSearchDifficulty(game.word_search_difficulty)]
+        built = generateWordSearch(
+          entries.map((e) => e.word),
+          { size: spec.size, seed, targetWords: spec.targetWords, directions: spec.directions, minWords: 4 }
+        )
+        if (built) built.metadata.difficulty = parseWordSearchDifficulty(game.word_search_difficulty)
+      }
+    }
+    // Best-effort replay variety: exclude words used in earlier games of this room
+    // (tracked in pool_usage), resetting the cycle once the bank runs low.
+    let nextWordSearchUsage: Record<string, number> | undefined
+    let puzzle: { metadata: WordSearchMetadata; solution: WordSearchPlacement[] }
+    if (built) {
+      puzzle = built
+    } else {
+      const poolUsage = parsePoolUsage(game.pool_usage)
+      const theme = findWordSearchTheme(game.word_search_theme)
+      const spec = WORD_SEARCH_DIFFICULTY_SPECS[parseWordSearchDifficulty(game.word_search_difficulty)]
+      const usedCounts = { ...(poolUsage.word_search ?? {}) }
+      let used = new Set(Object.keys(usedCounts).map((w) => w.toUpperCase()))
+      if (theme.words.filter((w) => !used.has(w.toUpperCase())).length < spec.targetWords) {
+        used = new Set() // cycle exhausted — start fresh
+      }
+      puzzle = buildWordSearchPuzzle(theme.id, game.word_search_difficulty, seed, [...used])
+      const base = used.size === 0 ? {} : usedCounts
+      for (const w of puzzle.metadata.words) base[w.toUpperCase()] = (base[w.toUpperCase()] ?? 0) + 1
+      nextWordSearchUsage = base
+    }
+
+    const { roundRow, solution } = buildWordSearchRoundRow(code.toUpperCase(), puzzle.metadata, puzzle.solution)
+
+    const { data: insertedRound, error: roundError } = await getSupabaseAdmin()
+      .from('rounds')
+      .insert(roundRow)
+      .select('id')
+      .single()
+    if (roundError || !insertedRound) {
+      return NextResponse.json({ error: roundError?.message ?? 'Failed to create round' }, { status: 500 })
+    }
+
+    // Word placements are stored separately (RLS hides them from players).
+    const { error: solutionError } = await supabase
+      .from('word_search_solutions')
+      .insert({ round_id: insertedRound.id, solution })
+    if (solutionError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', solutionError) }, { status: 500 })
+
+    const { error: gameError } = await getSupabaseAdmin()
+      .from('games')
+      .update({
+        status: 'active',
+        session_started_at: sessionStartedAt,
+        current_round_number: 1,
+        rounds_count: 1,
+        ...(nextWordSearchUsage
+          ? { pool_usage: { ...parsePoolUsage(game.pool_usage), word_search: nextWordSearchUsage } }
+          : {}),
       })
       .eq('id', code.toUpperCase())
 

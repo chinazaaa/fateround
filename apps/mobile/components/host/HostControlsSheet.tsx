@@ -1,9 +1,20 @@
-import { useState } from 'react'
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useState } from 'react'
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game, Player } from '@fateround/shared'
 import { gameSupportsViewerSetting, lateJoinPolicyFromGame } from '@fateround/shared/viewers'
-import { patchGameSettings, postFinishGame, postPlayAgain, removePlayerAsHost } from '@/lib/game-api'
+import { patchGameSettings, patchPlayerName, postFinishGame, postPlayAgain, removePlayerAsHost } from '@/lib/game-api'
+import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { SettingToggle } from '@/components/create/SettingToggle'
 import { LateJoinPolicyPicker } from '@/components/create/LateJoinPolicyPicker'
 import { WordRushHostRoundControl } from '@/components/games/WordRushHostRoundControl'
@@ -20,6 +31,8 @@ type Props = {
   game: Game
   players: Player[]
   hostPlayerId: string | null
+  /** Host's own resume token — enables renaming their seated player. */
+  hostResumeToken: string | null
   onReload: () => void | Promise<unknown>
   /** Opens the host-transfer flow (pick a player to take over). */
   onTransfer: () => void
@@ -38,6 +51,7 @@ export function HostControlsSheet({
   game,
   players,
   hostPlayerId,
+  hostResumeToken,
   onReload,
   onTransfer,
 }: Props) {
@@ -45,6 +59,13 @@ export function HostControlsSheet({
   const styles = useThemedStyles(makeStyles)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState(false)
+  const [nameDraft, setNameDraft] = useState('')
+
+  // Drop any in-progress rename when the sheet is dismissed.
+  useEffect(() => {
+    if (!visible) setEditingName(false)
+  }, [visible])
 
   const activePlayers = players.filter((p) => !p.spectator)
   const finished = game.status === 'finished'
@@ -81,6 +102,24 @@ export function HostControlsSheet({
     ])
   }
 
+  const startEditName = (currentName: string) => {
+    setError(null)
+    setNameDraft(currentName)
+    setEditingName(true)
+  }
+
+  const saveName = () => {
+    const trimmed = nameDraft.trim()
+    if (!trimmed || !hostPlayerId || !hostResumeToken || busy) return
+    void run('rename', async () => {
+      await patchPlayerName(gameCode, hostPlayerId, trimmed, hostResumeToken)
+      // Keep the on-device session name in sync so it persists across reloads.
+      const s = await getPlayerSession(gameCode)
+      if (s) await setPlayerSession(gameCode, s.playerId, trimmed, s.playerGender, s.resumeToken)
+      setEditingName(false)
+    })
+  }
+
   const confirmEndGame = () => {
     Alert.alert('End game', 'End the game for everyone now?', [
       { text: 'Cancel', style: 'cancel' },
@@ -109,13 +148,46 @@ export function HostControlsSheet({
           ) : (
             activePlayers.map((p) => {
               const isHost = p.id === hostPlayerId
+              const canEditSelf = isHost && !!hostResumeToken
+              if (isHost && editingName) {
+                return (
+                  <View key={p.id} style={styles.playerRow}>
+                    <TextInput
+                      style={styles.nameInput}
+                      value={nameDraft}
+                      onChangeText={setNameDraft}
+                      placeholder="Your name"
+                      placeholderTextColor={theme.textFaint}
+                      autoCapitalize="words"
+                      autoFocus
+                      maxLength={24}
+                      returnKeyType="done"
+                      onSubmitEditing={saveName}
+                    />
+                    <Pressable onPress={saveName} disabled={busy === 'rename' || !nameDraft.trim()} hitSlop={8}>
+                      {busy === 'rename' ? (
+                        <ActivityIndicator color={theme.primaryMuted} />
+                      ) : (
+                        <Text style={[styles.editText, !nameDraft.trim() && styles.editDisabled]}>Save</Text>
+                      )}
+                    </Pressable>
+                    <Pressable onPress={() => setEditingName(false)} disabled={busy === 'rename'} hitSlop={8}>
+                      <Text style={styles.cancelText}>Cancel</Text>
+                    </Pressable>
+                  </View>
+                )
+              }
               return (
                 <View key={p.id} style={styles.playerRow}>
                   <Text style={styles.playerName} numberOfLines={1}>
                     {p.name}
-                    {isHost ? <Text style={styles.hostTag}>  · host</Text> : null}
+                    {isHost ? <Text style={styles.hostTag}>  · you</Text> : null}
                   </Text>
-                  {!isHost ? (
+                  {canEditSelf ? (
+                    <Pressable onPress={() => startEditName(p.name)} hitSlop={8}>
+                      <Text style={styles.editText}>Edit name</Text>
+                    </Pressable>
+                  ) : !isHost ? (
                     <Pressable onPress={() => confirmRemove(p)} disabled={busy === `remove-${p.id}`}>
                       {busy === `remove-${p.id}` ? (
                         <ActivityIndicator color={theme.error} />
@@ -247,6 +319,16 @@ const makeStyles = (theme: Theme) =>
   playerName: { color: theme.text, fontSize: 16, fontWeight: '600', flex: 1 },
   hostTag: { color: theme.textFaint, fontSize: 13, fontWeight: '700' },
   removeText: { color: theme.error, fontSize: 14, fontWeight: '700' },
+  editText: { color: theme.primaryMuted, fontSize: 14, fontWeight: '700' },
+  editDisabled: { opacity: 0.5 },
+  cancelText: { color: theme.textMuted, fontSize: 14, fontWeight: '700' },
+  nameInput: {
+    flex: 1,
+    color: theme.text,
+    fontSize: 16,
+    fontWeight: '600',
+    paddingVertical: 0,
+  },
   settingBlock: { gap: theme.space.xs },
   settingTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
   note: { color: theme.textFaint, fontSize: 12, lineHeight: 17, paddingHorizontal: 2 },

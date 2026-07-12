@@ -1431,4 +1431,31 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
   ],
+  word_search: [
+    {
+      title: 'Objective',
+      points: [
+        'Everyone hunts the same grid of scattered letters for the same list of hidden words.',
+        'Words run horizontally, vertically, or diagonally — and on harder puzzles, backwards too.',
+        'First player to find every listed word wins — or the highest score when the timer ends.',
+      ],
+    },
+    {
+      title: 'How it works',
+      points: [
+        '1 to 20 players join with their name; the host picks a theme, difficulty, and optional time limit.',
+        'Drag from a word’s first letter to its last to select it. Correct finds lock in your colour and strike off the list.',
+        'Each word found scores 10 points, plus a 5-point speed bonus for finding that word first.',
+        'Stuck? Reveal a word’s location as a hint — but each hint costs 2 points.',
+      ],
+    },
+    {
+      title: 'Tips',
+      points: [
+        'Scan row by row for a word’s first letter, then check all directions from it.',
+        'Finding a word first is worth extra, so keep moving.',
+        'On harder puzzles, don’t forget words can read backwards and diagonally.',
+      ],
+    },
+  ],
 }

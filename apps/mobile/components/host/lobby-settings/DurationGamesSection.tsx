@@ -9,6 +9,7 @@ import {
 } from '@fateround/shared/create-party-games'
 import { WORD_HUNT_TIMER_OPTIONS } from '@fateround/shared/word-hunt'
 import { CROSSWORD_GAME_DURATION_OPTIONS, formatCrosswordGameDuration } from '@fateround/shared/crossword'
+import { WORD_SEARCH_GAME_DURATION_OPTIONS, formatWordSearchGameDuration } from '@fateround/shared/word-search'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { TimerPicker } from '@/components/create/TimerPicker'
 import type { Theme } from '@/constants/theme'
@@ -28,7 +29,8 @@ export function isDurationGame(gameType: GameType): boolean {
     gameType === 'sudoku' ||
     gameType === 'word_hunt' ||
     gameType === 'matching_pairs' ||
-    gameType === 'crossword'
+    gameType === 'crossword' ||
+    gameType === 'word_search'
   )
 }
 
@@ -59,6 +61,18 @@ export function DurationGamesSection({ gameType, value, onChange }: Props) {
         value={value.gameDurationSeconds}
         options={CROSSWORD_GAME_DURATION_OPTIONS}
         format={formatCrosswordGameDuration}
+        onChange={(gameDurationSeconds) => onChange({ gameDurationSeconds })}
+      />
+    )
+  }
+
+  if (gameType === 'word_search') {
+    return (
+      <TimerPicker
+        label="Max time limit"
+        value={value.gameDurationSeconds}
+        options={WORD_SEARCH_GAME_DURATION_OPTIONS}
+        format={formatWordSearchGameDuration}
         onChange={(gameDurationSeconds) => onChange({ gameDurationSeconds })}
       />
     )

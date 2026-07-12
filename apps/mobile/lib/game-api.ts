@@ -201,6 +201,37 @@ export function postCrosswordSubmit(
   )
 }
 
+export function postWordSearchFound(
+  gameId: string,
+  resumeToken: string,
+  startRow: number,
+  startCol: number,
+  endRow: number,
+  endCol: number,
+  hint?: boolean
+) {
+  return postJson<{
+    found: boolean
+    word?: string
+    alreadyFound?: boolean
+    hint?: boolean
+    complete?: boolean
+    start?: [number, number]
+    end?: [number, number]
+  }>(
+    '/api/word-search/found',
+    {
+      gameId,
+      resumeToken,
+      startRow,
+      startCol,
+      endRow,
+      endCol,
+      hint,
+    }
+  )
+}
+
 export function postYahtzeeRoll(gameId: string, resumeToken: string) {
   return postJson<{ success: boolean }>('/api/yahtzee/roll', { gameId, resumeToken })
 }
@@ -892,8 +923,13 @@ export function postDeclineHost(gameCode: string, resumeToken: string) {
  * enforces per-game minimum-player rules and throws (via postJson) with the
  * server's message when they aren't met — the caller surfaces that verbatim.
  */
-export function startGame(gameId: string, hostToken: string) {
-  return postJson<{ ok?: boolean }>(`/api/games/${gameId.toUpperCase()}/start`, { hostToken })
+export function startGame(gameId: string, hostToken: string, firstTeam?: 'red' | 'blue') {
+  // firstTeam is a Codewords "goes first" preference read by the start route
+  // (omit for random). The route ignores it for non-Codewords games.
+  return postJson<{ ok?: boolean }>(`/api/games/${gameId.toUpperCase()}/start`, {
+    hostToken,
+    ...(firstTeam ? { firstTeam } : {}),
+  })
 }
 
 export type LobbySettingsPatch = {
@@ -907,6 +943,8 @@ export type LobbySettingsPatch = {
   scrabble_dictionary_id?: string
   scrabble_clock_mode?: 'standard' | 'chess'
   scrabble_clock_seconds?: number
+  codewords_player_picks?: boolean
+  codewords_randomize_teams?: boolean
   pair_vote_mode?: 'one_each' | 'any'
   player_questions_enabled?: boolean
   player_questions_order?: 'players_first' | 'uploaded_first' | 'mixed'

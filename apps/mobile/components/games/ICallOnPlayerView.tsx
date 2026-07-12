@@ -38,6 +38,7 @@ import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useAdvancePolling } from '@/hooks/useAdvancePolling'
 import { postNpatLetter, postNpatMark, postNpatSubmit } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { NPAT_ANSWER_SELECT, NPAT_MARK_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
@@ -138,6 +139,18 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     () => bootstrap.load(),
     !!bootstrap.game
   )
+
+  // Phase deadlines (letter_pick/writing/marking/reveal → next round → finished)
+  // only advance when a client pokes the server — web polls /api/npat/advance; the
+  // mobile view had no poller, so phases could stall and the finished screen never
+  // appear. The route is deadline-gated (safe for any client). Poll while active.
+  useAdvancePolling({
+    endpoint: '/api/npat/advance',
+    gameCode,
+    game: bootstrap.game,
+    enabled: !!bootstrap.game,
+    onAdvanced: () => bootstrap.load(),
+  })
 
   const currentRound = useMemo(() => {
     if (!bootstrap.game) return null

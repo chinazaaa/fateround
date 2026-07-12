@@ -6,6 +6,7 @@ import type { Game, Player } from '@fateround/shared'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 import { startGame, postPlayAgain, postFinishGame, removePlayerAsHost } from '@/lib/game-api'
 import { gameHasMobileVoice } from '@/lib/voice-games'
+import { gameLabel } from '@/lib/mobile-registry'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { HostLobbyPlayCard } from '@/components/host/HostLobbyPlayCard'
@@ -48,6 +49,9 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // Codewords "goes first" preference — ephemeral (sent to the start route, like
+  // web). Owned here since the settings sheet is a separate modal.
+  const [firstTeam, setFirstTeam] = useState<'random' | 'red' | 'blue'>('random')
   const [transferOpen, setTransferOpen] = useState(false)
   const [manageOpen, setManageOpen] = useState(true)
   const [hostSession, setHostSession] = useState<PlayerSession | null>(null)
@@ -145,14 +149,14 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
     setStarting(true)
     setError(null)
     try {
-      await startGame(gameCode, hostToken)
+      await startGame(gameCode, hostToken, firstTeam === 'random' ? undefined : firstTeam)
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not start the game')
     } finally {
       setStarting(false)
     }
-  }, [gameCode, hostToken, load])
+  }, [gameCode, hostToken, load, firstTeam])
 
   const onPlayAgain = useCallback(async () => {
     setReplaying(true)
@@ -205,7 +209,14 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.topBar}>
-          <Text style={styles.eyebrow}>Hosting</Text>
+          <View style={styles.eyebrowRow}>
+            <Text style={styles.eyebrow}>Hosting</Text>
+            {game ? (
+              <View style={styles.typePill}>
+                <Text style={styles.typePillText}>{gameLabel(game.game_type)}</Text>
+              </View>
+            ) : null}
+          </View>
           {game && !finished ? (
             <Pressable style={styles.gearBtn} onPress={() => setSettingsOpen(true)} hitSlop={8}>
               <Text style={styles.gearIcon}>⚙</Text>
@@ -331,11 +342,13 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
             Play again lobby open — {readyCount} player{readyCount === 1 ? '' : 's'} ready. Start when everyone is in.
           </Text>
         ) : null}
-
-        {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
 
       <View style={styles.footer}>
+        {/* Error lives in the pinned footer, next to the Start button, so a failed
+            Start is visible immediately (it used to render at the bottom of the
+            scroll, out of view). */}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
         {finished ? (
           <Pressable
             style={[styles.startButton, replaying && styles.startButtonDisabled]}
@@ -414,6 +427,8 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
           visible={settingsOpen}
           onClose={() => setSettingsOpen(false)}
           onSaved={() => void load()}
+          firstTeam={firstTeam}
+          onFirstTeamChange={setFirstTeam}
           onTransfer={() => {
             setSettingsOpen(false)
             setTransferOpen(true)
@@ -471,7 +486,23 @@ const makeStyles = (theme: Theme) =>
     // Cancel the content's 24px horizontal padding so the voice bar spans edge to
     // edge like the pinned rails on the other chromes.
     voiceRailWrap: { marginHorizontal: -24 },
+    eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1, flexWrap: 'wrap' },
     eyebrow: { color: theme.primary, fontSize: 13, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+    typePill: {
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.primarySoft,
+      borderWidth: 1,
+      borderColor: theme.borderAccent,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+    },
+    typePillText: {
+      color: theme.primaryMuted,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+    },
     title: { color: theme.text, fontSize: 28, fontWeight: '800', marginBottom: 8 },
     codeCard: {
       backgroundColor: theme.surface,
@@ -523,7 +554,7 @@ const makeStyles = (theme: Theme) =>
       marginTop: 8,
       textAlign: 'center',
     },
-    error: { color: theme.error, fontSize: 15, marginTop: 12 },
+    error: { color: theme.error, fontSize: 14, textAlign: 'center' },
     footer: { padding: 24, borderTopColor: theme.surfaceHover, borderTopWidth: 1, gap: 10 },
     endButton: { paddingVertical: 12, alignItems: 'center' },
     endButtonText: { color: theme.error, fontSize: 15, fontWeight: '700' },

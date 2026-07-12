@@ -9,6 +9,7 @@ import type {
   WordRushDifficulty,
   WordRushMode,
   WordRushPromptMode,
+  WordSearchDifficulty,
 } from '@fateround/shared'
 import {
   CROSSWORD_DEFAULT_DIFFICULTY,
@@ -17,6 +18,13 @@ import {
   clampCrosswordGameDuration,
   parseCrosswordDifficulty,
 } from '@fateround/shared/crossword'
+import {
+  WORD_SEARCH_DEFAULT_DIFFICULTY,
+  WORD_SEARCH_DEFAULT_DURATION,
+  WORD_SEARCH_DEFAULT_THEME,
+  clampWordSearchGameDuration,
+  parseWordSearchDifficulty,
+} from '@fateround/shared/word-search'
 import type { BingoCallMode } from '@fateround/shared/create-party-games'
 import {
   clampBingoCallInterval,
@@ -112,6 +120,8 @@ export type PartyRoomSettings = {
   matchingPairsLargeGrid: boolean
   crosswordTheme: string
   crosswordDifficulty: CrosswordDifficulty
+  wordSearchTheme: string
+  wordSearchDifficulty: WordSearchDifficulty
 }
 
 export function defaultPartyRoomSettings(gameType: GameType): PartyRoomSettings {
@@ -147,10 +157,14 @@ export function defaultPartyRoomSettings(gameType: GameType): PartyRoomSettings 
         ? NPAT_DEFAULT_GAME_DURATION
         : gameType === 'crossword'
           ? CROSSWORD_DEFAULT_DURATION
-          : 0,
+          : gameType === 'word_search'
+            ? WORD_SEARCH_DEFAULT_DURATION
+            : 0,
     matchingPairsLargeGrid: false,
     crosswordTheme: CROSSWORD_DEFAULT_THEME,
     crosswordDifficulty: CROSSWORD_DEFAULT_DIFFICULTY,
+    wordSearchTheme: WORD_SEARCH_DEFAULT_THEME,
+    wordSearchDifficulty: WORD_SEARCH_DEFAULT_DIFFICULTY,
   }
 }
 
@@ -284,6 +298,14 @@ export function partyRoomSettingsPayload(gameType: GameType, party: PartyRoomSet
     payload.game_duration_seconds = clampCrosswordGameDuration(party.gameDurationSeconds)
     payload.crossword_theme = party.crosswordTheme
     payload.crossword_difficulty = parseCrosswordDifficulty(party.crosswordDifficulty)
+    return payload
+  }
+
+  if (gameType === 'word_search') {
+    payload.rounds_count = 1
+    payload.game_duration_seconds = clampWordSearchGameDuration(party.gameDurationSeconds)
+    payload.word_search_theme = party.wordSearchTheme
+    payload.word_search_difficulty = parseWordSearchDifficulty(party.wordSearchDifficulty)
     return payload
   }
 

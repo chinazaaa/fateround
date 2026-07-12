@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import type {
   CodewordsBoard,
@@ -216,6 +216,39 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
 
   const active = bootstrap.game?.status === 'active' && board && !board.winner
 
+  // Notify remaining teammates when a team member leaves/is removed, and flag an
+  // auto-promotion to spymaster. useGameTableSync only re-fetches, so we diff here.
+  const prevTeamMatesRef = useRef<Map<string, string> | null>(null)
+  const prevMyRoleRef = useRef<CodewordsRole | null>(null)
+  useEffect(() => {
+    const myTeam = myRole?.team ?? null
+    if (bootstrap.game?.status === 'active' && myTeam) {
+      const teamMates = new Map<string, string>()
+      for (const r of roles) {
+        if (r.team === myTeam && r.player_id !== bootstrap.myPlayerId) {
+          teamMates.set(r.player_id, playerNameById.get(r.player_id) ?? 'A teammate')
+        }
+      }
+      const prev = prevTeamMatesRef.current
+      if (prev) {
+        for (const [id, name] of prev) {
+          if (!teamMates.has(id) && roles.every((r) => r.player_id !== id)) {
+            toast.show(`${name} left your team`, 'info')
+          }
+        }
+      }
+      prevTeamMatesRef.current = teamMates
+    } else {
+      prevTeamMatesRef.current = null
+    }
+
+    const prevRole = prevMyRoleRef.current
+    if (prevRole === 'operative' && myRole?.role === 'spymaster') {
+      toast.show("You're now your team's spymaster", 'info')
+    }
+    prevMyRoleRef.current = myRole?.role ?? null
+  }, [roles, myRole, playerNameById, bootstrap.game?.status, bootstrap.myPlayerId, toast])
+
   useEffect(() => {
     if (!active || !board?.turn_deadline_at) return
     const id = setInterval(() => setTimerTick((n) => n + 1), 1000)
@@ -413,7 +446,14 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
       <LobbyView
         {...lobbyProps!}
         onLeft={onLeft}
-        activity={<CodewordsWaitingActivity myRole={myRole} isSpectator={isViewer} />}
+        activity={
+          <CodewordsWaitingActivity
+            myRole={myRole}
+            isSpectator={isViewer}
+            roles={roles}
+            playerNameById={playerNameById}
+          />
+        }
       />
     )
   }
@@ -561,27 +601,29 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
 
         {canGiveClue ? (
           <View style={styles.formBlock}>
-            <TextInput
-              style={styles.input}
-              value={clueWord}
-              onChangeText={(t) => setClueWord(t.replace(/\s/g, '').slice(0, 40))}
-              placeholder="Clue word"
-              placeholderTextColor="#71717a"
-              autoCapitalize="none"
-              maxLength={40}
-            />
-            <TextInput
-              style={styles.inputSmall}
-              value={clueNumber}
-              onChangeText={setClueNumber}
-              placeholder="0-9"
-              placeholderTextColor="#71717a"
-              keyboardType="number-pad"
-              maxLength={1}
-            />
+            <View style={styles.clueRow}>
+              <TextInput
+                style={[styles.input, styles.clueInput]}
+                value={clueWord}
+                onChangeText={(t) => setClueWord(t.replace(/\s/g, '').slice(0, 40))}
+                placeholder="Clue word"
+                placeholderTextColor="#71717a"
+                autoCapitalize="none"
+                maxLength={40}
+              />
+              <TextInput
+                style={[styles.inputSmall, styles.numberInput]}
+                value={clueNumber}
+                onChangeText={(t) => setClueNumber(t.replace(/[^0-9]/g, '').slice(0, 1))}
+                placeholder="#"
+                placeholderTextColor="#71717a"
+                keyboardType="number-pad"
+                maxLength={1}
+              />
+            </View>
             <Pressable
-              style={styles.actionBtn}
-              disabled={acting || !clueWord.trim()}
+              style={[styles.actionBtn, (acting || !clueWord.trim() || !clueNumber.trim()) && styles.actionBtnDisabled]}
+              disabled={acting || !clueWord.trim() || !clueNumber.trim()}
               onPress={() => {
                 const n = Number.parseInt(clueNumber.trim(), 10)
                 if (Number.isNaN(n) || n < 0 || n > 9) return
@@ -743,6 +785,9 @@ const makeStyles = (theme: Theme) =>
     cellAttrOnDark: { color: '#d4d4d8' },
     cellKey: { position: 'absolute', top: 2, right: 4, fontSize: 8, color: '#52525b', fontWeight: '800' },
     formBlock: { gap: 8, marginTop: 8 },
+    clueRow: { flexDirection: 'row', gap: 8 },
+    clueInput: { flex: 1 },
+    numberInput: { width: 56, textAlign: 'center' },
     input: {
       backgroundColor: theme.border,
       borderRadius: 8,

@@ -20,9 +20,14 @@ const RULES = [
 export function CodewordsWaitingActivity({
   myRole,
   isSpectator = false,
+  roles = [],
+  playerNameById,
 }: {
   myRole?: CodewordsPlayerRole | null
   isSpectator?: boolean
+  /** All seated players' roles — powers the two-column team rosters. */
+  roles?: CodewordsPlayerRole[]
+  playerNameById?: Map<string, string>
 }) {
   const styles = useThemedStyles(makeStyles)
   return (
@@ -46,6 +51,33 @@ export function CodewordsWaitingActivity({
           <Text style={styles.roleText}>{roleLabel(myRole.role)}</Text>
         </View>
       ) : null}
+
+      {/* Two-column team rosters so you can see who's on each team (🕵️ = spymaster). */}
+      <View style={styles.grid}>
+        {(['red', 'blue'] as const).map((team) => {
+          const members = roles.filter((r) => r.team === team)
+          return (
+            <View
+              key={team}
+              style={[styles.teamCard, team === 'red' ? styles.teamCardRed : styles.teamCardBlue]}
+            >
+              <View style={[styles.teamCardBadge, team === 'red' ? styles.teamChipRed : styles.teamChipBlue]}>
+                <Text style={styles.teamChipText}>{team === 'red' ? '🔴 Red' : '🔵 Blue'}</Text>
+              </View>
+              {members.length > 0 ? (
+                members.map((r) => (
+                  <Text key={r.player_id} style={styles.memberName} numberOfLines={2}>
+                    {r.role === 'spymaster' ? '🕵️ ' : ''}
+                    {playerNameById?.get(r.player_id) ?? 'Player'}
+                  </Text>
+                ))
+              ) : (
+                <Text style={styles.membersMuted}>No players yet</Text>
+              )}
+            </View>
+          )
+        })}
+      </View>
 
       <View style={styles.rulesCard}>
         <Text style={styles.rulesTitle}>How to play</Text>
@@ -78,6 +110,21 @@ const makeStyles = (theme: Theme) =>
     teamChipBlue: { backgroundColor: '#2563eb' },
     teamChipText: { color: '#fff', fontWeight: '800', fontSize: 13 },
     roleText: { color: theme.textSecondary, fontWeight: '700', fontSize: 14 },
+    grid: { flexDirection: 'row', gap: 8 },
+    teamCard: {
+      flexGrow: 1,
+      flexBasis: '47%',
+      minWidth: 0,
+      borderWidth: 1,
+      borderRadius: 12,
+      padding: 10,
+      gap: 6,
+    },
+    teamCardRed: { borderColor: '#dc262655', backgroundColor: '#dc26260d' },
+    teamCardBlue: { borderColor: '#2563eb55', backgroundColor: '#2563eb0d' },
+    teamCardBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999 },
+    memberName: { color: theme.text, fontSize: 14 },
+    membersMuted: { color: theme.textFaint, fontSize: 12, fontStyle: 'italic' },
     rulesCard: {
       backgroundColor: theme.surface,
       borderRadius: 12,

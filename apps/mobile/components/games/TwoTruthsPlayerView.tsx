@@ -24,6 +24,7 @@ import { TimerBadge } from '@/components/ui/TimerBadge'
 import { TwoTruthsSubmitterBadge } from '@/components/games/TwoTruthsSubmitterBadge'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useAdvancePolling } from '@/hooks/useAdvancePolling'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { postTtlGuess, postTtlStatements } from '@/lib/game-api'
 import { playSound } from '@/lib/sounds'
@@ -100,6 +101,18 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     () => bootstrap.load(),
     !!bootstrap.game
   )
+
+  // Deadline-driven round changes (incl. the last reveal → finished) need a
+  // client to nudge the server — web polls /api/two-truths/advance; mobile had no
+  // poller, so a round could stall and never reach the finished screen. Poll while
+  // active and reload on advance (matches Quiplash/Trivia).
+  useAdvancePolling({
+    endpoint: '/api/two-truths/advance',
+    gameCode,
+    game: bootstrap.game,
+    enabled: !!bootstrap.game,
+    onAdvanced: () => bootstrap.load(),
+  })
 
   const myStatement = bootstrap.myPlayerId ? statements.find((s) => s.player_id === bootstrap.myPlayerId) : undefined
 

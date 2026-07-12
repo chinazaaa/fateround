@@ -2,8 +2,13 @@ import { ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS } from './anonymous-messages'
 import { BINGO_DEFAULT_MAX_PLAYERS, BINGO_MAX_PLAYERS, BINGO_MIN_PLAYERS } from './bingo'
 import { CODEWORDS_MAX_PLAYERS, CODEWORDS_MIN_PLAYERS } from './codewords'
 import { CROSSWORD_DEFAULT_MAX_PLAYERS, CROSSWORD_MAX_PLAYERS, CROSSWORD_MIN_PLAYERS } from './crossword'
+import { WORD_SEARCH_DEFAULT_MAX_PLAYERS, WORD_SEARCH_MAX_PLAYERS, WORD_SEARCH_MIN_PLAYERS } from './word-search'
 import { CRAZY8_DEFAULT_MAX_PLAYERS, CRAZY8_MAX_PLAYERS, CRAZY8_MIN_PLAYERS } from './crazy-eights'
-import { DESCRIBE_IT_DEFAULT_MAX_PLAYERS, DESCRIBE_IT_MAX_PLAYERS, DESCRIBE_IT_MIN_PLAYERS } from './describe-it'
+import {
+  DESCRIBE_IT_DEFAULT_MAX_PLAYERS,
+  DESCRIBE_IT_MAX_PLAYERS,
+  DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
+} from './describe-it'
 import { LUDO_DEFAULT_MAX_PLAYERS, LUDO_MAX_PLAYERS, LUDO_MIN_PLAYERS } from './ludo'
 import { MAFIA_MAX_PLAYERS, MAFIA_MIN_PLAYERS } from './mafia'
 import { MONOPOLY_DEFAULT_MAX_PLAYERS, MONOPOLY_MAX_PLAYERS, MONOPOLY_MIN_PLAYERS } from './monopoly-board'
@@ -45,6 +50,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'word_rush',
   'ayo',
   'crossword',
+  'word_search',
 ] as const
 
 export type LobbyLimitGameType = (typeof LOBBY_LIMIT_GAME_TYPES)[number]
@@ -135,7 +141,9 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
   ayo: { min: AYO_MIN_PLAYERS, max: AYO_MAX_PLAYERS, default: AYO_DEFAULT_MAX_PLAYERS },
   scrabble: { min: SCRABBLE_MIN_PLAYERS, max: SCRABBLE_MAX_PLAYERS, default: SCRABBLE_MAX_PLAYERS },
   describe_it: {
-    min: DESCRIBE_IT_MIN_PLAYERS,
+    // Absolute floor for the max-players cap; individual mode can run with 2.
+    // Team mode's higher start minimum is enforced server-side at game start.
+    min: DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
     max: DESCRIBE_IT_MAX_PLAYERS,
     default: DESCRIBE_IT_DEFAULT_MAX_PLAYERS,
   },
@@ -152,6 +160,7 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     default: MATCHING_PAIRS_DEFAULT_MAX_PLAYERS,
   },
   crossword: { min: CROSSWORD_MIN_PLAYERS, max: CROSSWORD_MAX_PLAYERS, default: CROSSWORD_DEFAULT_MAX_PLAYERS },
+  word_search: { min: WORD_SEARCH_MIN_PLAYERS, max: WORD_SEARCH_MAX_PLAYERS, default: WORD_SEARCH_DEFAULT_MAX_PLAYERS },
 }
 
 export function isLobbyLimitGameType(value: string): value is LobbyLimitGameType {

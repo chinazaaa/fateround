@@ -29,6 +29,7 @@ import { QuiplashHostView } from '@/components/quiplash/QuiplashHostView'
 import { QuickDrawHostView } from '@/components/quick-draw/QuickDrawHostView'
 import { WordRushHostView } from '@/components/word-rush/WordRushHostView'
 import { CrosswordHostView } from '@/components/crossword/CrosswordHostView'
+import { WordSearchHostView } from '@/components/word-search/WordSearchHostView'
 
 export type GameHostView = ComponentType<{ gameCode: string; hostToken: string }>
 
@@ -68,4 +69,5 @@ export const HOST_VIEW_REGISTRY: Partial<Record<GameType, GameHostView>> = {
   quick_draw: QuickDrawHostView,
   word_rush: WordRushHostView,
   crossword: CrosswordHostView,
+  word_search: WordSearchHostView,
 }

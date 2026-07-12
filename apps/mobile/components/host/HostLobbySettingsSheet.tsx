@@ -5,6 +5,8 @@ import {
   POLL_ROUND_TIMER_OPTIONS,
   TRIVIA_MAX_ROUNDS,
   TRIVIA_MIN_ROUNDS,
+  codewordsTeamAssignmentFlags,
+  codewordsTeamAssignmentFromFlags,
   formatPollRoundTimer,
   hasPartyRoomSettings,
   partyRoundOptions,
@@ -130,6 +132,14 @@ const LOBBY_MAX_PLAYERS_GAMES = new Set<GameType>([
   'quick_draw',
   'word_rush',
   'crossword',
+  'word_search',
+  // Also >2-player games that were missing the lobby max-players control.
+  'codewords',
+  'trivia',
+  'two_truths',
+  'quiplash',
+  'i_call_on',
+  'scrabble',
 ])
 
 /** Party games that play a single round — no editable "Rounds" control (mirrors web create). */
@@ -142,6 +152,7 @@ const ROUNDLESS_GAMES = new Set<GameType>([
   'i_call_on',
   'mafia',
   'crossword',
+  'word_search',
 ])
 
 /** Party games with no round/turn timer on `timer_seconds` (bingo uses a call interval). */
@@ -156,13 +167,26 @@ type Props = {
   onSaved: () => void
   /** Opens the host-transfer flow (pick a player to take over hosting). */
   onTransfer?: () => void
+  /** Codewords "goes first" preference (owned by the lobby, applied at start). */
+  firstTeam?: 'random' | 'red' | 'blue'
+  onFirstTeamChange?: (team: 'random' | 'red' | 'blue') => void
 }
 
 /**
  * Edit the settings the server allows changing while a game is still in the lobby
  * (mirrors web's PATCH /api/games/[code]): visibility, rounds, timer, late-join.
  */
-export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onClose, onSaved, onTransfer }: Props) {
+export function HostLobbySettingsSheet({
+  gameCode,
+  hostToken,
+  game,
+  visible,
+  onClose,
+  onSaved,
+  onTransfer,
+  firstTeam = 'random',
+  onFirstTeamChange,
+}: Props) {
   const styles = useThemedStyles(makeStyles)
   const gameType = game.game_type as GameType
   const { limits } = useGamePlayerLimits()
@@ -314,6 +338,10 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
   const [codewords, setCodewords] = useState<CodewordsLobbyState>(() => ({
     spymasterTimer: game.timer_seconds ?? 0,
     operativeTimer: game.operative_timer_seconds ?? 0,
+    teamAssignment: codewordsTeamAssignmentFromFlags(
+      game.codewords_player_picks === true,
+      game.codewords_randomize_teams === true
+    ),
   }))
   const [trivia, setTrivia] = useState<TriviaLobbyState>(() => ({
     category: game.trivia_category === 'tech' ? 'tech' : 'general',
@@ -357,6 +385,18 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
     const patch: LobbySettingsPatch = {}
     if (isPublic !== !!game.is_public) patch.is_public = isPublic
     if (showTheme && themeId !== game.theme) patch.theme = themeId
+    // Codewords team-assignment mode → the two game flags (lobby-only).
+    if (isCodewords) {
+      const currentAssignment = codewordsTeamAssignmentFromFlags(
+        game.codewords_player_picks === true,
+        game.codewords_randomize_teams === true
+      )
+      if (codewords.teamAssignment !== currentAssignment) {
+        const flags = codewordsTeamAssignmentFlags(codewords.teamAssignment)
+        patch.codewords_player_picks = flags.codewords_player_picks
+        patch.codewords_randomize_teams = flags.codewords_randomize_teams
+      }
+    }
     // Trivia routes rounds/timer through lobby-pool (below) alongside source/category/pool.
     if (showRounds && !isTrivia && roundsCount !== game.rounds_count) patch.rounds_count = roundsCount
     if (showTimer && !isTrivia && timerSeconds !== game.timer_seconds) patch.timer_seconds = timerSeconds
@@ -445,7 +485,7 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
       if (quiplash.voteTimer !== game.operative_timer_seconds) board.operative_timer_seconds = quiplash.voteTimer
     }
     if (isDuration) {
-      if (gameType === 'sudoku' || gameType === 'crossword') {
+      if (gameType === 'sudoku' || gameType === 'crossword' || gameType === 'word_search') {
         if (duration.gameDurationSeconds !== game.game_duration_seconds)
           board.game_duration_seconds = duration.gameDurationSeconds
       } else if (gameType === 'word_hunt') {
@@ -689,6 +729,8 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
                 canShuffle={game.codewords_randomize_teams === true}
                 shuffling={shuffling}
                 onShuffle={() => void onShuffle()}
+                firstTeam={firstTeam}
+                onFirstTeamChange={onFirstTeamChange}
               />
             ) : null}
 

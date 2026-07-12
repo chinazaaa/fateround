@@ -64,7 +64,7 @@ type Screen =
   | 'not_found'
 
 export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
-  const { success, error: toastError } = useToast()
+  const { success, error: toastError, info: toastInfo } = useToast()
   const [screen, setScreen] = useState<Screen>('loading')
   const [game, setGame] = useState<Game | null>(null)
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
@@ -83,10 +83,27 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   const [pickingRole, setPickingRole] = useState<CodewordsRole | null>(null)
   const [savingRole, setSavingRole] = useState(false)
   const myPlayerIdRef = useRef<string | null>(null)
+  // Snapshots read by the realtime handlers to notify remaining teammates when
+  // someone leaves, and to spot an auto-promotion to spymaster.
+  const allRolesRef = useRef<CodewordsPlayerRole[]>([])
+  const playerNamesRef = useRef<Map<string, string>>(new Map())
+  const myRoleRef = useRef<CodewordsPlayerRole | null>(null)
 
   useEffect(() => {
     myPlayerIdRef.current = myPlayerId
   }, [myPlayerId])
+
+  useEffect(() => {
+    allRolesRef.current = allRoles
+  }, [allRoles])
+
+  useEffect(() => {
+    playerNamesRef.current = new Map(allPlayers.map((p) => [p.id, p.name]))
+  }, [allPlayers])
+
+  useEffect(() => {
+    myRoleRef.current = myRole
+  }, [myRole])
 
   const handlePlayerRemoved = useCallback(() => {
     clearPlayerSession(gameCode)
@@ -253,6 +270,19 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
         const playerId = myPlayerIdRef.current
         if (playerId && prev.some((p) => p.id === playerId) && !next.some((p) => p.id === playerId)) {
           handlePlayerRemoved()
+          return next
+        }
+        // Tell remaining teammates when one of their own leaves or is removed.
+        const myTeam = myRoleRef.current?.team
+        if (myTeam) {
+          const nextIds = new Set(next.map((p) => p.id))
+          for (const gone of prev) {
+            if (nextIds.has(gone.id) || gone.id === playerId) continue
+            const goneTeam = allRolesRef.current.find((r) => r.player_id === gone.id)?.team
+            if (goneTeam === myTeam) {
+              toastInfo(`${gone.name} left your team`)
+            }
+          }
         }
         return next
       })
@@ -260,6 +290,15 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     onRoles: (updater) => {
       setAllRoles((prev) => {
         const next = updater(prev)
+        // Auto-promotion: an operative on my team became the new spymaster.
+        const myId = myPlayerIdRef.current
+        if (myId) {
+          const before = prev.find((r) => r.player_id === myId)
+          const after = next.find((r) => r.player_id === myId)
+          if (before?.role === 'operative' && after?.role === 'spymaster') {
+            toastInfo("You're now your team's spymaster")
+          }
+        }
         return next
       })
       void refreshMyRole(myPlayerId)

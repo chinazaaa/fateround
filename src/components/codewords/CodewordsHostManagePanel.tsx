@@ -66,6 +66,8 @@ export function CodewordsHostManagePanel({
   randomizingTeams = false,
   firstTeam = 'random' as 'random' | 'red' | 'blue',
   onFirstTeamChange,
+  teamAssignment = 'players' as 'players' | 'host' | 'randomize',
+  onTeamAssignmentChange,
   customWordCount = 0,
   onEditWordPool,
   savingWordPool = false,
@@ -106,6 +108,8 @@ export function CodewordsHostManagePanel({
   randomizingTeams?: boolean
   firstTeam?: 'random' | 'red' | 'blue'
   onFirstTeamChange?: (team: 'random' | 'red' | 'blue') => void
+  teamAssignment?: 'players' | 'host' | 'randomize'
+  onTeamAssignmentChange?: (mode: 'players' | 'host' | 'randomize') => void
   customWordCount?: number
   onEditWordPool?: () => void
   savingWordPool?: boolean
@@ -373,6 +377,25 @@ export function CodewordsHostManagePanel({
                 disabled={savingMaxPlayers}
               />
             </HostLobbySettingBlock>
+
+            {onTeamAssignmentChange && (
+              <HostLobbySettingBlock title="Team assignment">
+                <div className="flex rounded-xl border border-[var(--border)] overflow-hidden text-sm">
+                  {(['players', 'host', 'randomize'] as const).map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => onTeamAssignmentChange(opt)}
+                      className={`flex-1 py-1.5 font-semibold transition-colors ${
+                        teamAssignment === opt ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
+                      }`}
+                    >
+                      {opt === 'players' ? 'Players pick' : opt === 'host' ? 'Host assigns' : '🎲 Random'}
+                    </button>
+                  ))}
+                </div>
+              </HostLobbySettingBlock>
+            )}
 
             {onFirstTeamChange && (
               <HostLobbySettingBlock title="Goes first">

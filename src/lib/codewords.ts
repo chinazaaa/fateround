@@ -614,6 +614,92 @@ export async function removeCodewordsPlayer(
   return { error: null }
 }
 
+export type CodewordsRemovalOutcome = {
+  /** The game was force-ended because a team can no longer field a spymaster + operative. */
+  ended: boolean
+  /** When ended by forfeit, the team that wins by default. */
+  forfeitWinner?: CodewordsTeam
+  /** When an operative was auto-promoted to fill the vacated spymaster seat. */
+  promotedPlayerId?: string
+}
+
+/**
+ * Keep an in-progress Codewords round playable after a player leaves or is removed.
+ *
+ * A team needs exactly one spymaster and at least one operative. When the departing
+ * player breaks that:
+ *  - team has no operatives left → the other team wins by forfeit (round ends)
+ *  - spymaster left and only one operative remains → round ends (promoting would
+ *    leave nobody to guess)
+ *  - spymaster left and ≥2 operatives remain → randomly promote one to spymaster
+ *
+ * No-op while the game is still in the lobby (no board yet) or already decided.
+ * The role row itself is removed by the players FK cascade; this only reconciles
+ * what's left. Call AFTER the player row is deleted.
+ */
+export async function reconcileCodewordsTeamAfterRemoval(
+  supabase: SupabaseClient,
+  gameId: string,
+  removedTeam: CodewordsTeam | null
+): Promise<{ error: string | null; outcome: CodewordsRemovalOutcome }> {
+  const noop: CodewordsRemovalOutcome = { ended: false }
+  if (!removedTeam) return { error: null, outcome: noop }
+
+  const code = gameId.toUpperCase()
+  const { data: board, error: boardError } = await supabase
+    .from('codewords_boards')
+    .select('id, winner')
+    .eq('game_id', code)
+    .maybeSingle()
+  if (boardError) return { error: internalErrorMessage('codewords', boardError), outcome: noop }
+  // No board = still in the lobby; a winner = round already over. Nothing to repair.
+  if (!board || (board as Pick<CodewordsBoard, 'winner'>).winner) return { error: null, outcome: noop }
+
+  const { data: roleRows, error: rolesError } = await supabase
+    .from('codewords_player_roles')
+    .select('player_id, team, role')
+    .eq('game_id', code)
+    .eq('team', removedTeam)
+  if (rolesError) return { error: internalErrorMessage('codewords', rolesError), outcome: noop }
+
+  const teamRoles = (roleRows as Array<Pick<CodewordsPlayerRole, 'player_id' | 'team' | 'role'>>) ?? []
+  const spymasters = teamRoles.filter((r) => r.role === 'spymaster')
+  const operatives = teamRoles.filter((r) => r.role === 'operative')
+  const otherTeam: CodewordsTeam = removedTeam === 'red' ? 'blue' : 'red'
+
+  const forfeit = async (): Promise<{ error: string | null; outcome: CodewordsRemovalOutcome }> => {
+    const { error: winError } = await supabase
+      .from('codewords_boards')
+      .update({ winner: otherTeam })
+      .eq('game_id', code)
+      .is('winner', null)
+    if (winError) return { error: internalErrorMessage('codewords', winError), outcome: noop }
+    const { error: finishError } = await finishCodewordsGame(supabase, code)
+    if (finishError) return { error: finishError, outcome: noop }
+    return { error: null, outcome: { ended: true, forfeitWinner: otherTeam } }
+  }
+
+  // No operatives left → nobody can guess for this team.
+  if (operatives.length === 0) return forfeit()
+
+  // Spymaster seat is empty (the departing player held it).
+  if (spymasters.length === 0) {
+    // Only one operative — promoting them would leave nobody to guess.
+    if (operatives.length === 1) return forfeit()
+    // Promote a random operative to spymaster so the round can continue.
+    const promoted = shuffle(operatives)[0]
+    const { error: promoteError } = await supabase
+      .from('codewords_player_roles')
+      .update({ role: 'spymaster' })
+      .eq('game_id', code)
+      .eq('player_id', promoted.player_id)
+    if (promoteError) return { error: internalErrorMessage('codewords', promoteError), outcome: noop }
+    return { error: null, outcome: { ended: false, promotedPlayerId: promoted.player_id } }
+  }
+
+  return { error: null, outcome: noop }
+}
+
 /** Clears board, guesses, and team assignments — use only for a full session reset. */
 export async function clearCodewordsSessionData(
   supabase: SupabaseClient,

@@ -182,6 +182,35 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
 
+  // Change the lobby team-assignment mode (players pick / host assigns / random)
+  // via the game PATCH — mirrors the two flags codewords stores.
+  const changeTeamAssignment = useCallback(
+    async (mode: 'players' | 'host' | 'randomize') => {
+      const flags =
+        mode === 'randomize'
+          ? { codewords_player_picks: false, codewords_randomize_teams: true }
+          : mode === 'host'
+            ? { codewords_player_picks: false, codewords_randomize_teams: false }
+            : { codewords_player_picks: true, codewords_randomize_teams: false }
+      try {
+        const res = await fetch(`/api/games/${gameCode}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hostToken, ...flags }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          toastError(data.error ?? 'Could not update team assignment')
+          return
+        }
+        await load()
+      } catch {
+        toastError('Could not update team assignment')
+      }
+    },
+    [gameCode, hostToken, load, toastError]
+  )
+
   // Clear stale host-as-player state if the host's own row is removed elsewhere.
   useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
 
@@ -647,6 +676,8 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
         onMoveTeam={moveTeam}
         firstTeam={firstTeam}
         onFirstTeamChange={setFirstTeam}
+        teamAssignment={randomizeTeams ? 'randomize' : playersPickTeams ? 'players' : 'host'}
+        onTeamAssignmentChange={changeTeamAssignment}
         onStartGame={startGame}
         onRandomizeTeams={shuffleTeams}
         randomizingTeams={randomizingTeams}

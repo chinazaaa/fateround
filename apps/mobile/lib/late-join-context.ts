@@ -12,6 +12,7 @@ import {
   isWhotGame,
   isWordHuntGame,
   isWordRushGame,
+  isWordSearchGame,
   isYahtzeeGame,
   parseGameType,
 } from '@fateround/shared/game-type-checks'
@@ -99,6 +100,14 @@ export async function fetchLateJoinContext(
       statusLine: 'Puzzle in progress',
       playerDetail: 'Jump into the same crossword and race to solve the Across and Down clues still open.',
       viewerDetail: "Watch the grid fill in and live scores — you can't fill cells.",
+    }
+  }
+
+  if (isWordSearchGame(type)) {
+    return {
+      statusLine: 'Puzzle in progress',
+      playerDetail: 'Jump into the same grid and race to find the words still hidden.',
+      viewerDetail: "Watch the words get found and live scores — you can't hunt the grid.",
     }
   }
 

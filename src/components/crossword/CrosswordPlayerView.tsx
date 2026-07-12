@@ -118,6 +118,10 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
   const [submitting, setSubmitting] = useState(false)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  // Letters submit concurrently per cell — a single global lock would drop keystrokes
+  // typed faster than the round-trip. Keyed by cell+letter so a re-typed correction still
+  // fires while an identical duplicate event (mobile keydown+input) is coalesced.
+  const inFlightSubmits = useRef<Set<string>>(new Set())
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
 
   function showToast(msg: string, ok: boolean) {
@@ -406,7 +410,9 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
 
   function focusInput() {
     // Focusing the hidden input pops the mobile keyboard while capturing physical keys.
-    requestAnimationFrame(() => inputRef.current?.focus())
+    // preventScroll stops the browser from scrolling the off-screen input into view, which
+    // otherwise jerks the whole board up/down on every cell tap or keystroke.
+    requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }))
   }
 
   function handleCellSelect(row: number, col: number) {
@@ -491,12 +497,17 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   async function submitLetter(row: number, col: number, letter: string, hint: boolean) {
-    if (!myPlayerId || !roundId || submitting) return
+    if (!myPlayerId || !roundId) return
     if (!myResumeToken) {
       showToast('Your session has expired — please rejoin', false)
       return
     }
-    setSubmitting(true)
+    // Per-cell in-flight guard: distinct cells submit concurrently (so typing a word fast
+    // never drops letters), while an identical duplicate event for the same cell is skipped.
+    const key = `${row}-${col}-${letter}-${hint ? 'h' : ''}`
+    if (inFlightSubmits.current.has(key)) return
+    inFlightSubmits.current.add(key)
+    if (hint) setSubmitting(true)
     try {
       const res = await fetch('/api/crossword/submit', {
         method: 'POST',
@@ -521,7 +532,8 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
         setLetterDraft(row, col, resolved, true)
       }
     } finally {
-      setSubmitting(false)
+      inFlightSubmits.current.delete(key)
+      if (hint) setSubmitting(false)
     }
   }
 
@@ -917,7 +929,7 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
                 <button
                   type="button"
                   onClick={() => void handleHint()}
-                  disabled={!selectedCell || submitting}
+                  disabled={!selectedCell || submitting || !isCellEditable(selectedCell[0], selectedCell[1])}
                   className="shrink-0 px-3 py-2 rounded-lg text-sm font-bold bg-amber-100/80 text-amber-800 dark:bg-amber-900/35 dark:text-amber-200 disabled:opacity-40 transition-colors hover:bg-amber-100"
                   title={`Reveal the selected letter (${CROSSWORD_HINT_PENALTY} pts)`}
                 >

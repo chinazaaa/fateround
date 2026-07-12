@@ -35,6 +35,7 @@ import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useAdvancePolling } from '@/hooks/useAdvancePolling'
 import { postQuiplashAnswer, postQuiplashVote } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import {
@@ -107,6 +108,18 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
     () => bootstrap.load(),
     !!bootstrap.game
   )
+
+  // Deadline-driven phase changes (esp. the last reveal → finished) don't happen
+  // on their own — a client has to nudge the server. Web polls /api/quiplash/advance;
+  // mobile had no poller, so the game could sit on the reveal and never reach the
+  // finished screen until a manual reload. Poll while active and reload on advance.
+  useAdvancePolling({
+    endpoint: '/api/quiplash/advance',
+    gameCode,
+    game: bootstrap.game,
+    enabled: !!bootstrap.game,
+    onAdvanced: () => bootstrap.load(),
+  })
 
   const currentRound = useMemo(() => {
     if (!bootstrap.game) return null

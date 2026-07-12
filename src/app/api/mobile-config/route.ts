@@ -16,7 +16,15 @@ const BATCH_2_GAMES: GameType[] = [
   'parent_approval',
 ]
 
-const BATCH_3_GAMES: GameType[] = ['matching_pairs', 'sudoku', 'yahtzee', 'snake_and_ladder', 'ludo', 'crossword']
+const BATCH_3_GAMES: GameType[] = [
+  'matching_pairs',
+  'sudoku',
+  'yahtzee',
+  'snake_and_ladder',
+  'ludo',
+  'crossword',
+  'word_search',
+]
 
 const BATCH_4_GAMES: GameType[] = ['crazy_eights', 'whot', 'two_truths', 'describe_it']
 

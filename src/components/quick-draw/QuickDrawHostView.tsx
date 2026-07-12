@@ -526,7 +526,7 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
       showTabs={showTabs}
       gameStarted={gameStarted}
       header={<HostGameHeader game={game} />}
-      primary={hostPlays ? interactivePlay : watchRound}
+      primary={<div className="max-w-4xl mx-auto w-full">{hostPlays ? interactivePlay : watchRound}</div>}
       manage={manage}
       finished={finished}
       game={game}

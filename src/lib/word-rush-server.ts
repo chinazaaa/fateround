@@ -43,6 +43,8 @@ import {
   teamLabel,
   teamRoster,
   wordRushLobbyReady,
+  wordRushPlayableTeams,
+  nextPlayableTeamTurnIndex,
 } from '@/lib/word-rush'
 import type { WordRushDifficulty, WordRushPhase, WordRushPromptMode, WordRushSession } from '@/types'
 
@@ -458,12 +460,7 @@ async function endTeamTurn(
   gameId: string,
   session: WordRushSession
 ): Promise<{ error?: string; internal?: boolean }> {
-  const nextTurn = session.turn_index + 1
   const totalTeamTurns = wordRushTotalTeamTurns(session.num_teams, session.total_rounds)
-
-  if (nextTurn >= totalTeamTurns) {
-    return finishWordRushGame(supabase, gameId, session, 'All rounds complete!')
-  }
 
   const { count } = await supabase
     .from('word_rush_answers')
@@ -475,9 +472,23 @@ async function endTeamTurn(
 
   const teamScore = count ?? 0
   const finishedRound = session.current_round
+  const teamRows = await loadTeamRows(supabase, gameId)
+
+  // Skip any team that can no longer field a turn; once at most one team can
+  // still play, the game is decided.
+  const playable = new Set(wordRushPlayableTeams(teamRoster(teamRows), session.num_teams, session.prompt_mode))
+  const nextTurn =
+    playable.size <= 1
+      ? totalTeamTurns
+      : nextPlayableTeamTurnIndex(session.turn_index + 1, session.num_teams, session.total_rounds, playable)
+
+  if (nextTurn >= totalTeamTurns) {
+    const message = playable.size <= 1 ? 'Not enough teams left to continue' : 'All rounds complete!'
+    return finishWordRushGame(supabase, gameId, session, message)
+  }
+
   const nextTeam = teamForTurnIndex(nextTurn, session.num_teams)
   const nextRound = currentTeamRoundNumber(nextTurn, session.num_teams)
-  const teamRows = await loadTeamRows(supabase, gameId)
   const roundIndex = teamRoundIndexFromTurn(nextTurn, session.num_teams)
   const promptSetter =
     session.prompt_mode === 'manual'
@@ -799,6 +810,23 @@ export async function syncWordRushAfterPlayerRemoved(
       const endResult = await endIndividualRound(supabase, gameId, updatedSession)
       if (endResult.error) return { ...endResult, rollback }
       return { rollback }
+    }
+  }
+
+  if (
+    updatedSession.mode === 'team' &&
+    (updatedSession.phase === 'playing' || updatedSession.phase === 'awaiting_prompt')
+  ) {
+    const teamRows = await loadTeamRows(supabase, gameId)
+    const playable = new Set(
+      wordRushPlayableTeams(teamRoster(teamRows), updatedSession.num_teams, updatedSession.prompt_mode)
+    )
+    // The active team can no longer field a turn, or only one team remains —
+    // end this turn now (endTeamTurn skips the dead team / finishes the game)
+    // rather than letting it run out the clock.
+    if (playable.size <= 1 || !playable.has(updatedSession.active_team)) {
+      const endResult = await endTeamTurn(supabase, gameId, updatedSession)
+      if (endResult.error) return { ...endResult, rollback }
     }
   }
 
