@@ -14,10 +14,9 @@ const hintSchema = z.object({
 })
 
 /**
- * Reveals one more letter of the current word for a per-letter points penalty. Hints are capped
- * at answer.length - 1 (the whole word is never revealed via hints — that's the "Reveal" button).
- * Only the letter COUNT is persisted (word_scramble_hints); the answer text is returned to the
- * caller but never stored, so it can't leak to other players.
+ * Reveals the current word's clue/definition for a one-time points penalty (a gentler nudge than
+ * the full "Reveal answer"). Only a "hint used" flag is persisted (word_scramble_hints.letters =
+ * 1); re-tapping costs nothing. Words without a clue can't be hinted and are never charged.
  */
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, hintSchema)
@@ -55,58 +54,42 @@ export async function POST(req: NextRequest) {
   if (!round || !meta) return NextResponse.json({ error: 'Puzzle not found' }, { status: 404 })
   if (scrambleIndex >= meta.count) return NextResponse.json({ error: 'No such scramble' }, { status: 400 })
 
-  const { data: solutionRow } = await supabase
-    .from('word_scramble_solutions')
-    .select('solution')
-    .eq('round_id', round.id)
-    .maybeSingle()
-  const answers = (solutionRow?.solution as string[] | undefined) ?? undefined
-  const answer = answers?.[scrambleIndex]
-  if (!answer) return NextResponse.json({ error: 'Puzzle data missing' }, { status: 500 })
+  const clue = (meta.hints?.[scrambleIndex] ?? '').trim()
+  if (!clue) return NextResponse.json({ available: false, clue: '' })
 
-  // Already solved → nothing to hint; hand back the answer so the client can advance.
-  const { data: existingSolve } = await supabase
-    .from('word_scramble_solves')
-    .select('id')
-    .eq('round_id', round.id)
-    .eq('player_id', auth.player.id)
-    .eq('scramble_index', scrambleIndex)
-    .maybeSingle()
-  if (existingSolve) return NextResponse.json({ letters: answer.length, prefix: answer, alreadySolved: true })
+  // Already used a hint (or already solved) → return the clue without charging again.
+  const [{ data: existingSolve }, { data: existingHint }] = await Promise.all([
+    supabase
+      .from('word_scramble_solves')
+      .select('id')
+      .eq('round_id', round.id)
+      .eq('player_id', auth.player.id)
+      .eq('scramble_index', scrambleIndex)
+      .maybeSingle(),
+    supabase
+      .from('word_scramble_hints')
+      .select('letters')
+      .eq('round_id', round.id)
+      .eq('player_id', auth.player.id)
+      .eq('scramble_index', scrambleIndex)
+      .maybeSingle(),
+  ])
+  if (existingSolve || existingHint) return NextResponse.json({ available: true, clue, letters: 1 })
 
-  const maxLetters = Math.max(0, answer.length - 1)
-
-  const { data: existingHint } = await supabase
-    .from('word_scramble_hints')
-    .select('letters')
-    .eq('round_id', round.id)
-    .eq('player_id', auth.player.id)
-    .eq('scramble_index', scrambleIndex)
-    .maybeSingle()
-  const current = (existingHint?.letters as number | undefined) ?? 0
-  const nextLetters = Math.min(current + 1, maxLetters)
-
-  // Only write when it actually increases (so re-tapping at the cap costs nothing extra).
-  if (nextLetters > current) {
-    const { error: upsertError } = await supabase.from('word_scramble_hints').upsert(
-      {
-        game_id: code,
-        round_id: round.id,
-        player_id: auth.player.id,
-        scramble_index: scrambleIndex,
-        letters: nextLetters,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'player_id,round_id,scramble_index' }
-    )
-    if (upsertError) {
-      return NextResponse.json({ error: internalErrorMessage('word-scramble/hint', upsertError) }, { status: 500 })
-    }
+  const { error: upsertError } = await supabase.from('word_scramble_hints').upsert(
+    {
+      game_id: code,
+      round_id: round.id,
+      player_id: auth.player.id,
+      scramble_index: scrambleIndex,
+      letters: 1,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'player_id,round_id,scramble_index' }
+  )
+  if (upsertError) {
+    return NextResponse.json({ error: internalErrorMessage('word-scramble/hint', upsertError) }, { status: 500 })
   }
 
-  return NextResponse.json({
-    letters: nextLetters,
-    prefix: answer.slice(0, nextLetters),
-    maxed: nextLetters >= maxLetters,
-  })
+  return NextResponse.json({ available: true, clue, letters: 1 })
 }

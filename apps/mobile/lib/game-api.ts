@@ -254,10 +254,11 @@ export function postWordScrambleSubmit(
 }
 
 export function postWordScrambleHint(gameId: string, resumeToken: string, scrambleIndex: number) {
-  return postJson<{ letters: number; prefix: string; maxed?: boolean; alreadySolved?: boolean }>(
-    '/api/word-scramble/hint',
-    { gameId, resumeToken, scrambleIndex }
-  )
+  return postJson<{ available: boolean; clue: string; letters?: number }>('/api/word-scramble/hint', {
+    gameId,
+    resumeToken,
+    scrambleIndex,
+  })
 }
 
 export async function fetchWordScrambleSolution(gameId: string): Promise<string[] | null> {

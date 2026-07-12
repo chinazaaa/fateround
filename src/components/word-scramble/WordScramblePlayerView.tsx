@@ -16,7 +16,7 @@ import {
   playerSolvedIndices,
   WORD_SCRAMBLE_MIN_PLAYERS,
   WORD_SCRAMBLE_HINT_PENALTY,
-  WORD_SCRAMBLE_LETTER_HINT_PENALTY,
+  WORD_SCRAMBLE_CLUE_PENALTY,
   type WordScrambleMetadata,
   type WordScrambleSolve,
   type WordScrambleHint,
@@ -347,7 +347,6 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
   const myCurrent = metadata && myPlayerId ? playerCurrentIndex(metadata, solves, myPlayerId) : 0
   const allSolved = !!metadata && mySolvedCount >= metadata.count
   const currentScramble = metadata && myCurrent < metadata.count ? metadata.scrambles[myCurrent] : null
-  const currentHint = metadata?.hints && myCurrent < metadata.count ? metadata.hints[myCurrent] : ''
 
   const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
     gameCode,
@@ -366,16 +365,17 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
     if (ok) void submit(true)
   }
 
-  const myRevealed = revealedPrefix[myCurrent] ?? ''
+  const myClue = revealedPrefix[myCurrent] ?? ''
+  const hintAvailable = !!(metadata?.hints && myCurrent < metadata.count && (metadata.hints[myCurrent] ?? '').trim())
 
-  async function revealLetter() {
+  async function revealClue() {
     if (!myPlayerId || !myResumeToken || !metadata || submitting) return
     if (myCurrent >= metadata.count) return
     const index = myCurrent
     const ok = await confirm({
-      title: 'Reveal a letter?',
-      message: `Shows the next letter for ${Math.abs(WORD_SCRAMBLE_LETTER_HINT_PENALTY)} point.`,
-      confirmLabel: 'Reveal a letter',
+      title: 'Reveal the clue?',
+      message: `Shows a clue for this word — costs ${Math.abs(WORD_SCRAMBLE_CLUE_PENALTY)} point.`,
+      confirmLabel: 'Reveal clue',
       cancelLabel: 'Keep trying',
     })
     if (!ok) return
@@ -392,11 +392,13 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
         else showToast(json.error ?? 'Could not get a hint', false)
         return
       }
-      const prefix = typeof json.prefix === 'string' ? json.prefix : ''
-      const letters = typeof json.letters === 'number' ? json.letters : prefix.length
-      setRevealedPrefix((prev) => ({ ...prev, [index]: prefix }))
-      addHint({ player_id: myPlayerId, scramble_index: index, letters })
-      if (json.maxed) showToast(`Starts with "${prefix}"`, true)
+      if (!json.available) {
+        showToast('No clue for this word', false)
+        return
+      }
+      const clue = typeof json.clue === 'string' ? json.clue : (metadata.hints?.[index] ?? '')
+      setRevealedPrefix((prev) => ({ ...prev, [index]: clue }))
+      addHint({ player_id: myPlayerId, scramble_index: index, letters: 1 })
     } finally {
       setSubmitting(false)
     }
@@ -694,11 +696,9 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
                     </span>
                   ))}
                 </div>
-                {currentHint ? <p className="text-center text-xs text-muted">Hint: {currentHint}</p> : null}
-                {myRevealed ? (
+                {myClue ? (
                   <p className="text-center text-sm text-muted">
-                    Starts with{' '}
-                    <span className="font-black tracking-[0.3em] uppercase text-[var(--foreground)]">{myRevealed}</span>
+                    Clue: <span className="font-semibold text-[var(--foreground)]">{myClue}</span>
                   </p>
                 ) : null}
 
@@ -732,12 +732,12 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => void revealLetter()}
-                    disabled={submitting}
+                    onClick={() => void revealClue()}
+                    disabled={submitting || !hintAvailable || !!myClue}
                     className="flex-1 px-3 py-2 rounded-lg text-sm font-bold bg-sky-100/80 text-sky-800 dark:bg-sky-900/35 dark:text-sky-200 disabled:opacity-40 transition-colors hover:bg-sky-100"
-                    title={`Reveal the next letter (${WORD_SCRAMBLE_LETTER_HINT_PENALTY} pt)`}
+                    title={`Reveal a clue for this word (${WORD_SCRAMBLE_CLUE_PENALTY} pt)`}
                   >
-                    🔎 Hint ({WORD_SCRAMBLE_LETTER_HINT_PENALTY})
+                    🔎 Clue ({WORD_SCRAMBLE_CLUE_PENALTY})
                   </button>
                   <button
                     type="button"

@@ -15,7 +15,7 @@ export const WORD_SCRAMBLE_WORD_POINTS = 10
 export const WORD_SCRAMBLE_FIRST_BONUS = 5
 export const WORD_SCRAMBLE_LENGTH_BONUS = 1
 export const WORD_SCRAMBLE_HINT_PENALTY = -2
-export const WORD_SCRAMBLE_LETTER_HINT_PENALTY = -1
+export const WORD_SCRAMBLE_CLUE_PENALTY = -1
 
 export const WORD_SCRAMBLE_DIFFICULTIES: WordScrambleDifficulty[] = ['easy', 'medium', 'hard']
 export const WORD_SCRAMBLE_DEFAULT_DIFFICULTY: WordScrambleDifficulty = 'medium'
@@ -49,7 +49,7 @@ export interface WordScrambleSolve {
 
 type SolveRow = Pick<WordScrambleSolve, 'player_id' | 'scramble_index' | 'word' | 'via_hint' | 'solved_at'>
 
-/** A per-word letter-hint tally row from word_scramble_hints (letters revealed, never text). */
+/** A per-word clue-hint row from word_scramble_hints (letters = 1 when a clue was spent; never answer text). */
 export interface WordScrambleHint {
   player_id: string
   scramble_index: number
@@ -156,10 +156,10 @@ export function tallyWordScrambleScores(
       points.set(nonHint[0].playerId, (points.get(nonHint[0].playerId) ?? 0) + WORD_SCRAMBLE_FIRST_BONUS)
   }
 
-  // Subtract the per-letter penalty for every letter revealed via the "Hint" button.
+  // Subtract the clue-hint penalty for each word where the player spent a "Clue" hint.
   for (const h of opts?.hints ?? []) {
     if (!activeIds.has(h.player_id) || h.letters <= 0) continue
-    points.set(h.player_id, (points.get(h.player_id) ?? 0) + h.letters * WORD_SCRAMBLE_LETTER_HINT_PENALTY)
+    points.set(h.player_id, (points.get(h.player_id) ?? 0) + h.letters * WORD_SCRAMBLE_CLUE_PENALTY)
   }
 
   return activePlayers

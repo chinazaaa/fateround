@@ -9,7 +9,7 @@ import {
   playerCurrentIndex,
   playerSolvedIndices,
   WORD_SCRAMBLE_HINT_PENALTY,
-  WORD_SCRAMBLE_LETTER_HINT_PENALTY,
+  WORD_SCRAMBLE_CLUE_PENALTY,
   type WordScrambleMetadata,
   type WordScrambleSolve,
   type WordScrambleHint,
@@ -187,7 +187,7 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
   const myCurrent = metadata && bootstrap.myPlayerId ? playerCurrentIndex(metadata, solves, bootstrap.myPlayerId) : 0
   const allSolved = !!metadata && mySolved >= metadata.count
   const currentScramble = metadata && myCurrent < metadata.count ? metadata.scrambles[myCurrent] : null
-  const currentHint = metadata?.hints && myCurrent < metadata.count ? metadata.hints[myCurrent] : ''
+  const hintAvailable = !!(metadata?.hints && myCurrent < metadata.count && (metadata.hints[myCurrent] ?? '').trim())
 
   const submit = useCallback(
     async (hint: boolean) => {
@@ -226,20 +226,22 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
     [bootstrap, metadata, myCurrent, guess, submitting, gameCode, addSolve, showToast]
   )
 
-  const myRevealed = revealedPrefix[myCurrent] ?? ''
+  const myClue = revealedPrefix[myCurrent] ?? ''
 
-  const revealLetter = useCallback(async () => {
+  const revealClue = useCallback(async () => {
     if (!bootstrap.myPlayerId || !bootstrap.myResumeToken || !metadata || submitting) return
     if (myCurrent >= metadata.count) return
     const index = myCurrent
     setSubmitting(true)
     try {
       const res = await postWordScrambleHint(gameCode, bootstrap.myResumeToken, index)
-      const prefix = typeof res.prefix === 'string' ? res.prefix : ''
-      const letters = typeof res.letters === 'number' ? res.letters : prefix.length
-      setRevealedPrefix((prev) => ({ ...prev, [index]: prefix }))
-      addHint({ player_id: bootstrap.myPlayerId, scramble_index: index, letters })
-      if (res.maxed) showToast(`Starts with "${prefix}"`, true)
+      if (!res.available) {
+        showToast('No clue for this word', false)
+        return
+      }
+      const clue = typeof res.clue === 'string' ? res.clue : (metadata.hints?.[index] ?? '')
+      setRevealedPrefix((prev) => ({ ...prev, [index]: clue }))
+      addHint({ player_id: bootstrap.myPlayerId, scramble_index: index, letters: 1 })
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Could not get a hint'
       if (msg.toLowerCase().includes('time')) await bootstrap.load()
@@ -249,12 +251,16 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
     }
   }, [bootstrap, metadata, myCurrent, submitting, gameCode, addHint, showToast])
 
-  const confirmRevealLetter = useCallback(() => {
-    Alert.alert('Reveal a letter?', `Shows the next letter for ${Math.abs(WORD_SCRAMBLE_LETTER_HINT_PENALTY)} point.`, [
-      { text: 'Keep trying', style: 'cancel' },
-      { text: 'Reveal a letter', onPress: () => void revealLetter() },
-    ])
-  }, [revealLetter])
+  const confirmRevealClue = useCallback(() => {
+    Alert.alert(
+      'Reveal the clue?',
+      `Shows a clue for this word — costs ${Math.abs(WORD_SCRAMBLE_CLUE_PENALTY)} point.`,
+      [
+        { text: 'Keep trying', style: 'cancel' },
+        { text: 'Reveal clue', onPress: () => void revealClue() },
+      ]
+    )
+  }, [revealClue])
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
@@ -375,10 +381,9 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
                     </View>
                   ))}
                 </View>
-                {currentHint ? <Text style={styles.hint}>Hint: {currentHint}</Text> : null}
-                {myRevealed ? (
+                {myClue ? (
                   <Text style={styles.revealedPrefix}>
-                    Starts with <Text style={styles.revealedPrefixLetters}>{myRevealed}</Text>
+                    Clue: <Text style={styles.revealedClueText}>{myClue}</Text>
                   </Text>
                 ) : null}
 
@@ -407,11 +412,11 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
 
                 <View style={styles.helpRow}>
                   <Pressable
-                    style={[styles.hintBtn, submitting && styles.btnDisabled]}
-                    disabled={submitting}
-                    onPress={confirmRevealLetter}
+                    style={[styles.hintBtn, (submitting || !hintAvailable || !!myClue) && styles.btnDisabled]}
+                    disabled={submitting || !hintAvailable || !!myClue}
+                    onPress={confirmRevealClue}
                   >
-                    <Text style={styles.hintText}>🔎 Hint ({WORD_SCRAMBLE_LETTER_HINT_PENALTY})</Text>
+                    <Text style={styles.hintText}>🔎 Clue ({WORD_SCRAMBLE_CLUE_PENALTY})</Text>
                   </Pressable>
                   <Pressable
                     style={[styles.revealBtn, submitting && styles.btnDisabled]}
@@ -500,7 +505,7 @@ const makeStyles = (theme: Theme) =>
     tileText: { color: theme.text, fontSize: 24, fontWeight: '900' },
     hint: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
     revealedPrefix: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
-    revealedPrefixLetters: { color: theme.text, fontWeight: '900', letterSpacing: 3 },
+    revealedClueText: { color: theme.text, fontWeight: '700' },
     inputRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
     input: {
       flex: 1,
