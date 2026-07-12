@@ -3,11 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import type { Game, Player } from '@fateround/shared'
 import { getSupabase } from '@/lib/supabase'
 import { CODEWORDS_PLAYER_ROLE_SELECT } from '@/lib/supabase-selects'
-import {
-  deleteCodewordsHostRole,
-  postCodewordsHostRole,
-  postCodewordsRandomizeTeams,
-} from '@/lib/game-api'
+import { deleteCodewordsHostRole, postCodewordsHostRole, postCodewordsRandomizeTeams } from '@/lib/game-api'
 import { uniqueTopic } from '@/lib/realtime'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -24,12 +20,7 @@ type Props = {
 }
 
 const TEAM_COLOR: Record<Team, string> = { red: '#ef4444', blue: '#3b82f6' }
-const ASSIGN: { team: Team; role: Role; label: string }[] = [
-  { team: 'red', role: 'spymaster', label: '🔴 Spy' },
-  { team: 'red', role: 'operative', label: '🔴 Op' },
-  { team: 'blue', role: 'spymaster', label: '🔵 Spy' },
-  { team: 'blue', role: 'operative', label: '🔵 Op' },
-]
+const otherTeam = (t: Team): Team => (t === 'red' ? 'blue' : 'red')
 
 /** Host lobby team/role manager for Codewords (assign / bench / shuffle). */
 export function CodewordsHostLobby({ gameCode, hostToken, game, players }: Props) {
@@ -107,6 +98,7 @@ export function CodewordsHostLobby({ gameCode, hostToken, game, players }: Props
 
   const roleFor = (playerId: string) => roles.find((r) => r.player_id === playerId)
   const active = players.filter((p) => !p.spectator)
+  const unassigned = active.filter((p) => !roleFor(p.id))
   const randomize = game.codewords_randomize_teams === true
 
   return (
@@ -115,57 +107,111 @@ export function CodewordsHostLobby({ gameCode, hostToken, game, players }: Props
       <Text style={styles.hint}>
         {randomize
           ? 'Pick the two spymasters — operatives shuffle at start.'
-          : 'Assign each player to a team and role.'}
+          : 'Tap 🕵️/🎯 to set the role, the arrow to switch team, ✕ to bench.'}
       </Text>
 
       {active.length === 0 ? (
         <Text style={styles.empty}>Waiting for players to join…</Text>
       ) : (
-        active.map((p) => {
-          const current = roleFor(p.id)
-          return (
-            <View key={p.id} style={styles.row}>
-              <View style={styles.nameCol}>
-                <Text style={styles.name} numberOfLines={1}>
-                  {p.name}
-                </Text>
-                {current ? (
-                  <Text style={[styles.badge, { color: TEAM_COLOR[current.team] }]}>
-                    {current.team === 'red' ? '🔴' : '🔵'} {current.role === 'spymaster' ? 'Spymaster' : 'Operative'}
+        <>
+          {/* Two red/blue columns (mirrors web CodewordsLobbyRoster): players
+              grouped by team so the roster stays compact instead of one long row
+              of chips per player. */}
+          <View style={styles.grid}>
+            {(['red', 'blue'] as Team[]).map((team) => {
+              const members = active.filter((p) => roleFor(p.id)?.team === team)
+              return (
+                <View key={team} style={[styles.teamCard, { borderColor: TEAM_COLOR[team] }]}>
+                  <View style={styles.teamHeader}>
+                    <View style={[styles.teamBadge, { backgroundColor: TEAM_COLOR[team] }]}>
+                      <Text style={styles.teamBadgeText}>{team === 'red' ? '🔴 Red' : '🔵 Blue'}</Text>
+                    </View>
+                    <Text style={styles.count}>{members.length}</Text>
+                  </View>
+                  <View style={styles.memberList}>
+                    {members.length > 0 ? (
+                      members.map((p) => {
+                        const isSpy = roleFor(p.id)?.role === 'spymaster'
+                        return (
+                          <View key={p.id} style={styles.memberRow}>
+                            <Text style={styles.memberName} numberOfLines={1}>
+                              {isSpy ? '🕵️ ' : ''}
+                              {p.name}
+                            </Text>
+                            <View style={styles.memberBtns}>
+                              <Pressable
+                                style={styles.miniBtn}
+                                disabled={busyId === p.id}
+                                onPress={() => void assign(p.id, team, isSpy ? 'operative' : 'spymaster')}
+                              >
+                                <Text style={styles.miniBtnText}>{isSpy ? '🎯' : '🕵️'}</Text>
+                              </Pressable>
+                              <Pressable
+                                style={styles.miniBtn}
+                                disabled={busyId === p.id}
+                                onPress={() => void assign(p.id, otherTeam(team), isSpy ? 'spymaster' : 'operative')}
+                              >
+                                <Text style={styles.miniBtnText}>{team === 'red' ? '→' : '←'}</Text>
+                              </Pressable>
+                              <Pressable
+                                style={styles.miniBtn}
+                                disabled={busyId === p.id}
+                                onPress={() => void bench(p.id)}
+                              >
+                                <Text style={styles.miniBtnText}>✕</Text>
+                              </Pressable>
+                            </View>
+                          </View>
+                        )
+                      })
+                    ) : (
+                      <Text style={styles.membersMuted}>No players yet</Text>
+                    )}
+                  </View>
+                </View>
+              )
+            })}
+          </View>
+
+          {unassigned.length > 0 ? (
+            <View style={styles.unassignedBlock}>
+              <Text style={styles.unassignedLabel}>Unassigned</Text>
+              {unassigned.map((p) => (
+                <View key={p.id} style={styles.memberRow}>
+                  <Text style={styles.memberName} numberOfLines={1}>
+                    {p.name}
                   </Text>
-                ) : (
-                  <Text style={styles.unassigned}>Unassigned</Text>
-                )}
-              </View>
-              <View style={styles.chips}>
-                {ASSIGN.map((a) => {
-                  const on = current?.team === a.team && current?.role === a.role
-                  return (
+                  <View style={styles.memberBtns}>
                     <Pressable
-                      key={`${a.team}-${a.role}`}
-                      style={[styles.chip, on && { borderColor: TEAM_COLOR[a.team], backgroundColor: `${TEAM_COLOR[a.team]}22` }]}
+                      style={[styles.addBtn, { borderColor: TEAM_COLOR.red }]}
                       disabled={busyId === p.id}
-                      onPress={() => void assign(p.id, a.team, a.role)}
+                      onPress={() => void assign(p.id, 'red', 'operative')}
                     >
-                      <Text style={[styles.chipText, on && { color: TEAM_COLOR[a.team] }]}>{a.label}</Text>
+                      <Text style={[styles.addBtnText, { color: TEAM_COLOR.red }]}>🔴 Red</Text>
                     </Pressable>
-                  )
-                })}
-                {current ? (
-                  <Pressable style={styles.bench} disabled={busyId === p.id} onPress={() => void bench(p.id)}>
-                    <Text style={styles.benchText}>✕</Text>
-                  </Pressable>
-                ) : null}
-              </View>
+                    <Pressable
+                      style={[styles.addBtn, { borderColor: TEAM_COLOR.blue }]}
+                      disabled={busyId === p.id}
+                      onPress={() => void assign(p.id, 'blue', 'operative')}
+                    >
+                      <Text style={[styles.addBtnText, { color: TEAM_COLOR.blue }]}>🔵 Blue</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ))}
             </View>
-          )
-        })
+          ) : null}
+        </>
       )}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       {randomize ? (
-        <Pressable style={[styles.shuffle, shuffling && styles.disabled]} disabled={shuffling} onPress={() => void shuffle()}>
+        <Pressable
+          style={[styles.shuffle, shuffling && styles.disabled]}
+          disabled={shuffling}
+          onPress={() => void shuffle()}
+        >
           <Text style={styles.shuffleText}>{shuffling ? 'Shuffling…' : '🔀 Shuffle operatives'}</Text>
         </Pressable>
       ) : null}
@@ -175,59 +221,69 @@ export function CodewordsHostLobby({ gameCode, hostToken, game, players }: Props
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  card: {
-    backgroundColor: theme.surface,
-    borderRadius: theme.radius.lg,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: theme.space.md,
-    gap: theme.space.sm,
-    marginTop: theme.space.md,
-  },
-  title: { color: theme.text, fontSize: 17, fontWeight: '800' },
-  hint: { color: theme.textMuted, fontSize: 13, lineHeight: 18 },
-  empty: { color: theme.textFaint, fontSize: 14, paddingVertical: theme.space.sm },
-  row: {
-    borderTopWidth: 1,
-    borderTopColor: theme.border,
-    paddingTop: theme.space.sm,
-    gap: 6,
-  },
-  nameCol: { gap: 2 },
-  name: { color: theme.text, fontSize: 15, fontWeight: '700' },
-  badge: { fontSize: 12, fontWeight: '800' },
-  unassigned: { color: theme.textFaint, fontSize: 12 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: theme.radius.sm,
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.bgElevated,
-  },
-  chipText: { color: theme.textMuted, fontSize: 12, fontWeight: '700' },
-  bench: {
-    width: 32,
-    height: 32,
-    borderRadius: theme.radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.bgElevated,
-  },
-  benchText: { color: theme.textMuted, fontSize: 13, fontWeight: '700' },
-  error: { color: theme.error, fontSize: 13 },
-  shuffle: {
-    backgroundColor: theme.bgElevated,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: theme.radius.sm,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: theme.space.xs,
-  },
-  shuffleText: { color: theme.textSecondary, fontWeight: '700', fontSize: 15 },
-  disabled: { opacity: 0.5 },
-})
+    card: {
+      backgroundColor: theme.surface,
+      borderRadius: theme.radius.lg,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: theme.space.md,
+      gap: theme.space.sm,
+      marginTop: theme.space.md,
+    },
+    title: { color: theme.text, fontSize: 17, fontWeight: '800' },
+    hint: { color: theme.textMuted, fontSize: 13, lineHeight: 18 },
+    empty: { color: theme.textFaint, fontSize: 14, paddingVertical: theme.space.sm },
+    grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    teamCard: {
+      flexGrow: 1,
+      flexBasis: '47%',
+      minWidth: 0,
+      borderWidth: 1,
+      borderRadius: theme.radius.md,
+      padding: 10,
+      gap: 8,
+    },
+    teamHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    teamBadge: { borderRadius: theme.radius.pill, paddingHorizontal: 10, paddingVertical: 3, alignSelf: 'flex-start' },
+    teamBadgeText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+    count: { color: theme.textMuted, fontSize: 13, fontWeight: '700' },
+    memberList: { gap: 6, minHeight: 22 },
+    memberRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
+    memberName: { color: theme.text, fontSize: 14, flexShrink: 1 },
+    memberBtns: { flexDirection: 'row', gap: 4 },
+    miniBtn: {
+      minWidth: 28,
+      height: 28,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: theme.radius.sm,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.bgElevated,
+      paddingHorizontal: 4,
+    },
+    miniBtnText: { color: theme.textSecondary, fontSize: 13, fontWeight: '800' },
+    membersMuted: { color: theme.textFaint, fontSize: 12, fontStyle: 'italic' },
+    unassignedBlock: { borderTopWidth: 1, borderTopColor: theme.border, paddingTop: theme.space.sm, gap: 6 },
+    unassignedLabel: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    addBtn: { borderWidth: 1, borderRadius: theme.radius.sm, paddingHorizontal: 8, paddingVertical: 6 },
+    addBtnText: { fontSize: 12, fontWeight: '800' },
+    error: { color: theme.error, fontSize: 13 },
+    shuffle: {
+      backgroundColor: theme.bgElevated,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: theme.radius.sm,
+      paddingVertical: 12,
+      alignItems: 'center',
+      marginTop: theme.space.xs,
+    },
+    shuffleText: { color: theme.textSecondary, fontWeight: '700', fontSize: 15 },
+    disabled: { opacity: 0.5 },
+  })
