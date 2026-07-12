@@ -44,6 +44,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
   const [metadata, setMetadata] = useState<WordSearchMetadata | null>(null)
   const [found, setFound] = useState<WordSearchFound[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const [dragActive, setDragActive] = useState(false)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [nowMs, setNowMs] = useState<number>(() => Date.now())
   const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
@@ -329,7 +330,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('word_search')} subtitle={bootstrap.code}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} scrollEnabled={!dragActive}>
         <WordSearchGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} />
 
         {toast ? (
@@ -412,6 +413,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
               playerColors={playerColors}
               myPlayerId={boardPlayerId}
               onSelect={handleSelect}
+              onDragActiveChange={setDragActive}
               readOnly={viewing}
             />
 

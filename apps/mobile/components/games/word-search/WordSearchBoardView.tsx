@@ -31,6 +31,12 @@ type Props = {
   myPlayerId?: string | null
   /** Called on drag release with the snapped start→end endpoints. */
   onSelect?: (start: [number, number], end: [number, number]) => void
+  /**
+   * Fires true while a drag is in progress and false when it ends. The parent uses this to
+   * disable its ScrollView so a vertical/diagonal drag selects instead of scrolling the page
+   * (on iOS the native scroll gesture otherwise steals the vertical part of the drag).
+   */
+  onDragActiveChange?: (active: boolean) => void
   readOnly?: boolean
 }
 
@@ -71,6 +77,7 @@ export function WordSearchBoardView({
   playerColors = {},
   myPlayerId,
   onSelect,
+  onDragActiveChange,
   readOnly = false,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
@@ -120,6 +127,7 @@ export function WordSearchBoardView({
         onShouldBlockNativeResponder: () => true,
         onPanResponderGrant: (evt: GestureResponderEvent) => {
           if (readOnly) return
+          onDragActiveChange?.(true)
           const { locationX, locationY } = evt.nativeEvent
           const start = cellAtPoint(locationX, locationY)
           startRef.current = start
@@ -141,17 +149,19 @@ export function WordSearchBoardView({
           startRef.current = null
           endRef.current = null
           setPreview(new Set())
+          onDragActiveChange?.(false)
           if (start && end && (start[0] !== end[0] || start[1] !== end[1])) onSelect?.(start, end)
         },
         onPanResponderTerminate: () => {
           startRef.current = null
           endRef.current = null
           setPreview(new Set())
+          onDragActiveChange?.(false)
         },
       }),
     // Recreate when interactivity changes; refs cover the rest.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [readOnly, size, cell, onSelect]
+    [readOnly, size, cell, onSelect, onDragActiveChange]
   )
 
   const handlers = readOnly ? {} : panResponder.panHandlers
