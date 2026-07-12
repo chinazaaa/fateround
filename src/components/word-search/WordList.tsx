@@ -46,7 +46,9 @@ export function WordList({
                 onClick={() => onWordFlash?.(word)}
                 className={[
                   'w-full text-left flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs transition-colors',
-                  isFlashed ? 'bg-indigo-100/80 dark:bg-indigo-900/40' : 'hover:bg-slate-100/70 dark:hover:bg-slate-800/50',
+                  isFlashed
+                    ? 'bg-indigo-100/80 dark:bg-indigo-900/40'
+                    : 'hover:bg-slate-100/70 dark:hover:bg-slate-800/50',
                   found ? 'line-through opacity-70' : 'text-slate-700 dark:text-slate-200',
                 ].join(' ')}
               >

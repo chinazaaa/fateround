@@ -89,9 +89,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
 
   /** Merge a found row, deduped by (player, word) — a player scores each word once. */
   const addFound = useCallback((row: WordSearchFound) => {
-    setFound((prev) =>
-      prev.some((f) => f.player_id === row.player_id && f.word === row.word) ? prev : [...prev, row]
-    )
+    setFound((prev) => (prev.some((f) => f.player_id === row.player_id && f.word === row.word) ? prev : [...prev, row]))
   }, [])
 
   const loadGameState = useCallback(async (): Promise<{ state: WordSearchGameState; ok: boolean }> => {
@@ -329,7 +327,12 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
     view === 'late_join_choice',
     found.length
   )
-  const { context: viewerPromoteContext } = useLateJoinContext(gameCode, game, isViewer && view === 'playing', found.length)
+  const { context: viewerPromoteContext } = useLateJoinContext(
+    gameCode,
+    game,
+    isViewer && view === 'playing',
+    found.length
+  )
 
   function flashInvalid(start: [number, number], end: [number, number]) {
     const cells = selectionCells(start, end)
