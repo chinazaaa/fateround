@@ -44,6 +44,7 @@ import { clearNpatSessionData } from '@/lib/npat'
 import { clearSudokuSessionData } from '@/lib/sudoku'
 import { clearCrosswordSessionData } from '@/lib/crossword'
 import { clearWordSearchSessionData } from '@/lib/word-search'
+import { clearWordScrambleSessionData } from '@/lib/word-scramble'
 import { clearWordHuntSessionData } from '@/lib/word-hunt'
 import { clearMafiaSessionData } from '@/lib/mafia'
 import { clearTriviaSessionData } from '@/lib/trivia'
@@ -109,6 +110,7 @@ type ClearableSessionGameType = Extract<
   | 'mafia'
   | 'crossword'
   | 'word_search'
+  | 'word_scramble'
 >
 
 /**
@@ -144,6 +146,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   mafia: clearMafiaSessionData,
   crossword: clearCrosswordSessionData,
   word_search: clearWordSearchSessionData,
+  word_scramble: clearWordScrambleSessionData,
 }
 
 async function handlePost(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {

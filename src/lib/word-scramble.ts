@@ -2,7 +2,10 @@
 // unscrambled answer. Mirrors the Word Search shape: the jumbled letters + theme live in the
 // client-readable rounds.word_scramble_metadata; the ANSWERS live only in the RLS-protected
 // word_scramble_solutions table (validated server-side). Each correct unscramble is one row in
-// word_scramble_solves (the live race feed). This module is pure logic only — no DB/generation.
+// word_scramble_solves (the live race feed). Pure logic + one server-only play-again clearer.
+
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { clearSessionTables } from './session-clear'
 
 export type WordScrambleDifficulty = 'easy' | 'medium' | 'hard'
 
@@ -283,4 +286,14 @@ export function formatWordScrambleGameDuration(seconds: number): string {
   if (!seconds) return 'No limit'
   const minutes = Math.round(seconds / 60)
   return `${minutes} minute${minutes === 1 ? '' : 's'}`
+}
+
+// ── Play-again cleanup ────────────────────────────────────────────────────────────
+
+/** Wipe a room's scramble solves before a replay (solutions cascade with the round). */
+export async function clearWordScrambleSessionData(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error: string | null }> {
+  return clearSessionTables(supabase, gameId, ['word_scramble_solves'])
 }

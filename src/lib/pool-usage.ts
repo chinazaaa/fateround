@@ -23,6 +23,8 @@ export interface PoolUsageState {
   crossword?: Record<string, number>
   /** Word Search words → times used (best-effort replay variety) */
   word_search?: Record<string, number>
+  /** Word Scramble answers → times used (best-effort replay variety) */
+  word_scramble?: Record<string, number>
 }
 
 type RoundForUsage = {

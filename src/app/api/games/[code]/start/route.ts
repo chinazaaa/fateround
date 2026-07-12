@@ -31,6 +31,7 @@ import {
   isQuickDrawGame,
   isCrosswordGame,
   isWordSearchGame,
+  isWordScrambleGame,
 } from '@/lib/game-types'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { getCustomSlotCount } from '@/lib/custom-game'
@@ -120,6 +121,19 @@ import {
 } from '@/lib/word-search'
 import type { WordSearchMetadata, WordSearchPlacement } from '@/lib/word-search'
 import { buildWordSearchPuzzle, parseWordSearchEntries, findWordSearchTheme } from '@/lib/word-search-puzzles'
+import {
+  WORD_SCRAMBLE_MIN_PLAYERS,
+  WORD_SCRAMBLE_DIFFICULTY_SPECS,
+  parseWordScrambleDifficulty,
+  buildWordScrambleRoundRow,
+  type WordScrambleMetadata,
+} from '@/lib/word-scramble'
+import {
+  buildWordScramblePuzzle,
+  buildWordScrambleFromEntries,
+  parseWordScrambleEntries,
+  findWordScrambleTheme,
+} from '@/lib/word-scramble-puzzles'
 import { buildWordHuntRoundRow, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
 import { buildWordHuntMetadata } from '@/lib/word-hunt-dictionary'
 import {
@@ -872,6 +886,81 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
         ...(nextWordSearchUsage
           ? { pool_usage: { ...parsePoolUsage(game.pool_usage), word_search: nextWordSearchUsage } }
           : {}),
+      })
+      .eq('id', code.toUpperCase())
+
+    if (gameError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isWordScrambleGame(gameType)) {
+    const playingPlayers = playersData.filter((p) => p.spectator !== true)
+    if (playingPlayers.length < WORD_SCRAMBLE_MIN_PLAYERS) {
+      return NextResponse.json(
+        { error: `Need at least ${WORD_SCRAMBLE_MIN_PLAYERS} players to start` },
+        { status: 400 }
+      )
+    }
+
+    const seed = Date.now() ^ Math.floor(Math.random() * 0xffffffff)
+
+    // A custom word pool (stored word[,hint] list) overrides the platform theme; both feed the
+    // same builder. Falls back to the platform theme if custom is empty or too small.
+    let built: { metadata: WordScrambleMetadata; solution: string[] } | null = null
+    const customRows = Array.isArray(game.custom_questions) ? (game.custom_questions as Record<string, string>[]) : []
+    if (customRows.length > 0) {
+      const entries = parseWordScrambleEntries(customRows)
+      if (entries.length >= 4) built = buildWordScrambleFromEntries(entries, game.word_scramble_difficulty, seed)
+      if (built) built.metadata.difficulty = parseWordScrambleDifficulty(game.word_scramble_difficulty)
+    }
+
+    // Best-effort replay variety: exclude answers used in earlier games of this room.
+    let nextUsage: Record<string, number> | undefined
+    let puzzle: { metadata: WordScrambleMetadata; solution: string[] }
+    if (built) {
+      puzzle = built
+    } else {
+      const poolUsage = parsePoolUsage(game.pool_usage)
+      const theme = findWordScrambleTheme(game.word_scramble_theme)
+      const spec = WORD_SCRAMBLE_DIFFICULTY_SPECS[parseWordScrambleDifficulty(game.word_scramble_difficulty)]
+      const usedCounts = { ...(poolUsage.word_scramble ?? {}) }
+      let used = new Set(Object.keys(usedCounts).map((w) => w.toUpperCase()))
+      const fresh = theme.words.filter(
+        (w) => w.length >= spec.minLen && w.length <= spec.maxLen && !used.has(w.toUpperCase())
+      )
+      if (fresh.length < spec.count) used = new Set() // cycle exhausted — start fresh
+      puzzle = buildWordScramblePuzzle(theme.id, game.word_scramble_difficulty, seed, [...used])
+      const base = used.size === 0 ? {} : usedCounts
+      for (const w of puzzle.solution) base[w.toUpperCase()] = (base[w.toUpperCase()] ?? 0) + 1
+      nextUsage = base
+    }
+
+    const roundRow = buildWordScrambleRoundRow(code.toUpperCase(), puzzle.metadata)
+    const { data: insertedRound, error: roundError } = await getSupabaseAdmin()
+      .from('rounds')
+      .insert(roundRow)
+      .select('id')
+      .single()
+    if (roundError || !insertedRound) {
+      return NextResponse.json({ error: roundError?.message ?? 'Failed to create round' }, { status: 500 })
+    }
+
+    // Answers are stored separately (RLS hides them from players).
+    const { error: solutionError } = await supabase
+      .from('word_scramble_solutions')
+      .insert({ round_id: insertedRound.id, solution: puzzle.solution })
+    if (solutionError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', solutionError) }, { status: 500 })
+
+    const { error: gameError } = await getSupabaseAdmin()
+      .from('games')
+      .update({
+        status: 'active',
+        session_started_at: sessionStartedAt,
+        current_round_number: 1,
+        rounds_count: 1,
+        ...(nextUsage ? { pool_usage: { ...parsePoolUsage(game.pool_usage), word_scramble: nextUsage } } : {}),
       })
       .eq('id', code.toUpperCase())
 
