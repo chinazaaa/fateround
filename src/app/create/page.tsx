@@ -289,7 +289,7 @@ function CreateGameInner() {
     isPublic: false,
     describe_it_num_teams: 2,
     describe_it_mode: 'team',
-    quick_draw_variant: 'lie',
+    quick_draw_variant: 'guess',
     quick_draw_play_mode: 'team',
     quick_draw_num_teams: 2,
     word_rush_num_teams: 2,
