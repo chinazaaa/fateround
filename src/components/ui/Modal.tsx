@@ -9,9 +9,11 @@ interface ModalProps {
   subtitle?: string
   children: React.ReactNode
   size?: 'md' | 'lg'
+  /** Keep a consistent height regardless of content; the body scrolls internally. */
+  fillHeight?: boolean
 }
 
-export function Modal({ open, onClose, title, subtitle, children, size = 'md' }: ModalProps) {
+export function Modal({ open, onClose, title, subtitle, children, size = 'md', fillHeight = false }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
   const [mounted, setMounted] = useState(false)
@@ -88,7 +90,7 @@ export function Modal({ open, onClose, title, subtitle, children, size = 'md' }:
     >
       <div
         ref={panelRef}
-        className={`modal-panel ${size === 'lg' ? 'max-w-2xl' : ''}`}
+        className={`modal-panel ${size === 'lg' ? 'max-w-2xl' : ''} ${fillHeight ? 'modal-panel--fill' : ''}`}
         onClick={(e) => e.stopPropagation()}
       >
         {(title || subtitle) && (
@@ -111,7 +113,7 @@ export function Modal({ open, onClose, title, subtitle, children, size = 'md' }:
             </button>
           </div>
         )}
-        <div className="p-6">{children}</div>
+        <div className={fillHeight ? 'flex-1 min-h-0 overflow-y-auto p-6' : 'p-6'}>{children}</div>
       </div>
     </div>,
     document.body

@@ -1031,6 +1031,16 @@ body {
   }
 }
 
+/* Fill mode: keep a consistent height regardless of content so a short result
+   list doesn't leave the sheet collapsed behind the on-screen keyboard. The
+   header stays pinned and the body scrolls internally. */
+.modal-panel--fill {
+  height: min(90vh, 100%);
+  overflow-y: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;
