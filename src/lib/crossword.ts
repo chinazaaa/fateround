@@ -17,7 +17,7 @@ export const CROSSWORD_WORD_POINTS = 10
 /** Bonus for being the FIRST player to complete a given word. */
 export const CROSSWORD_FIRST_WORD_BONUS = 5
 /** Penalty applied per "reveal letter" hint used. */
-export const CROSSWORD_HINT_PENALTY = -10
+export const CROSSWORD_HINT_PENALTY = -3
 
 export type CrosswordDifficulty = 'easy' | 'medium' | 'hard'
 export const CROSSWORD_DIFFICULTIES: CrosswordDifficulty[] = ['easy', 'medium', 'hard']
