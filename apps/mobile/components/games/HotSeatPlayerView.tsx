@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { type Game, type Participant, type Player, type Round } from '@fateround/shared'
 import { batch9GameLabel } from '@fateround/shared/batch-9-games'
 import {
@@ -68,6 +68,8 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
   const [submissionType, setSubmissionType] = useState<HotSeatSubmissionType>('compliment')
   const [text, setText] = useState('')
   const [submitted, setSubmitted] = useState(false)
+  const scrollRef = useRef<ScrollView>(null)
+  const scrollInputIntoView = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)
   const [results, setResults] = useState<HotSeatSubmission[]>([])
   const [allSubmissions, setAllSubmissions] = useState<HotSeatSubmissionRow[]>([])
   const [acting, setActing] = useState(false)
@@ -305,7 +307,7 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
       title={bootstrap.game.title || batch9GameLabel('hot_seat')}
       subtitle={`Round ${currentRound.round_number} / ${bootstrap.game.rounds_count ?? '?'}`}
     >
-      <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
+      <KeyboardAwareGameScroll ref={scrollRef} contentContainerStyle={styles.content}>
         <View style={styles.spotlight}>
           <Text style={styles.spotlightEmoji}>🪑🔥</Text>
           <Text style={styles.spotlightLabel}>In the hot seat</Text>
@@ -368,6 +370,7 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
               placeholderTextColor={theme.textFaint}
               multiline
               maxLength={300}
+              onFocus={scrollInputIntoView}
             />
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <Pressable

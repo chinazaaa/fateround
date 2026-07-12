@@ -515,13 +515,17 @@ export async function processQuickDrawGuessSkip(
 
 export async function processQuickDrawGuessExpireTurn(
   supabase: SupabaseClient,
-  gameId: string
+  gameId: string,
+  opts?: { force?: boolean }
 ): Promise<{ error?: string; internal?: boolean }> {
   const { session, error, internal } = await loadSession(supabase, gameId)
   if (error) return { error, internal }
   if (!session || session.status === 'finished') return {}
   if (session.phase !== 'turn') return {}
-  if (!session.turn_deadline_at || new Date(session.turn_deadline_at).getTime() > Date.now()) return {}
+  // Players/timers wait for the turn deadline; the host may force-skip it early.
+  if (!opts?.force && (!session.turn_deadline_at || new Date(session.turn_deadline_at).getTime() > Date.now())) {
+    return {}
+  }
 
   if (session.mode === 'individual') {
     await endIndividualTurn(supabase, gameId, session)
@@ -576,6 +580,12 @@ export async function processQuickDrawGuessAdvance(
   const { session, error, internal } = await loadSession(supabase, gameId)
   if (error) return { error, internal }
   if (!session || session.status === 'finished') return {}
+  // Host "skip to next phase" arrives here during a live turn too. Only the host
+  // (force) may cut a turn short — end it, which moves the game to the break.
+  if (session.phase === 'turn') {
+    if (opts?.force) return processQuickDrawGuessExpireTurn(supabase, gameId, { force: true })
+    return {}
+  }
   if (session.phase !== 'break') return {}
   if (!opts?.force && (!session.break_deadline_at || new Date(session.break_deadline_at).getTime() > Date.now())) {
     return {}

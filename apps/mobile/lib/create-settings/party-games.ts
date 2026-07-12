@@ -125,7 +125,7 @@ export function defaultPartyRoomSettings(gameType: GameType): PartyRoomSettings 
     bingoCallMode: BINGO_DEFAULT_CALL_MODE,
     bingoCallInterval: BINGO_DEFAULT_CALL_INTERVAL,
     quiplashVoteTimer: QUIPLASH_DEFAULT_VOTE_TIMER,
-    quickDrawVariant: 'lie',
+    quickDrawVariant: 'guess',
     quickDrawPlayMode: 'team',
     quickDrawNumTeams: 2,
     quickDrawTitleTimer: QUICK_DRAW_DEFAULT_TITLE_TIMER,

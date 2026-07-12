@@ -44,6 +44,8 @@ import { WhotGameTimerBar } from '@/components/whot/WhotGameTimerBar'
 import { useWhotGameTimer } from '@/hooks/useWhotGameTimer'
 import { WhotPlaySurface } from '@/components/whot/WhotPlaySurface'
 import { HostRoomShell } from '@/components/host/HostRoomShell'
+import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { playerIsViewer } from '@/lib/viewers'
 import { CardTableSettingsSheet } from '@/components/rooms/card-table/CardTableSettingsSheet'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { WhotFinalResultsShareBlock } from '@/components/whot/WhotFinalResultsShareBlock'
@@ -562,6 +564,22 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
         hostMenuExtra={<TransferHostControl triggerClassName="ct-voice-menu-item" />}
         onEditName={renameHost}
       >
+        {/* Whot's active state renders here instead of HostGameLayout, so mirror
+            its host-rejoin banner: a host flipped to spectator mid-game (e.g. a
+            play-again reset re-seats everyone) can promote back to a player. */}
+        {(() => {
+          const hostPlayer = hostPlayerId ? (players.find((p) => p.id === hostPlayerId) ?? null) : null
+          return hostPlayer && playerIsViewer(hostPlayer, game) ? (
+            <ViewerModeBanner
+              gameCode={gameCode}
+              playerId={hostPlayerId}
+              game={game}
+              player={hostPlayer}
+              players={players}
+              onPromoted={load}
+            />
+          ) : null
+        })()}
         {session ? (
           <>
             {/* Host game settings (host+play toggle · Whot rules) — opened from
@@ -646,6 +664,10 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       tab={tab}
       onTabChange={setTab}
       primaryKind={primaryKind}
+      game={game}
+      players={players}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={load}
       showTabs={showTabs}
       gameStarted={gameStarted}
       header={<HostGameHeader game={game} />}

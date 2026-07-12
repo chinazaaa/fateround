@@ -164,13 +164,16 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
 
   const mode = clampQuickDrawPlayMode(bootstrap.game?.quick_draw_play_mode ?? session?.mode)
   const numTeams = clampQuickDrawNumTeams(bootstrap.game?.quick_draw_num_teams ?? session?.num_teams)
-  // Surface the mode (or active team) as a header pill during play instead of a
-  // floating "Individual" subtitle. Only in guess mode — the lie variant renders
-  // its own view below.
+  // Surface the mode as a header pill on every screen (join, lobby, play) so
+  // players see "Individual" / "N teams" up front — and the active team while a
+  // team turn is in progress. Only in guess mode — the lie variant renders its
+  // own view below.
   useHeaderBadge(
-    isGuessMode && bootstrap.screen === 'playing' && session
+    isGuessMode && bootstrap.game
       ? mode === 'team'
-        ? teamLabel(session.active_team)
+        ? bootstrap.screen === 'playing' && session
+          ? teamLabel(session.active_team)
+          : `${numTeams} teams`
         : 'Individual'
       : null
   )

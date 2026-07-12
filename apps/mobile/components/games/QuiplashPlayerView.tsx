@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import {
   type Game,
   type Player,
@@ -57,6 +57,8 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
   const [votes, setVotes] = useState<QuiplashVote[]>([])
   const [answerText, setAnswerText] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const scrollRef = useRef<ScrollView>(null)
+  const scrollInputIntoView = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)
   const [countdown, setCountdown] = useState(0)
   const [revealCountdown, setRevealCountdown] = useState(0)
   const styles = useThemedStyles(makeStyles)
@@ -267,7 +269,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
           : `Round ${currentRound.round_number}`
       }
     >
-      <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
+      <KeyboardAwareGameScroll ref={scrollRef} contentContainerStyle={styles.content}>
         <PhaseStepper steps={['Write', 'Vote', 'Results']} activeIndex={phaseIndex} />
 
         <LeaderboardPanel
@@ -314,6 +316,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
                 placeholderTextColor={theme.textFaint}
                 maxLength={QUIPLASH_MAX_ANSWER_LENGTH}
                 multiline
+                onFocus={scrollInputIntoView}
               />
               <Text style={styles.counter}>
                 {answerText.length}/{QUIPLASH_MAX_ANSWER_LENGTH}

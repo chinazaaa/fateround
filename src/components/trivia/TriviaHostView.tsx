@@ -403,6 +403,10 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
         tab={tab}
         onTabChange={setTab}
         primaryKind={primaryKind}
+        game={game}
+        players={players}
+        hostPlayerId={hostPlayerId}
+        onHostRejoined={load}
         showTabs={showTabs}
         gameStarted={gameStarted}
         header={<HostGameHeader game={game} />}
