@@ -196,7 +196,10 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
       points: s.points,
       detail: `${s.word_count} word${s.word_count === 1 ? '' : 's'}`,
     }))
-    const winnerId = top && top.points > 0 && leaderboard.length > 1 ? top.player_id : null
+    // Name the leader whenever they actually scored — a solo player who found words
+    // is still the winner (matches web, which never shows "Game over" here). Only a
+    // round where nobody scored anything falls back to "Game over".
+    const winnerId = top && top.points > 0 ? top.player_id : null
     const validWordsArray = validWords.size > 0 ? Array.from(validWords) : undefined
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('word_hunt')} subtitle={bootstrap.code}>
