@@ -79,6 +79,9 @@ import {
   parseStoredMltQuestions,
   parseStoredTriviaQuestions,
   parseStoredCodewordsWords,
+  parseStoredCrosswordEntries,
+  parseStoredWordSearchEntries,
+  parseStoredWordScrambleEntries,
 } from '@/lib/custom-questions'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
 import type { ParticipantMode, QuestionSource, TriviaQuestion } from '@/types'
@@ -245,7 +248,7 @@ function lobbyMaxRounds(
 function parseCustomQuestionsBody(
   raw: unknown,
   gameType: ReturnType<typeof parseGameType>
-): WyrQuestion[] | string[] | TriviaQuestion[] | null {
+): WyrQuestion[] | string[] | TriviaQuestion[] | Record<string, unknown>[] | null {
   if (!Array.isArray(raw)) return null
   if (isBinaryChoiceGame(gameType)) {
     const parsed = parseStoredWyrQuestions(raw)
@@ -282,6 +285,18 @@ function parseCustomQuestionsBody(
   if (isDescribeItGame(gameType)) {
     const parsed = parseStoredDescribeItWords(raw)
     return parsed.length > 0 ? parsed : null
+  }
+  if (isCrosswordGame(gameType)) {
+    const parsed = parseStoredCrosswordEntries(raw)
+    return parsed.length >= 4 ? parsed : null
+  }
+  if (isWordSearchGame(gameType)) {
+    const parsed = parseStoredWordSearchEntries(raw)
+    return parsed.length >= 4 ? parsed : null
+  }
+  if (isWordScrambleGame(gameType)) {
+    const parsed = parseStoredWordScrambleEntries(raw)
+    return parsed.length >= 4 ? parsed : null
   }
   return null
 }
@@ -423,6 +438,7 @@ export async function POST(req: NextRequest) {
   const question_source = parseQuestionSource(rawQuestionSource, game_type)
   let custom_questions: unknown[] | null = null
 
+  const isPuzzlePool = isCrosswordGame(game_type) || isWordSearchGame(game_type) || isWordScrambleGame(game_type)
   if (
     question_source === 'custom' &&
     (isBinaryChoiceGame(game_type) ||
@@ -433,12 +449,19 @@ export async function POST(req: NextRequest) {
       isQuiplashGame(game_type) ||
       isQuickDrawGame(game_type) ||
       isCodewordsGame(game_type) ||
-      isDescribeItGame(game_type))
+      isDescribeItGame(game_type) ||
+      isPuzzlePool)
   ) {
     const cqParsed = parseCustomQuestionsBody(rawCustomQuestions, game_type)
     if (!cqParsed) {
       return NextResponse.json(
-        { error: isDescribeItGame(game_type) ? 'Upload at least one word' : 'Upload at least one custom question' },
+        {
+          error: isPuzzlePool
+            ? 'Upload at least 4 words'
+            : isDescribeItGame(game_type)
+              ? 'Upload at least one word'
+              : 'Upload at least one custom question',
+        },
         { status: 400 }
       )
     }
@@ -899,7 +922,8 @@ export async function POST(req: NextRequest) {
       isQuiplashGame(game_type) ||
       isQuickDrawGame(game_type) ||
       isCodewordsGame(game_type) ||
-      isDescribeItGame(game_type)
+      isDescribeItGame(game_type) ||
+      isPuzzlePool
         ? question_source
         : 'platform',
     custom_questions,

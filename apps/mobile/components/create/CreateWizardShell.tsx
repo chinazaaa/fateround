@@ -98,8 +98,7 @@ export function CreateWizardShell() {
     }
   }
 
-  const primaryLabel =
-    step === 'setup' && showPeopleStep ? 'Next: People' : creating ? 'Creating…' : 'Create & host'
+  const primaryLabel = step === 'setup' && showPeopleStep ? 'Next: People' : creating ? 'Creating…' : 'Create & host'
 
   const primaryDisabled = creating || (step === 'setup' && !state.title.trim())
 
@@ -179,6 +178,7 @@ export function CreateWizardShell() {
             <PartyRoomSettingsPanel
               gameType={state.gameType}
               party={state.party}
+              contentSource={state.custom.source}
               onChange={(partyPatch) => patchState({ party: { ...state.party, ...partyPatch } })}
             />
 
@@ -222,70 +222,70 @@ export function CreateWizardShell() {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.bg },
-  container: {
-    paddingHorizontal: theme.space.lg,
-    paddingBottom: 40,
-    gap: theme.space.lg,
-  },
-  back: { alignSelf: 'flex-start', marginTop: theme.space.xs },
-  backText: { color: theme.primaryMuted, fontSize: 16, fontWeight: '700' },
-  hero: {
-    gap: theme.space.xs,
-    paddingBottom: theme.space.xs,
-  },
-  kicker: {
-    color: theme.primaryMuted,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-  },
-  heading: {
-    color: theme.text,
-    fontSize: 32,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-  subtitle: {
-    color: theme.textMuted,
-    fontSize: 16,
-    lineHeight: 24,
-    maxWidth: 340,
-  },
-  typeSection: { gap: theme.space.sm },
-  typeHeading: {
-    color: theme.text,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  footer: {
-    paddingHorizontal: theme.space.lg,
-    paddingTop: theme.space.sm,
-    paddingBottom: theme.space.sm,
-    gap: theme.space.sm,
-    borderTopWidth: 1,
-    borderTopColor: theme.border,
-    backgroundColor: theme.bg,
-  },
-  error: {
-    color: theme.error,
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  webLink: {
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: theme.space.sm,
-  },
-  webLinkText: {
-    color: theme.textFaint,
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  webLinkAction: {
-    color: theme.primaryMuted,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-})
+    safe: { flex: 1, backgroundColor: theme.bg },
+    container: {
+      paddingHorizontal: theme.space.lg,
+      paddingBottom: 40,
+      gap: theme.space.lg,
+    },
+    back: { alignSelf: 'flex-start', marginTop: theme.space.xs },
+    backText: { color: theme.primaryMuted, fontSize: 16, fontWeight: '700' },
+    hero: {
+      gap: theme.space.xs,
+      paddingBottom: theme.space.xs,
+    },
+    kicker: {
+      color: theme.primaryMuted,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 2,
+      textTransform: 'uppercase',
+    },
+    heading: {
+      color: theme.text,
+      fontSize: 32,
+      fontWeight: '800',
+      letterSpacing: -0.3,
+    },
+    subtitle: {
+      color: theme.textMuted,
+      fontSize: 16,
+      lineHeight: 24,
+      maxWidth: 340,
+    },
+    typeSection: { gap: theme.space.sm },
+    typeHeading: {
+      color: theme.text,
+      fontSize: 18,
+      fontWeight: '800',
+    },
+    footer: {
+      paddingHorizontal: theme.space.lg,
+      paddingTop: theme.space.sm,
+      paddingBottom: theme.space.sm,
+      gap: theme.space.sm,
+      borderTopWidth: 1,
+      borderTopColor: theme.border,
+      backgroundColor: theme.bg,
+    },
+    error: {
+      color: theme.error,
+      fontSize: 14,
+      textAlign: 'center',
+    },
+    webLink: {
+      alignItems: 'center',
+      gap: 4,
+      paddingVertical: theme.space.sm,
+    },
+    webLinkText: {
+      color: theme.textFaint,
+      fontSize: 13,
+      textAlign: 'center',
+    },
+    webLinkAction: {
+      color: theme.primaryMuted,
+      fontSize: 14,
+      fontWeight: '700',
+    },
+  })

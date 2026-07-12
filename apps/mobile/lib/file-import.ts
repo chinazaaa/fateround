@@ -5,6 +5,7 @@ import { isCodewordsGame } from '@fateround/shared/game-type-checks'
 import {
   MAX_TRIVIA_CHOICES,
   normalizeCodeword,
+  type PuzzleEntryDraft,
   type TriviaDraft,
   type WyrPairDraft,
 } from '@/lib/create-settings/custom-content'
@@ -16,13 +17,7 @@ import type { ParticipantDraft, ParticipantGender } from '@/lib/create-settings/
  */
 export async function pickCsvText(): Promise<{ name: string; text: string } | null> {
   const res = await DocumentPicker.getDocumentAsync({
-    type: [
-      'text/csv',
-      'text/comma-separated-values',
-      'text/tab-separated-values',
-      'text/plain',
-      'application/csv',
-    ],
+    type: ['text/csv', 'text/comma-separated-values', 'text/tab-separated-values', 'text/plain', 'application/csv'],
     copyToCacheDirectory: true,
     multiple: false,
   })
@@ -65,7 +60,11 @@ export function parseWyrCsv(text: string): WyrPairDraft[] {
     if (cols.length < 2) continue
     const a = cols[0]?.toLowerCase()
     const b = cols[1]?.toLowerCase()
-    if (rows.length === 0 && (a === 'option_a' || a === 'optiona' || a === 'a') && (b === 'option_b' || b === 'optionb' || b === 'b')) {
+    if (
+      rows.length === 0 &&
+      (a === 'option_a' || a === 'optiona' || a === 'a') &&
+      (b === 'option_b' || b === 'optionb' || b === 'b')
+    ) {
       continue
     }
     const optionA = cols[0].trim()
@@ -82,7 +81,10 @@ export function parseListCsv(gameType: GameType, text: string): string[] {
     const cols = splitRow(line)
     const raw = (cols.length >= 2 ? cols.join(', ') : cols[0])?.trim()
     if (!raw) continue
-    if (rows.length === 0 && (raw.toLowerCase() === 'question' || raw.toLowerCase() === 'word' || raw.toLowerCase() === 'prompt')) {
+    if (
+      rows.length === 0 &&
+      (raw.toLowerCase() === 'question' || raw.toLowerCase() === 'word' || raw.toLowerCase() === 'prompt')
+    ) {
       continue
     }
     if (isCodewordsGame(gameType)) {
@@ -91,6 +93,27 @@ export function parseListCsv(gameType: GameType, text: string): string[] {
     } else {
       rows.push(raw)
     }
+  }
+  return rows
+}
+
+/**
+ * Puzzle rows (crossword/word_search/word_scramble). First column is the word/answer,
+ * second (optional) is the hint/clue. Skips a header row (word/answer). Dedupes by word.
+ */
+export function parsePuzzleCsv(text: string): PuzzleEntryDraft[] {
+  const rows: PuzzleEntryDraft[] = []
+  const seen = new Set<string>()
+  for (const line of toLines(text)) {
+    const cols = splitRow(line)
+    const word = (cols[0] ?? '').trim()
+    if (!word) continue
+    const first = word.toLowerCase()
+    if (rows.length === 0 && (first === 'word' || first === 'answer')) continue
+    const key = word.toUpperCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    rows.push({ word, hint: (cols[1] ?? '').trim() })
   }
   return rows
 }
@@ -111,7 +134,10 @@ export function parseTriviaCsv(text: string): TriviaDraft[] {
     if (cols.length < 4) continue
     if (i === 0 && cols[0].toLowerCase() === 'question') continue
     const question = cols[0].trim()
-    const choices = cols.slice(1, 1 + MAX_TRIVIA_CHOICES).map((c) => c.trim()).filter(Boolean)
+    const choices = cols
+      .slice(1, 1 + MAX_TRIVIA_CHOICES)
+      .map((c) => c.trim())
+      .filter(Boolean)
     const correctRaw = cols[cols.length > 5 ? 5 : cols.length - 1] ?? 'a'
     const correctIndex = letterIndex(correctRaw)
     if (!question || choices.length < 2) continue

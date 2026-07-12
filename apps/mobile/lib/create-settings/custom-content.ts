@@ -1,16 +1,14 @@
 import type { Game, GameType, TriviaCategory } from '@fateround/shared'
-import {
-  isBinaryChoiceGame,
-  isMostLikelyTo,
-  isNeverHaveIEver,
-  isPickANumber,
-} from '@fateround/shared/poll-games'
+import { isBinaryChoiceGame, isMostLikelyTo, isNeverHaveIEver, isPickANumber } from '@fateround/shared/poll-games'
 import {
   isCodewordsGame,
+  isCrosswordGame,
   isDescribeItGame,
   isQuickDrawGame,
   isQuiplashGame,
   isTriviaGame,
+  isWordScrambleGame,
+  isWordSearchGame,
 } from '@fateround/shared/game-type-checks'
 
 /** Mirrors web `CODEWORDS_MIN_CUSTOM_POOL` (one full 25-tile board). */
@@ -22,9 +20,11 @@ export const MAX_TRIVIA_CHOICES = 4
 export type CustomQuestionSource = 'platform' | 'custom' | 'library'
 
 /** Which manual editor a game needs. */
-export type CustomContentKind = 'binary' | 'trivia' | 'list'
+export type CustomContentKind = 'binary' | 'trivia' | 'list' | 'puzzle'
 
 export type WyrPairDraft = { optionA: string; optionB: string }
+/** A crossword/word-search/word-scramble row: the word (answer) + an optional hint (clue). */
+export type PuzzleEntryDraft = { word: string; hint: string }
 export type TriviaDraft = {
   question: string
   choices: string[]
@@ -37,6 +37,7 @@ export type CustomContentState = {
   pairs: WyrPairDraft[]
   prompts: string[]
   trivia: TriviaDraft[]
+  puzzle: PuzzleEntryDraft[]
   /** Title of the picked community pack when `source === 'library'` (UI only). */
   libraryPackTitle: string | null
 }
@@ -56,7 +57,10 @@ export function supportsLibrary(gameType: GameType): boolean {
     isPickANumber(gameType) ||
     isCodewordsGame(gameType) ||
     isDescribeItGame(gameType) ||
-    isQuickDrawGame(gameType)
+    isQuickDrawGame(gameType) ||
+    isCrosswordGame(gameType) ||
+    isWordSearchGame(gameType) ||
+    isWordScrambleGame(gameType)
   )
 }
 
@@ -70,8 +74,32 @@ export function defaultCustomContentState(): CustomContentState {
     pairs: [{ optionA: '', optionB: '' }],
     prompts: [''],
     trivia: [emptyTriviaDraft()],
+    puzzle: [],
     libraryPackTitle: null,
   }
+}
+
+/** True when the puzzle game requires a hint/clue per entry (crossword clues are mandatory). */
+export function puzzleRequiresHint(gameType: GameType): boolean {
+  return isCrosswordGame(gameType)
+}
+
+/** Valid, ready-to-send puzzle rows for the current game. */
+function validPuzzleEntries(gameType: GameType, custom: CustomContentState): PuzzleEntryDraft[] {
+  const needsHint = puzzleRequiresHint(gameType)
+  const seen = new Set<string>()
+  const out: PuzzleEntryDraft[] = []
+  for (const e of custom.puzzle) {
+    const word = e.word.trim()
+    const hint = e.hint.trim()
+    if (!word) continue
+    if (needsHint && !hint) continue
+    const key = word.toUpperCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ word, hint })
+  }
+  return out
 }
 
 /** Convert a community pack's raw `questions` into the editor buffers for a game. */
@@ -81,6 +109,17 @@ export function packQuestionsToState(
   title: string
 ): Partial<CustomContentState> {
   const kind = customContentKind(gameType)
+  if (kind === 'puzzle') {
+    const puzzle = questions
+      .map((q) => {
+        const o = (q ?? {}) as { word?: unknown; answer?: unknown; hint?: unknown; clue?: unknown; theme?: unknown }
+        const word = String(o.word ?? o.answer ?? '').trim()
+        const hint = String(o.hint ?? o.clue ?? o.theme ?? '').trim()
+        return { word, hint }
+      })
+      .filter((p) => p.word)
+    return { source: 'library', libraryPackTitle: title, puzzle }
+  }
   if (kind === 'binary') {
     const pairs = questions
       .map((q) => {
@@ -95,7 +134,10 @@ export function packQuestionsToState(
       .map((q) => {
         const o = (q ?? {}) as { question?: unknown; choices?: unknown; correctIndex?: unknown; category?: unknown }
         const choices = Array.isArray(o.choices)
-          ? o.choices.filter((c): c is string => typeof c === 'string').map((c) => c.trim()).filter(Boolean)
+          ? o.choices
+              .filter((c): c is string => typeof c === 'string')
+              .map((c) => c.trim())
+              .filter(Boolean)
           : []
         return {
           question: String(o.question ?? '').trim(),
@@ -115,9 +157,12 @@ export function packQuestionsToState(
 }
 
 /** Build editor state from a game's stored pool (for lobby word-pool editing). */
-export function customContentStateFromGame(game: Pick<Game, 'game_type' | 'question_source' | 'custom_questions'>): CustomContentState {
+export function customContentStateFromGame(
+  game: Pick<Game, 'game_type' | 'question_source' | 'custom_questions'>
+): CustomContentState {
   const base = defaultCustomContentState()
-  const isCustom = game.question_source === 'custom' && Array.isArray(game.custom_questions) && game.custom_questions.length > 0
+  const isCustom =
+    game.question_source === 'custom' && Array.isArray(game.custom_questions) && game.custom_questions.length > 0
   if (!isCustom) return base
   return {
     ...base,
@@ -136,6 +181,7 @@ export function customContentStateFromGame(game: Pick<Game, 'game_type' | 'quest
 export function customContentKind(gameType: GameType): CustomContentKind | null {
   if (isBinaryChoiceGame(gameType)) return 'binary'
   if (isTriviaGame(gameType)) return 'trivia'
+  if (isCrosswordGame(gameType) || isWordSearchGame(gameType) || isWordScrambleGame(gameType)) return 'puzzle'
   if (
     isMostLikelyTo(gameType) ||
     isNeverHaveIEver(gameType) ||
@@ -166,6 +212,8 @@ export function normalizeCodeword(word: string): string | null {
 export function customContentNoun(gameType: GameType, plural = true): string {
   if (isCodewordsGame(gameType)) return plural ? 'words' : 'word'
   if (isDescribeItGame(gameType) || isQuickDrawGame(gameType)) return plural ? 'words' : 'word'
+  if (isCrosswordGame(gameType)) return plural ? 'answers' : 'answer'
+  if (isWordSearchGame(gameType) || isWordScrambleGame(gameType)) return plural ? 'words' : 'word'
   return plural ? 'questions' : 'question'
 }
 
@@ -227,6 +275,30 @@ export function customContentCopy(gameType: GameType): CustomContentCopy {
       placeholder: 'Question',
     }
   }
+  if (isCrosswordGame(gameType)) {
+    return {
+      sourceHint: 'Upload a CSV of answers + clues (4+ answers).',
+      hint: 'CSV columns: answer, clue.',
+      addLabel: 'Add answer',
+      placeholder: 'Answer',
+    }
+  }
+  if (isWordSearchGame(gameType)) {
+    return {
+      sourceHint: 'Upload a CSV of words (4+ words).',
+      hint: 'CSV column: word.',
+      addLabel: 'Add word',
+      placeholder: 'Word',
+    }
+  }
+  if (isWordScrambleGame(gameType)) {
+    return {
+      sourceHint: 'Upload a CSV of words + optional hints (4+ words).',
+      hint: 'CSV columns: word, hint (hint optional).',
+      addLabel: 'Add word',
+      placeholder: 'Word',
+    }
+  }
   return {
     sourceHint: 'Write your own questions.',
     hint: 'One question per row.',
@@ -245,7 +317,10 @@ function validTrivia(custom: CustomContentState): TriviaDraft[] {
   const out: TriviaDraft[] = []
   for (const t of custom.trivia) {
     const question = t.question.trim()
-    const choices = t.choices.map((c) => c.trim()).filter(Boolean).slice(0, MAX_TRIVIA_CHOICES)
+    const choices = t.choices
+      .map((c) => c.trim())
+      .filter(Boolean)
+      .slice(0, MAX_TRIVIA_CHOICES)
     if (!question || choices.length < 2) continue
     if (t.correctIndex < 0 || t.correctIndex >= choices.length) continue
     out.push({ question, choices, correctIndex: t.correctIndex, category: t.category })
@@ -271,6 +346,7 @@ export function customContentCount(gameType: GameType, custom: CustomContentStat
   if (kind === 'binary') return validPairs(custom).length
   if (kind === 'trivia') return validTrivia(custom).length
   if (kind === 'list') return validListItems(gameType, custom).length
+  if (kind === 'puzzle') return validPuzzleEntries(gameType, custom).length
   return 0
 }
 
@@ -278,6 +354,8 @@ export function customContentCount(gameType: GameType, custom: CustomContentStat
 export function customContentMinimum(gameType: GameType, roundsCount: number): number {
   if (isCodewordsGame(gameType)) return CODEWORDS_MIN_CUSTOM_POOL
   if (isPickANumber(gameType)) return PICK_A_NUMBER_MIN_POOL
+  // Crossword/word-search/word-scramble need at least 4 entries to build a grid or scramble set.
+  if (isCrosswordGame(gameType) || isWordSearchGame(gameType) || isWordScrambleGame(gameType)) return 4
   return Math.max(1, roundsCount)
 }
 
@@ -305,10 +383,7 @@ export function validateCustomContent(
 }
 
 /** `question_source` + `custom_questions` for the create payload. */
-export function customContentPayload(
-  gameType: GameType,
-  custom: CustomContentState
-): Record<string, unknown> {
+export function customContentPayload(gameType: GameType, custom: CustomContentState): Record<string, unknown> {
   if (!supportsCustomContent(gameType) || !usesCustomQuestions(custom.source)) {
     return { question_source: 'platform' }
   }
@@ -317,6 +392,16 @@ export function customContentPayload(
   if (kind === 'binary') customQuestions = validPairs(custom)
   else if (kind === 'trivia') customQuestions = validTrivia(custom)
   else if (kind === 'list') customQuestions = validListItems(gameType, custom)
+  else if (kind === 'puzzle') {
+    const entries = validPuzzleEntries(gameType, custom)
+    if (isCrosswordGame(gameType)) {
+      customQuestions = entries.map((e) => ({ answer: e.word, clue: e.hint }))
+    } else if (isWordScrambleGame(gameType)) {
+      customQuestions = entries.map((e) => (e.hint ? { word: e.word, hint: e.hint } : { word: e.word }))
+    } else {
+      customQuestions = entries.map((e) => ({ word: e.word }))
+    }
+  }
 
   return { question_source: 'custom', custom_questions: customQuestions }
 }

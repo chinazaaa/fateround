@@ -9,6 +9,7 @@ import { parseCodewordsWordRows, CODEWORDS_MIN_CUSTOM_POOL } from '@/lib/codewor
 import { PAN_MIN_POOL } from '@/lib/pick-a-number-questions'
 import { parseCrosswordEntries } from '@/lib/crossword-puzzles'
 import { parseWordSearchEntries } from '@/lib/word-search-puzzles'
+import { parseWordScrambleEntries } from '@/lib/word-scramble-puzzles'
 import type { TriviaQuestion } from '@/types'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
 
@@ -24,6 +25,7 @@ type GameType =
   | 'pick_a_number'
   | 'crossword'
   | 'word_search'
+  | 'word_scramble'
 
 interface ValidationResult {
   ok: boolean
@@ -172,6 +174,26 @@ function validateWordSearch(rows: Record<string, string>[]): ValidationResult {
   return { ok: errors.length === 0, errors, questions, rowCount: rows.length }
 }
 
+function validateWordScramble(rows: Record<string, string>[]): ValidationResult {
+  if (rows.length === 0) return { ok: false, errors: ['No rows found'], questions: [], rowCount: 0 }
+  if (!('word' in rows[0]) && !('answer' in rows[0])) {
+    return { ok: false, errors: ['Missing column: word'], questions: [], rowCount: 0 }
+  }
+  const seen = new Set<string>()
+  const questions: { word: string; hint?: string }[] = []
+  for (const e of parseWordScrambleEntries(rows)) {
+    const word = e.word.trim().toUpperCase()
+    if (word && !seen.has(word)) {
+      seen.add(word)
+      questions.push(e.hint ? { word, hint: e.hint } : { word })
+    }
+  }
+  const errors: string[] = []
+  if (questions.length < 4) errors.push('Must have at least 4 words')
+  if (questions.length > 200) errors.push('Maximum 200 words allowed')
+  return { ok: errors.length === 0, errors, questions, rowCount: rows.length }
+}
+
 const GAME_TYPES: { value: GameType; label: string; description: string; columns: string }[] = [
   {
     value: 'trivia',
@@ -239,6 +261,12 @@ const GAME_TYPES: { value: GameType; label: string; description: string; columns
     description: 'Words to hide in the word-search grid',
     columns: 'word',
   },
+  {
+    value: 'word_scramble',
+    label: 'Word Scramble',
+    description: 'Words to unscramble, with optional hints',
+    columns: 'word, hint',
+  },
 ]
 
 const DIFFICULTY_TAGS = ['easy', 'intermediate', 'advanced'] as const
@@ -297,6 +325,7 @@ export default function SubmitPackPage() {
       else if (gameType === 'codewords') setValidation(validateCodewords(rows))
       else if (gameType === 'crossword') setValidation(validateCrossword(rows))
       else if (gameType === 'word_search') setValidation(validateWordSearch(rows))
+      else if (gameType === 'word_scramble') setValidation(validateWordScramble(rows))
       else if (gameType === 'pick_a_number') setValidation(validatePrompts(rows, PAN_MIN_POOL))
       else setValidation(validatePrompts(rows)) // covers most_likely_to and never_have_i_ever
     }
@@ -581,6 +610,19 @@ export default function SubmitPackPage() {
                       (validation.questions as string[]).slice(0, 3).map((q, i) => (
                         <p key={i} className="text-xs text-muted truncate leading-relaxed">
                           {i + 1}. {q}
+                        </p>
+                      ))}
+                    {gameType === 'crossword' &&
+                      (validation.questions as { answer: string; clue: string }[]).slice(0, 3).map((q, i) => (
+                        <p key={i} className="text-xs text-muted truncate leading-relaxed">
+                          {i + 1}. {q.answer} <span className="text-faint">— {q.clue}</span>
+                        </p>
+                      ))}
+                    {(gameType === 'word_search' || gameType === 'word_scramble') &&
+                      (validation.questions as { word: string; hint?: string }[]).slice(0, 3).map((q, i) => (
+                        <p key={i} className="text-xs text-muted truncate leading-relaxed">
+                          {i + 1}. {q.word}
+                          {q.hint ? <span className="text-faint"> — {q.hint}</span> : null}
                         </p>
                       ))}
                   </div>

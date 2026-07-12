@@ -117,11 +117,14 @@ import {
   CODEWORDS_MIN_CUSTOM_POOL,
   parseCrosswordEntryImport,
   parseWordSearchEntryImport,
+  parseWordScrambleEntryImport,
   parseStoredCrosswordEntries,
   parseStoredWordSearchEntries,
+  parseStoredWordScrambleEntries,
   formatEntryImportSummary,
   type CrosswordEntry,
   type WordSearchEntry,
+  type WordScrambleEntry,
 } from '@/lib/custom-questions'
 import { playerQuestionsOrderOptions, parsePlayerQuestionsOrder } from '@/lib/player-question-pool'
 import { isPeoplePollGame, playerNameSubmissionHint } from '@/lib/player-participant-pool'
@@ -335,6 +338,7 @@ function CreateGameInner() {
   const quickDrawFileRef = useRef<HTMLInputElement>(null)
   const crosswordFileRef = useRef<HTMLInputElement>(null)
   const wordSearchFileRef = useRef<HTMLInputElement>(null)
+  const wordScrambleFileRef = useRef<HTMLInputElement>(null)
   const [participants, setParticipants] = useState<ParticipantInput[]>([])
   const [nameInput, setNameInput] = useState('')
   const [defaultGender, setDefaultGender] = useState<ParticipantGender>('female')
@@ -439,6 +443,7 @@ function CreateGameInner() {
   const [customTriviaQuestions, setCustomTriviaQuestions] = useState<TriviaQuestion[]>([])
   const [customCrosswordEntries, setCustomCrosswordEntries] = useState<CrosswordEntry[]>([])
   const [customWordSearchWords, setCustomWordSearchWords] = useState<WordSearchEntry[]>([])
+  const [customWordScrambleWords, setCustomWordScrambleWords] = useState<WordScrambleEntry[]>([])
   const [puzzleUploadError, setPuzzleUploadError] = useState<string | null>(null)
   const [puzzleUploadSummary, setPuzzleUploadSummary] = useState<string | null>(null)
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null)
@@ -495,6 +500,7 @@ function CreateGameInner() {
       else if (isCodewordsGame(settings.game_type)) setCustomCodewordsWords(parseStoredCodewordsWords(qs))
       else if (isCrosswordGame(settings.game_type)) setCustomCrosswordEntries(parseStoredCrosswordEntries(qs))
       else if (isWordSearchGame(settings.game_type)) setCustomWordSearchWords(parseStoredWordSearchEntries(qs))
+      else if (isWordScrambleGame(settings.game_type)) setCustomWordScrambleWords(parseStoredWordScrambleEntries(qs))
       else setCustomMltQuestions(qs as string[])
     }
   }
@@ -754,6 +760,15 @@ function CreateGameInner() {
           } else if (gt === 'codewords') {
             setQuestionSource('custom')
             setCustomCodewordsWords(parseStoredCodewordsWords(qs))
+          } else if (gt === 'crossword') {
+            setQuestionSource('library')
+            setCustomCrosswordEntries(parseStoredCrosswordEntries(qs))
+          } else if (gt === 'word_search') {
+            setQuestionSource('library')
+            setCustomWordSearchWords(parseStoredWordSearchEntries(qs))
+          } else if (gt === 'word_scramble') {
+            setQuestionSource('library')
+            setCustomWordScrambleWords(parseStoredWordScrambleEntries(qs))
           } else {
             setQuestionSource('library')
             if (gt === 'trivia') setCustomTriviaQuestions(qs as TriviaQuestion[])
@@ -947,6 +962,7 @@ function CreateGameInner() {
     setCustomTriviaQuestions([])
     setCustomCrosswordEntries([])
     setCustomWordSearchWords([])
+    setCustomWordScrambleWords([])
     setPuzzleUploadError(null)
     setPuzzleUploadSummary(null)
     setDescribeItWords('')
@@ -1447,6 +1463,12 @@ function CreateGameInner() {
         customWordSearchWords.length < 4
       )
         return
+      if (
+        isWordScramble &&
+        (questionSource === 'custom' || questionSource === 'library') &&
+        customWordScrambleWords.length < 4
+      )
+        return
     } else if (isTriviaQuickCreate) {
       if (!canCreateQuickLobby) return
     } else if (isJoinersMode ? !canCreateJoiners : !canCreateImport) return
@@ -1467,25 +1489,29 @@ function CreateGameInner() {
               ? (questionSource === 'custom' || questionSource === 'library') && customWordSearchWords.length >= 4
                 ? 'custom'
                 : 'platform'
-              : isCodewords
-                ? questionSource === 'library'
+              : isWordScramble
+                ? (questionSource === 'custom' || questionSource === 'library') && customWordScrambleWords.length >= 4
                   ? 'custom'
-                  : questionSource
-                : isDescribeIt
-                  ? (questionSource === 'custom' || questionSource === 'library') &&
-                    parseDescribeItWords(describeItWords).length > 0
+                  : 'platform'
+                : isCodewords
+                  ? questionSource === 'library'
                     ? 'custom'
-                    : 'platform'
-                  : isQuickDraw
+                    : questionSource
+                  : isDescribeIt
                     ? (questionSource === 'custom' || questionSource === 'library') &&
-                      parseDescribeItWords(quickDrawWords).length > 0
+                      parseDescribeItWords(describeItWords).length > 0
                       ? 'custom'
                       : 'platform'
-                    : isLobbyQuestions
-                      ? questionSource === 'library'
+                    : isQuickDraw
+                      ? (questionSource === 'custom' || questionSource === 'library') &&
+                        parseDescribeItWords(quickDrawWords).length > 0
                         ? 'custom'
-                        : questionSource
-                      : 'platform',
+                        : 'platform'
+                      : isLobbyQuestions
+                        ? questionSource === 'library'
+                          ? 'custom'
+                          : questionSource
+                        : 'platform',
           custom_questions: isCrossword
             ? (questionSource === 'custom' || questionSource === 'library') && customCrosswordEntries.length >= 4
               ? customCrosswordEntries
@@ -1494,29 +1520,33 @@ function CreateGameInner() {
               ? (questionSource === 'custom' || questionSource === 'library') && customWordSearchWords.length >= 4
                 ? customWordSearchWords
                 : null
-              : isCodewords
-                ? questionSource === 'custom' || questionSource === 'library'
-                  ? customCodewordsWords
+              : isWordScramble
+                ? (questionSource === 'custom' || questionSource === 'library') && customWordScrambleWords.length >= 4
+                  ? customWordScrambleWords
                   : null
-                : isDescribeIt
-                  ? (questionSource === 'custom' || questionSource === 'library') &&
-                    parseDescribeItWords(describeItWords).length > 0
-                    ? parseDescribeItWords(describeItWords)
+                : isCodewords
+                  ? questionSource === 'custom' || questionSource === 'library'
+                    ? customCodewordsWords
                     : null
-                  : isQuickDraw
+                  : isDescribeIt
                     ? (questionSource === 'custom' || questionSource === 'library') &&
-                      parseDescribeItWords(quickDrawWords).length > 0
-                      ? parseDescribeItWords(quickDrawWords)
+                      parseDescribeItWords(describeItWords).length > 0
+                      ? parseDescribeItWords(describeItWords)
                       : null
-                    : isLobbyQuestions && (questionSource === 'custom' || questionSource === 'library')
-                      ? isWyr || isTot
-                        ? customWyrQuestions
-                        : isTrivia
-                          ? customTriviaQuestions
-                          : isQuiplash
-                            ? customMltQuestions
-                            : customMltQuestions
-                      : null,
+                    : isQuickDraw
+                      ? (questionSource === 'custom' || questionSource === 'library') &&
+                        parseDescribeItWords(quickDrawWords).length > 0
+                        ? parseDescribeItWords(quickDrawWords)
+                        : null
+                      : isLobbyQuestions && (questionSource === 'custom' || questionSource === 'library')
+                        ? isWyr || isTot
+                          ? customWyrQuestions
+                          : isTrivia
+                            ? customTriviaQuestions
+                            : isQuiplash
+                              ? customMltQuestions
+                              : customMltQuestions
+                        : null,
           trivia_category: isTrivia ? triviaCategory : undefined,
           describe_it_mode: isDescribeIt ? settings.describe_it_mode : undefined,
           quick_draw_variant: isQuickDraw ? settings.quick_draw_variant : undefined,
@@ -3696,25 +3726,27 @@ function CreateGameInner() {
                     </select>
                   </Field>
                 )}
-                <Field label="Difficulty">
-                  <div className="grid grid-cols-3 gap-3">
-                    {WORD_SEARCH_DIFFICULTIES.map((difficulty) => (
-                      <button
-                        key={difficulty}
-                        type="button"
-                        onClick={() => setWordSearchDifficulty(difficulty)}
-                        className={[
-                          'rounded-2xl border-2 px-4 py-3 text-center capitalize',
-                          wordSearchDifficulty === difficulty
-                            ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
-                            : 'border-[var(--border-strong)] text-muted',
-                        ].join(' ')}
-                      >
-                        <span className="font-bold block text-base">{difficulty}</span>
-                      </button>
-                    ))}
-                  </div>
-                </Field>
+                {questionSource !== 'library' && (
+                  <Field label="Difficulty">
+                    <div className="grid grid-cols-3 gap-3">
+                      {WORD_SEARCH_DIFFICULTIES.map((difficulty) => (
+                        <button
+                          key={difficulty}
+                          type="button"
+                          onClick={() => setWordSearchDifficulty(difficulty)}
+                          className={[
+                            'rounded-2xl border-2 px-4 py-3 text-center capitalize',
+                            wordSearchDifficulty === difficulty
+                              ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                              : 'border-[var(--border-strong)] text-muted',
+                          ].join(' ')}
+                        >
+                          <span className="font-bold block text-base">{difficulty}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
+                )}
                 <Field label="Max time limit">
                   <select
                     value={wordSearchGameDuration}
@@ -3757,38 +3789,98 @@ function CreateGameInner() {
                     )}
                   </select>
                 </Field>
-                <Field label="Theme">
-                  <select
-                    value={wordScrambleTheme}
-                    onChange={(e) => setWordScrambleTheme(e.target.value)}
-                    className="input-field w-full"
-                  >
-                    {wordScrambleThemeOptions().map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
+                <Field label="Words & hints">
+                  <SegmentedControl
+                    value={questionSource}
+                    onChange={(v) => {
+                      setQuestionSource(v as QuestionSource)
+                      setSelectedPackId(null)
+                      setLibraryPackQuestions([])
+                      setPuzzleUploadError(null)
+                      setPuzzleUploadSummary(null)
+                      if (v !== 'custom' && v !== 'library') setCustomWordScrambleWords([])
+                    }}
+                    options={questionSourceOptions('word_scramble')}
+                  />
                 </Field>
-                <Field label="Difficulty">
-                  <div className="grid grid-cols-3 gap-3">
-                    {WORD_SCRAMBLE_DIFFICULTIES.map((difficulty) => (
-                      <button
-                        key={difficulty}
-                        type="button"
-                        onClick={() => setWordScrambleDifficulty(difficulty)}
-                        className={[
-                          'rounded-2xl border-2 px-4 py-3 text-center capitalize',
-                          wordScrambleDifficulty === difficulty
-                            ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
-                            : 'border-[var(--border-strong)] text-muted',
-                        ].join(' ')}
-                      >
-                        <span className="font-bold block text-base">{difficulty}</span>
-                      </button>
-                    ))}
+                {questionSource === 'library' && (
+                  <div className="space-y-2 pt-1">
+                    <LibraryPackPicker
+                      loading={libraryPacksLoading}
+                      packs={libraryPacks}
+                      search={libraryPackSearch}
+                      onSearchChange={setLibraryPackSearch}
+                      selectedPackId={selectedPackId}
+                      onSelect={selectLibraryPack}
+                      noun="words"
+                    />
+                    {customWordScrambleWords.length > 0 && (
+                      <p className="text-faint text-xs text-center">
+                        Loaded {customWordScrambleWords.length} words from this pack.
+                      </p>
+                    )}
                   </div>
-                </Field>
+                )}
+                {questionSource === 'custom' && (
+                  <PuzzleUpload
+                    sample={questionSampleFile('word_scramble')}
+                    hint={questionUploadHint('word_scramble')}
+                    buttonLabel="Choose CSV"
+                    fileRef={wordScrambleFileRef}
+                    error={puzzleUploadError}
+                    summary={puzzleUploadSummary}
+                    onFile={async (file) => {
+                      setPuzzleUploadError(null)
+                      setPuzzleUploadSummary(null)
+                      try {
+                        const result = parseWordScrambleEntryImport(await file.text())
+                        if (result.questions.length < 4) throw new Error('Need at least 4 words')
+                        setCustomWordScrambleWords(result.questions)
+                        const extra = formatEntryImportSummary(result)
+                        setPuzzleUploadSummary(`${result.questions.length} words loaded${extra ? ` · ${extra}` : ''}`)
+                      } catch (err) {
+                        setCustomWordScrambleWords([])
+                        setPuzzleUploadError(err instanceof Error ? err.message : 'Could not read that file')
+                      }
+                    }}
+                  />
+                )}
+                {questionSource === 'platform' && (
+                  <Field label="Theme">
+                    <select
+                      value={wordScrambleTheme}
+                      onChange={(e) => setWordScrambleTheme(e.target.value)}
+                      className="input-field w-full"
+                    >
+                      {wordScrambleThemeOptions().map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
+                {questionSource !== 'library' && (
+                  <Field label="Difficulty">
+                    <div className="grid grid-cols-3 gap-3">
+                      {WORD_SCRAMBLE_DIFFICULTIES.map((difficulty) => (
+                        <button
+                          key={difficulty}
+                          type="button"
+                          onClick={() => setWordScrambleDifficulty(difficulty)}
+                          className={[
+                            'rounded-2xl border-2 px-4 py-3 text-center capitalize',
+                            wordScrambleDifficulty === difficulty
+                              ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                              : 'border-[var(--border-strong)] text-muted',
+                          ].join(' ')}
+                        >
+                          <span className="font-bold block text-base">{difficulty}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
+                )}
                 <Field label="Max time limit">
                   <select
                     value={wordScrambleGameDuration}
@@ -3902,25 +3994,27 @@ function CreateGameInner() {
                     </select>
                   </Field>
                 )}
-                <Field label="Difficulty">
-                  <div className="grid grid-cols-3 gap-3">
-                    {CROSSWORD_DIFFICULTIES.map((difficulty) => (
-                      <button
-                        key={difficulty}
-                        type="button"
-                        onClick={() => setCrosswordDifficulty(difficulty)}
-                        className={[
-                          'rounded-2xl border-2 px-4 py-3 text-center capitalize',
-                          crosswordDifficulty === difficulty
-                            ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
-                            : 'border-[var(--border-strong)] text-muted',
-                        ].join(' ')}
-                      >
-                        <span className="font-bold block text-base">{difficulty}</span>
-                      </button>
-                    ))}
-                  </div>
-                </Field>
+                {questionSource !== 'library' && (
+                  <Field label="Difficulty">
+                    <div className="grid grid-cols-3 gap-3">
+                      {CROSSWORD_DIFFICULTIES.map((difficulty) => (
+                        <button
+                          key={difficulty}
+                          type="button"
+                          onClick={() => setCrosswordDifficulty(difficulty)}
+                          className={[
+                            'rounded-2xl border-2 px-4 py-3 text-center capitalize',
+                            crosswordDifficulty === difficulty
+                              ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                              : 'border-[var(--border-strong)] text-muted',
+                          ].join(' ')}
+                        >
+                          <span className="font-bold block text-base">{difficulty}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
+                )}
                 <Field label="Max time limit">
                   <select
                     value={crosswordGameDuration}

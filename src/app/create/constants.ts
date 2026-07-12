@@ -12,4 +12,5 @@ export const LIBRARY_GAME_TYPE_MAP: Record<string, string> = {
   codewords: 'codewords',
   crossword: 'crossword',
   word_search: 'word_search',
+  word_scramble: 'word_scramble',
 }

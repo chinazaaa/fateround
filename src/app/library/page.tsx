@@ -66,6 +66,10 @@ const GAME_TYPE_META: Record<string, { label: string; color: string }> = {
     label: 'Word Search',
     color: 'text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/25',
   },
+  word_scramble: {
+    label: 'Word Scramble',
+    color: 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/25',
+  },
 }
 
 const TAG_META: Record<string, { label: string; color: string }> = {
@@ -91,6 +95,7 @@ const GAME_TYPE_FILTERS = [
   { value: 'pick_a_number', label: 'Pick a Number' },
   { value: 'crossword', label: 'Crossword' },
   { value: 'word_search', label: 'Word Search' },
+  { value: 'word_scramble', label: 'Word Scramble' },
 ]
 
 const TAG_FILTERS = [
