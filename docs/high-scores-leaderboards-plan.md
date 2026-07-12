@@ -1,373 +1,323 @@
-# High Scores & Leaderboards — Plan / Recommendation
+# High Scores & Leaderboards — Build Plan
 
-Status: **Recommendation / not yet scheduled** · Companion to
-[`trophies-and-streaks.md`](./trophies-and-streaks.md),
-[`account-tiers.md`](./account-tiers.md) and
-[`feature-backlog.md`](./feature-backlog.md)
+Status: **Ready to build when you are** · Companion to
+[`trophies-and-streaks.md`](./trophies-and-streaks.md) and
+[`account-tiers.md`](./account-tiers.md)
 
-The ask: let people **beat their own high score** on the score-based games (Crossword,
-Sudoku, Word Search, Word Hunt, …) and **see a global leaderboard** of other players'
-high scores so they want to beat those too. Whether it needs auth, whether to wait for
-auth, and which games are involved — all answered below.
+**What we're building:** on the puzzle games (Word Hunt, Sudoku, Crossword, Word Search),
+players get a **high score they can beat**, and they can **see other players' scores** so
+they want to beat those too.
 
-> **TL;DR recommendation.** Build this as the **third retention pillar** next to trophies
-> and streaks, reusing the *same* identity model that `trophies-and-streaks.md` already
-> specifies (anonymous Supabase auth → email OTP). **Do not wait for a separate auth
-> project** — anonymous-first auth *is* the auth you need, and it lets scores accrue from
-> the very first play. The hard part is not auth; it is **fair comparison**: a leaderboard
-> is only meaningful when everyone is scored on the *same puzzle*. So the centrepiece is a
-> **Daily Challenge** (one shared seeded puzzle per game per day) with a **global daily
-> board + a rolling all-time personal best**. That is the format world-class puzzle apps
-> (NYT Games, GamePigeon, Wordle) use, and it is the one I recommend.
+There are **four leaderboards** in total. This doc explains each one, which **games** they
+apply to, and whether we need **auth** — in plain terms first, then the technical detail at
+the end.
 
 ---
 
-## 1. The core problem: you can't leaderboard apples against oranges
+## Part 1 — The one idea that makes it all work: the Daily Challenge
 
-Every score-based game today is **room-scoped and plays a different puzzle each time**
-(recon confirmed — scores live in per-round `*_submissions` / `*_found` tables that
-`CASCADE` when the game is deleted; nothing aggregates across sessions).
+Before the leaderboards make sense, one thing has to be true: **everyone has to be scored
+on the same puzzle.**
 
-That matters because **raw scores from different puzzles are not comparable**:
+Right now every game generates a *different* puzzle each time it's played. That means a
+score of 900 on an easy Sudoku and 900 on a hard one aren't the same achievement — so you
+can't rank them against each other. A leaderboard built on random puzzles would be
+meaningless.
 
-- A Sudoku score depends on difficulty and how many other players raced you for each cell
-  (scoring is *ranked* — 1st to solve a cell = 10, 2nd = 6…; see `0128_sudoku_cell_rank_scoring.sql`).
-- A Word Hunt score depends on which letters the board happened to contain.
-- A Crossword / Word Search "score" is a **count of correct cells / found words**, which
-  depends entirely on the size of that particular puzzle.
+The fix is the **Daily Challenge**:
 
-So a global "high score" table fed by whatever puzzle each room happened to generate would
-be **noise** — unbeatable boards would top it, and "beating your best" would just mean
-"got lucky with an easy board." **The score must be tied to a puzzle everyone shares.**
+> **Once a day, per game, everyone in the world gets the exact same puzzle.**
+> Word Hunt has one board today. Sudoku has one grid today. Everyone plays *that* one.
 
-There are two clean ways to get shared puzzles, and I recommend doing both, in order:
+Because everyone played the same puzzle, the scores are finally comparable — and *that's*
+what every leaderboard below is built on. (This is the same "daily puzzle" idea behind
+Wordle and the NYT games.) It also doubles as the daily activity that feeds the **streak**
+system in [`trophies-and-streaks.md`](./trophies-and-streaks.md).
 
-| Format | Everyone plays… | Comparison is fair? | Recommended |
+A few rules that keep it fair:
+- **The puzzle is the same for everyone**, decided by the date (so no one gets an easier board).
+- **You get one scored attempt per day, per game.** You can keep practising after, but only
+  your first real attempt counts toward the boards — otherwise people would just retry until
+  they got lucky.
+- **The answer key never reaches the phone** (it stays on the server), so no one can cheat
+  by reading the solution.
+
+Everything below hangs off this.
+
+---
+
+## Part 2 — The four leaderboards, explained
+
+All four are **per game**. Word Hunt has its own set of four boards; Sudoku has its own;
+and so on. Here's what each board is, why it exists, and an example.
+
+### 1. Personal Best — *"beat your own high score"*
+
+**What it is:** your own best score, kept per game. We show two numbers:
+- **Today's score** — what you got on today's Daily.
+- **Your best ever** — the highest Daily score you've ever hit in that game.
+
+**Why:** this is the core loop the whole feature is about. When today's score beats your
+best-ever, we throw a little **"New personal best!"** celebration. It feels good even if
+literally no one else is playing — so it's the first thing that works.
+
+**Example:** *"Word Hunt — Today: 3,200 · Your best: 4,100."* Tomorrow you try to top 4,100.
+
+### 2. Daily Global Board — *"beat everyone else, today"*
+
+**What it is:** a ranked list of **everyone's score on today's puzzle**, for that game. It
+**resets every day** with the new puzzle.
+
+**Why:** this is the headline, social feature. Because it resets daily, it's *always
+beatable* — a brand-new player who plays today can land at #1 today. Nobody is ever staring
+at an untouchable all-time record they can't dream of beating. Fresh competition every day
+is the single biggest reason daily boards keep people coming back.
+
+**Example:** *"Sudoku — Today's board: 1. Ada 980 · 2. Bimpe 940 · 3. **You** 910 …"* Beat
+Bimpe and you move up. Tomorrow it starts over.
+
+### 3. All-Time Board — *"the hall of fame"*
+
+**What it is:** the best Daily scores **ever recorded** by anyone, for that game. It moves
+slowly and only changes when someone has a truly great day.
+
+**Why:** it gives your dedicated players a long-term wall to climb — a record that stands
+for weeks. It's the aspiration that sits above the daily churn.
+
+**Example:** *"Crossword — All-time best: 1. Chidi 5,000 (set Mar 3) …"* Hard to reach, and
+that's the point.
+
+### 4. Weekly Board — *"this week's champion"* (optional, add after the first three)
+
+**What it is:** scores added up (or best-of) over the last **7 days**, per game. Resets each
+week.
+
+**Why:** the daily board can feel punishing if you miss a day. The weekly board is gentler —
+one bad day doesn't sink you — and it creates a satisfying "weekly champion" beat. It's
+marked optional because the first three deliver the core experience; weekly is a nice layer
+on top.
+
+**Example:** *"Word Search — This week: 1. Dami 18,400 (6 days played) …"*
+
+### How they fit together
+
+| Board | Compares you against | Resets | Feeling |
 |---|---|---|---|
-| **Daily Challenge** | the **same seeded puzzle** for that game, that day | ✅ yes | **Phase 1 — the backbone** |
-| **Per-room board** | the room's own puzzle | ✅ within that room only | Phase 2 — nice-to-have |
-| Free-play global board | a *different* puzzle each session | ❌ **no — don't build this** | ✗ never |
+| **Personal Best** | your past self | never (it only goes up) | "I'm improving" |
+| **Daily Global** | everyone, today | every day | "I can win *today*" |
+| **All-Time** | everyone, ever | never | "someday I'll get up there" |
+| **Weekly** | everyone, this week | every week | "I'm this week's champ" |
 
-The "personal best" the user asked for then means: **your best score on the Daily**
-(today's, and your all-time best Daily score), plus your best *within a room*. Both are
-apples-to-apples.
-
----
-
-## 2. Auth: don't wait, but don't build a second auth system either
-
-The recon is unambiguous: **there is no auth and no durable identity today.** A player is
-a `players.id` uuid scoped to one game + a free-text `name` + a per-game `resume_token`.
-The same human in two games is two unrelated rows. There is no `user_id`, no `profiles`
-table, no device id.
-
-**But `trophies-and-streaks.md` §2 already specifies the exact identity you need** and
-recommends **anonymous-first Supabase Auth**: `supabase.auth.signInAnonymously()` gives
-every player a real `auth.users` row (with `is_anonymous = true`) from their first play,
-and email OTP later *upgrades that same row in place* (same `auth.uid()`), so nothing is
-lost. Leaderboards should key off that **same `profiles.id`**.
-
-**Recommendation:**
-
-1. **Leaderboards depend on `profiles` (the anonymous-first identity), not on email
-   login.** So this feature ships the moment that identity layer exists — which is Phase 1
-   of the trophies doc. You are not blocked on "real" auth.
-2. **Sequencing:** the identity foundation (anon profile + `profiles` table) is a shared
-   prerequisite for *both* trophies and leaderboards. Build it once. Then trophies and
-   leaderboards are two consumers of it and can ship in either order.
-3. **If you genuinely want something before any identity work:** a device-id
-   (`SecureStore` / `localStorage` UUID) *personal-best-only* board is possible as a stopgap
-   (see §8), but it **cannot do a real cross-player global leaderboard** and creates
-   throwaway migration work. I recommend against it unless you need a demo this week.
-
-> **In one line:** anonymous Supabase auth is the auth this needs, it is already the plan
-> in `trophies-and-streaks.md`, and it unblocks a *real* global leaderboard — so build on
-> it rather than waiting for or hand-rolling anything separate.
+Together they cover every kind of player: the solo self-improver, the daily competitor, the
+long-term grinder, and the casual who plays a few times a week.
 
 ---
 
-## 3. Games involved
+## Part 3 — Which games
 
-### Tier 1 — the score-race grid games (the reason for this feature)
+### The launch games (the puzzle games this is really for)
 
-These already accrue an independent per-player score on a puzzle, so they map directly
-onto a high-score model. **These are the launch set.**
+These four already give each player their own score on a puzzle, so they slot straight into
+the Daily Challenge + leaderboards. **All four get all four boards.**
 
-| Game | `GameType` | Score today | Fair-comparison note |
-|---|---|---|---|
-| **Word Hunt** | `word_hunt` | Sum of `points_awarded` per found word (`wordHuntPoints`: 3-letter=100…) | Timed; score depends on board letters → **needs shared seed** |
-| **Sudoku** | `sudoku` | Sum of ranked `points_awarded` per cell (10/6/4/2, −3 wrong) | Ranked scoring is **multiplayer-relative** → for a fair solo board, score by **time + accuracy**, not race-rank (see §5) |
-| **Crossword** | `crossword` | Count of correct cells (no `points_awarded` col); has hint penalty | Score = correctness + speed − hints |
-| **Word Search** | `word_search` | Count of found words (no `points_awarded` col); has hints | Score = words found + speed − hints |
+| Game | What the score is | Notes |
+|---|---|---|
+| **Word Hunt** | points for the words you find (longer word = more points) + a bonus for finishing fast | already point-based; easiest to start with |
+| **Sudoku** | how much you solved + speed − a penalty for wrong cells | on the Daily we score it solo-style (not the "race to each cell" scoring the multiplayer room uses) |
+| **Crossword** | how many cells you got right + speed − a penalty for using hints | hint penalty already exists in the game |
+| **Word Search** | how many words you found + speed − a penalty for using hints | hint penalty already exists in the game |
 
-### Tier 2 — other per-player-score games (fast-follow)
+**Suggested order:** start with **Word Hunt + Sudoku** (they're the most ready), then add
+**Crossword + Word Search**. But the plan is the same for all four.
 
-Same shape, add once the Tier-1 pattern is proven: **Yahtzee** (`yahtzee`, has solo mode),
-**Trivia** (`trivia`), **Word Rush** (`word_rush`), **Quick Draw** (`quick_draw`),
-**Matching Pairs** (`matching_pairs`).
+### Games that can join later
 
-### Not in scope
+Same idea, add once the first four are proven: **Yahtzee** (it already has a solo mode),
+**Trivia**, **Word Rush**, **Quick Draw**, **Matching Pairs**.
 
-Turn-based / head-to-head board games (chess, checkers, ludo, whot, crazy_eights,
-monopoly, scrabble, tic-tac-toe, mahjong, ayo, snake & ladder) and host-run party games
-(mafia, quiplash, codewords, bingo, the poll family, …). These are **win/loss**, not
-**score-you-beat**. Their competitive layer is **trophies + tournaments**, not a high-score
-board. (A W/L or Elo ladder for these is a *separate* future idea; keep it out of this doc.)
+### Games this is *not* for
 
----
-
-## 4. Scope of leaderboards to build (my "best worldwide" pick)
-
-You asked me to pick the scope. Here's the set that top puzzle apps use and that I
-recommend, smallest-meaningful-first:
-
-1. **Personal best (the core loop).** Per game, per player: *your best Daily score ever*
-   and *today's score*. This is the "beat your high score" the user explicitly asked for.
-   Ships first; needs no one else to be playing to feel good. **Always build this.**
-2. **Daily global board (the social hook).** Per game, per day: the ranked list of
-   everyone's score on **today's shared puzzle**. Resets daily, so it is always beatable
-   and always fresh — the single biggest reason time-boxed boards out-retain all-time
-   boards (a newcomer is never staring at an untouchable all-time #1). **This is the
-   headline feature.**
-3. **All-time board (the aspiration).** Per game: best-ever Daily scores across all
-   players. Slower-moving, gives long-term players a wall to climb.
-4. **Weekly board (optional, Phase 2).** A 7-day rolling sum or best-of, for a "this
-   week's champion" beat that's less punishing than daily for casual players.
-
-**Deliberately *not* in v1:** friends-only / room-history boards (needs a social graph you
-don't have yet) and country/regional boards (needs location; revisit once there's volume).
-
-> **Format recommendation in one line:** *Personal best + Daily global board*, both fed by
-> a **shared Daily Challenge puzzle per game**, with an **all-time** board layered on. That
-> combination is what makes "beat your best" *and* "beat theirs" both fair and habit-forming.
+The turn-based and party games — chess, checkers, ludo, whot, crazy eights, monopoly,
+scrabble, tic-tac-toe, mahjong, ayo, snake & ladder, mafia, quiplash, bingo, the poll games.
+Those are **win/lose**, not "score you beat," so a high-score board doesn't fit them. Their
+competitive layer is **trophies and tournaments**, which is a separate system already
+planned in [`trophies-and-streaks.md`](./trophies-and-streaks.md).
 
 ---
 
-## 5. Scoring — normalise so a score means the same thing every day
+## Part 4 — Do we need auth? (Yes — and it's the same auth trophies needs)
 
-Because the leaderboard compares across days (all-time) and the underlying puzzles vary in
-difficulty, store a **normalised, difficulty-aware score**, not the raw in-game number. A
-good, simple model per game:
+**A leaderboard needs to know who each score belongs to, and remember it across days.**
+Today the app has *no* memory of who a player is — someone is just a name typed into one
+game, forgotten the moment the game ends. So yes, this needs an identity system.
+
+**The good news: it's the exact same identity system already planned for trophies and
+streaks**, so we're not building anything new or waiting on a separate project. From
+[`trophies-and-streaks.md`](./trophies-and-streaks.md) §2:
+
+- **Everyone gets an identity automatically on first play** (an "anonymous account" created
+  behind the scenes — no sign-up screen, no friction). Their scores attach to that from day
+  one.
+- **Signing up with email later just *saves* that same identity** so it survives switching
+  phones. Nothing is lost; the anonymous identity becomes a real account in place.
+- **We never force login to play.** Playing is always instant. The only nudge to sign up is
+  *after* someone does well — *"Nice score — save it to your profile so you don't lose it."*
+
+So the honest answer to *"do I wait for auth?"*: **the auth this needs is the anonymous-first
+login that trophies already requires. Build that identity foundation once, and both trophies
+and leaderboards run on top of it.** You are not blocked on a bigger auth project.
+
+> If you ever wanted a taste *before* that identity layer exists, you could do a
+> **personal-best-only** version saved on the one device (no global board, doesn't move
+> between phones). But it's throwaway work — the real version needs the shared identity, so
+> it's cleaner to build the identity first.
+
+---
+
+## Part 5 — How scoring stays fair (short version)
+
+Because different days have different puzzles, we don't store the raw in-game number. Each
+game converts its result into a **normalised score** with the same shape everywhere:
 
 ```
-daily_score = base(objective_completeness)     // how much of the puzzle you solved
-            + speed_bonus(time_remaining)       // faster = more, only if fully solved
-            - penalty(hints_used, wrong_moves)  // discourage brute-force / reveals
+score  =  how much of the puzzle you solved
+        + a bonus for finishing quickly
+        − a penalty for hints used or wrong moves
 ```
 
-Per-game specifics (reusing mechanics that already exist):
-
-- **Word Hunt** — sum of `wordHuntPoints` for found words + time-left bonus. Already
-  point-based; just add the time bonus and store the total.
-- **Sudoku** — for a *solo/daily* board, **drop the race-rank scoring** (10/6/4/2 is
-  inherently multiplayer-relative and unfair on a solo board) and score by
-  **completion + time − (wrong-cell penalties × 3)**, reusing the existing −3 penalty
-  constant. Keep race-rank scoring for the *in-room* multiplayer game as-is.
-- **Crossword** — correct cells ÷ total cells → completeness, + time bonus,
-  − per-hint penalty (the `via_hint` flag already exists; the reveal penalty is already
-  −3/letter per recent commits).
-- **Word Search** — found ÷ total words, + time bonus, − per-hint penalty (`via_hint`
-  exists).
-
-**Tie-breakers** (define once, apply everywhere): higher completeness → faster time →
-fewer hints → earlier submission timestamp.
-
-Put every tunable (time-bonus curve, hint penalty, tie-break order) in **one shared module
-in `packages/shared`** (e.g. `packages/shared/src/scoring/daily.ts`) so web and mobile
-compute identical scores and you can retune in one place. **The authoritative score is
-computed server-side** at submit/finish (see §7) — the client value is display-only.
+- **The server calculates the official score** (the phone's number is just for show), so
+  scores can't be faked.
+- **Ties are broken** by: solved more → finished faster → used fewer hints → submitted
+  earlier.
+- All the knobs (how big the speed bonus is, how much a hint costs) live in **one shared
+  place** so web and mobile always agree and we can retune easily.
 
 ---
 
-## 6. The Daily Challenge (the mechanism that makes it fair)
+## Part 6 — The technical build (for when you start)
 
-This is the backbone and it also feeds the **streak** system (`trophies-and-streaks.md`
-§4.2 already assumes a "solo Daily Challenge — Sudoku / Trivia / Word Hunt" exists — this
-builds that).
+This part is for implementation; skip it if you just wanted the concept.
 
-- **One puzzle per game per day, identical for everyone.** Derive the puzzle from a
-  **deterministic seed = `hash(game_type + YYYY-MM-DD in WAT)`** so every device generates
-  (or is served) the same board. Reuse the WAT day boundary the community leaderboard
-  already uses (`result_date`, `src/lib/room-timezones.ts`) so Daily, streak, and
-  leaderboard all agree on when "today" flips.
-- **Generate server-side, store the seed** (and, for Crossword/Word Search where the
-  solution is RLS-protected, keep the solution server-only exactly as the existing
-  `*_solutions` tables do). The client gets the puzzle but never the answer key.
-- **One scored attempt per player per day per game** (that's what makes the board fair and
-  the "beat your best" meaningful — your *best-ever daily*, not "spam until lucky").
-  Practice/replays after the scored attempt are fine but don't post to the board.
-- **A Daily is a first-class "solo game" instance** so it reuses the finish path, and its
-  finish is exactly where the leaderboard row and any trophies get written together.
+### Where it plugs in
+- **Identity:** the `profiles` table + anonymous Supabase auth from
+  [`trophies-and-streaks.md`](./trophies-and-streaks.md) §2. Shared prerequisite — build once.
+- **Scoring logic:** a shared module, `packages/shared/src/scoring/daily.ts`, used by both
+  web and mobile, but run authoritatively on the server.
+- **Saving a score:** reuse the existing finish path
+  `src/app/api/games/[code]/finish-game/route.ts` (it already runs per-game finishers). Add a
+  step that writes the daily score + updates the personal best, in the same transaction that
+  awards trophies — one server path does everything at once.
+- **Day boundary:** reuse the WAT date logic the community leaderboard already uses
+  (`src/lib/room-timezones.ts`) so Daily, streak, and leaderboards all agree on when "today"
+  flips.
+- **Puzzle generation:** derive each day's puzzle from a fixed seed
+  (`hash(game_type + date)`) so every device gets the identical board; keep the answer key in
+  a server-only table, exactly like the existing RLS-locked `crossword_solutions` /
+  `word_search_solutions` tables.
 
----
-
-## 7. Data model (Postgres / Supabase) — sketch
-
+### Database sketch
 New migration under `supabase/migrations/` (timestamped `YYYYMMDDHHMMSS_` prefix per repo
-convention). Keys off `profiles.id` from the trophies/identity foundation.
+convention). Keys off `profiles.id`.
 
 ```sql
--- One shared puzzle per game per day. Solution stays server-only (like *_solutions).
+-- One shared puzzle per game per day. The answer key is NOT in this table.
 create table daily_challenges (
-  id            uuid primary key default gen_random_uuid(),
-  game_type     text not null,
+  id             uuid primary key default gen_random_uuid(),
+  game_type      text not null,
   challenge_date date not null,                 -- WAT calendar date
-  seed          text not null,                  -- deterministic: hash(game_type + date)
-  puzzle        jsonb not null,                 -- board given to clients (no answers)
-  created_at    timestamptz not null default now(),
+  seed           text not null,                 -- hash(game_type + date)
+  puzzle         jsonb not null,                -- the board sent to clients (no answers)
+  created_at     timestamptz not null default now(),
   unique (game_type, challenge_date)
 );
 
--- One scored attempt per player per daily. The leaderboard reads from here.
+-- One scored attempt per player per daily. Every board reads from here.
 create table daily_scores (
   challenge_id  uuid not null references daily_challenges(id) on delete cascade,
   profile_id    uuid not null references profiles(id) on delete cascade,
-  score         integer not null,               -- normalised, server-computed (§5)
+  score         integer not null,               -- normalised, computed server-side
   completeness  numeric  not null default 0,     -- 0..1, for tie-breaks / display
-  time_ms       integer,                         -- for tie-breaks / display
+  time_ms       integer,
   hints_used    integer  not null default 0,
   submitted_at  timestamptz not null default now(),
-  primary key (challenge_id, profile_id)         -- one scored attempt per player per day
+  primary key (challenge_id, profile_id)         -- enforces one attempt per day
 );
 create index idx_daily_scores_board on daily_scores(challenge_id, score desc, time_ms asc);
 
--- Denormalised personal best per player per game (the "beat your high score" number).
--- Kept in sync on each daily submit; also trivially rebuildable from daily_scores.
+-- Cached personal best per player per game (rebuildable from daily_scores).
 create table personal_bests (
-  profile_id    uuid not null references profiles(id) on delete cascade,
-  game_type     text not null,
-  best_score    integer not null,
-  best_date     date   not null,                 -- which daily it was set on
-  updated_at    timestamptz not null default now(),
+  profile_id  uuid not null references profiles(id) on delete cascade,
+  game_type   text not null,
+  best_score  integer not null,
+  best_date   date   not null,
+  updated_at  timestamptz not null default now(),
   primary key (profile_id, game_type)
 );
 ```
 
-Notes:
+Which board is which query:
+- **Personal Best** → read `personal_bests` (best ever) + today's row in `daily_scores`.
+- **Daily Global** → `daily_scores` for today's `challenge_id`, ordered by score.
+- **All-Time** → top scores in `daily_scores` for a `game_type`, all dates.
+- **Weekly** → `daily_scores` aggregated over the last 7 `challenge_date`s.
 
-- **All-time board** = top N of `daily_scores` for a `game_type` (join `daily_challenges`),
-  optionally materialised/cached if it gets hot.
-- **Weekly board** (Phase 2) = aggregate `daily_scores` over the last 7 `challenge_date`s.
-- **`personal_bests` is a cache** — the source of truth is `daily_scores`; you can always
-  rebuild it, so a bug can't permanently corrupt someone's best.
+### Security / anti-cheat
+- **All writes go through the server** using the admin client (`getSupabaseAdmin()`), never a
+  direct insert from the phone — so scores can't be forged. Follow `docs/rls-hardening.md`.
+- **Players read only their own** score rows; the **public board is a narrow view** exposing
+  only handle + score + rank (never email/PII) — same pattern as the trophies boards.
+- **One attempt per day** enforced by the `(challenge_id, profile_id)` primary key.
+- **The solution stays server-side** (existing `*_solutions` RLS pattern).
+- Optional: reject impossibly-fast completions and log outliers.
 
-**RLS (follow `docs/rls-hardening.md`, same as trophies):**
-
-- `daily_scores` / `personal_bests`: **owner reads own rows** (`auth.uid() = profile_id`).
-- **Public leaderboard reads go through a narrow view / server route** that exposes only
-  `handle + score + rank` (never email/PII), and joins the public `profiles` handle — the
-  same "narrow view" pattern the trophies doc uses for its boards.
-- **All writes go through the server-side finish/submit path using `getSupabaseAdmin()`**
-  (service role, bypasses RLS) — never a client insert, so scores can't be forged.
-- `daily_challenges.puzzle` is public-read (clients need the board); the **solution is
-  never in this table** — keep it server-only like the existing `crossword_solutions` /
-  `word_search_solutions` RLS-locked tables.
-
----
-
-## 8. Where it hooks into existing code
-
-- **Submit / finish:** reuse the existing server-authoritative finish pattern —
-  `src/app/api/games/[code]/finish-game/route.ts` already calls per-game finalizers
-  (`finishScrabbleGameEarly`, `markGameFinished`, `awardTournamentPlacements`). Add a
-  `writeDailyScore(...)` step in the **same transaction** so a finished Daily produces its
-  `daily_scores` row, updates `personal_bests`, *and* fires any trophies together. This is
-  the identical hook the trophies award engine uses — one server path, one atomic write.
-- **Score computation:** `packages/shared/src/scoring/daily.ts` (shared web+mobile),
-  invoked authoritatively on the server; the client mirrors it only for live display.
-- **Anti-cheat (mirror the trophies §3.9 approach):**
-  - Score is **derived server-side** from the recorded submissions for that daily, never
-    trusted from a client-sent number.
-  - **One scored attempt** enforced by the `(challenge_id, profile_id)` primary key.
-  - **Idempotent finish** — a retried/duplicate finish no-ops (same session-marker pattern
-    as the trophies award transaction).
-  - The **solution never leaves the server** (existing `*_solutions` RLS pattern), so a
-    client can't self-complete instantly.
-  - Optional: sanity-cap `time_ms` (reject sub-human completions) and log outliers.
-
-### Stopgap option (only if you want something before the identity layer exists)
-
-A **device-id personal-best-only** board: generate a UUID in `SecureStore`
-(mobile — `apps/mobile/lib/secure-session.ts` already does device-scoped storage) /
-`localStorage` (web), store `best_score` per game against it. This gives "beat your own
-high score" **on that one device**, with **no global leaderboard and no cross-device
-sync**, and every row has to be re-pointed to a real `profile_id` once identity lands.
-I'd only do this if a personal-best demo is needed before Phase 1 of the identity work —
-otherwise it's throwaway.
+### Screens to build (web + mobile)
+- A **Daily Challenge card** on home: today's game(s), your streak, played/not-yet.
+- A **result screen**: your score, your rank today, the **"New personal best!"** moment,
+  a peek at the top of today's board. Reuse the mobile ShareCard pattern
+  (`mobile-finished-screen-sharecards.md`) so results are shareable.
+- A **Leaderboard screen** with tabs: **Today · All-time · Weekly**, per game, your own row
+  highlighted.
+- **Personal best** shown on the profile / game screen.
 
 ---
 
-## 9. Client surface (sketch)
+## Part 7 — Build order
 
-Mirrors the existing `src/components/*` (web) and `apps/mobile/components/*` conventions,
-and reuses the mobile finish-standings / ShareCard patterns already in the codebase.
+**First, the shared foundation (also needed by trophies):** anonymous Supabase auth + the
+`profiles` table. Build once.
 
-- **Daily entry point** — a "Daily Challenge" card on home (web + mobile) showing today's
-  game(s), your streak flame, and "played / not yet" state.
-- **Post-game result** — after a Daily finishes: your score, your rank on today's board,
-  **"New personal best!"** celebration when `score > best`, and a compact top-of-board
-  preview. Reuse the mobile `GameFinishPanel` / ShareCard mechanism
-  (see `mobile-finished-screen-sharecards.md`) so a Daily result is shareable.
-- **Leaderboard screen** — tabs: **Today · All-time · (Weekly, Phase 2)**, per game;
-  highlight the viewer's own row; show handle + score + rank only.
-- **Personal-best surfacing** — show each game's best score on the profile / game screen,
-  next to (not duplicating) its trophies.
-- **Share hook** — a "beat my score" share card links back into today's Daily (ties into
-  the existing share-card work in [`share-win-cards`] and `ShareResults.tsx`).
+**Then:**
+1. Daily Challenge for **Word Hunt + Sudoku** (seed, server-side scoring, one attempt/day).
+2. **Personal Best** + the "new personal best" celebration. *(Board #1)*
+3. **Daily Global board** + **All-Time board**. *(Boards #2 and #3)*
+4. Add **Crossword + Word Search** dailies.
+5. **Weekly board.** *(Board #4)*
+6. Extend to Tier-2 games (Yahtzee solo, Trivia, Word Rush…).
 
 ---
 
-## 10. Phasing
+## Part 8 — How this relates to trophies & streaks
 
-**Prerequisite (shared with trophies):** the identity foundation from
-`trophies-and-streaks.md` §2 — anonymous Supabase auth + the `profiles` table. Build once.
+Three separate systems, one shared identity — so nothing is double-built:
 
-**Phase 1 — the beatable loop (ship first):**
-1. `daily_challenges` + deterministic per-day seeding for **Word Hunt** and **Sudoku**
-   (the two most-ready score games; Sudoku scored solo-style per §5).
-2. Shared `scoring/daily.ts` + server-authoritative score write into the finish path.
-3. `daily_scores` + `personal_bests`; **personal-best celebration** on the result screen.
-4. **Daily global board** (Today) + **All-time board**, narrow public read view.
-5. Daily entry card + leaderboard screen (web + mobile).
+| System | Rewards | Kept fair by |
+|---|---|---|
+| **Trophies** ([doc](./trophies-and-streaks.md)) | mastering each game | fixed, absolute criteria |
+| **Streaks** ([doc](./trophies-and-streaks.md)) | coming back every day | one action per day |
+| **High scores / leaderboards** (this doc) | scoring higher than before / than others | everyone plays the **same daily puzzle** |
 
-**Phase 2:**
-6. Add **Crossword** + **Word Search** dailies (completeness + speed − hints scoring).
-7. **Weekly board**; share-to-beat card; profile personal-best surfacing.
-8. Tier-2 games (Yahtzee solo, Trivia, Word Rush, …).
-
-**Phase 3:**
-9. Friends/room-history boards (needs the social graph); seasonal resets;
-   country/regional boards once volume justifies it.
+All three share the same identity (`profiles.id`), the same server finish-hook, and the same
+security pattern. And the **Daily Challenge built here is also the daily action that keeps a
+streak alive** — one feature feeds two systems.
 
 ---
 
-## 11. Open decisions (call these before building)
+## Part 9 — Small decisions to make when you start
 
-1. **Daily vs always-on:** confirm the **Daily-Challenge** model (my recommendation) vs an
-   always-available "practice puzzle" that only posts your *first* attempt. Daily is
-   stronger for retention; practice is gentler.
-2. **One attempt vs best-of-N per day:** I recommend **one scored attempt** for board
-   integrity; confirm you're OK with that (practice replays stay unscored).
-3. **Score formula weights** per game (time-bonus curve, hint penalty) — §5 defines the
-   shape; the constants need a first-pass tuning.
-4. **Which 2 games seed Phase 1** — I propose Word Hunt + Sudoku (most score-ready); confirm
-   against actual play data.
-5. **Handle shown on the board** — reuse the `profiles.handle`; decide whether guests
-   (anonymous, no email) appear on the global board or only after they claim a handle
-   (recommend: guests can appear with an auto-handle, nudged to claim it — same
-   moment-of-value logic as the trophies doc).
-6. **Anti-cheat ceiling** — whether to add server-side time-sanity caps in v1 or defer.
-
----
-
-## 12. How this relates to trophies & streaks (so we don't double-build)
-
-| Pillar | Rewards | Fair because | Identity |
-|---|---|---|---|
-| **Trophies** (`trophies-and-streaks.md`) | per-game **mastery / collection** | criteria are absolute | `profiles.id` |
-| **Streaks** (`trophies-and-streaks.md`) | **daily return** | one action/day | `profiles.id` |
-| **High scores / leaderboards** (this doc) | **competitive score ranking** on score games | everyone plays the **same daily puzzle** | `profiles.id` |
-
-All three share the **same identity, the same `finish-game` server hook, and the same RLS
-pattern.** The Daily Challenge built here is *also* the solo action that feeds the streak.
-Build the identity foundation once; these three are consumers of it.
+1. **One attempt per day** (recommended, keeps boards honest) vs best-of-several.
+2. **Score formula weights** per game — the shape is set in Part 5; the exact numbers need a
+   first tuning pass.
+3. **Do guests appear on the global board?** Recommended: yes, with an auto-generated handle,
+   nudged to claim it — same moment-of-value logic as the trophies doc.
+4. **Which two games launch first** — proposed Word Hunt + Sudoku; confirm against real play
+   data.
