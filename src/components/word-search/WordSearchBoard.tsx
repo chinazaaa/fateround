@@ -104,6 +104,10 @@ export function WordSearchBoard({
   const gridRef = useRef<HTMLDivElement>(null)
   const [dragStart, setDragStart] = useState<[number, number] | null>(null)
   const [dragEnd, setDragEnd] = useState<[number, number] | null>(null)
+  // Keeps the released selection highlighted for a beat so it overlaps the found/wrong
+  // feedback instead of blinking off first.
+  const [lingerCells, setLingerCells] = useState<Set<string>>(new Set())
+  const lingerTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function cellFromEvent(e: React.PointerEvent): [number, number] | null {
     const el = gridRef.current
@@ -121,6 +125,8 @@ export function WordSearchBoard({
     const cell = cellFromEvent(e)
     if (!cell) return
     e.preventDefault()
+    if (lingerTimer.current) clearTimeout(lingerTimer.current)
+    setLingerCells(new Set())
     try {
       gridRef.current?.setPointerCapture(e.pointerId)
     } catch {
@@ -152,9 +158,16 @@ export function WordSearchBoard({
     // A tap (no travel) isn't a selection.
     if (s[0] === en[0] && s[1] === en[1]) return
     onSelect?.(s, en)
+    // Hold the highlight briefly so it overlaps the found/wrong feedback.
+    const cells = selectionCells(s, en)
+    if (cells) {
+      const linger = new Set(cells.map(([r, c]) => cellKey(r, c)))
+      setLingerCells(linger)
+      lingerTimer.current = setTimeout(() => setLingerCells(new Set()), 350)
+    }
   }
 
-  const dragCells = new Set<string>()
+  const dragCells = new Set<string>(lingerCells)
   if (dragStart && dragEnd) {
     const cells = selectionCells(dragStart, dragEnd)
     if (cells) for (const [r, c] of cells) dragCells.add(cellKey(r, c))
