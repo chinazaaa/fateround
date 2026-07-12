@@ -130,6 +130,13 @@ const LOBBY_MAX_PLAYERS_GAMES = new Set<GameType>([
   'quick_draw',
   'word_rush',
   'crossword',
+  // Also >2-player games that were missing the lobby max-players control.
+  'codewords',
+  'trivia',
+  'two_truths',
+  'quiplash',
+  'i_call_on',
+  'scrabble',
 ])
 
 /** Party games that play a single round — no editable "Rounds" control (mirrors web create). */
