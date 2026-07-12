@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import * as SecureStore from 'expo-secure-store'
 import { type Game, type Round, type CrosswordSubmission, type CrosswordClue, type CrosswordDirection } from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import {
@@ -44,8 +45,14 @@ type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_fou
 
 const cellKey = (row: number, col: number) => `${row}-${col}`
 
-// Alphabetical A–Z (easier to scan than QWERTY on a small grid keypad).
-const KEY_ROWS = ['ABCDEFGHI', 'JKLMNOPQR', 'STUVWXYZ'] as const
+// Players pick their on-screen keyboard: QWERTY (phone muscle memory) or A–Z (easier to
+// scan). Default QWERTY; the choice is remembered on the device.
+const KEY_LAYOUTS = {
+  qwerty: ['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'],
+  abc: ['ABCDEFGHI', 'JKLMNOPQR', 'STUVWXYZ'],
+} as const
+type KeyboardLayout = keyof typeof KEY_LAYOUTS
+const KEYBOARD_LAYOUT_KEY = 'crossword_keyboard_layout'
 
 function emptyLetters(size: number): string[][] {
   return Array.from({ length: size }, () => Array(size).fill(''))
@@ -85,6 +92,21 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [nowMs, setNowMs] = useState<number>(() => Date.now())
   const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
+  const [keyboardLayout, setKeyboardLayout] = useState<KeyboardLayout>('qwerty')
+
+  // Load the saved keyboard-layout preference (per device).
+  useEffect(() => {
+    void SecureStore.getItemAsync(KEYBOARD_LAYOUT_KEY).then((v) => {
+      if (v === 'abc' || v === 'qwerty') setKeyboardLayout(v)
+    })
+  }, [])
+  const toggleKeyboardLayout = useCallback(() => {
+    setKeyboardLayout((prev) => {
+      const next: KeyboardLayout = prev === 'qwerty' ? 'abc' : 'qwerty'
+      void SecureStore.setItemAsync(KEYBOARD_LAYOUT_KEY, next)
+      return next
+    })
+  }, [])
 
   const showToast = useCallback((msg: string, ok: boolean) => {
     setToast({ msg, ok })
@@ -94,7 +116,12 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
   const loadGameState = useCallback(
     async (game: Game): Promise<{ state: boolean; ok: boolean }> => {
       if (game.status !== 'active') {
-        setMetadata(null)
+        // Don't null the metadata here. On the finished screen every realtime
+        // reload runs through this branch, and blanking metadata mid-reload
+        // empties `standings` (points → 0 → winnerId → null), which flips the
+        // finish title to "Game over" until afterResolve restores it — the
+        // title flickers between "Game over" and "<name> wins!". Leave whatever
+        // metadata we have; afterResolve refetches it for the finished screen.
         return { state: false, ok: true }
       }
       const { data: roundData } = await getSupabase()
@@ -128,19 +155,24 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     afterResolve: async (game, playerId) => {
       // Finished games show the leaderboard to everyone; active games load the round's subs.
       if (game.status === 'finished') {
-        const { data: roundData } = await getSupabase()
-          .from('rounds')
-          .select(ROUND_SELECT)
-          .eq('game_id', gameCode.toUpperCase())
-          .eq('round_number', 1)
-          .maybeSingle()
-        const meta = roundData ? parseCrosswordMetadata((roundData as Round).crossword_metadata) : null
+        // Fetch round + submissions together and commit both in the same tick so
+        // the finished screen never renders with metadata set but submissions
+        // empty (which would zero the standings and flash the "Game over" title).
+        const [roundRes, subsRes] = await Promise.all([
+          getSupabase()
+            .from('rounds')
+            .select(ROUND_SELECT)
+            .eq('game_id', gameCode.toUpperCase())
+            .eq('round_number', 1)
+            .maybeSingle(),
+          getSupabase()
+            .from('crossword_submissions')
+            .select(CROSSWORD_SUBMISSION_SELECT)
+            .eq('game_id', gameCode.toUpperCase()),
+        ])
+        const meta = roundRes.data ? parseCrosswordMetadata((roundRes.data as Round).crossword_metadata) : null
         if (meta) setMetadata(meta)
-        const { data: subs } = await getSupabase()
-          .from('crossword_submissions')
-          .select(CROSSWORD_SUBMISSION_SELECT)
-          .eq('game_id', gameCode.toUpperCase())
-        setSubmissions((subs as CrosswordSubmission[]) ?? [])
+        setSubmissions((subsRes.data as CrosswordSubmission[]) ?? [])
         return
       }
       if (!playerId || game.status !== 'active') return
@@ -455,13 +487,18 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
           detail: bootstrap.game?.session_started_at ? `⏱ ${formatMinutesSeconds(timeSecs)}` : undefined,
         }
       })
-    const top = [...entries].sort((a, b) => b.points - a.points)[0]
-    const winnerId = top && top.points > 0 ? top.id : null
+    // `standings` is already sorted best-first with full tiebreaks (points → words →
+    // name), so its leader is the winner. Declare them the winner whenever they solved
+    // at least one word — net points can dip to/below 0 after hint penalties, and a
+    // real winner shouldn't collapse to "Game over". Only a puzzle where nobody solved
+    // anything falls back to "Game over".
+    const leader = standings[0]
+    const winnerId = leader && leader.wordsCompleted > 0 ? leader.player_id : null
     return (
       <GameShell bootstrap={bootstrap} title={batch3GameLabel('crossword')} subtitle={bootstrap.code}>
         <GameFinishPanel
           bootstrap={bootstrap}
-          title={winnerId ? `${top!.name} wins!` : 'Game over'}
+          title={winnerId ? `${leader!.name} wins!` : 'Game over'}
           subtitle="Final standings"
           leaderboard={pointsLeaderboard(entries, bootstrap.myPlayerId)}
           winnerPlayerId={winnerId}
@@ -670,9 +707,14 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
             </Pressable>
           </View>
 
-          {/* On-screen A–Z keyboard */}
+          {/* On-screen keyboard (QWERTY or A–Z, player's choice) */}
           <View style={styles.keyboard}>
-            {KEY_ROWS.map((rowLetters, ri) => (
+            <Pressable style={styles.layoutToggle} onPress={toggleKeyboardLayout} hitSlop={8}>
+              <Text style={styles.layoutToggleText}>
+                ⌨ {keyboardLayout === 'qwerty' ? 'Switch to A–Z' : 'Switch to QWERTY'}
+              </Text>
+            </Pressable>
+            {KEY_LAYOUTS[keyboardLayout].map((rowLetters, ri) => (
               <View key={ri} style={styles.keyRow}>
                 {rowLetters.split('').map((letter) => (
                   <Pressable
@@ -684,7 +726,7 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
                     <Text style={styles.keyText}>{letter}</Text>
                   </Pressable>
                 ))}
-                {ri === KEY_ROWS.length - 1 ? (
+                {ri === KEY_LAYOUTS[keyboardLayout].length - 1 ? (
                   <Pressable
                     style={[styles.key, styles.keyErase, !selectedCell && styles.keyDisabled]}
                     disabled={!selectedCell}
@@ -841,6 +883,8 @@ const makeStyles = (theme: Theme) =>
     revealBtnDisabled: { opacity: 0.4 },
     revealText: { color: '#b45309', fontWeight: '800', fontSize: 13 },
     keyboard: { gap: 6, marginTop: 4 },
+    layoutToggle: { alignSelf: 'flex-end', paddingVertical: 2, paddingHorizontal: 4 },
+    layoutToggleText: { color: theme.textMuted, fontSize: 12, fontWeight: '600' },
     keyRow: { flexDirection: 'row', justifyContent: 'center', gap: 4 },
     key: {
       flex: 1,
