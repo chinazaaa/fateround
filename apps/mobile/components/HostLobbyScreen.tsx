@@ -250,6 +250,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
             session={hostSession}
             onSessionChange={setHostSession}
             onReload={() => void load()}
+            onTransfer={() => setTransferOpen(true)}
           />
         ) : null}
 
