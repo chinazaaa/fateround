@@ -974,6 +974,15 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
             </div>
           ) : (
             <>
+              {myCompletion >= 100 && (
+                <div className="mx-auto px-4 py-3 flex flex-col items-center justify-center glass-card text-center gap-0.5">
+                  <span className="text-base font-extrabold text-[var(--foreground)]">🎉 Puzzle complete!</span>
+                  <span className="text-sm text-muted">
+                    Nicely done — waiting for the other players{game?.game_duration_seconds ? ' or the timer' : ''} to
+                    finish.
+                  </span>
+                </div>
+              )}
               <CrosswordBoard
                 metadata={metadata}
                 letterGrid={displayGrid}

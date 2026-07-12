@@ -699,15 +699,24 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
               revealTitle={`Reveal a hidden word (${WORD_SEARCH_HINT_PENALTY} pts)`}
             />
 
-            {!isViewer && (
-              <div className="mx-auto min-h-[3rem] min-w-[10rem] px-4 flex items-center justify-center glass-card">
-                <span className="text-2xl font-extrabold tracking-[0.25em] text-[var(--foreground)]">
-                  {previewWord || (
-                    <span className="text-sm font-normal tracking-normal text-muted">Drag to spell a word</span>
-                  )}
-                </span>
-              </div>
-            )}
+            {!isViewer &&
+              (allFound ? (
+                <div className="mx-auto px-4 py-3 flex flex-col items-center justify-center glass-card text-center gap-0.5">
+                  <span className="text-base font-extrabold text-[var(--foreground)]">🎉 All words found!</span>
+                  <span className="text-sm text-muted">
+                    Nicely done — waiting for the other players{game?.game_duration_seconds ? ' or the timer' : ''} to
+                    finish.
+                  </span>
+                </div>
+              ) : (
+                <div className="mx-auto min-h-[3rem] min-w-[10rem] px-4 flex items-center justify-center glass-card">
+                  <span className="text-2xl font-extrabold tracking-[0.25em] text-[var(--foreground)]">
+                    {previewWord || (
+                      <span className="text-sm font-normal tracking-normal text-muted">Drag to spell a word</span>
+                    )}
+                  </span>
+                </div>
+              ))}
 
             <WordSearchBoard
               metadata={metadata}

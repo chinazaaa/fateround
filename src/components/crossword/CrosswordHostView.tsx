@@ -13,6 +13,7 @@ import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostSudokuLobbyPanel } from '@/components/host-lobby/HostSudokuLobbyPanel'
+import { HostPuzzleSettings } from '@/components/host-lobby/HostPuzzleSettings'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
@@ -561,6 +562,15 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
             onGameUpdate={setGame}
             durationChoices={CROSSWORD_GAME_DURATION_OPTIONS}
             formatDuration={formatCrosswordGameDuration}
+            puzzleSettings={
+              <HostPuzzleSettings
+                gameCode={gameCode}
+                hostToken={hostToken}
+                game={game}
+                onGameUpdate={setGame}
+                kind="crossword"
+              />
+            }
           />
         ) : (
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />

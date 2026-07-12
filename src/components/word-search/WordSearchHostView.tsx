@@ -13,6 +13,7 @@ import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostSudokuLobbyPanel } from '@/components/host-lobby/HostSudokuLobbyPanel'
+import { HostPuzzleSettings } from '@/components/host-lobby/HostPuzzleSettings'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
@@ -551,6 +552,15 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
             onGameUpdate={setGame}
             durationChoices={WORD_SEARCH_GAME_DURATION_OPTIONS}
             formatDuration={formatWordSearchGameDuration}
+            puzzleSettings={
+              <HostPuzzleSettings
+                gameCode={gameCode}
+                hostToken={hostToken}
+                game={game}
+                onGameUpdate={setGame}
+                kind="word_search"
+              />
+            }
           />
         ) : (
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
