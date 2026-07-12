@@ -14,7 +14,7 @@ export function useAdvancePolling({
 }: {
   endpoint: string
   gameCode: string
-  game: Game
+  game: Game | null
   enabled?: boolean
   onAdvanced?: () => void
   intervalMs?: number
@@ -24,7 +24,7 @@ export function useAdvancePolling({
   onAdvancedRef.current = onAdvanced
 
   useEffect(() => {
-    if (!enabled || game.status !== 'active') return
+    if (!enabled || game?.status !== 'active') return
 
     let cancelled = false
 
@@ -51,5 +51,5 @@ export function useAdvancePolling({
       cancelled = true
       clearInterval(id)
     }
-  }, [enabled, endpoint, game.status, gameCode, intervalMs])
+  }, [enabled, endpoint, game?.status, gameCode, intervalMs])
 }
