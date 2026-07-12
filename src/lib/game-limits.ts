@@ -43,6 +43,11 @@ import { QUICK_DRAW_MIN_PLAYERS, QUICK_DRAW_MAX_PLAYERS, QUICK_DRAW_DEFAULT_MAX_
 import { WORD_RUSH_MIN_PLAYERS, WORD_RUSH_MAX_PLAYERS, WORD_RUSH_DEFAULT_MAX_PLAYERS } from '@/lib/word-rush'
 import { CROSSWORD_MIN_PLAYERS, CROSSWORD_MAX_PLAYERS, CROSSWORD_DEFAULT_MAX_PLAYERS } from '@/lib/crossword'
 import { WORD_SEARCH_MIN_PLAYERS, WORD_SEARCH_MAX_PLAYERS, WORD_SEARCH_DEFAULT_MAX_PLAYERS } from '@/lib/word-search'
+import {
+  WORD_SCRAMBLE_MIN_PLAYERS,
+  WORD_SCRAMBLE_MAX_PLAYERS,
+  WORD_SCRAMBLE_DEFAULT_MAX_PLAYERS,
+} from '@/lib/word-scramble'
 
 export const LOBBY_LIMIT_GAME_TYPES = [
   'anonymous_messages',
@@ -73,6 +78,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'ayo',
   'crossword',
   'word_search',
+  'word_scramble',
 ] as const
 
 export type LobbyLimitGameType = (typeof LOBBY_LIMIT_GAME_TYPES)[number]
@@ -231,6 +237,11 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     max: WORD_SEARCH_MAX_PLAYERS,
     default: WORD_SEARCH_DEFAULT_MAX_PLAYERS,
   },
+  word_scramble: {
+    min: WORD_SCRAMBLE_MIN_PLAYERS,
+    max: WORD_SCRAMBLE_MAX_PLAYERS,
+    default: WORD_SCRAMBLE_DEFAULT_MAX_PLAYERS,
+  },
 }
 
 export function isLobbyLimitGameType(value: string): value is LobbyLimitGameType {
@@ -267,6 +278,7 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
     matching_pairs: { ...GAME_LIMIT_CODE_DEFAULTS.matching_pairs },
     crossword: { ...GAME_LIMIT_CODE_DEFAULTS.crossword },
     word_search: { ...GAME_LIMIT_CODE_DEFAULTS.word_search },
+    word_scramble: { ...GAME_LIMIT_CODE_DEFAULTS.word_scramble },
   }
 }
 

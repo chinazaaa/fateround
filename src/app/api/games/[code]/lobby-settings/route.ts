@@ -19,6 +19,7 @@ import {
   isAyoGame,
   isCrosswordGame,
   isWordSearchGame,
+  isWordScrambleGame,
   parseGameType,
 } from '@/lib/game-types'
 import { clampAyoTimer, parseAyoVariant } from '@/lib/ayo'
@@ -31,8 +32,10 @@ import { parseMahjongRuleOptions, parseMahjongRuleset } from '@/lib/mahjong-rule
 import { clampSudokuGameDuration } from '@/lib/sudoku'
 import { clampCrosswordGameDuration, parseCrosswordDifficulty } from '@/lib/crossword'
 import { clampWordSearchGameDuration, parseWordSearchDifficulty } from '@/lib/word-search'
+import { clampWordScrambleGameDuration, parseWordScrambleDifficulty } from '@/lib/word-scramble'
 import { findCrosswordTheme } from '@/lib/crossword-puzzles'
 import { findWordSearchTheme } from '@/lib/word-search-puzzles'
+import { findWordScrambleTheme } from '@/lib/word-scramble-puzzles'
 import { MATCHING_PAIRS_GAME_DURATION_OPTIONS } from '@/lib/memory-match'
 import { clampQuiplashRounds, clampQuiplashSubmitTimer, clampQuiplashVoteTimer } from '@/lib/quiplash'
 import {
@@ -83,6 +86,7 @@ function limitOnlyLobbyType(gameType: string): LobbyLimitGameType | null {
   if (isMatchingPairsGame(parsed)) return 'matching_pairs'
   if (isCrosswordGame(parsed)) return 'crossword'
   if (isWordSearchGame(parsed)) return 'word_search'
+  if (isWordScrambleGame(parsed)) return 'word_scramble'
   return null
 }
 
@@ -123,6 +127,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     crossword_difficulty,
     word_search_theme,
     word_search_difficulty,
+    word_scramble_theme,
+    word_scramble_difficulty,
   } = parsed.data
   const gameCode = parsed.data.gameId.toUpperCase()
 
@@ -153,7 +159,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     crossword_theme === undefined &&
     crossword_difficulty === undefined &&
     word_search_theme === undefined &&
-    word_search_difficulty === undefined
+    word_search_difficulty === undefined &&
+    word_scramble_theme === undefined &&
+    word_scramble_difficulty === undefined
   ) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
@@ -287,6 +295,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.game_duration_seconds = clampCrosswordGameDuration(game_duration_seconds)
     } else if (limitOnlyType === 'word_search') {
       gameUpdate.game_duration_seconds = clampWordSearchGameDuration(game_duration_seconds)
+    } else if (limitOnlyType === 'word_scramble') {
+      gameUpdate.game_duration_seconds = clampWordScrambleGameDuration(game_duration_seconds)
     } else if (limitOnlyType === 'matching_pairs') {
       // Matching Pairs stores grid size as game_duration_seconds (0=8 pairs, 16=16 pairs)
       gameUpdate.game_duration_seconds = game_duration_seconds === 16 ? 16 : 0
@@ -320,6 +330,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (word_search_theme !== undefined) gameUpdate.word_search_theme = findWordSearchTheme(word_search_theme).id
     if (word_search_difficulty !== undefined) {
       gameUpdate.word_search_difficulty = parseWordSearchDifficulty(word_search_difficulty)
+    }
+  }
+  if (word_scramble_theme !== undefined || word_scramble_difficulty !== undefined) {
+    if (limitOnlyType !== 'word_scramble') {
+      return NextResponse.json({ error: 'This game type has no word scramble theme settings' }, { status: 400 })
+    }
+    if (word_scramble_theme !== undefined)
+      gameUpdate.word_scramble_theme = findWordScrambleTheme(word_scramble_theme).id
+    if (word_scramble_difficulty !== undefined) {
+      gameUpdate.word_scramble_difficulty = parseWordScrambleDifficulty(word_scramble_difficulty)
     }
   }
 
