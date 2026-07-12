@@ -71,10 +71,6 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      {gameHasMobileVoice(game.game_type) ? (
-        <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} />
-      ) : null}
-
       <View style={styles.header}>
         <View style={styles.toolbar}>
           <Pressable
@@ -129,6 +125,12 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
           </View>
         ) : null}
       </View>
+
+      {/* Voice rail sits UNDER the header (matches PlayerSessionShell) so the
+          "Join voice" bar never renders above/into the header chrome. */}
+      {gameHasMobileVoice(game.game_type) ? (
+        <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} />
+      ) : null}
 
       {showPlayView ? (
         <HostViewProvider value={{ hostToken, hostPlayerId, onReload: () => onReload?.() }}>
