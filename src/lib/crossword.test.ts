@@ -165,10 +165,7 @@ describe('completion helpers', () => {
   it('tracks per-player completion and win condition', () => {
     // Fillable cells in META: (0,0)(0,1)(0,2)(1,0)(2,0) = 5 cells.
     expect(fillableCellCount(META)).toBe(5)
-    const partial = [
-      sub({ cell_row: 0, cell_col: 0 }),
-      sub({ cell_row: 0, cell_col: 1 }),
-    ]
+    const partial = [sub({ cell_row: 0, cell_col: 0 }), sub({ cell_row: 0, cell_col: 1 })]
     expect(playerCompletionPercent(META, partial, 'p1')).toBe(40)
     expect(isCrosswordCompleteForPlayer(META, partial, 'p1')).toBe(false)
 

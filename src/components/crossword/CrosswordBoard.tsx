@@ -89,7 +89,7 @@ export function CrosswordBoard({
             const isSelected = selectedCell?.[0] === row && selectedCell?.[1] === col
             const isActive = activeCells?.has(cellKey(row, col)) ?? false
 
-            const ownerColor = owner ? (owner === myPlayerId ? myColor : playerColors[owner] ?? '#94a3b8') : null
+            const ownerColor = owner ? (owner === myPlayerId ? myColor : (playerColors[owner] ?? '#94a3b8')) : null
             const baseBg = ownerColor ? { backgroundColor: `${ownerColor}${iSolved ? '55' : '33'}` } : undefined
 
             const bgStyle = isSelected

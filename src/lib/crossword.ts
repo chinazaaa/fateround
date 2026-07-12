@@ -120,9 +120,7 @@ interface Placement {
 }
 
 function normalizeAnswer(raw: string): string {
-  return raw
-    .toUpperCase()
-    .replace(/[^A-Z]/g, '')
+  return raw.toUpperCase().replace(/[^A-Z]/g, '')
 }
 
 /** Cells occupied by a placement, in order. */
@@ -139,12 +137,7 @@ function placementCells(p: Pick<Placement, 'row' | 'col' | 'direction' | 'answer
  * illegal adjacencies (parallel words touching, runs merging). Returns the best-scoring
  * legal placement, or null. `grid` holds placed letters (or '' for empty).
  */
-function findPlacement(
-  grid: string[][],
-  size: number,
-  answer: string,
-  rng: () => number
-): Placement | null {
+function findPlacement(grid: string[][], size: number, answer: string, rng: () => number): Placement | null {
   const candidates: { placement: Placement; crossings: number }[] = []
   const letters = answer.split('')
 
@@ -390,11 +383,7 @@ export function playerCompletedWord(submissions: CellSub[], playerId: string, cl
   return crosswordWordCells(clue).every(([r, c]) => playerHasSolvedCell(submissions, playerId, r, c))
 }
 
-export function playerCompletionPercent(
-  metadata: CrosswordMetadata,
-  submissions: CellSub[],
-  playerId: string
-): number {
+export function playerCompletionPercent(metadata: CrosswordMetadata, submissions: CellSub[], playerId: string): number {
   const total = fillableCellCount(metadata)
   if (total === 0) return 100
   const solved = playerCorrectCellKeys(submissions, playerId).size
@@ -427,7 +416,11 @@ export function buildCellOwnerGrid(
   return owners
 }
 
-export function buildPlayerSolvedGrid(metadata: CrosswordMetadata, submissions: CellSub[], playerId: string): boolean[][] {
+export function buildPlayerSolvedGrid(
+  metadata: CrosswordMetadata,
+  submissions: CellSub[],
+  playerId: string
+): boolean[][] {
   const grid = Array.from({ length: metadata.size }, () => Array(metadata.size).fill(false))
   for (const s of submissions) {
     if (s.player_id === playerId && s.is_correct) grid[s.cell_row][s.cell_col] = true
@@ -577,11 +570,7 @@ export function parseCrosswordDifficulty(raw: unknown): CrosswordDifficulty {
  * Build the round row (client-readable metadata: layout + clues, NO letters) plus the
  * solution grid to be written separately to the RLS-protected crossword_solutions table.
  */
-export function buildCrosswordRoundRow(
-  gameId: string,
-  metadata: CrosswordMetadata,
-  solution: string[][]
-) {
+export function buildCrosswordRoundRow(gameId: string, metadata: CrosswordMetadata, solution: string[][]) {
   return {
     roundRow: {
       game_id: gameId,

@@ -172,18 +172,15 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     [gameCode]
   )
 
-  const computeScreen = useCallback(
-    (gameData: Game, playerId: string | null, state: CrosswordGameState): View => {
-      if (gameData.status === 'finished') return 'finished'
-      if (!playerId) {
-        const pre = preJoinScreen(gameData, false)
-        return pre === 'late_join_choice' ? 'late_join_choice' : 'join'
-      }
-      if (gameData.status === 'waiting') return 'waiting'
-      return state.hasValidRound ? 'playing' : 'waiting'
-    },
-    []
-  )
+  const computeScreen = useCallback((gameData: Game, playerId: string | null, state: CrosswordGameState): View => {
+    if (gameData.status === 'finished') return 'finished'
+    if (!playerId) {
+      const pre = preJoinScreen(gameData, false)
+      return pre === 'late_join_choice' ? 'late_join_choice' : 'join'
+    }
+    if (gameData.status === 'waiting') return 'waiting'
+    return state.hasValidRound ? 'playing' : 'waiting'
+  }, [])
 
   const {
     screen: view,
@@ -340,10 +337,7 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     return map
   }, [activePlayers])
 
-  const cellOwners = useMemo(
-    () => (metadata ? buildCellOwnerGrid(metadata, submissions) : []),
-    [metadata, submissions]
-  )
+  const cellOwners = useMemo(() => (metadata ? buildCellOwnerGrid(metadata, submissions) : []), [metadata, submissions])
   const mySolvedCells = useMemo(
     () => (metadata && myPlayerId ? buildPlayerSolvedGrid(metadata, submissions, myPlayerId) : undefined),
     [metadata, submissions, myPlayerId]
@@ -857,7 +851,10 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
             </div>
             {game?.session_started_at && (
               <div className="text-sm font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-md">
-                ⏱️ {formatMinutesSeconds(getPlayerTimeSpent(game, submissions, myPlayerId || '', myCompletion, nowMs, me?.joined_at))}
+                ⏱️{' '}
+                {formatMinutesSeconds(
+                  getPlayerTimeSpent(game, submissions, myPlayerId || '', myCompletion, nowMs, me?.joined_at)
+                )}
               </div>
             )}
           </div>

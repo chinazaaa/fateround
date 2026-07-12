@@ -357,10 +357,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
   }
 
   const activePlayers = useMemo(() => players.filter((p) => p.spectator !== true), [players])
-  const cellOwners = useMemo(
-    () => (metadata ? buildCellOwnerGrid(metadata, submissions) : []),
-    [metadata, submissions]
-  )
+  const cellOwners = useMemo(() => (metadata ? buildCellOwnerGrid(metadata, submissions) : []), [metadata, submissions])
   const playerColors = useMemo(() => {
     const map: Record<string, string> = {}
     activePlayers.forEach((p, i) => {
