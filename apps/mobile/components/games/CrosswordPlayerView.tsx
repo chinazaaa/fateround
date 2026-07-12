@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { type Game, type Round, type CrosswordSubmission, type CrosswordClue, type CrosswordDirection } from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
@@ -43,7 +43,8 @@ type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_fou
 
 const cellKey = (row: number, col: number) => `${row}-${col}`
 
-const KEY_ROWS = ['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'] as const
+// Alphabetical A–Z (easier to scan than QWERTY on a small grid keypad).
+const KEY_ROWS = ['ABCDEFGHI', 'JKLMNOPQR', 'STUVWXYZ'] as const
 
 function emptyLetters(size: number): string[][] {
   return Array.from({ length: size }, () => Array(size).fill(''))
@@ -76,6 +77,10 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
   const [selectedCell, setSelectedCell] = useState<[number, number] | null>(null)
   const [direction, setDirection] = useState<CrosswordDirection>('across')
   const [submitting, setSubmitting] = useState(false)
+  // Letters submit concurrently per cell — a single global lock would drop taps entered
+  // faster than the round-trip. Keyed by cell+letter so a re-typed correction still fires
+  // while an identical duplicate tap is coalesced. `submitting` now gates only the hint.
+  const inFlightSubmits = useRef<Set<string>>(new Set())
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [nowMs, setNowMs] = useState<number>(() => Date.now())
   const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
@@ -306,10 +311,16 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
       if (findClueAt(metadata, row, col, next)) setDirection(next)
       return
     }
-    if (!findClueAt(metadata, row, col, direction)) {
-      const other: CrosswordDirection = direction === 'across' ? 'down' : 'across'
-      if (findClueAt(metadata, row, col, other)) setDirection(other)
-    }
+    const acrossClue = findClueAt(metadata, row, col, 'across')
+    const downClue = findClueAt(metadata, row, col, 'down')
+    // Prefer the direction whose word STARTS at the tapped cell (so tapping a numbered
+    // cell shows that word's clue), then the current direction, then whatever's available.
+    const startsAcross = acrossClue && acrossClue.row === row && acrossClue.col === col
+    const startsDown = downClue && downClue.row === row && downClue.col === col
+    if (startsAcross && !startsDown) setDirection('across')
+    else if (startsDown && !startsAcross) setDirection('down')
+    else if (direction === 'across' && !acrossClue && downClue) setDirection('down')
+    else if (direction === 'down' && !downClue && acrossClue) setDirection('across')
     setSelectedCell([row, col])
   }
 
@@ -319,8 +330,13 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   const submitLetter = async (row: number, col: number, letter: string, hint: boolean) => {
-    if (!bootstrap.myResumeToken || !bootstrap.myPlayerId || submitting) return
-    setSubmitting(true)
+    if (!bootstrap.myResumeToken || !bootstrap.myPlayerId) return
+    // Per-cell in-flight guard: distinct cells submit concurrently (so tapping a word fast
+    // never drops letters), while an identical duplicate tap for the same cell is skipped.
+    const key = `${row}-${col}-${letter}-${hint ? 'h' : ''}`
+    if (inFlightSubmits.current.has(key)) return
+    inFlightSubmits.current.add(key)
+    if (hint) setSubmitting(true)
     try {
       const result = await postCrosswordSubmit(bootstrap.code, bootstrap.myResumeToken, row, col, letter, hint)
       const resolved = String(result.letter ?? letter).toUpperCase()
@@ -337,12 +353,13 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
       if (msg.toLowerCase().includes('time')) await bootstrap.load()
       else showToast(msg, false)
     } finally {
-      setSubmitting(false)
+      inFlightSubmits.current.delete(key)
+      if (hint) setSubmitting(false)
     }
   }
 
   const handleTypeLetter = (letter: string) => {
-    if (viewing || submitting || !selectedCell) return
+    if (viewing || !selectedCell) return
     const [row, col] = selectedCell
     if (!isCellEditable(row, col)) return
     const upper = letter.toUpperCase()
@@ -352,7 +369,7 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   const handleBackspace = () => {
-    if (viewing || submitting || !selectedCell) return
+    if (viewing || !selectedCell) return
     const [row, col] = selectedCell
     if (isCellEditable(row, col) && localLetters[row]?.[col]) {
       setLetterDraft(row, col, '', false)
@@ -439,7 +456,8 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('crossword')} subtitle={bootstrap.code}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <View style={styles.playArea}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <CrosswordGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} />
 
         {toast ? (
@@ -533,57 +551,6 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
               <Text style={styles.viewingHint}>You are watching — tap a name above to switch boards.</Text>
             ) : (
               <>
-                {/* Active clue + reveal hint */}
-                <View style={styles.clueBar}>
-                  <View style={styles.clueBarText}>
-                    {activeClue ? (
-                      <Text style={styles.clueBarLine}>
-                        <Text style={styles.clueBarNum}>
-                          {activeClue.number} {activeClue.direction === 'across' ? 'Across' : 'Down'}
-                        </Text>
-                        {'  '}
-                        {activeClue.clue}
-                      </Text>
-                    ) : (
-                      <Text style={styles.clueBarHint}>Tap a cell to start filling the grid.</Text>
-                    )}
-                  </View>
-                  <Pressable
-                    style={[styles.revealBtn, (!selectedCell || submitting) && styles.revealBtnDisabled]}
-                    disabled={!selectedCell || submitting}
-                    onPress={handleReveal}
-                  >
-                    <Text style={styles.revealText}>💡 Reveal</Text>
-                  </Pressable>
-                </View>
-
-                {/* On-screen A–Z keyboard */}
-                <View style={styles.keyboard}>
-                  {KEY_ROWS.map((rowLetters, ri) => (
-                    <View key={ri} style={styles.keyRow}>
-                      {ri === KEY_ROWS.length - 1 ? (
-                        <Pressable
-                          style={[styles.key, styles.keyWide, (!selectedCell || submitting) && styles.keyDisabled]}
-                          disabled={!selectedCell || submitting}
-                          onPress={handleBackspace}
-                        >
-                          <Text style={styles.keyText}>⌫</Text>
-                        </Pressable>
-                      ) : null}
-                      {rowLetters.split('').map((letter) => (
-                        <Pressable
-                          key={letter}
-                          style={[styles.key, (!selectedCell || submitting) && styles.keyDisabled]}
-                          disabled={!selectedCell || submitting}
-                          onPress={() => handleTypeLetter(letter)}
-                        >
-                          <Text style={styles.keyText}>{letter}</Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  ))}
-                </View>
-
                 {/* Clue lists */}
                 <View style={styles.clueLists}>
                   <ClueList
@@ -648,6 +615,66 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
           <GameRulesLink gameType="crossword" variant="subtle" />
         </View>
       </ScrollView>
+
+      {/* Pinned input dock — always visible so every key (and Erase) is reachable. */}
+      {metadata && boardGrid.length > 0 && !viewing && bootstrap.game?.status !== 'finished' ? (
+        <View style={styles.inputDock}>
+          <View style={styles.clueBar}>
+            <View style={styles.clueBarText}>
+              {activeClue ? (
+                <Text style={styles.clueBarLine} numberOfLines={2}>
+                  <Text style={styles.clueBarNum}>
+                    {activeClue.number} {activeClue.direction === 'across' ? 'Across' : 'Down'}
+                  </Text>
+                  {'  '}
+                  {activeClue.clue}
+                </Text>
+              ) : (
+                <Text style={styles.clueBarHint}>Tap a cell to start filling the grid.</Text>
+              )}
+            </View>
+            <Pressable
+              style={[
+                styles.revealBtn,
+                (!selectedCell || submitting || !isCellEditable(selectedCell[0], selectedCell[1])) &&
+                  styles.revealBtnDisabled,
+              ]}
+              disabled={!selectedCell || submitting || !isCellEditable(selectedCell[0], selectedCell[1])}
+              onPress={handleReveal}
+            >
+              <Text style={styles.revealText}>💡 Reveal</Text>
+            </Pressable>
+          </View>
+
+          {/* On-screen A–Z keyboard */}
+          <View style={styles.keyboard}>
+            {KEY_ROWS.map((rowLetters, ri) => (
+              <View key={ri} style={styles.keyRow}>
+                {rowLetters.split('').map((letter) => (
+                  <Pressable
+                    key={letter}
+                    style={[styles.key, !selectedCell && styles.keyDisabled]}
+                    disabled={!selectedCell}
+                    onPress={() => handleTypeLetter(letter)}
+                  >
+                    <Text style={styles.keyText}>{letter}</Text>
+                  </Pressable>
+                ))}
+                {ri === KEY_ROWS.length - 1 ? (
+                  <Pressable
+                    style={[styles.key, styles.keyErase, !selectedCell && styles.keyDisabled]}
+                    disabled={!selectedCell}
+                    onPress={handleBackspace}
+                  >
+                    <Text style={styles.keyEraseText}>⌫ Erase</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+      </View>
     </GameShell>
   )
 }
@@ -698,7 +725,16 @@ function ClueList({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-    content: { paddingBottom: 32, gap: 12 },
+    playArea: { flex: 1 },
+    scroll: { flex: 1 },
+    content: { paddingBottom: 16, gap: 12 },
+    inputDock: {
+      borderTopWidth: 1,
+      borderTopColor: theme.border,
+      backgroundColor: theme.bg,
+      paddingTop: 8,
+      gap: 8,
+    },
     waiting: { color: theme.textMuted, textAlign: 'center', marginTop: 24 },
     statusRow: {
       flexDirection: 'row',
@@ -794,6 +830,8 @@ const makeStyles = (theme: Theme) =>
       justifyContent: 'center',
     },
     keyWide: { maxWidth: 48, flex: 1.4 },
+    keyErase: { maxWidth: 96, flex: 2.6, paddingHorizontal: 6 },
+    keyEraseText: { color: theme.text, fontSize: 13, fontWeight: '800' },
     keyDisabled: { opacity: 0.4 },
     keyText: { color: theme.text, fontSize: 16, fontWeight: '700' },
     clueLists: { flexDirection: 'row', gap: 10, marginTop: 12 },

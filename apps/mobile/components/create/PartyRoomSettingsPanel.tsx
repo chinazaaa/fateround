@@ -49,6 +49,11 @@ import {
   CROSSWORD_THEME_OPTIONS,
   formatCrosswordGameDuration,
 } from '@fateround/shared/crossword'
+import {
+  WORD_SEARCH_GAME_DURATION_OPTIONS,
+  WORD_SEARCH_THEME_OPTIONS,
+  formatWordSearchGameDuration,
+} from '@fateround/shared/word-search'
 import { RoundCountPicker } from '@/components/create/RoundCountPicker'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { SelectField } from '@/components/create/SelectField'
@@ -540,6 +545,39 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange }: Props) {
               value={party.gameDurationSeconds}
               options={CROSSWORD_GAME_DURATION_OPTIONS}
               format={formatCrosswordGameDuration}
+              onChange={(gameDurationSeconds) => onChange({ gameDurationSeconds })}
+            />
+          </>
+        ) : null}
+
+        {gameType === 'word_search' ? (
+          <>
+            <View style={styles.field}>
+              <Text style={styles.label}>Theme</Text>
+              <SelectField
+                title="Word Search theme"
+                value={party.wordSearchTheme}
+                options={WORD_SEARCH_THEME_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
+                onChange={(wordSearchTheme) => onChange({ wordSearchTheme })}
+              />
+            </View>
+            <View style={styles.field}>
+              <Text style={styles.label}>Difficulty</Text>
+              <SegmentedControl
+                value={party.wordSearchDifficulty}
+                options={[
+                  { value: 'easy', label: 'Easy', hint: 'Smaller grid, fewer words' },
+                  { value: 'medium', label: 'Medium' },
+                  { value: 'hard', label: 'Hard', hint: 'Bigger grid, all directions' },
+                ]}
+                onChange={(value) => onChange({ wordSearchDifficulty: value as PartyRoomSettings['wordSearchDifficulty'] })}
+              />
+            </View>
+            <TimerPicker
+              label="Max time limit"
+              value={party.gameDurationSeconds}
+              options={WORD_SEARCH_GAME_DURATION_OPTIONS}
+              format={formatWordSearchGameDuration}
               onChange={(gameDurationSeconds) => onChange({ gameDurationSeconds })}
             />
           </>

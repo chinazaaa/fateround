@@ -18,6 +18,7 @@ import {
   isQuickDrawGame,
   isAyoGame,
   isCrosswordGame,
+  isWordSearchGame,
   parseGameType,
 } from '@/lib/game-types'
 import { clampAyoTimer, parseAyoVariant } from '@/lib/ayo'
@@ -29,6 +30,7 @@ import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { parseMahjongRuleOptions, parseMahjongRuleset } from '@/lib/mahjong-rulesets'
 import { clampSudokuGameDuration } from '@/lib/sudoku'
 import { clampCrosswordGameDuration } from '@/lib/crossword'
+import { clampWordSearchGameDuration } from '@/lib/word-search'
 import { MATCHING_PAIRS_GAME_DURATION_OPTIONS } from '@/lib/memory-match'
 import { clampQuiplashRounds, clampQuiplashSubmitTimer, clampQuiplashVoteTimer } from '@/lib/quiplash'
 import {
@@ -78,6 +80,7 @@ function limitOnlyLobbyType(gameType: string): LobbyLimitGameType | null {
   if (isSudokuGame(parsed)) return 'sudoku'
   if (isMatchingPairsGame(parsed)) return 'matching_pairs'
   if (isCrosswordGame(parsed)) return 'crossword'
+  if (isWordSearchGame(parsed)) return 'word_search'
   return null
 }
 
@@ -272,6 +275,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.game_duration_seconds = clampSudokuGameDuration(game_duration_seconds)
     } else if (limitOnlyType === 'crossword') {
       gameUpdate.game_duration_seconds = clampCrosswordGameDuration(game_duration_seconds)
+    } else if (limitOnlyType === 'word_search') {
+      gameUpdate.game_duration_seconds = clampWordSearchGameDuration(game_duration_seconds)
     } else if (limitOnlyType === 'matching_pairs') {
       // Matching Pairs stores grid size as game_duration_seconds (0=8 pairs, 16=16 pairs)
       gameUpdate.game_duration_seconds = game_duration_seconds === 16 ? 16 : 0

@@ -50,6 +50,7 @@ export type GameType =
   | 'quick_draw'
   | 'ayo'
   | 'crossword'
+  | 'word_search'
 
 export interface Game {
   id: string
@@ -118,6 +119,8 @@ export interface Game {
   bingo_call_interval_seconds?: number | null
   crossword_theme?: string | null
   crossword_difficulty?: CrosswordDifficulty | string | null
+  word_search_theme?: string | null
+  word_search_difficulty?: WordSearchDifficulty | string | null
 }
 
 export interface Player {
@@ -295,6 +298,7 @@ export interface Round {
   word_hunt_metadata?: WordHuntMetadata | null
   npat_metadata?: NpatMetadata | null
   crossword_metadata?: CrosswordMetadata | null
+  word_search_metadata?: WordSearchMetadata | null
 }
 
 export interface VoteAssignment {
@@ -471,6 +475,51 @@ export interface CrosswordSubmission {
   is_correct: boolean
   via_hint: boolean
   submitted_at: string
+}
+
+// ── Word Search ──────────────────────────────────────────────────────────────
+
+export type WordSearchDifficulty = 'easy' | 'medium' | 'hard'
+
+/** The 8 compass directions a word can run. Difficulty picks a subset. */
+export type WordSearchDirection = 'E' | 'W' | 'S' | 'N' | 'SE' | 'SW' | 'NE' | 'NW'
+
+/**
+ * Client-readable puzzle description stored on `rounds.word_search_metadata`. The letter
+ * grid is fully public (that is the game). What stays server-side is where each word sits.
+ */
+export interface WordSearchMetadata {
+  size: number
+  /** The full letter grid, row-major, all cells filled. */
+  grid: string[][]
+  /** The word list to hunt for (uppercased, A–Z). */
+  words: string[]
+  /** Directions words may run in this puzzle (from the difficulty). */
+  directions: WordSearchDirection[]
+  theme?: string
+  difficulty?: WordSearchDifficulty
+}
+
+/** Where a planted word starts and which way it runs (server-side solution). */
+export interface WordSearchPlacement {
+  word: string
+  row: number
+  col: number
+  direction: WordSearchDirection
+}
+
+export interface WordSearchFound {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  word: string
+  start_row: number
+  start_col: number
+  end_row: number
+  end_col: number
+  via_hint: boolean
+  found_at: string
 }
 
 export type SnakeLadderColor = 'red' | 'blue' | 'green' | 'yellow' | 'purple' | 'orange'

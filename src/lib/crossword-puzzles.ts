@@ -127,11 +127,18 @@ export function findCrosswordTheme(id: string | null | undefined): CrosswordThem
 export function buildCrosswordPuzzle(
   themeId: string | null | undefined,
   difficultyRaw: string | null | undefined,
-  seed: number
+  seed: number,
+  excludeAnswers: string[] = []
 ): { metadata: CrosswordMetadata; solution: string[][] } {
   const difficulty: CrosswordDifficulty = parseCrosswordDifficulty(difficultyRaw)
   const spec = CROSSWORD_DIFFICULTY_SPECS[difficulty]
   const theme = findCrosswordTheme(themeId)
+
+  // Best-effort replay variety: drop recently-used answers, but only while enough remain to
+  // build a puzzle — otherwise fall back to the whole bank (the caller resets the cycle).
+  const exclude = new Set(excludeAnswers.map((w) => w.toUpperCase()))
+  const freshEntries = theme.entries.filter((e) => !exclude.has(e.answer.toUpperCase()))
+  const themeEntries = freshEntries.length >= spec.targetWords ? freshEntries : theme.entries
 
   const attempt = (entries: CrosswordEntryInput[], baseSeed: number) => {
     for (let i = 0; i < 8; i++) {
@@ -152,7 +159,7 @@ export function buildCrosswordPuzzle(
     return null
   }
 
-  const primary = attempt(theme.entries, seed)
+  const primary = attempt(themeEntries, seed)
   if (primary) return primary
 
   // Extremely defensive: merge all themes and try once more.

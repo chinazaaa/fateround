@@ -201,6 +201,37 @@ export function postCrosswordSubmit(
   )
 }
 
+export function postWordSearchFound(
+  gameId: string,
+  resumeToken: string,
+  startRow: number,
+  startCol: number,
+  endRow: number,
+  endCol: number,
+  hint?: boolean
+) {
+  return postJson<{
+    found: boolean
+    word?: string
+    alreadyFound?: boolean
+    hint?: boolean
+    complete?: boolean
+    start?: [number, number]
+    end?: [number, number]
+  }>(
+    '/api/word-search/found',
+    {
+      gameId,
+      resumeToken,
+      startRow,
+      startCol,
+      endRow,
+      endCol,
+      hint,
+    }
+  )
+}
+
 export function postYahtzeeRoll(gameId: string, resumeToken: string) {
   return postJson<{ success: boolean }>('/api/yahtzee/roll', { gameId, resumeToken })
 }

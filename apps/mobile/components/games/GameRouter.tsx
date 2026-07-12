@@ -38,6 +38,7 @@ import { TwoTruthsPlayerView } from '@/components/games/TwoTruthsPlayerView'
 import { WhotPlayerView } from '@/components/games/WhotPlayerView'
 import { WordHuntPlayerView } from '@/components/games/WordHuntPlayerView'
 import { WordRushPlayerView } from '@/components/games/WordRushPlayerView'
+import { WordSearchPlayerView } from '@/components/games/WordSearchPlayerView'
 import { YahtzeePlayerView } from '@/components/games/YahtzeePlayerView'
 
 const POLL_VIEWS = Object.fromEntries(
@@ -51,6 +52,7 @@ const BATCH_3_VIEWS = {
   snake_and_ladder: SnakeLadderPlayerView,
   ludo: LudoPlayerView,
   crossword: CrosswordPlayerView,
+  word_search: WordSearchPlayerView,
 } as const satisfies Partial<Record<GameType, React.ComponentType<{ gameCode: string }>>>
 
 const BATCH_4_VIEWS = {

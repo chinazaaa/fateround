@@ -1,0 +1,731 @@
+'use client'
+
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { supabase } from '@/lib/supabase'
+import { GamePlayerChrome } from '@/components/GamePlayerChrome'
+import {
+  WordSearchBoard,
+  wordSearchPlayerColor,
+  WORD_SEARCH_MY_CELL_COLOR,
+} from '@/components/word-search/WordSearchBoard'
+import { WordList } from '@/components/word-search/WordList'
+import { WordSearchGameTimerBar } from '@/components/word-search/WordSearchGameTimerBar'
+import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import {
+  parseWordSearchMetadata,
+  buildFoundOwnerGrid,
+  buildPlayerFoundCells,
+  playerFoundWords,
+  tallyWordSearchScores,
+  wordSearchCompletionPercent,
+  selectionCells,
+  WORD_SEARCH_MIN_PLAYERS,
+  WORD_SEARCH_HINT_PENALTY,
+  type WordSearchMetadata,
+  type WordSearchFound,
+} from '@/lib/word-search'
+import { getPlayerTimeSpent } from '@/lib/sudoku'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+import { PLAYER_SELECT } from '@/lib/supabase-selects'
+import { clearPlayerSession } from '@/lib/utils'
+import { formatMinutesSeconds } from '@/lib/timer-format'
+import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
+import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
+import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
+import { useLateJoinContext } from '@/hooks/useLateJoinContext'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
+import { LateJoinChoice } from '@/components/LateJoinChoice'
+import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
+import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
+import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { gameTypeConfig } from '@/lib/game-types'
+import type { Game, Player } from '@/types'
+
+const WORD_SEARCH_FOUND_SELECT =
+  'id,game_id,round_id,player_id,word,start_row,start_col,end_row,end_col,via_hint,found_at'
+
+const cellKey = (row: number, col: number) => `${row}-${col}`
+
+/** Adapt found rows to the shape getPlayerTimeSpent expects (last find = finish time). */
+function foundAsTimeRows(found: WordSearchFound[]) {
+  return found.map((f) => ({
+    player_id: f.player_id,
+    is_correct: true,
+    cell_row: 0,
+    cell_col: 0,
+    submitted_at: f.found_at,
+  }))
+}
+
+type View = 'loading' | 'join' | 'late_join_choice' | 'waiting' | 'playing' | 'finished'
+type WordSearchGameState = { hasValidRound: boolean }
+
+export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
+  const cfg = gameTypeConfig('word_search')
+  const { confirm } = useConfirm()
+  const [roundId, setRoundId] = useState<string | null>(null)
+  const [metadata, setMetadata] = useState<WordSearchMetadata | null>(null)
+  const [found, setFound] = useState<WordSearchFound[]>([])
+  const [nowMs, setNowMs] = useState<number>(Date.now())
+  const [invalidCells, setInvalidCells] = useState<Set<string>>(new Set())
+  const [flashedWord, setFlashedWord] = useState<string | null>(null)
+  const [hinting, setHinting] = useState(false)
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
+  // Finds submit per-selection so rapid finds don't serialize behind one global lock.
+  const inFlight = useRef<Set<string>>(new Set())
+  const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
+
+  function showToast(msg: string, ok: boolean) {
+    setToast({ msg, ok })
+    setTimeout(() => setToast(null), 2500)
+  }
+
+  /** Merge a found row, deduped by (player, word) — a player scores each word once. */
+  const addFound = useCallback((row: WordSearchFound) => {
+    setFound((prev) =>
+      prev.some((f) => f.player_id === row.player_id && f.word === row.word) ? prev : [...prev, row]
+    )
+  }, [])
+
+  const loadGameState = useCallback(async (): Promise<{ state: WordSearchGameState; ok: boolean }> => {
+    return { state: { hasValidRound: false }, ok: true }
+  }, [])
+
+  const afterResolve = useCallback(
+    async (gameData: Game, playerId: string | null): Promise<WordSearchGameState> => {
+      // Finished games show the final leaderboard to everyone — even a session-less visitor.
+      if (gameData.status === 'finished') {
+        const { data: rows } = await supabase
+          .from('word_search_found')
+          .select(WORD_SEARCH_FOUND_SELECT)
+          .eq('game_id', gameCode)
+        setFound((rows ?? []) as WordSearchFound[])
+        return { hasValidRound: false }
+      }
+
+      if (!playerId) return { hasValidRound: false }
+      if (gameData.status === 'waiting') return { hasValidRound: false }
+
+      const { data: roundData } = await supabase
+        .from('rounds')
+        .select('id, word_search_metadata')
+        .eq('game_id', gameCode)
+        .eq('round_number', 1)
+        .maybeSingle()
+      if (!roundData) return { hasValidRound: false }
+
+      const meta = parseWordSearchMetadata((roundData as Record<string, unknown>).word_search_metadata)
+      if (!meta) return { hasValidRound: false }
+
+      setMetadata(meta)
+      setRoundId(roundData.id as string)
+
+      const { data: rows } = await supabase
+        .from('word_search_found')
+        .select(WORD_SEARCH_FOUND_SELECT)
+        .eq('round_id', roundData.id)
+      setFound((rows ?? []) as WordSearchFound[])
+      return { hasValidRound: true }
+    },
+    [gameCode]
+  )
+
+  const computeScreen = useCallback((gameData: Game, playerId: string | null, state: WordSearchGameState): View => {
+    if (gameData.status === 'finished') return 'finished'
+    if (!playerId) {
+      const pre = preJoinScreen(gameData, false)
+      return pre === 'late_join_choice' ? 'late_join_choice' : 'join'
+    }
+    if (gameData.status === 'waiting') return 'waiting'
+    return state.hasValidRound ? 'playing' : 'waiting'
+  }, [])
+
+  const {
+    screen: view,
+    game,
+    setGame,
+    players,
+    setPlayers,
+    myPlayerId,
+    setMyPlayerId,
+    myResumeToken,
+    setMyResumeToken,
+    joinName,
+    setJoinName,
+    joining,
+    load,
+    join,
+  } = useGameViewBootstrap<View, WordSearchGameState>({
+    gameCode,
+    loadingScreen: 'loading',
+    notFoundScreen: 'loading',
+    loadGameState,
+    computeScreen,
+    afterResolve,
+    joinExtras,
+    onJoinError: (message) => showToast(message, false),
+  })
+
+  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
+  useTurnNotifications({ status: game?.status })
+
+  useEffect(() => {
+    if (view === 'playing') {
+      const interval = setInterval(() => setNowMs(Date.now()), 1000)
+      return () => clearInterval(interval)
+    }
+  }, [view])
+
+  useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
+
+  useEffect(() => {
+    const ch = supabase
+      .channel(`word_search_game_${gameCode}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
+        (payload) => {
+          setGame(payload.new as Game)
+          load()
+        }
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(ch)
+    }
+  }, [gameCode, load, setGame])
+
+  useEffect(() => {
+    if (!roundId) return
+    const ch = supabase
+      .channel(`word_search_found_${roundId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'word_search_found', filter: `round_id=eq.${roundId}` },
+        (payload) => {
+          addFound(payload.new as WordSearchFound)
+        }
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(ch)
+    }
+  }, [roundId, addFound])
+
+  useEffect(() => {
+    const ch = supabase
+      .channel(`word_search_players_${gameCode}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
+        () => {
+          supabase
+            .from('players')
+            .select(PLAYER_SELECT)
+            .eq('game_id', gameCode)
+            .order('joined_at')
+            .then(({ data }) => {
+              if (data) setPlayers(data as Player[])
+            })
+        }
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(ch)
+    }
+  }, [gameCode, setPlayers])
+
+  useRoomMemberAutoJoin({
+    gameCode,
+    displayName: roomDisplayName,
+    resolving: resolvingRoomMember,
+    screen: view,
+    gameStatus: game?.status,
+    hasPlayerSession: !!myPlayerId,
+    joining,
+    onJoin: (name) => join({ name }),
+  })
+
+  async function handleReady() {
+    if (!myResumeToken) return
+    await fetch('/api/players/ready', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken }),
+    })
+    await load()
+  }
+
+  const [replayReadyPending, setReplayReadyPending] = useState(false)
+  async function toggleReplayReady(ready: boolean) {
+    if (!myResumeToken) {
+      showToast('Your player session expired — rejoin to continue', false)
+      return
+    }
+    setReplayReadyPending(true)
+    try {
+      await fetch('/api/players/ready', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ready }),
+      })
+      await load()
+    } finally {
+      setReplayReadyPending(false)
+    }
+  }
+
+  function handlePlayerLeft() {
+    clearPlayerSession(gameCode)
+    setMyPlayerId(null)
+    setMyResumeToken(null)
+    setJoinName('')
+    void load()
+  }
+
+  const activePlayers = useMemo(() => players.filter((p) => p.spectator !== true), [players])
+  const playerColors = useMemo(() => {
+    const map: Record<string, string> = {}
+    activePlayers.forEach((p, i) => {
+      map[p.id] = wordSearchPlayerColor(i)
+    })
+    return map
+  }, [activePlayers])
+
+  const cellOwners = useMemo(() => (metadata ? buildFoundOwnerGrid(metadata, found) : []), [metadata, found])
+  const myFoundCells = useMemo(
+    () => (metadata && myPlayerId ? buildPlayerFoundCells(metadata, found, myPlayerId) : undefined),
+    [metadata, found, myPlayerId]
+  )
+  const myFoundWords = useMemo(
+    () => (myPlayerId ? playerFoundWords(found, myPlayerId) : new Set<string>()),
+    [found, myPlayerId]
+  )
+  const wordOwners = useMemo(() => {
+    const m = new Map<string, string>()
+    const sorted = [...found].sort((a, b) => new Date(a.found_at).getTime() - new Date(b.found_at).getTime())
+    for (const f of sorted) if (!m.has(f.word)) m.set(f.word, f.player_id)
+    return m
+  }, [found])
+
+  const leaderboard = metadata ? tallyWordSearchScores(metadata, found, players) : []
+  const me = players.find((p) => p.id === myPlayerId)
+  const isSpectator = me?.spectator === true
+  const isViewer = !!(game && me && playerIsViewer(me, game))
+  const myRank = leaderboard.findIndex((r) => r.player_id === myPlayerId) + 1
+  const myCompletion = metadata && myPlayerId ? wordSearchCompletionPercent(metadata, found, myPlayerId) : 0
+  const allFound = !!metadata && myFoundWords.size >= metadata.words.length
+
+  const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
+    gameCode,
+    game,
+    view === 'late_join_choice',
+    found.length
+  )
+  const { context: viewerPromoteContext } = useLateJoinContext(gameCode, game, isViewer && view === 'playing', found.length)
+
+  function flashInvalid(start: [number, number], end: [number, number]) {
+    const cells = selectionCells(start, end)
+    if (!cells) return
+    setInvalidCells(new Set(cells.map(([r, c]) => cellKey(r, c))))
+    setTimeout(() => setInvalidCells(new Set()), 500)
+  }
+
+  async function submitFound(start: [number, number], end: [number, number], hint: boolean) {
+    if (!myPlayerId || !roundId) return
+    if (!myResumeToken) {
+      showToast('Your session has expired — please rejoin', false)
+      return
+    }
+    const key = hint ? 'hint' : `${start[0]}-${start[1]}-${end[0]}-${end[1]}`
+    if (inFlight.current.has(key)) return
+    inFlight.current.add(key)
+    try {
+      const res = await fetch('/api/word-search/found', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gameId: gameCode,
+          resumeToken: myResumeToken,
+          startRow: start[0],
+          startCol: start[1],
+          endRow: end[0],
+          endCol: end[1],
+          hint,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        // Timer expiry (or a finish race) flips the game — refetch to land on results.
+        if (typeof json.error === 'string' && json.error.toLowerCase().includes('time')) {
+          await load()
+        } else {
+          showToast(json.error ?? 'Submission failed', false)
+        }
+        return
+      }
+      if (json.found) {
+        const s: [number, number] = json.start ?? start
+        const e: [number, number] = json.end ?? end
+        addFound({
+          id: `local-${json.word}-${myPlayerId}`,
+          game_id: gameCode,
+          round_id: roundId,
+          player_id: myPlayerId,
+          word: json.word,
+          start_row: s[0],
+          start_col: s[1],
+          end_row: e[0],
+          end_col: e[1],
+          via_hint: !!hint,
+          found_at: new Date().toISOString(),
+        })
+        if (hint) showToast(`Revealed ${json.word} · ${WORD_SEARCH_HINT_PENALTY} pts`, true)
+        else if (!json.alreadyFound) showToast(`Found ${json.word}!`, true)
+      } else if (!hint) {
+        flashInvalid(start, end)
+        showToast('Not a word', false)
+      } else if (json.complete) {
+        showToast('You have found every word', true)
+      }
+    } finally {
+      inFlight.current.delete(key)
+    }
+  }
+
+  function handleSelect(start: [number, number], end: [number, number]) {
+    void submitFound(start, end, false)
+  }
+
+  async function handleHint() {
+    if (hinting || allFound) return
+    const ok = await confirm({
+      title: 'Reveal a word?',
+      message: `Reveals and locks in one still-hidden word for a ${WORD_SEARCH_HINT_PENALTY}-point penalty.`,
+      confirmLabel: 'Reveal a word',
+    })
+    if (!ok) return
+    setHinting(true)
+    try {
+      await submitFound([0, 0], [0, 0], true)
+    } finally {
+      setHinting(false)
+    }
+  }
+
+  function handleWordFlash(word: string) {
+    setFlashedWord(word)
+    setTimeout(() => setFlashedWord((w) => (w === word ? null : w)), 700)
+  }
+
+  if (view === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-muted">Loading…</p>
+      </div>
+    )
+  }
+
+  if (view === 'join') {
+    if (resolvingRoomMember) {
+      return (
+        <div className="min-h-screen flex items-center justify-center">
+          <p className="text-muted text-lg">Joining from your game room…</p>
+        </div>
+      )
+    }
+    return (
+      <GameJoinLobbyShell
+        gameCode={gameCode}
+        header={
+          <GameJoinHeader
+            emoji={cfg.headerEmoji}
+            title={game?.title ?? 'Word Search'}
+            gameType="word_search"
+            subtitle="Race to spot every hidden word first."
+          />
+        }
+      >
+        <NameJoinForm
+          value={joinName}
+          onChange={setJoinName}
+          onSubmit={() => void join()}
+          joining={joining}
+          gameType="word_search"
+          submitLabel="Join game"
+          footer={
+            <p className="text-center pt-1">
+              <GameRulesLink gameType="word_search" variant="subtle" />
+            </p>
+          }
+        />
+      </GameJoinLobbyShell>
+    )
+  }
+
+  if (view === 'late_join_choice' && game) {
+    return (
+      <LateJoinChoice
+        gameCode={gameCode}
+        game={game}
+        context={lateJoinContext}
+        contextLoading={lateJoinContextLoading}
+        playersAllowed={allowLatePlayers(game)}
+        showNameField
+        nameInput={joinName}
+        onNameChange={setJoinName}
+        joining={joining}
+        onJoinAsViewer={() => void join({ joinAsViewer: true })}
+        onJoinAsPlayer={() => void join({ joinAsViewer: false })}
+      />
+    )
+  }
+
+  if (view === 'waiting') {
+    if (game?.replay_pending) {
+      return (
+        <GameJoinLobbyShell gameCode={gameCode} onResumed={load}>
+          <ReplayReadyRing
+            players={players}
+            meId={myPlayerId}
+            isHost={false}
+            minPlayers={WORD_SEARCH_MIN_PLAYERS}
+            onToggleReady={(ready) => void toggleReplayReady(ready)}
+            onStart={() => {}}
+            pending={replayReadyPending}
+            gameCode={gameCode}
+            onLeft={handlePlayerLeft}
+          />
+        </GameJoinLobbyShell>
+      )
+    }
+    return (
+      <GameJoinLobbyShell gameCode={gameCode} onResumed={load}>
+        <GameLobbyWaitingPanel
+          gameCode={gameCode}
+          gameType={game?.game_type}
+          players={players}
+          myPlayerId={myPlayerId}
+          myPlayerName={me?.name ?? ''}
+          onRenamed={() => void load()}
+          onLeft={handlePlayerLeft}
+          title={game?.title ?? 'Word Search'}
+          description="Waiting for the host to start the hunt…"
+          rulesLink={<GameRulesLink gameType="word_search" variant="subtle" />}
+          isSpectator={isSpectator}
+          onReady={handleReady}
+        />
+      </GameJoinLobbyShell>
+    )
+  }
+
+  if (view === 'finished') {
+    const myRow = leaderboard.find((row) => row.player_id === myPlayerId)
+    const iWon =
+      !!myRow &&
+      leaderboard.length > 1 &&
+      leaderboard[0] != null &&
+      myRow.points === leaderboard[0].points &&
+      leaderboard[0].points > 0
+    return (
+      <div className="min-h-screen flex flex-col">
+        <GamePlayerChrome />
+        <main className="pt-16 flex-1 px-4 py-8 max-w-lg mx-auto w-full space-y-6">
+          <div className="glass-card-strong p-8 text-center space-y-2">
+            <p className="text-4xl">🏆</p>
+            <p className="text-2xl font-black">Hunt complete!</p>
+            {leaderboard[0] && (
+              <p className="text-muted text-base">
+                {leaderboard[0].name} wins with {leaderboard[0].points} pts
+              </p>
+            )}
+          </div>
+          <PaginatedLeaderboard
+            title="Final leaderboard"
+            rows={leaderboard.map((row, i) => {
+              const pct = metadata ? wordSearchCompletionPercent(metadata, found, row.player_id) : 0
+              const timeSecs = getPlayerTimeSpent(
+                game,
+                foundAsTimeRows(found),
+                row.player_id,
+                pct,
+                nowMs,
+                players.find((p) => p.id === row.player_id)?.joined_at
+              )
+              return {
+                id: row.player_id,
+                name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,
+                score: row.points,
+                rank: i + 1,
+              }
+            })}
+            highlightId={myPlayerId ?? undefined}
+            scoreLabel={(n) => `${n} pts`}
+          />
+          {iWon && (
+            <PostWinToCommunity
+              gameType="word_search"
+              gameCode={gameCode}
+              winnerName={myRow?.name ?? ''}
+              roundKey={game?.session_started_at ?? undefined}
+            />
+          )}
+        </main>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col bg-slate-50/80 dark:bg-slate-950/50">
+      <GamePlayerChrome />
+      {toast && (
+        <div
+          className={`fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full text-sm font-semibold shadow-lg ${toast.ok ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}
+        >
+          {toast.msg}
+        </div>
+      )}
+      <main className="pt-16 flex-1 px-3 py-4 max-w-lg mx-auto w-full space-y-4">
+        <WordSearchGameTimerBar gameCode={gameCode} game={game} />
+
+        {isViewer ? (
+          <ViewerModeBanner
+            gameCode={gameCode}
+            playerId={myPlayerId}
+            game={game}
+            player={me}
+            playerDetail={viewerPromoteContext?.playerDetail}
+            onPromoted={load}
+          />
+        ) : (
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-3">
+              <div className="w-4 h-4 rounded-sm shrink-0" style={{ backgroundColor: WORD_SEARCH_MY_CELL_COLOR }} />
+              <div>
+                <p className="font-bold text-slate-800 dark:text-slate-100 leading-tight">{me?.name ?? 'Me'}</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {myRank > 0 ? ordinal(myRank) : '—'} | {myCompletion}%
+                </p>
+              </div>
+            </div>
+            {game?.session_started_at && (
+              <div className="text-sm font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-md">
+                ⏱️{' '}
+                {formatMinutesSeconds(
+                  getPlayerTimeSpent(game, foundAsTimeRows(found), myPlayerId || '', myCompletion, nowMs, me?.joined_at)
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {metadata && (
+          <>
+            <WordSearchBoard
+              metadata={metadata}
+              cellOwners={cellOwners}
+              myFoundCells={myFoundCells}
+              playerColors={playerColors}
+              myPlayerId={myPlayerId}
+              invalidCells={invalidCells}
+              onSelect={handleSelect}
+              readOnly={isViewer}
+            />
+
+            {!isViewer && (
+              <div className="flex items-center gap-2">
+                <p className="flex-1 min-w-0 glass-card px-3 py-2 text-sm text-slate-600 dark:text-slate-300">
+                  Drag from a word&apos;s first letter to its last.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void handleHint()}
+                  disabled={hinting || allFound}
+                  className="shrink-0 px-3 py-2 rounded-lg text-sm font-bold bg-amber-100/80 text-amber-800 dark:bg-amber-900/35 dark:text-amber-200 disabled:opacity-40 transition-colors hover:bg-amber-100"
+                  title={`Reveal a hidden word (${WORD_SEARCH_HINT_PENALTY} pts)`}
+                >
+                  💡 Reveal
+                </button>
+              </div>
+            )}
+
+            <WordList
+              words={metadata.words}
+              wordOwners={wordOwners}
+              myPlayerId={myPlayerId}
+              myColor={WORD_SEARCH_MY_CELL_COLOR}
+              playerColors={playerColors}
+              onWordFlash={handleWordFlash}
+              flashedWord={flashedWord}
+            />
+          </>
+        )}
+
+        {/* Live standings */}
+        <div className="space-y-2">
+          {leaderboard.map((row, i) => {
+            const pct = metadata ? wordSearchCompletionPercent(metadata, found, row.player_id) : 0
+            const color = playerColors[row.player_id] ?? '#94a3b8'
+            const timeSecs = getPlayerTimeSpent(
+              game,
+              foundAsTimeRows(found),
+              row.player_id,
+              pct,
+              nowMs,
+              players.find((p) => p.id === row.player_id)?.joined_at
+            )
+            return (
+              <div
+                key={row.player_id}
+                className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 ${
+                  row.player_id === myPlayerId
+                    ? 'border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-900'
+                    : 'border-transparent bg-slate-100/60 dark:bg-slate-900/40'
+                }`}
+              >
+                <div className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: color }} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate">{row.name}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {ordinal(i + 1)} of {leaderboard.length} · {row.wordsFound} words · {pct}%
+                    {game?.session_started_at ? ` · ⏱️ ${formatMinutesSeconds(timeSecs)}` : ''}
+                  </p>
+                </div>
+                <span className="text-sm font-bold text-slate-600 dark:text-slate-300 tabular-nums">
+                  {row.points} pts
+                </span>
+              </div>
+            )
+          })}
+        </div>
+
+        {myPlayerId && (
+          <PlayerSessionControls
+            gameCode={gameCode}
+            playerId={myPlayerId}
+            currentName={me?.name ?? ''}
+            onRenamed={() => void load()}
+            onLeft={handlePlayerLeft}
+            leaveOnly={isViewer}
+          />
+        )}
+      </main>
+    </div>
+  )
+}
+
+function ordinal(n: number): string {
+  const j = n % 10
+  const k = n % 100
+  if (j === 1 && k !== 11) return `${n}st`
+  if (j === 2 && k !== 12) return `${n}nd`
+  if (j === 3 && k !== 13) return `${n}rd`
+  return `${n}th`
+}

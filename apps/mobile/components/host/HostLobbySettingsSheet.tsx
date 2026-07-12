@@ -132,6 +132,7 @@ const LOBBY_MAX_PLAYERS_GAMES = new Set<GameType>([
   'quick_draw',
   'word_rush',
   'crossword',
+  'word_search',
   // Also >2-player games that were missing the lobby max-players control.
   'codewords',
   'trivia',
@@ -151,6 +152,7 @@ const ROUNDLESS_GAMES = new Set<GameType>([
   'i_call_on',
   'mafia',
   'crossword',
+  'word_search',
 ])
 
 /** Party games with no round/turn timer on `timer_seconds` (bingo uses a call interval). */
@@ -483,7 +485,7 @@ export function HostLobbySettingsSheet({
       if (quiplash.voteTimer !== game.operative_timer_seconds) board.operative_timer_seconds = quiplash.voteTimer
     }
     if (isDuration) {
-      if (gameType === 'sudoku' || gameType === 'crossword') {
+      if (gameType === 'sudoku' || gameType === 'crossword' || gameType === 'word_search') {
         if (duration.gameDurationSeconds !== game.game_duration_seconds)
           board.game_duration_seconds = duration.gameDurationSeconds
       } else if (gameType === 'word_hunt') {
