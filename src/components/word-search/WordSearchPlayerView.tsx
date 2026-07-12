@@ -75,6 +75,8 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
   const [found, setFound] = useState<WordSearchFound[]>([])
   const [nowMs, setNowMs] = useState<number>(Date.now())
   const [invalidCells, setInvalidCells] = useState<Set<string>>(new Set())
+  const [pendingCells, setPendingCells] = useState<Set<string>>(new Set())
+  const [previewWord, setPreviewWord] = useState<string | null>(null)
   const [flashedWord, setFlashedWord] = useState<string | null>(null)
   const [hinting, setHinting] = useState(false)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
@@ -400,10 +402,15 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
       }
     } finally {
       inFlight.current.delete(key)
+      if (!hint) setPendingCells(new Set())
     }
   }
 
   function handleSelect(start: [number, number], end: [number, number]) {
+    // Keep the selection highlighted until its found/wrong result lands (cleared in the
+    // submit's finally) so it never blinks off before the feedback appears.
+    const cells = selectionCells(start, end)
+    if (cells) setPendingCells(new Set(cells.map(([r, c]) => cellKey(r, c))))
     void submitFound(start, end, false)
   }
 
@@ -631,6 +638,14 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
 
         {metadata && (
           <>
+            {!isViewer && (
+              <div className="mx-auto min-h-[3rem] min-w-[10rem] px-4 flex items-center justify-center glass-card">
+                <span className="text-2xl font-extrabold tracking-[0.25em] text-[var(--foreground)]">
+                  {previewWord || <span className="text-sm font-normal tracking-normal text-muted">Drag to spell a word</span>}
+                </span>
+              </div>
+            )}
+
             <WordSearchBoard
               metadata={metadata}
               cellOwners={cellOwners}
@@ -638,7 +653,9 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
               playerColors={playerColors}
               myPlayerId={myPlayerId}
               invalidCells={invalidCells}
+              pendingCells={pendingCells}
               onSelect={handleSelect}
+              onPreviewChange={setPreviewWord}
               readOnly={isViewer}
             />
 

@@ -19,7 +19,7 @@ export const WORD_SEARCH_FIRST_BONUS = 5
 /** Per-letter bonus, applied on Hard only (see WORD_SEARCH_DIFFICULTY_SPECS). */
 export const WORD_SEARCH_LENGTH_BONUS = 1
 /** Penalty applied per "reveal a word" hint used. */
-export const WORD_SEARCH_HINT_PENALTY = -2
+export const WORD_SEARCH_HINT_PENALTY = -10
 
 export type WordSearchDifficulty = 'easy' | 'medium' | 'hard'
 export const WORD_SEARCH_DIFFICULTIES: WordSearchDifficulty[] = ['easy', 'medium', 'hard']
