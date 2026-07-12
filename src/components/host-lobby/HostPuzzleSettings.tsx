@@ -6,6 +6,7 @@ import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingB
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
 import { crosswordThemeOptions } from '@/lib/crossword-puzzles'
 import { wordSearchThemeOptions } from '@/lib/word-search-puzzles'
+import { wordScrambleThemeOptions } from '@/lib/word-scramble-puzzles'
 import { useToast } from '@/components/ui/Toast'
 
 const DIFFICULTIES: { value: string; label: string }[] = [
@@ -30,19 +31,22 @@ export function HostPuzzleSettings({
   hostToken: string
   game: Game
   onGameUpdate: (game: Game) => void
-  kind: 'crossword' | 'word_search'
+  kind: 'crossword' | 'word_search' | 'word_scramble'
 }) {
   const { error: toastError } = useToast()
   const [saving, setSaving] = useState(false)
 
   if (game.status !== 'waiting') return null
 
-  const themeField = kind === 'crossword' ? 'crossword_theme' : 'word_search_theme'
-  const diffField = kind === 'crossword' ? 'crossword_difficulty' : 'word_search_difficulty'
-  const themeOptions = (kind === 'crossword' ? crosswordThemeOptions() : wordSearchThemeOptions()).map((t) => ({
-    value: t.id,
-    label: t.label,
-  }))
+  const themeField = `${kind}_theme`
+  const diffField = `${kind}_difficulty`
+  const themeSource =
+    kind === 'crossword'
+      ? crosswordThemeOptions()
+      : kind === 'word_search'
+        ? wordSearchThemeOptions()
+        : wordScrambleThemeOptions()
+  const themeOptions = themeSource.map((t) => ({ value: t.id, label: t.label }))
   const g = game as unknown as Record<string, string | null | undefined>
   const currentTheme = g[themeField] ?? themeOptions[0]?.value ?? ''
   const currentDifficulty = g[diffField] ?? 'medium'
