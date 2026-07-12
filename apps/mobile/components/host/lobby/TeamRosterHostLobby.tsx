@@ -154,7 +154,9 @@ export function TeamRosterHostLobby({ gameCode, hostToken, game, players }: Prop
   return (
     <View style={styles.card}>
       <Text style={styles.title}>Teams</Text>
-      <Text style={styles.hint}>Tap a team to move a player. Players can also pick their own.</Text>
+      <Text style={styles.hint}>
+        Tap the number beside a player to move them to that team. Players can also pick their own.
+      </Text>
 
       {active.length === 0 ? (
         <Text style={styles.empty}>Waiting for players to join…</Text>
