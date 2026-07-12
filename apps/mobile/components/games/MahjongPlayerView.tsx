@@ -16,7 +16,7 @@ import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { MahjongTableView } from '@/components/games/mahjong/MahjongTableView'
-import { MahjongResultsCard } from '@/components/games/mahjong/MahjongResultsCard'
+import { MahjongShareCard } from '@/components/games/mahjong/MahjongShareCard'
 import { MahjongTileFace } from '@/components/games/mahjong/MahjongTileFace'
 import { DraggableHandTile, type PondRect } from '@/components/games/mahjong/DraggableHandTile'
 import {
@@ -26,7 +26,6 @@ import {
   mahjongSelfKongOptions,
   type MahjongSelfKongOption,
 } from '@/components/games/mahjong/mahjong-self-actions'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
@@ -237,7 +236,17 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
         )}
         winnerPlayerId={winnerIds[0] ?? null}
         roundKey={session?.id}
-        notice={<MahjongResultsCard session={session} />}
+        hideDefaultHeader
+        notice={
+          <MahjongShareCard
+            gameTitle={bootstrap.game.title}
+            winnerName={winnerNames[0] ?? null}
+            isDraw={winnerIds.length === 0}
+            session={session}
+            players={bootstrap.players}
+            highlightPlayerId={bootstrap.myPlayerId}
+          />
+        }
       />
     )
   }
@@ -289,17 +298,6 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title={batch8GameLabel('mahjong')} subtitle={mahjongPhaseLabel(session.phase)}>
       <ScrollView contentContainerStyle={styles.content}>
-        {isViewer && me && bootstrap.myPlayerId ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId}
-            game={bootstrap.game}
-            player={me}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
-
         <TurnBanner
           isMyTurn={isMyTurn || canClaim}
           text={

@@ -26,7 +26,6 @@ import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/g
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { ActivityFeed } from '@/components/party/ActivityFeed'
@@ -363,16 +362,6 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
       subtitle={session.status_message ?? bootstrap.code}
     >
       <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
-        {isViewer && bootstrap.game && me && bootstrap.myPlayerId ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId}
-            game={bootstrap.game}
-            player={me}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
         <TurnBanner
           text={
             session.phase === 'intermission'

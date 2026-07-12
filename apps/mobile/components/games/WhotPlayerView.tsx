@@ -280,7 +280,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
         <GameFinishPanel
           bootstrap={bootstrap}
           title={winner ? `${winner.name} wins!` : 'Game over'}
-          subtitle="Final standings"
+          subtitle={standings.length > 1 ? 'Lowest hand total wins · WHOT = 20' : 'Final standings'}
           leaderboard={cardHandLeaderboard(standings, session.winner_player_id, bootstrap.myPlayerId)}
           winnerPlayerId={session.winner_player_id}
           roundKey={session.id}

@@ -38,13 +38,13 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { MonopolyBoardView } from '@/components/games/monopoly/MonopolyBoardView'
 import { MonopolyGameTimerBar } from '@/components/games/monopoly/MonopolyGameTimerBar'
 import { MonopolyStatusCards } from '@/components/games/monopoly/MonopolyStatusCards'
+import { MonopolyShareCard } from '@/components/games/monopoly/MonopolyShareCard'
 import {
   formatThemedMoney,
   formatThemedText,
   themedSpaceName,
 } from '@/components/games/monopoly/monopoly-theme'
 import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameExpiryTimer } from '@/hooks/useGameExpiryTimer'
@@ -488,6 +488,16 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         leaderboard={monopolyLeaderboard(standings, bootstrap.myPlayerId)}
         winnerPlayerId={board?.winner_player_id}
         roundKey={board?.id}
+        hideDefaultHeader
+        notice={
+          <MonopolyShareCard
+            standings={standings}
+            winnerName={winner?.name ?? null}
+            gameTitle={bootstrap.game.title}
+            themeId={themeId}
+            highlightPlayerId={bootstrap.myPlayerId}
+          />
+        }
       />
     )
   }
@@ -750,8 +760,40 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     </View>
   )
 
+  // Read-only board centre for spectators — mirrors the web MonopolyActiveLayout
+  // viewer center: the last roll, a "Watching live" label, and the status message.
+  // (Whose turn lives in the status cards above the board, like web's turn strip.)
+  const spectatorCenter = (
+    <View style={styles.center}>
+      {board.last_dice ? (
+        <View style={styles.dieRow}>
+          <View style={styles.die}>
+            <Text style={styles.dieText}>{board.last_dice.d1}</Text>
+          </View>
+          <View style={styles.die}>
+            <Text style={styles.dieText}>{board.last_dice.d2}</Text>
+          </View>
+          <Text style={styles.dieTotal}>
+            {board.last_dice.total}
+            {board.last_dice.doubles ? ' ••' : ''}
+          </Text>
+        </View>
+      ) : null}
+      <Text style={styles.specTurnName} numberOfLines={1}>
+        {turnName}
+        <Text style={styles.specTurnSuffix}>&apos;s turn</Text>
+      </Text>
+      <Text style={styles.centerWatchLabel}>WATCHING LIVE</Text>
+      {board.status_message ? (
+        <Text style={styles.centerWatchMsg} numberOfLines={4}>
+          {formatThemedText(board.status_message, themeId)}
+        </Text>
+      ) : null}
+    </View>
+  )
+
   return (
-    <GameShell bootstrap={bootstrap} title={batch8GameLabel('monopoly')} subtitle={monopolyPhaseLabel(board.phase)}>
+    <GameShell bootstrap={bootstrap} title={batch8GameLabel('monopoly')}>
       <ScrollView ref={scrollRef} contentContainerStyle={styles.playContent}>
         <MonopolyGameTimerBar game={bootstrap.game} />
 
@@ -764,17 +806,6 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           spaceOwnerLabel={spaceOwnerLabel}
           banner={visibleBanner}
         />
-
-        {isViewer && me ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId!}
-            game={bootstrap.game}
-            player={me}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
 
         {showRaiseCashNudge ? (
           <Animated.View style={nudgeStyle}>
@@ -803,7 +834,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           pendingSpace={board.pending_space}
           myPlayerId={bootstrap.myPlayerId}
           themeId={themeId}
-          center={isViewer ? undefined : boardCenter}
+          center={isViewer ? spectatorCenter : boardCenter}
         />
 
         {board.last_card_event && activeEventKind === 'card' ? (
@@ -1136,6 +1167,22 @@ const makeStyles = (theme: Theme) =>
     marginTop: 2,
   },
   centerWaiting: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '700', marginTop: 2 },
+  specTurnName: { color: '#ffffff', fontSize: 15, fontWeight: '900', textAlign: 'center' },
+  specTurnSuffix: { color: 'rgba(255,255,255,0.6)', fontSize: 13, fontWeight: '600' },
+  centerWatchLabel: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    marginTop: 4,
+  },
+  centerWatchMsg: {
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 11,
+    lineHeight: 15,
+    textAlign: 'center',
+    marginTop: 2,
+  },
   bidInput: {
     backgroundColor: theme.bg,
     borderColor: theme.border,

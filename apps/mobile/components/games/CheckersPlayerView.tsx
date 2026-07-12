@@ -2,9 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { colorForPlayer, currentTurnPlayerId, legalStepsFromSquare } from '@fateround/shared/checkers'
 import { playerIsViewer } from '@fateround/shared/viewers'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { CheckersBoard } from '@/components/games/checkers/CheckersBoard'
-import { CheckersFinalBoard } from '@/components/games/checkers/CheckersFinalBoard'
+import { CheckersShareCard } from '@/components/games/checkers/CheckersShareCard'
 import {
   checkersIsTimed,
   checkersResultDetail,
@@ -216,8 +215,13 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
           }
           winnerPlayerId={activeSession.winner_player_id}
           roundKey={activeSession.id}
+          hideDefaultHeader
           notice={
-            <CheckersFinalBoard
+            <CheckersShareCard
+              gameTitle={bootstrap.game.title}
+              winnerName={winner ? winner.name : null}
+              isDraw={activeSession.is_draw}
+              reasonSubtitle={checkersResultDetail(activeSession.result_reason)}
               session={activeSession}
               players={bootstrap.players}
               highlightPlayerId={bootstrap.myPlayerId}
@@ -240,17 +244,6 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title="Checkers" subtitle={`Code ${bootstrap.code}`}>
       <ScrollView contentContainerStyle={styles.content}>
-        {isViewer && me ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={me.id}
-            game={bootstrap.game}
-            player={me}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
-
         <TurnBanner
           text={
             mustJump

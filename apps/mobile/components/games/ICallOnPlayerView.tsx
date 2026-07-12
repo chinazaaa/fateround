@@ -45,7 +45,6 @@ import { usePlayerSessionActions } from '@/lib/player-session'
 import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { ICallOnScoreboard } from '@/components/games/i_call_on/ICallOnScoreboard'
 import { ICallOnGameTimerBar } from '@/components/games/i_call_on/ICallOnGameTimerBar'
 import { ICallOnLiveLeaderboard } from '@/components/games/i_call_on/ICallOnLiveLeaderboard'
@@ -520,17 +519,6 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     ) : null
 
   const gameTimerBar = <ICallOnGameTimerBar game={bootstrap.game} />
-  const viewerBanner =
-    bootstrap.myPlayerId && me ? (
-      <ViewerModeBanner
-        gameCode={bootstrap.code}
-        playerId={bootstrap.myPlayerId}
-        game={bootstrap.game}
-        player={me}
-        players={bootstrap.players}
-        onPromoted={() => void bootstrap.load()}
-      />
-    ) : null
   const roundHeaderCard = (
     <ICallOnRoundHeader
       roundNumber={currentRound.round_number}
@@ -556,7 +544,6 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
       >
         <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
           {gameTimerBar}
-          {viewerBanner}
           {roundHeaderCard}
           {phaseTimer}
           {isCaller && !isViewer ? (
@@ -600,7 +587,6 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
       >
         <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
           {gameTimerBar}
-          {viewerBanner}
           {roundHeaderCard}
           {phaseTimer}
           {isViewer ? (
@@ -645,7 +631,6 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Mark ${targetName}'s answers`}>
         <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
           {gameTimerBar}
-          {viewerBanner}
           {roundHeaderCard}
           {phaseTimer}
           {!reviewTargetAnswer ? (
@@ -725,7 +710,6 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
       >
         <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
           {gameTimerBar}
-          {viewerBanner}
           {roundHeaderCard}
           {isCaller && !isViewer ? (
             <>
@@ -767,7 +751,6 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Letter ${metadata.letter ?? '?'}`}>
       <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
         {gameTimerBar}
-        {viewerBanner}
         <View style={styles.revealHead}>
           <Text style={styles.revealTitle}>Round {currentRound.round_number} scores</Text>
           {currentRound.ended_at ? (

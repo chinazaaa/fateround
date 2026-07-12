@@ -1,22 +1,25 @@
-import { useMemo, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import type { MonopolyPlayerState, Player } from '@fateround/shared'
-import {
-  MONOPOLY_COLOR_HEX,
-  MONOPOLY_GRID_SIZE,
-  BOARD_SPACE_GRID,
-  boardEdgeForSpace,
-} from '@fateround/shared/monopoly-board-layout'
+import { MONOPOLY_COLOR_HEX, boardEdgeForSpace } from '@fateround/shared/monopoly-board-layout'
 import { spaceAt } from '@fateround/shared/monopoly-board'
 import { monopolyTokenEmoji } from '@fateround/shared/monopoly-tokens'
 import {
-  formatThemedMoney,
   getBoardPalette,
+  getBoardTitle,
+  getEditionSubtitle,
   mobileBoardSpaceLines,
   themedSpaceIcon,
 } from './monopoly-theme'
 
 export const TOKEN_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899']
+
+// Board tiles walked in visual order for the frame layout. Corners bookend each
+// edge run; the index maths mirrors `boardGridCell` in the shared package.
+const TOP_INDICES = [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+const BOTTOM_INDICES = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
+const LEFT_INDICES = [19, 18, 17, 16, 15, 14, 13, 12, 11]
+const RIGHT_INDICES = [31, 32, 33, 34, 35, 36, 37, 38, 39]
 
 function defaultSpaceIcon(type: string): string {
   switch (type) {
@@ -55,6 +58,39 @@ const SNOWFLAKES = [
   { top: '62%', left: '44%', size: 6, opacity: 0.5 },
 ] as const
 
+type Edge = ReturnType<typeof boardEdgeForSpace>
+
+function colorBarStyle(edge: Edge) {
+  // Bar sits on the tile's inner edge (facing the board centre).
+  switch (edge) {
+    case 'top':
+      return styles.barBottom
+    case 'bottom':
+      return styles.barTop
+    case 'left':
+      return styles.barRight
+    case 'right':
+      return styles.barLeft
+    default:
+      return null
+  }
+}
+
+function tokenRowStyle(edge: Edge) {
+  switch (edge) {
+    case 'top':
+      return styles.tokenRowTop
+    case 'bottom':
+      return styles.tokenRowBottom
+    case 'left':
+      return styles.tokenRowLeft
+    case 'right':
+      return styles.tokenRowRight
+    default:
+      return styles.tokenRowCorner
+  }
+}
+
 export function MonopolyBoardView({
   states,
   players,
@@ -73,143 +109,175 @@ export function MonopolyBoardView({
   /** Content rendered inside the board's empty center (turn UI: cash, dice, actions). */
   center?: ReactNode
 }) {
-  const { width } = useWindowDimensions()
-  const cellSize = Math.min(Math.floor((width - 12) / MONOPOLY_GRID_SIZE), 42)
-  const boardPx = cellSize * MONOPOLY_GRID_SIZE
-  const innerPx = cellSize * (MONOPOLY_GRID_SIZE - 2)
+  const { width: winW } = useWindowDimensions()
+  // Size to the real available width (the board sits inside nested container
+  // paddings), measured via onLayout. `winW - 64` is just the first-paint estimate.
+  const [availW, setAvailW] = useState(0)
+  const boardW = Math.min(availW || winW - 64, 440)
+  // Corners are ~1.85× an edge tile's short side (matches the web fractional grid).
+  const cornerSize = Math.round((boardW * 1.85) / 12.7)
+  const centerSize = boardW - cornerSize * 2
+  // Long-axis length of a single edge tile (9 per side between the two corners).
+  const edgeMain = centerSize / 9
   const palette = getBoardPalette(themeId)
 
   const tokensBySpace = useMemo(() => {
-    const map = new Map<number, { emoji: string; playerId: string }[]>()
+    const map = new Map<number, { emoji: string; playerId: string; order: number }[]>()
     for (const state of states) {
       if (state.bankrupt) continue
-      const pos = state.position
       const player = players.find((p) => p.id === state.player_id)
       const emoji = monopolyTokenEmoji(player?.monopoly_token, state.player_order)
-      const list = map.get(pos) ?? []
-      list.push({ emoji, playerId: state.player_id })
-      map.set(pos, list)
+      const list = map.get(state.position) ?? []
+      list.push({ emoji, playerId: state.player_id, order: state.player_order })
+      map.set(state.position, list)
     }
     return map
   }, [states, players])
 
-  return (
-    <View
-      style={[
-        styles.board,
-        { width: boardPx, height: boardPx, backgroundColor: palette.boardBg, borderColor: palette.boardBorder },
-      ]}
-    >
-      {Array.from({ length: MONOPOLY_GRID_SIZE }, (_, rowIndex) => {
-        const row = rowIndex + 1
-        return (
-          <View key={row} style={styles.row}>
-            {Array.from({ length: MONOPOLY_GRID_SIZE }, (_, colIndex) => {
-              const col = colIndex + 1
-              const isCenter = col > 1 && col < MONOPOLY_GRID_SIZE && row > 1 && row < MONOPOLY_GRID_SIZE
-              if (isCenter) {
-                return (
-                  <View
-                    key={col}
-                    style={[{ width: cellSize, height: cellSize, backgroundColor: palette.centerBg }]}
-                  />
-                )
-              }
+  const renderTile = (spaceIndex: number) => {
+    const space = spaceAt(spaceIndex)
+    const edge = boardEdgeForSpace(spaceIndex)
+    const isCorner = edge === 'corner'
+    const vertical = edge === 'top' || edge === 'bottom'
+    const ownerId = propertyOwners[String(spaceIndex)]
+    const ownerOrder = states.find((s) => s.player_id === ownerId)?.player_order ?? 0
+    const tokens = tokensBySpace.get(spaceIndex) ?? []
+    const highlighted = pendingSpace === spaceIndex
+    const nameLines = mobileBoardSpaceLines(space.name, space.type, spaceIndex, themeId)
+    const icon = themedSpaceIcon(space.type, themeId) || defaultSpaceIcon(space.type)
+    const showIcon = space.price == null && space.type !== 'property' && !!icon
+    const colorHex = space.color ? MONOPOLY_COLOR_HEX[space.color] : null
+    // Corners are square; top/bottom tiles are tall & narrow; side tiles are wide & short.
+    const tileW = isCorner ? cornerSize : vertical ? edgeMain : cornerSize
+    const tileH = isCorner ? cornerSize : vertical ? cornerSize : edgeMain
 
-              const spaceIndex = BOARD_SPACE_GRID.get(`${col},${row}`)
-              if (spaceIndex == null) {
-                return <View key={col} style={{ width: cellSize, height: cellSize }} />
-              }
+    return (
+      <View
+        key={spaceIndex}
+        style={[
+          styles.tile,
+          { width: tileW, height: tileH },
+          { backgroundColor: isCorner ? palette.cornerBg : palette.tileBg },
+          highlighted && { borderColor: palette.highlightBorder, borderWidth: 1.5 },
+        ]}
+      >
+        {colorHex && !isCorner ? (
+          <View style={[styles.colorBar, colorBarStyle(edge), { backgroundColor: colorHex }]} />
+        ) : null}
 
-              const space = spaceAt(spaceIndex)
-              const edge = boardEdgeForSpace(spaceIndex)
-              const isCorner = edge === 'corner'
-              const ownerId = propertyOwners[String(spaceIndex)]
-              const ownerOrder = states.find((s) => s.player_id === ownerId)?.player_order ?? 0
-              const tokens = tokensBySpace.get(spaceIndex) ?? []
-              const highlighted = pendingSpace === spaceIndex
-              const nameLines = mobileBoardSpaceLines(space.name, space.type, spaceIndex, themeId)
-              const icon = themedSpaceIcon(space.type, themeId) || defaultSpaceIcon(space.type)
-              const showIcon = space.price == null && space.type !== 'property' && !!icon
+        {isCorner ? (
+          <View style={styles.cornerContent}>
+            {showIcon ? <Text style={styles.cornerIcon}>{icon}</Text> : null}
+            {nameLines.map((line, i) => (
+              <Text
+                key={i}
+                style={[styles.cornerName, { color: palette.tileText }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+              >
+                {line}
+              </Text>
+            ))}
+          </View>
+        ) : vertical ? (
+          <View style={styles.vContent}>
+            {/* Stacked lines laid out horizontally, then the whole block is rotated
+                90° so they read as side-by-side vertical columns (like the sides). */}
+            <View style={[styles.vBlock, { width: cornerSize - 8 }]}>
+              {nameLines.map((line, i) => (
+                <Text
+                  key={i}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.6}
+                  style={[styles.vLine, { color: palette.tileText }]}
+                >
+                  {line}
+                </Text>
+              ))}
+              {showIcon ? <Text style={[styles.vLine, { color: palette.tileText }]}>{icon}</Text> : null}
+            </View>
+          </View>
+        ) : (
+          <View style={styles.hContent}>
+            {nameLines.map((line, i) => (
+              <Text
+                key={i}
+                style={[styles.spaceName, { color: palette.tileText }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+              >
+                {line}
+              </Text>
+            ))}
+            {showIcon ? <Text style={styles.spaceIcon}>{icon}</Text> : null}
+          </View>
+        )}
 
+        {ownerId ? (
+          <View
+            style={[
+              styles.ownerDot,
+              { backgroundColor: TOKEN_COLORS[ownerOrder % TOKEN_COLORS.length] },
+            ]}
+          />
+        ) : null}
+
+        {tokens.length > 0 ? (
+          <View style={[styles.tokenRow, tokenRowStyle(edge)]}>
+            {tokens.slice(0, 4).map((t) => {
+              const mine = t.playerId === myPlayerId
               return (
                 <View
-                  key={col}
+                  key={t.playerId}
                   style={[
-                    styles.space,
-                    {
-                      width: cellSize,
-                      height: cellSize,
-                      backgroundColor: isCorner ? palette.cornerBg : palette.tileBg,
-                    },
-                    highlighted && { borderColor: palette.highlightBorder, borderWidth: 2 },
+                    styles.tokenChip,
+                    { backgroundColor: TOKEN_COLORS[t.order % TOKEN_COLORS.length] },
+                    mine && styles.tokenChipMine,
                   ]}
                 >
-                  {space.color ? (
-                    <View
-                      style={[
-                        styles.colorBar,
-                        edge === 'left' || edge === 'right'
-                          ? styles.colorBarVertical
-                          : styles.colorBarHorizontal,
-                        { backgroundColor: MONOPOLY_COLOR_HEX[space.color] },
-                      ]}
-                    />
-                  ) : null}
-                  <View style={styles.tileContent}>
-                    {space.price != null && !ownerId ? (
-                      <Text style={[styles.spacePrice, { color: palette.tileText }]} numberOfLines={1}>
-                        {formatThemedMoney(space.price, themeId)}
-                      </Text>
-                    ) : null}
-                    <View style={styles.nameBlock}>
-                      {nameLines.map((line, i) => (
-                        <Text
-                          key={i}
-                          style={[
-                            styles.spaceName,
-                            isCorner && styles.spaceNameCorner,
-                            { color: palette.tileText },
-                          ]}
-                          numberOfLines={1}
-                          adjustsFontSizeToFit
-                          minimumFontScale={0.6}
-                        >
-                          {line}
-                        </Text>
-                      ))}
-                      {showIcon ? <Text style={styles.spaceIcon}>{icon}</Text> : null}
-                    </View>
-                  </View>
-                  {ownerId ? (
-                    <View
-                      style={[
-                        styles.ownerDot,
-                        { backgroundColor: TOKEN_COLORS[ownerOrder % TOKEN_COLORS.length] },
-                      ]}
-                    />
-                  ) : null}
-                  {tokens.length > 0 ? (
-                    <View style={styles.tokenRow}>
-                      {tokens.slice(0, 3).map((t) => (
-                        <Text
-                          key={t.playerId}
-                          style={[
-                            styles.tokenEmoji,
-                            t.playerId === myPlayerId && styles.tokenEmojiMine,
-                          ]}
-                        >
-                          {t.emoji}
-                        </Text>
-                      ))}
-                    </View>
-                  ) : null}
+                  <Text style={styles.tokenChipEmoji}>{t.emoji}</Text>
                 </View>
               )
             })}
           </View>
-        )
-      })}
+        ) : null}
+      </View>
+    )
+  }
+
+  return (
+    <View
+      style={styles.measure}
+      onLayout={(e) => {
+        const w = e.nativeEvent.layout.width
+        if (w > 0 && Math.abs(w - availW) > 0.5) setAvailW(w)
+      }}
+    >
+      <View
+        style={[
+          styles.board,
+          { width: boardW, height: boardW, backgroundColor: palette.boardBg, borderColor: palette.boardBorder },
+        ]}
+      >
+        <View style={[styles.edgeRow, { height: cornerSize }]}>{TOP_INDICES.map(renderTile)}</View>
+
+      <View style={[styles.midRow, { height: centerSize }]}>
+        <View style={{ width: cornerSize, height: centerSize }}>{LEFT_INDICES.map(renderTile)}</View>
+        <View style={[styles.centerCell, { width: centerSize, height: centerSize, backgroundColor: palette.centerBg }]}>
+          {center ?? (
+            <View style={styles.defaultCenter}>
+              <Text style={styles.defaultCenterTitle}>{getBoardTitle(themeId)}</Text>
+              <Text style={styles.defaultCenterSubtitle}>{getEditionSubtitle(themeId)}</Text>
+            </View>
+          )}
+        </View>
+        <View style={{ width: cornerSize, height: centerSize }}>{RIGHT_INDICES.map(renderTile)}</View>
+      </View>
+
+      <View style={[styles.edgeRow, { height: cornerSize }]}>{BOTTOM_INDICES.map(renderTile)}</View>
 
       {palette.decoration === 'arctic' ? (
         <View pointerEvents="none" style={styles.snowLayer}>
@@ -218,7 +286,12 @@ export function MonopolyBoardView({
               key={i}
               style={[
                 styles.snowflake,
-                { top: flake.top as `${number}%`, left: flake.left as `${number}%`, fontSize: flake.size, opacity: flake.opacity },
+                {
+                  top: flake.top as `${number}%`,
+                  left: flake.left as `${number}%`,
+                  fontSize: flake.size,
+                  opacity: flake.opacity,
+                },
               ]}
             >
               ❄️
@@ -226,100 +299,133 @@ export function MonopolyBoardView({
           ))}
         </View>
       ) : null}
-
-      {center != null ? (
-        <View
-          style={[
-            styles.centerSlot,
-            { top: cellSize, left: cellSize, width: innerPx, height: innerPx },
-          ]}
-        >
-          {center}
-        </View>
-      ) : null}
+      </View>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
+  measure: { width: '100%', alignItems: 'center' },
   board: {
     alignSelf: 'center',
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 2,
     overflow: 'hidden',
     marginVertical: 8,
   },
-  row: { flexDirection: 'row' },
-  space: {
-    borderWidth: 0.5,
-    borderColor: '#a3a3a3',
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 1,
-  },
-  colorBar: { position: 'absolute' },
-  colorBarHorizontal: { top: 0, left: 0, right: 0, height: 4 },
-  colorBarVertical: { top: 0, bottom: 0, left: 0, width: 4 },
-  tileContent: {
-    flex: 1,
-    alignSelf: 'stretch',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 1,
-    paddingVertical: 2,
-  },
-  nameBlock: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    maxWidth: '100%',
-  },
-  spaceName: {
-    fontSize: 7.5,
-    fontWeight: '800',
-    textAlign: 'center',
-    lineHeight: 8.5,
-    letterSpacing: -0.3,
-  },
-  spaceNameCorner: {
-    fontSize: 9,
-    lineHeight: 10,
-  },
-  spacePrice: {
-    fontSize: 7,
-    fontWeight: '900',
-    textAlign: 'center',
-    lineHeight: 8,
-    opacity: 0.95,
-    marginBottom: 1,
-  },
-  spaceIcon: { fontSize: 9, marginTop: 1 },
-  ownerDot: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-  },
-  tokenRow: {
-    position: 'absolute',
-    bottom: 1,
-    left: 1,
-    flexDirection: 'row',
-  },
-  tokenEmoji: { fontSize: 8, lineHeight: 9 },
-  tokenEmojiMine: {
-    textShadowColor: '#f43f5e',
-    textShadowRadius: 2,
-    textShadowOffset: { width: 0, height: 0 },
-  },
-  snowLayer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-  snowflake: { position: 'absolute' },
-  centerSlot: {
-    position: 'absolute',
+  edgeRow: { flexDirection: 'row' },
+  midRow: { flexDirection: 'row' },
+  centerCell: {
     alignItems: 'center',
     justifyContent: 'center',
     padding: 6,
   },
+  defaultCenter: { alignItems: 'center', justifyContent: 'center', gap: 4 },
+  defaultCenterTitle: {
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: 2,
+    textAlign: 'center',
+  },
+  defaultCenterSubtitle: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+  },
+  tile: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.28)',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  colorBar: { position: 'absolute' },
+  barTop: { top: 0, left: 0, right: 0, height: 5 },
+  barBottom: { bottom: 0, left: 0, right: 0, height: 5 },
+  barLeft: { top: 0, bottom: 0, left: 0, width: 5 },
+  barRight: { top: 0, bottom: 0, right: 0, width: 5 },
+  cornerContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  cornerIcon: { fontSize: 13, marginBottom: 1 },
+  cornerName: {
+    fontSize: 9,
+    fontWeight: '800',
+    textAlign: 'center',
+    lineHeight: 10,
+    letterSpacing: -0.2,
+  },
+  hContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+  },
+  vContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vBlock: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    transform: [{ rotate: '-90deg' }],
+  },
+  vLine: {
+    fontSize: 8,
+    fontWeight: '800',
+    textAlign: 'center',
+    lineHeight: 9,
+    letterSpacing: -0.2,
+    alignSelf: 'stretch',
+  },
+  spaceName: {
+    fontSize: 8,
+    fontWeight: '800',
+    textAlign: 'center',
+    lineHeight: 9,
+    letterSpacing: -0.2,
+  },
+  spaceIcon: { fontSize: 9, marginTop: 1 },
+  ownerDot: {
+    position: 'absolute',
+    top: 2,
+    left: 2,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.85)',
+  },
+  tokenRow: { position: 'absolute' },
+  tokenRowTop: { top: 1, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center' },
+  tokenRowBottom: { bottom: 1, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center' },
+  tokenRowLeft: { left: 1, top: 0, bottom: 0, flexDirection: 'column', justifyContent: 'center' },
+  tokenRowRight: { right: 1, top: 0, bottom: 0, flexDirection: 'column', justifyContent: 'center' },
+  tokenRowCorner: { top: 3, right: 3, flexDirection: 'row' },
+  tokenChip: {
+    width: 13,
+    height: 13,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    margin: 0.5,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.75)',
+  },
+  tokenChipMine: {
+    borderColor: '#f43f5e',
+    borderWidth: 1.5,
+    transform: [{ scale: 1.12 }],
+  },
+  tokenChipEmoji: { fontSize: 8, lineHeight: 10 },
+  snowLayer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  snowflake: { position: 'absolute' },
 })

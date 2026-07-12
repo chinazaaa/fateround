@@ -6,6 +6,8 @@ import {
   useLocalParticipant,
   useParticipants,
 } from '@livekit/react-native'
+import type { DisconnectReason } from 'livekit-client'
+import { voiceDisconnectMessage } from '@/lib/voice-errors'
 import { LIVEKIT_URL } from '@/lib/config'
 import { useVoiceRoom, type VoiceMode } from '@/hooks/useVoiceRoom'
 import type { VoiceParticipant } from '@/lib/voice-types'
@@ -124,7 +126,11 @@ export function VoiceRailNative({ gameCode, mode, hostToken }: VoiceRailProps) {
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState) => {
-      if ((nextState === 'background' || nextState === 'inactive') && voice.token) {
+      // Only a true background transition should drop voice. iOS fires
+      // 'inactive' transiently for the mic-permission dialog, Control Center,
+      // notification banners, and audio-session acquisition — all of which
+      // happen right after Join, so treating it as "leave" self-kicks the user.
+      if (nextState === 'background' && voice.token) {
         voice.leave()
       }
       if (nextState === 'active' && wasConnectedRef.current && !voice.token) {
@@ -162,7 +168,13 @@ export function VoiceRailNative({ gameCode, mode, hostToken }: VoiceRailProps) {
       connect
       audio
       video={false}
-      onDisconnected={() => voice.leave()}
+      onDisconnected={(reason?: DisconnectReason) => {
+        voice.leave()
+        // Surface the reason (network/firewall timeout, takeover) instead of a
+        // silent flip back to the Join button — except our own Leave.
+        const message = voiceDisconnectMessage(reason)
+        if (message) show(message, 'error')
+      }}
     >
       <ConnectedControls
         displayName={voice.displayName}

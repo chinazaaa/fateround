@@ -32,7 +32,6 @@ import { LobbyView } from '@/components/LobbyView'
 import { CodewordsAchievementPosts } from '@/components/games/CodewordsAchievementPosts'
 import { CodewordsTimerBar } from '@/components/games/CodewordsTimerBar'
 import { CodewordsWaitingActivity } from '@/components/games/CodewordsWaitingActivity'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
 import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
@@ -361,14 +360,6 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     return (
       <GameShell bootstrap={bootstrap} title="Codewords" subtitle="Watching">
         <ScrollView contentContainerStyle={styles.content}>
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId!}
-            game={bootstrap.game}
-            player={me!}
-            players={bootstrap.players}
-            onPromoted={() => bootstrap.load()}
-          />
           <TurnBanner text={spectatorTurn} isMyTurn={false} />
           <View style={styles.scoreRow}>
             <Text style={styles.scoreRed}>

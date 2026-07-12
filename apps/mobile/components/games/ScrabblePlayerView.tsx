@@ -19,7 +19,6 @@ import { tileSetForDictionary } from '@fateround/shared/scrabble-rulesets'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ScrabbleTile } from '@/components/games/scrabble/ScrabbleTile'
@@ -415,17 +414,6 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-      {isViewer && me && bootstrap.myPlayerId ? (
-        <ViewerModeBanner
-          gameCode={bootstrap.code}
-          playerId={bootstrap.myPlayerId}
-          game={bootstrap.game}
-          player={me}
-          players={bootstrap.players}
-          onPromoted={() => void bootstrap.load()}
-        />
-      ) : null}
-
       <TurnBanner
         text={
           isViewer

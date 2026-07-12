@@ -31,7 +31,6 @@ import { QuickDrawLiePlayerView } from '@/components/games/QuickDrawLiePlayerVie
 import { QuickDrawShareCard } from '@/components/games/QuickDrawShareCard'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { ActivityFeed } from '@/components/party/ActivityFeed'
 import { RoundBreakCard } from '@/components/party/RoundBreakCard'
 import { TeamBadge } from '@/components/party/TeamBadge'
@@ -426,17 +425,6 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
     >
       <KeyboardAwareGameScroll ref={scrollRef} contentContainerStyle={styles.content} scrollEnabled={scrollEnabled}>
         <TurnBanner text={statusText} isMyTurn={isDrawer || canGuess} />
-
-        {isViewer && mePlayer && bootstrap.myPlayerId ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId}
-            game={bootstrap.game}
-            player={mePlayer}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
 
         {mode === 'team' && myTeamRow?.team ? (
           <View style={styles.teamRow}>

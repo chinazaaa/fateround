@@ -27,7 +27,6 @@ import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/g
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { DescribeItAchievementPosts } from '@/components/games/DescribeItAchievementPosts'
 import { DescribeItShareCard } from '@/components/games/DescribeItShareCard'
@@ -443,17 +442,6 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     >
       <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
         <TurnBanner text={statusText} isMyTurn={isDescriber || canGuess} />
-
-        {isViewer && mePlayer && bootstrap.myPlayerId ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId}
-            game={bootstrap.game}
-            player={mePlayer}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
 
         {mode === 'team' && myTeamRow?.team ? (
           <View style={styles.teamRow}>
