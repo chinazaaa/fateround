@@ -413,7 +413,14 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
       <LobbyView
         {...lobbyProps!}
         onLeft={onLeft}
-        activity={<CodewordsWaitingActivity myRole={myRole} isSpectator={isViewer} />}
+        activity={
+          <CodewordsWaitingActivity
+            myRole={myRole}
+            isSpectator={isViewer}
+            roles={roles}
+            playerNameById={playerNameById}
+          />
+        }
       />
     )
   }
