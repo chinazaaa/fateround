@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   type GestureResponderEvent,
   PanResponder,
@@ -6,6 +6,7 @@ import {
   Text,
   View,
 } from 'react-native'
+import { useNavigation } from 'expo-router'
 import type { WordSearchMetadata } from '@fateround/shared'
 import { selectionCells } from '@fateround/shared/word-search'
 import type { Theme } from '@/constants/theme'
@@ -73,6 +74,15 @@ export function WordSearchBoardView({
   readOnly = false,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
+  // Disable the stack's swipe-back gesture while the interactive board is mounted, so a
+  // drag on the grid selects a word instead of navigating back (same fix as the Quick Draw
+  // canvas — a JS PanResponder can't reliably out-prioritise the native back gesture).
+  const navigation = useNavigation()
+  useEffect(() => {
+    if (readOnly) return
+    navigation.setOptions({ gestureEnabled: false })
+    return () => navigation.setOptions({ gestureEnabled: true })
+  }, [navigation, readOnly])
   const size = metadata.size
   const cell = Math.floor(BOARD_MAX_WIDTH / size)
   const boardSize = cell * size
