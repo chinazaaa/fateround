@@ -58,6 +58,14 @@ const GAME_TYPE_META: Record<string, { label: string; color: string }> = {
     label: 'Pick a Number',
     color: 'text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 border-cyan-500/25',
   },
+  crossword: {
+    label: 'Crossword',
+    color: 'text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border-indigo-500/25',
+  },
+  word_search: {
+    label: 'Word Search',
+    color: 'text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/25',
+  },
 }
 
 const TAG_META: Record<string, { label: string; color: string }> = {
@@ -81,6 +89,8 @@ const GAME_TYPE_FILTERS = [
   { value: 'quick_draw', label: 'Quick Draw' },
   { value: 'codewords', label: 'Codewords' },
   { value: 'pick_a_number', label: 'Pick a Number' },
+  { value: 'crossword', label: 'Crossword' },
+  { value: 'word_search', label: 'Word Search' },
 ]
 
 const TAG_FILTERS = [

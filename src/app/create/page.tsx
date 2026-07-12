@@ -114,6 +114,13 @@ import {
   questionRoundPickerOptions,
   clampLobbyQuestionRounds,
   CODEWORDS_MIN_CUSTOM_POOL,
+  parseCrosswordEntryImport,
+  parseWordSearchEntryImport,
+  parseStoredCrosswordEntries,
+  parseStoredWordSearchEntries,
+  formatEntryImportSummary,
+  type CrosswordEntry,
+  type WordSearchEntry,
 } from '@/lib/custom-questions'
 import { playerQuestionsOrderOptions, parsePlayerQuestionsOrder } from '@/lib/player-question-pool'
 import { isPeoplePollGame, playerNameSubmissionHint } from '@/lib/player-participant-pool'
@@ -125,6 +132,7 @@ import type { CustomSlotsConfig } from '@/types'
 import { GameTypeModal } from '@/components/GameTypeModal'
 import { GameTypeCard } from '@/components/GameTypeCard'
 import { LibraryPackPicker } from '@/components/LibraryPackPicker'
+import { PuzzleUpload } from '@/components/create/PuzzleUpload'
 import { PageShell, BackBtn, Field, Chip, Toggle, PrimaryBtn } from '@/components/ui/PageShell'
 import { StepIndicator, SettingsGroup, StickyActionBar, SegmentedControl, ChipGrid } from '@/components/ui/CreateWizard'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
@@ -315,6 +323,8 @@ function CreateGameInner() {
   const [quickDrawWords, setQuickDrawWords] = useState('')
   const [quickDrawUploadError, setQuickDrawUploadError] = useState<string | null>(null)
   const quickDrawFileRef = useRef<HTMLInputElement>(null)
+  const crosswordFileRef = useRef<HTMLInputElement>(null)
+  const wordSearchFileRef = useRef<HTMLInputElement>(null)
   const [participants, setParticipants] = useState<ParticipantInput[]>([])
   const [nameInput, setNameInput] = useState('')
   const [defaultGender, setDefaultGender] = useState<ParticipantGender>('female')
@@ -411,6 +421,10 @@ function CreateGameInner() {
   const [scoreThreshold, setScoreThreshold] = useState(50)
   const [startingLives, setStartingLives] = useState(3)
   const [customTriviaQuestions, setCustomTriviaQuestions] = useState<TriviaQuestion[]>([])
+  const [customCrosswordEntries, setCustomCrosswordEntries] = useState<CrosswordEntry[]>([])
+  const [customWordSearchWords, setCustomWordSearchWords] = useState<WordSearchEntry[]>([])
+  const [puzzleUploadError, setPuzzleUploadError] = useState<string | null>(null)
+  const [puzzleUploadSummary, setPuzzleUploadSummary] = useState<string | null>(null)
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null)
   const [libraryPackQuestions, setLibraryPackQuestions] = useState<unknown[]>([])
   const [libraryPacks, setLibraryPacks] = useState<
@@ -463,6 +477,8 @@ function CreateGameInner() {
       else if (isQuickDrawGame(settings.game_type))
         setQuickDrawWords(parseDescribeItWords((qs as string[]).join('\n')).join('\n'))
       else if (isCodewordsGame(settings.game_type)) setCustomCodewordsWords(parseStoredCodewordsWords(qs))
+      else if (isCrosswordGame(settings.game_type)) setCustomCrosswordEntries(parseStoredCrosswordEntries(qs))
+      else if (isWordSearchGame(settings.game_type)) setCustomWordSearchWords(parseStoredWordSearchEntries(qs))
       else setCustomMltQuestions(qs as string[])
     }
   }
@@ -911,6 +927,10 @@ function CreateGameInner() {
     setCustomWyrQuestions([])
     setCustomMltQuestions([])
     setCustomTriviaQuestions([])
+    setCustomCrosswordEntries([])
+    setCustomWordSearchWords([])
+    setPuzzleUploadError(null)
+    setPuzzleUploadSummary(null)
     setDescribeItWords('')
     setQuickDrawWords('')
     setSelectedPackId(null)
@@ -1396,6 +1416,19 @@ function CreateGameInner() {
         customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL
       )
         return
+      // Custom/library crossword + word search need at least 4 entries to pack a grid.
+      if (
+        isCrossword &&
+        (questionSource === 'custom' || questionSource === 'library') &&
+        customCrosswordEntries.length < 4
+      )
+        return
+      if (
+        isWordSearch &&
+        (questionSource === 'custom' || questionSource === 'library') &&
+        customWordSearchWords.length < 4
+      )
+        return
     } else if (isTriviaQuickCreate) {
       if (!canCreateQuickLobby) return
     } else if (isJoinersMode ? !canCreateJoiners : !canCreateImport) return
@@ -1408,48 +1441,64 @@ function CreateGameInner() {
           ...settings,
           ...(isWordHunt ? { timer_seconds: wordHuntTimer } : {}),
           rounds_count: isWst ? Math.max(participants.length, 2) : settings.rounds_count,
-          question_source: isCodewords
-            ? questionSource === 'library'
+          question_source: isCrossword
+            ? (questionSource === 'custom' || questionSource === 'library') && customCrosswordEntries.length >= 4
               ? 'custom'
-              : questionSource
-            : isDescribeIt
-              ? (questionSource === 'custom' || questionSource === 'library') &&
-                parseDescribeItWords(describeItWords).length > 0
+              : 'platform'
+            : isWordSearch
+              ? (questionSource === 'custom' || questionSource === 'library') && customWordSearchWords.length >= 4
                 ? 'custom'
                 : 'platform'
-              : isQuickDraw
-                ? (questionSource === 'custom' || questionSource === 'library') &&
-                  parseDescribeItWords(quickDrawWords).length > 0
+              : isCodewords
+                ? questionSource === 'library'
                   ? 'custom'
-                  : 'platform'
-                : isLobbyQuestions
-                  ? questionSource === 'library'
+                  : questionSource
+                : isDescribeIt
+                  ? (questionSource === 'custom' || questionSource === 'library') &&
+                    parseDescribeItWords(describeItWords).length > 0
                     ? 'custom'
-                    : questionSource
-                  : 'platform',
-          custom_questions: isCodewords
-            ? questionSource === 'custom' || questionSource === 'library'
-              ? customCodewordsWords
+                    : 'platform'
+                  : isQuickDraw
+                    ? (questionSource === 'custom' || questionSource === 'library') &&
+                      parseDescribeItWords(quickDrawWords).length > 0
+                      ? 'custom'
+                      : 'platform'
+                    : isLobbyQuestions
+                      ? questionSource === 'library'
+                        ? 'custom'
+                        : questionSource
+                      : 'platform',
+          custom_questions: isCrossword
+            ? (questionSource === 'custom' || questionSource === 'library') && customCrosswordEntries.length >= 4
+              ? customCrosswordEntries
               : null
-            : isDescribeIt
-              ? (questionSource === 'custom' || questionSource === 'library') &&
-                parseDescribeItWords(describeItWords).length > 0
-                ? parseDescribeItWords(describeItWords)
+            : isWordSearch
+              ? (questionSource === 'custom' || questionSource === 'library') && customWordSearchWords.length >= 4
+                ? customWordSearchWords
                 : null
-              : isQuickDraw
-                ? (questionSource === 'custom' || questionSource === 'library') &&
-                  parseDescribeItWords(quickDrawWords).length > 0
-                  ? parseDescribeItWords(quickDrawWords)
+              : isCodewords
+                ? questionSource === 'custom' || questionSource === 'library'
+                  ? customCodewordsWords
                   : null
-                : isLobbyQuestions && (questionSource === 'custom' || questionSource === 'library')
-                  ? isWyr || isTot
-                    ? customWyrQuestions
-                    : isTrivia
-                      ? customTriviaQuestions
-                      : isQuiplash
-                        ? customMltQuestions
-                        : customMltQuestions
-                  : null,
+                : isDescribeIt
+                  ? (questionSource === 'custom' || questionSource === 'library') &&
+                    parseDescribeItWords(describeItWords).length > 0
+                    ? parseDescribeItWords(describeItWords)
+                    : null
+                  : isQuickDraw
+                    ? (questionSource === 'custom' || questionSource === 'library') &&
+                      parseDescribeItWords(quickDrawWords).length > 0
+                      ? parseDescribeItWords(quickDrawWords)
+                      : null
+                    : isLobbyQuestions && (questionSource === 'custom' || questionSource === 'library')
+                      ? isWyr || isTot
+                        ? customWyrQuestions
+                        : isTrivia
+                          ? customTriviaQuestions
+                          : isQuiplash
+                            ? customMltQuestions
+                            : customMltQuestions
+                      : null,
           trivia_category: isTrivia ? triviaCategory : undefined,
           describe_it_mode: isDescribeIt ? settings.describe_it_mode : undefined,
           quick_draw_variant: isQuickDraw ? settings.quick_draw_variant : undefined,
@@ -3552,19 +3601,77 @@ function CreateGameInner() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Theme">
-                  <select
-                    value={wordSearchTheme}
-                    onChange={(e) => setWordSearchTheme(e.target.value)}
-                    className="input-field w-full"
-                  >
-                    {wordSearchThemeOptions().map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
+                <Field label="Words">
+                  <SegmentedControl
+                    value={questionSource}
+                    onChange={(v) => {
+                      setQuestionSource(v as QuestionSource)
+                      setSelectedPackId(null)
+                      setLibraryPackQuestions([])
+                      setPuzzleUploadError(null)
+                      setPuzzleUploadSummary(null)
+                      if (v !== 'custom' && v !== 'library') setCustomWordSearchWords([])
+                    }}
+                    options={questionSourceOptions('word_search')}
+                  />
                 </Field>
+                {questionSource === 'library' && (
+                  <div className="space-y-2 pt-1">
+                    <LibraryPackPicker
+                      loading={libraryPacksLoading}
+                      packs={libraryPacks}
+                      search={libraryPackSearch}
+                      onSearchChange={setLibraryPackSearch}
+                      selectedPackId={selectedPackId}
+                      onSelect={selectLibraryPack}
+                      noun="words"
+                    />
+                    {customWordSearchWords.length > 0 && (
+                      <p className="text-faint text-xs text-center">
+                        Loaded {customWordSearchWords.length} words from this pack.
+                      </p>
+                    )}
+                  </div>
+                )}
+                {questionSource === 'custom' && (
+                  <PuzzleUpload
+                    sample={questionSampleFile('word_search')}
+                    hint={questionUploadHint('word_search')}
+                    buttonLabel="Choose CSV"
+                    fileRef={wordSearchFileRef}
+                    error={puzzleUploadError}
+                    summary={puzzleUploadSummary}
+                    onFile={async (file) => {
+                      setPuzzleUploadError(null)
+                      setPuzzleUploadSummary(null)
+                      try {
+                        const result = parseWordSearchEntryImport(await file.text())
+                        if (result.questions.length < 4) throw new Error('Need at least 4 words')
+                        setCustomWordSearchWords(result.questions)
+                        const extra = formatEntryImportSummary(result)
+                        setPuzzleUploadSummary(`${result.questions.length} words loaded${extra ? ` · ${extra}` : ''}`)
+                      } catch (err) {
+                        setCustomWordSearchWords([])
+                        setPuzzleUploadError(err instanceof Error ? err.message : 'Could not read that file')
+                      }
+                    }}
+                  />
+                )}
+                {questionSource === 'platform' && (
+                  <Field label="Theme">
+                    <select
+                      value={wordSearchTheme}
+                      onChange={(e) => setWordSearchTheme(e.target.value)}
+                      className="input-field w-full"
+                    >
+                      {wordSearchThemeOptions().map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
                 <Field label="Difficulty">
                   <div className="grid grid-cols-3 gap-3">
                     {WORD_SEARCH_DIFFICULTIES.map((difficulty) => (
@@ -3622,19 +3729,77 @@ function CreateGameInner() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Theme">
-                  <select
-                    value={crosswordTheme}
-                    onChange={(e) => setCrosswordTheme(e.target.value)}
-                    className="input-field w-full"
-                  >
-                    {crosswordThemeOptions().map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
+                <Field label="Answers & clues">
+                  <SegmentedControl
+                    value={questionSource}
+                    onChange={(v) => {
+                      setQuestionSource(v as QuestionSource)
+                      setSelectedPackId(null)
+                      setLibraryPackQuestions([])
+                      setPuzzleUploadError(null)
+                      setPuzzleUploadSummary(null)
+                      if (v !== 'custom' && v !== 'library') setCustomCrosswordEntries([])
+                    }}
+                    options={questionSourceOptions('crossword')}
+                  />
                 </Field>
+                {questionSource === 'library' && (
+                  <div className="space-y-2 pt-1">
+                    <LibraryPackPicker
+                      loading={libraryPacksLoading}
+                      packs={libraryPacks}
+                      search={libraryPackSearch}
+                      onSearchChange={setLibraryPackSearch}
+                      selectedPackId={selectedPackId}
+                      onSelect={selectLibraryPack}
+                      noun="answers"
+                    />
+                    {customCrosswordEntries.length > 0 && (
+                      <p className="text-faint text-xs text-center">
+                        Loaded {customCrosswordEntries.length} answers from this pack.
+                      </p>
+                    )}
+                  </div>
+                )}
+                {questionSource === 'custom' && (
+                  <PuzzleUpload
+                    sample={questionSampleFile('crossword')}
+                    hint={questionUploadHint('crossword')}
+                    buttonLabel="Choose CSV"
+                    fileRef={crosswordFileRef}
+                    error={puzzleUploadError}
+                    summary={puzzleUploadSummary}
+                    onFile={async (file) => {
+                      setPuzzleUploadError(null)
+                      setPuzzleUploadSummary(null)
+                      try {
+                        const result = parseCrosswordEntryImport(await file.text())
+                        if (result.questions.length < 4) throw new Error('Need at least 4 answers with clues')
+                        setCustomCrosswordEntries(result.questions)
+                        const extra = formatEntryImportSummary(result)
+                        setPuzzleUploadSummary(`${result.questions.length} answers loaded${extra ? ` · ${extra}` : ''}`)
+                      } catch (err) {
+                        setCustomCrosswordEntries([])
+                        setPuzzleUploadError(err instanceof Error ? err.message : 'Could not read that file')
+                      }
+                    }}
+                  />
+                )}
+                {questionSource === 'platform' && (
+                  <Field label="Theme">
+                    <select
+                      value={crosswordTheme}
+                      onChange={(e) => setCrosswordTheme(e.target.value)}
+                      className="input-field w-full"
+                    >
+                      {crosswordThemeOptions().map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
                 <Field label="Difficulty">
                   <div className="grid grid-cols-3 gap-3">
                     {CROSSWORD_DIFFICULTIES.map((difficulty) => (

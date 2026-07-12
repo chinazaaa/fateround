@@ -7,6 +7,8 @@ import { parseCsvRows } from '@/lib/csv-parse'
 import { parseDescribeItWords } from '@/lib/describe-it-words'
 import { parseCodewordsWordRows, CODEWORDS_MIN_CUSTOM_POOL } from '@/lib/codewords-pool'
 import { PAN_MIN_POOL } from '@/lib/pick-a-number-questions'
+import { parseCrosswordEntries } from '@/lib/crossword-puzzles'
+import { parseWordSearchEntries } from '@/lib/word-search-puzzles'
 import type { TriviaQuestion } from '@/types'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
 
@@ -20,11 +22,13 @@ type GameType =
   | 'quick_draw'
   | 'codewords'
   | 'pick_a_number'
+  | 'crossword'
+  | 'word_search'
 
 interface ValidationResult {
   ok: boolean
   errors: string[]
-  questions: TriviaQuestion[] | WyrQuestion[] | string[]
+  questions: TriviaQuestion[] | WyrQuestion[] | string[] | { answer: string; clue: string }[] | { word: string }[]
   rowCount: number
 }
 
@@ -128,6 +132,46 @@ function validateCodewords(rows: Record<string, string>[]): ValidationResult {
   return { ok: errors.length === 0, errors, questions: words, rowCount: rows.length }
 }
 
+function validateCrossword(rows: Record<string, string>[]): ValidationResult {
+  if (rows.length === 0) return { ok: false, errors: ['No rows found'], questions: [], rowCount: 0 }
+  if (!('answer' in rows[0]) && !('word' in rows[0])) {
+    return { ok: false, errors: ['Missing column: answer'], questions: [], rowCount: 0 }
+  }
+  const seen = new Set<string>()
+  const questions: { answer: string; clue: string }[] = []
+  for (const e of parseCrosswordEntries(rows)) {
+    const key = e.answer.trim().toUpperCase()
+    if (!seen.has(key)) {
+      seen.add(key)
+      questions.push({ answer: e.answer.trim(), clue: e.clue.trim() })
+    }
+  }
+  const errors: string[] = []
+  if (questions.length < 4) errors.push('Must have at least 4 answers, each with a clue')
+  if (questions.length > 200) errors.push('Maximum 200 rows allowed')
+  return { ok: errors.length === 0, errors, questions, rowCount: rows.length }
+}
+
+function validateWordSearch(rows: Record<string, string>[]): ValidationResult {
+  if (rows.length === 0) return { ok: false, errors: ['No rows found'], questions: [], rowCount: 0 }
+  if (!('word' in rows[0]) && !('answer' in rows[0])) {
+    return { ok: false, errors: ['Missing column: word'], questions: [], rowCount: 0 }
+  }
+  const seen = new Set<string>()
+  const questions: { word: string }[] = []
+  for (const e of parseWordSearchEntries(rows)) {
+    const word = e.word.trim().toUpperCase()
+    if (word && !seen.has(word)) {
+      seen.add(word)
+      questions.push({ word })
+    }
+  }
+  const errors: string[] = []
+  if (questions.length < 4) errors.push('Must have at least 4 words')
+  if (questions.length > 200) errors.push('Maximum 200 words allowed')
+  return { ok: errors.length === 0, errors, questions, rowCount: rows.length }
+}
+
 const GAME_TYPES: { value: GameType; label: string; description: string; columns: string }[] = [
   {
     value: 'trivia',
@@ -182,6 +226,18 @@ const GAME_TYPES: { value: GameType; label: string; description: string; columns
     label: 'Pick a Number',
     description: 'Prompts players answer with a number',
     columns: 'question',
+  },
+  {
+    value: 'crossword',
+    label: 'Crossword',
+    description: 'Answers with their clues for the crossword grid',
+    columns: 'answer, clue',
+  },
+  {
+    value: 'word_search',
+    label: 'Word Search',
+    description: 'Words to hide in the word-search grid',
+    columns: 'word',
   },
 ]
 
@@ -239,6 +295,8 @@ export default function SubmitPackPage() {
       else if (gameType === 'would_you_rather' || gameType === 'this_or_that') setValidation(validateWyr(rows))
       else if (gameType === 'describe_it' || gameType === 'quick_draw') setValidation(validateDescribeIt(rows))
       else if (gameType === 'codewords') setValidation(validateCodewords(rows))
+      else if (gameType === 'crossword') setValidation(validateCrossword(rows))
+      else if (gameType === 'word_search') setValidation(validateWordSearch(rows))
       else if (gameType === 'pick_a_number') setValidation(validatePrompts(rows, PAN_MIN_POOL))
       else setValidation(validatePrompts(rows)) // covers most_likely_to and never_have_i_ever
     }
