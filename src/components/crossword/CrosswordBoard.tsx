@@ -101,11 +101,17 @@ export function CrosswordBoard({
                 ? { backgroundColor: `${ownerColor}55` }
                 : undefined
 
-            const bgStyle = isSelected
-              ? { backgroundColor: 'rgba(99, 102, 241, 0.35)' }
-              : isActive
-                ? { backgroundColor: 'rgba(99, 102, 241, 0.14)' }
-                : baseBg
+            // Solved cells keep their fill even inside the active word (the selected cell is
+            // still marked by its ring), so a word turns its colour the instant it's correct
+            // instead of only after you move off it.
+            const bgStyle =
+              mySolvedCells && iSolved
+                ? { backgroundColor: `${myColor}55` }
+                : isSelected
+                  ? { backgroundColor: 'rgba(99, 102, 241, 0.35)' }
+                  : isActive
+                    ? { backgroundColor: 'rgba(99, 102, 241, 0.14)' }
+                    : baseBg
 
             return (
               <button

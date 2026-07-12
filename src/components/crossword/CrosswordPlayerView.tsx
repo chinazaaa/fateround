@@ -16,6 +16,7 @@ import {
   buildPlayerLetterGrid,
   playerCompletionPercent,
   playerHasSolvedCell,
+  playerCompletedWord,
   CROSSWORD_MIN_PLAYERS,
   CROSSWORD_HINT_PENALTY,
   type CrosswordMetadata,
@@ -351,6 +352,30 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     return buildPlayerLetterGrid(metadata, submissions, myPlayerId, localLetters)
   }, [metadata, submissions, myPlayerId, localLetters])
 
+  // Toast when the player completes a word (a cell going correct can finish one).
+  const completedWordsRef = useRef<Set<string>>(new Set())
+  const completionReadyRef = useRef(false)
+  useEffect(() => {
+    if (!metadata || !myPlayerId) return
+    const newlyDone: CrosswordClue[] = []
+    for (const clue of metadata.clues) {
+      const key = `${clue.number}-${clue.direction}`
+      if (completedWordsRef.current.has(key)) continue
+      if (playerCompletedWord(submissions, myPlayerId, clue)) {
+        completedWordsRef.current.add(key)
+        newlyDone.push(clue)
+      }
+    }
+    // Skip the first pass (initial load of an in-progress game) so we only toast live finishes.
+    if (completionReadyRef.current) {
+      for (const clue of newlyDone) {
+        showToast(`Solved ${clue.number} ${clue.direction === 'across' ? 'Across' : 'Down'}! 🎉`, true)
+      }
+    }
+    completionReadyRef.current = true
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submissions, metadata, myPlayerId])
+
   const leaderboard = metadata ? tallyCrosswordScores(metadata, submissions, players) : []
   const me = players.find((p) => p.id === myPlayerId)
   const isSpectator = me?.spectator === true
@@ -426,11 +451,16 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
       focusInput()
       return
     }
-    // Prefer a direction that actually has a word through this cell.
-    if (!findClueAt(metadata, row, col, direction)) {
-      const other: CrosswordDirection = direction === 'across' ? 'down' : 'across'
-      if (findClueAt(metadata, row, col, other)) setDirection(other)
-    }
+    // Prefer the direction whose word STARTS at this cell (so clicking a numbered cell shows
+    // that word's clue), then the current direction, then whatever's available.
+    const acrossClue = findClueAt(metadata, row, col, 'across')
+    const downClue = findClueAt(metadata, row, col, 'down')
+    const startsAcross = acrossClue && acrossClue.row === row && acrossClue.col === col
+    const startsDown = downClue && downClue.row === row && downClue.col === col
+    if (startsAcross && !startsDown) setDirection('across')
+    else if (startsDown && !startsAcross) setDirection('down')
+    else if (direction === 'across' && !acrossClue && downClue) setDirection('down')
+    else if (direction === 'down' && !downClue && acrossClue) setDirection('across')
     setSelectedCell([row, col])
     focusInput()
   }
