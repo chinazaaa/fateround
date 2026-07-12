@@ -32,7 +32,6 @@ import { AnonymousRoomHeadcount } from '@/components/games/anonymous/AnonymousRo
 import { AnonymousBanCountdownBar } from '@/components/games/anonymous/AnonymousBanCountdownBar'
 import { anonymousRoomMaxPlayers } from '@/components/games/anonymous/anonymous-room-helpers'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
-import { ShareGameCard } from '@/components/session/ShareGameCard'
 import { autoJoinGame } from '@/lib/api'
 import { leaveGame, postAnonymousGif, postAnonymousMessage, postPlayerReady } from '@/lib/game-api'
 import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
@@ -390,7 +389,6 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
               <Text style={styles.joinBtnText}>{joinLabel}</Text>
             )}
           </Pressable>
-          <ShareGameCard gameCode={code} />
         </ScrollView>
       </GameShell>
     )

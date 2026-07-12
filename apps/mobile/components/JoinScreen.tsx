@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput } from 'react-native'
-import { ShareGameCard } from '@/components/session/ShareGameCard'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
@@ -61,8 +60,6 @@ export function JoinScreen({
       </Pressable>
 
       {footer}
-
-      <ShareGameCard gameCode={gameCode} />
     </KeyboardFormScreen>
   )
 }
