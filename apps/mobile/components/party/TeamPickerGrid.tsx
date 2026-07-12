@@ -84,9 +84,11 @@ const makeStyles = (theme: Theme) =>
     grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
     card: {
       // flexBasis just under half + grow → two per row, wrapping for 3–4 teams.
+      // minWidth:0 so the two columns survive inside padded scroll views (a 150px
+      // floor forced one column on narrow phones).
       flexGrow: 1,
       flexBasis: '47%',
-      minWidth: 150,
+      minWidth: 0,
       borderRadius: 16,
       padding: 12,
       borderWidth: 1,

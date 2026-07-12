@@ -276,7 +276,9 @@ const makeStyles = (theme: Theme) =>
   teamCard: {
     flexGrow: 1,
     flexBasis: '47%',
-    minWidth: 150,
+    // minWidth:0 so the two-column grid survives inside the padded lobby scroll
+    // (a 150px floor forced one column on narrow phones).
+    minWidth: 0,
     borderWidth: 1,
     borderRadius: theme.radius.md,
     padding: 10,

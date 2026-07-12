@@ -305,7 +305,9 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
 
   const submitWord = async () => {
     const text = wordText.trim()
-    if (!text || !bootstrap.myResumeToken) return
+    // `acting` guard: the keyboard "Go" path can re-fire while the first submit
+    // is still in flight (blurOnSubmit=false keeps focus), so block re-entry.
+    if (!text || !bootstrap.myResumeToken || acting) return
     setLastMessage(null)
     setSubmitError(null)
     setActing(true)
