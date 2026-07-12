@@ -183,7 +183,7 @@ import type {
   WstQuotePoolEntry,
   AnimeQuotePoolEntry,
 } from '@/types'
-import { parseThemeId, THEME_MAP } from '@/lib/themes'
+import { parseThemeId } from '@/lib/themes'
 import { SegmentedControl } from '@/components/ui/CreateWizard'
 import { NameSearchPicker } from '@/components/NameSearchPicker'
 import { ROUND_TIMER_OPTIONS } from '@/lib/validation'
@@ -311,19 +311,19 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     }
   }, [currentRound?.id, game?.game_type])
 
-  // ── Apply theme CSS variables ─────────────────────────────────────────────
+  // ── Apply game theme ──────────────────────────────────────────────────────
+  // Palettes (light + dark) live in globals.css under `[data-game-theme='<id>']`;
+  // toggling the attribute lets CSS pick the right colors for the active mode.
   useEffect(() => {
     const themeId = parseThemeId(game?.theme)
-    const vars = THEME_MAP[themeId]?.cssVars ?? {}
     const root = document.documentElement
-    const keys = Object.keys(vars)
-    keys.forEach((k) => root.style.setProperty(k, vars[k]))
-    if (Object.keys(vars).length > 0) {
-      root.style.setProperty('background', vars['--background'] ?? '')
+    if (themeId === 'default') {
+      root.removeAttribute('data-game-theme')
+      return
     }
+    root.setAttribute('data-game-theme', themeId)
     return () => {
-      keys.forEach((k) => root.style.removeProperty(k))
-      root.style.removeProperty('background')
+      root.removeAttribute('data-game-theme')
     }
   }, [game?.theme])
 

@@ -50,6 +50,7 @@ export type GameType =
   | 'ayo'
   | 'crossword'
   | 'word_search'
+  | 'word_scramble'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'

@@ -1796,6 +1796,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  word_scramble: {
+    id: 'word_scramble',
+    label: 'Word Scramble',
+    tagline: 'Unscramble the jumbled word before everyone else',
+    headerEmoji: '🔀🔤',
+    card: {
+      accent: '#f59e0b',
+      accentSoft: 'rgba(245, 158, 11, 0.15)',
+      emoji: '🔀',
+      players: '1–20 players',
+      vibe: 'Quick-fire race',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🏆',
+        label: 'Points',
+        color: '#f59e0b',
+        leaderboardLabel: 'Total points',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+      marry: {
+        emoji: '🔤',
+        label: 'Solved',
+        color: '#22c55e',
+        leaderboardLabel: 'Words solved',
+        activeClass: 'bg-emerald-500/20 text-emerald-100 border-emerald-400',
+        borderClass: 'border-emerald-500/50 bg-emerald-500/10',
+        textColor: '#86efac',
+      },
+      kill: {
+        emoji: '⚡',
+        label: 'Speed',
+        color: '#8b5cf6',
+        leaderboardLabel: 'First solves',
+        activeClass: 'bg-violet-500/20 text-violet-100 border-violet-400',
+        borderClass: 'border-violet-500/50 bg-violet-500/10',
+        textColor: '#c4b5fd',
+      },
+    },
+  },
 }
 
 /** Home page “Popular games” grid — order is display order. */
@@ -1852,6 +1895,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'ayo',
   'crossword',
   'word_search',
+  'word_scramble',
 ]
 
 // Games pinned to the top of the picker / games list, in this exact order.
@@ -1931,6 +1975,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'ayo' || raw === 'awale' || raw === 'ayo-olopon') return 'ayo'
   if (raw === 'crossword' || raw === 'crosswords') return 'crossword'
   if (raw === 'word_search' || raw === 'word-search' || raw === 'wordsearch') return 'word_search'
+  if (raw === 'word_scramble' || raw === 'word-scramble' || raw === 'wordscramble') return 'word_scramble'
   return 'smash_marry_kill'
 }
 
@@ -2031,6 +2076,8 @@ export function gameHowItWorks(
       return 'Players join with their name — everyone gets the same crossword grid. Read the Across and Down clues, tap a cell, and type the answer. Each word you complete correctly scores points, with a speed bonus for finishing a word first. First to fill the whole grid correctly wins — or the highest score when the timer runs out.'
     case 'word_search':
       return 'Players join with their name — everyone gets the same letter grid and word list. Drag from the first letter to the last to select a hidden word (across, down, or diagonal, sometimes backwards). Each word you find scores points, with a speed bonus for finding it first. First to find every word wins — or the highest score when the timer runs out.'
+    case 'word_scramble':
+      return 'Players join with their name — everyone gets the same jumbled words. Type the unscrambled answer; correct answers lock in and score, with a speed bonus for solving each scramble first and a bonus for longer words. First to unscramble them all wins — or the highest score when the timer runs out.'
     case 'i_call_on':
       return "Players join with their name. Set a game timer (or play all 26 letters). Each letter cycle someone calls A–Z, everyone fills Name, Animal, Place, Thing, and Food, then marks the next player's sheet. Duplicates score 5 automatically; unique valid answers score 10. Everyone sees all marks live."
     case 'most_likely_to':
@@ -2300,6 +2347,7 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   ayo: true,
   crossword: true,
   word_search: true,
+  word_scramble: true,
   mafia: false,
 }
 
@@ -2344,6 +2392,7 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   ayo: false,
   crossword: false,
   word_search: false,
+  word_scramble: false,
   mafia: false,
 }
 
@@ -2507,6 +2556,10 @@ export function isCrosswordGame(gameType: GameType | string | undefined): boolea
 
 export function isWordSearchGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'word_search'
+}
+
+export function isWordScrambleGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'word_scramble'
 }
 
 /** Anonymous room or host-only secret message inbox — shared message storage. */

@@ -1458,4 +1458,31 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
   ],
+  word_scramble: [
+    {
+      title: 'Objective',
+      points: [
+        'Everyone gets the same jumbled words and races to type the unscrambled answer.',
+        'Correct answers lock in and score; wrong guesses just clear so you can try again.',
+        'First player to unscramble every word wins — or the highest score when the timer ends.',
+      ],
+    },
+    {
+      title: 'How it works',
+      points: [
+        '1 to 20 players join with their name; the host picks a theme, difficulty, and optional time limit.',
+        'Type your guess for the current scramble. Correct answers score and reveal the next scramble.',
+        'Each solve scores 10 points, plus a 5-point speed bonus for solving that scramble first; harder puzzles add a per-letter bonus.',
+        'Stuck? Reveal a letter for a small penalty.',
+      ],
+    },
+    {
+      title: 'Tips',
+      points: [
+        'Look for common prefixes and suffixes (RE-, -ING, -TION) to crack longer words fast.',
+        'Solving first is worth extra, so trust your first instinct and keep moving.',
+        'Sound the letters out — saying them aloud often reveals the word.',
+      ],
+    },
+  ],
 }

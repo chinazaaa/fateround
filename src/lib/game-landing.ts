@@ -69,6 +69,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   quick_draw: 'quick-draw',
   crossword: 'crossword',
   word_search: 'word-search',
+  word_scramble: 'word-scramble',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -2775,6 +2776,38 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       { title: 'Create a room', description: 'Pick a theme, difficulty, and time limit.' },
       { title: 'Share the code', description: 'Friends join from their phones with a nickname.' },
       { title: 'Find to win', description: 'Grab words for points — first to find them all takes the crown.' },
+    ],
+    perfectFor: ['Puzzle lovers', 'Family game night', 'Commutes', 'Remote teams'],
+  }),
+  word_scramble: landing('word_scramble', {
+    seoTitle: 'Word Scramble Race Online — Free Multiplayer Unscramble Game',
+    seoDescription:
+      'Race friends to unscramble the same jumbled words. Type the answer fastest for a speed bonus — highest score wins. Free, no sign-up.',
+    keywords: [
+      'word scramble online multiplayer',
+      'unscramble game with friends',
+      'word scramble race game',
+      'anagram party game online',
+      'real time word scramble',
+      'multiplayer word scramble free',
+      'competitive unscramble game',
+    ],
+    heroSubtitle:
+      'Everyone gets the same jumbled words. Type the unscrambled answer fastest for a speed bonus — highest score wins.',
+    highlights: ['1–20 players', 'Same scramble for everyone', 'Quick-fire rounds'],
+    features: [
+      {
+        title: 'Unscramble fast',
+        description: 'Type the hidden word — solve it first for a speed bonus, longer words score more.',
+        emoji: '🔀',
+      },
+      SHARED_FEATURES.realtime,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Create a room', description: 'Pick a theme, difficulty, and time limit.' },
+      { title: 'Share the code', description: 'Friends join from their phones with a nickname.' },
+      { title: 'Solve to win', description: 'Unscramble words for points — highest score takes the crown.' },
     ],
     perfectFor: ['Puzzle lovers', 'Family game night', 'Commutes', 'Remote teams'],
   }),

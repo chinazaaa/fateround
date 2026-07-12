@@ -6,6 +6,18 @@ import { useTheme } from '@/components/ThemeProvider'
 import type { Theme } from '@/lib/theme-cookie'
 import { themeStyleVars, type ThemeConfig } from '@/lib/themes'
 
+/** Per-theme description of its two named modes (all themes adapt to light/dark). */
+const THEME_MODE_SUBTITLES: Record<string, string> = {
+  default: 'Default follows your site light or dark appearance',
+  pirate: 'Pirate theme has both Light Mode (Day Chart) and Dark Mode (Night Sea)',
+  arctic: 'Arctic theme has both Light Mode (Polar Day) and Dark Mode (Polar Night)',
+  naija: 'Naija theme has both Light Mode (Balogun Sun) and Dark Mode (Wuse Night)',
+  neon: 'Neon theme has both Light Mode (Daylight Circuit) and Dark Mode (Midnight Circuit)',
+  retro: 'Retro theme has both Light Mode (Sun-faded Print) and Dark Mode (Warm Tube Glow)',
+  elegant: 'Elegant theme has both Light Mode (Ivory & Gold) and Dark Mode (Midnight & Gold)',
+  tropical: 'Tropical theme has both Light Mode (Beach Day) and Dark Mode (Moonlit Lagoon)',
+}
+
 function EyeIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
     <svg
@@ -129,8 +141,10 @@ export function ThemePreviewModal({
 }) {
   const { theme: siteTheme } = useTheme()
   const [previewMode, setPreviewMode] = useState<Theme>(siteTheme)
-  const isAdaptiveTheme =
-    theme?.id === 'default' || theme?.id === 'pirate' || theme?.id === 'arctic' || theme?.id === 'naija'
+  // Every theme now carries its palette in globals.css (light + dark variants),
+  // so all of them adapt to the site's light/dark mode. A non-empty `cssVars`
+  // would mark a legacy fixed-palette theme (none remain today).
+  const isAdaptiveTheme = theme ? Object.keys(theme.cssVars).length === 0 : false
 
   useEffect(() => {
     if (open) setPreviewMode(siteTheme)
@@ -145,13 +159,7 @@ export function ThemePreviewModal({
       title={`${theme.emoji} ${theme.label}`}
       subtitle={
         isAdaptiveTheme
-          ? theme.id === 'pirate'
-            ? 'Pirate theme has both Light Mode (Day Chart) and Dark Mode (Night Sea)'
-            : theme.id === 'arctic'
-              ? 'Arctic theme has both Light Mode (Polar Day) and Dark Mode (Polar Night)'
-              : theme.id === 'naija'
-                ? 'Naija theme has both Light Mode (Balogun Sun) and Dark Mode (Wuse Night)'
-                : 'Default follows your site light or dark appearance'
+          ? (THEME_MODE_SUBTITLES[theme.id] ?? 'Follows your site light or dark appearance')
           : 'This theme uses its own fixed color palette'
       }
       size="md"
