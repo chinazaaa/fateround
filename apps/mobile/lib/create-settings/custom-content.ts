@@ -74,7 +74,7 @@ export function defaultCustomContentState(): CustomContentState {
     pairs: [{ optionA: '', optionB: '' }],
     prompts: [''],
     trivia: [emptyTriviaDraft()],
-    puzzle: [],
+    puzzle: [{ word: '', hint: '' }],
     libraryPackTitle: null,
   }
 }

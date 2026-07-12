@@ -98,6 +98,36 @@ export function parseListCsv(gameType: GameType, text: string): string[] {
 }
 
 /**
+ * Quote-aware CSV field splitter: keeps commas inside "double-quoted" cells and unescapes ""
+ * to ". Crossword/word-scramble clues often contain commas, so the naive splitRow would drop
+ * everything after the first comma of a clue.
+ */
+function splitCsvFields(line: string): string[] {
+  if (line.includes('\t') && !line.includes('"')) return line.split('\t').map((s) => s.trim())
+  const fields: string[] = []
+  let cur = ''
+  let inQuotes = false
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i]
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          cur += '"'
+          i += 1
+        } else inQuotes = false
+      } else cur += ch
+    } else if (ch === '"') {
+      inQuotes = true
+    } else if (ch === ',') {
+      fields.push(cur.trim())
+      cur = ''
+    } else cur += ch
+  }
+  fields.push(cur.trim())
+  return fields
+}
+
+/**
  * Puzzle rows (crossword/word_search/word_scramble). First column is the word/answer,
  * second (optional) is the hint/clue. Skips a header row (word/answer). Dedupes by word.
  */
@@ -105,7 +135,7 @@ export function parsePuzzleCsv(text: string): PuzzleEntryDraft[] {
   const rows: PuzzleEntryDraft[] = []
   const seen = new Set<string>()
   for (const line of toLines(text)) {
-    const cols = splitRow(line)
+    const cols = splitCsvFields(line)
     const word = (cols[0] ?? '').trim()
     if (!word) continue
     const first = word.toLowerCase()

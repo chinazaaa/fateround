@@ -555,7 +555,8 @@ export async function POST(req: NextRequest) {
     isCheckersGame(game_type) ||
     isAyoGame(game_type) ||
     isMafiaGame(game_type) ||
-    isScrabbleGame(game_type)
+    isScrabbleGame(game_type) ||
+    isPuzzlePool
       ? 1
       : isDescribeItGame(game_type)
         ? clampDescribeItRounds(rounds_count)

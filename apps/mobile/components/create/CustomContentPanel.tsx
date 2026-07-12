@@ -183,8 +183,15 @@ function PuzzleEditor({
   const wordLabel = gameType === 'crossword' ? 'Answer' : 'Word'
   const hintLabel = gameType === 'crossword' ? 'Clue' : 'Hint'
 
-  const setEntry = (idx: number, patch: Partial<PuzzleEntryDraft>) =>
+  const setEntry = (idx: number, patch: Partial<PuzzleEntryDraft>) => {
+    // The list renders a fallback blank row when `puzzle` is empty (e.g. right after Clear all);
+    // seed that row so the first keystroke is kept instead of mapping over an empty array.
+    if (custom.puzzle.length === 0) {
+      onChange({ puzzle: [{ word: '', hint: '', ...patch }] })
+      return
+    }
     onChange({ puzzle: custom.puzzle.map((e, i) => (i === idx ? { ...e, ...patch } : e)) })
+  }
   const removeEntry = (idx: number) => onChange({ puzzle: custom.puzzle.filter((_, i) => i !== idx) })
 
   const entries = custom.puzzle.length > 0 ? custom.puzzle : [{ word: '', hint: '' }]

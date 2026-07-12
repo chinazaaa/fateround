@@ -3664,7 +3664,7 @@ function CreateGameInner() {
                       setLibraryPackQuestions([])
                       setPuzzleUploadError(null)
                       setPuzzleUploadSummary(null)
-                      if (v !== 'custom' && v !== 'library') setCustomWordSearchWords([])
+                      if (v !== questionSource) setCustomWordSearchWords([])
                     }}
                     options={questionSourceOptions('word_search')}
                   />
@@ -3798,7 +3798,9 @@ function CreateGameInner() {
                       setLibraryPackQuestions([])
                       setPuzzleUploadError(null)
                       setPuzzleUploadSummary(null)
-                      if (v !== 'custom' && v !== 'library') setCustomWordScrambleWords([])
+                      // Any source switch drops the prior pool so stale custom words can't be
+                      // submitted under the Library UI (or vice-versa) without a fresh pick.
+                      if (v !== questionSource) setCustomWordScrambleWords([])
                     }}
                     options={questionSourceOptions('word_scramble')}
                   />
@@ -3932,7 +3934,7 @@ function CreateGameInner() {
                       setLibraryPackQuestions([])
                       setPuzzleUploadError(null)
                       setPuzzleUploadSummary(null)
-                      if (v !== 'custom' && v !== 'library') setCustomCrosswordEntries([])
+                      if (v !== questionSource) setCustomCrosswordEntries([])
                     }}
                     options={questionSourceOptions('crossword')}
                   />
