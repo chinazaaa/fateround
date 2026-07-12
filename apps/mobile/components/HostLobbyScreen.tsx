@@ -243,6 +243,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
             myResumeToken={resumeToken}
             onReload={() => void load()}
             onRemovePlayer={confirmRemove}
+            isHost
           />
         ) : null}
 

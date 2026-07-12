@@ -14,6 +14,12 @@ type Props = {
   onReload: () => void | Promise<unknown>
   /** Host-only: when set, each other player's row shows a Remove control. */
   onRemovePlayer?: (player: Player) => void
+  /**
+   * The viewer is the host. Hosts don't ready up — they start the next game from
+   * their own Start-game control — so the "tap to (cancel) ready" toggle is hidden
+   * for them (matches web). They're still seated/counted; they just don't toggle.
+   */
+  isHost?: boolean
 }
 
 export function ReplayReadyRing({
@@ -24,6 +30,7 @@ export function ReplayReadyRing({
   minPlayers = 2,
   onReload,
   onRemovePlayer,
+  isHost = false,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const [pending, setPending] = useState(false)
@@ -60,7 +67,9 @@ export function ReplayReadyRing({
       <Text style={styles.kicker}>Play again · same settings</Text>
       <Text style={styles.title}>{canStart ? 'Ready when you are' : 'Waiting for players…'}</Text>
       <Text style={styles.subtitle}>
-        Same players, same settings. Tap to get ready — the host starts the next game.
+        {isHost
+          ? 'Same players, same settings. Start the next game once everyone’s in.'
+          : 'Same players, same settings. Tap to get ready — the host starts the next game.'}
       </Text>
 
       <View style={styles.ring}>
@@ -91,7 +100,9 @@ export function ReplayReadyRing({
         })}
       </View>
 
-      {meReady ? (
+      {/* The host doesn't ready up — they start the game from their own Start
+          control. Only players see the ready toggle. */}
+      {isHost ? null : meReady ? (
         <Pressable style={[styles.secondaryButton, pending && styles.buttonDisabled]} onPress={() => void toggleReady(false)} disabled={pending}>
           <Text style={styles.secondaryButtonText}>You're ready — tap to cancel</Text>
         </Pressable>
