@@ -11,6 +11,7 @@ import { parseAyoVariant, ayoResultDetail } from '@/lib/ayo-sow'
 import { playAyoSeedDrop, playAyoTurnChime } from '@/lib/ayo-sounds'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { postAyoMove, postAyoResign } from '@/lib/game-api'
@@ -84,6 +85,10 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
   })
 
   useAyoClockExpiry(bootstrap.code, activeSession, bootstrap.screen === 'active')
+
+  // Surface the chosen variant (Traditional / Oware) as the header mode pill.
+  const ayoVariant = parseAyoVariant(bootstrap.game?.ayo_variant)
+  useHeaderBadge(bootstrap.game ? (ayoVariant === 'oware' ? 'Oware' : 'Traditional') : null)
 
   // Chime once when it becomes your turn (matches the web turn sound).
   const prevMyTurn = useRef(false)

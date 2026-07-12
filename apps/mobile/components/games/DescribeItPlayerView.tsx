@@ -25,6 +25,7 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
@@ -145,6 +146,8 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
 
   const mode = clampDescribeItMode(bootstrap.game?.describe_it_mode)
   const numTeams = clampDescribeItTeams(bootstrap.game?.describe_it_num_teams)
+  // Surface the mode (N teams / Individual) as the header pill on every screen.
+  useHeaderBadge(bootstrap.game ? (mode === 'team' ? `${numTeams} teams` : 'Individual') : null)
   const myTeamRow = teamRows.find((r) => r.player_id === bootstrap.myPlayerId)
   const isDescriber = session?.describer_player_id === bootstrap.myPlayerId
   const mePlayer = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined

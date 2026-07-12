@@ -24,6 +24,7 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import type { Theme } from '@/constants/theme'
@@ -114,6 +115,8 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
 
   const mode = clampWordRushMode(bootstrap.game?.word_rush_mode)
   const numTeams = clampWordRushTeams(bootstrap.game?.word_rush_num_teams)
+  // Surface the mode (N teams / Individual) as the header pill on every screen.
+  useHeaderBadge(bootstrap.game ? (mode === 'team' ? `${numTeams} teams` : 'Individual') : null)
   const myTeamRow = teamRows.find((r) => r.player_id === bootstrap.myPlayerId)
   const isPromptSetter = session?.prompt_setter_player_id === bootstrap.myPlayerId
   const onMyTeam = mode === 'individual' || myTeamRow?.team === session?.active_team
