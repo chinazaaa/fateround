@@ -800,7 +800,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
       showTabs={showTabs}
       gameStarted={gameStarted}
       header={<HostGameHeader game={game} />}
-      primary={hostPlays ? interactivePlay : watchRound}
+      primary={<div className="max-w-lg mx-auto w-full">{hostPlays ? interactivePlay : watchRound}</div>}
       manage={manage}
       finished={finished}
     />

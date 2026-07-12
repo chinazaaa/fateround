@@ -26,8 +26,9 @@ import {
   reconcileCodewordsTeamAfterRemoval,
   removeCodewordsPlayer,
 } from '@/lib/codewords'
-import { assignDescribeItLateJoinTeam } from '@/lib/describe-it'
+import { assignDescribeItLateJoinTeam, reconcileDescribeItAfterRemoval } from '@/lib/describe-it'
 import { registerQuickDrawLateJoinPlayer } from '@/lib/quick-draw'
+import { reconcileQuickDrawGuessAfterRemoval } from '@/lib/quick-draw-guess'
 import {
   assignWordRushLateJoinTeam,
   revertWordRushRosterAfterFailedPlayerDelete,
@@ -1733,6 +1734,18 @@ export async function DELETE(req: NextRequest) {
     // everyone remaining may already be done, and no further submission would
     // ever re-trigger the completion check. Best-effort: never block the leave.
     await finishSudokuIfAllPlayersDone(getSupabaseAdmin(), id)
+  }
+
+  if (isDescribeItGame(gameType)) {
+    // A team may have dropped below the minimum to field a turn — skip it, or
+    // end the match if only one team can still play. Best-effort: never block.
+    await reconcileDescribeItAfterRemoval(getSupabaseAdmin(), id)
+  }
+
+  if (isQuickDrawGame(gameType)) {
+    // Same team-collapse handling for Quick Draw's team mode (no-op for the
+    // individual "telephone" variant, which has no guess session).
+    await reconcileQuickDrawGuessAfterRemoval(getSupabaseAdmin(), id)
   }
 
   return NextResponse.json({ success: true })

@@ -201,6 +201,36 @@ export function describerForTurn(members: string[], round: number): string | nul
   return members[(round - 1) % members.length] ?? members[0] ?? null
 }
 
+/** Teams that can still field a turn (a describer + at least one guesser). */
+export function describeItPlayableTeams(roster: Map<number, string[]>, numTeams: number): number[] {
+  const out: number[] = []
+  for (let team = 1; team <= numTeams; team += 1) {
+    if ((roster.get(team)?.length ?? 0) >= DESCRIBE_IT_MIN_PER_TEAM) out.push(team)
+  }
+  return out
+}
+
+/**
+ * Next turn index at or after `startIndex` whose team can still field a turn.
+ * A team that dropped below the minimum mid-game gets its turns skipped (no
+ * dead air) rather than running out the clock. Returns `totalTurns` (a non-turn)
+ * when no playable team remains, which the caller treats as "match over".
+ */
+export function nextPlayableTeamIndex(
+  startIndex: number,
+  numTeams: number,
+  totalRounds: number,
+  playableTeams: Set<number>
+): number {
+  const totalTurns = totalDescribeItTurns(numTeams, totalRounds)
+  let index = startIndex
+  while (index < totalTurns) {
+    if (playableTeams.has(teamForTurn(index, numTeams))) break
+    index += 1
+  }
+  return index
+}
+
 /** Lobby is ready when every configured team has at least the minimum members. */
 export function describeItLobbyReady(
   rows: Array<{ player_id: string; team: number }>,
@@ -926,6 +956,15 @@ export async function processDescribeItAdvance(
         session.total_rounds
       )
       nextIndex = nextIndividualDescriberIndex(session.roster, nextIndex, liveIds, totalTurns)
+    } else {
+      // Skip any team that can no longer field a turn; once only one team (or
+      // none) can still play, the match is decided — jump past the last turn so
+      // the finish path below fires.
+      const playable = new Set(describeItPlayableTeams(roster, session.num_teams))
+      nextIndex =
+        playable.size <= 1
+          ? totalDescribeItTurns(session.num_teams, session.total_rounds)
+          : nextPlayableTeamIndex(nextIndex, session.num_teams, session.total_rounds, playable)
     }
 
     const nextTurn = buildTurn({
@@ -982,6 +1021,47 @@ export async function processDescribeItAdvance(
     return internalFailure('describe-it:advance', updateError)
   }
   return {}
+}
+
+/**
+ * A player left or was removed in team mode. If their team can no longer field a
+ * turn, resolve it now: skip the collapsed team's remaining turn, and once only
+ * one team can still play, end the match (highest score wins). Safe no-op when
+ * the game is fine or not in team play. Best-effort — never blocks the leave.
+ */
+export async function reconcileDescribeItAfterRemoval(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error?: string; internal?: boolean }> {
+  const { session, error, internal } = await loadSession(supabase, gameId)
+  if (error) return { error, internal }
+  if (!session || session.status !== 'active' || session.mode === 'individual') return {}
+  if (session.phase !== 'turn' && session.phase !== 'break') return {}
+
+  const teamRows = await loadTeamRows(supabase, gameId)
+  const playable = new Set(describeItPlayableTeams(teamRoster(teamRows), session.num_teams))
+  // With 2+ teams still able to play, only a collapse of the CURRENT live turn's
+  // team needs handling now — a pending break will skip unplayable teams on its
+  // own. (In 'break', active_team is the team that just finished, so ignore it.)
+  if (playable.size >= 2 && (session.phase !== 'turn' || playable.has(session.active_team))) return {}
+
+  // Collapse the dead turn into an immediate break, then let advance skip the
+  // unplayable team (or finish when only one team is left).
+  if (session.phase === 'turn') {
+    const { error: breakError } = await supabase
+      .from('describe_it_sessions')
+      .update({
+        phase: 'break',
+        turn_deadline_at: null,
+        break_deadline_at: deadline(0),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('game_id', gameId)
+      .eq('phase', 'turn')
+      .eq('turn_index', session.turn_index)
+    if (breakError) return internalFailure('describe-it:reconcile', breakError)
+  }
+  return processDescribeItAdvance(supabase, gameId, { force: true })
 }
 
 export type DescribeItTeamScore = { team: number; score: number }
