@@ -39,11 +39,12 @@ import { WhotPlayerView } from '@/components/games/WhotPlayerView'
 import { WordHuntPlayerView } from '@/components/games/WordHuntPlayerView'
 import { WordRushPlayerView } from '@/components/games/WordRushPlayerView'
 import { WordSearchPlayerView } from '@/components/games/WordSearchPlayerView'
+import { WordScramblePlayerView } from '@/components/games/WordScramblePlayerView'
 import { YahtzeePlayerView } from '@/components/games/YahtzeePlayerView'
 
-const POLL_VIEWS = Object.fromEntries(
-  BATCH_2_POLL_GAMES.map((gameType) => [gameType, PollPlayerView])
-) as Partial<Record<GameType, React.ComponentType<{ gameCode: string }>>>
+const POLL_VIEWS = Object.fromEntries(BATCH_2_POLL_GAMES.map((gameType) => [gameType, PollPlayerView])) as Partial<
+  Record<GameType, React.ComponentType<{ gameCode: string }>>
+>
 
 const BATCH_3_VIEWS = {
   matching_pairs: MatchingPairsPlayerView,
@@ -53,6 +54,7 @@ const BATCH_3_VIEWS = {
   ludo: LudoPlayerView,
   crossword: CrosswordPlayerView,
   word_search: WordSearchPlayerView,
+  word_scramble: WordScramblePlayerView,
 } as const satisfies Partial<Record<GameType, React.ComponentType<{ gameCode: string }>>>
 
 const BATCH_4_VIEWS = {
@@ -126,13 +128,7 @@ export function GameRouter({ gameCode, gameType }: { gameCode: string; gameType:
   )
 }
 
-export const BATCH_1_GAMES: GameType[] = [
-  'ayo',
-  'tic_tac_toe',
-  'checkers',
-  'bingo',
-  'trivia',
-]
+export const BATCH_1_GAMES: GameType[] = ['ayo', 'tic_tac_toe', 'checkers', 'bingo', 'trivia']
 
 export const BATCH_2_GAMES: GameType[] = BATCH_2_POLL_GAMES
 

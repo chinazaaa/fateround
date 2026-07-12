@@ -240,6 +240,32 @@ export async function fetchWordSearchSolution(gameId: string): Promise<WordSearc
   }
 }
 
+export function postWordScrambleSubmit(
+  gameId: string,
+  resumeToken: string,
+  scrambleIndex: number,
+  guess: string,
+  hint?: boolean
+) {
+  return postJson<{ correct: boolean; word?: string; alreadySolved?: boolean; hint?: boolean }>(
+    '/api/word-scramble/submit',
+    { gameId, resumeToken, scrambleIndex, guess, hint }
+  )
+}
+
+export async function fetchWordScrambleSolution(gameId: string): Promise<string[] | null> {
+  try {
+    const res = await fetch(apiUrl(`/api/word-scramble/solution?gameId=${encodeURIComponent(gameId)}`), {
+      cache: 'no-store',
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { answers?: string[] | null }
+    return Array.isArray(data.answers) ? data.answers : null
+  } catch {
+    return null
+  }
+}
+
 export function postYahtzeeRoll(gameId: string, resumeToken: string) {
   return postJson<{ success: boolean }>('/api/yahtzee/roll', { gameId, resumeToken })
 }
@@ -972,6 +998,8 @@ export type BoardLobbyPatch = {
   crossword_difficulty?: 'easy' | 'medium' | 'hard'
   word_search_theme?: string
   word_search_difficulty?: 'easy' | 'medium' | 'hard'
+  word_scramble_theme?: string
+  word_scramble_difficulty?: 'easy' | 'medium' | 'hard'
 }
 
 export function postLobbySettings(gameCode: string, hostToken: string, patch: BoardLobbyPatch) {

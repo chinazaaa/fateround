@@ -25,6 +25,14 @@ import {
   clampWordSearchGameDuration,
   parseWordSearchDifficulty,
 } from '@fateround/shared/word-search'
+import {
+  WORD_SCRAMBLE_DEFAULT_DIFFICULTY,
+  WORD_SCRAMBLE_DEFAULT_DURATION,
+  WORD_SCRAMBLE_DEFAULT_THEME,
+  clampWordScrambleGameDuration,
+  parseWordScrambleDifficulty,
+  type WordScrambleDifficulty,
+} from '@fateround/shared/word-scramble'
 import type { BingoCallMode } from '@fateround/shared/create-party-games'
 import {
   clampBingoCallInterval,
@@ -68,7 +76,11 @@ import {
   NPAT_DEFAULT_TIMER,
 } from '@fateround/shared/npat'
 import { isPairGame, parsePairVoteMode } from '@fateround/shared/poll-games'
-import { QUICK_DRAW_GUESS_TEAM_OPTIONS, clampQuickDrawNumTeams, clampQuickDrawPlayMode } from '@fateround/shared/quick-draw-guess'
+import {
+  QUICK_DRAW_GUESS_TEAM_OPTIONS,
+  clampQuickDrawNumTeams,
+  clampQuickDrawPlayMode,
+} from '@fateround/shared/quick-draw-guess'
 import {
   QUIPLASH_DEFAULT_SUBMIT_TIMER,
   QUIPLASH_DEFAULT_VOTE_TIMER,
@@ -122,6 +134,8 @@ export type PartyRoomSettings = {
   crosswordDifficulty: CrosswordDifficulty
   wordSearchTheme: string
   wordSearchDifficulty: WordSearchDifficulty
+  wordScrambleTheme: string
+  wordScrambleDifficulty: WordScrambleDifficulty
 }
 
 export function defaultPartyRoomSettings(gameType: GameType): PartyRoomSettings {
@@ -159,12 +173,16 @@ export function defaultPartyRoomSettings(gameType: GameType): PartyRoomSettings 
           ? CROSSWORD_DEFAULT_DURATION
           : gameType === 'word_search'
             ? WORD_SEARCH_DEFAULT_DURATION
-            : 0,
+            : gameType === 'word_scramble'
+              ? WORD_SCRAMBLE_DEFAULT_DURATION
+              : 0,
     matchingPairsLargeGrid: false,
     crosswordTheme: CROSSWORD_DEFAULT_THEME,
     crosswordDifficulty: CROSSWORD_DEFAULT_DIFFICULTY,
     wordSearchTheme: WORD_SEARCH_DEFAULT_THEME,
     wordSearchDifficulty: WORD_SEARCH_DEFAULT_DIFFICULTY,
+    wordScrambleTheme: WORD_SCRAMBLE_DEFAULT_THEME,
+    wordScrambleDifficulty: WORD_SCRAMBLE_DEFAULT_DIFFICULTY,
   }
 }
 
@@ -306,6 +324,14 @@ export function partyRoomSettingsPayload(gameType: GameType, party: PartyRoomSet
     payload.game_duration_seconds = clampWordSearchGameDuration(party.gameDurationSeconds)
     payload.word_search_theme = party.wordSearchTheme
     payload.word_search_difficulty = parseWordSearchDifficulty(party.wordSearchDifficulty)
+    return payload
+  }
+
+  if (gameType === 'word_scramble') {
+    payload.rounds_count = 1
+    payload.game_duration_seconds = clampWordScrambleGameDuration(party.gameDurationSeconds)
+    payload.word_scramble_theme = party.wordScrambleTheme
+    payload.word_scramble_difficulty = parseWordScrambleDifficulty(party.wordScrambleDifficulty)
     return payload
   }
 

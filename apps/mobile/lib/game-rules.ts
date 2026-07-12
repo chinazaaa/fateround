@@ -31,6 +31,7 @@ const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   sudoku: 'sudoku',
   crossword: 'crossword',
   word_search: 'word-search',
+  word_scramble: 'word-scramble',
   tic_tac_toe: 'tic-tac-toe',
   word_hunt: 'word-hunt',
   chess: 'chess',

@@ -411,6 +411,7 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
         players={players}
         battles={battles}
         answers={answers}
+        votes={votes}
         highlightPlayerId={hostPlayerId}
         playAgainButton={
           <button

@@ -240,7 +240,8 @@ export function HostLobbySettingsSheet({
   const themeOptions = themesForGameType(gameType)
   // Crossword / Word Search show their own word-theme picker in DurationGamesSection, so hide
   // the generic visual-theme picker for them (they don't use a visual skin).
-  const showTheme = themeOptions.length > 1 && gameType !== 'crossword' && gameType !== 'word_search'
+  const showTheme =
+    themeOptions.length > 1 && gameType !== 'crossword' && gameType !== 'word_search' && gameType !== 'word_scramble'
 
   const timerOptions = Array.from(
     new Set<number>([game.timer_seconds ?? 0, ...POLL_ROUND_TIMER_OPTIONS, ...(isTrivia ? [10] : [])])
@@ -285,8 +286,8 @@ export function HostLobbySettingsSheet({
   }))
   const [duration, setDuration] = useState<DurationGameState>(() => {
     const g = game as unknown as Record<string, string | null | undefined>
-    const themeField = gameType === 'crossword' ? 'crossword_theme' : 'word_search_theme'
-    const diffField = gameType === 'crossword' ? 'crossword_difficulty' : 'word_search_difficulty'
+    const themeField = `${gameType}_theme`
+    const diffField = `${gameType}_difficulty`
     return {
       timerSeconds: game.timer_seconds ?? 0,
       gameDurationSeconds: game.game_duration_seconds ?? 0,
@@ -494,7 +495,12 @@ export function HostLobbySettingsSheet({
       if (quiplash.voteTimer !== game.operative_timer_seconds) board.operative_timer_seconds = quiplash.voteTimer
     }
     if (isDuration) {
-      if (gameType === 'sudoku' || gameType === 'crossword' || gameType === 'word_search') {
+      if (
+        gameType === 'sudoku' ||
+        gameType === 'crossword' ||
+        gameType === 'word_search' ||
+        gameType === 'word_scramble'
+      ) {
         if (duration.gameDurationSeconds !== game.game_duration_seconds)
           board.game_duration_seconds = duration.gameDurationSeconds
         const g = game as unknown as Record<string, string | null | undefined>
@@ -506,6 +512,10 @@ export function HostLobbySettingsSheet({
           if (duration.theme && duration.theme !== g.word_search_theme) board.word_search_theme = duration.theme
           if (duration.difficulty !== (g.word_search_difficulty ?? 'medium'))
             board.word_search_difficulty = duration.difficulty
+        } else if (gameType === 'word_scramble') {
+          if (duration.theme && duration.theme !== g.word_scramble_theme) board.word_scramble_theme = duration.theme
+          if (duration.difficulty !== (g.word_scramble_difficulty ?? 'medium'))
+            board.word_scramble_difficulty = duration.difficulty
         }
       } else if (gameType === 'word_hunt') {
         if (duration.timerSeconds !== game.timer_seconds) board.timer_seconds = duration.timerSeconds

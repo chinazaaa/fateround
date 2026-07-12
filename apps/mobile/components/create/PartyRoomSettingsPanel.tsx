@@ -29,20 +29,10 @@ import {
   formatNpatGameDuration,
 } from '@fateround/shared/npat'
 import { isPairGame } from '@fateround/shared/poll-games'
-import {
-  QUICK_DRAW_GUESS_TEAM_OPTIONS,
-  clampQuickDrawPlayMode,
-} from '@fateround/shared/quick-draw-guess'
-import {
-  QUIPLASH_SUBMIT_TIMER_OPTIONS,
-  QUIPLASH_VOTE_TIMER_OPTIONS,
-} from '@fateround/shared/quiplash'
+import { QUICK_DRAW_GUESS_TEAM_OPTIONS, clampQuickDrawPlayMode } from '@fateround/shared/quick-draw-guess'
+import { QUIPLASH_SUBMIT_TIMER_OPTIONS, QUIPLASH_VOTE_TIMER_OPTIONS } from '@fateround/shared/quiplash'
 import { TTL_TIMER_OPTIONS } from '@fateround/shared/two-truths'
-import {
-  WORD_RUSH_ROUND_OPTIONS,
-  WORD_RUSH_TURN_OPTIONS,
-  formatWordRushTurnTimer,
-} from '@fateround/shared/word-rush'
+import { WORD_RUSH_ROUND_OPTIONS, WORD_RUSH_TURN_OPTIONS, formatWordRushTurnTimer } from '@fateround/shared/word-rush'
 import { WORD_HUNT_TIMER_OPTIONS } from '@fateround/shared/word-hunt'
 import {
   CROSSWORD_GAME_DURATION_OPTIONS,
@@ -54,6 +44,11 @@ import {
   WORD_SEARCH_THEME_OPTIONS,
   formatWordSearchGameDuration,
 } from '@fateround/shared/word-search'
+import {
+  WORD_SCRAMBLE_GAME_DURATION_OPTIONS,
+  WORD_SCRAMBLE_THEME_OPTIONS,
+  formatWordScrambleGameDuration,
+} from '@fateround/shared/word-scramble'
 import { RoundCountPicker } from '@/components/create/RoundCountPicker'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { SelectField } from '@/components/create/SelectField'
@@ -244,7 +239,9 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange }: Props) {
                       { value: 'individual', label: 'Individual', hint: 'Everyone draws — fastest guess wins' },
                     ]}
                     onChange={(value) =>
-                      onChange({ quickDrawPlayMode: clampQuickDrawPlayMode(value) as PartyRoomSettings['quickDrawPlayMode'] })
+                      onChange({
+                        quickDrawPlayMode: clampQuickDrawPlayMode(value) as PartyRoomSettings['quickDrawPlayMode'],
+                      })
                     }
                   />
                 </View>
@@ -537,7 +534,9 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange }: Props) {
                   { value: 'medium', label: 'Medium' },
                   { value: 'hard', label: 'Hard', hint: 'Bigger grid, more words' },
                 ]}
-                onChange={(value) => onChange({ crosswordDifficulty: value as PartyRoomSettings['crosswordDifficulty'] })}
+                onChange={(value) =>
+                  onChange({ crosswordDifficulty: value as PartyRoomSettings['crosswordDifficulty'] })
+                }
               />
             </View>
             <TimerPicker
@@ -570,7 +569,9 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange }: Props) {
                   { value: 'medium', label: 'Medium' },
                   { value: 'hard', label: 'Hard', hint: 'Bigger grid, all directions' },
                 ]}
-                onChange={(value) => onChange({ wordSearchDifficulty: value as PartyRoomSettings['wordSearchDifficulty'] })}
+                onChange={(value) =>
+                  onChange({ wordSearchDifficulty: value as PartyRoomSettings['wordSearchDifficulty'] })
+                }
               />
             </View>
             <TimerPicker
@@ -578,6 +579,41 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange }: Props) {
               value={party.gameDurationSeconds}
               options={WORD_SEARCH_GAME_DURATION_OPTIONS}
               format={formatWordSearchGameDuration}
+              onChange={(gameDurationSeconds) => onChange({ gameDurationSeconds })}
+            />
+          </>
+        ) : null}
+
+        {gameType === 'word_scramble' ? (
+          <>
+            <View style={styles.field}>
+              <Text style={styles.label}>Theme</Text>
+              <SelectField
+                title="Word Scramble theme"
+                value={party.wordScrambleTheme}
+                options={WORD_SCRAMBLE_THEME_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
+                onChange={(wordScrambleTheme) => onChange({ wordScrambleTheme })}
+              />
+            </View>
+            <View style={styles.field}>
+              <Text style={styles.label}>Difficulty</Text>
+              <SegmentedControl
+                value={party.wordScrambleDifficulty}
+                options={[
+                  { value: 'easy', label: 'Easy', hint: 'Short words' },
+                  { value: 'medium', label: 'Medium' },
+                  { value: 'hard', label: 'Hard', hint: 'Long words + letter bonus' },
+                ]}
+                onChange={(value) =>
+                  onChange({ wordScrambleDifficulty: value as PartyRoomSettings['wordScrambleDifficulty'] })
+                }
+              />
+            </View>
+            <TimerPicker
+              label="Max time limit"
+              value={party.gameDurationSeconds}
+              options={WORD_SCRAMBLE_GAME_DURATION_OPTIONS}
+              format={formatWordScrambleGameDuration}
               onChange={(gameDurationSeconds) => onChange({ gameDurationSeconds })}
             />
           </>
@@ -645,17 +681,17 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange }: Props) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  wrap: { gap: theme.space.md },
-  heading: {
-    color: theme.text,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  field: { gap: theme.space.sm },
-  label: {
-    color: theme.text,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  toggles: { gap: theme.space.sm },
-})
+    wrap: { gap: theme.space.md },
+    heading: {
+      color: theme.text,
+      fontSize: 18,
+      fontWeight: '800',
+    },
+    field: { gap: theme.space.sm },
+    label: {
+      color: theme.text,
+      fontSize: 16,
+      fontWeight: '800',
+    },
+    toggles: { gap: theme.space.sm },
+  })

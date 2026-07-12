@@ -412,6 +412,13 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submissions, metadata, myPlayerId])
 
+  // A replay reuses this component with a fresh round — drop the previous game's answer grid
+  // so the finish screen refetches the new puzzle's solution instead of pairing new clues with
+  // stale letters (which garbles every word in the answer key).
+  useEffect(() => {
+    setSolutionGrid(null)
+  }, [roundId])
+
   // Once the game is over, fetch the answer grid to show the answer key on the finish screen.
   useEffect(() => {
     if (view !== 'finished' || solutionGrid) return
