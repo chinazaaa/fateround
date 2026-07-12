@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { type Game, type Round } from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import {
@@ -342,7 +342,16 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
                 <Pressable
                   style={[styles.revealBtn, submitting && styles.btnDisabled]}
                   disabled={submitting}
-                  onPress={() => void submit(true)}
+                  onPress={() =>
+                    Alert.alert(
+                      'Reveal the answer?',
+                      `This shows the word but costs you ${Math.abs(WORD_SCRAMBLE_HINT_PENALTY)} points.`,
+                      [
+                        { text: 'Keep trying', style: 'cancel' },
+                        { text: 'Reveal', style: 'destructive', onPress: () => void submit(true) },
+                      ]
+                    )
+                  }
                 >
                   <Text style={styles.revealText}>💡 Reveal answer ({WORD_SCRAMBLE_HINT_PENALTY} pts)</Text>
                 </Pressable>
