@@ -892,8 +892,13 @@ export function postDeclineHost(gameCode: string, resumeToken: string) {
  * enforces per-game minimum-player rules and throws (via postJson) with the
  * server's message when they aren't met — the caller surfaces that verbatim.
  */
-export function startGame(gameId: string, hostToken: string) {
-  return postJson<{ ok?: boolean }>(`/api/games/${gameId.toUpperCase()}/start`, { hostToken })
+export function startGame(gameId: string, hostToken: string, firstTeam?: 'red' | 'blue') {
+  // firstTeam is a Codewords "goes first" preference read by the start route
+  // (omit for random). The route ignores it for non-Codewords games.
+  return postJson<{ ok?: boolean }>(`/api/games/${gameId.toUpperCase()}/start`, {
+    hostToken,
+    ...(firstTeam ? { firstTeam } : {}),
+  })
 }
 
 export type LobbySettingsPatch = {

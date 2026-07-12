@@ -48,6 +48,9 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // Codewords "goes first" preference — ephemeral (sent to the start route, like
+  // web). Owned here since the settings sheet is a separate modal.
+  const [firstTeam, setFirstTeam] = useState<'random' | 'red' | 'blue'>('random')
   const [transferOpen, setTransferOpen] = useState(false)
   const [manageOpen, setManageOpen] = useState(true)
   const [hostSession, setHostSession] = useState<PlayerSession | null>(null)
@@ -145,14 +148,14 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
     setStarting(true)
     setError(null)
     try {
-      await startGame(gameCode, hostToken)
+      await startGame(gameCode, hostToken, firstTeam === 'random' ? undefined : firstTeam)
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not start the game')
     } finally {
       setStarting(false)
     }
-  }, [gameCode, hostToken, load])
+  }, [gameCode, hostToken, load, firstTeam])
 
   const onPlayAgain = useCallback(async () => {
     setReplaying(true)
@@ -414,6 +417,8 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
           visible={settingsOpen}
           onClose={() => setSettingsOpen(false)}
           onSaved={() => void load()}
+          firstTeam={firstTeam}
+          onFirstTeamChange={setFirstTeam}
           onTransfer={() => {
             setSettingsOpen(false)
             setTransferOpen(true)

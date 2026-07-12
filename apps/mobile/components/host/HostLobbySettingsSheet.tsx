@@ -163,13 +163,26 @@ type Props = {
   onSaved: () => void
   /** Opens the host-transfer flow (pick a player to take over hosting). */
   onTransfer?: () => void
+  /** Codewords "goes first" preference (owned by the lobby, applied at start). */
+  firstTeam?: 'random' | 'red' | 'blue'
+  onFirstTeamChange?: (team: 'random' | 'red' | 'blue') => void
 }
 
 /**
  * Edit the settings the server allows changing while a game is still in the lobby
  * (mirrors web's PATCH /api/games/[code]): visibility, rounds, timer, late-join.
  */
-export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onClose, onSaved, onTransfer }: Props) {
+export function HostLobbySettingsSheet({
+  gameCode,
+  hostToken,
+  game,
+  visible,
+  onClose,
+  onSaved,
+  onTransfer,
+  firstTeam = 'random',
+  onFirstTeamChange,
+}: Props) {
   const styles = useThemedStyles(makeStyles)
   const gameType = game.game_type as GameType
   const { limits } = useGamePlayerLimits()
@@ -696,6 +709,8 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
                 canShuffle={game.codewords_randomize_teams === true}
                 shuffling={shuffling}
                 onShuffle={() => void onShuffle()}
+                firstTeam={firstTeam}
+                onFirstTeamChange={onFirstTeamChange}
               />
             ) : null}
 
