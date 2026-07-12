@@ -354,11 +354,24 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
                     style={[styles.choice, isPicked && styles.choiceSelected]}
                     disabled={submitting || !!myVote || !canVote}
                     onPress={() => void submitVote(answer.id)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isPicked, disabled: submitting || !!myVote || !canVote }}
+                    accessibilityLabel={`${answerOptionLabel(index)}. ${answer.text}${isPicked ? ' (your pick)' : ''}`}
                   >
                     <Text style={styles.choiceBadge}>{answerOptionLabel(index)}</Text>
                     <View style={styles.choiceBody}>
                       <Text style={styles.choiceText}>{answer.text}</Text>
-                      {isPicked ? <Text style={styles.yourPick}>Your pick</Text> : null}
+                      {/* Always render (reserve the height) and just toggle visibility,
+                          so the box doesn't grow/shift when you vote. Selection is
+                          conveyed via the Pressable's accessibilityState/label, so hide
+                          this purely-visual label from assistive tech. */}
+                      <Text
+                        style={[styles.yourPick, !isPicked && styles.yourPickHidden]}
+                        accessibilityElementsHidden
+                        importantForAccessibility="no-hide-descendants"
+                      >
+                        Your pick
+                      </Text>
                     </View>
                   </Pressable>
                 )
@@ -495,6 +508,7 @@ const makeStyles = (theme: Theme) =>
     choiceBody: { flex: 1, gap: 4 },
     choiceText: { color: theme.text, fontSize: 16, lineHeight: 22 },
     yourPick: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700' },
+    yourPickHidden: { opacity: 0 },
     locked: { color: theme.textMuted, textAlign: 'center', marginTop: 12 },
     revealList: { gap: 10, paddingVertical: 8 },
     content: { paddingBottom: 32, gap: 14 },

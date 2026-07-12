@@ -380,7 +380,10 @@ export function QuiplashActiveRound({
                   disabled={!canTapVote}
                   onClick={() => void submitVote(answer.id)}
                   className={[
-                    'relative min-h-[8rem] rounded-2xl border-2 p-4 text-left transition-all',
+                    // transition-colors (not transition-all) so selecting an answer
+                    // recolours the box without animating its size/position — the
+                    // boxes stay put while voting.
+                    'relative min-h-[8rem] rounded-2xl border-2 p-4 text-left transition-colors',
                     isPicked
                       ? 'border-[var(--primary)] bg-[var(--primary)]/10 shadow-[var(--card-shadow-glow)]'
                       : 'border-[var(--border-strong)] bg-[var(--card-strong)]',
@@ -393,7 +396,11 @@ export function QuiplashActiveRound({
                     {label}
                   </span>
                   <p className="mt-3 text-base font-semibold leading-snug">{answer.text}</p>
-                  {isPicked && <p className="mt-2 text-xs font-semibold text-[var(--primary-strong)]">Your pick</p>}
+                  {isPicked && (
+                    <span className="absolute right-3 top-3 rounded-full bg-[var(--primary)]/15 px-2 py-0.5 text-[11px] font-bold text-[var(--primary-strong)]">
+                      Your pick
+                    </span>
+                  )}
                 </button>
               )
             })}
