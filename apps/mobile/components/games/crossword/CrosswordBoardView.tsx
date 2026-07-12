@@ -80,11 +80,16 @@ export function CrosswordBoardView({
               : owner
                 ? withAlpha(owner === myPlayerId ? CROSSWORD_MY_CELL_COLOR : (playerColors[owner] ?? crosswordPlayerColor(0)), '55')
                 : undefined
-            const bg = isSelected
-              ? 'rgba(99,102,241,0.35)'
-              : isActive
-                ? 'rgba(99,102,241,0.14)'
-                : baseBg
+            // Solved cells keep their fill even inside the active word (selected cell still
+            // shows its ring), so a word turns colour the instant it's correct.
+            const bg =
+              mySolvedCells && iSolved
+                ? withAlpha(CROSSWORD_MY_CELL_COLOR, '55')
+                : isSelected
+                  ? 'rgba(99,102,241,0.35)'
+                  : isActive
+                    ? 'rgba(99,102,241,0.14)'
+                    : baseBg
 
             return (
               <Pressable
