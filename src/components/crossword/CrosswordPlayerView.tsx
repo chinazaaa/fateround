@@ -117,6 +117,7 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
   const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
   const [submissions, setSubmissions] = useState<CrosswordSubmission[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const [solutionGrid, setSolutionGrid] = useState<string[][] | null>(null)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   // Letters submit concurrently per cell — a single global lock would drop keystrokes
@@ -375,6 +376,21 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     completionReadyRef.current = true
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submissions, metadata, myPlayerId])
+
+  // Once the game is over, fetch the answer grid to show the answer key on the finish screen.
+  useEffect(() => {
+    if (view !== 'finished' || solutionGrid) return
+    let cancelled = false
+    fetch(`/api/crossword/solution?gameId=${gameCode.toUpperCase()}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!cancelled && j?.solution) setSolutionGrid(j.solution as string[][])
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [view, solutionGrid, gameCode])
 
   const leaderboard = metadata ? tallyCrosswordScores(metadata, submissions, players) : []
   const me = players.find((p) => p.id === myPlayerId)
@@ -804,6 +820,31 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
               winnerName={myRow?.name ?? ''}
               roundKey={game?.session_started_at ?? undefined}
             />
+          )}
+          {solutionGrid && metadata && (
+            <div className="glass-card p-4 space-y-3">
+              <p className="label-caps text-xs">Answers</p>
+              <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1">
+                {(['across', 'down'] as const).map((dir) => (
+                  <div key={dir} className="space-y-1">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-muted">{dir}</p>
+                    {metadata.clues
+                      .filter((c) => c.direction === dir)
+                      .map((c) => {
+                        const word = crosswordWordCells(c)
+                          .map(([r, col]) => solutionGrid[r]?.[col] ?? '')
+                          .join('')
+                        return (
+                          <p key={`${c.number}-${c.direction}`} className="text-sm text-muted">
+                            <span className="font-semibold text-[var(--foreground)]">{c.number}.</span> {c.clue} —{' '}
+                            <span className="font-bold text-[var(--foreground)]">{word}</span>
+                          </p>
+                        )
+                      })}
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </main>
       </div>

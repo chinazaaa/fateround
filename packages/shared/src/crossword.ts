@@ -21,7 +21,7 @@ export const CROSSWORD_MAX_PLAYERS = 20
 export const CROSSWORD_DEFAULT_MAX_PLAYERS = 20
 
 export const CROSSWORD_DEFAULT_DURATION = 900 // 15 minutes
-export const CROSSWORD_GAME_DURATION_OPTIONS = [0, 300, 600, 900, 1200, 1800] as const
+export const CROSSWORD_GAME_DURATION_OPTIONS = [0, 120, 180, 300, 600, 900, 1200, 1800] as const
 
 /** Base points for correctly completing a whole word. */
 export const CROSSWORD_WORD_POINTS = 10

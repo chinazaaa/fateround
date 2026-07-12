@@ -25,6 +25,8 @@ import {
   fillableCellCount,
   playerCompletionPercent,
   CROSSWORD_MIN_PLAYERS,
+  CROSSWORD_GAME_DURATION_OPTIONS,
+  formatCrosswordGameDuration,
   type CrosswordMetadata,
   type CrosswordSubmission,
 } from '@/lib/crossword'
@@ -325,10 +327,12 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
         toastError(d.error || 'Failed to reset')
         return
       }
+      // Return to lobby keeps the host seated: the play-again route re-seats the passed
+      // hostPlayerId (resetSpectatorsForLobby(..., [hostPlayerId])), so clearing the local
+      // session here would strand the host — their row stays in the roster while the UI
+      // wrongly shows the "enter your name to join" form. Keep the session; the host can
+      // leave the seat deliberately with the Host/Play toggle if they want to.
       if (!sameSettings) {
-        clearPlayerSession(gameCode)
-        setHostPlayerId(null)
-        setHostPlayerName('')
         setHostJoinName('')
       }
       setTab('manage')
@@ -524,6 +528,8 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
             game={game}
             playerCount={players.length}
             onGameUpdate={setGame}
+            durationChoices={CROSSWORD_GAME_DURATION_OPTIONS}
+            formatDuration={formatCrosswordGameDuration}
           />
         ) : (
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />

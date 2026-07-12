@@ -18,17 +18,26 @@ export async function finishExpiredCrosswordGame(
 }
 
 /**
- * Race win condition: the first player to correctly fill EVERY fillable cell ends the game.
- * (Contrast with Sudoku, which waits for all players.) Called from the submit route only
- * after a correct letter — a wrong guess can never complete the grid.
+ * Progress-based early finish, called from the submit route after a correct letter (a wrong
+ * guess can never complete the grid). Behaviour depends on whether a timer is set:
+ *
+ *   • No timer  → sudden-death race: the FIRST player to fill every fillable cell ends it.
+ *   • Timer set → the timer owns the ending. We only end early if EVERY active player has
+ *     finished (nothing left to wait for); otherwise the game runs until it expires so the
+ *     rest of the room can keep solving after someone wins.
  */
 export async function finishCrosswordIfAnyPlayerDone(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ finished: boolean; error: string | null }> {
-  const { data: game, error: gameError } = await supabase.from('games').select('status').eq('id', gameId).maybeSingle()
+  const { data: game, error: gameError } = await supabase
+    .from('games')
+    .select('status, game_duration_seconds')
+    .eq('id', gameId)
+    .maybeSingle()
   if (gameError) return { finished: false, error: gameError.message }
   if (game?.status !== 'active') return { finished: false, error: null }
+  const hasTimer = !!game.game_duration_seconds && game.game_duration_seconds > 0
 
   const { data: round, error: roundError } = await supabase
     .from('rounds')
@@ -57,8 +66,21 @@ export async function finishCrosswordIfAnyPlayerDone(
     solvedByPlayer.set(s.player_id, set)
   }
 
-  const anyoneDone = [...solvedByPlayer.values()].some((set) => set.size >= fillable)
-  if (!anyoneDone) return { finished: false, error: null }
+  let shouldFinish: boolean
+  if (hasTimer) {
+    // End early only when every active (non-spectator) player has completed the grid.
+    const { data: activePlayers, error: playersError } = await supabase
+      .from('players')
+      .select('id')
+      .eq('game_id', gameId)
+      .eq('spectator', false)
+    if (playersError) return { finished: false, error: playersError.message }
+    const playerIds = ((activePlayers ?? []) as { id: string }[]).map((p) => p.id)
+    shouldFinish = playerIds.length > 0 && playerIds.every((id) => (solvedByPlayer.get(id)?.size ?? 0) >= fillable)
+  } else {
+    shouldFinish = [...solvedByPlayer.values()].some((set) => set.size >= fillable)
+  }
+  if (!shouldFinish) return { finished: false, error: null }
 
   // Several racers can submit their final cell at once — the onlyIfActive CAS guard makes
   // the active→finished transition award points exactly once.

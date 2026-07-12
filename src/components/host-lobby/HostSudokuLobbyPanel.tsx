@@ -18,11 +18,23 @@ type Props = {
   game: Game
   playerCount: number
   onGameUpdate: (game: Game) => void
+  /** Timer choices (seconds) + label formatter. Defaults to Sudoku's; Crossword and Word
+   *  Search pass their own so their extra options (e.g. 2m/3m) show in the lobby edit too. */
+  durationChoices?: readonly number[]
+  formatDuration?: (seconds: number) => string
 }
 
 type SaveState = 'idle' | 'saving' | 'saved'
 
-export function HostSudokuLobbyPanel({ gameCode, hostToken, game, playerCount, onGameUpdate }: Props) {
+export function HostSudokuLobbyPanel({
+  gameCode,
+  hostToken,
+  game,
+  playerCount,
+  onGameUpdate,
+  durationChoices = SUDOKU_GAME_DURATION_OPTIONS,
+  formatDuration = formatSudokuGameDuration,
+}: Props) {
   const { error: toastError } = useToast()
   const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
   const [maxPlayers, setMaxPlayers] = useState(20)
@@ -121,20 +133,17 @@ export function HostSudokuLobbyPanel({ gameCode, hostToken, game, playerCount, o
 
   const durationOptions = useMemo(
     () =>
-      SUDOKU_GAME_DURATION_OPTIONS.map((s) => ({
+      durationChoices.map((s) => ({
         value: s,
         label: s === 0 ? 'Off' : `${s / 60}m`,
       })),
-    []
+    [durationChoices]
   )
 
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 
   return (
-    <HostLobbySettingsSection
-      status={statusLabel}
-      summary={`${maxPlayers} max · ${formatSudokuGameDuration(gameDuration)}`}
-    >
+    <HostLobbySettingsSection status={statusLabel} summary={`${maxPlayers} max · ${formatDuration(gameDuration)}`}>
       <HostLobbySettingBlock title={`Max players · ${playerCount} joined`}>
         <HostLobbyOptionChips value={maxPlayers} options={maxPlayerOptions} onChange={onMaxPlayersChange} />
       </HostLobbySettingBlock>

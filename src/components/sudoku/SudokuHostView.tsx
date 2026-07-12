@@ -338,10 +338,12 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
         toastError(d.error || 'Failed to reset')
         return
       }
+      // Return to lobby keeps the host seated: the play-again route re-seats the passed
+      // hostPlayerId (resetSpectatorsForLobby(..., [hostPlayerId])), so clearing the local
+      // session here would strand the host — their row stays in the roster while the UI
+      // wrongly shows the "enter your name to join" form. Keep the session; the host can
+      // leave the seat deliberately with the Host/Play toggle if they want to.
       if (!sameSettings) {
-        clearPlayerSession(gameCode)
-        setHostPlayerId(null)
-        setHostPlayerName('')
         setHostJoinName('')
       }
       setTab('manage')

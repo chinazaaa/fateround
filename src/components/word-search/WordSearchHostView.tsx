@@ -23,6 +23,8 @@ import {
   tallyWordSearchScores,
   wordSearchCompletionPercent,
   WORD_SEARCH_MIN_PLAYERS,
+  WORD_SEARCH_GAME_DURATION_OPTIONS,
+  formatWordSearchGameDuration,
   type WordSearchMetadata,
   type WordSearchFound,
 } from '@/lib/word-search'
@@ -333,10 +335,12 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
         toastError(d.error || 'Failed to reset')
         return
       }
+      // Return to lobby keeps the host seated: the play-again route re-seats the passed
+      // hostPlayerId (resetSpectatorsForLobby(..., [hostPlayerId])), so clearing the local
+      // session here would strand the host — their row stays in the roster while the UI
+      // wrongly shows the "enter your name to join" form. Keep the session; the host can
+      // leave the seat deliberately with the Host/Play toggle if they want to.
       if (!sameSettings) {
-        clearPlayerSession(gameCode)
-        setHostPlayerId(null)
-        setHostPlayerName('')
         setHostJoinName('')
       }
       setTab('manage')
@@ -513,6 +517,8 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
             game={game}
             playerCount={players.length}
             onGameUpdate={setGame}
+            durationChoices={WORD_SEARCH_GAME_DURATION_OPTIONS}
+            formatDuration={formatWordSearchGameDuration}
           />
         ) : (
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />

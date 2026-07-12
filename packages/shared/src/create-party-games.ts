@@ -68,7 +68,7 @@ export const PAN_DEFAULT_ROUNDS = 5
 export const MATCHING_PAIRS_ROUND_OPTIONS = [1, 2, 3, 5, 10] as const
 export const MATCHING_PAIRS_GAME_DURATION_OPTIONS = [0, 30, 45, 60, 120, 180, 300, 600] as const
 
-export const SUDOKU_GAME_DURATION_OPTIONS = [0, 300, 600, 900, 1200, 1800] as const
+export const SUDOKU_GAME_DURATION_OPTIONS = [0, 120, 180, 300, 600, 900, 1200, 1800] as const
 
 /** Most Likely To platform pool — approximate cap for round picker. */
 export const MLT_PLATFORM_ROUND_CAP = 20

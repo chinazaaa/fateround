@@ -20,10 +20,12 @@ import {
   tallyWordSearchScores,
   wordSearchCompletionPercent,
   selectionCells,
+  placementCells,
   WORD_SEARCH_MIN_PLAYERS,
   WORD_SEARCH_HINT_PENALTY,
   type WordSearchMetadata,
   type WordSearchFound,
+  type WordSearchPlacement,
 } from '@/lib/word-search'
 import { getPlayerTimeSpent } from '@/lib/sudoku'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
@@ -73,6 +75,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
   const [roundId, setRoundId] = useState<string | null>(null)
   const [metadata, setMetadata] = useState<WordSearchMetadata | null>(null)
   const [found, setFound] = useState<WordSearchFound[]>([])
+  const [placements, setPlacements] = useState<WordSearchPlacement[] | null>(null)
   const [nowMs, setNowMs] = useState<number>(Date.now())
   const [invalidCells, setInvalidCells] = useState<Set<string>>(new Set())
   const [pendingCells, setPendingCells] = useState<Set<string>>(new Set())
@@ -182,6 +185,20 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
       return () => clearInterval(interval)
     }
   }, [view])
+
+  useEffect(() => {
+    if (view !== 'finished' || placements) return
+    let cancelled = false
+    fetch(`/api/word-search/solution?gameId=${gameCode.toUpperCase()}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!cancelled && Array.isArray(j?.placements)) setPlacements(j.placements as WordSearchPlacement[])
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [view, placements, gameCode])
 
   useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
 
@@ -308,12 +325,14 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
     () => (myPlayerId ? playerFoundWords(found, myPlayerId) : new Set<string>()),
     [found, myPlayerId]
   )
+  // Word search is an individual-board race — the grid only ever shows MY finds, so the word
+  // list must match. Building this from every player's finds would strike words off my list
+  // the moment anyone else found them, making it impossible to track my own progress.
   const wordOwners = useMemo(() => {
     const m = new Map<string, string>()
-    const sorted = [...found].sort((a, b) => new Date(a.found_at).getTime() - new Date(b.found_at).getTime())
-    for (const f of sorted) if (!m.has(f.word)) m.set(f.word, f.player_id)
+    if (myPlayerId) for (const w of myFoundWords) m.set(w, myPlayerId)
     return m
-  }, [found])
+  }, [myFoundWords, myPlayerId])
 
   const leaderboard = metadata ? tallyWordSearchScores(metadata, found, players) : []
   const me = players.find((p) => p.id === myPlayerId)
@@ -587,6 +606,35 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
               roundKey={game?.session_started_at ?? undefined}
             />
           )}
+          {placements && metadata && (
+            <div className="glass-card p-4 space-y-3">
+              <p className="label-caps text-xs">Answer key</p>
+              <WordSearchBoard
+                metadata={metadata}
+                readOnly
+                myFoundCells={(() => {
+                  const g = metadata.grid.map((row) => row.map(() => false))
+                  for (const p of placements) {
+                    for (const [r, c] of placementCells(p)) {
+                      if (g[r]) g[r][c] = true
+                    }
+                  }
+                  return g
+                })()}
+                myColor="#8b5cf6"
+              />
+              <div className="flex flex-wrap gap-1.5">
+                {placements.map((p) => (
+                  <span
+                    key={p.word}
+                    className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[var(--surface-2)] text-muted"
+                  >
+                    {p.word}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </main>
       </div>
     )
@@ -638,6 +686,19 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
 
         {metadata && (
           <>
+            <WordList
+              words={metadata.words}
+              wordOwners={wordOwners}
+              myPlayerId={myPlayerId}
+              myColor={WORD_SEARCH_MY_CELL_COLOR}
+              playerColors={playerColors}
+              onWordFlash={handleWordFlash}
+              flashedWord={flashedWord}
+              onReveal={isViewer ? undefined : () => void handleHint()}
+              revealDisabled={hinting || allFound}
+              revealTitle={`Reveal a hidden word (${WORD_SEARCH_HINT_PENALTY} pts)`}
+            />
+
             {!isViewer && (
               <div className="mx-auto min-h-[3rem] min-w-[10rem] px-4 flex items-center justify-center glass-card">
                 <span className="text-2xl font-extrabold tracking-[0.25em] text-[var(--foreground)]">
@@ -659,33 +720,6 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
               onSelect={handleSelect}
               onPreviewChange={setPreviewWord}
               readOnly={isViewer}
-            />
-
-            {!isViewer && (
-              <div className="flex items-center gap-2">
-                <p className="flex-1 min-w-0 glass-card px-3 py-2 text-sm text-slate-600 dark:text-slate-300">
-                  Drag from a word&apos;s first letter to its last.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => void handleHint()}
-                  disabled={hinting || allFound}
-                  className="shrink-0 px-3 py-2 rounded-lg text-sm font-bold bg-amber-100/80 text-amber-800 dark:bg-amber-900/35 dark:text-amber-200 disabled:opacity-40 transition-colors hover:bg-amber-100"
-                  title={`Reveal a hidden word (${WORD_SEARCH_HINT_PENALTY} pts)`}
-                >
-                  💡 Reveal
-                </button>
-              </div>
-            )}
-
-            <WordList
-              words={metadata.words}
-              wordOwners={wordOwners}
-              myPlayerId={myPlayerId}
-              myColor={WORD_SEARCH_MY_CELL_COLOR}
-              playerColors={playerColors}
-              onWordFlash={handleWordFlash}
-              flashedWord={flashedWord}
             />
           </>
         )}
