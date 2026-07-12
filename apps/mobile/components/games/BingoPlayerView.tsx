@@ -12,7 +12,6 @@ import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 import { postBingoClaim, postBingoMark } from '@/lib/game-api'
@@ -229,17 +228,6 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title="Bingo" subtitle={`Code ${bootstrap.code}`}>
       <ScrollView contentContainerStyle={styles.content}>
-        {isViewer && bootstrap.myPlayerId && me && bootstrap.game ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId}
-            game={bootstrap.game}
-            player={me}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
-
         {lastCalled ? (
           <View style={styles.latestCall}>
             <Text style={styles.latestLabel}>Latest call</Text>

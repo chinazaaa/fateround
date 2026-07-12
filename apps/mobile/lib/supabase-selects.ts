@@ -7,7 +7,7 @@ export const PARTICIPANT_SELECT =
   'id,game_id,name,gender,photo_url,description,display_order,in_mlt_poll,submitted_by_player_id'
 
 export const ROUND_SELECT =
-  'id,game_id,round_number,participant_ids,wyr_option_a,wyr_option_b,mlt_question,submitter_player_id,quote_text,quote_author_participant_id,status,started_at,ended_at,anime_metadata,trivia_metadata,memory_match_metadata,sudoku_metadata,ttl_metadata,quiplash_metadata,word_hunt_metadata,npat_metadata'
+  'id,game_id,round_number,participant_ids,wyr_option_a,wyr_option_b,mlt_question,submitter_player_id,quote_text,quote_author_participant_id,status,started_at,ended_at,anime_metadata,trivia_metadata,memory_match_metadata,sudoku_metadata,ttl_metadata,quiplash_metadata,word_hunt_metadata,npat_metadata,crossword_metadata'
 
 export const VOTE_SELECT =
   'id,player_id,round_id,game_id,kiss_participant_id,marry_participant_id,kill_participant_id,pair_assignments,wyr_choice,target_player_id,target_participant_id,anime_choice,picked_number,created_at'
@@ -35,6 +35,9 @@ export const MEMORY_MATCH_PROGRESS_SELECT =
 
 export const SUDOKU_SUBMISSION_SELECT =
   'id,game_id,round_id,player_id,cell_row,cell_col,submitted_value,is_correct,points_awarded,submitted_at'
+
+export const CROSSWORD_SUBMISSION_SELECT =
+  'id,game_id,round_id,player_id,cell_row,cell_col,submitted_letter,is_correct,via_hint,submitted_at'
 
 export const TIC_TAC_TOE_SESSION_SELECT =
   'id,game_id,player_x_id,player_o_id,board,board_winners,active_board,current_turn_mark,status,winner_player_id,is_draw,status_message,turn_deadline_at'

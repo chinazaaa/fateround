@@ -28,7 +28,6 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { PhaseStepper } from '@/components/party/PhaseStepper'
 import { PlayerSessionControls } from '@/components/session/PlayerSessionControls'
 import { RoundBreakCard } from '@/components/party/RoundBreakCard'
@@ -270,17 +269,6 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
     >
       <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
         <PhaseStepper steps={['Write', 'Vote', 'Results']} activeIndex={phaseIndex} />
-
-        {cannotParticipate && me && bootstrap.myPlayerId ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId}
-            game={bootstrap.game}
-            player={me}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
 
         <LeaderboardPanel
           embedded

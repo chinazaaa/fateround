@@ -26,6 +26,8 @@ import { playerIsViewer } from '@fateround/shared/viewers'
 import { CardTableArea } from '@/components/games/cards/CardTableArea'
 import { CrazyEightsRoster } from '@/components/games/cards/CrazyEightsRoster'
 import { GameTimerBar } from '@/components/games/cards/GameTimerBar'
+import { useGameExpiryTimer } from '@/hooks/useGameExpiryTimer'
+import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { PlayingCardFace } from '@/components/games/cards/PlayingCardFace'
 import { useTurnDeadlineSeconds } from '@/components/games/cards/useTurnDeadlineSeconds'
 import { TimerBadge } from '@/components/ui/TimerBadge'
@@ -42,7 +44,12 @@ import {
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { postCrazyEightsChoose, postCrazyEightsDraw, postCrazyEightsPlay } from '@/lib/game-api'
+import {
+  postCrazyEightsChoose,
+  postCrazyEightsDraw,
+  postCrazyEightsExpireTurn,
+  postCrazyEightsPlay,
+} from '@/lib/game-api'
 import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { CRAZY8_PLAYER_HANDS_SELECT, CRAZY8_SESSION_SELECT } from '@/lib/supabase-selects'
@@ -154,6 +161,18 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     gameDeadlineAt,
     !!gameDeadlineAt && bootstrap.game?.status === 'active'
   )
+
+  // End the game when the whole-game duration runs out (the timer bar otherwise
+  // just drains to 0:00 with nothing telling the server to finish). Matches web.
+  useGameExpiryTimer({ endpoint: `/api/games/${gameCode}/expire-crazy-eights`, game: bootstrap.game })
+
+  // Advance a stalled turn when its per-turn timer runs out. Any active client
+  // fires it (idempotent + deadline-gated server-side) — matches web.
+  useTurnExpiryTimer({
+    deadlineAt: session?.turn_deadline_at,
+    enabled: bootstrap.game?.status === 'active' && session?.phase === 'playing',
+    onExpire: () => postCrazyEightsExpireTurn(bootstrap.code).then(() => bootstrap.load()),
+  })
 
   const handCounts = useMemo(() => {
     const counts: Record<string, number> = {}

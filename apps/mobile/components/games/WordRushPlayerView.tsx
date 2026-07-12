@@ -24,8 +24,8 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { ActivityFeed } from '@/components/party/ActivityFeed'
@@ -38,7 +38,14 @@ import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { postWordRushPrompt, postWordRushSubmit, postWordRushTeam } from '@/lib/game-api'
+import {
+  postWordRushAdvance,
+  postWordRushExpireTurn,
+  postWordRushPrompt,
+  postWordRushSubmit,
+  postWordRushTeam,
+} from '@/lib/game-api'
+import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { getSupabase } from '@/lib/supabase'
 import { WORD_RUSH_ANSWER_SELECT, WORD_RUSH_PLAYER_SELECT, WORD_RUSH_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
@@ -114,6 +121,8 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
 
   const mode = clampWordRushMode(bootstrap.game?.word_rush_mode)
   const numTeams = clampWordRushTeams(bootstrap.game?.word_rush_num_teams)
+  // Surface the mode (N teams / Individual) as the header pill on every screen.
+  useHeaderBadge(bootstrap.game ? (mode === 'team' ? `${numTeams} teams` : 'Individual') : null)
   const myTeamRow = teamRows.find((r) => r.player_id === bootstrap.myPlayerId)
   const isPromptSetter = session?.prompt_setter_player_id === bootstrap.myPlayerId
   const onMyTeam = mode === 'individual' || myTeamRow?.team === session?.active_team
@@ -183,6 +192,24 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     session?.intermission_deadline_at,
     session?.phase === 'intermission'
   )
+
+  // Drive the round forward when a phase timer runs out — any active non-viewer
+  // client fires (idempotent + deadline-gated server-side), matching web. The turn
+  // deadline covers both the playing and awaiting-prompt phases.
+  const canDriveTimers = bootstrap.game?.status === 'active' && !isViewer
+  useTurnExpiryTimer({
+    deadlineAt:
+      session?.phase === 'playing' || session?.phase === 'awaiting_prompt'
+        ? session?.turn_deadline_at
+        : null,
+    enabled: canDriveTimers,
+    onExpire: () => postWordRushExpireTurn(bootstrap.code).then(() => bootstrap.load()),
+  })
+  useTurnExpiryTimer({
+    deadlineAt: session?.phase === 'intermission' ? session?.intermission_deadline_at : null,
+    enabled: canDriveTimers,
+    onExpire: () => postWordRushAdvance(bootstrap.code).then(() => bootstrap.load()),
+  })
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
@@ -335,16 +362,6 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
       subtitle={session.status_message ?? bootstrap.code}
     >
       <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
-        {isViewer && bootstrap.game && me && bootstrap.myPlayerId ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId}
-            game={bootstrap.game}
-            player={me}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
         <TurnBanner
           text={
             session.phase === 'intermission'

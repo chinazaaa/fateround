@@ -16,6 +16,8 @@ import {
 import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { CardTableArea } from '@/components/games/cards/CardTableArea'
 import { GameTimerBar } from '@/components/games/cards/GameTimerBar'
+import { useGameExpiryTimer } from '@/hooks/useGameExpiryTimer'
+import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { CrazyEightsRoster } from '@/components/games/cards/CrazyEightsRoster'
 import { WhotCardFace } from '@/components/games/cards/WhotCardFace'
 import { WhotShapeIcon } from '@/components/games/cards/WhotShapeIcon'
@@ -32,7 +34,13 @@ import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { postWhotChooseNumber, postWhotChooseShape, postWhotDraw, postWhotPlay } from '@/lib/game-api'
+import {
+  postWhotChooseNumber,
+  postWhotChooseShape,
+  postWhotDraw,
+  postWhotExpireTurn,
+  postWhotPlay,
+} from '@/lib/game-api'
 import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT } from '@/lib/supabase-selects'
@@ -160,6 +168,18 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     !!gameDeadlineAt && bootstrap.game?.status === 'active'
   )
 
+  // End the game when the whole-game duration runs out (the timer bar otherwise
+  // just drains to 0:00 with nothing telling the server to finish). Matches web.
+  useGameExpiryTimer({ endpoint: `/api/games/${gameCode}/expire-whot`, game: bootstrap.game })
+
+  // Advance a stalled turn when its per-turn timer runs out. Any active client
+  // fires it (idempotent + deadline-gated server-side) — matches web.
+  useTurnExpiryTimer({
+    deadlineAt: session?.turn_deadline_at,
+    enabled: bootstrap.game?.status === 'active' && session?.phase === 'playing',
+    onExpire: () => postWhotExpireTurn(bootstrap.code).then(() => bootstrap.load()),
+  })
+
   const handCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const hand of hands) counts[hand.player_id] = hand.cards.length
@@ -260,7 +280,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
         <GameFinishPanel
           bootstrap={bootstrap}
           title={winner ? `${winner.name} wins!` : 'Game over'}
-          subtitle="Final standings"
+          subtitle={standings.length > 1 ? 'Lowest hand total wins · WHOT = 20' : 'Final standings'}
           leaderboard={cardHandLeaderboard(standings, session.winner_player_id, bootstrap.myPlayerId)}
           winnerPlayerId={session.winner_player_id}
           roundKey={session.id}

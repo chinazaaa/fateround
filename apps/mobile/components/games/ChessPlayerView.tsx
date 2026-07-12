@@ -14,7 +14,6 @@ import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
@@ -32,6 +31,7 @@ import { ChessPieceGlyph } from './chess/ChessPieceGlyph'
 import { ChessAppearancePicker } from './chess/ChessAppearancePicker'
 import { CapturedTray, computeMaterial, KingGlyph } from './chess/ChessCapturedTray'
 import { ChessResultsExtras } from './chess/ChessResultsExtras'
+import { ChessShareCard } from './chess/ChessShareCard'
 import {
   type Premove,
   premoveNeedsPromotion,
@@ -359,6 +359,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       <GameShell bootstrap={bootstrap} title="Chess" subtitle={bootstrap.code}>
         <GameFinishPanel
           bootstrap={bootstrap}
+          hideDefaultHeader
           title={title}
           subtitle="Final standings"
           detail={detail || undefined}
@@ -366,14 +367,16 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           winnerPlayerId={activeSession.winner_player_id}
           roundKey={activeSession.id}
           notice={
-            bootstrap.game ? (
-              <ChessResultsExtras
-                game={bootstrap.game}
-                players={bootstrap.players}
-                session={activeSession}
-                highlightPlayerId={bootstrap.myPlayerId}
-              />
-            ) : undefined
+            <ChessShareCard
+              gameTitle={bootstrap.game.title}
+              winnerName={winner ? winner.name : null}
+              isDraw={activeSession.is_draw}
+              reasonSubtitle={chessResultDetail(activeSession.result_reason)}
+              game={bootstrap.game}
+              players={bootstrap.players}
+              session={activeSession}
+              highlightPlayerId={bootstrap.myPlayerId}
+            />
           }
         />
       </GameShell>
@@ -405,17 +408,6 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-      {isViewer && bootstrap.myPlayerId && me && bootstrap.game ? (
-        <ViewerModeBanner
-          gameCode={bootstrap.code}
-          playerId={bootstrap.myPlayerId}
-          game={bootstrap.game}
-          player={me}
-          players={bootstrap.players}
-          onPromoted={() => void bootstrap.load()}
-        />
-      ) : null}
-
       <TurnBanner
         text={
           activeSession.in_check && isMyTurn

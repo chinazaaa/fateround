@@ -37,6 +37,7 @@ import {
 import { QUIPLASH_MIN_PLAYERS, QUIPLASH_MAX_PLAYERS, QUIPLASH_DEFAULT_MAX_PLAYERS } from '@/lib/quiplash'
 import { QUICK_DRAW_MIN_PLAYERS, QUICK_DRAW_MAX_PLAYERS, QUICK_DRAW_DEFAULT_MAX_PLAYERS } from '@/lib/quick-draw'
 import { WORD_RUSH_MIN_PLAYERS, WORD_RUSH_MAX_PLAYERS, WORD_RUSH_DEFAULT_MAX_PLAYERS } from '@/lib/word-rush'
+import { CROSSWORD_MIN_PLAYERS, CROSSWORD_MAX_PLAYERS, CROSSWORD_DEFAULT_MAX_PLAYERS } from '@/lib/crossword'
 
 export const LOBBY_LIMIT_GAME_TYPES = [
   'anonymous_messages',
@@ -65,6 +66,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'quick_draw',
   'word_rush',
   'ayo',
+  'crossword',
 ] as const
 
 export type LobbyLimitGameType = (typeof LOBBY_LIMIT_GAME_TYPES)[number]
@@ -211,6 +213,11 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     max: MATCHING_PAIRS_MAX_PLAYERS,
     default: MATCHING_PAIRS_DEFAULT_MAX_PLAYERS,
   },
+  crossword: {
+    min: CROSSWORD_MIN_PLAYERS,
+    max: CROSSWORD_MAX_PLAYERS,
+    default: CROSSWORD_DEFAULT_MAX_PLAYERS,
+  },
 }
 
 export function isLobbyLimitGameType(value: string): value is LobbyLimitGameType {
@@ -245,6 +252,7 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
     snake_and_ladder: { ...GAME_LIMIT_CODE_DEFAULTS.snake_and_ladder },
     mafia: { ...GAME_LIMIT_CODE_DEFAULTS.mafia },
     matching_pairs: { ...GAME_LIMIT_CODE_DEFAULTS.matching_pairs },
+    crossword: { ...GAME_LIMIT_CODE_DEFAULTS.crossword },
   }
 }
 

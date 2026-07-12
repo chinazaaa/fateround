@@ -25,8 +25,8 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { DescribeItAchievementPosts } from '@/components/games/DescribeItAchievementPosts'
 import { DescribeItShareCard } from '@/components/games/DescribeItShareCard'
@@ -40,7 +40,15 @@ import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { postDescribeItClue, postDescribeItGuess, postDescribeItSkip, postDescribeItTeam } from '@/lib/game-api'
+import {
+  postDescribeItAdvance,
+  postDescribeItClue,
+  postDescribeItExpireTurn,
+  postDescribeItGuess,
+  postDescribeItSkip,
+  postDescribeItTeam,
+} from '@/lib/game-api'
+import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { getSupabase } from '@/lib/supabase'
 import {
   DESCRIBE_IT_GUESS_SELECT,
@@ -145,6 +153,8 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
 
   const mode = clampDescribeItMode(bootstrap.game?.describe_it_mode)
   const numTeams = clampDescribeItTeams(bootstrap.game?.describe_it_num_teams)
+  // Surface the mode (N teams / Individual) as the header pill on every screen.
+  useHeaderBadge(bootstrap.game ? (mode === 'team' ? `${numTeams} teams` : 'Individual') : null)
   const myTeamRow = teamRows.find((r) => r.player_id === bootstrap.myPlayerId)
   const isDescriber = session?.describer_player_id === bootstrap.myPlayerId
   const mePlayer = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
@@ -244,6 +254,21 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
 
   const turnSecondsLeft = useAbsoluteDeadline(session?.turn_deadline_at, session?.phase === 'turn')
   const breakSecondsLeft = useAbsoluteDeadline(session?.break_deadline_at, session?.phase === 'break')
+
+  // Drive the round forward when a phase timer runs out — any active non-viewer
+  // client fires (idempotent + deadline-gated server-side), matching web. Without
+  // this an all-mobile table's turn/break just hangs at 0.
+  const canDriveTimers = bootstrap.game?.status === 'active' && !isViewer
+  useTurnExpiryTimer({
+    deadlineAt: session?.phase === 'turn' ? session?.turn_deadline_at : null,
+    enabled: canDriveTimers,
+    onExpire: () => postDescribeItExpireTurn(bootstrap.code).then(() => bootstrap.load()),
+  })
+  useTurnExpiryTimer({
+    deadlineAt: session?.phase === 'break' ? session?.break_deadline_at : null,
+    enabled: canDriveTimers,
+    onExpire: () => postDescribeItAdvance(bootstrap.code).then(() => bootstrap.load()),
+  })
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
@@ -417,17 +442,6 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     >
       <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
         <TurnBanner text={statusText} isMyTurn={isDescriber || canGuess} />
-
-        {isViewer && mePlayer && bootstrap.myPlayerId ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId}
-            game={bootstrap.game}
-            player={mePlayer}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
 
         {mode === 'team' && myTeamRow?.team ? (
           <View style={styles.teamRow}>

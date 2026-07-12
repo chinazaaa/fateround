@@ -16,6 +16,53 @@ async function postJson<T>(path: string, body: Record<string, unknown>): Promise
   return data
 }
 
+// Per-turn / per-phase expiry poke helpers. All take only `{ gameId }` (the routes
+// upper-case it, re-check the deadline, and no-op unless the game is active), so
+// any active client may fire them to advance a stalled/AFK turn.
+export function postWhotExpireTurn(gameId: string) {
+  return postJson<{ ok?: boolean; skipped?: boolean }>('/api/whot/expire-turn', { gameId })
+}
+
+export function postCrazyEightsExpireTurn(gameId: string) {
+  return postJson<{ ok?: boolean; skipped?: boolean }>('/api/crazy-eights/expire-turn', { gameId })
+}
+
+export function postMahjongExpireTurn(gameId: string) {
+  return postJson<{ success?: boolean; skipped?: boolean }>('/api/mahjong/expire-turn', { gameId })
+}
+
+export function postSnakeLadderExpireTurn(gameId: string) {
+  return postJson<{ success?: boolean; skipped?: boolean }>('/api/snake-and-ladder/expire-turn', { gameId })
+}
+
+export function postMonopolyExpireTurn(gameId: string) {
+  return postJson<{ success?: boolean; skipped?: boolean }>('/api/monopoly/expire-turn', { gameId })
+}
+
+export function postDescribeItExpireTurn(gameId: string) {
+  return postJson<{ success?: boolean }>('/api/describe-it/expire-turn', { gameId })
+}
+
+export function postDescribeItAdvance(gameId: string) {
+  return postJson<{ success?: boolean }>('/api/describe-it/advance', { gameId })
+}
+
+export function postWordRushExpireTurn(gameId: string) {
+  return postJson<{ success?: boolean }>('/api/word-rush/expire-turn', { gameId })
+}
+
+export function postWordRushAdvance(gameId: string) {
+  return postJson<{ success?: boolean }>('/api/word-rush/advance', { gameId })
+}
+
+/** Ends an Anonymous Messages room once its 15-minute session window elapses. */
+export function postExpireSession(gameCode: string) {
+  return postJson<{ expired?: boolean; finished?: boolean }>(
+    `/api/games/${gameCode.toUpperCase()}/expire-session`,
+    {}
+  )
+}
+
 export function postTicTacToeMove(gameId: string, resumeToken: string, cellIndex: number) {
   return postJson<{ success: boolean }>('/api/tic-tac-toe/move', { gameId, resumeToken, cellIndex })
 }
@@ -131,6 +178,27 @@ export function postSudokuSubmit(
     col,
     value,
   })
+}
+
+export function postCrosswordSubmit(
+  gameId: string,
+  resumeToken: string,
+  row: number,
+  col: number,
+  letter: string,
+  hint?: boolean
+) {
+  return postJson<{ success: boolean; isCorrect: boolean; letter?: string; hint?: boolean; alreadySolved?: boolean }>(
+    '/api/crossword/submit',
+    {
+      gameId,
+      resumeToken,
+      row,
+      col,
+      letter,
+      hint,
+    }
+  )
 }
 
 export function postYahtzeeRoll(gameId: string, resumeToken: string) {
@@ -1064,10 +1132,18 @@ export function postTwoTruthsAdvance(gameId: string, opts?: { hostToken?: string
   })
 }
 
-export function postQuickDrawGuessAdvance(gameId: string, hostToken: string) {
+export function postQuickDrawGuessAdvance(gameId: string, hostToken?: string) {
+  // hostToken is only for the host "skip ahead" button; the auto-timer advance
+  // (any active client) omits it — the route's break-deadline check gates it.
   return postJson<{ ok?: boolean }>('/api/quick-draw/guess-advance', {
     gameId: gameId.toUpperCase(),
-    hostToken,
+    ...(hostToken ? { hostToken } : {}),
+  })
+}
+
+export function postQuickDrawGuessExpireTurn(gameId: string) {
+  return postJson<{ ok?: boolean; skipped?: boolean }>('/api/quick-draw/guess-expire-turn', {
+    gameId: gameId.toUpperCase(),
   })
 }
 

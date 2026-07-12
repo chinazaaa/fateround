@@ -1,10 +1,11 @@
-import { ReactNode, useState } from 'react'
+import { ReactNode, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { Game, Player } from '@fateround/shared'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { PlayerSessionControls } from '@/components/session/PlayerSessionControls'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { gameLabel } from '@/lib/mobile-registry'
 import { postPlayerReady } from '@/lib/game-api'
 import type { Theme } from '@/constants/theme'
@@ -44,6 +45,7 @@ export function LobbyView({
   const spectating = !!(me && playerIsViewer(me, game))
   const typeLabel = gameLabel(game.game_type)
   const [readying, setReadying] = useState(false)
+  const scrollRef = useRef<ScrollView>(null)
 
   // After a host "Return to lobby" reset everyone is sat out (spectator). Let a
   // spectating player take a seat / get ready straight from the normal lobby —
@@ -75,7 +77,7 @@ export function LobbyView({
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <KeyboardAwareGameScroll ref={scrollRef} contentContainerStyle={styles.container}>
       <View style={styles.hero}>
         <Text style={styles.kicker}>{spectating ? 'New round' : "You're in"}</Text>
         <Text style={styles.title}>{title}</Text>
@@ -118,6 +120,7 @@ export function LobbyView({
           onLeft={onLeft}
           inLobby
           spectating={spectating}
+          onEditStart={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)}
         />
       ) : null}
 
@@ -128,7 +131,7 @@ export function LobbyView({
             ? 'Game in progress'
             : 'This game has finished.'}
       </Text>
-    </ScrollView>
+    </KeyboardAwareGameScroll>
   )
 }
 

@@ -52,6 +52,7 @@ import {
   isMatchingPairsGame,
   isQuiplashGame,
   isQuickDrawGame,
+  isCrosswordGame,
 } from '@/lib/game-types'
 import { wstAutoRoundCount } from '@/lib/who-said-this'
 import { parseLudoVariant } from '@/lib/ludo'
@@ -136,6 +137,8 @@ import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
 import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { clampSudokuGameDuration } from '@/lib/sudoku'
+import { parseCrosswordDifficulty } from '@/lib/crossword'
+import { findCrosswordTheme } from '@/lib/crossword-puzzles'
 import { clampChessTimer, clampChessBoardTheme, clampChessPieceSet } from '@/lib/chess'
 import { clampCheckersTimer } from '@/lib/checkers'
 import { clampAyoTimer, parseAyoVariant } from '@/lib/ayo'
@@ -386,6 +389,8 @@ export async function POST(req: NextRequest) {
     scrabble_clock_seconds: rawScrabbleClockSeconds,
     chess_board_theme: rawChessBoardTheme,
     chess_piece_set: rawChessPieceSet,
+    crossword_theme: rawCrosswordTheme,
+    crossword_difficulty: rawCrosswordDifficulty,
   } = parsed.data
 
   const elimParsed = eliminationConfigSchema.safeParse((body as Record<string, unknown>).elimination_config)
@@ -449,7 +454,8 @@ export async function POST(req: NextRequest) {
     isMafiaGame(game_type) ||
     isScrabbleGame(game_type) ||
     isDescribeItGame(game_type) ||
-    isWordRushGame(game_type)
+    isWordRushGame(game_type) ||
+    isCrosswordGame(game_type)
       ? 'joiners'
       : isWhoSaidThis(game_type)
         ? 'import'
@@ -693,7 +699,13 @@ export async function POST(req: NextRequest) {
                                                         rawMaxPlayers,
                                                         lobbyDefaultMaxPlayers('word_rush', lobbyLimits)
                                                       )
-                                                    : null
+                                                    : isCrosswordGame(game_type)
+                                                      ? resolveMaxPlayers(
+                                                          'crossword',
+                                                          rawMaxPlayers,
+                                                          lobbyDefaultMaxPlayers('crossword', lobbyLimits)
+                                                        )
+                                                      : null
   const isSecret = isSecretMessageGame(game_type)
   const lateJoinFields = gameSupportsViewerSetting(game_type)
     ? rawLateJoinPolicy
@@ -807,6 +819,12 @@ export async function POST(req: NextRequest) {
           word_rush_mode: clampWordRushMode(rawWordRushMode),
           word_rush_prompt_mode: clampWordRushPromptMode(rawWordRushPromptMode),
           word_rush_difficulty: clampWordRushDifficulty(rawWordRushDifficulty),
+        }
+      : {}),
+    ...(isCrosswordGame(game_type)
+      ? {
+          crossword_theme: findCrosswordTheme(rawCrosswordTheme).id,
+          crossword_difficulty: parseCrosswordDifficulty(rawCrosswordDifficulty),
         }
       : {}),
     ...(gameSupportsViewerSetting(game_type)

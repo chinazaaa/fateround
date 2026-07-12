@@ -20,6 +20,7 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -94,6 +95,8 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
 
   const myState = states.find((s) => s.player_id === bootstrap.myPlayerId)
   const variant = parseLudoVariant(bootstrap.game?.ludo_variant)
+  // Surface the chosen variant as the header mode pill on every Ludo screen.
+  useHeaderBadge(bootstrap.game ? (variant === 'traditional' ? 'Traditional' : 'Modern') : null)
   const remainingDice = session ? resolveRemainingDice(session) : []
 
   const legalMoves = useMemo(() => {

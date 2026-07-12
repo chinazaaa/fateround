@@ -27,8 +27,10 @@ import {
   MONOPOLY_PLAYER_TOKENS,
   monopolyTokenEmoji,
   monopolyTokenOwners,
+  takenMonopolyTokens,
   type MonopolyTokenId,
 } from '@fateround/shared/monopoly-tokens'
+import { MONOPOLY_EDITION_THEMES } from '@fateround/shared/create-themes'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
@@ -36,14 +38,16 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { MonopolyBoardView } from '@/components/games/monopoly/MonopolyBoardView'
 import { MonopolyGameTimerBar } from '@/components/games/monopoly/MonopolyGameTimerBar'
 import { MonopolyStatusCards } from '@/components/games/monopoly/MonopolyStatusCards'
+import { MonopolyShareCard } from '@/components/games/monopoly/MonopolyShareCard'
 import {
   formatThemedMoney,
   formatThemedText,
   themedSpaceName,
 } from '@/components/games/monopoly/monopoly-theme'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
+import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useGameExpiryTimer } from '@/hooks/useGameExpiryTimer'
 import { joinGame } from '@/lib/api'
 import {
   postMonopolyAuction,
@@ -52,11 +56,13 @@ import {
   postMonopolyForfeit,
   postMonopolyJail,
   postMonopolyMortgage,
+  postMonopolyExpireTurn,
   postMonopolyRent,
   postMonopolyRoll,
   postMonopolySettleDebt,
   postMonopolyTrade,
 } from '@/lib/game-api'
+import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import {
   MonopolyManagePanel,
   type BuildAction,
@@ -171,6 +177,10 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   const themeId = bootstrap.game?.theme
+  // Surface the chosen edition (🎩 Classic, 🇳🇬 Naija, …) as the header mode pill
+  // so it's visible on every Monopoly screen, not just the create/lobby picker.
+  const edition = MONOPOLY_EDITION_THEMES.find((t) => t.id === (themeId ?? 'default')) ?? MONOPOLY_EDITION_THEMES[0]
+  useHeaderBadge(bootstrap.game ? `${edition.emoji} ${edition.label}` : null)
   // Joining an already-active game means watching live (read-only). Monopoly never
   // seats late players mid-game, so the active-game join is always a viewer join.
   const joiningAsViewer = bootstrap.game?.status === 'active'
@@ -182,15 +192,25 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     !!bootstrap.game
   )
 
+  // End the game when the whole-game duration runs out. Without this the timer
+  // bar drains to 0:00 but nothing tells the server to finish — matches web.
+  useGameExpiryTimer({ endpoint: `/api/games/${gameCode}/expire-monopoly`, game: bootstrap.game })
+
   useEffect(() => {
     const id = setInterval(() => setTimerTick((t) => t + 1), 1000)
     return () => clearInterval(id)
   }, [])
 
+  // Seed a default token, but never clobber the player's own pick. This effect
+  // re-runs on every realtime `players` update (heartbeats, other joins), so it
+  // must preserve `selectedToken` as long as it's still free — only fall back to
+  // the first available token when nothing is picked yet or the pick got taken.
   useEffect(() => {
     if (bootstrap.screen !== 'join') return
-    const free = firstAvailableMonopolyToken(bootstrap.players)
-    setSelectedToken(free)
+    const taken = takenMonopolyTokens(bootstrap.players)
+    setSelectedToken((current) =>
+      current && !taken.has(current) ? current : firstAvailableMonopolyToken(bootstrap.players)
+    )
   }, [bootstrap.players, bootstrap.screen])
 
   // Transient event notifications — whichever event (cash/rent/trade/card) most
@@ -288,6 +308,16 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
   void timerTick
   const secondsLeft = secondsUntilMonopolyDeadline(board?.turn_deadline_at)
+
+  // Opponent-driven fallback: the local auto-advance below only fires for the
+  // player whose action it is (and only while their app is open). So any active
+  // client also pokes the idempotent /expire-turn route once the deadline passes,
+  // matching web — otherwise a disconnected player's turn hangs forever.
+  useTurnExpiryTimer({
+    deadlineAt: board?.turn_deadline_at,
+    enabled: bootstrap.game?.status === 'active' && board?.phase !== 'finished',
+    onExpire: () => postMonopolyExpireTurn(gameCode).then(() => bootstrap.load()),
+  })
 
   const act = async (fn: () => Promise<unknown>) => {
     if (!bootstrap.myResumeToken || acting) return
@@ -418,13 +448,24 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         <LobbyView {...lobbyProps!} onLeft={onLeft} />
         <View style={styles.tokenList}>
           <Text style={styles.lobbyHint}>Tokens in lobby:</Text>
-          {bootstrap.players
-            .filter((p) => !p.spectator)
-            .map((p: Player, index: number) => (
-              <Text key={p.id} style={styles.lobbyToken}>
-                {monopolyTokenEmoji(p.monopoly_token, index)} {p.name}
-              </Text>
-            ))}
+          {/* One horizontal row of chips that scrolls sideways, so a full
+              6-player lobby stays on a single line instead of wrapping down. */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.lobbyTokenRow}
+          >
+            {bootstrap.players
+              .filter((p) => !p.spectator)
+              .map((p: Player, index: number) => (
+                <View key={p.id} style={styles.lobbyTokenChip}>
+                  <Text style={styles.lobbyTokenEmoji}>{monopolyTokenEmoji(p.monopoly_token, index)}</Text>
+                  <Text style={styles.lobbyTokenName} numberOfLines={1}>
+                    {p.name}
+                  </Text>
+                </View>
+              ))}
+          </ScrollView>
         </View>
       </View>
     )
@@ -447,6 +488,16 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         leaderboard={monopolyLeaderboard(standings, bootstrap.myPlayerId)}
         winnerPlayerId={board?.winner_player_id}
         roundKey={board?.id}
+        hideDefaultHeader
+        notice={
+          <MonopolyShareCard
+            standings={standings}
+            winnerName={winner?.name ?? null}
+            gameTitle={bootstrap.game.title}
+            themeId={themeId}
+            highlightPlayerId={bootstrap.myPlayerId}
+          />
+        }
       />
     )
   }
@@ -709,8 +760,40 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     </View>
   )
 
+  // Read-only board centre for spectators — mirrors the web MonopolyActiveLayout
+  // viewer center: the last roll, a "Watching live" label, and the status message.
+  // (Whose turn lives in the status cards above the board, like web's turn strip.)
+  const spectatorCenter = (
+    <View style={styles.center}>
+      {board.last_dice ? (
+        <View style={styles.dieRow}>
+          <View style={styles.die}>
+            <Text style={styles.dieText}>{board.last_dice.d1}</Text>
+          </View>
+          <View style={styles.die}>
+            <Text style={styles.dieText}>{board.last_dice.d2}</Text>
+          </View>
+          <Text style={styles.dieTotal}>
+            {board.last_dice.total}
+            {board.last_dice.doubles ? ' ••' : ''}
+          </Text>
+        </View>
+      ) : null}
+      <Text style={styles.specTurnName} numberOfLines={1}>
+        {turnName}
+        <Text style={styles.specTurnSuffix}>&apos;s turn</Text>
+      </Text>
+      <Text style={styles.centerWatchLabel}>WATCHING LIVE</Text>
+      {board.status_message ? (
+        <Text style={styles.centerWatchMsg} numberOfLines={4}>
+          {formatThemedText(board.status_message, themeId)}
+        </Text>
+      ) : null}
+    </View>
+  )
+
   return (
-    <GameShell bootstrap={bootstrap} title={batch8GameLabel('monopoly')} subtitle={monopolyPhaseLabel(board.phase)}>
+    <GameShell bootstrap={bootstrap} title={batch8GameLabel('monopoly')}>
       <ScrollView ref={scrollRef} contentContainerStyle={styles.playContent}>
         <MonopolyGameTimerBar game={bootstrap.game} />
 
@@ -723,17 +806,6 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           spaceOwnerLabel={spaceOwnerLabel}
           banner={visibleBanner}
         />
-
-        {isViewer && me ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId!}
-            game={bootstrap.game}
-            player={me}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
 
         {showRaiseCashNudge ? (
           <Animated.View style={nudgeStyle}>
@@ -762,7 +834,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           pendingSpace={board.pending_space}
           myPlayerId={bootstrap.myPlayerId}
           themeId={themeId}
-          center={isViewer ? undefined : boardCenter}
+          center={isViewer ? spectatorCenter : boardCenter}
         />
 
         {board.last_card_event && activeEventKind === 'card' ? (
@@ -880,7 +952,20 @@ const makeStyles = (theme: Theme) =>
   tokenLabel: { color: theme.text, fontSize: 11, marginTop: 4, textAlign: 'center' },
   tokenOwner: { color: theme.textMuted, fontSize: 10, marginTop: 2 },
   lobbyHint: { color: theme.textMuted, fontSize: 14, marginTop: 12 },
-  lobbyToken: { color: theme.text, fontSize: 15, marginTop: 4 },
+  lobbyTokenRow: { flexDirection: 'row', gap: 8, marginTop: 8, paddingRight: 8 },
+  lobbyTokenChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: theme.radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  lobbyTokenEmoji: { fontSize: 18 },
+  lobbyTokenName: { color: theme.text, fontSize: 14, fontWeight: '600', flexShrink: 1 },
   playContent: { padding: 16, gap: 12, paddingBottom: 40 },
   chromeRow: { flexDirection: 'row', gap: 8 },
   chromeSpace: {
@@ -1082,6 +1167,22 @@ const makeStyles = (theme: Theme) =>
     marginTop: 2,
   },
   centerWaiting: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '700', marginTop: 2 },
+  specTurnName: { color: '#ffffff', fontSize: 15, fontWeight: '900', textAlign: 'center' },
+  specTurnSuffix: { color: 'rgba(255,255,255,0.6)', fontSize: 13, fontWeight: '600' },
+  centerWatchLabel: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    marginTop: 4,
+  },
+  centerWatchMsg: {
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 11,
+    lineHeight: 15,
+    textAlign: 'center',
+    marginTop: 2,
+  },
   bidInput: {
     backgroundColor: theme.bg,
     borderColor: theme.border,

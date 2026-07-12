@@ -67,6 +67,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   matching_pairs: 'matching-pairs',
   quiplash: 'quiplash',
   quick_draw: 'quick-draw',
+  crossword: 'crossword',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -2711,6 +2712,38 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       { title: 'Draw & score', description: 'Fool the room or guess fast — most points wins.' },
     ],
     perfectFor: ['Party nights', 'Creative groups', 'Remote teams', 'Jackbox fans'],
+  }),
+  crossword: landing('crossword', {
+    seoTitle: 'Crossword Race Online — Free Multiplayer Crossword Game',
+    seoDescription:
+      'Race friends to fill the same crossword grid in real time. Solve Across and Down clues, score per word, and be first to complete the puzzle. Free, no sign-up.',
+    keywords: [
+      'crossword online multiplayer',
+      'crossword race game',
+      'play crossword with friends online',
+      'real time crossword game',
+      'crossword party game browser',
+      'multiplayer crossword puzzle free',
+      'competitive crossword online',
+    ],
+    heroSubtitle:
+      'Everyone gets the same grid. Read the clues, tap a cell, and type your answer. Score points for every word you finish — first to solve the whole puzzle wins.',
+    highlights: ['1–20 players', 'Same grid for everyone', 'Themed puzzles'],
+    features: [
+      {
+        title: 'Race the grid',
+        description: 'Solve Across and Down clues live — completed words lock in green as you go.',
+        emoji: '🧩',
+      },
+      SHARED_FEATURES.realtime,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Create a room', description: 'Pick a theme, difficulty, and time limit.' },
+      { title: 'Share the code', description: 'Friends join from their phones with a nickname.' },
+      { title: 'Solve to win', description: 'Fill words for points — first to 100% correct takes the crown.' },
+    ],
+    perfectFor: ['Puzzle lovers', 'Family game night', 'Commutes', 'Remote teams'],
   }),
 }
 

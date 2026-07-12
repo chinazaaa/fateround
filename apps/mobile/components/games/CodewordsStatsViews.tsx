@@ -7,6 +7,7 @@ import type {
 } from '@fateround/shared'
 import {
   cellBackground,
+  cellTextColor,
   countRevealedTeamCells,
   countTeamCells,
   roleLabel,
@@ -191,13 +192,17 @@ export function CodewordsBoardReveal({
           const isRevealed = revealed.has(index)
           const cellType = board.key[index]
           const bg = cellBackground(cellType, isRevealed, true)
+          const fg = cellTextColor(cellType, isRevealed, true)
+          const onDark = fg !== '#171717'
           return (
             <View key={index} style={[styles.cell, { backgroundColor: bg }]}>
-              <Text style={styles.cellWord} numberOfLines={2}>{word}</Text>
+              <Text style={[styles.cellWord, { color: fg }]} numberOfLines={2}>{word}</Text>
               {cellAttribution[index] ? (
-                <Text style={styles.cellAttr} numberOfLines={1}>{cellAttribution[index]}</Text>
+                <Text style={[styles.cellAttr, onDark && styles.cellSecondaryOnDark]} numberOfLines={1}>
+                  {cellAttribution[index]}
+                </Text>
               ) : null}
-              <Text style={styles.cellKey}>{cellType[0].toUpperCase()}</Text>
+              <Text style={[styles.cellKey, onDark && styles.cellSecondaryOnDark]}>{cellType[0].toUpperCase()}</Text>
             </View>
           )
         })}
@@ -275,5 +280,7 @@ const makeStyles = (theme: Theme) =>
     },
     cellWord: { color: '#171717', fontWeight: '800', fontSize: 10, textAlign: 'center' },
     cellAttr: { color: '#52525b', fontSize: 8, marginTop: 2 },
+    // Lighten the key initial / attribution on the dark assassin cell.
+    cellSecondaryOnDark: { color: '#d4d4d8' },
     cellKey: { position: 'absolute', top: 2, right: 4, fontSize: 8, color: '#52525b', fontWeight: '800' },
   })

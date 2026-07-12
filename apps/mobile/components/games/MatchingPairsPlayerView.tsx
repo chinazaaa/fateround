@@ -24,7 +24,6 @@ import { ROUND_RESULTS_AUTO_ADVANCE_SECONDS, finalResultsAutoRevealSeconds } fro
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { LobbyView } from '@/components/LobbyView'
 import { GameFinishedScreen, GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
@@ -452,16 +451,6 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       subtitle={`${roundLabel}Score ${points} · Streak ${streak}`}
     >
       <ScrollView contentContainerStyle={styles.content}>
-        {isViewer && me && bootstrap.myPlayerId ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId}
-            game={bootstrap.game}
-            player={me}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
         <MatchingPairsGameTimerBar
           gameCode={bootstrap.code}
           game={bootstrap.game}

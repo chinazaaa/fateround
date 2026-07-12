@@ -15,7 +15,6 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
@@ -344,35 +343,17 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  const viewerBanner =
-    isViewer && bootstrap.myPlayerId && me ? (
-      <ViewerModeBanner
-        gameCode={bootstrap.code}
-        playerId={bootstrap.myPlayerId}
-        game={bootstrap.game}
-        player={me}
-        players={bootstrap.players}
-        onPromoted={bootstrap.load}
-      />
-    ) : null
-
   // Mirrors web's <EliminationBanner> on the live-play screen: an eliminated
   // player gets a clear "you're out, keep watching" message instead of only the
   // generic Spectating banner (whose late-join copy is wrong for elimination).
-  const eliminationBanner = me?.is_eliminated ? (
+  // The spectator banner itself is rendered centrally by GameShell, so we only
+  // prepend the elimination notice here.
+  const liveBanners = me?.is_eliminated ? (
     <View style={styles.elimBanner}>
       <Text style={styles.elimTitle}>You have been eliminated</Text>
       <Text style={styles.elimBody}>You can still watch and chat</Text>
     </View>
   ) : null
-
-  // Render order matches web: elimination notice first, then spectator banner.
-  const liveBanners = (
-    <>
-      {eliminationBanner}
-      {viewerBanner}
-    </>
-  )
 
   if (!currentRound || currentRound.status === 'pending') {
     const upcomingName = upcomingRound ? playerDisplayName(upcomingRound.submitter_player_id, bootstrap.players) : null

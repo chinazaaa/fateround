@@ -5,7 +5,7 @@ import { currentTurnPlayerId } from '@fateround/shared/tic-tac-toe'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import type { Game, Player, TicTacToeBoardResult, TicTacToeMark, TicTacToeSession } from '@fateround/shared'
 import { useTicTacToeTurnTimer } from './tic-tac-toe/useTicTacToeTurnTimer'
-import { TicTacToeFinalBoardRecap } from './tic-tac-toe/TicTacToeFinalBoardRecap'
+import { TicTacToeShareCard } from './tic-tac-toe/TicTacToeShareCard'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
@@ -168,8 +168,12 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
           }
           winnerPlayerId={activeSession.winner_player_id}
           roundKey={activeSession.id}
+          hideDefaultHeader
           notice={
-            <TicTacToeFinalBoardRecap
+            <TicTacToeShareCard
+              gameTitle={bootstrap.game.title}
+              winnerName={winner ? winner.name : null}
+              isDraw={activeSession.is_draw}
               session={activeSession}
               players={bootstrap.players}
               myPlayerId={bootstrap.myPlayerId}

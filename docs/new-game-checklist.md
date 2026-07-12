@@ -4,6 +4,12 @@ Use this when adding a **new game type** to Fate Round. Most games share the
 same shell — lobby, join, spectators, ready-up, play again, finished screen,
 community leaderboard — and bugs usually come from wiring only half of it.
 
+> ⚠️ **Don't forget the mobile app.** This checklist covers the **web** app
+> (`src/…`) only. A new game type also has to be wired into the Expo app under
+> `apps/mobile/`, which has its own registries and player views. **Ship both, or
+> the game is invisible / broken on mobile.** See
+> **[mobile-game-checklist.md](./mobile-game-checklist.md)**.
+
 **Best full reference today:** **Quiplash** (`src/components/quiplash/`,
 `src/lib/quiplash.ts`). Copy its shape for any lobby-based, multi-player,
 round/phase game.

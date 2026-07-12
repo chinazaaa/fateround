@@ -33,7 +33,6 @@ import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { DrawingCanvas, DrawingPreview } from '@/components/quick-draw/DrawingCanvas'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
@@ -288,17 +287,6 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
             (session.phase === 'voting' && canVote && !myVote)
           }
         />
-
-        {isViewer && mePlayer && bootstrap.myPlayerId ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId}
-            game={bootstrap.game}
-            player={mePlayer}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
 
         {countdown > 0 && session.phase !== 'reveal' ? <TimerBadge seconds={countdown} /> : null}
 

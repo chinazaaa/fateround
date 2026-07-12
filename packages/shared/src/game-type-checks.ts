@@ -100,6 +100,10 @@ export function isSudokuGame(gameType: GameType | string | undefined): boolean {
   return eq(gameType, 'sudoku')
 }
 
+export function isCrosswordGame(gameType: GameType | string | undefined): boolean {
+  return eq(gameType, 'crossword')
+}
+
 export function isQuiplashGame(gameType: GameType | string | undefined): boolean {
   return eq(gameType, 'quiplash')
 }

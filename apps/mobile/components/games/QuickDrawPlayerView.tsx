@@ -31,7 +31,6 @@ import { QuickDrawLiePlayerView } from '@/components/games/QuickDrawLiePlayerVie
 import { QuickDrawShareCard } from '@/components/games/QuickDrawShareCard'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { ActivityFeed } from '@/components/party/ActivityFeed'
 import { RoundBreakCard } from '@/components/party/RoundBreakCard'
 import { TeamBadge } from '@/components/party/TeamBadge'
@@ -46,10 +45,13 @@ import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import {
   postQuickDrawGuess,
+  postQuickDrawGuessAdvance,
+  postQuickDrawGuessExpireTurn,
   postQuickDrawGuessSkip,
   postQuickDrawGuessStrokes,
   postQuickDrawGuessTeam,
 } from '@/lib/game-api'
+import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { getSupabase } from '@/lib/supabase'
 import {
   QUICK_DRAW_GUESS_GUESS_SELECT,
@@ -250,6 +252,21 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
   const turnSecondsLeft = useAbsoluteDeadline(session?.turn_deadline_at, session?.phase === 'turn')
   const breakSecondsLeft = useAbsoluteDeadline(session?.break_deadline_at, session?.phase === 'break')
 
+  // Drive the guess game forward when a phase timer runs out — any active
+  // non-viewer client fires (idempotent + deadline-gated server-side), matching
+  // web. Without this an all-mobile guess table's turn/break hangs at 0.
+  const canDriveTimers = isGuessMode && bootstrap.game?.status === 'active' && !isViewer
+  useTurnExpiryTimer({
+    deadlineAt: session?.phase === 'turn' ? session?.turn_deadline_at : null,
+    enabled: canDriveTimers,
+    onExpire: () => postQuickDrawGuessExpireTurn(bootstrap.code).then(() => bootstrap.load()),
+  })
+  useTurnExpiryTimer({
+    deadlineAt: session?.phase === 'break' ? session?.break_deadline_at : null,
+    enabled: canDriveTimers,
+    onExpire: () => postQuickDrawGuessAdvance(bootstrap.code).then(() => bootstrap.load()),
+  })
+
   const strokeData = normalizeStrokeData(session?.current_stroke_data ?? emptyStrokeData())
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -408,17 +425,6 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
     >
       <KeyboardAwareGameScroll ref={scrollRef} contentContainerStyle={styles.content} scrollEnabled={scrollEnabled}>
         <TurnBanner text={statusText} isMyTurn={isDrawer || canGuess} />
-
-        {isViewer && mePlayer && bootstrap.myPlayerId ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId}
-            game={bootstrap.game}
-            player={mePlayer}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
 
         {mode === 'team' && myTeamRow?.team ? (
           <View style={styles.teamRow}>
