@@ -134,7 +134,7 @@ export function CodewordsHostLobby({ gameCode, hostToken, game, players }: Props
                         const isSpy = roleFor(p.id)?.role === 'spymaster'
                         return (
                           <View key={p.id} style={styles.memberRow}>
-                            <Text style={styles.memberName} numberOfLines={1}>
+                            <Text style={styles.memberName} numberOfLines={2}>
                               {isSpy ? '🕵️ ' : ''}
                               {p.name}
                             </Text>
@@ -178,7 +178,7 @@ export function CodewordsHostLobby({ gameCode, hostToken, game, players }: Props
               <Text style={styles.unassignedLabel}>Unassigned</Text>
               {unassigned.map((p) => (
                 <View key={p.id} style={styles.memberRow}>
-                  <Text style={styles.memberName} numberOfLines={1}>
+                  <Text style={styles.memberName} numberOfLines={2}>
                     {p.name}
                   </Text>
                   <View style={styles.memberBtns}>
@@ -247,10 +247,13 @@ const makeStyles = (theme: Theme) =>
     teamBadge: { borderRadius: theme.radius.pill, paddingHorizontal: 10, paddingVertical: 3, alignSelf: 'flex-start' },
     teamBadgeText: { color: '#fff', fontSize: 12, fontWeight: '800' },
     count: { color: theme.textMuted, fontSize: 13, fontWeight: '700' },
-    memberList: { gap: 6, minHeight: 22 },
-    memberRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
-    memberName: { color: theme.text, fontSize: 14, flexShrink: 1 },
-    memberBtns: { flexDirection: 'row', gap: 4 },
+    memberList: { gap: 8, minHeight: 22 },
+    // Stack the name above its controls: in a narrow two-column card the name +
+    // buttons don't fit on one row, so the name (esp. with the 🕵️ prefix) got
+    // squeezed to nothing. The name now gets the full card width and can wrap.
+    memberRow: { gap: 4 },
+    memberName: { color: theme.text, fontSize: 14, fontWeight: '600' },
+    memberBtns: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
     miniBtn: {
       minWidth: 28,
       height: 28,
