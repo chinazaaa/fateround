@@ -4,6 +4,7 @@ import {
   PanResponder,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native'
 import { useNavigation } from 'expo-router'
@@ -14,9 +15,6 @@ import { useThemedStyles } from '@/constants/theme-context'
 import { WORD_SEARCH_MY_CELL_COLOR, wordSearchPlayerColor } from '@/components/games/word-search/standings'
 
 const cellKey = (row: number, col: number) => `${row}-${col}`
-
-/** Board fits inside this width; cell size scales down for bigger grids. */
-const BOARD_MAX_WIDTH = 340
 
 /** tan(22.5°) ≈ 0.414, tan(67.5°) ≈ 2.414 — used to snap a drag to the nearest of the 8 rays. */
 const AXIS_SNAP_RATIO = 2.414
@@ -37,6 +35,8 @@ type Props = {
    * (on iOS the native scroll gesture otherwise steals the vertical part of the drag).
    */
   onDragActiveChange?: (active: boolean) => void
+  /** Reports the word currently being traced (ordered letters), or null when the drag ends. */
+  onPreviewChange?: (word: string | null) => void
   readOnly?: boolean
 }
 
@@ -78,9 +78,11 @@ export function WordSearchBoardView({
   myPlayerId,
   onSelect,
   onDragActiveChange,
+  onPreviewChange,
   readOnly = false,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
+  const { width: screenWidth } = useWindowDimensions()
   // Disable the stack's swipe-back gesture while the interactive board is mounted, so a
   // drag on the grid selects a word instead of navigating back (same fix as the Quick Draw
   // canvas — a JS PanResponder can't reliably out-prioritise the native back gesture).
@@ -91,13 +93,19 @@ export function WordSearchBoardView({
     return () => navigation.setOptions({ gestureEnabled: true })
   }, [navigation, readOnly])
   const size = metadata.size
-  const cell = Math.floor(BOARD_MAX_WIDTH / size)
+  // Use (almost) the full screen width so cells are big enough to touch accurately; cap on
+  // tablets so it doesn't become huge.
+  const boardWidth = Math.min(screenWidth - 24, 520)
+  const cell = Math.floor(boardWidth / size)
   const boardSize = cell * size
-  const letterFont = size > 11 ? Math.max(11, cell - 12) : Math.max(14, cell - 14)
+  const letterFont = size > 11 ? Math.max(13, cell - 14) : Math.max(16, cell - 16)
 
   const [preview, setPreview] = useState<Set<string>>(new Set())
   const startRef = useRef<[number, number] | null>(null)
   const endRef = useRef<[number, number] | null>(null)
+  // Keeps the drag highlight on screen for a beat after release so it overlaps the found/wrong
+  // feedback instead of blinking off first.
+  const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const cellAtPoint = (x: number, y: number): [number, number] | null => {
     const col = Math.floor(x / cell)
@@ -109,9 +117,21 @@ export function WordSearchBoardView({
   const updatePreview = (start: [number, number], end: [number, number]) => {
     const cells = selectionCells(start, end)
     const next = new Set<string>()
-    if (cells) for (const [r, c] of cells) next.add(cellKey(r, c))
+    let word = ''
+    if (cells) for (const [r, c] of cells) {
+      next.add(cellKey(r, c))
+      word += (metadata.grid[r]?.[c] ?? '').toUpperCase()
+    }
     setPreview(next)
+    onPreviewChange?.(word || null)
   }
+
+  useEffect(
+    () => () => {
+      if (clearTimer.current) clearTimeout(clearTimer.current)
+    },
+    []
+  )
 
   const panResponder = useMemo(
     () =>
@@ -127,6 +147,7 @@ export function WordSearchBoardView({
         onShouldBlockNativeResponder: () => true,
         onPanResponderGrant: (evt: GestureResponderEvent) => {
           if (readOnly) return
+          if (clearTimer.current) clearTimeout(clearTimer.current)
           onDragActiveChange?.(true)
           const { locationX, locationY } = evt.nativeEvent
           const start = cellAtPoint(locationX, locationY)
@@ -148,20 +169,26 @@ export function WordSearchBoardView({
           const end = endRef.current
           startRef.current = null
           endRef.current = null
-          setPreview(new Set())
           onDragActiveChange?.(false)
           if (start && end && (start[0] !== end[0] || start[1] !== end[1])) onSelect?.(start, end)
+          // Hold the highlight for a beat so it overlaps the found/wrong feedback instead of
+          // blinking off first, then clear it.
+          clearTimer.current = setTimeout(() => {
+            setPreview(new Set())
+            onPreviewChange?.(null)
+          }, 350)
         },
         onPanResponderTerminate: () => {
           startRef.current = null
           endRef.current = null
           setPreview(new Set())
           onDragActiveChange?.(false)
+          onPreviewChange?.(null)
         },
       }),
     // Recreate when interactivity changes; refs cover the rest.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [readOnly, size, cell, onSelect, onDragActiveChange]
+    [readOnly, size, cell, onSelect, onDragActiveChange, onPreviewChange]
   )
 
   const handlers = readOnly ? {} : panResponder.panHandlers

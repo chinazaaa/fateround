@@ -45,6 +45,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
   const [found, setFound] = useState<WordSearchFound[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [dragActive, setDragActive] = useState(false)
+  const [previewWord, setPreviewWord] = useState<string | null>(null)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [nowMs, setNowMs] = useState<number>(() => Date.now())
   const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
@@ -406,6 +407,12 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
               ) : null}
             </View>
 
+            {!viewing ? (
+              <View style={styles.previewBar}>
+                <Text style={styles.previewText}>{previewWord || 'Drag across the letters to spell a word'}</Text>
+              </View>
+            ) : null}
+
             <WordSearchBoardView
               metadata={metadata}
               cellOwners={cellOwners}
@@ -414,6 +421,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
               myPlayerId={boardPlayerId}
               onSelect={handleSelect}
               onDragActiveChange={setDragActive}
+              onPreviewChange={setPreviewWord}
               readOnly={viewing}
             />
 
@@ -567,6 +575,20 @@ const makeStyles = (theme: Theme) =>
     watchChipText: { color: theme.textSecondary, fontSize: 13, fontWeight: '700', maxWidth: 120 },
     watchChipTextActive: { color: '#fff' },
     viewingHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 12 },
+    previewBar: {
+      alignSelf: 'center',
+      minHeight: 40,
+      minWidth: 160,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 12,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    previewText: { color: theme.text, fontSize: 20, fontWeight: '800', letterSpacing: 3 },
     hintRow: {
       flexDirection: 'row',
       alignItems: 'center',
