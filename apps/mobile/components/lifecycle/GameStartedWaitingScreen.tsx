@@ -41,12 +41,11 @@ export function GameStartedWaitingScreen({ gameCode, game, onLobbyOpen }: Props)
     <View style={styles.container}>
       <View style={styles.card}>
         <Text style={styles.emoji}>⏳</Text>
-        <Text style={styles.title}>{game?.title ?? 'Game in progress'}</Text>
+        {game?.title ? <Text style={styles.title}>{game.title}</Text> : null}
         <Text style={styles.badge}>{label}</Text>
         <Text style={styles.heading}>Game in progress</Text>
         <Text style={styles.body}>
-          The host has started without you. Stay on this page — when the lobby opens again you can join the next
-          round.
+          The host has started without you. Stay on this page — when the lobby opens again you can join the next round.
         </Text>
         <View style={styles.pulseRow}>
           <View style={styles.pulseDot} />
@@ -61,77 +60,77 @@ export function GameStartedWaitingScreen({ gameCode, game, onLobbyOpen }: Props)
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  card: {
-    width: '100%',
-    maxWidth: 420,
-    backgroundColor: theme.surface,
-    borderRadius: 16,
-    padding: 24,
-    gap: 10,
-    alignItems: 'center',
-  },
-  emoji: {
-    fontSize: 40,
-  },
-  title: {
-    color: theme.text,
-    fontSize: 24,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  badge: {
-    color: theme.primaryMuted,
-    fontSize: 13,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  heading: {
-    color: theme.text,
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  body: {
-    color: theme.textMuted,
-    fontSize: 15,
-    lineHeight: 22,
-    textAlign: 'center',
-  },
-  pulseRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 8,
-  },
-  pulseDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: theme.primary,
-  },
-  pulseText: {
-    color: theme.textFaint,
-    fontSize: 14,
-  },
-  codeLabel: {
-    color: theme.textFaint,
-    fontSize: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginTop: 12,
-  },
-  code: {
-    color: theme.text,
-    fontSize: 28,
-    fontWeight: '700',
-    letterSpacing: 4,
-  },
-})
+    container: {
+      flex: 1,
+      backgroundColor: theme.bg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+    },
+    card: {
+      width: '100%',
+      maxWidth: 420,
+      backgroundColor: theme.surface,
+      borderRadius: 16,
+      padding: 24,
+      gap: 10,
+      alignItems: 'center',
+    },
+    emoji: {
+      fontSize: 40,
+    },
+    title: {
+      color: theme.text,
+      fontSize: 24,
+      fontWeight: '800',
+      textAlign: 'center',
+    },
+    badge: {
+      color: theme.primaryMuted,
+      fontSize: 13,
+      fontWeight: '600',
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+    },
+    heading: {
+      color: theme.text,
+      fontSize: 18,
+      fontWeight: '700',
+      marginTop: 4,
+    },
+    body: {
+      color: theme.textMuted,
+      fontSize: 15,
+      lineHeight: 22,
+      textAlign: 'center',
+    },
+    pulseRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 8,
+    },
+    pulseDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: theme.primary,
+    },
+    pulseText: {
+      color: theme.textFaint,
+      fontSize: 14,
+    },
+    codeLabel: {
+      color: theme.textFaint,
+      fontSize: 12,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+      marginTop: 12,
+    },
+    code: {
+      color: theme.text,
+      fontSize: 28,
+      fontWeight: '700',
+      letterSpacing: 4,
+    },
+  })

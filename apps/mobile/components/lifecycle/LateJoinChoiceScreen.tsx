@@ -43,7 +43,7 @@ export function LateJoinChoiceScreen({
     <KeyboardFormScreen contentContainerStyle={styles.container}>
       <View style={styles.card}>
         <Text style={styles.emoji}>🎮</Text>
-        <Text style={styles.title}>{game.title}</Text>
+        {game.title ? <Text style={styles.title}>{game.title}</Text> : null}
         <Text style={styles.badge}>{label}</Text>
         <GameRulesLink gameType={game.game_type} variant="subtle" />
 
