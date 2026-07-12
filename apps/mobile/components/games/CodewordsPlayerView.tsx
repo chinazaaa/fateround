@@ -14,6 +14,7 @@ import { batch7GameLabel } from '@fateround/shared/batch-7-games'
 import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import {
   cellBackground,
+  cellTextColor,
   codewordsPlayerPicks,
   codewordsRandomizeTeams,
   countRevealedTeamCells,
@@ -127,14 +128,18 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
           .eq('game_id', code)
           .order('created_at'),
       ])
-      if (boardRes.error || rolesRes.error || guessesRes.error || messagesRes.error) {
+      // Board + roles drive screen routing, so a failure there is a hard miss.
+      // Guesses and messages only enrich the view — if one of those errors
+      // (a transient RLS hiccup), degrade it to empty rather than nulling the
+      // board, which would bounce a seated player back to the lobby.
+      if (boardRes.error || rolesRes.error) {
         return { state: { board: null, roles: [], guesses: [], messages: [] }, ok: false }
       }
       const state: CodewordsState = {
         board: (boardRes.data as CodewordsBoard | null) ?? null,
         roles: (rolesRes.data as CodewordsPlayerRole[]) ?? [],
-        guesses: (guessesRes.data as CodewordsGuess[]) ?? [],
-        messages: (messagesRes.data as CodewordsMessage[]) ?? [],
+        guesses: guessesRes.error ? [] : ((guessesRes.data as CodewordsGuess[]) ?? []),
+        messages: messagesRes.error ? [] : ((messagesRes.data as CodewordsMessage[]) ?? []),
       }
       setCwState(state)
       return { state, ok: true }
@@ -160,9 +165,14 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
       return 'waiting'
     }
     if (game.status === 'finished' || state.board?.winner) return 'finished'
-    if (game.status === 'active' && state.board) {
-      if (!state.roles.some((r) => r.player_id === playerId)) return 'waiting'
-      return 'playing'
+    if (game.status === 'active') {
+      // A seated player is in the game even before the board row loads. Don't
+      // gate on `state.board` here: a slow or transient board fetch would
+      // otherwise bounce them back to the lobby "waiting for host" screen (and
+      // stay stuck across refreshes). The playing view renders a loading state
+      // until the board arrives — matching web, which routes on status alone.
+      if (state.roles.some((r) => r.player_id === playerId)) return 'playing'
+      return 'waiting'
     }
     return 'waiting'
   }, [])
@@ -382,10 +392,14 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
               const isRevealed = specRevealed.has(index)
               const cellType = board.key[index]
               const bg = cellBackground(cellType, isRevealed, false)
+              const fg = cellTextColor(cellType, isRevealed, false)
+              const onDark = fg !== '#171717'
               return (
                 <View key={index} style={[styles.cell, { backgroundColor: bg }, isRevealed && styles.cellRevealed]}>
-                  <Text style={styles.cellWord}>{word}</Text>
-                  {specAttribution[index] ? <Text style={styles.cellAttr}>{specAttribution[index]}</Text> : null}
+                  <Text style={[styles.cellWord, { color: fg }]}>{word}</Text>
+                  {specAttribution[index] ? (
+                    <Text style={[styles.cellAttr, onDark && styles.cellAttrOnDark]}>{specAttribution[index]}</Text>
+                  ) : null}
                 </View>
               )
             })}
@@ -532,6 +546,8 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
             const isRevealed = revealed.has(index)
             const cellType = board.key[index]
             const bg = cellBackground(cellType, isRevealed, showKey)
+            const fg = cellTextColor(cellType, isRevealed, showKey)
+            const onDark = fg !== '#171717'
             const disabled = !canGuess || isRevealed
             return (
               <Pressable
@@ -540,9 +556,13 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
                 disabled={disabled || acting}
                 onPress={() => act(() => postCodewordsGuess(bootstrap.code, bootstrap.myResumeToken!, index))}
               >
-                <Text style={styles.cellWord}>{word}</Text>
-                {cellAttribution[index] ? <Text style={styles.cellAttr}>{cellAttribution[index]}</Text> : null}
-                {showKey && !isRevealed ? <Text style={styles.cellKey}>{cellType[0].toUpperCase()}</Text> : null}
+                <Text style={[styles.cellWord, { color: fg }]}>{word}</Text>
+                {cellAttribution[index] ? (
+                  <Text style={[styles.cellAttr, onDark && styles.cellAttrOnDark]}>{cellAttribution[index]}</Text>
+                ) : null}
+                {showKey && !isRevealed ? (
+                  <Text style={[styles.cellKey, onDark && styles.cellAttrOnDark]}>{cellType[0].toUpperCase()}</Text>
+                ) : null}
               </Pressable>
             )
           })}
@@ -727,6 +747,9 @@ const makeStyles = (theme: Theme) =>
     cellRevealed: { opacity: 0.95 },
     cellWord: { color: '#171717', fontWeight: '800', fontSize: 11, textAlign: 'center' },
     cellAttr: { color: '#52525b', fontSize: 8, marginTop: 2 },
+    // Secondary cell text (guess attribution / key initial) sits on the dark
+    // assassin background here — lighten it so it stays readable.
+    cellAttrOnDark: { color: '#d4d4d8' },
     cellKey: { position: 'absolute', top: 2, right: 4, fontSize: 8, color: '#52525b', fontWeight: '800' },
     formBlock: { gap: 8, marginTop: 8 },
     input: {
