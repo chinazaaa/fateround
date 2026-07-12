@@ -15,6 +15,7 @@ import {
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { WordScrambleGameTimerBar } from '@/components/games/word-scramble/WordScrambleGameTimerBar'
@@ -211,6 +212,7 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
       />
     )
   }

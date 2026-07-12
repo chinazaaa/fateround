@@ -4,6 +4,7 @@ import type { Game, Player } from '@fateround/shared'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { PlayerSessionControls } from '@/components/session/PlayerSessionControls'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { gameLabel } from '@/lib/mobile-registry'
@@ -83,6 +84,7 @@ export function LobbyView({
         <Text style={styles.title}>{title}</Text>
         {description ? <Text style={styles.description}>{description}</Text> : null}
         <Text style={styles.gameType}>{typeLabel}</Text>
+        <GameInfoChips game={game} />
         <GameRulesLink gameType={game.game_type} />
         {canGetReady ? (
           <Pressable

@@ -19,6 +19,8 @@ type Props = {
   submitLabel?: string
   /** Optional extra content under the form (e.g. a "How to play" rules link). */
   footer?: ReactNode
+  /** Optional settings chips (theme / difficulty / time) shown under the hint. */
+  infoChips?: ReactNode
 }
 
 export function JoinScreen({
@@ -32,6 +34,7 @@ export function JoinScreen({
   hint = 'No account needed — enter a display name and play.',
   submitLabel = 'Join game',
   footer,
+  infoChips,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const theme = useTheme()
@@ -40,6 +43,8 @@ export function JoinScreen({
       <Text style={styles.kicker}>{kicker}</Text>
       <Text style={styles.code}>{gameCode}</Text>
       <Text style={styles.hint}>{hint}</Text>
+
+      {infoChips}
 
       <TextInput
         style={styles.input}
