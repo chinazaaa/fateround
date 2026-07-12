@@ -20,6 +20,8 @@ import {
   parseCrosswordMetadata,
   tallyCrosswordScores,
   buildCellOwnerGrid,
+  buildPlayerLetterGrid,
+  buildPlayerSolvedGrid,
   fillableCellCount,
   playerCompletionPercent,
   CROSSWORD_MIN_PLAYERS,
@@ -376,6 +378,30 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
     leaderboard[0].points > 0
   const hostPlays = hostMode === 'player' && !!hostPlayerId
 
+  // When the host is only watching, they view one player's board (switchable), with that
+  // player's own letters — not an aggregate ownership grid.
+  const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
+  const effectiveWatchedId =
+    (watchedPlayerId && activePlayers.some((p) => p.id === watchedPlayerId) ? watchedPlayerId : null) ??
+    leaderboard.find((row) => activePlayers.some((p) => p.id === row.player_id))?.player_id ??
+    activePlayers[0]?.id ??
+    null
+  const watchedName = players.find((p) => p.id === effectiveWatchedId)?.name ?? 'a player'
+  const watchedLetterGrid = useMemo(
+    () =>
+      metadata && effectiveWatchedId
+        ? buildPlayerLetterGrid(metadata, submissions, effectiveWatchedId, emptyLetters(metadata.size))
+        : metadata
+          ? emptyLetters(metadata.size)
+          : [],
+    [metadata, submissions, effectiveWatchedId]
+  )
+  const watchedSolvedCells = useMemo(
+    () =>
+      metadata && effectiveWatchedId ? buildPlayerSolvedGrid(metadata, submissions, effectiveWatchedId) : undefined,
+    [metadata, submissions, effectiveWatchedId]
+  )
+
   const boardCompletion = useMemo(() => {
     if (!metadata) return 0
     const fillable = fillableCellCount(metadata)
@@ -413,17 +439,23 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
 
       <div className="grid md:grid-cols-2 gap-6">
         {metadata && (
-          <CrosswordBoard
-            metadata={metadata}
-            letterGrid={emptyLetters(metadata.size)}
-            cellOwners={cellOwners}
-            playerColors={playerColors}
-            readOnly
-          />
+          <div className="space-y-2">
+            <p className="text-xs text-muted">
+              Watching <span className="font-semibold text-[var(--foreground)]">{watchedName}</span>&apos;s board
+            </p>
+            <CrosswordBoard
+              metadata={metadata}
+              letterGrid={watchedLetterGrid}
+              mySolvedCells={watchedSolvedCells}
+              myPlayerId={effectiveWatchedId}
+              playerColors={playerColors}
+              readOnly
+            />
+          </div>
         )}
 
         <div className="space-y-3">
-          <p className="label-caps text-xs">Live scores</p>
+          <p className="label-caps text-xs">Live scores — tap to watch</p>
           {leaderboard.map((row, i) => {
             const pct = metadata ? playerCompletionPercent(metadata, submissions, row.player_id) : 0
             const timeSecs = getPlayerTimeSpent(
@@ -435,7 +467,14 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
               players.find((p) => p.id === row.player_id)?.joined_at
             )
             return (
-              <div key={row.player_id} className="glass-card px-3 py-2.5 flex items-center justify-between gap-4">
+              <button
+                key={row.player_id}
+                type="button"
+                onClick={() => setWatchedPlayerId(row.player_id)}
+                className={`w-full text-left glass-card px-3 py-2.5 flex items-center justify-between gap-4 transition ${
+                  effectiveWatchedId === row.player_id ? 'ring-2 ring-[var(--accent,#0ea5e9)]' : ''
+                }`}
+              >
                 <div className="flex-1 min-w-0">
                   <span className="text-sm font-semibold truncate block">
                     {i + 1}. {row.name}
@@ -445,7 +484,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
                   </span>
                 </div>
                 <span className="text-sm font-bold shrink-0">{row.points} pts</span>
-              </div>
+              </button>
             )
           })}
         </div>

@@ -22,6 +22,8 @@ import {
   isNeverHaveIEver,
   isSecretMessageGame,
   isSudokuGame,
+  isCrosswordGame,
+  isWordSearchGame,
   isThisOrThat,
   isTriviaGame,
   isTwoTruthsGame,
@@ -84,7 +86,12 @@ export function gameSupportsViewerSetting(gameType: GameType): boolean {
   return !isSecretMessageGame(gameType)
 }
 
-/** Board games allow watch-only late join — not mid-game players. */
+/**
+ * Board games allow watch-only late join — not mid-game players. The solo-race puzzles
+ * (Sudoku / Crossword / Word Search) are the same: a late arrival watches a player's board
+ * (and can switch between players), rather than joining the race late. So the only late-join
+ * options for these are "viewers only" or "lobby only" — never "viewers + players".
+ */
 export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
   return (
     !isMonopolyGame(gameType) &&
@@ -98,7 +105,10 @@ export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
     !isChessGame(gameType) &&
     !isCheckersGame(gameType) &&
     !isAyoGame(gameType) &&
-    !isScrabbleGame(gameType)
+    !isScrabbleGame(gameType) &&
+    !isSudokuGame(gameType) &&
+    !isCrosswordGame(gameType) &&
+    !isWordSearchGame(gameType)
   )
 }
 

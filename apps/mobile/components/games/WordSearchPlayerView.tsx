@@ -44,6 +44,8 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
   const [metadata, setMetadata] = useState<WordSearchMetadata | null>(null)
   const [found, setFound] = useState<WordSearchFound[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const [dragActive, setDragActive] = useState(false)
+  const [previewWord, setPreviewWord] = useState<string | null>(null)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [nowMs, setNowMs] = useState<number>(() => Date.now())
   const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
@@ -211,6 +213,34 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
         if (result.alreadyFound) showToast(`Already found ${result.word}`, true)
         else if (hint) showToast(`Revealed ${result.word} · ${WORD_SEARCH_HINT_PENALTY} pts`, false)
         else showToast(`Found ${result.word}!`, true)
+        // Optimistically highlight the word right away — otherwise it doesn't appear until
+        // the refetch below finishes (two round-trips), which reads as a lag.
+        const pid = bootstrap.myPlayerId
+        if (pid && result.word && result.start && result.end && !result.alreadyFound) {
+          const [sr, sc] = result.start
+          const [er, ec] = result.end
+          const word = result.word
+          setFound((prev) =>
+            prev.some((f) => f.player_id === pid && f.word === word)
+              ? prev
+              : [
+                  ...prev,
+                  {
+                    id: `optimistic-${word}`,
+                    game_id: bootstrap.code,
+                    round_id: '',
+                    player_id: pid,
+                    word,
+                    start_row: sr,
+                    start_col: sc,
+                    end_row: er,
+                    end_col: ec,
+                    via_hint: hint,
+                    found_at: new Date().toISOString(),
+                  },
+                ]
+          )
+        }
       } else if (!hint) {
         showToast('No hidden word there', false)
       }
@@ -301,7 +331,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('word_search')} subtitle={bootstrap.code}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} scrollEnabled={!dragActive}>
         <WordSearchGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} />
 
         {toast ? (
@@ -377,6 +407,12 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
               ) : null}
             </View>
 
+            {!viewing ? (
+              <View style={styles.previewBar}>
+                <Text style={styles.previewText}>{previewWord || 'Drag across the letters to spell a word'}</Text>
+              </View>
+            ) : null}
+
             <WordSearchBoardView
               metadata={metadata}
               cellOwners={cellOwners}
@@ -384,6 +420,8 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
               playerColors={playerColors}
               myPlayerId={boardPlayerId}
               onSelect={handleSelect}
+              onDragActiveChange={setDragActive}
+              onPreviewChange={setPreviewWord}
               readOnly={viewing}
             />
 
@@ -537,6 +575,20 @@ const makeStyles = (theme: Theme) =>
     watchChipText: { color: theme.textSecondary, fontSize: 13, fontWeight: '700', maxWidth: 120 },
     watchChipTextActive: { color: '#fff' },
     viewingHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 12 },
+    previewBar: {
+      alignSelf: 'center',
+      minHeight: 40,
+      minWidth: 160,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 12,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    previewText: { color: theme.text, fontSize: 20, fontWeight: '800', letterSpacing: 3 },
     hintRow: {
       flexDirection: 'row',
       alignItems: 'center',

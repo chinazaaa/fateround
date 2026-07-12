@@ -308,6 +308,11 @@
 }
 @media (min-width: 640px) { .fr-modal { border-radius: var(--radius-xl); animation: fr-pop var(--dur-slow) var(--ease-bounce); } }
 .fr-modal--lg { max-width: 42rem; }
+/* Fill mode: hold a consistent height regardless of how many results show, so a
+   short list doesn't leave the sheet collapsed behind the on-screen keyboard.
+   The header (and a sticky search) stay pinned; the body scrolls internally. */
+.fr-modal--fill { height: min(90vh, 100%); overflow-y: hidden; display: flex; flex-direction: column; }
+.fr-modal--fill .fr-modal__body { flex: 1; min-height: 0; overflow-y: auto; }
 .fr-modal__header {
   position: sticky; top: 0; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between;
   gap: var(--space-4); padding: var(--space-5) var(--space-5) var(--space-4);

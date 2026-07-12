@@ -10,6 +10,7 @@ import {
   parseCrosswordMetadata,
   playerCompletionPercent,
   playerHasSolvedCell,
+  playerCompletedWord,
   tallyCrosswordScores,
   CROSSWORD_HINT_PENALTY,
   type CrosswordMetadata,
@@ -207,6 +208,29 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     if (!metadata || !bootstrap.myPlayerId) return localLetters
     return buildPlayerLetterGrid(metadata, submissions, bootstrap.myPlayerId, localLetters)
   }, [metadata, submissions, bootstrap.myPlayerId, localLetters])
+
+  // Toast when the player completes a word.
+  const completedWordsRef = useRef<Set<string>>(new Set())
+  const completionReadyRef = useRef(false)
+  useEffect(() => {
+    const pid = bootstrap.myPlayerId
+    if (!metadata || !pid) return
+    const newlyDone: CrosswordClue[] = []
+    for (const clue of metadata.clues) {
+      const key = `${clue.number}-${clue.direction}`
+      if (completedWordsRef.current.has(key)) continue
+      if (playerCompletedWord(submissions, pid, clue)) {
+        completedWordsRef.current.add(key)
+        newlyDone.push(clue)
+      }
+    }
+    if (completionReadyRef.current) {
+      for (const clue of newlyDone) {
+        showToast(`Solved ${clue.number} ${clue.direction === 'across' ? 'Across' : 'Down'}! 🎉`, true)
+      }
+    }
+    completionReadyRef.current = true
+  }, [submissions, metadata, bootstrap.myPlayerId, showToast])
 
   const standings = useMemo(
     () => (metadata ? tallyCrosswordScores(metadata, submissions, bootstrap.players) : []),

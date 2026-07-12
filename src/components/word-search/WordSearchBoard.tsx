@@ -84,8 +84,12 @@ interface WordSearchBoardProps {
   myColor?: string
   /** Cells from a just-rejected selection, briefly flashed red. */
   invalidCells?: Set<string>
+  /** Cells of a released selection still awaiting its found/wrong result — kept highlighted. */
+  pendingCells?: Set<string>
   /** Called with the drag endpoints (grid order) when the player releases a selection. */
   onSelect?: (start: [number, number], end: [number, number]) => void
+  /** Reports the word currently being traced (ordered letters), or null when the drag ends. */
+  onPreviewChange?: (word: string | null) => void
   readOnly?: boolean
 }
 
@@ -97,13 +101,22 @@ export function WordSearchBoard({
   myPlayerId,
   myColor = WORD_SEARCH_MY_CELL_COLOR,
   invalidCells,
+  pendingCells,
   onSelect,
+  onPreviewChange,
   readOnly = false,
 }: WordSearchBoardProps) {
   const size = metadata.size
   const gridRef = useRef<HTMLDivElement>(null)
   const [dragStart, setDragStart] = useState<[number, number] | null>(null)
   const [dragEnd, setDragEnd] = useState<[number, number] | null>(null)
+
+  const reportPreview = (start: [number, number] | null, end: [number, number] | null) => {
+    if (!start || !end) return onPreviewChange?.(null)
+    const cells = selectionCells(start, end)
+    const word = cells ? cells.map(([r, c]) => (metadata.grid[r]?.[c] ?? '').toUpperCase()).join('') : ''
+    onPreviewChange?.(word || null)
+  }
 
   function cellFromEvent(e: React.PointerEvent): [number, number] | null {
     const el = gridRef.current
@@ -128,13 +141,16 @@ export function WordSearchBoard({
     }
     setDragStart(cell)
     setDragEnd(cell)
+    reportPreview(cell, cell)
   }
 
   function handlePointerMove(e: React.PointerEvent) {
     if (readOnly || !dragStart) return
     const cell = cellFromEvent(e)
     if (!cell) return
-    setDragEnd(snapLine(dragStart, cell, size))
+    const end = snapLine(dragStart, cell, size)
+    setDragEnd(end)
+    reportPreview(dragStart, end)
   }
 
   function handlePointerUp(e: React.PointerEvent) {
@@ -143,6 +159,7 @@ export function WordSearchBoard({
     const en = dragEnd
     setDragStart(null)
     setDragEnd(null)
+    onPreviewChange?.(null)
     try {
       gridRef.current?.releasePointerCapture(e.pointerId)
     } catch {
@@ -151,10 +168,12 @@ export function WordSearchBoard({
     if (!s || !en) return
     // A tap (no travel) isn't a selection.
     if (s[0] === en[0] && s[1] === en[1]) return
+    // The parent keeps these cells highlighted (via pendingCells) until the found/wrong result
+    // lands, so the selection never blinks off before the feedback.
     onSelect?.(s, en)
   }
 
-  const dragCells = new Set<string>()
+  const dragCells = new Set<string>(pendingCells ?? [])
   if (dragStart && dragEnd) {
     const cells = selectionCells(dragStart, dragEnd)
     if (cells) for (const [r, c] of cells) dragCells.add(cellKey(r, c))
@@ -178,13 +197,22 @@ export function WordSearchBoard({
         {Array.from({ length: size }, (_, row) =>
           Array.from({ length: size }, (_, col) => {
             const letter = metadata.grid[row]?.[col] ?? ''
-            const owner = cellOwners?.[row]?.[col] ?? null
             const iFound = !!myFoundCells?.[row]?.[col]
+            const owner = cellOwners?.[row]?.[col] ?? null
             const inDrag = dragCells.has(cellKey(row, col))
             const invalid = invalidCells?.has(cellKey(row, col)) ?? false
 
+            // A player's board (myFoundCells supplied) shows ONLY their own finds — everyone
+            // races their own copy, so a reveal/find never appears on another player's board.
+            // The host watch board (no myFoundCells) shows every player's finds by owner colour.
             const ownerColor = owner ? (owner === myPlayerId ? myColor : (playerColors[owner] ?? '#94a3b8')) : null
-            const baseBg = ownerColor ? { backgroundColor: `${ownerColor}${iFound ? '55' : '33'}` } : undefined
+            const baseBg = myFoundCells
+              ? iFound
+                ? { backgroundColor: `${myColor}55` }
+                : undefined
+              : ownerColor
+                ? { backgroundColor: `${ownerColor}55` }
+                : undefined
             const bgStyle = invalid
               ? { backgroundColor: 'rgba(239, 68, 68, 0.35)' }
               : inDrag

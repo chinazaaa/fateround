@@ -138,9 +138,9 @@ import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
 import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { clampSudokuGameDuration } from '@/lib/sudoku'
-import { parseCrosswordDifficulty } from '@/lib/crossword'
+import { parseCrosswordDifficulty, clampCrosswordGameDuration, CROSSWORD_DEFAULT_DURATION } from '@/lib/crossword'
 import { findCrosswordTheme } from '@/lib/crossword-puzzles'
-import { parseWordSearchDifficulty } from '@/lib/word-search'
+import { parseWordSearchDifficulty, clampWordSearchGameDuration, WORD_SEARCH_DEFAULT_DURATION } from '@/lib/word-search'
 import { findWordSearchTheme } from '@/lib/word-search-puzzles'
 import { clampChessTimer, clampChessBoardTheme, clampChessPieceSet } from '@/lib/chess'
 import { clampCheckersTimer } from '@/lib/checkers'
@@ -966,13 +966,25 @@ export async function POST(req: NextRequest) {
                   ? { game_duration_seconds: rawGameDurationSeconds ?? 0 }
                   : isSudokuGame(game_type)
                     ? { game_duration_seconds: clampSudokuGameDuration(rawGameDurationSeconds ?? 0) }
-                    : isMafiaGame(game_type)
+                    : isCrosswordGame(game_type)
                       ? {
-                          mafia_doctor_enabled: parsed.data.mafia_doctor_enabled !== false,
-                          mafia_detective_enabled: parsed.data.mafia_detective_enabled !== false,
-                          mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
+                          game_duration_seconds: clampCrosswordGameDuration(
+                            rawGameDurationSeconds ?? CROSSWORD_DEFAULT_DURATION
+                          ),
                         }
-                      : {}),
+                      : isWordSearchGame(game_type)
+                        ? {
+                            game_duration_seconds: clampWordSearchGameDuration(
+                              rawGameDurationSeconds ?? WORD_SEARCH_DEFAULT_DURATION
+                            ),
+                          }
+                        : isMafiaGame(game_type)
+                          ? {
+                              mafia_doctor_enabled: parsed.data.mafia_doctor_enabled !== false,
+                              mafia_detective_enabled: parsed.data.mafia_detective_enabled !== false,
+                              mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
+                            }
+                          : {}),
     ...(isCustomGame(game_type) && parsed.data.custom_slots
       ? {
           custom_slots: {

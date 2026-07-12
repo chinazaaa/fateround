@@ -150,11 +150,12 @@ describe('tallyWordSearchScores', () => {
     expect(p1.wordsFound).toBe(1)
   })
 
-  it('applies the hint penalty', () => {
+  it('applies the hint penalty and denies the speed bonus for a revealed word', () => {
     const rows = [found({ player_id: 'p1', word: 'TIGER', via_hint: true })]
     const scores = tallyWordSearchScores(META, rows, PLAYERS)
     const p1 = scores.find((s) => s.player_id === 'p1')!
-    expect(p1.points).toBe(WORD_SEARCH_WORD_POINTS + WORD_SEARCH_FIRST_BONUS + WORD_SEARCH_HINT_PENALTY)
+    // Revealed word: word points minus the hint penalty, but NO first-finder bonus.
+    expect(p1.points).toBe(WORD_SEARCH_WORD_POINTS + WORD_SEARCH_HINT_PENALTY)
   })
 
   it('adds a per-letter length bonus on Hard only', () => {

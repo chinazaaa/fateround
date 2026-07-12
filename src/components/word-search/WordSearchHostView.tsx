@@ -19,6 +19,7 @@ import { ExitIcon } from '@/components/host/host-icons'
 import {
   parseWordSearchMetadata,
   buildFoundOwnerGrid,
+  buildPlayerFoundCells,
   tallyWordSearchScores,
   wordSearchCompletionPercent,
   WORD_SEARCH_MIN_PLAYERS,
@@ -385,6 +386,19 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
     leaderboard[0].points > 0
   const hostPlays = hostMode === 'player' && !!hostPlayerId
 
+  // When the host is only watching, they view one player's board (switchable), not an aggregate.
+  const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
+  const effectiveWatchedId =
+    (watchedPlayerId && activePlayers.some((p) => p.id === watchedPlayerId) ? watchedPlayerId : null) ??
+    leaderboard.find((row) => activePlayers.some((p) => p.id === row.player_id))?.player_id ??
+    activePlayers[0]?.id ??
+    null
+  const watchedName = players.find((p) => p.id === effectiveWatchedId)?.name ?? 'a player'
+  const watchedFoundCells = useMemo(
+    () => (metadata && effectiveWatchedId ? buildPlayerFoundCells(metadata, found, effectiveWatchedId) : undefined),
+    [metadata, found, effectiveWatchedId]
+  )
+
   const boardCompletion = useMemo(() => {
     if (!metadata || metadata.words.length === 0) return 0
     const foundWords = new Set(found.map((f) => f.word))
@@ -415,11 +429,22 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
 
       <div className="grid md:grid-cols-2 gap-6">
         {metadata && (
-          <WordSearchBoard metadata={metadata} cellOwners={cellOwners} playerColors={playerColors} readOnly />
+          <div className="space-y-2">
+            <p className="text-xs text-muted">
+              Watching <span className="font-semibold text-[var(--foreground)]">{watchedName}</span>&apos;s board
+            </p>
+            <WordSearchBoard
+              metadata={metadata}
+              myFoundCells={watchedFoundCells}
+              myPlayerId={effectiveWatchedId}
+              playerColors={playerColors}
+              readOnly
+            />
+          </div>
         )}
 
         <div className="space-y-3">
-          <p className="label-caps text-xs">Live scores</p>
+          <p className="label-caps text-xs">Live scores — tap to watch</p>
           {leaderboard.map((row, i) => {
             const pct = metadata ? wordSearchCompletionPercent(metadata, found, row.player_id) : 0
             const timeSecs = getPlayerTimeSpent(
@@ -431,7 +456,14 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
               players.find((p) => p.id === row.player_id)?.joined_at
             )
             return (
-              <div key={row.player_id} className="glass-card px-3 py-2.5 flex items-center justify-between gap-4">
+              <button
+                key={row.player_id}
+                type="button"
+                onClick={() => setWatchedPlayerId(row.player_id)}
+                className={`w-full text-left glass-card px-3 py-2.5 flex items-center justify-between gap-4 transition ${
+                  effectiveWatchedId === row.player_id ? 'ring-2 ring-[var(--accent,#8b5cf6)]' : ''
+                }`}
+              >
                 <div className="flex-1 min-w-0">
                   <span className="text-sm font-semibold truncate block">
                     {i + 1}. {row.name}
@@ -441,7 +473,7 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
                   </span>
                 </div>
                 <span className="text-sm font-bold shrink-0">{row.points} pts</span>
-              </div>
+              </button>
             )
           })}
         </div>

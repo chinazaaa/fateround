@@ -16,6 +16,7 @@ import {
   buildPlayerLetterGrid,
   playerCompletionPercent,
   playerHasSolvedCell,
+  playerCompletedWord,
   CROSSWORD_MIN_PLAYERS,
   CROSSWORD_HINT_PENALTY,
   type CrosswordMetadata,
@@ -351,6 +352,30 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     return buildPlayerLetterGrid(metadata, submissions, myPlayerId, localLetters)
   }, [metadata, submissions, myPlayerId, localLetters])
 
+  // Toast when the player completes a word (a cell going correct can finish one).
+  const completedWordsRef = useRef<Set<string>>(new Set())
+  const completionReadyRef = useRef(false)
+  useEffect(() => {
+    if (!metadata || !myPlayerId) return
+    const newlyDone: CrosswordClue[] = []
+    for (const clue of metadata.clues) {
+      const key = `${clue.number}-${clue.direction}`
+      if (completedWordsRef.current.has(key)) continue
+      if (playerCompletedWord(submissions, myPlayerId, clue)) {
+        completedWordsRef.current.add(key)
+        newlyDone.push(clue)
+      }
+    }
+    // Skip the first pass (initial load of an in-progress game) so we only toast live finishes.
+    if (completionReadyRef.current) {
+      for (const clue of newlyDone) {
+        showToast(`Solved ${clue.number} ${clue.direction === 'across' ? 'Across' : 'Down'}! 🎉`, true)
+      }
+    }
+    completionReadyRef.current = true
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submissions, metadata, myPlayerId])
+
   const leaderboard = metadata ? tallyCrosswordScores(metadata, submissions, players) : []
   const me = players.find((p) => p.id === myPlayerId)
   const isSpectator = me?.spectator === true
@@ -426,11 +451,16 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
       focusInput()
       return
     }
-    // Prefer a direction that actually has a word through this cell.
-    if (!findClueAt(metadata, row, col, direction)) {
-      const other: CrosswordDirection = direction === 'across' ? 'down' : 'across'
-      if (findClueAt(metadata, row, col, other)) setDirection(other)
-    }
+    // Prefer the direction whose word STARTS at this cell (so clicking a numbered cell shows
+    // that word's clue), then the current direction, then whatever's available.
+    const acrossClue = findClueAt(metadata, row, col, 'across')
+    const downClue = findClueAt(metadata, row, col, 'down')
+    const startsAcross = acrossClue && acrossClue.row === row && acrossClue.col === col
+    const startsDown = downClue && downClue.row === row && downClue.col === col
+    if (startsAcross && !startsDown) setDirection('across')
+    else if (startsDown && !startsAcross) setDirection('down')
+    else if (direction === 'across' && !acrossClue && downClue) setDirection('down')
+    else if (direction === 'down' && !downClue && acrossClue) setDirection('across')
     setSelectedCell([row, col])
     focusInput()
   }
@@ -545,6 +575,9 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     setLetterDraft(row, col, upper, false)
     void submitLetter(row, col, upper, false)
     advanceCursor(row, col)
+    // Re-assert focus so the mobile keyboard stays up after each letter (iOS otherwise
+    // dismisses it once the controlled input resets to '').
+    focusInput()
   }
 
   // Mobile keyboards (Gboard etc.) often skip keydown for letter keys and only fire an
@@ -802,7 +835,9 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
         value=""
         onChange={handleInputChange}
         onKeyDown={handleKeyDown}
-        className="absolute -left-[9999px] top-0 h-px w-px opacity-0"
+        // Kept in-viewport (top-left, 1px, invisible) rather than off-screen: iOS Safari
+        // dismisses the on-screen keyboard for an input parked outside the viewport.
+        className="fixed top-0 left-0 h-px w-px opacity-0 pointer-events-none"
       />
       <main className="pt-16 flex-1 px-3 py-4 max-w-lg mx-auto w-full space-y-4">
         <CrosswordGameTimerBar gameCode={gameCode} game={game} />

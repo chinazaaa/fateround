@@ -30,7 +30,7 @@ export const WORD_SEARCH_FIRST_BONUS = 5
 /** Per-letter bonus, applied on Hard only (see WORD_SEARCH_DIFFICULTY_SPECS). */
 export const WORD_SEARCH_LENGTH_BONUS = 1
 /** Penalty applied per "reveal a word" hint used. */
-export const WORD_SEARCH_HINT_PENALTY = -2
+export const WORD_SEARCH_HINT_PENALTY = -10
 
 export const WORD_SEARCH_DIFFICULTIES: WordSearchDifficulty[] = ['easy', 'medium', 'hard']
 export const WORD_SEARCH_DEFAULT_DIFFICULTY: WordSearchDifficulty = 'medium'
@@ -239,13 +239,16 @@ export function tallyWordSearchScores(
     if (f.via_hint && activeIds.has(f.player_id)) hints.set(f.player_id, (hints.get(f.player_id) ?? 0) + 1)
   }
 
-  // Earliest find per (player, word) — a player scores a word once.
+  // Earliest find per (player, word) — a player scores a word once. `nonHintTime` tracks the
+  // earliest find that was NOT a reveal, so revealing a word can't steal the speed bonus.
   const wordTime = new Map<string, number>()
+  const nonHintTime = new Map<string, number>()
   for (const f of found) {
     if (!activeIds.has(f.player_id)) continue
     const key = `${f.player_id}|${f.word}`
     const t = new Date(f.found_at).getTime()
     if (!wordTime.has(key) || t < wordTime.get(key)!) wordTime.set(key, t)
+    if (!f.via_hint && (!nonHintTime.has(key) || t < nonHintTime.get(key)!)) nonHintTime.set(key, t)
   }
 
   for (const word of metadata.words) {
@@ -255,14 +258,19 @@ export function tallyWordSearchScores(
       if (t !== undefined) foundBy.push({ playerId: p.id, time: t })
     }
     if (foundBy.length === 0) continue
-    foundBy.sort((a, b) => a.time - b.time)
-    const firstId = foundBy[0]!.playerId
     for (const { playerId } of foundBy) {
       points.set(playerId, (points.get(playerId) ?? 0) + WORD_SEARCH_WORD_POINTS)
       wordsFound.set(playerId, (wordsFound.get(playerId) ?? 0) + 1)
       if (lengthBonus) points.set(playerId, (points.get(playerId) ?? 0) + word.length * WORD_SEARCH_LENGTH_BONUS)
     }
-    points.set(firstId, (points.get(firstId) ?? 0) + WORD_SEARCH_FIRST_BONUS)
+    // Speed bonus goes to the earliest player who found it WITHOUT a hint (if any).
+    const nonHintFoundBy = activePlayers
+      .map((p) => ({ playerId: p.id, time: nonHintTime.get(`${p.id}|${word}`) }))
+      .filter((x): x is { playerId: string; time: number } => x.time !== undefined)
+      .sort((a, b) => a.time - b.time)
+    if (nonHintFoundBy.length > 0) {
+      points.set(nonHintFoundBy[0]!.playerId, (points.get(nonHintFoundBy[0]!.playerId) ?? 0) + WORD_SEARCH_FIRST_BONUS)
+    }
   }
 
   for (const p of activePlayers) {

@@ -64,23 +64,32 @@ export function CrosswordBoardView({
 
             const number = metadata.numbers?.[row]?.[col] ?? 0
             const letter = letterGrid[row]?.[col] ?? ''
-            const owner = cellOwners?.[row]?.[col] ?? null
             const iSolved = !!mySolvedCells?.[row]?.[col]
+            const owner = cellOwners?.[row]?.[col] ?? null
             const isWrong = !!wrongCells?.[row]?.[col]
             const isSelected = selectedCell?.[0] === row && selectedCell?.[1] === col
             const isActive = activeCells?.has(cellKey(row, col)) ?? false
 
-            const ownerColor = owner
-              ? owner === myPlayerId
-                ? CROSSWORD_MY_CELL_COLOR
-                : playerColors[owner] ?? crosswordPlayerColor(0)
-              : null
-            const baseBg = ownerColor ? withAlpha(ownerColor, iSolved ? '55' : '33') : undefined
-            const bg = isSelected
-              ? 'rgba(99,102,241,0.35)'
-              : isActive
-                ? 'rgba(99,102,241,0.14)'
-                : baseBg
+            // A player's board (mySolvedCells supplied) shows ONLY their own solved cells —
+            // everyone races their own copy. The host watch board (no mySolvedCells) shows
+            // every player's progress by owner colour.
+            const baseBg = mySolvedCells
+              ? iSolved
+                ? withAlpha(CROSSWORD_MY_CELL_COLOR, '55')
+                : undefined
+              : owner
+                ? withAlpha(owner === myPlayerId ? CROSSWORD_MY_CELL_COLOR : (playerColors[owner] ?? crosswordPlayerColor(0)), '55')
+                : undefined
+            // Solved cells keep their fill even inside the active word (selected cell still
+            // shows its ring), so a word turns colour the instant it's correct.
+            const bg =
+              mySolvedCells && iSolved
+                ? withAlpha(CROSSWORD_MY_CELL_COLOR, '55')
+                : isSelected
+                  ? 'rgba(99,102,241,0.35)'
+                  : isActive
+                    ? 'rgba(99,102,241,0.14)'
+                    : baseBg
 
             return (
               <Pressable
