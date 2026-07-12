@@ -211,10 +211,6 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      {game && gameHasMobileVoice(game.game_type) ? (
-        <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} />
-      ) : null}
-
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.topBar}>
           <Text style={styles.eyebrow}>Hosting</Text>
@@ -230,6 +226,14 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
           <Text style={styles.codeLabel}>Game code — tap for link & QR</Text>
           <Text style={styles.code}>{gameCode}</Text>
         </Pressable>
+
+        {/* Under the header (not above it, where it read as the header itself).
+            Bleed to full width to counteract the scroll's horizontal padding. */}
+        {game && gameHasMobileVoice(game.game_type) ? (
+          <View style={styles.voiceRailWrap}>
+            <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} />
+          </View>
+        ) : null}
 
         {replayLobby && hostPlayerId ? (
           <ReplayReadyRing
@@ -459,6 +463,9 @@ const makeStyles = (theme: Theme) =>
     justifyContent: 'center',
   },
   content: { padding: 24, gap: 8, paddingBottom: 32, ...centeredContent },
+  // Cancel the content's 24px horizontal padding so the voice bar spans edge to
+  // edge like the pinned rails on the other chromes.
+  voiceRailWrap: { marginHorizontal: -24 },
   eyebrow: { color: theme.primary, fontSize: 13, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
   title: { color: theme.text, fontSize: 28, fontWeight: '800', marginBottom: 8 },
   codeCard: {
