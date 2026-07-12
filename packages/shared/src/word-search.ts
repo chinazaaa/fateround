@@ -101,10 +101,7 @@ export function placementEnd(p: Pick<WordSearchPlacement, 'row' | 'col' | 'direc
  * The straight line of cells between two endpoints, or null if they don't form a valid
  * horizontal / vertical / 45° diagonal run.
  */
-export function selectionCells(
-  start: [number, number],
-  end: [number, number]
-): [number, number][] | null {
+export function selectionCells(start: [number, number], end: [number, number]): [number, number][] | null {
   const [r0, c0] = start
   const [r1, c1] = end
   const dr = Math.sign(r1 - r0)
@@ -184,7 +181,11 @@ type FoundCellRow = Pick<
 >
 
 /** Boolean grid of the cells a given player has found (any of their words covers). */
-export function buildPlayerFoundCells(metadata: WordSearchMetadata, found: FoundCellRow[], playerId: string): boolean[][] {
+export function buildPlayerFoundCells(
+  metadata: WordSearchMetadata,
+  found: FoundCellRow[],
+  playerId: string
+): boolean[][] {
   const grid = Array.from({ length: metadata.size }, () => Array(metadata.size).fill(false))
   for (const f of found) {
     if (f.player_id !== playerId) continue
@@ -243,12 +244,14 @@ export function tallyWordSearchScores(
   // earliest find that was NOT a reveal, so revealing a word can't steal the speed bonus.
   const wordTime = new Map<string, number>()
   const nonHintTime = new Map<string, number>()
+  const lastFound = new Map<string, number>()
   for (const f of found) {
     if (!activeIds.has(f.player_id)) continue
     const key = `${f.player_id}|${f.word}`
     const t = new Date(f.found_at).getTime()
     if (!wordTime.has(key) || t < wordTime.get(key)!) wordTime.set(key, t)
     if (!f.via_hint && (!nonHintTime.has(key) || t < nonHintTime.get(key)!)) nonHintTime.set(key, t)
+    if (t > (lastFound.get(f.player_id) ?? -Infinity)) lastFound.set(f.player_id, t)
   }
 
   for (const word of metadata.words) {
@@ -284,7 +287,13 @@ export function tallyWordSearchScores(
       points: points.get(p.id) ?? 0,
       wordsFound: wordsFound.get(p.id) ?? 0,
     }))
-    .sort((a, b) => b.points - a.points || b.wordsFound - a.wordsFound || a.name.localeCompare(b.name))
+    .sort(
+      (a, b) =>
+        b.points - a.points ||
+        b.wordsFound - a.wordsFound ||
+        (lastFound.get(a.player_id) ?? Infinity) - (lastFound.get(b.player_id) ?? Infinity) ||
+        a.name.localeCompare(b.name)
+    )
 }
 
 // ── Duration / timer ─────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostSudokuLobbyPanel } from '@/components/host-lobby/HostSudokuLobbyPanel'
+import { HostPuzzleSettings } from '@/components/host-lobby/HostPuzzleSettings'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
@@ -20,6 +21,7 @@ import {
   parseWordSearchMetadata,
   buildFoundOwnerGrid,
   buildPlayerFoundCells,
+  placementCells,
   tallyWordSearchScores,
   wordSearchCompletionPercent,
   WORD_SEARCH_MIN_PLAYERS,
@@ -27,6 +29,7 @@ import {
   formatWordSearchGameDuration,
   type WordSearchMetadata,
   type WordSearchFound,
+  type WordSearchPlacement,
 } from '@/lib/word-search'
 import { getPlayerTimeSpent } from '@/lib/sudoku'
 import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
@@ -88,6 +91,7 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
   const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
   const [nowMs, setNowMs] = useState<number>(Date.now())
+  const [placements, setPlacements] = useState<WordSearchPlacement[] | null>(null)
 
   useEffect(() => {
     if (game?.status === 'active') {
@@ -127,6 +131,20 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
         setFound((rows ?? []) as WordSearchFound[])
       }
     } else if (gameData.status === 'finished') {
+      // Load the round metadata too, not just the finds — on a refresh of the finished
+      // screen without it, `metadata` stays null and the leaderboard (and answer key) go
+      // blank because tallyWordSearchScores can't run.
+      const { data: roundData } = await supabase
+        .from('rounds')
+        .select('id, word_search_metadata')
+        .eq('game_id', gameCode)
+        .eq('round_number', 1)
+        .maybeSingle()
+      if (roundData) {
+        const meta = parseWordSearchMetadata((roundData as Record<string, unknown>).word_search_metadata)
+        if (meta) setMetadata(meta)
+        setRoundId(roundData.id as string)
+      }
       const { data: rows } = await supabase
         .from('word_search_found')
         .select(WORD_SEARCH_FOUND_SELECT)
@@ -149,6 +167,21 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
     if (game?.status === 'active') setTab('play')
     else if (game?.status === 'finished') setTab('manage')
   }, [game?.status])
+
+  // Pull the answer key once the game is finished, so it can show below the leaderboard.
+  useEffect(() => {
+    if (game?.status !== 'finished' || placements) return
+    let cancelled = false
+    fetch(`/api/word-search/solution?gameId=${gameCode.toUpperCase()}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!cancelled && Array.isArray(j?.placements)) setPlacements(j.placements as WordSearchPlacement[])
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [game?.status, placements, gameCode])
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
@@ -519,6 +552,15 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
             onGameUpdate={setGame}
             durationChoices={WORD_SEARCH_GAME_DURATION_OPTIONS}
             formatDuration={formatWordSearchGameDuration}
+            puzzleSettings={
+              <HostPuzzleSettings
+                gameCode={gameCode}
+                hostToken={hostToken}
+                game={game}
+                onGameUpdate={setGame}
+                kind="word_search"
+              />
+            }
           />
         ) : (
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
@@ -653,6 +695,35 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
               winnerName={hostRow?.name ?? ''}
               roundKey={game?.session_started_at ?? undefined}
             />
+          )}
+          {placements && metadata && (
+            <div className="glass-card p-4 space-y-3">
+              <p className="label-caps text-xs">Answer key</p>
+              <WordSearchBoard
+                metadata={metadata}
+                readOnly
+                myFoundCells={(() => {
+                  const g = metadata.grid.map((row) => row.map(() => false))
+                  for (const p of placements) {
+                    for (const [r, c] of placementCells(p)) {
+                      if (g[r]) g[r][c] = true
+                    }
+                  }
+                  return g
+                })()}
+                myColor="#8b5cf6"
+              />
+              <div className="flex flex-wrap gap-1.5">
+                {placements.map((p) => (
+                  <span
+                    key={p.word}
+                    className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[var(--surface-2)] text-muted"
+                  >
+                    {p.word}
+                  </span>
+                ))}
+              </div>
+            </div>
           )}
         </>
       }
