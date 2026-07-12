@@ -675,7 +675,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
         </div>
       )}
       <main className="pt-16 flex-1 px-3 py-4 max-w-lg mx-auto w-full space-y-4">
-        <WordSearchGameTimerBar gameCode={gameCode} game={game} />
+        <WordSearchGameTimerBar gameCode={gameCode} game={game} onExpired={load} />
 
         {isViewer ? (
           <ViewerModeBanner

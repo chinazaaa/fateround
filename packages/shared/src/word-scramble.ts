@@ -15,6 +15,7 @@ export const WORD_SCRAMBLE_WORD_POINTS = 10
 export const WORD_SCRAMBLE_FIRST_BONUS = 5
 export const WORD_SCRAMBLE_LENGTH_BONUS = 1
 export const WORD_SCRAMBLE_HINT_PENALTY = -2
+export const WORD_SCRAMBLE_LETTER_HINT_PENALTY = -1
 
 export const WORD_SCRAMBLE_DIFFICULTIES: WordScrambleDifficulty[] = ['easy', 'medium', 'hard']
 export const WORD_SCRAMBLE_DEFAULT_DIFFICULTY: WordScrambleDifficulty = 'medium'
@@ -47,6 +48,13 @@ export interface WordScrambleSolve {
 }
 
 type SolveRow = Pick<WordScrambleSolve, 'player_id' | 'scramble_index' | 'word' | 'via_hint' | 'solved_at'>
+
+/** A per-word letter-hint tally row from word_scramble_hints (letters revealed, never text). */
+export interface WordScrambleHint {
+  player_id: string
+  scramble_index: number
+  letters: number
+}
 
 export function normalizeScrambleWord(word: string): string {
   return word
@@ -107,7 +115,7 @@ export function tallyWordScrambleScores(
   metadata: WordScrambleMetadata,
   solves: SolveRow[],
   players: { id: string; name: string; spectator?: boolean | null }[],
-  opts?: { lengthBonus?: boolean }
+  opts?: { lengthBonus?: boolean; hints?: WordScrambleHint[] }
 ): WordScramblePlayerScore[] {
   const lengthBonus =
     opts?.lengthBonus ?? WORD_SCRAMBLE_DIFFICULTY_SPECS[parseWordScrambleDifficulty(metadata.difficulty)].lengthBonus
@@ -146,6 +154,12 @@ export function tallyWordScrambleScores(
     nonHint.sort((a, b) => a.time - b.time)
     if (nonHint.length > 0)
       points.set(nonHint[0].playerId, (points.get(nonHint[0].playerId) ?? 0) + WORD_SCRAMBLE_FIRST_BONUS)
+  }
+
+  // Subtract the per-letter penalty for every letter revealed via the "Hint" button.
+  for (const h of opts?.hints ?? []) {
+    if (!activeIds.has(h.player_id) || h.letters <= 0) continue
+    points.set(h.player_id, (points.get(h.player_id) ?? 0) + h.letters * WORD_SCRAMBLE_LETTER_HINT_PENALTY)
   }
 
   return activePlayers

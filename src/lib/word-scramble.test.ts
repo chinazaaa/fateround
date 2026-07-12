@@ -9,6 +9,7 @@ import {
   WORD_SCRAMBLE_WORD_POINTS,
   WORD_SCRAMBLE_FIRST_BONUS,
   WORD_SCRAMBLE_HINT_PENALTY,
+  WORD_SCRAMBLE_LETTER_HINT_PENALTY,
   WORD_SCRAMBLE_LENGTH_BONUS,
   type WordScrambleMetadata,
   type WordScrambleSolve,
@@ -93,6 +94,18 @@ describe('tallyWordScrambleScores', () => {
     const scores = tallyWordScrambleScores(META, rows, PLAYERS)
     const p1 = scores.find((s) => s.player_id === 'p1')!
     expect(p1.points).toBe(WORD_SCRAMBLE_WORD_POINTS + WORD_SCRAMBLE_HINT_PENALTY)
+  })
+
+  it('subtracts the per-letter penalty for revealed-letter hints', () => {
+    const rows = [solve({ player_id: 'p1', scramble_index: 0, solved_at: '2026-07-12T00:00:01.000Z' })]
+    const scores = tallyWordScrambleScores(META, rows, PLAYERS, {
+      hints: [{ player_id: 'p1', scramble_index: 0, letters: 2 }],
+    })
+    const p1 = scores.find((s) => s.player_id === 'p1')!
+    // 10 base + 5 first bonus + 2 letters × (−1) = 13
+    expect(p1.points).toBe(
+      WORD_SCRAMBLE_WORD_POINTS + WORD_SCRAMBLE_FIRST_BONUS + 2 * WORD_SCRAMBLE_LETTER_HINT_PENALTY
+    )
   })
 
   it('adds a per-letter length bonus on Hard only', () => {

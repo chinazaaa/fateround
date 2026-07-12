@@ -951,7 +951,7 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
         className="fixed top-0 left-0 h-px w-px opacity-0"
       />
       <main className="pt-16 flex-1 px-3 py-4 max-w-lg mx-auto w-full space-y-4">
-        <CrosswordGameTimerBar gameCode={gameCode} game={game} />
+        <CrosswordGameTimerBar gameCode={gameCode} game={game} onExpired={load} />
 
         {isViewer ? (
           <>

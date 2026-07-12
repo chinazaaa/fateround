@@ -25,6 +25,7 @@ import {
   formatWordScrambleGameDuration,
   type WordScrambleMetadata,
   type WordScrambleSolve,
+  type WordScrambleHint,
 } from '@/lib/word-scramble'
 import { getPlayerTimeSpent } from '@/lib/sudoku'
 import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
@@ -42,6 +43,7 @@ import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 
 const SOLVE_SELECT = 'id,game_id,round_id,player_id,scramble_index,word,via_hint,solved_at'
+const HINT_SELECT = 'player_id,scramble_index,letters'
 
 type HostMode = 'spectator' | 'player'
 type HostTab = 'manage' | 'play'
@@ -73,6 +75,7 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
   const [roundId, setRoundId] = useState<string | null>(null)
   const [metadata, setMetadata] = useState<WordScrambleMetadata | null>(null)
   const [solves, setSolves] = useState<WordScrambleSolve[]>([])
+  const [hints, setHints] = useState<WordScrambleHint[]>([])
   const [answers, setAnswers] = useState<string[] | null>(null)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [starting, setStarting] = useState(false)
@@ -116,6 +119,8 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
       }
       const { data: rows } = await supabase.from('word_scramble_solves').select(SOLVE_SELECT).eq('game_id', gameCode)
       setSolves((rows ?? []) as WordScrambleSolve[])
+      const { data: hintRows } = await supabase.from('word_scramble_hints').select(HINT_SELECT).eq('game_id', gameCode)
+      setHints((hintRows ?? []) as WordScrambleHint[])
     }
   }, [gameCode])
 
@@ -360,7 +365,7 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
   }
 
   const activePlayers = useMemo(() => players.filter((p) => p.spectator !== true), [players])
-  const leaderboard = metadata ? tallyWordScrambleScores(metadata, solves, players) : []
+  const leaderboard = metadata ? tallyWordScrambleScores(metadata, solves, players, { hints }) : []
   const hostRow = leaderboard.find((row) => row.player_id === hostPlayerId)
   const hostWon =
     !!hostRow &&
@@ -386,7 +391,7 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
 
   const watchBoard = (
     <div className="space-y-5">
-      <WordScrambleGameTimerBar gameCode={gameCode} game={game} />
+      <WordScrambleGameTimerBar gameCode={gameCode} game={game} onExpired={load} />
       <p className="label-caps text-xs">Live scores</p>
       {leaderboard.length === 0 ? (
         <p className="text-sm text-muted">No players yet.</p>
