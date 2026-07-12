@@ -22,6 +22,8 @@ import {
   isNeverHaveIEver,
   isSecretMessageGame,
   isSudokuGame,
+  isCrosswordGame,
+  isWordSearchGame,
   isThisOrThat,
   isTriviaGame,
   isTwoTruthsGame,
@@ -246,6 +248,10 @@ export function spectatorForActiveJoin(
   if (isAnonymousMessagesGame(gameType)) return true
   if (isMonopolyGame(gameType) || isYahtzeeGame(gameType) || isWhotGame(gameType) || isCrazyEightsGame(gameType))
     return true
+  // Solo-race puzzles (Sudoku / Crossword / Word Search): everyone plays their own board, so
+  // there's nothing meaningful to spectate. A late joiner is always seated as a player with
+  // their own fresh board rather than watching another player's parallel game.
+  if (isSudokuGame(gameType) || isCrosswordGame(gameType) || isWordSearchGame(gameType)) return false
   if (!allowLatePlayers(game)) return true
   if (gameOffersLateJoinChoice(gameType)) return joinAsViewer === true
   return joinAsViewer === true
