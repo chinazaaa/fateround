@@ -434,10 +434,10 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   function focusInput() {
-    // Focusing the hidden input pops the mobile keyboard while capturing physical keys.
-    // preventScroll stops the browser from scrolling the off-screen input into view, which
-    // otherwise jerks the whole board up/down on every cell tap or keystroke.
-    requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }))
+    // Focus SYNCHRONOUSLY inside the tap handler — iOS Safari only pops the on-screen
+    // keyboard when focus() runs within the user gesture, not from a deferred callback.
+    // preventScroll keeps the board from jumping to the off-screen input.
+    inputRef.current?.focus({ preventScroll: true })
   }
 
   function handleCellSelect(row: number, col: number) {
@@ -835,9 +835,9 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
         value=""
         onChange={handleInputChange}
         onKeyDown={handleKeyDown}
-        // Kept in-viewport (top-left, 1px, invisible) rather than off-screen: iOS Safari
-        // dismisses the on-screen keyboard for an input parked outside the viewport.
-        className="fixed top-0 left-0 h-px w-px opacity-0 pointer-events-none"
+        // In-viewport (top-left, 1px, invisible) so iOS keeps the keyboard up — but NOT
+        // pointer-events-none, which would stop it being focusable and block the keyboard.
+        className="fixed top-0 left-0 h-px w-px opacity-0"
       />
       <main className="pt-16 flex-1 px-3 py-4 max-w-lg mx-auto w-full space-y-4">
         <CrosswordGameTimerBar gameCode={gameCode} game={game} />
