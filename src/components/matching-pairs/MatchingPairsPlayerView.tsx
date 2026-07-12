@@ -208,7 +208,17 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             // Start memorization phase for fresh rounds (no submissions yet)
             if (subs.length === 0 && gameData.status === 'active' && memorizeRoundRef.current !== roundData.id) {
               memorizeRoundRef.current = roundData.id
-              setMemorizeCountdown(getMemorizeSeconds(parsedMeta.gridSizePairs))
+              const memorizeDuration = getMemorizeSeconds(parsedMeta.gridSizePairs)
+              if (roundData.started_at) {
+                const elapsedSeconds = (Date.now() - new Date(roundData.started_at).getTime()) / 1000
+                if (elapsedSeconds < memorizeDuration) {
+                  setMemorizeCountdown(Math.max(1, Math.ceil(memorizeDuration - elapsedSeconds)))
+                } else {
+                  setMemorizeCountdown(null)
+                }
+              } else {
+                setMemorizeCountdown(memorizeDuration)
+              }
             }
 
             // Reconstruct streak & points from last submission
@@ -525,11 +535,14 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           } else {
             const d = await res.json()
             if (d.finishRank) setFinishRank(d.finishRank)
+            if (d.currentStreak !== undefined) setCurrentStreak(d.currentStreak)
+            if (d.pointsAfter !== undefined) setTotalPoints(d.pointsAfter)
             // Bug #2 fix: call load() after a finishing flip so computeScreen
             // transitions to 'waiting_for_others' immediately. Without this,
             // setFinished(true) updates local state but screen stays on 'playing'
             // because computeScreen only reads state.ownFinished (set inside load).
-            if (justFinished) {
+            if (d.finished || justFinished) {
+              setFinished(true)
               void load()
             } else {
               // Non-finishing match: just refresh submission counts.
@@ -575,6 +588,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             const d = await res.json()
             toastError(d.error ?? 'Submit error')
           } else {
+            const d = await res.json()
+            if (d.currentStreak !== undefined) setCurrentStreak(d.currentStreak)
+            if (d.pointsAfter !== undefined) setTotalPoints(d.pointsAfter)
             // Refresh submissions to keep local state in sync
             const { data } = await supabase
               .from('memory_match_submissions')

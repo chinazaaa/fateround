@@ -272,9 +272,13 @@ export function tallyMatchingPairsScore(
   const streakBonusTotal = submissions.reduce((acc, s) => acc + s.streak_bonus, 0)
 
   // Longest streak: walk through submissions in order tracking running streak.
+  // Sort submissions chronologically to guarantee correct streak calculation.
+  const sortedSubs = [...submissions].sort(
+    (a, b) => new Date(a.submitted_at).getTime() - new Date(b.submitted_at).getTime()
+  )
   let maxStreak = 0
   let streak = 0
-  for (const s of submissions) {
+  for (const s of sortedSubs) {
     if (s.is_match) {
       streak++
       if (streak > maxStreak) maxStreak = streak
