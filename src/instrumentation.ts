@@ -24,5 +24,13 @@ export async function register() {
   // Import a Node-only submodule (relative path — the standalone tracer DOES follow this) that
   // statically imports @vercel/otel, so the exporter + its OpenTelemetry deps get bundled into
   // `.next/standalone`. A bare `import('@vercel/otel')` here is not traced and ships nothing.
-  await import('./instrumentation.node')
+  //
+  // Fail-safe: telemetry must NEVER take down the app. If the exporter fails to load (e.g. missing
+  // from the standalone bundle) or initialize, log and continue serving without tracing rather
+  // than letting register() reject at startup.
+  try {
+    await import('./instrumentation.node')
+  } catch (err) {
+    console.error('[instrumentation] OpenTelemetry setup failed; continuing without tracing.', err)
+  }
 }

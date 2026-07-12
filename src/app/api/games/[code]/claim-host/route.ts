@@ -23,31 +23,39 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
   const resumeToken = typeof body?.resumeToken === 'string' ? body.resumeToken : ''
 
-  const supabase = getSupabaseAdmin()
-  const auth = await assertPlayer(supabase, code, resumeToken)
-  if (auth.error || !auth.player) return NextResponse.json({ error: auth.error }, { status: auth.status })
-  const gameId = auth.id
-  const playerId = auth.player.id
+  // Guard the whole flow: getSupabaseAdmin() throws on a misconfigured env and assertPlayer /
+  // the Supabase call can reject, all of which would otherwise bubble up as a bare platform
+  // 500 (non-JSON) that the client can't parse. Always answer with a JSON error instead.
+  try {
+    const supabase = getSupabaseAdmin()
+    const auth = await assertPlayer(supabase, code, resumeToken)
+    if (auth.error || !auth.player) return NextResponse.json({ error: auth.error }, { status: auth.status })
+    const gameId = auth.id
+    const playerId = auth.player.id
 
-  const newHostToken = generateToken()
+    const newHostToken = generateToken()
 
-  // Atomic swap: only succeeds while this player is still the pending nominee. If a second
-  // claim races in, or the host cancelled the nomination, no row matches and we 409.
-  const { data: updated, error: updateError } = await supabase
-    .from('games')
-    .update({ host_token: newHostToken, pending_host_player_id: null })
-    .eq('id', gameId)
-    .eq('pending_host_player_id', playerId)
-    .select('id')
-    .maybeSingle()
+    // Atomic swap: only succeeds while this player is still the pending nominee. If a second
+    // claim races in, or the host cancelled the nomination, no row matches and we 409.
+    const { data: updated, error: updateError } = await supabase
+      .from('games')
+      .update({ host_token: newHostToken, pending_host_player_id: null })
+      .eq('id', gameId)
+      .eq('pending_host_player_id', playerId)
+      .select('id')
+      .maybeSingle()
 
-  // A real DB error must not be reported as a stale claim — reserve the 409 for the no-row case.
-  if (updateError) {
+    // A real DB error must not be reported as a stale claim — reserve the 409 for the no-row case.
+    if (updateError) {
+      return NextResponse.json({ error: 'Failed to claim host transfer' }, { status: 500 })
+    }
+    if (!updated) {
+      return NextResponse.json({ error: 'No pending host transfer for you' }, { status: 409 })
+    }
+
+    return NextResponse.json({ ok: true, hostToken: newHostToken }, { status: 200 })
+  } catch (err) {
+    console.error('[claim-host]', err)
     return NextResponse.json({ error: 'Failed to claim host transfer' }, { status: 500 })
   }
-  if (!updated) {
-    return NextResponse.json({ error: 'No pending host transfer for you' }, { status: 409 })
-  }
-
-  return NextResponse.json({ ok: true, hostToken: newHostToken }, { status: 200 })
 }

@@ -10,6 +10,12 @@
 import { registerOTel } from '@vercel/otel'
 
 // Endpoint/headers/sampler/resource are all read from OTEL_* env by the SDK (SSM → container).
-registerOTel({
-  serviceName: process.env.OTEL_SERVICE_NAME || 'fateround',
-})
+// Guarded so a registerOTel failure can't crash module evaluation (which would reject the
+// dynamic import in instrumentation.ts). Telemetry is best-effort — never fatal.
+try {
+  registerOTel({
+    serviceName: process.env.OTEL_SERVICE_NAME || 'fateround',
+  })
+} catch (err) {
+  console.error('[instrumentation.node] registerOTel failed; tracing disabled.', err)
+}
