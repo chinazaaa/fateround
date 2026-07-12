@@ -48,6 +48,8 @@ export type GameType =
   | 'word_rush'
   | 'quick_draw'
   | 'ayo'
+  | 'crossword'
+  | 'word_search'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'

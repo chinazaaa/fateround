@@ -82,6 +82,8 @@ export const gameTypeEnum = z.enum([
   'quiplash',
   'word_rush',
   'quick_draw',
+  'crossword',
+  'word_search',
 ])
 
 export const participantModeEnum = z.enum(['import', 'joiners', 'voters'])

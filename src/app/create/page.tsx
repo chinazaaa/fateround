@@ -72,6 +72,8 @@ import {
   isWordRushGame,
   isICallOnGame,
   isSudokuGame,
+  isCrosswordGame,
+  isWordSearchGame,
   isWordHuntGame,
   isMafiaGame,
   isMatchingPairsGame,
@@ -226,10 +228,30 @@ import {
 } from '@/lib/npat'
 import { WORD_HUNT_DEFAULT_MAX_PLAYERS, WORD_HUNT_DEFAULT_TIMER, WORD_HUNT_TIMER_OPTIONS } from '@/lib/word-hunt'
 import { formatSudokuGameDuration, SUDOKU_GAME_DURATION_OPTIONS } from '@/lib/sudoku'
+import {
+  formatCrosswordGameDuration,
+  CROSSWORD_GAME_DURATION_OPTIONS,
+  CROSSWORD_DEFAULT_DURATION,
+  CROSSWORD_DIFFICULTIES,
+  CROSSWORD_DEFAULT_DIFFICULTY,
+  type CrosswordDifficulty,
+} from '@/lib/crossword'
+import { crosswordThemeOptions, CROSSWORD_DEFAULT_THEME } from '@/lib/crossword-puzzles'
+import {
+  formatWordSearchGameDuration,
+  WORD_SEARCH_GAME_DURATION_OPTIONS,
+  WORD_SEARCH_DEFAULT_DURATION,
+  WORD_SEARCH_DIFFICULTIES,
+  WORD_SEARCH_DEFAULT_DIFFICULTY,
+  type WordSearchDifficulty,
+} from '@/lib/word-search'
+import { wordSearchThemeOptions, WORD_SEARCH_DEFAULT_THEME } from '@/lib/word-search-puzzles'
 import { MATCHING_PAIRS_GAME_DURATION_OPTIONS, formatMatchingPairsGameDuration } from '@/lib/memory-match'
 import {
   DESCRIBE_IT_DEFAULT_ROUNDS,
+  DESCRIBE_IT_DEFAULT_MAX_PLAYERS,
   DESCRIBE_IT_DEFAULT_TURN_SECONDS,
+  DESCRIBE_IT_MAX_PLAYER_OPTIONS,
   DESCRIBE_IT_MIN_PLAYERS,
   DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
   DESCRIBE_IT_ROUND_OPTIONS,
@@ -279,7 +301,7 @@ function CreateGameInner() {
     isPublic: false,
     describe_it_num_teams: 2,
     describe_it_mode: 'team',
-    quick_draw_variant: 'lie',
+    quick_draw_variant: 'guess',
     quick_draw_play_mode: 'team',
     quick_draw_num_teams: 2,
     word_rush_num_teams: 2,
@@ -368,8 +390,17 @@ function CreateGameInner() {
   const [npatMaxPlayers, setNpatMaxPlayers] = useState(NPAT_DEFAULT_MAX_PLAYERS)
   const [sudokuMaxPlayers, setSudokuMaxPlayers] = useState(20)
   const [sudokuGameDuration, setSudokuGameDuration] = useState(0)
+  const [crosswordMaxPlayers, setCrosswordMaxPlayers] = useState(20)
+  const [crosswordGameDuration, setCrosswordGameDuration] = useState<number>(CROSSWORD_DEFAULT_DURATION)
+  const [crosswordTheme, setCrosswordTheme] = useState<string>(CROSSWORD_DEFAULT_THEME)
+  const [crosswordDifficulty, setCrosswordDifficulty] = useState<CrosswordDifficulty>(CROSSWORD_DEFAULT_DIFFICULTY)
+  const [wordSearchMaxPlayers, setWordSearchMaxPlayers] = useState(20)
+  const [wordSearchGameDuration, setWordSearchGameDuration] = useState<number>(WORD_SEARCH_DEFAULT_DURATION)
+  const [wordSearchTheme, setWordSearchTheme] = useState<string>(WORD_SEARCH_DEFAULT_THEME)
+  const [wordSearchDifficulty, setWordSearchDifficulty] = useState<WordSearchDifficulty>(WORD_SEARCH_DEFAULT_DIFFICULTY)
   const [wordHuntMaxPlayers, setWordHuntMaxPlayers] = useState(WORD_HUNT_DEFAULT_MAX_PLAYERS)
   const [wordRushMaxPlayers, setWordRushMaxPlayers] = useState(WORD_RUSH_DEFAULT_MAX_PLAYERS)
+  const [describeItMaxPlayers, setDescribeItMaxPlayers] = useState(DESCRIBE_IT_DEFAULT_MAX_PLAYERS)
   const [wordHuntTimer, setWordHuntTimer] = useState(WORD_HUNT_DEFAULT_TIMER)
   const [npatGameDuration, setNpatGameDuration] = useState(NPAT_DEFAULT_GAME_DURATION)
   const [npatMarkingTimer, setNpatMarkingTimer] = useState(NPAT_DEFAULT_MARKING_TIMER)
@@ -455,6 +486,7 @@ function CreateGameInner() {
     setSnakeLadderMaxPlayers((v) => clamp('snake_and_ladder', v))
     setNpatMaxPlayers((v) => clamp('i_call_on', v))
     setWordRushMaxPlayers((v) => clamp('word_rush', v))
+    setDescribeItMaxPlayers((v) => clamp('describe_it', v))
   }, [lobbyLimits])
 
   useEffect(() => {
@@ -737,6 +769,8 @@ function CreateGameInner() {
   const isMafia = isMafiaGame(settings.game_type)
   const isNpat = isICallOnGame(settings.game_type)
   const isSudoku = isSudokuGame(settings.game_type)
+  const isCrossword = isCrosswordGame(settings.game_type)
+  const isWordSearch = isWordSearchGame(settings.game_type)
   const isWordHunt = isWordHuntGame(settings.game_type)
   const isMatchingPairs = isMatchingPairsGame(settings.game_type)
   const showViewerToggle = gameSupportsViewerSetting(settings.game_type)
@@ -847,6 +881,8 @@ function CreateGameInner() {
     isWordRush ||
     isNpat ||
     isSudoku ||
+    isCrossword ||
+    isWordSearch ||
     isWordHunt ||
     isMatchingPairs
   const isTriviaQuickCreate = isTrivia
@@ -1017,6 +1053,20 @@ function CreateGameInner() {
           }
         : {}),
       ...(isSudokuGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+          }
+        : {}),
+      ...(isCrosswordGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+          }
+        : {}),
+      ...(isWordSearchGame(type)
         ? {
             participant_mode: 'joiners' as const,
             anonymous: true,
@@ -1449,13 +1499,19 @@ function CreateGameInner() {
                                       ? npatMaxPlayers
                                       : isSudoku
                                         ? sudokuMaxPlayers
-                                        : isWordHunt
-                                          ? wordHuntMaxPlayers
-                                          : isWordRush
-                                            ? wordRushMaxPlayers
-                                            : isMatchingPairs
-                                              ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
-                                              : undefined,
+                                        : isCrossword
+                                          ? crosswordMaxPlayers
+                                          : isWordSearch
+                                            ? wordSearchMaxPlayers
+                                            : isWordHunt
+                                              ? wordHuntMaxPlayers
+                                              : isWordRush
+                                                ? wordRushMaxPlayers
+                                                : isDescribeIt
+                                                  ? describeItMaxPlayers
+                                                  : isMatchingPairs
+                                                    ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
+                                                    : undefined,
           operative_timer_seconds: isCodewords
             ? codewordsOperativeTimer
             : isNpat
@@ -1487,11 +1543,15 @@ function CreateGameInner() {
                     ? scrabbleGameDuration
                     : isSudoku
                       ? sudokuGameDuration
-                      : isMatchingPairs
-                        ? (settings.game_duration_seconds ?? 0)
-                        : isQuickDraw
-                          ? quickDrawVoteTimer
-                          : undefined,
+                      : isCrossword
+                        ? crosswordGameDuration
+                        : isWordSearch
+                          ? wordSearchGameDuration
+                          : isMatchingPairs
+                            ? (settings.game_duration_seconds ?? 0)
+                            : isQuickDraw
+                              ? quickDrawVoteTimer
+                              : undefined,
           whot_pick3_enabled: isWhot ? whotPick3Enabled : undefined,
           whot_pick2_stacking: isWhot ? whotPick2Stacking : undefined,
           whot_cards_enabled: isWhot ? whotCardsEnabled : undefined,
@@ -1506,6 +1566,10 @@ function CreateGameInner() {
           scrabble_clock_seconds: isScrabble && scrabbleClockMode === 'chess' ? scrabbleClockSeconds : undefined,
           chess_board_theme: isChess ? chessBoardTheme : undefined,
           chess_piece_set: isChess ? chessPieceSet : undefined,
+          crossword_theme: isCrossword ? crosswordTheme : undefined,
+          crossword_difficulty: isCrossword ? crosswordDifficulty : undefined,
+          word_search_theme: isWordSearch ? wordSearchTheme : undefined,
+          word_search_difficulty: isWordSearch ? wordSearchDifficulty : undefined,
           elimination_config:
             eliminationEnabled && isEliminationCompatible
               ? eliminationMode === 'per-round'
@@ -2810,6 +2874,19 @@ function CreateGameInner() {
                     </select>
                   </Field>
                 )}
+                <Field label={`Max players (up to ${DESCRIBE_IT_MAX_PLAYER_OPTIONS.at(-1)})`}>
+                  <select
+                    value={describeItMaxPlayers}
+                    onChange={(e) => setDescribeItMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {DESCRIBE_IT_MAX_PLAYER_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
                 <Field
                   label={
                     settings.describe_it_mode === 'individual'
@@ -3458,6 +3535,146 @@ function CreateGameInner() {
                 <p className="text-faint text-sm leading-relaxed">
                   Two teams of spymasters and operatives. Spymasters give one-word clues — operatives guess words on the
                   5×5 grid. First team to find all their words wins. Avoid the assassin!
+                </p>
+              </SettingsGroup>
+            ) : isWordSearch ? (
+              <SettingsGroup title="Word Search room">
+                <Field label={`Max players (${effectiveLimits.word_search.min}–${effectiveLimits.word_search.max})`}>
+                  <select
+                    value={wordSearchMaxPlayers}
+                    onChange={(e) => setWordSearchMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {playerCountOptions(effectiveLimits.word_search.min, effectiveLimits.word_search.max).map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Theme">
+                  <select
+                    value={wordSearchTheme}
+                    onChange={(e) => setWordSearchTheme(e.target.value)}
+                    className="input-field w-full"
+                  >
+                    {wordSearchThemeOptions().map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Difficulty">
+                  <div className="grid grid-cols-3 gap-3">
+                    {WORD_SEARCH_DIFFICULTIES.map((difficulty) => (
+                      <button
+                        key={difficulty}
+                        type="button"
+                        onClick={() => setWordSearchDifficulty(difficulty)}
+                        className={[
+                          'rounded-2xl border-2 px-4 py-3 text-center capitalize',
+                          wordSearchDifficulty === difficulty
+                            ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                            : 'border-[var(--border-strong)] text-muted',
+                        ].join(' ')}
+                      >
+                        <span className="font-bold block text-base">{difficulty}</span>
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+                <Field label="Max time limit">
+                  <select
+                    value={wordSearchGameDuration}
+                    onChange={(e) => setWordSearchGameDuration(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {WORD_SEARCH_GAME_DURATION_OPTIONS.map((seconds) => (
+                      <option key={seconds} value={seconds}>
+                        {seconds === 0 ? 'No timer' : formatWordSearchGameDuration(seconds)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {showViewerToggle && (
+                  <Field label="Late joiners">
+                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_search" />
+                  </Field>
+                )}
+                <p className="text-faint text-sm leading-relaxed">
+                  Race to find every hidden word in the shared grid. Drag from the first letter to the last — each word
+                  scores points, with a bonus for finding it first. Harder puzzles hide words diagonally and backwards.
+                </p>
+              </SettingsGroup>
+            ) : isCrossword ? (
+              <SettingsGroup title="Crossword room">
+                <Field label={`Max players (${effectiveLimits.crossword.min}–${effectiveLimits.crossword.max})`}>
+                  <select
+                    value={crosswordMaxPlayers}
+                    onChange={(e) => setCrosswordMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {playerCountOptions(effectiveLimits.crossword.min, effectiveLimits.crossword.max).map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Theme">
+                  <select
+                    value={crosswordTheme}
+                    onChange={(e) => setCrosswordTheme(e.target.value)}
+                    className="input-field w-full"
+                  >
+                    {crosswordThemeOptions().map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Difficulty">
+                  <div className="grid grid-cols-3 gap-3">
+                    {CROSSWORD_DIFFICULTIES.map((difficulty) => (
+                      <button
+                        key={difficulty}
+                        type="button"
+                        onClick={() => setCrosswordDifficulty(difficulty)}
+                        className={[
+                          'rounded-2xl border-2 px-4 py-3 text-center capitalize',
+                          crosswordDifficulty === difficulty
+                            ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                            : 'border-[var(--border-strong)] text-muted',
+                        ].join(' ')}
+                      >
+                        <span className="font-bold block text-base">{difficulty}</span>
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+                <Field label="Max time limit">
+                  <select
+                    value={crosswordGameDuration}
+                    onChange={(e) => setCrosswordGameDuration(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {CROSSWORD_GAME_DURATION_OPTIONS.map((seconds) => (
+                      <option key={seconds} value={seconds}>
+                        {seconds === 0 ? 'No timer' : formatCrosswordGameDuration(seconds)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {showViewerToggle && (
+                  <Field label="Late joiners">
+                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="crossword" />
+                  </Field>
+                )}
+                <p className="text-faint text-sm leading-relaxed">
+                  Race to fill the shared crossword. Each word you complete first scores points; reveal a letter for a
+                  small penalty. Fastest solver — or the highest score when time runs out — wins.
                 </p>
               </SettingsGroup>
             ) : isSudoku ? (

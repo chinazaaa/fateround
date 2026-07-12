@@ -17,6 +17,8 @@ import {
   isSecretMessageGame,
   isSnakeAndLadderGame,
   isSudokuGame,
+  isCrosswordGame,
+  isWordSearchGame,
   isTicTacToeGame,
   isTriviaGame,
   isTwoTruthsGame,
@@ -89,7 +91,10 @@ export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
     !isChessGame(gameType) &&
     !isCheckersGame(gameType) &&
     !isAyoGame(gameType) &&
-    !isScrabbleGame(gameType)
+    !isScrabbleGame(gameType) &&
+    !isSudokuGame(gameType) &&
+    !isCrosswordGame(gameType) &&
+    !isWordSearchGame(gameType)
   )
 }
 

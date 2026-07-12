@@ -321,6 +321,134 @@ export function getBoardPalette(themeId?: string | null): MonopolyBoardPalette {
   return getMonopolyEdition(themeId).boardPalette
 }
 
+/**
+ * Split a tile name into short lines — full words, split across at most two rows.
+ * Mobile port of the web `boardSpaceLines` (src/components/monopoly/monopoly-ui.ts).
+ * Emoji glyphs are intentionally omitted here — the board renders the type icon
+ * separately, so corner tiles show e.g. "GO" + the icon rather than a baked glyph.
+ */
+export function boardSpaceLines(
+  name: string,
+  type: MonopolySpaceType,
+  spaceIndex?: number,
+  themeId?: string | null
+): string[] {
+  const displayName = spaceIndex != null ? themedSpaceName(name, spaceIndex, themeId) : name
+  const known: Record<string, string[]> = {
+    GO: ['GO'],
+    Jail: ['Jail'],
+    'Free Parking': ['Free', 'Parking'],
+    'Go To Jail': ['Go To', 'Jail'],
+    'Income Tax': ['Income', 'Tax'],
+    'Super Tax': ['Super', 'Tax'],
+    'Community Chest': ['Community', 'Chest'],
+    Chance: ['Chance'],
+    'Old Kent Road': ['Old Kent', 'Road'],
+    'Whitechapel Road': ['Whitechapel', 'Road'],
+    'The Angel Islington': ['Angel', 'Islington'],
+    'Euston Road': ['Euston', 'Road'],
+    'Pentonville Road': ['Pentonville', 'Road'],
+    'Pall Mall': ['Pall', 'Mall'],
+    Whitehall: ['Whitehall'],
+    'Northumberland Avenue': ['Northumberland', 'Avenue'],
+    'Bow Street': ['Bow', 'Street'],
+    'Marlborough Street': ['Marlborough', 'Street'],
+    'Vine Street': ['Vine', 'Street'],
+    'The Strand': ['The', 'Strand'],
+    'Fleet Street': ['Fleet', 'Street'],
+    'Trafalgar Square': ['Trafalgar', 'Square'],
+    'Leicester Square': ['Leicester', 'Square'],
+    'Coventry Street': ['Coventry', 'Street'],
+    Piccadilly: ['Piccadilly'],
+    'Regent Street': ['Regent', 'Street'],
+    'Oxford Street': ['Oxford', 'Street'],
+    'Bond Street': ['Bond', 'Street'],
+    'Park Lane': ['Park', 'Lane'],
+    Mayfair: ['Mayfair'],
+    "King's Cross Station": ["King's Cross", 'Station'],
+    'Marylebone Station': ['Marylebone', 'Station'],
+    'Fenchurch Street Station': ['Fenchurch St', 'Station'],
+    'Liverpool Street Station': ['Liverpool', 'Station'],
+    'Electric Company': ['Electric', 'Company'],
+    'Water Works': ['Water', 'Works'],
+  }
+  if (known[displayName]) return known[displayName]
+  if (type === 'station') {
+    const label = displayName.replace(' Station', '')
+    const words = label.split(' ')
+    if (words.length >= 2) return [words.slice(0, -1).join(' '), 'Station']
+    return [label, 'Station']
+  }
+  if (type === 'utility') {
+    const parts = displayName.split(' ')
+    return parts.length > 1 ? [parts[0]!, parts.slice(1).join(' ')] : [displayName]
+  }
+  if (displayName.endsWith(' Road')) return [displayName.replace(' Road', ''), 'Road']
+  if (displayName.endsWith(' Street')) return [displayName.replace(' Street', ''), 'Street']
+  if (displayName.endsWith(' Square')) return [displayName.replace(' Square', ''), 'Square']
+  if (displayName.endsWith(' Avenue')) return [displayName.replace(' Avenue', ''), 'Avenue']
+  const parts = displayName.split(' ')
+  if (parts.length <= 2) return parts
+  return [parts.slice(0, 2).join(' '), parts.slice(2).join(' ')]
+}
+
+const MOBILE_ABBR: Record<string, string> = {
+  Avenue: 'Ave',
+  Street: 'St',
+  Road: 'Rd',
+  Station: 'Stn',
+  Square: 'Sq',
+  Company: 'Co',
+  Islington: 'Isling.',
+  Northumberland: 'North',
+  Whitechapel: 'W.Chapel',
+  Marlborough: 'Marlb.',
+  Leicester: 'Leices.',
+  Fenchurch: 'Fench.',
+  Liverpool: "L'pool",
+  Community: 'Comm.',
+  Electric: 'Elect.',
+}
+
+/**
+ * Abbreviated word list sized for the tiny mobile board tiles.
+ * Mobile port of the web `mobileBoardSpaceLines`. Each entry is rendered on its
+ * own line so long names ("Marlborough Street" → "Marlb." / "St") never clip.
+ */
+export function mobileBoardSpaceLines(
+  name: string,
+  type: MonopolySpaceType,
+  spaceIndex?: number,
+  themeId?: string | null
+): string[] {
+  const fullLines = boardSpaceLines(name, type, spaceIndex, themeId)
+  const words: string[] = []
+  for (const line of fullLines) {
+    let shortened = line
+    if (shortened.includes('AHMADU')) {
+      words.push('AHMADU B.')
+      continue
+    }
+    if (shortened.includes('BELLO')) {
+      if (shortened.includes('WAY')) words.push('WAY')
+      continue
+    }
+    if (shortened.trim() === 'TIN CAN' || shortened.includes('NEPA') || shortened.trim() === 'MILE 12') {
+      words.push(shortened.includes('NEPA') ? 'NEPA /' : shortened.trim())
+      continue
+    }
+    for (const [full, short] of Object.entries(MOBILE_ABBR)) {
+      if (shortened === full) shortened = short
+      else if (shortened.includes(full)) shortened = shortened.replace(full, short)
+    }
+    for (const word of shortened.trim().split(/\s+/)) {
+      if (word.length > 8) words.push(`${word.slice(0, 7)}.`)
+      else if (word) words.push(word)
+    }
+  }
+  return words
+}
+
 export function getEditionSubtitle(themeId?: string | null): string {
   return getMonopolyEdition(themeId).editionSubtitle
 }

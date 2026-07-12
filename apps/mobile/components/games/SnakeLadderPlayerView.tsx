@@ -12,7 +12,8 @@ import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChro
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { postSnakeLadderRoll } from '@/lib/game-api'
+import { postSnakeLadderExpireTurn, postSnakeLadderRoll } from '@/lib/game-api'
+import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { SNAKE_LADDER_PLAYER_STATE_SELECT, SNAKE_LADDER_SESSION_SELECT } from '@/lib/supabase-selects'
@@ -102,6 +103,14 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
   const timerActive = bootstrap.screen === 'playing' && session?.phase !== 'finished'
   const hasTimer = timerActive && !!session?.turn_deadline_at
   const secondsLeft = useAbsoluteDeadline(session?.turn_deadline_at, hasTimer)
+
+  // Advance a stalled turn when its timer runs out. Any active client fires it
+  // (idempotent + deadline-gated server-side) — matches web.
+  useTurnExpiryTimer({
+    deadlineAt: session?.turn_deadline_at,
+    enabled: hasTimer,
+    onExpire: () => postSnakeLadderExpireTurn(bootstrap.code).then(() => bootstrap.load()),
+  })
 
   useGameTurnAlerts({
     gameCode: bootstrap.code,

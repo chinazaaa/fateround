@@ -793,10 +793,14 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
       tab={tab}
       onTabChange={setTab}
       primaryKind={primaryKind}
+      game={game}
+      players={players}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={load}
       showTabs={showTabs}
       gameStarted={gameStarted}
       header={<HostGameHeader game={game} />}
-      primary={hostPlays ? interactivePlay : watchRound}
+      primary={<div className="max-w-lg mx-auto w-full">{hostPlays ? interactivePlay : watchRound}</div>}
       manage={manage}
       finished={finished}
     />

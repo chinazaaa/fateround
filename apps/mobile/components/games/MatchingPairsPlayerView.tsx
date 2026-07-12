@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { ScrollView, StyleSheet, Text, View } from 'react-native'
 import {
   type Game,
   type MatchingPairsMetadata,
@@ -20,14 +20,10 @@ import {
   pairIcon,
   parseMatchingPairsMetadata,
 } from '@fateround/shared/memory-match'
-import {
-  ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
-  finalResultsAutoRevealSeconds,
-} from '@fateround/shared/round-timing'
+import { ROUND_RESULTS_AUTO_ADVANCE_SECONDS, finalResultsAutoRevealSeconds } from '@fateround/shared/round-timing'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { LobbyView } from '@/components/LobbyView'
 import { GameFinishedScreen, GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
@@ -38,11 +34,7 @@ import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postMatchingPairsFlip } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
-import {
-  MEMORY_MATCH_PROGRESS_SELECT,
-  MEMORY_MATCH_SUBMISSION_SELECT,
-  ROUND_SELECT,
-} from '@/lib/supabase-selects'
+import { MEMORY_MATCH_PROGRESS_SELECT, MEMORY_MATCH_SUBMISSION_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { MatchingPairsGameTimerBar } from '@/components/games/matching-pairs/MatchingPairsGameTimerBar'
 import { MatchingPairsOpponentStrip } from '@/components/games/matching-pairs/MatchingPairsOpponentStrip'
@@ -121,7 +113,10 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           .from('memory_match_submissions')
           .select(MEMORY_MATCH_SUBMISSION_SELECT)
           .eq('game_id', gameCode.toUpperCase()),
-        getSupabase().from('memory_match_progress').select(MEMORY_MATCH_PROGRESS_SELECT_TIMED).eq('game_id', gameCode.toUpperCase()),
+        getSupabase()
+          .from('memory_match_progress')
+          .select(MEMORY_MATCH_PROGRESS_SELECT_TIMED)
+          .eq('game_id', gameCode.toUpperCase()),
       ])
 
       if (roundRes.error || subsRes.error || progRes.error) return { state: null, ok: false }
@@ -170,10 +165,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           .select(MEMORY_MATCH_SUBMISSION_SELECT)
           .eq('game_id', gameCode.toUpperCase())
           .eq('round_id', roundData.id),
-        getSupabase()
-          .from('memory_match_progress')
-          .select(MEMORY_MATCH_PROGRESS_SELECT)
-          .eq('round_id', roundData.id),
+        getSupabase().from('memory_match_progress').select(MEMORY_MATCH_PROGRESS_SELECT).eq('round_id', roundData.id),
       ])
 
       const mySubs = ((subs as MatchingPairsSubmission[]) ?? []).filter((s) => s.player_id === playerId)
@@ -193,7 +185,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       }
 
       setBoard({ cardOrder, cardStates, firstFlipped: null, locked: false })
-      const lastPoints = mySubs.filter((s) => s.is_match).length > 0 ? mySubs[mySubs.length - 1]?.points_after ?? 0 : 0
+      const lastPoints =
+        mySubs.filter((s) => s.is_match).length > 0 ? (mySubs[mySubs.length - 1]?.points_after ?? 0) : 0
       setPoints(lastPoints)
 
       let currentStreak = 0
@@ -223,10 +216,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   // ── Memorization countdown ────────────────────────────────────────────────
   useEffect(() => {
     if (memorizeCountdown === null || memorizeCountdown <= 0) return
-    const t = setTimeout(
-      () => setMemorizeCountdown((c) => (c !== null ? (c <= 1 ? null : c - 1) : null)),
-      1000
-    )
+    const t = setTimeout(() => setMemorizeCountdown((c) => (c !== null ? (c <= 1 ? null : c - 1) : null)), 1000)
     return () => clearTimeout(t)
   }, [memorizeCountdown])
 
@@ -253,9 +243,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     [bootstrap.players]
   )
   const layout = meta ? matchingPairsGridLayout(meta.gridSizePairs) : { cols: 4, rows: 4 }
-  const me = bootstrap.myPlayerId
-    ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
-    : undefined
+  const me = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
   const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
 
   // ── Multi-round state ─────────────────────────────────────────────────────
@@ -290,7 +278,11 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     if (board.cardStates[index] === 'matched' || board.cardStates[index] === 'flipped') return
 
     if (board.firstFlipped === null) {
-      setBoard({ ...board, cardStates: board.cardStates.map((s, i) => (i === index ? 'flipped' : s)), firstFlipped: index })
+      setBoard({
+        ...board,
+        cardStates: board.cardStates.map((s, i) => (i === index ? 'flipped' : s)),
+        firstFlipped: index,
+      })
       return
     }
 
@@ -381,9 +373,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       timerSeconds
     )
     const nameOf = (id: string) => bootstrap.players.find((p) => p.id === id)?.name ?? 'Player'
-    const visibleRows = scored.filter((row) =>
-      bootstrap.players.some((p) => p.id === row.playerId && !p.spectator)
-    )
+    const visibleRows = scored.filter((row) => bootstrap.players.some((p) => p.id === row.playerId && !p.spectator))
     const entries = visibleRows.map((row) => {
       const bits = [`${row.pairsMatched} pair${row.pairsMatched === 1 ? '' : 's'}`]
       if (row.longestStreak > 1) bits.push(`🔥${row.longestStreak}`)
@@ -460,124 +450,117 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       title={batch3GameLabel('matching_pairs')}
       subtitle={`${roundLabel}Score ${points} · Streak ${streak}`}
     >
-      {isViewer && me && bootstrap.myPlayerId ? (
-        <ViewerModeBanner
+      <ScrollView contentContainerStyle={styles.content}>
+        <MatchingPairsGameTimerBar
           gameCode={bootstrap.code}
-          playerId={bootstrap.myPlayerId}
           game={bootstrap.game}
-          player={me}
-          players={bootstrap.players}
-          onPromoted={() => void bootstrap.load()}
+          roundStartedAt={round?.started_at ?? null}
         />
-      ) : null}
-      <MatchingPairsGameTimerBar
-        gameCode={bootstrap.code}
-        game={bootstrap.game}
-        roundStartedAt={round?.started_at ?? null}
-      />
-      {finished && meta ? (
-        <MatchingPairsWaitingForOthers
-          pairsMatched={pairsMatched}
-          gridSizePairs={meta.gridSizePairs}
-          finishRank={finishRank}
-          allProgress={allProgress}
-          myPlayerId={bootstrap.myPlayerId}
-          playerName={playerNameOf}
-          totalPoints={points}
-          wrongAttempts={wrongAttempts}
-          currentStreak={streak}
-          roundId={round?.id ?? null}
-        />
-      ) : isViewer ? (
-        <Text style={styles.waiting}>Watching — matches resolve on each player's own board.</Text>
-      ) : (
-        <>
-          {totalRounds > 1 && (
-            <Text style={styles.roundIndicator}>
-              Round {currentRoundNumber}/{totalRounds}
-            </Text>
-          )}
-          <MatchingPairsScoreHeader
-            points={points}
+        {finished && meta ? (
+          <MatchingPairsWaitingForOthers
             pairsMatched={pairsMatched}
-            gridSizePairs={meta?.gridSizePairs ?? 0}
-            streak={streak}
+            gridSizePairs={meta.gridSizePairs}
+            finishRank={finishRank}
+            allProgress={allProgress}
+            myPlayerId={bootstrap.myPlayerId}
+            playerName={playerNameOf}
+            totalPoints={points}
             wrongAttempts={wrongAttempts}
+            currentStreak={streak}
+            roundId={round?.id ?? null}
           />
-          {memorizing && (
-            <View style={styles.memorizeBanner}>
-              <Text style={styles.memorizeText}>Memorize card positions!</Text>
-              <Text style={styles.memorizeCount}>{memorizeCountdown}s</Text>
-            </View>
-          )}
-          {!board || !meta ? (
-            <Text style={styles.waiting}>Loading board…</Text>
-          ) : (
-            <View style={styles.boardWrap}>
-              <MatchingPairsFlash
-                flash={flash}
-                pointsPerPair={MATCHING_PAIRS_POINTS_PER_PAIR}
-                streakBonus={MATCHING_PAIRS_STREAK_BONUS}
-              />
-              <View style={[styles.grid, { width: layout.cols * 72 }]}>
-                {board.cardOrder.map((pairIndex, index) => {
-                  const state = board.cardStates[index]
-                  const showFace = memorizing || state === 'flipped' || state === 'matched'
-                  return (
-                    <MemoryCard
-                      key={index}
-                      state={state}
-                      showFace={showFace}
-                      icon={pairIcon(meta, pairIndex)}
-                      color={pairColor(meta, pairIndex)}
-                      size={64}
-                      disabled={memorizing || state === 'matched' || board.locked}
-                      onPress={() => void onCardPress(index)}
-                    />
-                  )
-                })}
-              </View>
-            </View>
-          )}
-          {meta && allProgress.length > 1 && (
-            <MatchingPairsOpponentStrip
-              allProgress={allProgress}
-              myPlayerId={bootstrap.myPlayerId}
-              playerName={playerNameOf}
-              gridSizePairs={meta.gridSizePairs}
-              roundId={round?.id ?? null}
+        ) : isViewer ? (
+          <Text style={styles.waiting}>Watching — matches resolve on each player's own board.</Text>
+        ) : (
+          <>
+            {totalRounds > 1 && (
+              <Text style={styles.roundIndicator}>
+                Round {currentRoundNumber}/{totalRounds}
+              </Text>
+            )}
+            <MatchingPairsScoreHeader
+              points={points}
+              pairsMatched={pairsMatched}
+              gridSizePairs={meta?.gridSizePairs ?? 0}
+              streak={streak}
+              wrongAttempts={wrongAttempts}
             />
-          )}
-        </>
-      )}
+            {memorizing && (
+              <View style={styles.memorizeBanner}>
+                <Text style={styles.memorizeText}>Memorize card positions!</Text>
+                <Text style={styles.memorizeCount}>{memorizeCountdown}s</Text>
+              </View>
+            )}
+            {!board || !meta ? (
+              <Text style={styles.waiting}>Loading board…</Text>
+            ) : (
+              <View style={styles.boardWrap}>
+                <MatchingPairsFlash
+                  flash={flash}
+                  pointsPerPair={MATCHING_PAIRS_POINTS_PER_PAIR}
+                  streakBonus={MATCHING_PAIRS_STREAK_BONUS}
+                />
+                <View style={[styles.grid, { width: layout.cols * 72 }]}>
+                  {board.cardOrder.map((pairIndex, index) => {
+                    const state = board.cardStates[index]
+                    const showFace = memorizing || state === 'flipped' || state === 'matched'
+                    return (
+                      <MemoryCard
+                        key={index}
+                        state={state}
+                        showFace={showFace}
+                        icon={pairIcon(meta, pairIndex)}
+                        color={pairColor(meta, pairIndex)}
+                        size={64}
+                        disabled={memorizing || state === 'matched' || board.locked}
+                        onPress={() => void onCardPress(index)}
+                      />
+                    )
+                  })}
+                </View>
+              </View>
+            )}
+            {meta && allProgress.length > 1 && (
+              <MatchingPairsOpponentStrip
+                allProgress={allProgress}
+                myPlayerId={bootstrap.myPlayerId}
+                playerName={playerNameOf}
+                gridSizePairs={meta.gridSizePairs}
+                roundId={round?.id ?? null}
+              />
+            )}
+          </>
+        )}
+      </ScrollView>
     </GameShell>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  waiting: { color: theme.textMuted, textAlign: 'center', marginTop: 24, fontSize: 16 },
-  roundIndicator: {
-    color: theme.textMuted,
-    textAlign: 'center',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 4,
-  },
-  boardWrap: { position: 'relative', alignSelf: 'center' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignSelf: 'center', marginTop: 12 },
-  memorizeBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    marginTop: 8,
-    // Preview banner — brand indigo, kept consistent across themes.
-    backgroundColor: '#6366f1',
-  },
-  memorizeText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  memorizeCount: { color: '#fff', fontWeight: '800', fontSize: 24 },
-})
+    content: { paddingBottom: 32, gap: 12 },
+    waiting: { color: theme.textMuted, textAlign: 'center', marginTop: 24, fontSize: 16 },
+    roundIndicator: {
+      color: theme.textMuted,
+      textAlign: 'center',
+      fontSize: 12,
+      fontWeight: '600',
+      marginTop: 4,
+    },
+    boardWrap: { position: 'relative', alignSelf: 'center' },
+    grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignSelf: 'center', marginTop: 12 },
+    memorizeBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      borderRadius: 12,
+      marginTop: 8,
+      // Preview banner — brand indigo, kept consistent across themes.
+      backgroundColor: '#6366f1',
+    },
+    memorizeText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+    memorizeCount: { color: '#fff', fontWeight: '800', fontSize: 24 },
+  })

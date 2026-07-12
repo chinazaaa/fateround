@@ -20,6 +20,7 @@ import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { PollReactionBar } from '@/components/games/poll/PollReactionBar'
+import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useRoundTimer } from '@/hooks/useRoundTimer'
@@ -67,6 +68,8 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
   const [submissionType, setSubmissionType] = useState<HotSeatSubmissionType>('compliment')
   const [text, setText] = useState('')
   const [submitted, setSubmitted] = useState(false)
+  const scrollRef = useRef<ScrollView>(null)
+  const scrollInputIntoView = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)
   const [results, setResults] = useState<HotSeatSubmission[]>([])
   const [allSubmissions, setAllSubmissions] = useState<HotSeatSubmissionRow[]>([])
   const [acting, setActing] = useState(false)
@@ -114,8 +117,7 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
 
   const currentRound = useMemo(() => {
     if (!bootstrap.game) return null
-    const byPointer =
-      state.rounds.find((r) => r.round_number === bootstrap.game!.current_round_number) ?? null
+    const byPointer = state.rounds.find((r) => r.round_number === bootstrap.game!.current_round_number) ?? null
     const active = state.rounds.find((r) => r.status === 'active') ?? null
     if (active && byPointer && active.id !== byPointer.id && byPointer.status === 'finished') return active
     return byPointer ?? active
@@ -179,10 +181,7 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
   }, [submit])
 
   const writePhaseActive =
-    bootstrap.screen === 'playing' &&
-    currentRound?.status === 'active' &&
-    !isInHotSeat &&
-    !submitted
+    bootstrap.screen === 'playing' && currentRound?.status === 'active' && !isInHotSeat && !submitted
 
   // Countdown for the writing phase (auto-submits whatever's typed on expiry).
   const timeLeft = useRoundTimer({
@@ -193,20 +192,14 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
   })
 
   const showingResults =
-    bootstrap.screen === 'playing' &&
-    bootstrap.game?.status === 'active' &&
-    currentRound?.status === 'finished'
+    bootstrap.screen === 'playing' && bootstrap.game?.status === 'active' && currentRound?.status === 'finished'
 
   const isLastRound =
-    !!currentRound &&
-    !!bootstrap.game &&
-    (currentRound.round_number ?? 0) >= (bootstrap.game.rounds_count ?? 0)
+    !!currentRound && !!bootstrap.game && (currentRound.round_number ?? 0) >= (bootstrap.game.rounds_count ?? 0)
 
   const nextRoundCountdown = useDeadlineCountdown(
     currentRound?.ended_at,
-    isLastRound
-      ? finalResultsAutoRevealSeconds(bootstrap.game?.game_type)
-      : ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
+    isLastRound ? finalResultsAutoRevealSeconds(bootstrap.game?.game_type) : ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
     !!showingResults
   )
 
@@ -314,7 +307,7 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
       title={bootstrap.game.title || batch9GameLabel('hot_seat')}
       subtitle={`Round ${currentRound.round_number} / ${bootstrap.game.rounds_count ?? '?'}`}
     >
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAwareGameScroll ref={scrollRef} contentContainerStyle={styles.content}>
         <View style={styles.spotlight}>
           <Text style={styles.spotlightEmoji}>🪑🔥</Text>
           <Text style={styles.spotlightLabel}>In the hot seat</Text>
@@ -330,10 +323,7 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
               results.map((row) => {
                 const meta = hotSeatTypeStyle(row.submission_type)
                 return (
-                  <View
-                    key={row.id}
-                    style={[styles.resultRow, { borderColor: meta.border, backgroundColor: meta.bg }]}
-                  >
+                  <View key={row.id} style={[styles.resultRow, { borderColor: meta.border, backgroundColor: meta.bg }]}>
                     <Text style={styles.resultEmoji}>{meta.emoji}</Text>
                     <Text style={styles.resultText}>{row.text}</Text>
                   </View>
@@ -380,6 +370,7 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
               placeholderTextColor={theme.textFaint}
               multiline
               maxLength={300}
+              onFocus={scrollInputIntoView}
             />
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <Pressable
@@ -391,104 +382,104 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
             </Pressable>
           </>
         )}
-      </ScrollView>
+      </KeyboardAwareGameScroll>
     </GameShell>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  content: { gap: 14, paddingBottom: 32 },
-  wait: { color: theme.textMuted, fontSize: 15 },
-  waiting: { color: theme.textMuted, fontSize: 14, textAlign: 'center', marginTop: 4 },
-  timerRow: { alignItems: 'center' },
-  spotlight: {
-    backgroundColor: theme.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#f59e0b66',
-    padding: 20,
-    alignItems: 'center',
-    gap: 6,
-  },
-  spotlightEmoji: { fontSize: 40 },
-  spotlightLabel: { color: '#fbbf24', fontSize: 12, textTransform: 'uppercase' },
-  spotlightName: { color: theme.text, fontSize: 28, fontWeight: '800' },
-  section: { color: theme.text, fontSize: 16, fontWeight: '600' },
-  typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  typeBtn: {
-    backgroundColor: theme.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  typeBtnActive: { borderColor: theme.primary },
-  typeText: { color: theme.text, fontSize: 13 },
-  input: {
-    backgroundColor: theme.surface,
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: 12,
-    color: theme.text,
-    fontSize: 16,
-    minHeight: 96,
-    padding: 12,
-    textAlignVertical: 'top',
-  },
-  primaryBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  // white on the solid rose submit button — intentional
-  primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  btnDisabled: { opacity: 0.5 },
-  error: { color: theme.error, fontSize: 14 },
-  doneBox: {
-    backgroundColor: '#14532d33',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#22c55e66',
-    padding: 16,
-  },
-  doneText: { color: '#86efac', fontSize: 15, fontWeight: '600', textAlign: 'center' },
-  results: { gap: 10 },
-  resultRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-  },
-  resultEmoji: { fontSize: 22 },
-  resultText: { color: theme.text, fontSize: 15, flex: 1, lineHeight: 21 },
-  muted: { color: theme.textFaint, fontSize: 14 },
-  recap: { gap: 16, marginTop: 8, width: '100%' },
-  recapHeading: {
-    color: theme.textMuted,
-    fontSize: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  recapRound: { gap: 8 },
-  recapRoundLabel: {
-    color: theme.textMuted,
-    fontSize: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  recapSpotlight: {
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#f59e0b66',
-    padding: 12,
-    alignItems: 'center',
-    gap: 2,
-  },
-  recapName: { color: theme.text, fontSize: 20, fontWeight: '800' },
-})
+    content: { gap: 14, paddingBottom: 32 },
+    wait: { color: theme.textMuted, fontSize: 15 },
+    waiting: { color: theme.textMuted, fontSize: 14, textAlign: 'center', marginTop: 4 },
+    timerRow: { alignItems: 'center' },
+    spotlight: {
+      backgroundColor: theme.surface,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: '#f59e0b66',
+      padding: 20,
+      alignItems: 'center',
+      gap: 6,
+    },
+    spotlightEmoji: { fontSize: 40 },
+    spotlightLabel: { color: '#fbbf24', fontSize: 12, textTransform: 'uppercase' },
+    spotlightName: { color: theme.text, fontSize: 28, fontWeight: '800' },
+    section: { color: theme.text, fontSize: 16, fontWeight: '600' },
+    typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    typeBtn: {
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    typeBtnActive: { borderColor: theme.primary },
+    typeText: { color: theme.text, fontSize: 13 },
+    input: {
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: 12,
+      color: theme.text,
+      fontSize: 16,
+      minHeight: 96,
+      padding: 12,
+      textAlignVertical: 'top',
+    },
+    primaryBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    // white on the solid rose submit button — intentional
+    primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+    btnDisabled: { opacity: 0.5 },
+    error: { color: theme.error, fontSize: 14 },
+    doneBox: {
+      backgroundColor: '#14532d33',
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: '#22c55e66',
+      padding: 16,
+    },
+    doneText: { color: '#86efac', fontSize: 15, fontWeight: '600', textAlign: 'center' },
+    results: { gap: 10 },
+    resultRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+      borderWidth: 1,
+      borderRadius: 12,
+      padding: 12,
+    },
+    resultEmoji: { fontSize: 22 },
+    resultText: { color: theme.text, fontSize: 15, flex: 1, lineHeight: 21 },
+    muted: { color: theme.textFaint, fontSize: 14 },
+    recap: { gap: 16, marginTop: 8, width: '100%' },
+    recapHeading: {
+      color: theme.textMuted,
+      fontSize: 12,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+    recapRound: { gap: 8 },
+    recapRoundLabel: {
+      color: theme.textMuted,
+      fontSize: 12,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+    recapSpotlight: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: '#f59e0b66',
+      padding: 12,
+      alignItems: 'center',
+      gap: 2,
+    },
+    recapName: { color: theme.text, fontSize: 20, fontWeight: '800' },
+  })

@@ -10,18 +10,8 @@ import {
   parsePickANumberPool,
   pollGameLabel,
 } from '@fateround/shared/poll-games'
-import {
-  HOT_SEAT_SUBMISSION_TYPES,
-  hotSeatPlayerDisplayName,
-  type HotSeatSubmission,
-} from '@fateround/shared/hot-seat'
-import {
-  getHotSeatSubmissions,
-  postEndRound,
-  postFinishGame,
-  postNextRound,
-  postPlayAgain,
-} from '@/lib/game-api'
+import { HOT_SEAT_SUBMISSION_TYPES, hotSeatPlayerDisplayName, type HotSeatSubmission } from '@fateround/shared/hot-seat'
+import { getHotSeatSubmissions, postEndRound, postFinishGame, postNextRound, postPlayAgain } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { PARTICIPANT_SELECT, ROUND_SELECT, VOTE_SELECT } from '@/lib/supabase-selects'
 import { PollRoundResults } from '@/components/games/poll/PollRoundResults'
@@ -109,10 +99,7 @@ export function PollRoundHostScreen({ gameCode, hostToken, game, players, onRelo
     }
   }, [gameCode, loadPollData])
 
-  const activeRound = useMemo(
-    () => rounds.find((r) => r.status === 'active') ?? null,
-    [rounds]
-  )
+  const activeRound = useMemo(() => rounds.find((r) => r.status === 'active') ?? null, [rounds])
   const lastFinished = useMemo(() => {
     const finished = rounds.filter((r) => r.status === 'finished')
     return finished.length ? finished[finished.length - 1] : null
@@ -121,9 +108,7 @@ export function PollRoundHostScreen({ gameCode, hostToken, game, players, onRelo
   const isLastRound = (game.current_round_number ?? 0) >= (game.rounds_count ?? 0)
   const activePlayers = players.filter((p) => !p.spectator)
   const activeRoundVotes = activeRound ? votes.filter((v) => v.round_id === activeRound.id) : []
-  const cumulativeMlt = isMostLikelyTo(gameType)
-    ? mltVoteLeaderboard(votes, participants)
-    : []
+  const cumulativeMlt = isMostLikelyTo(gameType) ? mltVoteLeaderboard(votes, participants) : []
 
   // Live-round timer — only used here to decide when a Pick a Number round has
   // "timed out" so the host can Skip. We do not auto-end from the host screen.
@@ -197,9 +182,7 @@ export function PollRoundHostScreen({ gameCode, hostToken, game, players, onRelo
         )
       : []
   const hotSeatSubmittedIds = new Set(
-    activeHotSeatSubs
-      .filter((s) => activeRound && s.round_id === activeRound.id)
-      .map((s) => s.player_id)
+    activeHotSeatSubs.filter((s) => activeRound && s.round_id === activeRound.id).map((s) => s.player_id)
   )
   const hotSeatCount = hotSeatSubmitters.filter((p) => hotSeatSubmittedIds.has(p.id)).length
   const hotSeatAllIn = hotSeatSubmitters.length > 0 && hotSeatCount >= hotSeatSubmitters.length
@@ -321,11 +304,7 @@ export function PollRoundHostScreen({ gameCode, hostToken, game, players, onRelo
       {game.status === 'active' && betweenRounds && lastFinished ? (
         isHotSeatGame ? (
           <HotSeatHostReveal
-            hotSeatPlayerName={hotSeatPlayerDisplayName(
-              lastFinished.submitter_player_id,
-              players,
-              participants
-            )}
+            hotSeatPlayerName={hotSeatPlayerDisplayName(lastFinished.submitter_player_id, players, participants)}
             submissions={hotSeatReveal}
           />
         ) : (
@@ -341,7 +320,11 @@ export function PollRoundHostScreen({ gameCode, hostToken, game, players, onRelo
       ) : null}
 
       {cumulativeMlt.length > 0 ? (
-        <LeaderboardPanel title="Overall votes" rows={cumulativeMlt.map((row) => ({ id: row.name, name: row.name, score: row.score }))} />
+        <LeaderboardPanel
+          embedded
+          title="Overall votes"
+          rows={cumulativeMlt.map((row) => ({ id: row.name, name: row.name, score: row.score }))}
+        />
       ) : null}
 
       {game.status === 'active' && betweenRounds ? (
@@ -411,7 +394,6 @@ export function PollRoundHostScreen({ gameCode, hostToken, game, players, onRelo
         </Pressable>
       ) : null}
 
-
       {game.status === 'finished' ? (
         <>
           <Pressable
@@ -437,57 +419,57 @@ export function PollRoundHostScreen({ gameCode, hostToken, game, players, onRelo
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  statsRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  stat: { color: theme.textMuted, fontSize: 14, fontWeight: '600' },
-  card: {
-    backgroundColor: theme.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: 16,
-    gap: 6,
-  },
-  cardLabel: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  hotLabel: { color: '#f59e0b' },
-  panLabel: { color: theme.primaryMuted },
-  cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cardTitle: { color: theme.text, fontSize: 17, fontWeight: '700', lineHeight: 24 },
-  cardHint: { color: theme.textMuted, fontSize: 14, lineHeight: 20 },
-  hintDone: { color: '#86efac', fontWeight: '700' },
-  cardFaint: { color: theme.textFaint, fontSize: 12, lineHeight: 18 },
-  checklist: { gap: 6, marginTop: 4 },
-  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  checkMark: { color: theme.textFaint, fontSize: 14, width: 16, textAlign: 'center' },
-  checkMarkDone: { color: '#86efac' },
-  checkName: { color: theme.textMuted, fontSize: 14, flex: 1 },
-  checkNameDone: { color: theme.text, fontWeight: '600' },
-  panRevealBox: {
-    backgroundColor: theme.bg,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: 12,
-    gap: 6,
-  },
-  panQuestion: { color: theme.text, fontSize: 15, fontWeight: '600', lineHeight: 22 },
-  finished: { color: '#86efac', fontSize: 16, fontWeight: '600', textAlign: 'center' },
-  primaryBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  // White on the solid rose button — intentional, correct in both schemes.
-  primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  secondaryBtn: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  secondaryBtnText: { color: theme.text, fontWeight: '600' },
-  btnDisabled: { opacity: 0.5 },
-  footerHint: { color: theme.textFaint, fontSize: 13, textAlign: 'center' },
-  error: { color: theme.error, fontSize: 14 },
-})
+    statsRow: { flexDirection: 'row', justifyContent: 'space-between' },
+    stat: { color: theme.textMuted, fontSize: 14, fontWeight: '600' },
+    card: {
+      backgroundColor: theme.surface,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 16,
+      gap: 6,
+    },
+    cardLabel: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+    hotLabel: { color: '#f59e0b' },
+    panLabel: { color: theme.primaryMuted },
+    cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    cardTitle: { color: theme.text, fontSize: 17, fontWeight: '700', lineHeight: 24 },
+    cardHint: { color: theme.textMuted, fontSize: 14, lineHeight: 20 },
+    hintDone: { color: '#86efac', fontWeight: '700' },
+    cardFaint: { color: theme.textFaint, fontSize: 12, lineHeight: 18 },
+    checklist: { gap: 6, marginTop: 4 },
+    checkRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    checkMark: { color: theme.textFaint, fontSize: 14, width: 16, textAlign: 'center' },
+    checkMarkDone: { color: '#86efac' },
+    checkName: { color: theme.textMuted, fontSize: 14, flex: 1 },
+    checkNameDone: { color: theme.text, fontWeight: '600' },
+    panRevealBox: {
+      backgroundColor: theme.bg,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 12,
+      gap: 6,
+    },
+    panQuestion: { color: theme.text, fontSize: 15, fontWeight: '600', lineHeight: 22 },
+    finished: { color: '#86efac', fontSize: 16, fontWeight: '600', textAlign: 'center' },
+    primaryBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    // White on the solid rose button — intentional, correct in both schemes.
+    primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+    secondaryBtn: {
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    secondaryBtnText: { color: theme.text, fontWeight: '600' },
+    btnDisabled: { opacity: 0.5 },
+    footerHint: { color: theme.textFaint, fontSize: 13, textAlign: 'center' },
+    error: { color: theme.error, fontSize: 14 },
+  })

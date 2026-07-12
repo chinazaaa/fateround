@@ -29,6 +29,8 @@ const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   mahjong: 'mahjong',
   i_call_on: 'i-call-on',
   sudoku: 'sudoku',
+  crossword: 'crossword',
+  word_search: 'word-search',
   tic_tac_toe: 'tic-tac-toe',
   word_hunt: 'word-hunt',
   chess: 'chess',

@@ -1,16 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ScrollView, StyleSheet, Text } from 'react-native'
-import {
-  type YahtzeeCategory,
-  type YahtzeePlayerScore,
-  type YahtzeeSession,
-} from '@fateround/shared'
+import { type YahtzeeCategory, type YahtzeePlayerScore, type YahtzeeSession } from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
-import {
-  YAHTZEE_MIN_PLAYERS,
-  currentPlayerId,
-  totalScore,
-} from '@fateround/shared/yahtzee'
+import { YAHTZEE_MIN_PLAYERS, currentPlayerId, totalScore } from '@fateround/shared/yahtzee'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
@@ -45,7 +37,11 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
 
   const loadGameState = useCallback(async (): Promise<{ state: YahtzeeSession | null; ok: boolean }> => {
     const [sessionRes, scoresRes] = await Promise.all([
-      getSupabase().from('yahtzee_sessions').select(YAHTZEE_SESSION_SELECT).eq('game_id', gameCode.toUpperCase()).maybeSingle(),
+      getSupabase()
+        .from('yahtzee_sessions')
+        .select(YAHTZEE_SESSION_SELECT)
+        .eq('game_id', gameCode.toUpperCase())
+        .maybeSingle(),
       getSupabase()
         .from('yahtzee_player_scores')
         .select(YAHTZEE_PLAYER_SCORES_SELECT)
@@ -113,8 +109,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
 
   // Turn timer: count down from turn_deadline_at during the rolling phase, and
   // ask the server to expire the turn once the deadline passes.
-  const timerActive =
-    bootstrap.screen === 'playing' && session?.phase === 'rolling' && !!session?.turn_deadline_at
+  const timerActive = bootstrap.screen === 'playing' && session?.phase === 'rolling' && !!session?.turn_deadline_at
   const secondsLeft = useDeadlineCountdown(session?.turn_deadline_at, 0, timerActive)
   useYahtzeeTurnExpiry(bootstrap.code, session, bootstrap.screen === 'playing')
 
@@ -169,7 +164,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     // "Play again · same settings" reopened the lobby with the ready-up ring.
     if (bootstrap.game.replay_pending) {
       return (
-        <GameShell bootstrap={bootstrap} title={batch3GameLabel('yahtzee')} subtitle="Play again">
+        <GameShell bootstrap={bootstrap} title={batch3GameLabel('yahtzee')}>
           <ReplayReadyRing
             gameCode={bootstrap.code}
             players={bootstrap.players}
@@ -219,7 +214,11 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   const turnName = bootstrap.players.find((p) => p.id === turnPlayerId)?.name ?? 'Someone'
 
   return (
-    <GameShell bootstrap={bootstrap} title={batch3GameLabel('yahtzee')} subtitle={isMyTurn ? 'Your turn' : `${turnName}'s turn`}>
+    <GameShell
+      bootstrap={bootstrap}
+      title={batch3GameLabel('yahtzee')}
+      subtitle={isMyTurn ? 'Your turn' : `${turnName}'s turn`}
+    >
       <ScrollView contentContainerStyle={styles.scroll}>
         <YahtzeeDiceTray
           dice={dice}

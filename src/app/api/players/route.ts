@@ -20,9 +20,15 @@ import { isMonopolyTokenId } from '@/lib/monopoly-tokens'
 import { generateAnonymousDisplayName } from '@/lib/anonymous-names'
 import { anonymousPlayerCanChat } from '@/lib/anonymous-messages'
 import { createBingoCardForPlayer } from '@/lib/bingo'
-import { assignCodewordsLateJoinOperative, codewordsAllowsPlayerChanges, removeCodewordsPlayer } from '@/lib/codewords'
-import { assignDescribeItLateJoinTeam } from '@/lib/describe-it'
+import {
+  assignCodewordsLateJoinOperative,
+  codewordsAllowsPlayerChanges,
+  reconcileCodewordsTeamAfterRemoval,
+  removeCodewordsPlayer,
+} from '@/lib/codewords'
+import { assignDescribeItLateJoinTeam, reconcileDescribeItAfterRemoval } from '@/lib/describe-it'
 import { registerQuickDrawLateJoinPlayer } from '@/lib/quick-draw'
+import { reconcileQuickDrawGuessAfterRemoval } from '@/lib/quick-draw-guess'
 import {
   assignWordRushLateJoinTeam,
   revertWordRushRosterAfterFailedPlayerDelete,
@@ -1600,9 +1606,27 @@ export async function DELETE(req: NextRequest) {
   const gameType = parseGameType((game as { game_type?: string }).game_type)
 
   if (isCodewordsGame(gameType)) {
+    // Capture the team before deletion — the role row is FK-cascaded away with the player.
+    const { data: roleRow } = await getSupabaseAdmin()
+      .from('codewords_player_roles')
+      .select('team')
+      .eq('game_id', id)
+      .eq('player_id', playerId)
+      .maybeSingle()
+    const removedTeam = (roleRow?.team as 'red' | 'blue' | undefined) ?? null
+
     const { error } = await removeCodewordsPlayer(getSupabaseAdmin(), id, playerId)
     if (error) return NextResponse.json({ error }, { status: 500 })
-    return NextResponse.json({ success: true })
+
+    // Keep the round playable (or end it) when the departure breaks a team's roster.
+    const { error: reconcileError, outcome } = await reconcileCodewordsTeamAfterRemoval(
+      getSupabaseAdmin(),
+      id,
+      removedTeam
+    )
+    if (reconcileError) return NextResponse.json({ error: reconcileError }, { status: 500 })
+
+    return NextResponse.json({ success: true, ...outcome })
   }
 
   if (isMonopolyGame(gameType)) {
@@ -1710,6 +1734,18 @@ export async function DELETE(req: NextRequest) {
     // everyone remaining may already be done, and no further submission would
     // ever re-trigger the completion check. Best-effort: never block the leave.
     await finishSudokuIfAllPlayersDone(getSupabaseAdmin(), id)
+  }
+
+  if (isDescribeItGame(gameType)) {
+    // A team may have dropped below the minimum to field a turn — skip it, or
+    // end the match if only one team can still play. Best-effort: never block.
+    await reconcileDescribeItAfterRemoval(getSupabaseAdmin(), id)
+  }
+
+  if (isQuickDrawGame(gameType)) {
+    // Same team-collapse handling for Quick Draw's team mode (no-op for the
+    // individual "telephone" variant, which has no guess session).
+    await reconcileQuickDrawGuessAfterRemoval(getSupabaseAdmin(), id)
   }
 
   return NextResponse.json({ success: true })

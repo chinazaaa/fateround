@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import type { Game, Participant, Player } from '@fateround/shared'
 import { claimedParticipantIds } from '@fateround/shared/participant-mode'
-import { ShareGameCard } from '@/components/session/ShareGameCard'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
@@ -102,8 +101,6 @@ export function ParticipantClaimJoinScreen({
           <Text style={styles.buttonText}>{selected ? `Join as ${selected.name}` : 'Select your name'}</Text>
         )}
       </Pressable>
-
-      <ShareGameCard gameCode={gameCode} />
     </KeyboardFormScreen>
   )
 }

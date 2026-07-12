@@ -15,6 +15,8 @@ type Props = {
   spectating?: boolean
   /** Open straight into the text field (e.g. from session menu). */
   startEditing?: boolean
+  /** Called when the field gains focus — lets a parent scroll it above the keyboard. */
+  onEditStart?: () => void
 }
 
 export function EditNameInline({
@@ -24,6 +26,7 @@ export function EditNameInline({
   onRenamed,
   spectating = false,
   startEditing = false,
+  onEditStart,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const { success, error: toastError } = useToast()
@@ -62,10 +65,14 @@ export function EditNameInline({
     return (
       <View style={styles.viewRow}>
         <Text style={styles.label}>
-          {spectating ? 'Watching as' : 'Playing as'}{' '}
-          <Text style={styles.strong}>{currentName}</Text>
+          {spectating ? 'Watching as' : 'Playing as'} <Text style={styles.strong}>{currentName}</Text>
         </Text>
-        <Pressable onPress={() => { setName(currentName); setEditing(true) }}>
+        <Pressable
+          onPress={() => {
+            setName(currentName)
+            setEditing(true)
+          }}
+        >
           <Text style={styles.editLink}>Edit</Text>
         </Pressable>
       </View>
@@ -82,8 +89,13 @@ export function EditNameInline({
         autoFocus
         autoCapitalize="words"
         autoCorrect={false}
+        onFocus={onEditStart}
       />
-      <Pressable style={[styles.saveBtn, (saving || !name.trim()) && styles.btnDisabled]} onPress={() => void save()} disabled={saving || !name.trim()}>
+      <Pressable
+        style={[styles.saveBtn, (saving || !name.trim()) && styles.btnDisabled]}
+        onPress={() => void save()}
+        disabled={saving || !name.trim()}
+      >
         <Text style={styles.saveText}>{saving ? '…' : 'Save'}</Text>
       </Pressable>
       <Pressable style={styles.cancelBtn} onPress={() => setEditing(false)}>
@@ -95,26 +107,26 @@ export function EditNameInline({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  viewRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  label: { color: theme.textMuted, fontSize: 14, flex: 1 },
-  strong: { color: theme.text, fontWeight: '700' },
-  editLink: { color: theme.primaryMuted, textDecorationLine: 'underline', fontSize: 13 },
-  editRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  input: {
-    flex: 1,
-    backgroundColor: theme.bg,
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: 10,
-    color: theme.text,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-  },
-  saveBtn: { backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
-  // White on the solid rose Save button — correct in both schemes.
-  saveText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  cancelBtn: { paddingHorizontal: 8, paddingVertical: 10 },
-  cancelText: { color: theme.textMuted, fontSize: 13 },
-  btnDisabled: { opacity: 0.6 },
-})
+    viewRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+    label: { color: theme.textMuted, fontSize: 14, flex: 1 },
+    strong: { color: theme.text, fontWeight: '700' },
+    editLink: { color: theme.primaryMuted, textDecorationLine: 'underline', fontSize: 13 },
+    editRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    input: {
+      flex: 1,
+      backgroundColor: theme.bg,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: 10,
+      color: theme.text,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 15,
+    },
+    saveBtn: { backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
+    // White on the solid rose Save button — correct in both schemes.
+    saveText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+    cancelBtn: { paddingHorizontal: 8, paddingVertical: 10 },
+    cancelText: { color: theme.textMuted, fontSize: 13 },
+    btnDisabled: { opacity: 0.6 },
+  })

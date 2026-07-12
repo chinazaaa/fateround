@@ -1710,6 +1710,92 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  crossword: {
+    id: 'crossword',
+    label: 'Crossword',
+    tagline: 'Race to fill the grid — first to solve wins',
+    headerEmoji: '🧩✏️',
+    card: {
+      accent: '#0ea5e9',
+      accentSoft: 'rgba(14, 165, 233, 0.15)',
+      emoji: '🧩',
+      players: '1–20 players',
+      vibe: 'Word race',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🏆',
+        label: 'Points',
+        color: '#0ea5e9',
+        leaderboardLabel: 'Total points',
+        activeClass: 'bg-sky-500/20 text-sky-100 border-sky-400',
+        borderClass: 'border-sky-500/50 bg-sky-500/10',
+        textColor: '#7dd3fc',
+      },
+      marry: {
+        emoji: '🔤',
+        label: 'Words',
+        color: '#22c55e',
+        leaderboardLabel: 'Words solved',
+        activeClass: 'bg-emerald-500/20 text-emerald-100 border-emerald-400',
+        borderClass: 'border-emerald-500/50 bg-emerald-500/10',
+        textColor: '#86efac',
+      },
+      kill: {
+        emoji: '⚡',
+        label: 'Speed',
+        color: '#f59e0b',
+        leaderboardLabel: 'First finishes',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
+  word_search: {
+    id: 'word_search',
+    label: 'Word Search',
+    tagline: 'Find the listed words hidden in the grid',
+    headerEmoji: '🔎🔤',
+    card: {
+      accent: '#8b5cf6',
+      accentSoft: 'rgba(139, 92, 246, 0.15)',
+      emoji: '🔎',
+      players: '1–20 players',
+      vibe: 'Word hunt race',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🏆',
+        label: 'Points',
+        color: '#8b5cf6',
+        leaderboardLabel: 'Total points',
+        activeClass: 'bg-violet-500/20 text-violet-100 border-violet-400',
+        borderClass: 'border-violet-500/50 bg-violet-500/10',
+        textColor: '#c4b5fd',
+      },
+      marry: {
+        emoji: '🔤',
+        label: 'Words',
+        color: '#22c55e',
+        leaderboardLabel: 'Words found',
+        activeClass: 'bg-emerald-500/20 text-emerald-100 border-emerald-400',
+        borderClass: 'border-emerald-500/50 bg-emerald-500/10',
+        textColor: '#86efac',
+      },
+      kill: {
+        emoji: '⚡',
+        label: 'Speed',
+        color: '#f59e0b',
+        leaderboardLabel: 'First finds',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
 }
 
 /** Home page “Popular games” grid — order is display order. */
@@ -1764,6 +1850,8 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'quiplash',
   'quick_draw',
   'ayo',
+  'crossword',
+  'word_search',
 ]
 
 // Games pinned to the top of the picker / games list, in this exact order.
@@ -1841,6 +1929,8 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'quiplash') return 'quiplash'
   if (raw === 'quick_draw' || raw === 'quick-draw') return 'quick_draw'
   if (raw === 'ayo' || raw === 'awale' || raw === 'ayo-olopon') return 'ayo'
+  if (raw === 'crossword' || raw === 'crosswords') return 'crossword'
+  if (raw === 'word_search' || raw === 'word-search' || raw === 'wordsearch') return 'word_search'
   return 'smash_marry_kill'
 }
 
@@ -1937,6 +2027,10 @@ export function gameHowItWorks(
       return 'Players join with their name and split into teams (you pick how many). Each round, one team is on the clock — a describer sees a secret word and types clues without saying it, while teammates race to type the word. Every correct guess scores a point. Most words across all rounds wins.'
     case 'word_rush':
       return 'Players join with their name. Race to name valid words that start and end with the given letters — team mode races the clock for as many words as possible, individual mode scores everyone each round.'
+    case 'crossword':
+      return 'Players join with their name — everyone gets the same crossword grid. Read the Across and Down clues, tap a cell, and type the answer. Each word you complete correctly scores points, with a speed bonus for finishing a word first. First to fill the whole grid correctly wins — or the highest score when the timer runs out.'
+    case 'word_search':
+      return 'Players join with their name — everyone gets the same letter grid and word list. Drag from the first letter to the last to select a hidden word (across, down, or diagonal, sometimes backwards). Each word you find scores points, with a speed bonus for finding it first. First to find every word wins — or the highest score when the timer runs out.'
     case 'i_call_on':
       return "Players join with their name. Set a game timer (or play all 26 letters). Each letter cycle someone calls A–Z, everyone fills Name, Animal, Place, Thing, and Food, then marks the next player's sheet. Duplicates score 5 automatically; unique valid answers score 10. Everyone sees all marks live."
     case 'most_likely_to':
@@ -2204,6 +2298,8 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   quiplash: true,
   quick_draw: true,
   ayo: true,
+  crossword: true,
+  word_search: true,
   mafia: false,
 }
 
@@ -2246,6 +2342,8 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   quiplash: false,
   quick_draw: false,
   ayo: false,
+  crossword: false,
+  word_search: false,
   mafia: false,
 }
 
@@ -2401,6 +2499,14 @@ export function isQuiplashGame(gameType: GameType | string | undefined): boolean
 
 export function isQuickDrawGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'quick_draw'
+}
+
+export function isCrosswordGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'crossword'
+}
+
+export function isWordSearchGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'word_search'
 }
 
 /** Anonymous room or host-only secret message inbox — shared message storage. */

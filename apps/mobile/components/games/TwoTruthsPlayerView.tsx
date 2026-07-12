@@ -15,15 +15,16 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { TwoTruthsSubmitterBadge } from '@/components/games/TwoTruthsSubmitterBadge'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useAdvancePolling } from '@/hooks/useAdvancePolling'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { postTtlGuess, postTtlStatements } from '@/lib/game-api'
 import { playSound } from '@/lib/sounds'
@@ -101,13 +102,21 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     !!bootstrap.game
   )
 
-  const myStatement = bootstrap.myPlayerId
-    ? statements.find((s) => s.player_id === bootstrap.myPlayerId)
-    : undefined
+  // Deadline-driven round changes (incl. the last reveal → finished) need a
+  // client to nudge the server — web polls /api/two-truths/advance; mobile had no
+  // poller, so a round could stall and never reach the finished screen. Poll while
+  // active and reload on advance (matches Quiplash/Trivia).
+  useAdvancePolling({
+    endpoint: '/api/two-truths/advance',
+    gameCode,
+    game: bootstrap.game,
+    enabled: !!bootstrap.game,
+    onAdvanced: () => bootstrap.load(),
+  })
 
-  const me = bootstrap.myPlayerId
-    ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
-    : undefined
+  const myStatement = bootstrap.myPlayerId ? statements.find((s) => s.player_id === bootstrap.myPlayerId) : undefined
+
+  const me = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
   // Watch-only: a spectator/eliminated/late player watches the live round read-only.
   const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
 
@@ -124,8 +133,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   const myGuess = currentRound
     ? guesses.find((g) => g.player_id === bootstrap.myPlayerId && g.round_id === currentRound.id)
     : undefined
-  const revealSeconds =
-    currentRound?.status === 'finished' ? revealCountdownSeconds(currentRound.ended_at) : null
+  const revealSeconds = currentRound?.status === 'finished' ? revealCountdownSeconds(currentRound.ended_at) : null
 
   // Running standings shown throughout play (mirrors web's live PaginatedLeaderboard).
   const liveScores = useMemo(
@@ -136,17 +144,12 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   // Next player whose statements are coming up (for the between-round preview).
   const upcomingRound = useMemo(() => {
     if (bootstrap.game?.status !== 'active') return null
-    return (
-      rounds
-        .filter((r) => r.status === 'pending')
-        .sort((a, b) => a.round_number - b.round_number)[0] ?? null
-    )
+    return rounds.filter((r) => r.status === 'pending').sort((a, b) => a.round_number - b.round_number)[0] ?? null
   }, [rounds, bootstrap.game?.status])
 
   // Round countdown + auto-lock when the guessing time runs out.
   const timerSeconds = bootstrap.game?.timer_seconds ?? 0
-  const timerActive =
-    !!currentRound && currentRound.status === 'active' && !isFeatured && timerSeconds > 0
+  const timerActive = !!currentRound && currentRound.status === 'active' && !isFeatured && timerSeconds > 0
   const secondsLeft = useDeadlineCountdown(currentRound?.started_at, timerSeconds, timerActive)
 
   // Reset the per-round expiry flag whenever the round changes.
@@ -158,8 +161,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     if (timerActive && !myGuess && secondsLeft <= 0) setTimeExpired(true)
   }, [timerActive, myGuess, secondsLeft])
 
-  const canSubmitStatements =
-    !!stmtA.trim() && !!stmtB.trim() && !!stmtC.trim() && lieIndex != null
+  const canSubmitStatements = !!stmtA.trim() && !!stmtB.trim() && !!stmtC.trim() && lieIndex != null
 
   const submitStatements = async () => {
     if (!bootstrap.myResumeToken || submitting || lieIndex == null || !canSubmitStatements) return
@@ -235,25 +237,25 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     if (myStatement && !editingStatements) {
       return (
         <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={bootstrap.code}>
-          <Text style={styles.waiting}>Statements submitted — waiting for host to start…</Text>
-          <View style={styles.reviewCard}>
-            {[myStatement.statement_a, myStatement.statement_b, myStatement.statement_c].map(
-              (text, index) => (
+          <ScrollView contentContainerStyle={styles.content}>
+            <Text style={styles.waiting}>Statements submitted — waiting for host to start…</Text>
+            <View style={styles.reviewCard}>
+              {[myStatement.statement_a, myStatement.statement_b, myStatement.statement_c].map((text, index) => (
                 <View key={index} style={styles.reviewRow}>
                   <Text style={[styles.reviewBadge, index === myStatement.lie_index && styles.reviewBadgeLie]}>
                     {index === myStatement.lie_index ? 'LIE' : formatTtlChoiceLabel(index)}
                   </Text>
                   <Text style={styles.reviewText}>{text}</Text>
                 </View>
-              )
-            )}
-          </View>
-          <Pressable style={styles.secondaryBtn} onPress={startEditing}>
-            <Text style={styles.secondaryText}>Edit my statements</Text>
-          </Pressable>
-          <View style={styles.rulesRowCentered}>
-            <GameRulesLink gameType="two_truths" variant="subtle" />
-          </View>
+              ))}
+            </View>
+            <Pressable style={styles.secondaryBtn} onPress={startEditing}>
+              <Text style={styles.secondaryText}>Edit my statements</Text>
+            </Pressable>
+            <View style={styles.rulesRowCentered}>
+              <GameRulesLink gameType="two_truths" variant="subtle" />
+            </View>
+          </ScrollView>
         </GameShell>
       )
     }
@@ -263,11 +265,8 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
         title={batch4GameLabel('two_truths')}
         subtitle={editingStatements ? 'Update your statements' : 'Submit your statements'}
       >
-        <ScrollView contentContainerStyle={styles.form}>
+        <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
           <Text style={styles.help}>Write two truths and one lie. Tap which one is the lie.</Text>
-          <View style={styles.rulesRow}>
-            <GameRulesLink gameType="two_truths" variant="subtle" />
-          </View>
           {[0, 1, 2].map((index) => {
             const value = index === 0 ? stmtA : index === 1 ? stmtB : stmtC
             const setValue = index === 0 ? setStmtA : index === 1 ? setStmtB : setStmtC
@@ -299,23 +298,18 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
             onPress={() => void submitStatements()}
           >
             <Text style={styles.primaryText}>
-              {submitting
-                ? 'Submitting…'
-                : editingStatements
-                  ? 'Update statements'
-                  : 'Submit statements'}
+              {submitting ? 'Submitting…' : editingStatements ? 'Update statements' : 'Submit statements'}
             </Text>
           </Pressable>
           {editingStatements && myStatement ? (
-            <Pressable
-              style={styles.secondaryBtn}
-              disabled={submitting}
-              onPress={() => setEditingStatements(false)}
-            >
+            <Pressable style={styles.secondaryBtn} disabled={submitting} onPress={() => setEditingStatements(false)}>
               <Text style={styles.secondaryText}>Cancel</Text>
             </Pressable>
           ) : null}
-        </ScrollView>
+          <View style={styles.rulesRow}>
+            <GameRulesLink gameType="two_truths" variant="subtle" />
+          </View>
+        </KeyboardAwareGameScroll>
       </GameShell>
     )
   }
@@ -362,40 +356,20 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  const viewerBanner =
-    isViewer && bootstrap.myPlayerId && me ? (
-      <ViewerModeBanner
-        gameCode={bootstrap.code}
-        playerId={bootstrap.myPlayerId}
-        game={bootstrap.game}
-        player={me}
-        players={bootstrap.players}
-        onPromoted={bootstrap.load}
-      />
-    ) : null
-
   // Mirrors web's <EliminationBanner> on the live-play screen: an eliminated
   // player gets a clear "you're out, keep watching" message instead of only the
   // generic Spectating banner (whose late-join copy is wrong for elimination).
-  const eliminationBanner = me?.is_eliminated ? (
+  // The spectator banner itself is rendered centrally by GameShell, so we only
+  // prepend the elimination notice here.
+  const liveBanners = me?.is_eliminated ? (
     <View style={styles.elimBanner}>
       <Text style={styles.elimTitle}>You have been eliminated</Text>
       <Text style={styles.elimBody}>You can still watch and chat</Text>
     </View>
   ) : null
 
-  // Render order matches web: elimination notice first, then spectator banner.
-  const liveBanners = (
-    <>
-      {eliminationBanner}
-      {viewerBanner}
-    </>
-  )
-
   if (!currentRound || currentRound.status === 'pending') {
-    const upcomingName = upcomingRound
-      ? playerDisplayName(upcomingRound.submitter_player_id, bootstrap.players)
-      : null
+    const upcomingName = upcomingRound ? playerDisplayName(upcomingRound.submitter_player_id, bootstrap.players) : null
     return (
       <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={bootstrap.code}>
         {liveBanners}
@@ -408,9 +382,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
               highlightPlayerId={bootstrap.myPlayerId}
               size="sm"
             />
-            {upcomingName ? (
-              <Text style={styles.upNextLabel}>Up next: {upcomingName}&apos;s statements</Text>
-            ) : null}
+            {upcomingName ? <Text style={styles.upNextLabel}>Up next: {upcomingName}&apos;s statements</Text> : null}
           </View>
         ) : null}
       </GameShell>
@@ -433,6 +405,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
 
   const liveBoard = (
     <LeaderboardPanel
+      embedded
       title="Leaderboard"
       rows={liveScores.map((row) => ({
         id: row.id,
@@ -447,36 +420,36 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   if (currentRound.status === 'finished') {
     return (
       <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={roundSubtitle}>
-        {liveBanners}
-        {submitterBadge}
-        <Text style={styles.featured}>{featuredName}&apos;s two truths &amp; a lie</Text>
-        {metadata ? (
-          <View style={styles.choices}>
-            {metadata.statements.map((text, index) => {
-              const isLie = index === metadata.lie_index
-              return (
-                <View key={index} style={[styles.choice, isLie && styles.choiceReveal]}>
-                  <Text style={styles.choiceBadge}>{formatTtlChoiceLabel(index)}</Text>
-                  <View style={styles.choiceBody}>
-                    <Text style={styles.choiceText}>{text}</Text>
-                    {isLie ? <Text style={styles.lieTag}>🤥 The lie</Text> : null}
+        <ScrollView contentContainerStyle={styles.content}>
+          {liveBanners}
+          {submitterBadge}
+          <Text style={styles.featured}>{featuredName}&apos;s two truths &amp; a lie</Text>
+          {metadata ? (
+            <View style={styles.choices}>
+              {metadata.statements.map((text, index) => {
+                const isLie = index === metadata.lie_index
+                return (
+                  <View key={index} style={[styles.choice, isLie && styles.choiceReveal]}>
+                    <Text style={styles.choiceBadge}>{formatTtlChoiceLabel(index)}</Text>
+                    <View style={styles.choiceBody}>
+                      <Text style={styles.choiceText}>{text}</Text>
+                      {isLie ? <Text style={styles.lieTag}>🤥 The lie</Text> : null}
+                    </View>
                   </View>
-                </View>
-              )
-            })}
-          </View>
-        ) : null}
-        {myGuess ? (
-          <Text style={[styles.revealResult, myGuess.is_correct && styles.revealResultWin]}>
-            {myGuess.is_correct
-              ? `Correct! +${myGuess.points} pts`
-              : 'Not the lie — better luck next round'}
+                )
+              })}
+            </View>
+          ) : null}
+          {myGuess ? (
+            <Text style={[styles.revealResult, myGuess.is_correct && styles.revealResultWin]}>
+              {myGuess.is_correct ? `Correct! +${myGuess.points} pts` : 'Not the lie — better luck next round'}
+            </Text>
+          ) : null}
+          <Text style={styles.waiting}>
+            {revealSeconds && revealSeconds > 0 ? `Next round in ${revealSeconds}s…` : 'Waiting for next round…'}
           </Text>
-        ) : null}
-        <Text style={styles.waiting}>
-          {revealSeconds && revealSeconds > 0 ? `Next round in ${revealSeconds}s…` : 'Waiting for next round…'}
-        </Text>
-        {liveBoard}
+          {liveBoard}
+        </ScrollView>
       </GameShell>
     )
   }
@@ -484,20 +457,22 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   if (isFeatured) {
     return (
       <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={roundSubtitle}>
-        {liveBanners}
-        {submitterBadge}
-        <Text style={styles.featured}>Your turn — others are guessing your lie</Text>
-        {metadata ? (
-          <View style={styles.choices}>
-            {metadata.statements.map((text, index) => (
-              <View key={index} style={styles.choice}>
-                <Text style={styles.choiceBadge}>{formatTtlChoiceLabel(index)}</Text>
-                <Text style={styles.choiceText}>{text}</Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
-        {liveBoard}
+        <ScrollView contentContainerStyle={styles.content}>
+          {liveBanners}
+          {submitterBadge}
+          <Text style={styles.featured}>Your turn — others are guessing your lie</Text>
+          {metadata ? (
+            <View style={styles.choices}>
+              {metadata.statements.map((text, index) => (
+                <View key={index} style={styles.choice}>
+                  <Text style={styles.choiceBadge}>{formatTtlChoiceLabel(index)}</Text>
+                  <Text style={styles.choiceText}>{text}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+          {liveBoard}
+        </ScrollView>
       </GameShell>
     )
   }
@@ -506,175 +481,176 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={roundSubtitle}>
-      {liveBanners}
-      {submitterBadge}
-      <Text style={styles.featured}>Which is {featuredName}&apos;s lie?</Text>
-      {timerActive && !myGuess && !timeExpired ? <TimerBadge seconds={secondsLeft} /> : null}
-      {metadata ? (
-        <View style={styles.choices}>
-          {metadata.statements.map((text, index) => {
-            const selected = myGuess?.guessed_index === index
-            return (
-              <Pressable
-                key={index}
-                style={[styles.choice, selected && styles.choiceSelected]}
-                disabled={submitting || !!myGuess || lockedOut || isViewer}
-                onPress={() => void submitGuess(index)}
-              >
-                <Text style={styles.choiceBadge}>{formatTtlChoiceLabel(index)}</Text>
-                <Text style={styles.choiceText}>{text}</Text>
-              </Pressable>
-            )
-          })}
-        </View>
-      ) : null}
-      {isViewer ? (
-        <Text style={styles.locked}>Watching only — you can&apos;t guess this round.</Text>
-      ) : myGuess ? (
-        <Text style={styles.locked}>
-          Guess locked in — results when everyone finishes or time runs out.
-        </Text>
-      ) : lockedOut ? (
-        <Text style={styles.locked}>Time&apos;s up — waiting for results…</Text>
-      ) : null}
-      {liveBoard}
+      <ScrollView contentContainerStyle={styles.content}>
+        {liveBanners}
+        {submitterBadge}
+        <Text style={styles.featured}>Which is {featuredName}&apos;s lie?</Text>
+        {timerActive && !myGuess && !timeExpired ? <TimerBadge seconds={secondsLeft} /> : null}
+        {metadata ? (
+          <View style={styles.choices}>
+            {metadata.statements.map((text, index) => {
+              const selected = myGuess?.guessed_index === index
+              return (
+                <Pressable
+                  key={index}
+                  style={[styles.choice, selected && styles.choiceSelected]}
+                  disabled={submitting || !!myGuess || lockedOut || isViewer}
+                  onPress={() => void submitGuess(index)}
+                >
+                  <Text style={styles.choiceBadge}>{formatTtlChoiceLabel(index)}</Text>
+                  <Text style={styles.choiceText}>{text}</Text>
+                </Pressable>
+              )
+            })}
+          </View>
+        ) : null}
+        {isViewer ? (
+          <Text style={styles.locked}>Watching only — you can&apos;t guess this round.</Text>
+        ) : myGuess ? (
+          <Text style={styles.locked}>Guess locked in — results when everyone finishes or time runs out.</Text>
+        ) : lockedOut ? (
+          <Text style={styles.locked}>Time&apos;s up — waiting for results…</Text>
+        ) : null}
+        {liveBoard}
+      </ScrollView>
     </GameShell>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
-  help: { color: theme.textSecondary, fontSize: 15, lineHeight: 22 },
-  rulesRow: { alignItems: 'flex-start' },
-  rulesRowCentered: { alignItems: 'center', marginTop: 16 },
-  lieHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 4 },
-  upNext: { alignItems: 'center', gap: 8, marginTop: 16 },
-  upNextLabel: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
-  badgeRow: { alignItems: 'center', marginBottom: 4 },
-  choiceBody: { flex: 1, gap: 4 },
-  lieTag: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700' },
-  revealResult: {
-    color: theme.textMuted,
-    fontSize: 15,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginTop: 12,
-    backgroundColor: theme.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    overflow: 'hidden',
-  },
-  revealResultWin: { color: '#059669', borderColor: '#05966955' },
-  form: { gap: 12, paddingBottom: 24 },
-  fieldBlock: { gap: 8 },
-  lieToggle: { alignSelf: 'flex-start' },
-  lieBadge: {
-    color: theme.textMuted,
-    fontWeight: '700',
-    fontSize: 13,
-    backgroundColor: theme.surface,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  // white text on the solid rose "LIE" badge — intentional
-  lieBadgeActive: { color: '#fff', backgroundColor: theme.primary },
-  input: {
-    backgroundColor: theme.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.border,
-    color: theme.text,
-    padding: 12,
-    minHeight: 72,
-    fontSize: 16,
-  },
-  primaryBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: 10,
-    padding: 14,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  primaryBtnDisabled: { opacity: 0.5 },
-  // white on the solid rose button — intentional
-  primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  secondaryBtn: {
-    backgroundColor: theme.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: 14,
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  secondaryText: { color: theme.text, fontWeight: '700', fontSize: 15 },
-  reviewCard: {
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: 14,
-    gap: 10,
-    marginTop: 16,
-  },
-  reviewRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  reviewBadge: {
-    color: theme.textMuted,
-    fontWeight: '800',
-    fontSize: 12,
-    backgroundColor: theme.bg,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    minWidth: 34,
-    textAlign: 'center',
-  },
-  // white text on the solid rose "LIE" badge — intentional
-  reviewBadgeLie: { color: '#fff', backgroundColor: theme.primary },
-  reviewText: { color: theme.text, fontSize: 15, flex: 1, lineHeight: 21 },
-  featured: { color: theme.text, fontSize: 18, fontWeight: '700' },
-  choices: { gap: 10, marginTop: 8 },
-  choice: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  choiceSelected: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
-  choiceReveal: { borderColor: '#fbbf24' },
-  choiceBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: theme.primary,
-    // white on the solid rose badge — intentional
-    color: '#fff',
-    textAlign: 'center',
-    lineHeight: 32,
-    fontWeight: '800',
-  },
-  choiceText: { color: theme.text, fontSize: 16, flex: 1, lineHeight: 22 },
-  locked: { color: theme.textMuted, textAlign: 'center', marginTop: 12 },
-  // Eliminated notice — red accent, mirrors web's <EliminationBanner>.
-  elimBanner: {
-    backgroundColor: '#ef44441a',
-    borderColor: '#ef444455',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    gap: 2,
-  },
-  elimTitle: { color: '#dc2626', fontWeight: '700', fontSize: 14 },
-  elimBody: { color: theme.textFaint, fontSize: 12 },
-})
+    content: { paddingBottom: 32, gap: 12 },
+    waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
+    help: { color: theme.textSecondary, fontSize: 15, lineHeight: 22 },
+    rulesRow: { alignItems: 'flex-start' },
+    rulesRowCentered: { alignItems: 'center', marginTop: 16 },
+    lieHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 4 },
+    upNext: { alignItems: 'center', gap: 8, marginTop: 16 },
+    upNextLabel: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
+    badgeRow: { alignItems: 'center', marginBottom: 4 },
+    choiceBody: { flex: 1, gap: 4 },
+    lieTag: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700' },
+    revealResult: {
+      color: theme.textMuted,
+      fontSize: 15,
+      fontWeight: '700',
+      textAlign: 'center',
+      marginTop: 12,
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      overflow: 'hidden',
+    },
+    revealResultWin: { color: '#059669', borderColor: '#05966955' },
+    form: { gap: 12, paddingBottom: 24 },
+    fieldBlock: { gap: 8 },
+    lieToggle: { alignSelf: 'flex-start' },
+    lieBadge: {
+      color: theme.textMuted,
+      fontWeight: '700',
+      fontSize: 13,
+      backgroundColor: theme.surface,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 6,
+    },
+    // white text on the solid rose "LIE" badge — intentional
+    lieBadgeActive: { color: '#fff', backgroundColor: theme.primary },
+    input: {
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      color: theme.text,
+      padding: 12,
+      minHeight: 72,
+      fontSize: 16,
+    },
+    primaryBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 10,
+      padding: 14,
+      alignItems: 'center',
+      marginTop: 8,
+    },
+    primaryBtnDisabled: { opacity: 0.5 },
+    // white on the solid rose button — intentional
+    primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+    secondaryBtn: {
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 14,
+      alignItems: 'center',
+      marginTop: 12,
+    },
+    secondaryText: { color: theme.text, fontWeight: '700', fontSize: 15 },
+    reviewCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 14,
+      gap: 10,
+      marginTop: 16,
+    },
+    reviewRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+    reviewBadge: {
+      color: theme.textMuted,
+      fontWeight: '800',
+      fontSize: 12,
+      backgroundColor: theme.bg,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      minWidth: 34,
+      textAlign: 'center',
+    },
+    // white text on the solid rose "LIE" badge — intentional
+    reviewBadgeLie: { color: '#fff', backgroundColor: theme.primary },
+    reviewText: { color: theme.text, fontSize: 15, flex: 1, lineHeight: 21 },
+    featured: { color: theme.text, fontSize: 18, fontWeight: '700' },
+    choices: { gap: 10, marginTop: 8 },
+    choice: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 12,
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    choiceSelected: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+    choiceReveal: { borderColor: '#fbbf24' },
+    choiceBadge: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      backgroundColor: theme.primary,
+      // white on the solid rose badge — intentional
+      color: '#fff',
+      textAlign: 'center',
+      lineHeight: 32,
+      fontWeight: '800',
+    },
+    choiceText: { color: theme.text, fontSize: 16, flex: 1, lineHeight: 22 },
+    locked: { color: theme.textMuted, textAlign: 'center', marginTop: 12 },
+    // Eliminated notice — red accent, mirrors web's <EliminationBanner>.
+    elimBanner: {
+      backgroundColor: '#ef44441a',
+      borderColor: '#ef444455',
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      alignItems: 'center',
+      gap: 2,
+    },
+    elimTitle: { color: '#dc2626', fontWeight: '700', fontSize: 14 },
+    elimBody: { color: theme.textFaint, fontSize: 12 },
+  })

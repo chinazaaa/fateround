@@ -97,6 +97,8 @@ export const BATCH_20_PARTY_GAMES: GameType[] = [
   'sudoku',
   'matching_pairs',
   'i_call_on',
+  'crossword',
+  'word_search',
 ]
 
 export function hasPartyRoomSettings(gameType: GameType): boolean {

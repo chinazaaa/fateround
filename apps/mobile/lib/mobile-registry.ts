@@ -14,6 +14,8 @@ export const GAME_LABELS: Partial<Record<GameType, string>> = {
   quick_draw: 'Quick Draw',
   matching_pairs: 'Matching Pairs',
   sudoku: 'Sudoku',
+  crossword: 'Crossword',
+  word_search: 'Word Search',
   yahtzee: 'Yahtzee',
   snake_and_ladder: 'Snakes & Ladders',
   ludo: 'Ludo',

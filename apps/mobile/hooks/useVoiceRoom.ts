@@ -128,7 +128,10 @@ export function useVoiceRoom({ gameCode, mode, hostToken }: Options) {
       })
       setToken(data.token)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to join voice chat')
+      // Log the raw reason for debugging; players get a plain message, never a
+      // leaked server/config string.
+      console.error('[voice] join failed', err)
+      setError('Could not join voice chat. Please try again.')
     } finally {
       setIsConnecting(false)
     }

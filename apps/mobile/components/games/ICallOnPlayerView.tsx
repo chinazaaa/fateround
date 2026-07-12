@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
-import { type Game, type NpatAnswer, type NpatCategory, type NpatMark, type Player, type Round } from '@fateround/shared'
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import {
+  type Game,
+  type NpatAnswer,
+  type NpatCategory,
+  type NpatMark,
+  type Player,
+  type Round,
+} from '@fateround/shared'
 import { batch5GameLabel } from '@fateround/shared/batch-5-games'
 import {
   NPAT_CATEGORIES,
@@ -27,9 +34,11 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useAdvancePolling } from '@/hooks/useAdvancePolling'
 import { postNpatLetter, postNpatMark, postNpatSubmit } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { NPAT_ANSWER_SELECT, NPAT_MARK_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
@@ -37,17 +46,12 @@ import { usePlayerSessionActions } from '@/lib/player-session'
 import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { ICallOnScoreboard } from '@/components/games/i_call_on/ICallOnScoreboard'
 import { ICallOnGameTimerBar } from '@/components/games/i_call_on/ICallOnGameTimerBar'
 import { ICallOnLiveLeaderboard } from '@/components/games/i_call_on/ICallOnLiveLeaderboard'
 import { ICallOnRoundHeader } from '@/components/games/i_call_on/ICallOnRoundHeader'
 import { isInCatalogue } from '@/components/games/i_call_on/npat-catalogue'
-import {
-  postNpatCallerApproveOverrides,
-  postNpatDispute,
-  postNpatDraft,
-} from '@/components/games/i_call_on/npat-api'
+import { postNpatCallerApproveOverrides, postNpatDispute, postNpatDraft } from '@/components/games/i_call_on/npat-api'
 import {
   defaultMarkValidityForAnswer,
   duplicateKeysByCategory,
@@ -136,6 +140,18 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     !!bootstrap.game
   )
 
+  // Phase deadlines (letter_pick/writing/marking/reveal → next round → finished)
+  // only advance when a client pokes the server — web polls /api/npat/advance; the
+  // mobile view had no poller, so phases could stall and the finished screen never
+  // appear. The route is deadline-gated (safe for any client). Poll while active.
+  useAdvancePolling({
+    endpoint: '/api/npat/advance',
+    gameCode,
+    game: bootstrap.game,
+    enabled: !!bootstrap.game,
+    onAdvanced: () => bootstrap.load(),
+  })
+
   const currentRound = useMemo(() => {
     if (!bootstrap.game) return null
     const byPointer = rounds.find((r) => r.round_number === bootstrap.game!.current_round_number) ?? null
@@ -165,10 +181,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   )
   const isViewer = !!(bootstrap.game && me && playerIsViewer(me, bootstrap.game))
 
-  const liveScores = useMemo(
-    () => tallyNpatScores(answers, bootstrap.players),
-    [answers, bootstrap.players]
-  )
+  const liveScores = useMemo(() => tallyNpatScores(answers, bootstrap.players), [answers, bootstrap.players])
   const callerName = playerDisplayName(callerId, bootstrap.players)
   const callerIndex = useMemo(() => {
     const order = metadata?.caller_order
@@ -190,10 +203,13 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   // ---- per-phase countdown ---------------------------------------------------
   const writingTimer = clampNpatTimer(bootstrap.game?.timer_seconds)
   const markingTimer = clampNpatMarkingTimer(bootstrap.game?.operative_timer_seconds)
-  const timedPhase =
-    metadata?.phase === 'letter_pick' || metadata?.phase === 'writing' || metadata?.phase === 'marking'
+  const timedPhase = metadata?.phase === 'letter_pick' || metadata?.phase === 'writing' || metadata?.phase === 'marking'
   const phaseDelay =
-    metadata?.phase === 'writing' ? writingTimer : metadata?.phase === 'marking' ? markingTimer : NPAT_LETTER_PICK_SECONDS
+    metadata?.phase === 'writing'
+      ? writingTimer
+      : metadata?.phase === 'marking'
+        ? markingTimer
+        : NPAT_LETTER_PICK_SECONDS
   const secondsLeft = useDeadlineCountdown(
     metadata?.phase_started_at ?? null,
     phaseDelay,
@@ -307,10 +323,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     const seeded = suggestedHostReviewValidity(roundAnswers, roundMarks, metadata.letter ?? null)
     const map: CallerValidity = {}
     for (const [pid, flags] of Object.entries(seeded)) {
-      map[pid] = Object.fromEntries(NPAT_CATEGORIES.map((c) => [c, flags[c] ?? false])) as Record<
-        NpatCategory,
-        boolean
-      >
+      map[pid] = Object.fromEntries(NPAT_CATEGORIES.map((c) => [c, flags[c] ?? false])) as Record<NpatCategory, boolean>
     }
     setCallerValidity(map)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -424,9 +437,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
       validThing: flags.thing,
       validFood: flags.food,
     }))
-    void act(() =>
-      postNpatCallerApproveOverrides(bootstrap.code, bootstrap.myResumeToken!, currentRound.id, overrides)
-    )
+    void act(() => postNpatCallerApproveOverrides(bootstrap.code, bootstrap.myResumeToken!, currentRound.id, overrides))
   }
 
   const dispute = (targetId: string, category: NpatCategory) => {
@@ -473,9 +484,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   if (!currentRound || !metadata) {
-    const upcoming = rounds
-      .filter((r) => r.status === 'pending')
-      .sort((a, b) => a.round_number - b.round_number)[0]
+    const upcoming = rounds.filter((r) => r.status === 'pending').sort((a, b) => a.round_number - b.round_number)[0]
     const upNextName = upcoming ? playerDisplayName(upcoming.submitter_player_id, bootstrap.players) : null
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={bootstrap.code}>
@@ -523,17 +532,6 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     ) : null
 
   const gameTimerBar = <ICallOnGameTimerBar game={bootstrap.game} />
-  const viewerBanner =
-    bootstrap.myPlayerId && me ? (
-      <ViewerModeBanner
-        gameCode={bootstrap.code}
-        playerId={bootstrap.myPlayerId}
-        game={bootstrap.game}
-        player={me}
-        players={bootstrap.players}
-        onPromoted={() => void bootstrap.load()}
-      />
-    ) : null
   const roundHeaderCard = (
     <ICallOnRoundHeader
       roundNumber={currentRound.round_number}
@@ -552,10 +550,13 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
 
   if (metadata.phase === 'letter_pick') {
     return (
-      <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Round ${currentRound.round_number}`}>
-        <ScrollView contentContainerStyle={styles.form}>
+      <GameShell
+        bootstrap={bootstrap}
+        title={batch5GameLabel('i_call_on')}
+        subtitle={`Round ${currentRound.round_number}`}
+      >
+        <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
           {gameTimerBar}
-          {viewerBanner}
           {roundHeaderCard}
           {phaseTimer}
           {isCaller && !isViewer ? (
@@ -585,17 +586,20 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
             <Text style={styles.waiting}>Waiting for the caller to pick a letter…</Text>
           )}
           {liveLeaderboard}
-        </ScrollView>
+        </KeyboardAwareGameScroll>
       </GameShell>
     )
   }
 
   if (metadata.phase === 'writing') {
     return (
-      <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Letter ${metadata.letter ?? '?'}`}>
-        <ScrollView contentContainerStyle={styles.form}>
+      <GameShell
+        bootstrap={bootstrap}
+        title={batch5GameLabel('i_call_on')}
+        subtitle={`Letter ${metadata.letter ?? '?'}`}
+      >
+        <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
           {gameTimerBar}
-          {viewerBanner}
           {roundHeaderCard}
           {phaseTimer}
           {isViewer ? (
@@ -621,15 +625,13 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
               </Pressable>
               {submitError ? <Text style={styles.submitError}>{submitError}</Text> : null}
               {secondsLeft <= 10 ? (
-                <Text style={styles.autoSendHint}>
-                  Unsubmitted answers are sent automatically when time runs out.
-                </Text>
+                <Text style={styles.autoSendHint}>Unsubmitted answers are sent automatically when time runs out.</Text>
               ) : null}
             </>
           )}
           {scoreboard(false, true)}
           {liveLeaderboard}
-        </ScrollView>
+        </KeyboardAwareGameScroll>
       </GameShell>
     )
   }
@@ -640,9 +642,8 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     const letter = metadata.letter ?? null
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Mark ${targetName}'s answers`}>
-        <ScrollView contentContainerStyle={styles.form}>
+        <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
           {gameTimerBar}
-          {viewerBanner}
           {roundHeaderCard}
           {phaseTimer}
           {!reviewTargetAnswer ? (
@@ -693,7 +694,9 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
                         disabled={forcedInvalid || acting}
                         onPress={() => setValidFlags((prev) => ({ ...prev, [category]: false }))}
                       >
-                        <Text style={[styles.markBtnText, !displayValid && styles.markBtnTextInvalid]}>Invalid (0)</Text>
+                        <Text style={[styles.markBtnText, !displayValid && styles.markBtnTextInvalid]}>
+                          Invalid (0)
+                        </Text>
                       </Pressable>
                     </View>
                   </View>
@@ -706,17 +709,20 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
           )}
           {scoreboard(false, false)}
           {liveLeaderboard}
-        </ScrollView>
+        </KeyboardAwareGameScroll>
       </GameShell>
     )
   }
 
   if (metadata.phase === 'host_review') {
     return (
-      <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Letter ${metadata.letter ?? '?'}`}>
-        <ScrollView contentContainerStyle={styles.form}>
+      <GameShell
+        bootstrap={bootstrap}
+        title={batch5GameLabel('i_call_on')}
+        subtitle={`Letter ${metadata.letter ?? '?'}`}
+      >
+        <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
           {gameTimerBar}
-          {viewerBanner}
           {roundHeaderCard}
           {isCaller && !isViewer ? (
             <>
@@ -724,8 +730,8 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
                 <Text style={styles.section}>Your approval</Text>
                 <Text style={styles.reviewCopy}>
                   You called letter {metadata.letter ?? '?'} — review everyone&apos;s answers before scores reveal.
-                  Empty, wrong-letter, single-letter, and duplicate answers are invalid automatically. Answers flagged
-                  ⚑ by other players are highlighted — toggle anything you disagree with, then approve.
+                  Empty, wrong-letter, single-letter, and duplicate answers are invalid automatically. Answers flagged ⚑
+                  by other players are highlighted — toggle anything you disagree with, then approve.
                 </Text>
                 <Pressable style={styles.primaryBtn} disabled={acting} onPress={approveRound}>
                   <Text style={styles.primaryText}>Approve &amp; reveal scores</Text>
@@ -747,7 +753,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
             </>
           )}
           {liveLeaderboard}
-        </ScrollView>
+        </KeyboardAwareGameScroll>
       </GameShell>
     )
   }
@@ -756,9 +762,8 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   const myRoundTotal = myAnswer && myAnswer.score_name != null ? answerTotal(myAnswer) : null
   return (
     <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Letter ${metadata.letter ?? '?'}`}>
-      <ScrollView contentContainerStyle={styles.form}>
+      <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
         {gameTimerBar}
-        {viewerBanner}
         <View style={styles.revealHead}>
           <Text style={styles.revealTitle}>Round {currentRound.round_number} scores</Text>
           {currentRound.ended_at ? (
@@ -774,7 +779,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
         ) : null}
         {scoreboard(true, false)}
         {liveLeaderboard}
-      </ScrollView>
+      </KeyboardAwareGameScroll>
     </GameShell>
   )
 }

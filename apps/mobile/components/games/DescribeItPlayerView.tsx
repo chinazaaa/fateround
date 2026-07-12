@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import {
   type DescribeItGuess,
   type DescribeItPlayer,
@@ -25,8 +25,8 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { DescribeItAchievementPosts } from '@/components/games/DescribeItAchievementPosts'
 import { DescribeItShareCard } from '@/components/games/DescribeItShareCard'
@@ -36,15 +36,19 @@ import { TeamBadge } from '@/components/party/TeamBadge'
 import { TeamPickerGrid } from '@/components/party/TeamPickerGrid'
 import { TeamScoreGrid } from '@/components/party/TeamScoreGrid'
 import { useAbsoluteDeadline } from '@/components/party/useAbsoluteDeadline'
+import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import {
+  postDescribeItAdvance,
   postDescribeItClue,
+  postDescribeItExpireTurn,
   postDescribeItGuess,
   postDescribeItSkip,
   postDescribeItTeam,
 } from '@/lib/game-api'
+import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { getSupabase } from '@/lib/supabase'
 import {
   DESCRIBE_IT_GUESS_SELECT,
@@ -149,11 +153,11 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
 
   const mode = clampDescribeItMode(bootstrap.game?.describe_it_mode)
   const numTeams = clampDescribeItTeams(bootstrap.game?.describe_it_num_teams)
+  // Surface the mode (N teams / Individual) as the header pill on every screen.
+  useHeaderBadge(bootstrap.game ? (mode === 'team' ? `${numTeams} teams` : 'Individual') : null)
   const myTeamRow = teamRows.find((r) => r.player_id === bootstrap.myPlayerId)
   const isDescriber = session?.describer_player_id === bootstrap.myPlayerId
-  const mePlayer = bootstrap.myPlayerId
-    ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
-    : undefined
+  const mePlayer = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
   const isViewer = !!(mePlayer && bootstrap.game && playerIsViewer(mePlayer, bootstrap.game))
   const inRoster = !!bootstrap.myPlayerId && (session?.roster?.includes(bootstrap.myPlayerId) ?? false)
   const onMyTeam = mode === 'individual' ? inRoster : myTeamRow?.team === session?.active_team
@@ -164,9 +168,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   // by a "waiting for others" note so I can't keep spamming.
   const myGuessedThisTurn =
     !!session &&
-    guesses.some(
-      (g) => g.turn_index === session.turn_index && g.player_id === bootstrap.myPlayerId && g.correct
-    )
+    guesses.some((g) => g.turn_index === session.turn_index && g.player_id === bootstrap.myPlayerId && g.correct)
 
   // Foreground turn/start nudge — mirrors web `useTurnNotifications({ status })`.
   useTurnNotifications({ status: bootstrap.game?.status, isMyTurn: isDescriber })
@@ -220,10 +222,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     return map
   }, [teamRows, bootstrap.players])
 
-  const liveTeamScores = useMemo(
-    () => computeDescribeItScores(words, numTeams),
-    [words, numTeams]
-  )
+  const liveTeamScores = useMemo(() => computeDescribeItScores(words, numTeams), [words, numTeams])
 
   const liveIndividualScores = useMemo(
     () => describeItIndividualLeaderboard(teamRows, bootstrap.players),
@@ -242,25 +241,34 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
       .filter((g) => g.turn_index === turnIndex)
       .slice(0, 12)
       .map((g) => {
-      const name = nameById.get(g.player_id) ?? 'Player'
-      const mask = hideOthersText && g.player_id !== bootstrap.myPlayerId
-      const primary = mask ? (g.correct ? 'guessed it ✅' : 'guessing…') : g.text
-      return {
-        id: g.id,
-        primary,
-        secondary: `${name}${g.correct && !mask ? ' · correct!' : ''}`,
-      }
-    })
+        const name = nameById.get(g.player_id) ?? 'Player'
+        const mask = hideOthersText && g.player_id !== bootstrap.myPlayerId
+        const primary = mask ? (g.correct ? 'guessed it ✅' : 'guessing…') : g.text
+        return {
+          id: g.id,
+          primary,
+          secondary: `${name}${g.correct && !mask ? ' · correct!' : ''}`,
+        }
+      })
   }, [guesses, bootstrap.players, bootstrap.myPlayerId, mode, session?.turn_index])
 
-  const turnSecondsLeft = useAbsoluteDeadline(
-    session?.turn_deadline_at,
-    session?.phase === 'turn'
-  )
-  const breakSecondsLeft = useAbsoluteDeadline(
-    session?.break_deadline_at,
-    session?.phase === 'break'
-  )
+  const turnSecondsLeft = useAbsoluteDeadline(session?.turn_deadline_at, session?.phase === 'turn')
+  const breakSecondsLeft = useAbsoluteDeadline(session?.break_deadline_at, session?.phase === 'break')
+
+  // Drive the round forward when a phase timer runs out — any active non-viewer
+  // client fires (idempotent + deadline-gated server-side), matching web. Without
+  // this an all-mobile table's turn/break just hangs at 0.
+  const canDriveTimers = bootstrap.game?.status === 'active' && !isViewer
+  useTurnExpiryTimer({
+    deadlineAt: session?.phase === 'turn' ? session?.turn_deadline_at : null,
+    enabled: canDriveTimers,
+    onExpire: () => postDescribeItExpireTurn(bootstrap.code).then(() => bootstrap.load()),
+  })
+  useTurnExpiryTimer({
+    deadlineAt: session?.phase === 'break' ? session?.break_deadline_at : null,
+    enabled: canDriveTimers,
+    onExpire: () => postDescribeItAdvance(bootstrap.code).then(() => bootstrap.load()),
+  })
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
@@ -282,7 +290,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     // (readiness = holding a seat), using describe-it's own min-player thresholds.
     if (bootstrap.game.replay_pending) {
       return (
-        <GameShell bootstrap={bootstrap} title={batch4GameLabel('describe_it')} subtitle="Play again">
+        <GameShell bootstrap={bootstrap} title={batch4GameLabel('describe_it')}>
           <ReplayReadyRing
             gameCode={bootstrap.code}
             players={bootstrap.players}
@@ -403,8 +411,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  const describerName =
-    bootstrap.players.find((p) => p.id === session.describer_player_id)?.name ?? 'Describer'
+  const describerName = bootstrap.players.find((p) => p.id === session.describer_player_id)?.name ?? 'Describer'
   const statusText =
     session.status_message ??
     (session.phase === 'break'
@@ -433,187 +440,182 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
       myPlayerId={bootstrap.myPlayerId}
       onPromoted={() => bootstrap.load()}
     >
-      <TurnBanner text={statusText} isMyTurn={isDescriber || canGuess} />
+      <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
+        <TurnBanner text={statusText} isMyTurn={isDescriber || canGuess} />
 
-      {isViewer && mePlayer && bootstrap.myPlayerId ? (
-        <ViewerModeBanner
-          gameCode={bootstrap.code}
-          playerId={bootstrap.myPlayerId}
-          game={bootstrap.game}
-          player={mePlayer}
-          players={bootstrap.players}
-          onPromoted={() => void bootstrap.load()}
-        />
-      ) : null}
+        {mode === 'team' && myTeamRow?.team ? (
+          <View style={styles.teamRow}>
+            <Text style={styles.teamRowLabel}>You're on</Text>
+            <TeamBadge team={myTeamRow.team} />
+          </View>
+        ) : null}
 
-      {mode === 'team' && myTeamRow?.team ? (
-        <View style={styles.teamRow}>
-          <Text style={styles.teamRowLabel}>You're on</Text>
-          <TeamBadge team={myTeamRow.team} />
-        </View>
-      ) : null}
+        {turnSecondsLeft > 0 && session.phase === 'turn' ? <TimerBadge seconds={turnSecondsLeft} /> : null}
 
-      {turnSecondsLeft > 0 && session.phase === 'turn' ? <TimerBadge seconds={turnSecondsLeft} /> : null}
+        {mode === 'team' ? (
+          <TeamScoreGrid
+            scores={liveTeamScores}
+            activeTeam={session.phase === 'turn' ? session.active_team : null}
+            myTeam={myTeamRow?.team}
+            round={session.current_round}
+            totalRounds={session.total_rounds}
+          />
+        ) : (
+          <LeaderboardPanel
+            embedded
+            title="Leaderboard"
+            rows={liveIndividualScores.map((row) => ({
+              id: row.id,
+              name: row.name,
+              score: row.score,
+              highlight: row.id === bootstrap.myPlayerId,
+            }))}
+            highlightId={bootstrap.myPlayerId}
+          />
+        )}
 
-      {mode === 'team' ? (
-        <TeamScoreGrid
-          scores={liveTeamScores}
-          activeTeam={session.phase === 'turn' ? session.active_team : null}
-          myTeam={myTeamRow?.team}
-          round={session.current_round}
-          totalRounds={session.total_rounds}
-        />
-      ) : (
-        <LeaderboardPanel
-          title="Leaderboard"
-          rows={liveIndividualScores.map((row) => ({
-            id: row.id,
-            name: row.name,
-            score: row.score,
-            highlight: row.id === bootstrap.myPlayerId,
-          }))}
-          highlightId={bootstrap.myPlayerId}
-        />
-      )}
-
-      {session.phase === 'break' ? (
-        <RoundBreakCard
-          title={isLastTurn ? 'Last turn done' : 'Round break'}
-          message={session.status_message ?? 'Next turn starting soon…'}
-          secondsLeft={breakSecondsLeft}
-          detail={breakDetail}
-        />
-      ) : (
-        <>
-          {isDescriber ? (
-            <View style={styles.panel}>
-              <Text style={styles.wordLabel}>Your word</Text>
-              <Text style={styles.word}>{session.current_word ?? '—'}</Text>
-              {(session.current_clues?.length ?? 0) > 0 ? (
-                <View style={styles.clueList}>
-                  {session.current_clues!.map((clue, index) => (
-                    <Text key={index} style={styles.clueItem}>
-                      {clue}
-                    </Text>
-                  ))}
-                </View>
-              ) : null}
-              <TextInput
-                style={styles.input}
-                value={clueText}
-                onChangeText={setClueText}
-                placeholder="Send a clue (no secret word!)"
-                placeholderTextColor={theme.textFaint}
-              />
-              <View style={styles.row}>
-                <Pressable style={styles.primaryBtn} disabled={acting} onPress={sendClue}>
-                  <Text style={styles.primaryText}>Send clue</Text>
-                </Pressable>
-                {mode === 'team' ? (
-                  <Pressable style={styles.secondaryBtn} disabled={acting} onPress={skipWord}>
-                    <Text style={styles.secondaryText}>Skip word</Text>
+        {session.phase === 'break' ? (
+          <RoundBreakCard
+            title={isLastTurn ? 'Last turn done' : 'Round break'}
+            message={session.status_message ?? 'Next turn starting soon…'}
+            secondsLeft={breakSecondsLeft}
+            detail={breakDetail}
+          />
+        ) : (
+          <>
+            {isDescriber ? (
+              <View style={styles.panel}>
+                <Text style={styles.wordLabel}>Your word</Text>
+                <Text style={styles.word}>{session.current_word ?? '—'}</Text>
+                {(session.current_clues?.length ?? 0) > 0 ? (
+                  <View style={styles.clueList}>
+                    {session.current_clues!.map((clue, index) => (
+                      <Text key={index} style={styles.clueItem}>
+                        {clue}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+                <TextInput
+                  style={styles.input}
+                  value={clueText}
+                  onChangeText={setClueText}
+                  placeholder="Send a clue (no secret word!)"
+                  placeholderTextColor={theme.textFaint}
+                />
+                <View style={styles.row}>
+                  <Pressable style={styles.primaryBtn} disabled={acting} onPress={sendClue}>
+                    <Text style={styles.primaryText}>Send clue</Text>
                   </Pressable>
+                  {mode === 'team' ? (
+                    <Pressable style={styles.secondaryBtn} disabled={acting} onPress={skipWord}>
+                      <Text style={styles.secondaryText}>Skip word</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+                {mode === 'individual' && (session.current_clues?.length ?? 0) === 0 ? (
+                  <Text style={styles.hint}>The guessers' timer starts when you send your first clue.</Text>
                 ) : null}
               </View>
-              {mode === 'individual' && (session.current_clues?.length ?? 0) === 0 ? (
-                <Text style={styles.hint}>The guessers' timer starts when you send your first clue.</Text>
-              ) : null}
-            </View>
-          ) : (
-            <View style={styles.panel}>
-              {(session.current_clues?.length ?? 0) > 0 ? (
-                <ScrollView style={styles.clueScroll}>
-                  {session.current_clues!.map((clue, index) => (
-                    <Text key={index} style={styles.clueItem}>
-                      {clue}
-                    </Text>
-                  ))}
-                </ScrollView>
-              ) : (
-                <Text style={styles.waiting}>Waiting for the first clue…</Text>
-              )}
-              {mode === 'individual' && myGuessedThisTurn ? (
-                <Text style={styles.gotIt}>✅ You got it! Waiting for the others…</Text>
-              ) : canGuess && mode === 'individual' && (session.current_clues?.length ?? 0) === 0 ? (
-                // Individual mode: the guessing timer only starts on the first clue.
-                <Text style={styles.gateHint}>Guessing opens with the first clue…</Text>
-              ) : canGuess ? (
-                <>
-                  <TextInput
-                    style={styles.input}
-                    value={guessText}
-                    onChangeText={setGuessText}
-                    placeholder="Type your guess"
-                    placeholderTextColor={theme.textFaint}
-                    onSubmitEditing={sendGuess}
-                  />
-                  <Pressable style={styles.primaryBtn} disabled={acting} onPress={sendGuess}>
-                    <Text style={styles.primaryText}>Guess</Text>
-                  </Pressable>
-                </>
-              ) : (
-                <Text style={styles.gateHint}>
-                  {isViewer
-                    ? 'Watching this round'
-                    : mode === 'individual'
-                      ? 'Watching'
-                      : onMyTeam
-                        ? 'Watch and wait for your turn…'
-                        : 'Another team is playing…'}
-                </Text>
-              )}
-            </View>
-          )}
+            ) : (
+              <View style={styles.panel}>
+                {(session.current_clues?.length ?? 0) > 0 ? (
+                  // Plain View, not a nested ScrollView — the outer page scroll
+                  // owns scrolling, so clues flow inline and don't swallow the
+                  // drag gesture needed to reach the guess input below.
+                  <View style={styles.clueList}>
+                    {session.current_clues!.map((clue, index) => (
+                      <Text key={index} style={styles.clueItem}>
+                        {clue}
+                      </Text>
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={styles.waiting}>Waiting for the first clue…</Text>
+                )}
+                {mode === 'individual' && myGuessedThisTurn ? (
+                  <Text style={styles.gotIt}>✅ You got it! Waiting for the others…</Text>
+                ) : canGuess && mode === 'individual' && (session.current_clues?.length ?? 0) === 0 ? (
+                  // Individual mode: the guessing timer only starts on the first clue.
+                  <Text style={styles.gateHint}>Guessing opens with the first clue…</Text>
+                ) : canGuess ? (
+                  <>
+                    <TextInput
+                      style={styles.input}
+                      value={guessText}
+                      onChangeText={setGuessText}
+                      placeholder="Type your guess"
+                      placeholderTextColor={theme.textFaint}
+                      onSubmitEditing={sendGuess}
+                    />
+                    <Pressable style={styles.primaryBtn} disabled={acting} onPress={sendGuess}>
+                      <Text style={styles.primaryText}>Guess</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <Text style={styles.gateHint}>
+                    {isViewer
+                      ? 'Watching this round'
+                      : mode === 'individual'
+                        ? 'Watching'
+                        : onMyTeam
+                          ? 'Watch and wait for your turn…'
+                          : 'Another team is playing…'}
+                  </Text>
+                )}
+              </View>
+            )}
 
-          <ActivityFeed title="Recent guesses" items={guessFeed} emptyText="No guesses yet" />
-        </>
-      )}
+            <ActivityFeed embedded title="Recent guesses" items={guessFeed} emptyText="No guesses yet" />
+          </>
+        )}
+      </KeyboardAwareGameScroll>
     </GameShell>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  teamRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  teamRowLabel: { color: theme.textMuted, fontSize: 14 },
-  waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
-  hint: { color: theme.textFaint, fontSize: 12, textAlign: 'center' },
-  gateHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 4 },
-  // emerald success — kept consistent across themes for the "you got it" note
-  gotIt: { color: '#10b981', fontSize: 14, fontWeight: '700', textAlign: 'center', marginTop: 4 },
-  soloCard: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 4 },
-  soloTitle: { color: theme.text, fontSize: 15, fontWeight: '800', textAlign: 'center' },
-  soloBody: { color: theme.textMuted, fontSize: 13, textAlign: 'center', lineHeight: 19 },
-  panel: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 12 },
-  wordLabel: { color: theme.textMuted, fontSize: 13 },
-  word: { color: theme.text, fontSize: 28, fontWeight: '800' },
-  clueList: { gap: 6 },
-  clueScroll: { maxHeight: 120 },
-  clueItem: { color: theme.textSecondary, fontSize: 15, lineHeight: 22 },
-  input: {
-    backgroundColor: theme.bg,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.border,
-    color: theme.text,
-    padding: 12,
-    fontSize: 16,
-  },
-  row: { flexDirection: 'row', gap: 8 },
-  primaryBtn: {
-    flex: 1,
-    backgroundColor: theme.primary,
-    borderRadius: 10,
-    padding: 14,
-    alignItems: 'center',
-  },
-  // white on the solid rose primary button — intentional
-  primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  secondaryBtn: {
-    backgroundColor: theme.border,
-    borderRadius: 10,
-    padding: 14,
-    alignItems: 'center',
-  },
-  secondaryText: { color: theme.text, fontWeight: '600', fontSize: 15 },
-})
+    teamRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+    teamRowLabel: { color: theme.textMuted, fontSize: 14 },
+    waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
+    hint: { color: theme.textFaint, fontSize: 12, textAlign: 'center' },
+    gateHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 4 },
+    // emerald success — kept consistent across themes for the "you got it" note
+    gotIt: { color: '#10b981', fontSize: 14, fontWeight: '700', textAlign: 'center', marginTop: 4 },
+    soloCard: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 4 },
+    soloTitle: { color: theme.text, fontSize: 15, fontWeight: '800', textAlign: 'center' },
+    soloBody: { color: theme.textMuted, fontSize: 13, textAlign: 'center', lineHeight: 19 },
+    panel: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 12 },
+    wordLabel: { color: theme.textMuted, fontSize: 13 },
+    word: { color: theme.text, fontSize: 28, fontWeight: '800' },
+    clueList: { gap: 6 },
+    content: { paddingBottom: 32, gap: 14 },
+    clueItem: { color: theme.textSecondary, fontSize: 15, lineHeight: 22 },
+    input: {
+      backgroundColor: theme.bg,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      color: theme.text,
+      padding: 12,
+      fontSize: 16,
+    },
+    row: { flexDirection: 'row', gap: 8 },
+    primaryBtn: {
+      flex: 1,
+      backgroundColor: theme.primary,
+      borderRadius: 10,
+      padding: 14,
+      alignItems: 'center',
+    },
+    // white on the solid rose primary button — intentional
+    primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+    secondaryBtn: {
+      backgroundColor: theme.border,
+      borderRadius: 10,
+      padding: 14,
+      alignItems: 'center',
+    },
+    secondaryText: { color: theme.text, fontWeight: '600', fontSize: 15 },
+  })

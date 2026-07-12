@@ -28,6 +28,8 @@ import { MatchingPairsPlayerView } from '@/components/matching-pairs/MatchingPai
 import { QuiplashPlayerView } from '@/components/quiplash/QuiplashPlayerView'
 import { QuickDrawPlayerView } from '@/components/quick-draw/QuickDrawPlayerView'
 import { WordRushPlayerView } from '@/components/word-rush/WordRushPlayerView'
+import { CrosswordPlayerView } from '@/components/crossword/CrosswordPlayerView'
+import { WordSearchPlayerView } from '@/components/word-search/WordSearchPlayerView'
 
 export type GamePlayerView = ComponentType<{ gameCode: string }>
 
@@ -66,4 +68,6 @@ export const PLAYER_VIEW_REGISTRY: Partial<Record<GameType, GamePlayerView>> = {
   quiplash: QuiplashPlayerView,
   quick_draw: QuickDrawPlayerView,
   word_rush: WordRushPlayerView,
+  crossword: CrosswordPlayerView,
+  word_search: WordSearchPlayerView,
 }

@@ -33,6 +33,12 @@ type Props = {
   /** Extra content rendered under the standings. */
   notice?: ReactNode
   /**
+   * Suppress the generic winner hero + leaderboard block when `notice` already
+   * renders a self-contained results card (e.g. Monopoly's share card). The
+   * `title`/`leaderboard` props are still used by the footer share actions.
+   */
+  hideDefaultHeader?: boolean
+  /**
    * Winner's player id. When it's the local player, the finish screen posts the
    * win to the community leaderboard (and shows the confirmation).
    */
@@ -53,6 +59,7 @@ export function GameFinishPanel({
   notice,
   winnerPlayerId,
   roundKey,
+  hideDefaultHeader = false,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const game = bootstrap.game
@@ -68,14 +75,16 @@ export function GameFinishPanel({
       contentContainerStyle={styles.wrap}
       showsVerticalScrollIndicator={false}
     >
-      <GameFinishedScreen
-        title={title}
-        detail={detail}
-        subtitle={subtitle}
-        leaderboard={leaderboard}
-        primaryAction={primaryAction}
-        emoji={emoji}
-      />
+      {hideDefaultHeader ? null : (
+        <GameFinishedScreen
+          title={title}
+          detail={detail}
+          subtitle={subtitle}
+          leaderboard={leaderboard}
+          primaryAction={primaryAction}
+          emoji={emoji}
+        />
+      )}
       {notice}
       {iWon && winner ? (
         <PostWinToCommunity

@@ -1,4 +1,5 @@
 import type {
+  CrosswordDifficulty,
   DescribeItMode,
   GameType,
   PairVoteMode,
@@ -8,7 +9,22 @@ import type {
   WordRushDifficulty,
   WordRushMode,
   WordRushPromptMode,
+  WordSearchDifficulty,
 } from '@fateround/shared'
+import {
+  CROSSWORD_DEFAULT_DIFFICULTY,
+  CROSSWORD_DEFAULT_DURATION,
+  CROSSWORD_DEFAULT_THEME,
+  clampCrosswordGameDuration,
+  parseCrosswordDifficulty,
+} from '@fateround/shared/crossword'
+import {
+  WORD_SEARCH_DEFAULT_DIFFICULTY,
+  WORD_SEARCH_DEFAULT_DURATION,
+  WORD_SEARCH_DEFAULT_THEME,
+  clampWordSearchGameDuration,
+  parseWordSearchDifficulty,
+} from '@fateround/shared/word-search'
 import type { BingoCallMode } from '@fateround/shared/create-party-games'
 import {
   clampBingoCallInterval,
@@ -102,6 +118,10 @@ export type PartyRoomSettings = {
   npatMarkingTimer: number
   gameDurationSeconds: number
   matchingPairsLargeGrid: boolean
+  crosswordTheme: string
+  crosswordDifficulty: CrosswordDifficulty
+  wordSearchTheme: string
+  wordSearchDifficulty: WordSearchDifficulty
 }
 
 export function defaultPartyRoomSettings(gameType: GameType): PartyRoomSettings {
@@ -115,7 +135,7 @@ export function defaultPartyRoomSettings(gameType: GameType): PartyRoomSettings 
     bingoCallMode: BINGO_DEFAULT_CALL_MODE,
     bingoCallInterval: BINGO_DEFAULT_CALL_INTERVAL,
     quiplashVoteTimer: QUIPLASH_DEFAULT_VOTE_TIMER,
-    quickDrawVariant: 'lie',
+    quickDrawVariant: 'guess',
     quickDrawPlayMode: 'team',
     quickDrawNumTeams: 2,
     quickDrawTitleTimer: QUICK_DRAW_DEFAULT_TITLE_TIMER,
@@ -132,8 +152,19 @@ export function defaultPartyRoomSettings(gameType: GameType): PartyRoomSettings 
     mafiaDetectiveEnabled: true,
     mafiaAnonymousVotes: true,
     npatMarkingTimer: NPAT_DEFAULT_MARKING_TIMER,
-    gameDurationSeconds: gameType === 'i_call_on' ? NPAT_DEFAULT_GAME_DURATION : 0,
+    gameDurationSeconds:
+      gameType === 'i_call_on'
+        ? NPAT_DEFAULT_GAME_DURATION
+        : gameType === 'crossword'
+          ? CROSSWORD_DEFAULT_DURATION
+          : gameType === 'word_search'
+            ? WORD_SEARCH_DEFAULT_DURATION
+            : 0,
     matchingPairsLargeGrid: false,
+    crosswordTheme: CROSSWORD_DEFAULT_THEME,
+    crosswordDifficulty: CROSSWORD_DEFAULT_DIFFICULTY,
+    wordSearchTheme: WORD_SEARCH_DEFAULT_THEME,
+    wordSearchDifficulty: WORD_SEARCH_DEFAULT_DIFFICULTY,
   }
 }
 
@@ -259,6 +290,22 @@ export function partyRoomSettingsPayload(gameType: GameType, party: PartyRoomSet
   if (gameType === 'sudoku') {
     payload.rounds_count = 1
     payload.game_duration_seconds = party.gameDurationSeconds
+    return payload
+  }
+
+  if (gameType === 'crossword') {
+    payload.rounds_count = 1
+    payload.game_duration_seconds = clampCrosswordGameDuration(party.gameDurationSeconds)
+    payload.crossword_theme = party.crosswordTheme
+    payload.crossword_difficulty = parseCrosswordDifficulty(party.crosswordDifficulty)
+    return payload
+  }
+
+  if (gameType === 'word_search') {
+    payload.rounds_count = 1
+    payload.game_duration_seconds = clampWordSearchGameDuration(party.gameDurationSeconds)
+    payload.word_search_theme = party.wordSearchTheme
+    payload.word_search_difficulty = parseWordSearchDifficulty(party.wordSearchDifficulty)
     return payload
   }
 

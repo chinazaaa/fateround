@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import type { ParticipantGender, PlayerGender } from '@fateround/shared'
-import { ShareGameCard } from '@/components/session/ShareGameCard'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
@@ -80,8 +79,6 @@ export function PollGenderJoinScreen({ gameCode, joinName, joining, error, onCha
         {/* White spinner/label on the solid rose button — correct in both schemes. */}
         {joining ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Join game</Text>}
       </Pressable>
-
-      <ShareGameCard gameCode={gameCode} />
     </KeyboardFormScreen>
   )
 }
@@ -89,7 +86,9 @@ export function PollGenderJoinScreen({ gameCode, joinName, joining, error, onCha
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     container: {
-      flex: 1,
+      // flexGrow (from KeyboardFormScreen) not flex:1 — flex:1 pins the scroll
+      // content to the viewport, so it can't scroll and centered content collapses
+      // when the keyboard opens.
       backgroundColor: theme.bg,
       padding: 24,
       justifyContent: 'center',

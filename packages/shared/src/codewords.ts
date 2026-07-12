@@ -115,3 +115,14 @@ export function cellBackground(type: CodewordsCellType, revealed: boolean, showK
       return revealed ? '#fde68a' : '#fef3c7'
   }
 }
+
+/**
+ * Foreground colour for a cell's word, paired with {@link cellBackground}. Every
+ * cell sits on a light background and reads best in near-black — except the
+ * exposed assassin, whose background is dark grey, so its label needs light text
+ * to stay legible (otherwise the bomb word is black-on-black on the reveal).
+ */
+export function cellTextColor(type: CodewordsCellType, revealed: boolean, showKey: boolean): string {
+  if ((revealed || showKey) && type === 'assassin') return '#f4f4f5'
+  return '#171717'
+}

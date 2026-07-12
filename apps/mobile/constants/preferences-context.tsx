@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import * as SecureStore from 'expo-secure-store'
 import { setSoundsEnabled } from '@/lib/sounds'
-import { setPushEnabled } from '@/lib/push-notifications'
+import { getExpoPushToken, setPushEnabled, unsubscribeAllPush } from '@/lib/push-notifications'
 
 /**
  * App-wide user preferences that live alongside the theme mode: sound effects and
@@ -71,6 +71,15 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
       setNotificationsEnabled: (next: boolean) => {
         setNotificationsEnabledState(next)
         persistBool(NOTIFICATIONS_KEY, next)
+        // Master switch OFF → drop this device's push subscription right away
+        // (across every game) so notifications stop immediately, not just for
+        // future registrations. Best-effort; a no-op on non-device/simulator.
+        if (!next) {
+          void (async () => {
+            const token = await getExpoPushToken()
+            if (token) await unsubscribeAllPush(token)
+          })()
+        }
       },
     }),
     [soundEnabled, notificationsEnabled]

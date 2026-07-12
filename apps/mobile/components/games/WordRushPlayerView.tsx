@@ -1,6 +1,12 @@
-import { useCallback, useMemo, useState } from 'react'
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
-import { type Game, type Player, type WordRushAnswer, type WordRushPlayer, type WordRushSession } from '@fateround/shared'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import {
+  type Game,
+  type Player,
+  type WordRushAnswer,
+  type WordRushPlayer,
+  type WordRushSession,
+} from '@fateround/shared'
 import { batch5GameLabel } from '@fateround/shared/batch-5-games'
 import {
   clampWordRushMode,
@@ -18,8 +24,8 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { ActivityFeed } from '@/components/party/ActivityFeed'
@@ -28,10 +34,18 @@ import { TeamBadge } from '@/components/party/TeamBadge'
 import { TeamPickerGrid } from '@/components/party/TeamPickerGrid'
 import { TeamScoreGrid } from '@/components/party/TeamScoreGrid'
 import { useAbsoluteDeadline } from '@/components/party/useAbsoluteDeadline'
+import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { postWordRushPrompt, postWordRushSubmit, postWordRushTeam } from '@/lib/game-api'
+import {
+  postWordRushAdvance,
+  postWordRushExpireTurn,
+  postWordRushPrompt,
+  postWordRushSubmit,
+  postWordRushTeam,
+} from '@/lib/game-api'
+import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { getSupabase } from '@/lib/supabase'
 import { WORD_RUSH_ANSWER_SELECT, WORD_RUSH_PLAYER_SELECT, WORD_RUSH_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
@@ -52,6 +66,9 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
   const [acting, setActing] = useState(false)
   const [lastMessage, setLastMessage] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const scrollRef = useRef<ScrollView>(null)
+  // Lift a focused input above the keyboard (it sits low in the content).
+  const scrollInputIntoView = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: WordRushSession | null; ok: boolean }> => {
@@ -107,12 +124,12 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
 
   const mode = clampWordRushMode(bootstrap.game?.word_rush_mode)
   const numTeams = clampWordRushTeams(bootstrap.game?.word_rush_num_teams)
+  // Surface the mode (N teams / Individual) as the header pill on every screen.
+  useHeaderBadge(bootstrap.game ? (mode === 'team' ? `${numTeams} teams` : 'Individual') : null)
   const myTeamRow = teamRows.find((r) => r.player_id === bootstrap.myPlayerId)
   const isPromptSetter = session?.prompt_setter_player_id === bootstrap.myPlayerId
   const onMyTeam = mode === 'individual' || myTeamRow?.team === session?.active_team
-  const minLength = session
-    ? wordRushMinLengthForRound(session.current_round, session.difficulty)
-    : 3
+  const minLength = session ? wordRushMinLengthForRound(session.current_round, session.difficulty) : 3
 
   const me = useMemo(
     () => bootstrap.players.find((p) => p.id === bootstrap.myPlayerId),
@@ -151,10 +168,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     return map
   }, [teamRows, bootstrap.players])
 
-  const liveTeamScores = useMemo(
-    () => computeWordRushTeamScores(answers, numTeams),
-    [answers, numTeams]
-  )
+  const liveTeamScores = useMemo(() => computeWordRushTeamScores(answers, numTeams), [answers, numTeams])
 
   const livePlayerScores = useMemo(
     () => computeWordRushPlayerScores(bootstrap.players, teamRows),
@@ -176,14 +190,26 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
       }))
   }, [answers, bootstrap.players, mode])
 
-  const turnSecondsLeft = useAbsoluteDeadline(
-    session?.turn_deadline_at,
-    session?.phase === 'playing'
-  )
+  const turnSecondsLeft = useAbsoluteDeadline(session?.turn_deadline_at, session?.phase === 'playing')
   const intermissionSecondsLeft = useAbsoluteDeadline(
     session?.intermission_deadline_at,
     session?.phase === 'intermission'
   )
+
+  // Drive the round forward when a phase timer runs out — any active non-viewer
+  // client fires (idempotent + deadline-gated server-side), matching web. The turn
+  // deadline covers both the playing and awaiting-prompt phases.
+  const canDriveTimers = bootstrap.game?.status === 'active' && !isViewer
+  useTurnExpiryTimer({
+    deadlineAt: session?.phase === 'playing' || session?.phase === 'awaiting_prompt' ? session?.turn_deadline_at : null,
+    enabled: canDriveTimers,
+    onExpire: () => postWordRushExpireTurn(bootstrap.code).then(() => bootstrap.load()),
+  })
+  useTurnExpiryTimer({
+    deadlineAt: session?.phase === 'intermission' ? session?.intermission_deadline_at : null,
+    enabled: canDriveTimers,
+    onExpire: () => postWordRushAdvance(bootstrap.code).then(() => bootstrap.load()),
+  })
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
@@ -206,7 +232,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     }
     if (bootstrap.game.replay_pending) {
       return (
-        <GameShell bootstrap={bootstrap} title={batch5GameLabel('word_rush')} subtitle="Play again">
+        <GameShell bootstrap={bootstrap} title={batch5GameLabel('word_rush')}>
           <ReplayReadyRing
             gameCode={bootstrap.code}
             players={bootstrap.players}
@@ -242,8 +268,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
       top && 'name' in top ? `${top.name} — ${top.score} pts` : top ? `${teamLabel(top.team)} wins` : undefined
     // Individual mode: highlight the winning player in the hero. Team mode has no
     // single player winner, so leave winnerPlayerId undefined there.
-    const winnerPlayerId =
-      hasWinner && top && 'id' in top ? (top as { id: string }).id : null
+    const winnerPlayerId = hasWinner && top && 'id' in top ? (top as { id: string }).id : null
     const finishTitle = hasWinner
       ? top && 'name' in top
         ? `${top.name} wins!`
@@ -260,9 +285,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
           roundKey={session?.id ?? null}
           leaderboard={scoreListLeaderboard(
             board.map((row) =>
-              'name' in row
-                ? { name: row.name, score: row.score }
-                : { name: teamLabel(row.team), score: row.score }
+              'name' in row ? { name: row.name, score: row.score } : { name: teamLabel(row.team), score: row.score }
             )
           )}
           notice={
@@ -282,7 +305,9 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
 
   const submitWord = async () => {
     const text = wordText.trim()
-    if (!text || !bootstrap.myResumeToken) return
+    // `acting` guard: the keyboard "Go" path can re-fire while the first submit
+    // is still in flight (blurOnSubmit=false keeps focus), so block re-entry.
+    if (!text || !bootstrap.myResumeToken || acting) return
     setLastMessage(null)
     setSubmitError(null)
     setActing(true)
@@ -291,14 +316,19 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
       if (!result.correct) {
         // Keep the typed word so the player can fix it, red-ring the field, and
         // show the specific dictionary message (mirrors web allowRetry behaviour).
-        setSubmitError(
-          result.message ?? `"${text}" isn't in the dictionary for this letter pair`
-        )
+        setSubmitError(result.message ?? `"${text}" isn't in the dictionary for this letter pair`)
       } else {
         setWordText('')
-        setLastMessage(`+${result.points ?? 0} pts`)
+        // Team mode scores +1 to the team and returns no per-word points, so
+        // "+0 pts" was misleading — show a plain "Correct!" unless we have a real
+        // individual-mode point value.
+        setLastMessage(result.points && result.points > 0 ? `+${result.points} pts` : 'Correct! ✓')
       }
       await bootstrap.load()
+    } catch (err) {
+      // Without this a thrown request (e.g. a 4xx like "not your team's turn")
+      // vanished silently — surface it in the same red field message.
+      setSubmitError(err instanceof Error ? err.message : 'Could not submit your word')
     } finally {
       setActing(false)
     }
@@ -308,17 +338,9 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     if (!startLetter.trim() || !endLetter.trim()) return
     const parsed = Math.round(Number(minLengthText))
     const chosenMin =
-      minLengthText.trim() && Number.isFinite(parsed)
-        ? Math.min(20, Math.max(minLength, parsed))
-        : minLength
+      minLengthText.trim() && Number.isFinite(parsed) ? Math.min(20, Math.max(minLength, parsed)) : minLength
     await act(() =>
-      postWordRushPrompt(
-        bootstrap.code,
-        bootstrap.myResumeToken!,
-        startLetter.trim(),
-        endLetter.trim(),
-        chosenMin
-      )
+      postWordRushPrompt(bootstrap.code, bootstrap.myResumeToken!, startLetter.trim(), endLetter.trim(), chosenMin)
     )
     setStartLetter('')
     setEndLetter('')
@@ -327,192 +349,193 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
 
   // In individual + manual prompt mode the prompt-setter does NOT guess this
   // round — they earn mirror points from other players' scores instead.
-  const isIndividualManualSetter =
-    mode === 'individual' && isPromptSetter && session.prompt_mode === 'manual'
+  const isIndividualManualSetter = mode === 'individual' && isPromptSetter && session.prompt_mode === 'manual'
   // Individual mode is one-word-per-round: once you land a correct word this
   // turn the input is replaced by a "locked in" card (mirrors web).
   const myCorrectAnswerThisRound =
     mode === 'individual' && bootstrap.myPlayerId
-      ? answers.find(
-          (a) =>
-            a.player_id === bootstrap.myPlayerId &&
-            a.correct &&
-            a.turn_index === session.turn_index
-        )
+      ? answers.find((a) => a.player_id === bootstrap.myPlayerId && a.correct && a.turn_index === session.turn_index)
       : undefined
   const canAnswer =
     !isViewer &&
     !myCorrectAnswerThisRound &&
-    ((mode === 'individual' && !isIndividualManualSetter) ||
-      (mode === 'team' && onMyTeam && !isPromptSetter))
+    ((mode === 'individual' && !isIndividualManualSetter) || (mode === 'team' && onMyTeam && !isPromptSetter))
 
   const teamRound =
     mode === 'team' && session ? currentTeamRoundNumber(session.turn_index, numTeams) : session.current_round
 
   return (
-    <GameShell bootstrap={bootstrap} title={batch5GameLabel('word_rush')} subtitle={session.status_message ?? bootstrap.code}>
-      {isViewer && bootstrap.game && me && bootstrap.myPlayerId ? (
-        <ViewerModeBanner
-          gameCode={bootstrap.code}
-          playerId={bootstrap.myPlayerId}
-          game={bootstrap.game}
-          player={me}
-          players={bootstrap.players}
-          onPromoted={() => void bootstrap.load()}
+    <GameShell
+      bootstrap={bootstrap}
+      title={batch5GameLabel('word_rush')}
+      // Just the code here — the round/team/letters (status_message) is already
+      // shown in the middle (turn banner + score grid), so it read as a duplicate.
+      subtitle={bootstrap.code}
+    >
+      <KeyboardAwareGameScroll ref={scrollRef} contentContainerStyle={styles.content}>
+        <TurnBanner
+          text={
+            session.phase === 'intermission'
+              ? 'Round break…'
+              : session.phase === 'awaiting_prompt'
+                ? 'Waiting for letter pair…'
+                : mode === 'team' && !onMyTeam
+                  ? `${teamLabel(session.active_team)} is playing`
+                  : `${session.start_letter?.toUpperCase() ?? '?'} → ${session.end_letter?.toUpperCase() ?? '?'}`
+          }
+          isMyTurn={onMyTeam && session.phase === 'playing'}
         />
-      ) : null}
-      <TurnBanner
-        text={
-          session.phase === 'intermission'
-            ? 'Round break…'
-            : session.phase === 'awaiting_prompt'
-              ? 'Waiting for letter pair…'
-              : mode === 'team' && !onMyTeam
-                ? `${teamLabel(session.active_team)} is playing`
-                : `${session.start_letter?.toUpperCase() ?? '?'} → ${session.end_letter?.toUpperCase() ?? '?'}`
-        }
-        isMyTurn={onMyTeam && session.phase === 'playing'}
-      />
 
-      {mode === 'team' && myTeamRow?.team ? (
-        <View style={styles.teamRow}>
-          <Text style={styles.teamRowLabel}>You're on</Text>
-          <TeamBadge team={myTeamRow.team} />
-        </View>
-      ) : null}
-
-      {turnSecondsLeft > 0 && session.phase === 'playing' ? <TimerBadge seconds={turnSecondsLeft} /> : null}
-
-      {mode === 'team' ? (
-        <TeamScoreGrid
-          scores={liveTeamScores}
-          activeTeam={session.phase === 'playing' ? session.active_team : null}
-          myTeam={myTeamRow?.team}
-          round={teamRound}
-          totalRounds={session.total_rounds}
-        />
-      ) : (
-        <LeaderboardPanel
-          title="Leaderboard"
-          rows={livePlayerScores.map((row) => ({
-            id: row.id,
-            name: row.name,
-            score: row.score,
-            highlight: row.id === bootstrap.myPlayerId,
-          }))}
-          highlightId={bootstrap.myPlayerId}
-        />
-      )}
-
-      {session.phase === 'intermission' ? (
-        <RoundBreakCard
-          title="Round break"
-          message={session.status_message ?? 'Next round starting soon…'}
-          secondsLeft={intermissionSecondsLeft}
-          detail={mode === 'team' ? `Up next: ${teamLabel(session.active_team)}` : undefined}
-        />
-      ) : null}
-
-      {session.phase !== 'intermission' && session.start_letter && session.end_letter ? (
-        <View style={styles.promptBlock}>
-          <View style={styles.promptDisplay}>
-            <Text style={styles.promptLetter}>{session.start_letter.toUpperCase()}</Text>
-            <Text style={styles.promptArrow}>→</Text>
-            <Text style={styles.promptLetter}>{session.end_letter.toUpperCase()}</Text>
+        {mode === 'team' && myTeamRow?.team ? (
+          <View style={styles.teamRow}>
+            <Text style={styles.teamRowLabel}>You're on</Text>
+            <TeamBadge team={myTeamRow.team} />
           </View>
-          {(session.min_word_length ?? minLength) > 3 ? (
-            <Text style={styles.minCallout}>Minimum {session.min_word_length ?? minLength} letters</Text>
-          ) : null}
-        </View>
-      ) : null}
+        ) : null}
 
-      {session.phase === 'awaiting_prompt' && isPromptSetter && !isViewer ? (
-        <View style={styles.panel}>
-          <Text style={styles.label}>Set the letter pair</Text>
-          <View style={styles.row}>
-            <TextInput
-              style={styles.letterInput}
-              value={startLetter}
-              onChangeText={setStartLetter}
-              placeholder="Start"
-              placeholderTextColor={theme.textFaint}
-              maxLength={1}
-              autoCapitalize="characters"
-            />
-            <Text style={styles.arrow}>→</Text>
-            <TextInput
-              style={styles.letterInput}
-              value={endLetter}
-              onChangeText={setEndLetter}
-              placeholder="End"
-              placeholderTextColor={theme.textFaint}
-              maxLength={1}
-              autoCapitalize="characters"
-            />
+        {turnSecondsLeft > 0 && session.phase === 'playing' ? <TimerBadge seconds={turnSecondsLeft} /> : null}
+
+        {mode === 'team' ? (
+          <TeamScoreGrid
+            scores={liveTeamScores}
+            activeTeam={session.phase === 'playing' ? session.active_team : null}
+            myTeam={myTeamRow?.team}
+            round={teamRound}
+            totalRounds={session.total_rounds}
+          />
+        ) : (
+          <LeaderboardPanel
+            embedded
+            title="Leaderboard"
+            rows={livePlayerScores.map((row) => ({
+              id: row.id,
+              name: row.name,
+              score: row.score,
+              highlight: row.id === bootstrap.myPlayerId,
+            }))}
+            highlightId={bootstrap.myPlayerId}
+          />
+        )}
+
+        {session.phase === 'intermission' ? (
+          <RoundBreakCard
+            title="Round break"
+            message={session.status_message ?? 'Next round starting soon…'}
+            secondsLeft={intermissionSecondsLeft}
+            detail={mode === 'team' ? `Up next: ${teamLabel(session.active_team)}` : undefined}
+          />
+        ) : null}
+
+        {session.phase !== 'intermission' && session.start_letter && session.end_letter ? (
+          <View style={styles.promptBlock}>
+            <View style={styles.promptDisplay}>
+              <Text style={styles.promptLetter}>{session.start_letter.toUpperCase()}</Text>
+              <Text style={styles.promptArrow}>→</Text>
+              <Text style={styles.promptLetter}>{session.end_letter.toUpperCase()}</Text>
+            </View>
+            {(session.min_word_length ?? minLength) > 3 ? (
+              <Text style={styles.minCallout}>Minimum {session.min_word_length ?? minLength} letters</Text>
+            ) : null}
           </View>
-          <Text style={styles.hint}>Min letters (at least {minLength})</Text>
-          <TextInput
-            style={styles.input}
-            value={minLengthText}
-            onChangeText={setMinLengthText}
-            placeholder={String(minLength)}
-            placeholderTextColor={theme.textFaint}
-            keyboardType="number-pad"
-            maxLength={2}
-          />
-          <Pressable style={styles.primaryBtn} disabled={acting} onPress={() => void setPrompt()}>
-            <Text style={styles.primaryText}>Set prompt</Text>
-          </Pressable>
-        </View>
-      ) : null}
+        ) : null}
 
-      {session.phase === 'playing' && canAnswer ? (
-        <View style={styles.panel}>
-          <Text style={styles.hint}>
-            Min {session.min_word_length ?? minLength} letters · starts & ends with shown letters
-          </Text>
-          <TextInput
-            style={[styles.input, submitError ? styles.inputError : null]}
-            value={wordText}
-            onChangeText={(t) => {
-              setWordText(t)
-              if (submitError) setSubmitError(null)
-            }}
-            placeholder="Type a word"
-            placeholderTextColor={theme.textFaint}
-            onSubmitEditing={() => void submitWord()}
-          />
-          <Pressable style={styles.primaryBtn} disabled={acting} onPress={() => void submitWord()}>
-            <Text style={styles.primaryText}>Submit</Text>
-          </Pressable>
-          {submitError ? <Text style={styles.errorFeedback}>{submitError}</Text> : null}
-          {!submitError && lastMessage ? <Text style={styles.feedback}>{lastMessage}</Text> : null}
-        </View>
-      ) : session.phase === 'playing' && myCorrectAnswerThisRound ? (
-        <View style={styles.lockedCard}>
-          <Text style={styles.lockedTitle}>Correct — locked in for this round ✓</Text>
-          <Text style={styles.lockedBody}>Waiting for other players…</Text>
-        </View>
-      ) : session.phase === 'playing' && isViewer ? (
-        <Text style={styles.waiting}>
-          {mode === 'team'
-            ? `Watching — ${teamLabel(session.active_team)} is playing`
-            : 'Watching — round in progress'}
-        </Text>
-      ) : session.phase === 'playing' && isIndividualManualSetter ? (
-        <View style={styles.panel}>
-          <Text style={styles.setterNote}>
-            You set the letters this round — others are guessing. You earn mirror points from their
-            scores.
-          </Text>
-        </View>
-      ) : session.phase === 'playing' ? (
-        <Text style={styles.waiting}>Watch and wait for your turn…</Text>
-      ) : null}
+        {session.phase === 'awaiting_prompt' && isPromptSetter && !isViewer ? (
+          <View style={styles.panel}>
+            <Text style={styles.label}>Set the letter pair</Text>
+            <View style={styles.row}>
+              <TextInput
+                style={styles.letterInput}
+                value={startLetter}
+                onChangeText={setStartLetter}
+                placeholder="Start"
+                placeholderTextColor={theme.textFaint}
+                maxLength={1}
+                autoCapitalize="characters"
+                onFocus={scrollInputIntoView}
+              />
+              <Text style={styles.arrow}>→</Text>
+              <TextInput
+                style={styles.letterInput}
+                value={endLetter}
+                onChangeText={setEndLetter}
+                placeholder="End"
+                placeholderTextColor={theme.textFaint}
+                maxLength={1}
+                autoCapitalize="characters"
+                onFocus={scrollInputIntoView}
+              />
+            </View>
+            <Text style={styles.hint}>Min letters (at least {minLength})</Text>
+            <TextInput
+              style={styles.input}
+              value={minLengthText}
+              onChangeText={setMinLengthText}
+              placeholder={String(minLength)}
+              placeholderTextColor={theme.textFaint}
+              keyboardType="number-pad"
+              maxLength={2}
+              onFocus={scrollInputIntoView}
+            />
+            <Pressable style={styles.primaryBtn} disabled={acting} onPress={() => void setPrompt()}>
+              <Text style={styles.primaryText}>Set prompt</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
-      {mode === 'team' && session.phase === 'playing' ? (
-        <ActivityFeed title="Recent correct" items={recentCorrect} emptyText="No correct words yet" />
-      ) : null}
+        {session.phase === 'playing' && canAnswer ? (
+          <View style={styles.panel}>
+            <Text style={styles.hint}>
+              Min {session.min_word_length ?? minLength} letters · starts & ends with shown letters
+            </Text>
+            <TextInput
+              style={[styles.input, submitError ? styles.inputError : null]}
+              value={wordText}
+              onChangeText={(t) => {
+                setWordText(t)
+                if (submitError) setSubmitError(null)
+              }}
+              placeholder="Type a word"
+              placeholderTextColor={theme.textFaint}
+              // Submit straight from the keyboard's "Go" key — reliable on the
+              // first press (the Submit button can sit behind the keyboard, where a
+              // first tap only dismisses it). blurOnSubmit=false keeps the keyboard
+              // up so team mode can fire off several words in a row.
+              returnKeyType="go"
+              blurOnSubmit={false}
+              onSubmitEditing={() => void submitWord()}
+              onFocus={scrollInputIntoView}
+            />
+            <Pressable style={styles.primaryBtn} disabled={acting} onPress={() => void submitWord()}>
+              <Text style={styles.primaryText}>Submit</Text>
+            </Pressable>
+            {submitError ? <Text style={styles.errorFeedback}>{submitError}</Text> : null}
+            {!submitError && lastMessage ? <Text style={styles.feedback}>{lastMessage}</Text> : null}
+          </View>
+        ) : session.phase === 'playing' && myCorrectAnswerThisRound ? (
+          <View style={styles.lockedCard}>
+            <Text style={styles.lockedTitle}>Correct — locked in for this round ✓</Text>
+            <Text style={styles.lockedBody}>Waiting for other players…</Text>
+          </View>
+        ) : session.phase === 'playing' && isViewer ? (
+          <Text style={styles.waiting}>
+            {mode === 'team'
+              ? `Watching — ${teamLabel(session.active_team)} is playing`
+              : 'Watching — round in progress'}
+          </Text>
+        ) : session.phase === 'playing' && isIndividualManualSetter ? (
+          <View style={styles.panel}>
+            <Text style={styles.setterNote}>
+              You set the letters this round — others are guessing. You earn mirror points from their scores.
+            </Text>
+          </View>
+        ) : session.phase === 'playing' ? (
+          <Text style={styles.waiting}>Watch and wait for your turn…</Text>
+        ) : null}
+
+        {mode === 'team' && session.phase === 'playing' ? (
+          <ActivityFeed embedded title="Recent correct" items={recentCorrect} emptyText="No correct words yet" />
+        ) : null}
+      </KeyboardAwareGameScroll>
     </GameShell>
   )
 }
@@ -527,10 +550,7 @@ function WordRushCorrectWords({
 }) {
   const styles = useThemedStyles(makeBreakdownStyles)
   const correct = useMemo(
-    () =>
-      answers
-        .filter((a) => a.correct)
-        .sort((a, b) => a.round - b.round || a.text.localeCompare(b.text)),
+    () => answers.filter((a) => a.correct).sort((a, b) => a.round - b.round || a.text.localeCompare(b.text)),
     [answers]
   )
   if (correct.length === 0) return <Text style={styles.empty}>{emptyLabel}</Text>
@@ -593,10 +613,7 @@ function WordRushBreakdown({
         {memberIds.map((pid) => (
           <View key={pid} style={styles.member}>
             <Text style={styles.memberName}>{nameById.get(pid) ?? 'Player'}</Text>
-            <WordRushCorrectWords
-              answers={answers.filter((a) => a.player_id === pid)}
-              emptyLabel="No words"
-            />
+            <WordRushCorrectWords answers={answers.filter((a) => a.player_id === pid)} emptyLabel="No words" />
           </View>
         ))}
       </View>
@@ -612,10 +629,7 @@ function WordRushBreakdown({
         const isOpen = expanded === row.key
         return (
           <View key={row.key} style={styles.rowWrap}>
-            <Pressable
-              style={styles.rowHeader}
-              onPress={() => setExpanded(isOpen ? null : row.key)}
-            >
+            <Pressable style={styles.rowHeader} onPress={() => setExpanded(isOpen ? null : row.key)}>
               <Text style={[styles.rowTitle, row.mine && styles.rowTitleMine]} numberOfLines={1}>
                 {row.title}
               </Text>
@@ -670,72 +684,73 @@ const makeBreakdownStyles = (theme: Theme) =>
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  teamRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  teamRowLabel: { color: theme.textMuted, fontSize: 14 },
-  promptBlock: { alignItems: 'center', gap: 4, paddingVertical: 4 },
-  promptDisplay: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-    paddingVertical: 12,
-  },
-  promptLetter: { color: theme.text, fontSize: 40, fontWeight: '900' },
-  promptArrow: { color: theme.primaryMuted, fontSize: 28, fontWeight: '700' },
-  minCallout: {
-    color: theme.primaryMuted,
-    fontSize: 13,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  inputError: { borderColor: theme.error },
-  errorFeedback: { color: theme.error, textAlign: 'center', fontWeight: '600' },
-  lockedCard: {
-    backgroundColor: theme.primarySoft,
-    borderWidth: 1,
-    borderColor: theme.primary,
-    borderRadius: 12,
-    padding: 16,
-    gap: 4,
-    alignItems: 'center',
-  },
-  lockedTitle: { color: theme.primaryMuted, fontSize: 16, fontWeight: '800', textAlign: 'center' },
-  lockedBody: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
-  waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
-  panel: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 10 },
-  label: { color: theme.text, fontSize: 16, fontWeight: '600' },
-  hint: { color: theme.textMuted, fontSize: 14 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  letterInput: {
-    flex: 1,
-    backgroundColor: theme.bg,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.border,
-    color: theme.text,
-    padding: 12,
-    fontSize: 24,
-    textAlign: 'center',
-  },
-  arrow: { color: theme.text, fontSize: 24 },
-  input: {
-    backgroundColor: theme.bg,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.border,
-    color: theme.text,
-    padding: 12,
-    fontSize: 16,
-  },
-  primaryBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: 10,
-    padding: 14,
-    alignItems: 'center',
-  },
-  // White on the solid primary button — intentional (case 2).
-  primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  feedback: { color: '#fbbf24', textAlign: 'center' },
-  setterNote: { color: theme.textMuted, fontSize: 14, textAlign: 'center', lineHeight: 20 },
-})
+    teamRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+    teamRowLabel: { color: theme.textMuted, fontSize: 14 },
+    content: { paddingBottom: 32, gap: 14 },
+    promptBlock: { alignItems: 'center', gap: 4, paddingVertical: 4 },
+    promptDisplay: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 16,
+      paddingVertical: 12,
+    },
+    promptLetter: { color: theme.text, fontSize: 40, fontWeight: '900' },
+    promptArrow: { color: theme.primaryMuted, fontSize: 28, fontWeight: '700' },
+    minCallout: {
+      color: theme.primaryMuted,
+      fontSize: 13,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    inputError: { borderColor: theme.error },
+    errorFeedback: { color: theme.error, textAlign: 'center', fontWeight: '600' },
+    lockedCard: {
+      backgroundColor: theme.primarySoft,
+      borderWidth: 1,
+      borderColor: theme.primary,
+      borderRadius: 12,
+      padding: 16,
+      gap: 4,
+      alignItems: 'center',
+    },
+    lockedTitle: { color: theme.primaryMuted, fontSize: 16, fontWeight: '800', textAlign: 'center' },
+    lockedBody: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
+    waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
+    panel: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 10 },
+    label: { color: theme.text, fontSize: 16, fontWeight: '600' },
+    hint: { color: theme.textMuted, fontSize: 14 },
+    row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    letterInput: {
+      flex: 1,
+      backgroundColor: theme.bg,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      color: theme.text,
+      padding: 12,
+      fontSize: 24,
+      textAlign: 'center',
+    },
+    arrow: { color: theme.text, fontSize: 24 },
+    input: {
+      backgroundColor: theme.bg,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      color: theme.text,
+      padding: 12,
+      fontSize: 16,
+    },
+    primaryBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 10,
+      padding: 14,
+      alignItems: 'center',
+    },
+    // White on the solid primary button — intentional (case 2).
+    primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+    feedback: { color: '#fbbf24', textAlign: 'center' },
+    setterNote: { color: theme.textMuted, fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  })

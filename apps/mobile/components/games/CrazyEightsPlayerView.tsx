@@ -26,6 +26,8 @@ import { playerIsViewer } from '@fateround/shared/viewers'
 import { CardTableArea } from '@/components/games/cards/CardTableArea'
 import { CrazyEightsRoster } from '@/components/games/cards/CrazyEightsRoster'
 import { GameTimerBar } from '@/components/games/cards/GameTimerBar'
+import { useGameExpiryTimer } from '@/hooks/useGameExpiryTimer'
+import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { PlayingCardFace } from '@/components/games/cards/PlayingCardFace'
 import { useTurnDeadlineSeconds } from '@/components/games/cards/useTurnDeadlineSeconds'
 import { TimerBadge } from '@/components/ui/TimerBadge'
@@ -42,7 +44,12 @@ import {
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { postCrazyEightsChoose, postCrazyEightsDraw, postCrazyEightsPlay } from '@/lib/game-api'
+import {
+  postCrazyEightsChoose,
+  postCrazyEightsDraw,
+  postCrazyEightsExpireTurn,
+  postCrazyEightsPlay,
+} from '@/lib/game-api'
 import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { CRAZY8_PLAYER_HANDS_SELECT, CRAZY8_SESSION_SELECT } from '@/lib/supabase-selects'
@@ -125,9 +132,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   //  · isOut — our dealt hand row is loaded and now empty (we played our last card and
   //    went out). Guard on the row actually being loaded so a not-yet-fetched hand isn't
   //    briefly treated as empty and flip a still-playing player into the watch-only UI.
-  const me = bootstrap.myPlayerId
-    ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) ?? null
-    : null
+  const me = bootstrap.myPlayerId ? (bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) ?? null) : null
   const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
   const isOut = !!myHand && myHand.cards.length === 0 && bootstrap.game?.status === 'active'
   const isWatching = isViewer || isOut
@@ -156,6 +161,18 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     gameDeadlineAt,
     !!gameDeadlineAt && bootstrap.game?.status === 'active'
   )
+
+  // End the game when the whole-game duration runs out (the timer bar otherwise
+  // just drains to 0:00 with nothing telling the server to finish). Matches web.
+  useGameExpiryTimer({ endpoint: `/api/games/${gameCode}/expire-crazy-eights`, game: bootstrap.game })
+
+  // Advance a stalled turn when its per-turn timer runs out. Any active client
+  // fires it (idempotent + deadline-gated server-side) — matches web.
+  useTurnExpiryTimer({
+    deadlineAt: session?.turn_deadline_at,
+    enabled: bootstrap.game?.status === 'active' && session?.phase === 'playing',
+    onExpire: () => postCrazyEightsExpireTurn(bootstrap.code).then(() => bootstrap.load()),
+  })
 
   const handCounts = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -310,173 +327,171 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title={batch4GameLabel('crazy_eights')} subtitle={bootstrap.code}>
-      {gameDurationSeconds > 0 && gameSecondsLeft > 0 ? (
-        <GameTimerBar secondsLeft={gameSecondsLeft} durationSeconds={gameDurationSeconds} />
-      ) : null}
-      <TurnBanner
-        text={isWatching ? `Spectating — ${turnName}'s turn` : session.status_message ?? `${turnName}'s turn`}
-        isMyTurn={isMyTurn && !isWatching}
-      />
-      {timerSeconds > 0 ? <TimerBadge seconds={timerSeconds} /> : null}
+      <ScrollView contentContainerStyle={styles.content}>
+        {gameDurationSeconds > 0 && gameSecondsLeft > 0 ? (
+          <GameTimerBar secondsLeft={gameSecondsLeft} durationSeconds={gameDurationSeconds} />
+        ) : null}
+        <TurnBanner
+          text={isWatching ? `Spectating — ${turnName}'s turn` : (session.status_message ?? `${turnName}'s turn`)}
+          isMyTurn={isMyTurn && !isWatching}
+        />
+        {timerSeconds > 0 ? <TimerBadge seconds={timerSeconds} /> : null}
 
-      {isWatching ? (
-        <View style={styles.outBanner}>
-          <Text style={styles.outTitle}>{isOut ? "You're out" : 'Watching'}</Text>
-          <Text style={styles.outSub}>
-            {isOut
-              ? 'You played all your cards — watch until the game ends.'
-              : 'Read-only spectator — follow the game until it ends.'}
-          </Text>
-        </View>
-      ) : null}
-
-      {directionChip}
-
-      <CrazyEightsRoster
-        players={bootstrap.players}
-        turnPlayerId={turnPlayerId}
-        myPlayerId={bootstrap.myPlayerId}
-        handCounts={handCounts}
-        finishOrder={session.finish_order ?? []}
-      />
-
-      <CardTableArea
-        pileCount={session.draw_pile.length}
-        hint={tableHint || null}
-        topCard={
-          session.top_card ? (
-            <PlayingCardFace card={session.top_card} specialLabel={specialCardShortLabel(session.top_card, rules)} />
-          ) : (
-            <Text style={styles.emptyTop}>—</Text>
-          )
-        }
-      />
-      {reshuffleNote ? (
-        <Text style={styles.reshuffleNote}>Draw pile empty — it reshuffles from the played cards.</Text>
-      ) : null}
-
-      {choosingSuit ? (
-        <View style={styles.choosePanel}>
-          <Text style={styles.chooseHeading}>You played a wild card — choose the suit opponents must match</Text>
-          <View style={styles.suitRow}>
-            {SUITS.map((suit) => {
-              const red = suit === 'hearts' || suit === 'diamonds'
-              return (
-                <Pressable
-                  key={suit}
-                  style={styles.suitBtn}
-                  disabled={acting}
-                  onPress={() => void chooseSuit(suit)}
-                >
-                  <Text style={[styles.suitSymbol, red && styles.suitSymbolRed]}>{CRAZY8_SUIT_SYMBOLS[suit]}</Text>
-                  <Text style={styles.suitLabel}>{CRAZY8_SUIT_LABELS[suit]}</Text>
-                </Pressable>
-              )
-            })}
+        {isWatching ? (
+          <View style={styles.outBanner}>
+            <Text style={styles.outTitle}>{isOut ? "You're out" : 'Watching'}</Text>
+            <Text style={styles.outSub}>
+              {isOut
+                ? 'You played all your cards — watch until the game ends.'
+                : 'Read-only spectator — follow the game until it ends.'}
+            </Text>
           </View>
-        </View>
-      ) : null}
+        ) : null}
 
-      {isWatching ? null : (
-        <>
-          {isMyTurn && session.phase === 'playing' ? <Text style={styles.turnHint}>{turnHint}</Text> : null}
+        {directionChip}
 
-          <Text style={styles.section}>Your hand ({myHand?.cards.length ?? 0})</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hand}>
-            {(myHand?.cards ?? []).map((card) => {
-              const playable = playableIds.has(card.id)
-              return (
-                <Pressable
-                  key={card.id}
-                  disabled={acting || !isMyTurn || !playable || session.phase !== 'playing'}
-                  onPress={() => void playCard(card.id)}
-                >
-                  <PlayingCardFace
-                    card={card}
-                    playable={playable && isMyTurn}
-                    specialLabel={specialCardShortLabel(card, rules)}
-                  />
-                </Pressable>
-              )
-            })}
-          </ScrollView>
+        <CrazyEightsRoster
+          players={bootstrap.players}
+          turnPlayerId={turnPlayerId}
+          myPlayerId={bootstrap.myPlayerId}
+          handCounts={handCounts}
+          finishOrder={session.finish_order ?? []}
+        />
 
-          {canDraw ? (
-            <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void drawCard()}>
-              <Text style={styles.drawText}>{drawLabel}</Text>
-            </Pressable>
-          ) : null}
-        </>
-      )}
+        <CardTableArea
+          pileCount={session.draw_pile.length}
+          hint={tableHint || null}
+          topCard={
+            session.top_card ? (
+              <PlayingCardFace card={session.top_card} specialLabel={specialCardShortLabel(session.top_card, rules)} />
+            ) : (
+              <Text style={styles.emptyTop}>—</Text>
+            )
+          }
+        />
+        {reshuffleNote ? (
+          <Text style={styles.reshuffleNote}>Draw pile empty — it reshuffles from the played cards.</Text>
+        ) : null}
+
+        {choosingSuit ? (
+          <View style={styles.choosePanel}>
+            <Text style={styles.chooseHeading}>You played a wild card — choose the suit opponents must match</Text>
+            <View style={styles.suitRow}>
+              {SUITS.map((suit) => {
+                const red = suit === 'hearts' || suit === 'diamonds'
+                return (
+                  <Pressable key={suit} style={styles.suitBtn} disabled={acting} onPress={() => void chooseSuit(suit)}>
+                    <Text style={[styles.suitSymbol, red && styles.suitSymbolRed]}>{CRAZY8_SUIT_SYMBOLS[suit]}</Text>
+                    <Text style={styles.suitLabel}>{CRAZY8_SUIT_LABELS[suit]}</Text>
+                  </Pressable>
+                )
+              })}
+            </View>
+          </View>
+        ) : null}
+
+        {isWatching ? null : (
+          <>
+            {isMyTurn && session.phase === 'playing' ? <Text style={styles.turnHint}>{turnHint}</Text> : null}
+
+            <Text style={styles.section}>Your hand ({myHand?.cards.length ?? 0})</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hand}>
+              {(myHand?.cards ?? []).map((card) => {
+                const playable = playableIds.has(card.id)
+                return (
+                  <Pressable
+                    key={card.id}
+                    disabled={acting || !isMyTurn || !playable || session.phase !== 'playing'}
+                    onPress={() => void playCard(card.id)}
+                  >
+                    <PlayingCardFace
+                      card={card}
+                      playable={playable && isMyTurn}
+                      specialLabel={specialCardShortLabel(card, rules)}
+                    />
+                  </Pressable>
+                )
+              })}
+            </ScrollView>
+
+            {canDraw ? (
+              <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void drawCard()}>
+                <Text style={styles.drawText}>{drawLabel}</Text>
+              </Pressable>
+            ) : null}
+          </>
+        )}
+      </ScrollView>
     </GameShell>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  emptyTop: { color: theme.text, fontSize: 28, fontWeight: '800' },
-  section: { color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 4 },
-  turnHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center', paddingHorizontal: 8, marginTop: 2 },
-  dirChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'center',
-    gap: 6,
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-  },
-  dirGlyph: { color: theme.primary, fontSize: 16, fontWeight: '800' },
-  dirText: { color: theme.primary, fontSize: 13, fontWeight: '700' },
-  outBanner: {
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.primary,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    alignItems: 'center',
-    gap: 2,
-  },
-  outTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
-  outSub: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
-  hand: { gap: 8, paddingVertical: 8 },
-  reshuffleNote: { color: theme.textMuted, fontSize: 12, textAlign: 'center', marginTop: -4 },
-  choosePanel: {
-    alignSelf: 'stretch',
-    gap: 10,
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 12,
-    padding: 14,
-  },
-  chooseHeading: { color: theme.text, fontSize: 14, fontWeight: '700', textAlign: 'center' },
-  suitRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
-  suitBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: theme.bgElevated,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  suitSymbol: { color: theme.text, fontSize: 20, fontWeight: '800', lineHeight: 22 },
-  suitSymbolRed: { color: '#ef4444' },
-  suitLabel: { color: theme.text, fontSize: 14, fontWeight: '700' },
-  drawBtn: {
-    backgroundColor: theme.surface,
-    borderRadius: 10,
-    padding: 14,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  drawText: { color: theme.text, fontSize: 16, fontWeight: '600' },
-})
+    content: { paddingBottom: 32, gap: 12 },
+    emptyTop: { color: theme.text, fontSize: 28, fontWeight: '800' },
+    section: { color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 4 },
+    turnHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center', paddingHorizontal: 8, marginTop: 2 },
+    dirChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'center',
+      gap: 6,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+    },
+    dirGlyph: { color: theme.primary, fontSize: 16, fontWeight: '800' },
+    dirText: { color: theme.primary, fontSize: 13, fontWeight: '700' },
+    outBanner: {
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.primary,
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      alignItems: 'center',
+      gap: 2,
+    },
+    outTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
+    outSub: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
+    hand: { gap: 8, paddingVertical: 8 },
+    reshuffleNote: { color: theme.textMuted, fontSize: 12, textAlign: 'center', marginTop: -4 },
+    choosePanel: {
+      alignSelf: 'stretch',
+      gap: 10,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 12,
+      padding: 14,
+    },
+    chooseHeading: { color: theme.text, fontSize: 14, fontWeight: '700', textAlign: 'center' },
+    suitRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
+    suitBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: theme.bgElevated,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+    },
+    suitSymbol: { color: theme.text, fontSize: 20, fontWeight: '800', lineHeight: 22 },
+    suitSymbolRed: { color: '#ef4444' },
+    suitLabel: { color: theme.text, fontSize: 14, fontWeight: '700' },
+    drawBtn: {
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      padding: 14,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    drawText: { color: theme.text, fontSize: 16, fontWeight: '600' },
+  })

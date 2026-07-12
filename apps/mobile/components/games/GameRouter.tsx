@@ -17,6 +17,7 @@ import { CheckersPlayerView } from '@/components/games/CheckersPlayerView'
 import { ChessPlayerView } from '@/components/games/ChessPlayerView'
 import { CodewordsPlayerView } from '@/components/games/CodewordsPlayerView'
 import { CrazyEightsPlayerView } from '@/components/games/CrazyEightsPlayerView'
+import { CrosswordPlayerView } from '@/components/games/CrosswordPlayerView'
 import { DescribeItPlayerView } from '@/components/games/DescribeItPlayerView'
 import { ICallOnPlayerView } from '@/components/games/ICallOnPlayerView'
 import { LudoPlayerView } from '@/components/games/LudoPlayerView'
@@ -37,6 +38,7 @@ import { TwoTruthsPlayerView } from '@/components/games/TwoTruthsPlayerView'
 import { WhotPlayerView } from '@/components/games/WhotPlayerView'
 import { WordHuntPlayerView } from '@/components/games/WordHuntPlayerView'
 import { WordRushPlayerView } from '@/components/games/WordRushPlayerView'
+import { WordSearchPlayerView } from '@/components/games/WordSearchPlayerView'
 import { YahtzeePlayerView } from '@/components/games/YahtzeePlayerView'
 
 const POLL_VIEWS = Object.fromEntries(
@@ -49,6 +51,8 @@ const BATCH_3_VIEWS = {
   yahtzee: YahtzeePlayerView,
   snake_and_ladder: SnakeLadderPlayerView,
   ludo: LudoPlayerView,
+  crossword: CrosswordPlayerView,
+  word_search: WordSearchPlayerView,
 } as const satisfies Partial<Record<GameType, React.ComponentType<{ gameCode: string }>>>
 
 const BATCH_4_VIEWS = {

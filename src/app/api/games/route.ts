@@ -52,6 +52,8 @@ import {
   isMatchingPairsGame,
   isQuiplashGame,
   isQuickDrawGame,
+  isCrosswordGame,
+  isWordSearchGame,
 } from '@/lib/game-types'
 import { wstAutoRoundCount } from '@/lib/who-said-this'
 import { parseLudoVariant } from '@/lib/ludo'
@@ -136,6 +138,10 @@ import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
 import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { clampSudokuGameDuration } from '@/lib/sudoku'
+import { parseCrosswordDifficulty, clampCrosswordGameDuration, CROSSWORD_DEFAULT_DURATION } from '@/lib/crossword'
+import { findCrosswordTheme } from '@/lib/crossword-puzzles'
+import { parseWordSearchDifficulty, clampWordSearchGameDuration, WORD_SEARCH_DEFAULT_DURATION } from '@/lib/word-search'
+import { findWordSearchTheme } from '@/lib/word-search-puzzles'
 import { clampChessTimer, clampChessBoardTheme, clampChessPieceSet } from '@/lib/chess'
 import { clampCheckersTimer } from '@/lib/checkers'
 import { clampAyoTimer, parseAyoVariant } from '@/lib/ayo'
@@ -386,6 +392,10 @@ export async function POST(req: NextRequest) {
     scrabble_clock_seconds: rawScrabbleClockSeconds,
     chess_board_theme: rawChessBoardTheme,
     chess_piece_set: rawChessPieceSet,
+    crossword_theme: rawCrosswordTheme,
+    crossword_difficulty: rawCrosswordDifficulty,
+    word_search_theme: rawWordSearchTheme,
+    word_search_difficulty: rawWordSearchDifficulty,
   } = parsed.data
 
   const elimParsed = eliminationConfigSchema.safeParse((body as Record<string, unknown>).elimination_config)
@@ -449,7 +459,9 @@ export async function POST(req: NextRequest) {
     isMafiaGame(game_type) ||
     isScrabbleGame(game_type) ||
     isDescribeItGame(game_type) ||
-    isWordRushGame(game_type)
+    isWordRushGame(game_type) ||
+    isCrosswordGame(game_type) ||
+    isWordSearchGame(game_type)
       ? 'joiners'
       : isWhoSaidThis(game_type)
         ? 'import'
@@ -693,7 +705,19 @@ export async function POST(req: NextRequest) {
                                                         rawMaxPlayers,
                                                         lobbyDefaultMaxPlayers('word_rush', lobbyLimits)
                                                       )
-                                                    : null
+                                                    : isCrosswordGame(game_type)
+                                                      ? resolveMaxPlayers(
+                                                          'crossword',
+                                                          rawMaxPlayers,
+                                                          lobbyDefaultMaxPlayers('crossword', lobbyLimits)
+                                                        )
+                                                      : isWordSearchGame(game_type)
+                                                        ? resolveMaxPlayers(
+                                                            'word_search',
+                                                            rawMaxPlayers,
+                                                            lobbyDefaultMaxPlayers('word_search', lobbyLimits)
+                                                          )
+                                                        : null
   const isSecret = isSecretMessageGame(game_type)
   const lateJoinFields = gameSupportsViewerSetting(game_type)
     ? rawLateJoinPolicy
@@ -807,6 +831,18 @@ export async function POST(req: NextRequest) {
           word_rush_mode: clampWordRushMode(rawWordRushMode),
           word_rush_prompt_mode: clampWordRushPromptMode(rawWordRushPromptMode),
           word_rush_difficulty: clampWordRushDifficulty(rawWordRushDifficulty),
+        }
+      : {}),
+    ...(isCrosswordGame(game_type)
+      ? {
+          crossword_theme: findCrosswordTheme(rawCrosswordTheme).id,
+          crossword_difficulty: parseCrosswordDifficulty(rawCrosswordDifficulty),
+        }
+      : {}),
+    ...(isWordSearchGame(game_type)
+      ? {
+          word_search_theme: findWordSearchTheme(rawWordSearchTheme).id,
+          word_search_difficulty: parseWordSearchDifficulty(rawWordSearchDifficulty),
         }
       : {}),
     ...(gameSupportsViewerSetting(game_type)
@@ -930,13 +966,25 @@ export async function POST(req: NextRequest) {
                   ? { game_duration_seconds: rawGameDurationSeconds ?? 0 }
                   : isSudokuGame(game_type)
                     ? { game_duration_seconds: clampSudokuGameDuration(rawGameDurationSeconds ?? 0) }
-                    : isMafiaGame(game_type)
+                    : isCrosswordGame(game_type)
                       ? {
-                          mafia_doctor_enabled: parsed.data.mafia_doctor_enabled !== false,
-                          mafia_detective_enabled: parsed.data.mafia_detective_enabled !== false,
-                          mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
+                          game_duration_seconds: clampCrosswordGameDuration(
+                            rawGameDurationSeconds ?? CROSSWORD_DEFAULT_DURATION
+                          ),
                         }
-                      : {}),
+                      : isWordSearchGame(game_type)
+                        ? {
+                            game_duration_seconds: clampWordSearchGameDuration(
+                              rawGameDurationSeconds ?? WORD_SEARCH_DEFAULT_DURATION
+                            ),
+                          }
+                        : isMafiaGame(game_type)
+                          ? {
+                              mafia_doctor_enabled: parsed.data.mafia_doctor_enabled !== false,
+                              mafia_detective_enabled: parsed.data.mafia_detective_enabled !== false,
+                              mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
+                            }
+                          : {}),
     ...(isCustomGame(game_type) && parsed.data.custom_slots
       ? {
           custom_slots: {

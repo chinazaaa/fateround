@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Platform, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native'
 import { captureRef } from 'react-native-view-shot'
 import * as Sharing from 'expo-sharing'
 import * as Clipboard from 'expo-clipboard'
@@ -42,7 +42,6 @@ export function SecretMessageHostScreen({ gameCode, hostToken, game, players, on
   const [copied, setCopied] = useState(false)
   const [isPublic, setIsPublic] = useState(!!game.is_public)
   const [savingVisibility, setSavingVisibility] = useState(false)
-  const scrollRef = useRef<ScrollView | null>(null)
   const cardRef = useRef<View>(null)
   const sharingLock = useRef(false)
   const headerEmoji = gameTypeMeta('secret_message').emoji
@@ -77,13 +76,6 @@ export function SecretMessageHostScreen({ gameCode, hostToken, game, players, on
       setSavingVisibility(false)
     }
   }
-
-  // Auto-scroll the inbox to the newest message as it arrives.
-  useEffect(() => {
-    if (messages.length === 0) return
-    const t = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50)
-    return () => clearTimeout(t)
-  }, [messages.length])
 
   const closeBoard = async () => {
     setActing(true)
@@ -218,11 +210,7 @@ export function SecretMessageHostScreen({ gameCode, hostToken, game, players, on
             disabled={acting}
             onPress={() => void reopenBoard()}
           >
-            {acting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.primaryBtnText}>Reopen board</Text>
-            )}
+            {acting ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Reopen board</Text>}
           </Pressable>
         </View>
       )}
@@ -241,13 +229,7 @@ export function SecretMessageHostScreen({ gameCode, hostToken, game, players, on
           ) : messages.length === 0 ? (
             <Text style={styles.empty}>No messages yet — share your link to start receiving.</Text>
           ) : (
-            <ScrollView
-              ref={scrollRef}
-              style={styles.messageScroll}
-              contentContainerStyle={styles.messageList}
-              nestedScrollEnabled
-              showsVerticalScrollIndicator={false}
-            >
+            <View style={styles.messageList}>
               {messages.map((message) => (
                 <View key={message.id} style={styles.messageCard}>
                   <View style={styles.messageBody}>
@@ -288,7 +270,7 @@ export function SecretMessageHostScreen({ gameCode, hostToken, game, players, on
                   </View>
                 </View>
               ))}
-            </ScrollView>
+            </View>
           )}
         </View>
       ) : null}
@@ -342,7 +324,11 @@ const makeStyles = (theme: Theme) =>
     },
     // White on the solid rose button — intentional, correct in both schemes.
     copyBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-    shareUrl: { color: theme.textFaint, fontSize: 12, fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) },
+    shareUrl: {
+      color: theme.textFaint,
+      fontSize: 12,
+      fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
+    },
     visibilityRow: { borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 10 },
     statusCard: {
       flexDirection: 'row',
@@ -391,7 +377,6 @@ const makeStyles = (theme: Theme) =>
     inboxCount: { color: theme.textFaint, fontSize: 13, fontWeight: '600' },
     loader: { marginVertical: 12 },
     empty: { color: theme.textMuted, fontSize: 14, lineHeight: 20, paddingVertical: 8 },
-    messageScroll: { maxHeight: 420 },
     messageList: { gap: 10 },
     messageCard: {
       flexDirection: 'row',

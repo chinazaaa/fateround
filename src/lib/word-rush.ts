@@ -9,7 +9,7 @@ import type {
 import { WORD_HUNT_MIN_WORD_LENGTH } from '@/lib/word-hunt'
 
 export const WORD_RUSH_MIN_PLAYERS = 4
-export const WORD_RUSH_MIN_PLAYERS_INDIVIDUAL = 2
+export const WORD_RUSH_MIN_PLAYERS_INDIVIDUAL = 1
 export const WORD_RUSH_MAX_PLAYERS = 20
 export const WORD_RUSH_DEFAULT_MAX_PLAYERS = 12
 
@@ -204,6 +204,45 @@ export function currentTeamRoundNumber(turnIndex: number, numTeams: number): num
 
 export function wordRushTotalTeamTurns(numTeams: number, totalRounds: number): number {
   return numTeams * totalRounds
+}
+
+/**
+ * Members a team needs to actually play a turn. Auto letters only need one
+ * answerer; manual letters need a setter plus at least one other answerer (the
+ * setter's own answers don't score), so a lone member can't play a manual turn.
+ */
+export function wordRushMinPlayableTeamSize(promptMode: string): number {
+  return promptMode === 'manual' ? 2 : 1
+}
+
+/** Teams that can still field a turn given the prompt mode. */
+export function wordRushPlayableTeams(roster: Map<number, string[]>, numTeams: number, promptMode: string): number[] {
+  const minSize = wordRushMinPlayableTeamSize(promptMode)
+  const out: number[] = []
+  for (let t = 1; t <= numTeams; t += 1) {
+    if ((roster.get(t)?.length ?? 0) >= minSize) out.push(t)
+  }
+  return out
+}
+
+/**
+ * Next team-turn index at or after `startIndex` whose team can still play; a
+ * team that dropped too low mid-game gets its turns skipped. Returns the total
+ * (a non-turn) when no playable team remains, which the caller treats as "over".
+ */
+export function nextPlayableTeamTurnIndex(
+  startIndex: number,
+  numTeams: number,
+  totalRounds: number,
+  playableTeams: Set<number>
+): number {
+  const total = wordRushTotalTeamTurns(numTeams, totalRounds)
+  let index = startIndex
+  while (index < total) {
+    if (playableTeams.has(teamForTurnIndex(index, numTeams))) break
+    index += 1
+  }
+  return index
 }
 
 export function promptSetterForTeamRound(members: string[], roundIndex: number): string | null {

@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  LayoutChangeEvent,
-  PanResponder,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native'
+import { LayoutChangeEvent, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useNavigation } from 'expo-router'
 import Svg, { Path, Rect } from 'react-native-svg'
 import type { QuickDrawDrawingStrokeData, QuickDrawStroke } from '@fateround/shared'
 import {
@@ -28,9 +22,15 @@ type BoardProps = {
   strokeData?: QuickDrawDrawingStrokeData
   resetKey?: string
   onStrokeChange?: (data: QuickDrawDrawingStrokeData) => void
+  /**
+   * Fires true while a stroke is in progress and false when it ends. Callers use
+   * this to disable an ancestor ScrollView so the drag draws instead of scrolls
+   * (on iOS the native scroll gesture otherwise steals the touch mid-stroke).
+   */
+  onDrawActiveChange?: (active: boolean) => void
 }
 
-function useDrawingBoard({ readOnly = false, strokeData, resetKey, onStrokeChange }: BoardProps) {
+function useDrawingBoard({ readOnly = false, strokeData, resetKey, onStrokeChange, onDrawActiveChange }: BoardProps) {
   const [strokes, setStrokes] = useState<QuickDrawStroke[]>([])
   const [previewStroke, setPreviewStroke] = useState<QuickDrawStroke | null>(null)
   const strokesRef = useRef<QuickDrawStroke[]>([])
@@ -70,6 +70,17 @@ function useDrawingBoard({ readOnly = false, strokeData, resetKey, onStrokeChang
     setStrokes(external)
   }, [readOnly, strokeData])
 
+  // While the active drawer's canvas is mounted, turn off the stack's swipe-back
+  // gesture: a horizontal stroke was being read as "swipe to go back" and popped
+  // the screen. Viewers (readOnly) keep the gesture. Restored on unmount / when
+  // the turn ends.
+  const navigation = useNavigation()
+  useEffect(() => {
+    if (readOnly) return
+    navigation.setOptions({ gestureEnabled: false })
+    return () => navigation.setOptions({ gestureEnabled: true })
+  }, [navigation, readOnly])
+
   const toCanvasPoint = useCallback(
     (locationX: number, locationY: number): [number, number] => {
       const scaleX = QUICK_DRAW_CANVAS_WIDTH / layout.width
@@ -93,6 +104,7 @@ function useDrawingBoard({ readOnly = false, strokeData, resetKey, onStrokeChang
         onShouldBlockNativeResponder: () => true,
         onPanResponderGrant: (evt) => {
           if (readOnly) return
+          onDrawActiveChange?.(true)
           const [x, y] = toCanvasPoint(evt.nativeEvent.locationX, evt.nativeEvent.locationY)
           const width = tool === 'eraser' ? 16 : brushWidth
           activeStrokeRef.current = {
@@ -112,6 +124,7 @@ function useDrawingBoard({ readOnly = false, strokeData, resetKey, onStrokeChang
         },
         onPanResponderRelease: () => {
           if (readOnly) return
+          onDrawActiveChange?.(false)
           const active = activeStrokeRef.current
           activeStrokeRef.current = null
           setPreviewStroke(null)
@@ -122,12 +135,13 @@ function useDrawingBoard({ readOnly = false, strokeData, resetKey, onStrokeChang
           }
         },
         onPanResponderTerminate: () => {
+          onDrawActiveChange?.(false)
           activeStrokeRef.current = null
           setPreviewStroke(null)
           setStrokes([...strokesRef.current])
         },
       }),
-    [readOnly, tool, color, brushWidth, syncStrokes, toCanvasPoint]
+    [readOnly, tool, color, brushWidth, syncStrokes, toCanvasPoint, onDrawActiveChange]
   )
 
   const displayStrokes = previewStroke ? [...strokes, previewStroke] : strokes
@@ -206,10 +220,18 @@ function Toolbar({
   const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.toolbar}>
-      <Pressable style={[styles.toolBtn, tool === 'pen' && styles.toolBtnActive]} disabled={!canEdit} onPress={() => setTool('pen')}>
+      <Pressable
+        style={[styles.toolBtn, tool === 'pen' && styles.toolBtnActive]}
+        disabled={!canEdit}
+        onPress={() => setTool('pen')}
+      >
         <Text style={styles.toolBtnText}>Pen</Text>
       </Pressable>
-      <Pressable style={[styles.toolBtn, tool === 'eraser' && styles.toolBtnActive]} disabled={!canEdit} onPress={() => setTool('eraser')}>
+      <Pressable
+        style={[styles.toolBtn, tool === 'eraser' && styles.toolBtnActive]}
+        disabled={!canEdit}
+        onPress={() => setTool('eraser')}
+      >
         <Text style={styles.toolBtnText}>Eraser</Text>
       </Pressable>
       {tool === 'pen'
@@ -261,13 +283,15 @@ export function DrawingCanvas({
   prompt,
   onSubmit,
   submitting = false,
+  onDrawActiveChange,
 }: {
   prompt: string
   onSubmit: (data: QuickDrawDrawingStrokeData) => void | Promise<void>
   submitting?: boolean
+  onDrawActiveChange?: (active: boolean) => void
 }) {
   const styles = useThemedStyles(makeStyles)
-  const board = useDrawingBoard({})
+  const board = useDrawingBoard({ onDrawActiveChange })
 
   return (
     <View style={styles.wrap}>
@@ -315,6 +339,7 @@ export function LiveDrawingCanvas({
   onSkip,
   skipDisabled,
   resetKey,
+  onDrawActiveChange,
 }: {
   prompt?: string
   strokeData?: QuickDrawDrawingStrokeData
@@ -323,9 +348,16 @@ export function LiveDrawingCanvas({
   onSkip?: () => void
   skipDisabled?: boolean
   resetKey?: string
+  onDrawActiveChange?: (active: boolean) => void
 }) {
   const styles = useThemedStyles(makeStyles)
-  const board = useDrawingBoard({ readOnly, strokeData: strokeData ?? emptyStrokeData(), resetKey, onStrokeChange })
+  const board = useDrawingBoard({
+    readOnly,
+    strokeData: strokeData ?? emptyStrokeData(),
+    resetKey,
+    onStrokeChange,
+    onDrawActiveChange,
+  })
   const data = readOnly ? normalizeStrokeData(strokeData) : null
 
   return (
@@ -372,57 +404,57 @@ export function LiveDrawingCanvas({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  wrap: { gap: 12 },
-  prompt: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
-  promptWord: { color: theme.text, fontWeight: '700' },
-  canvasWrap: {
-    aspectRatio: QUICK_DRAW_CANVAS_WIDTH / QUICK_DRAW_CANVAS_HEIGHT,
-    borderRadius: 14,
-    borderWidth: 2,
-    // Purple accent frame + white drawing surface — functional, fixed.
-    borderColor: '#7c3aed55',
-    overflow: 'hidden',
-    backgroundColor: '#fff',
-  },
-  preview: {
-    aspectRatio: QUICK_DRAW_CANVAS_WIDTH / QUICK_DRAW_CANVAS_HEIGHT,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.border,
-    overflow: 'hidden',
-    // White drawing surface — functional, fixed.
-    backgroundColor: '#fff',
-  },
-  toolbar: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
-  toolBtn: {
-    backgroundColor: theme.surface,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  toolBtnActive: { borderColor: '#a78bfa' },
-  toolBtnText: { color: theme.text, fontSize: 13, fontWeight: '600' },
-  colorSwatch: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: 'transparent' },
-  // White selection ring around the active swatch — functional.
-  colorSwatchActive: { borderColor: '#fff' },
-  sizeRow: { flexDirection: 'row', gap: 6 },
-  sizeBtn: {
-    backgroundColor: theme.surface,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  submitBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  // White on the solid rose button — correct in both schemes.
-  submitText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  btnDisabled: { opacity: 0.5 },
-})
+    wrap: { gap: 12 },
+    prompt: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
+    promptWord: { color: theme.text, fontWeight: '700' },
+    canvasWrap: {
+      aspectRatio: QUICK_DRAW_CANVAS_WIDTH / QUICK_DRAW_CANVAS_HEIGHT,
+      borderRadius: 14,
+      borderWidth: 2,
+      // Purple accent frame + white drawing surface — functional, fixed.
+      borderColor: '#7c3aed55',
+      overflow: 'hidden',
+      backgroundColor: '#fff',
+    },
+    preview: {
+      aspectRatio: QUICK_DRAW_CANVAS_WIDTH / QUICK_DRAW_CANVAS_HEIGHT,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: theme.border,
+      overflow: 'hidden',
+      // White drawing surface — functional, fixed.
+      backgroundColor: '#fff',
+    },
+    toolbar: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
+    toolBtn: {
+      backgroundColor: theme.surface,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    toolBtnActive: { borderColor: '#a78bfa' },
+    toolBtnText: { color: theme.text, fontSize: 13, fontWeight: '600' },
+    colorSwatch: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: 'transparent' },
+    // White selection ring around the active swatch — functional.
+    colorSwatchActive: { borderColor: '#fff' },
+    sizeRow: { flexDirection: 'row', gap: 6 },
+    sizeBtn: {
+      backgroundColor: theme.surface,
+      borderRadius: 8,
+      paddingHorizontal: 8,
+      paddingVertical: 8,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    submitBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    // White on the solid rose button — correct in both schemes.
+    submitText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+    btnDisabled: { opacity: 0.5 },
+  })

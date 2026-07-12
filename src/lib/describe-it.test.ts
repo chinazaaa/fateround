@@ -1,11 +1,43 @@
 import { describe, it, expect } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
+  describeItPlayableTeams,
   describeItRoleLeaderboards,
   describerForIndividualTurn,
   nextIndividualDescriberIndex,
+  nextPlayableTeamIndex,
   processDescribeItAdvance,
 } from './describe-it'
+
+describe('describeItPlayableTeams / nextPlayableTeamIndex', () => {
+  it('lists only teams with at least a describer + a guesser (2 members)', () => {
+    const roster = new Map([
+      [1, ['A', 'B']],
+      [2, ['C']],
+      [3, ['D', 'E', 'F']],
+    ])
+    expect(describeItPlayableTeams(roster, 3)).toEqual([1, 3])
+  })
+
+  it('skips a collapsed team when finding the next turn', () => {
+    // 3 teams, 2 rounds → turns 0..5 map to teams 1,2,3,1,2,3. Team 2 collapsed.
+    const playable = new Set([1, 3])
+    // From turn 1 (team 2) → skip to turn 2 (team 3).
+    expect(nextPlayableTeamIndex(1, 3, 2, playable)).toBe(2)
+    // From turn 4 (team 2) → skip to turn 5 (team 3).
+    expect(nextPlayableTeamIndex(4, 3, 2, playable)).toBe(5)
+  })
+
+  it('returns the total (match over) when no team is playable', () => {
+    // No team can field a turn → run off the end (caller treats as match over).
+    expect(nextPlayableTeamIndex(1, 3, 2, new Set())).toBe(6)
+  })
+
+  it('returns startIndex when its own team is still playable', () => {
+    // turn 2 → team 3, which is playable, so no skip.
+    expect(nextPlayableTeamIndex(2, 3, 2, new Set([1, 3]))).toBe(2)
+  })
+})
 
 describe('describeItRoleLeaderboards', () => {
   const players = [

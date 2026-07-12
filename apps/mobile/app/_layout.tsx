@@ -10,6 +10,12 @@ import { PreferencesProvider } from '@/constants/preferences-context'
 
 export { ErrorBoundary } from 'expo-router'
 
+// Anchor the stack to the home screen. When a game/host screen is opened directly
+// (deep link, cold start) or reached via router.replace, home is otherwise absent
+// from the stack — swiping back then pops to nothing and strands the user on a
+// loader. With `index` as the anchor, back/swipe-back always resolves to home.
+export const unstable_settings = { initialRouteName: 'index' }
+
 SplashScreen.preventAutoHideAsync()
 
 function ThemedStack() {

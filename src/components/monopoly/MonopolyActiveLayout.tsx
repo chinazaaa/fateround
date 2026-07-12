@@ -249,8 +249,12 @@ export function MonopolyActiveLayout({
               themeId={themeId}
               center={
                 spectator ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-2 px-2 text-center">
+                  <div className="flex flex-col items-center justify-center h-full gap-1.5 px-2 text-center">
                     <MonopolyDiceRoll dice={board.last_dice} />
+                    <p className="text-[13px] font-black text-white leading-tight">
+                      {turnPlayer?.name ?? '—'}
+                      <span className="font-semibold text-white/60">’s turn</span>
+                    </p>
                     <p className="text-[10px] uppercase tracking-widest text-faint">Watching live</p>
                     {board.status_message ? (
                       <p className="text-[11px] text-muted leading-snug line-clamp-4">

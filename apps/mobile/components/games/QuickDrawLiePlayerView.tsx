@@ -33,8 +33,8 @@ import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { DrawingCanvas, DrawingPreview } from '@/components/quick-draw/DrawingCanvas'
+import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -76,7 +76,10 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
   })
   const [titleText, setTitleText] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // Disabled while a stroke is in progress so drawing doesn't scroll the page.
+  const [scrollEnabled, setScrollEnabled] = useState(true)
   const advancedDeadlineRef = useRef<string | null>(null)
+  const scrollRef = useRef<ScrollView>(null)
   const styles = useThemedStyles(makeStyles)
   const theme = useTheme()
 
@@ -150,27 +153,26 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
   const myAssignment = currentRound
     ? assignmentForPlayer(state.assignments, currentRound.id, bootstrap.myPlayerId ?? '')
     : null
-  const roundDrawings = currentRound
-    ? state.drawings.filter((d) => d.round_id === currentRound.id)
-    : []
+  const roundDrawings = currentRound ? state.drawings.filter((d) => d.round_id === currentRound.id) : []
   const myDrawing = roundDrawings.find((d) => d.player_id === bootstrap.myPlayerId) ?? null
-  const activeDrawing = currentRound && session
-    ? activeDrawingForSession(state.drawings, currentRound.id, bootstrap.players, session.drawing_index)
-    : null
+  const activeDrawing =
+    currentRound && session
+      ? activeDrawingForSession(state.drawings, currentRound.id, bootstrap.players, session.drawing_index)
+      : null
   const activeTitles = activeDrawing ? titlesForDrawing(state.titles, activeDrawing.id) : []
   const shuffledTitles = useMemo(() => shuffledTitleOptions(activeTitles), [activeTitles])
   const activeVotes = activeDrawing ? votesForDrawing(state.votes, activeDrawing.id) : []
   const myTitle = activeTitles.find((t) => t.player_id === bootstrap.myPlayerId && !t.is_real) ?? null
   const myVote = activeVotes.find((v) => v.player_id === bootstrap.myPlayerId) ?? null
   const isArtist = playerIsDrawingArtist(activeDrawing, bootstrap.myPlayerId ?? '')
-  const mePlayer = bootstrap.myPlayerId
-    ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
-    : undefined
+  const mePlayer = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
   // Late-joiners / spectators watch only — they can't title or vote (mirrors web
   // QuickDrawActiveRound `cannotParticipate`).
   const isViewer = !!(mePlayer && bootstrap.game && playerIsViewer(mePlayer, bootstrap.game))
   const cannotParticipate = isViewer || mePlayer?.spectator === true || mePlayer?.is_eliminated === true
-  const canSubmitTitle = canPlayerSubmitFakeTitle(activeDrawing, bootstrap.myPlayerId ?? '', { readOnly: cannotParticipate })
+  const canSubmitTitle = canPlayerSubmitFakeTitle(activeDrawing, bootstrap.myPlayerId ?? '', {
+    readOnly: cannotParticipate,
+  })
   const canVote = canPlayerVoteOnDrawing(activeDrawing, bootstrap.myPlayerId ?? '', { readOnly: cannotParticipate })
   const leaderboard = tallyQuickDrawScores(state.titles, state.votes, state.drawings, bootstrap.players)
 
@@ -214,7 +216,7 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
     // (readiness = holding a seat).
     if (bootstrap.game.replay_pending) {
       return (
-        <GameShell bootstrap={bootstrap} title={batch8GameLabel('quick_draw')} subtitle="Play again">
+        <GameShell bootstrap={bootstrap} title={batch8GameLabel('quick_draw')}>
           <ReplayReadyRing
             gameCode={bootstrap.code}
             players={bootstrap.players}
@@ -276,7 +278,7 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
       myPlayerId={bootstrap.myPlayerId}
       onPromoted={() => bootstrap.load()}
     >
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAwareGameScroll ref={scrollRef} contentContainerStyle={styles.content} scrollEnabled={scrollEnabled}>
         <TurnBanner
           text={`${phaseLabel} · Round ${currentRound.round_number}/${bootstrap.game.rounds_count ?? '?'}${drawingProgress}`}
           isMyTurn={
@@ -286,20 +288,10 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
           }
         />
 
-        {isViewer && mePlayer && bootstrap.myPlayerId ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId}
-            game={bootstrap.game}
-            player={mePlayer}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
-
         {countdown > 0 && session.phase !== 'reveal' ? <TimerBadge seconds={countdown} /> : null}
 
         <LeaderboardPanel
+          embedded
           title="Leaderboard"
           rows={leaderboard.map((row) => ({
             id: row.id,
@@ -310,18 +302,15 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
           highlightId={bootstrap.myPlayerId}
         />
 
-        {session.phase !== 'drawing' && activeDrawing ? (
-          <Text style={styles.sub}>Drawing by {artistName}</Text>
-        ) : null}
+        {session.phase !== 'drawing' && activeDrawing ? <Text style={styles.sub}>Drawing by {artistName}</Text> : null}
 
         {session.phase === 'drawing' && myAssignment && !myDrawing ? (
           <DrawingCanvas
             prompt={myAssignment.prompt}
             submitting={submitting}
+            onDrawActiveChange={(active) => setScrollEnabled(!active)}
             onSubmit={(strokeData: QuickDrawDrawingStrokeData) =>
-              act(() =>
-                postQuickDrawDraw(bootstrap.code, bootstrap.myResumeToken!, currentRound.id, strokeData)
-              )
+              act(() => postQuickDrawDraw(bootstrap.code, bootstrap.myResumeToken!, currentRound.id, strokeData))
             }
           />
         ) : null}
@@ -351,6 +340,10 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
                   placeholder="Write a convincing fake title"
                   placeholderTextColor={theme.textFaint}
                   maxLength={QUICK_DRAW_MAX_TITLE_LENGTH}
+                  onFocus={() => {
+                    // Lift the input above the software keyboard on focus.
+                    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 150)
+                  }}
                 />
                 <Pressable
                   style={[styles.primaryBtn, submitting && styles.btnDisabled]}
@@ -437,59 +430,59 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
             })}
           </>
         ) : null}
-      </ScrollView>
+      </KeyboardAwareGameScroll>
     </GameShell>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  content: { paddingBottom: 32, gap: 12 },
-  sub: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
-  card: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 10 },
-  cardTitle: { color: theme.text, fontWeight: '700', textAlign: 'center' },
-  guessBox: { gap: 10 },
-  input: {
-    backgroundColor: theme.surface,
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: 12,
-    color: theme.text,
-    fontSize: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  primaryBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  // white on the solid rose button — intentional
-  primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  btnDisabled: { opacity: 0.5 },
-  titleBtn: {
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: theme.border,
-    padding: 14,
-    gap: 2,
-  },
-  titleBtnPicked: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
-  optionLabel: { color: theme.textFaint, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  titleBtnText: { color: theme.text, fontSize: 16, fontWeight: '600' },
-  yourPick: { color: theme.primary, fontSize: 12, fontWeight: '700', marginTop: 2 },
-  revealRow: {
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: theme.border,
-    padding: 12,
-    gap: 4,
-  },
-  // emerald highlight for the correct answer — consistent across themes
-  revealRowReal: { borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.12)' },
-  revealMeta: { color: theme.textMuted, fontSize: 13 },
-  revealPoints: { color: '#10b981', fontSize: 13, fontWeight: '700' },
-})
+    content: { paddingBottom: 32, gap: 12 },
+    sub: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
+    card: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 10 },
+    cardTitle: { color: theme.text, fontWeight: '700', textAlign: 'center' },
+    guessBox: { gap: 10 },
+    input: {
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: 12,
+      color: theme.text,
+      fontSize: 16,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+    primaryBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 10,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    // white on the solid rose button — intentional
+    primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+    btnDisabled: { opacity: 0.5 },
+    titleBtn: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: theme.border,
+      padding: 14,
+      gap: 2,
+    },
+    titleBtnPicked: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+    optionLabel: { color: theme.textFaint, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+    titleBtnText: { color: theme.text, fontSize: 16, fontWeight: '600' },
+    yourPick: { color: theme.primary, fontSize: 12, fontWeight: '700', marginTop: 2 },
+    revealRow: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: theme.border,
+      padding: 12,
+      gap: 4,
+    },
+    // emerald highlight for the correct answer — consistent across themes
+    revealRowReal: { borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.12)' },
+    revealMeta: { color: theme.textMuted, fontSize: 13 },
+    revealPoints: { color: '#10b981', fontSize: 13, fontWeight: '700' },
+  })

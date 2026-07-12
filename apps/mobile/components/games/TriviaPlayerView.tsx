@@ -125,7 +125,8 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
       <GameShell bootstrap={bootstrap} title="Trivia" subtitle={bootstrap.code}>
         <GameFinishPanel
           bootstrap={bootstrap}
-          title="Game over"
+          title={top && top.score > 0 ? `${top.name} wins!` : 'Game over'}
+          emoji={top && top.score > 0 ? '🏆' : '🏁'}
           subtitle="Final standings"
           detail={top ? `${top.name} wins with ${top.score} pts` : undefined}
           leaderboard={triviaLeaderboard(scores, bootstrap.game?.rounds_count, bootstrap.myPlayerId)}

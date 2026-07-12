@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Pressable, StyleSheet, Text } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text } from 'react-native'
 import { legalMovesForSide, sideForPlayer, currentTurnPlayerId } from '@fateround/shared/ayo'
 import type { AyoSession, Game, Player } from '@fateround/shared'
 import { JoinScreen } from '@/components/JoinScreen'
@@ -11,6 +11,7 @@ import { parseAyoVariant, ayoResultDetail } from '@/lib/ayo-sow'
 import { playAyoSeedDrop, playAyoTurnChime } from '@/lib/ayo-sounds'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { postAyoMove, postAyoResign } from '@/lib/game-api'
@@ -84,6 +85,10 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
   })
 
   useAyoClockExpiry(bootstrap.code, activeSession, bootstrap.screen === 'active')
+
+  // Surface the chosen variant (Traditional / Oware) as the header mode pill.
+  const ayoVariant = parseAyoVariant(bootstrap.game?.ayo_variant)
+  useHeaderBadge(bootstrap.game ? (ayoVariant === 'oware' ? 'Oware' : 'Traditional') : null)
 
   // Chime once when it becomes your turn (matches the web turn sound).
   const prevMyTurn = useRef(false)
@@ -200,58 +205,61 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title="Ayo" subtitle={`Code ${bootstrap.code}`}>
-      <TurnBanner
-        text={isMyTurn ? 'Your turn — pick a house' : `${turnPlayer?.name ?? 'Opponent'}'s turn`}
-        isMyTurn={isMyTurn}
-      />
-      {timed && timeControlSeconds > 0 ? (
-        <Text style={styles.hint}>⏱ {timeLabel} each — your clock only counts down on your turn</Text>
-      ) : null}
-      {variant === 'traditional' && activeSession.match_round ? (
-        <Text style={styles.hint}>Round {activeSession.match_round}</Text>
-      ) : null}
-      <AyoBoard
-        session={activeSession}
-        mySide={mySide}
-        legal={legal}
-        disabled={acting || !isMyTurn || animation.animating}
-        onMove={sow}
-        animation={animation}
-        variant={variant}
-        nameA={nameOf(activeSession.player_a_id)}
-        nameB={nameOf(activeSession.player_b_id)}
-      />
-      {mySide && bootstrap.myPlayerId ? (
-        <Text style={styles.sideLabel}>You are {nameOf(bootstrap.myPlayerId)}</Text>
-      ) : null}
-      {mySide ? <Text style={styles.howTo}>{howToPlay}</Text> : null}
-      {mySide ? (
-        <Pressable
-          style={styles.resignBtn}
-          disabled={acting || animation.animating}
-          onPress={() => {
-            if (bootstrap.myResumeToken) setResignOpen(true)
-          }}
-        >
-          <Text style={styles.resignText}>Resign</Text>
-        </Pressable>
-      ) : null}
-      <ConfirmDialog
-        visible={resignOpen}
-        title="Resign this game?"
-        message="Your opponent will be crowned Ọta."
-        confirmLabel="Resign"
-        destructive
-        confirming={acting}
-        onConfirm={confirmResign}
-        onCancel={() => setResignOpen(false)}
-      />
+      <ScrollView contentContainerStyle={styles.content}>
+        <TurnBanner
+          text={isMyTurn ? 'Your turn — pick a house' : `${turnPlayer?.name ?? 'Opponent'}'s turn`}
+          isMyTurn={isMyTurn}
+        />
+        {timed && timeControlSeconds > 0 ? (
+          <Text style={styles.hint}>⏱ {timeLabel} each — your clock only counts down on your turn</Text>
+        ) : null}
+        {variant === 'traditional' && activeSession.match_round ? (
+          <Text style={styles.hint}>Round {activeSession.match_round}</Text>
+        ) : null}
+        <AyoBoard
+          session={activeSession}
+          mySide={mySide}
+          legal={legal}
+          disabled={acting || !isMyTurn || animation.animating}
+          onMove={sow}
+          animation={animation}
+          variant={variant}
+          nameA={nameOf(activeSession.player_a_id)}
+          nameB={nameOf(activeSession.player_b_id)}
+        />
+        {mySide && bootstrap.myPlayerId ? (
+          <Text style={styles.sideLabel}>You are {nameOf(bootstrap.myPlayerId)}</Text>
+        ) : null}
+        {mySide ? <Text style={styles.howTo}>{howToPlay}</Text> : null}
+        {mySide ? (
+          <Pressable
+            style={styles.resignBtn}
+            disabled={acting || animation.animating}
+            onPress={() => {
+              if (bootstrap.myResumeToken) setResignOpen(true)
+            }}
+          >
+            <Text style={styles.resignText}>Resign</Text>
+          </Pressable>
+        ) : null}
+        <ConfirmDialog
+          visible={resignOpen}
+          title="Resign this game?"
+          message="Your opponent will be crowned Ọta."
+          confirmLabel="Resign"
+          destructive
+          confirming={acting}
+          onConfirm={confirmResign}
+          onCancel={() => setResignOpen(false)}
+        />
+      </ScrollView>
     </GameShell>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
+    content: { paddingBottom: 32, gap: 12 },
     sideLabel: { color: theme.textMuted, textAlign: 'center' },
     hint: { color: theme.textFaint, fontSize: 12, textAlign: 'center' },
     howTo: { color: theme.textFaint, fontSize: 12, textAlign: 'center', lineHeight: 17 },

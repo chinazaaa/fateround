@@ -36,10 +36,38 @@ import {
   wordRushMinLengthForRound,
   clampWordRushManualMinLength,
   wordRushMinLengthHint,
+  wordRushMinPlayableTeamSize,
+  wordRushPlayableTeams,
+  nextPlayableTeamTurnIndex,
   WORD_RUSH_MIN_WORD_LENGTH,
   WORD_RUSH_MAX_WORD_LENGTH,
   WORD_RUSH_POOL_USAGE_KEY,
 } from '@/lib/word-rush'
+
+describe('word-rush team playability', () => {
+  it('manual mode needs a setter + an answerer (2); auto needs just 1', () => {
+    expect(wordRushMinPlayableTeamSize('manual')).toBe(2)
+    expect(wordRushMinPlayableTeamSize('automatic')).toBe(1)
+  })
+
+  it('a lone member can still play an auto turn but not a manual one', () => {
+    const roster = new Map([
+      [1, ['A', 'B']],
+      [2, ['C']],
+    ])
+    expect(wordRushPlayableTeams(roster, 2, 'automatic')).toEqual([1, 2])
+    expect(wordRushPlayableTeams(roster, 2, 'manual')).toEqual([1])
+  })
+
+  it('skips a collapsed team when finding the next team turn', () => {
+    // 3 teams, 2 rounds → turns 0..5 = teams 1,2,3,1,2,3. Team 2 collapsed.
+    const playable = new Set([1, 3])
+    expect(nextPlayableTeamTurnIndex(1, 3, 2, playable)).toBe(2)
+    expect(nextPlayableTeamTurnIndex(4, 3, 2, playable)).toBe(5)
+    // No playable team ahead → run off the end (caller finishes the game).
+    expect(nextPlayableTeamTurnIndex(1, 3, 2, new Set())).toBe(6)
+  })
+})
 
 describe('word-rush-dictionary', () => {
   it('validates dictionary words with letter constraints', () => {

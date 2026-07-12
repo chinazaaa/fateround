@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'expo-router'
 import { uniqueTopic } from '@/lib/realtime'
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { batch9GameLabel } from '@fateround/shared/batch-9-games'
 import { GameLoading, GameShell } from '@/components/game/GameChrome'
+import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { gameTypeMeta } from '@/lib/game-type-meta'
 import { autoJoinGame } from '@/lib/api'
 import { postAnonymousMessage } from '@/lib/game-api'
@@ -37,6 +38,8 @@ export function SecretMessagePlayerView({ gameCode }: { gameCode: string }) {
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
   const [messageInput, setMessageInput] = useState('')
   const [sending, setSending] = useState(false)
+  const scrollRef = useRef<ScrollView>(null)
+  const scrollInputIntoView = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)
   const [joining, setJoining] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sentCount, setSentCount] = useState(0)
@@ -54,7 +57,13 @@ export function SecretMessagePlayerView({ gameCode }: { gameCode: string }) {
     try {
       const existing = await getPlayerSession(code)
       const data = await autoJoinGame(code, existing?.resumeToken)
-      await setPlayerSession(code, data.playerId, data.playerName, data.playerGender ?? 'both', data.resumeToken ?? null)
+      await setPlayerSession(
+        code,
+        data.playerId,
+        data.playerName,
+        data.playerGender ?? 'both',
+        data.resumeToken ?? null
+      )
       setMyPlayerId(data.playerId)
       return data.playerId
     } finally {
@@ -164,25 +173,23 @@ export function SecretMessagePlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell title={game?.title || GAME_LABEL} subtitle="Send anonymously">
-      <View style={styles.content}>
+      <KeyboardAwareGameScroll ref={scrollRef} contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <Text style={styles.headerEmoji}>{GAME_EMOJI}</Text>
           {game?.title ? <Text style={styles.headerTitle}>{game.title}</Text> : null}
           <GameBadge styles={styles} />
         </View>
         <Text style={styles.hint}>
-          Send a message anonymously. Only the link owner will see it — senders never see each other&apos;s
-          messages.
+          Send a message anonymously. Only the link owner will see it — senders never see each other&apos;s messages.
         </Text>
-        {joining ? (
-          <ActivityIndicator color={theme.primary} style={styles.loader} />
-        ) : null}
+        {joining ? <ActivityIndicator color={theme.primary} style={styles.loader} /> : null}
         <TextInput
           style={styles.input}
           value={messageInput}
           onChangeText={setMessageInput}
           placeholder="Write your secret message…"
           placeholderTextColor={theme.textFaint}
+          onFocus={scrollInputIntoView}
           multiline
           maxLength={MAX_CHARS}
           editable={!sending && !joining}
@@ -194,7 +201,11 @@ export function SecretMessagePlayerView({ gameCode }: { gameCode: string }) {
           {messageInput.length}/{MAX_CHARS}
         </Text>
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        {sentCount > 0 ? <Text style={styles.sent}>Sent {sentCount} message{sentCount === 1 ? '' : 's'}</Text> : null}
+        {sentCount > 0 ? (
+          <Text style={styles.sent}>
+            Sent {sentCount} message{sentCount === 1 ? '' : 's'}
+          </Text>
+        ) : null}
         <Pressable
           style={[styles.button, (sending || joining || !messageInput.trim()) && styles.buttonDisabled]}
           disabled={sending || joining || !messageInput.trim()}
@@ -210,77 +221,77 @@ export function SecretMessagePlayerView({ gameCode }: { gameCode: string }) {
         <Text style={styles.footnote}>
           Your identity is never shown to the link owner. You can send multiple messages.
         </Text>
-      </View>
+      </KeyboardAwareGameScroll>
     </GameShell>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  content: { gap: 12, paddingBottom: 24 },
-  header: { alignItems: 'center', gap: 8, paddingBottom: 4 },
-  headerEmoji: { fontSize: 40 },
-  headerTitle: { color: theme.text, fontSize: 22, fontWeight: '800', textAlign: 'center' },
-  badge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'center',
-    gap: 6,
-    backgroundColor: theme.surface,
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-  },
-  badgeEmoji: { fontSize: 13 },
-  badgeLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '700' },
-  hint: { color: theme.textMuted, fontSize: 15, lineHeight: 22, textAlign: 'center' },
-  footnote: { color: theme.textFaint, fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 4 },
-  loader: { marginVertical: 8 },
-  stateWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    paddingHorizontal: 24,
-    paddingVertical: 48,
-  },
-  stateEmoji: { fontSize: 52 },
-  stateTitle: { color: theme.text, fontSize: 24, fontWeight: '800', textAlign: 'center' },
-  stateBody: { color: theme.textMuted, fontSize: 14, lineHeight: 20, textAlign: 'center' },
-  secondaryBtn: {
-    marginTop: 8,
-    backgroundColor: theme.surface,
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 28,
-  },
-  secondaryBtnText: { color: theme.text, fontSize: 15, fontWeight: '700' },
-  input: {
-    backgroundColor: theme.surface,
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: 12,
-    color: theme.text,
-    fontSize: 16,
-    minHeight: 120,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    textAlignVertical: 'top',
-  },
-  counter: { color: theme.textFaint, fontSize: 12, textAlign: 'right' },
-  error: { color: theme.error, fontSize: 14 },
-  sent: { color: '#86efac', fontSize: 14 },
-  button: {
-    backgroundColor: theme.primary,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  buttonDisabled: { opacity: 0.5 },
-  // white on the solid rose button — intentional
-  buttonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-})
+    content: { gap: 12, paddingBottom: 24 },
+    header: { alignItems: 'center', gap: 8, paddingBottom: 4 },
+    headerEmoji: { fontSize: 40 },
+    headerTitle: { color: theme.text, fontSize: 22, fontWeight: '800', textAlign: 'center' },
+    badge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'center',
+      gap: 6,
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: 999,
+      paddingVertical: 5,
+      paddingHorizontal: 12,
+    },
+    badgeEmoji: { fontSize: 13 },
+    badgeLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '700' },
+    hint: { color: theme.textMuted, fontSize: 15, lineHeight: 22, textAlign: 'center' },
+    footnote: { color: theme.textFaint, fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 4 },
+    loader: { marginVertical: 8 },
+    stateWrap: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 12,
+      paddingHorizontal: 24,
+      paddingVertical: 48,
+    },
+    stateEmoji: { fontSize: 52 },
+    stateTitle: { color: theme.text, fontSize: 24, fontWeight: '800', textAlign: 'center' },
+    stateBody: { color: theme.textMuted, fontSize: 14, lineHeight: 20, textAlign: 'center' },
+    secondaryBtn: {
+      marginTop: 8,
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 28,
+    },
+    secondaryBtnText: { color: theme.text, fontSize: 15, fontWeight: '700' },
+    input: {
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: 12,
+      color: theme.text,
+      fontSize: 16,
+      minHeight: 120,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      textAlignVertical: 'top',
+    },
+    counter: { color: theme.textFaint, fontSize: 12, textAlign: 'right' },
+    error: { color: theme.error, fontSize: 14 },
+    sent: { color: '#86efac', fontSize: 14 },
+    button: {
+      backgroundColor: theme.primary,
+      borderRadius: 12,
+      paddingVertical: 16,
+      alignItems: 'center',
+    },
+    buttonDisabled: { opacity: 0.5 },
+    // white on the solid rose button — intentional
+    buttonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  })
