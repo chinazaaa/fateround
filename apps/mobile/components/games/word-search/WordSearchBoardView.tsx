@@ -101,6 +101,13 @@ export function WordSearchBoardView({
       PanResponder.create({
         onStartShouldSetPanResponder: () => !readOnly,
         onMoveShouldSetPanResponder: () => !readOnly,
+        // Claim the touch during the capture phase and refuse to hand it back, so a drag on
+        // the grid isn't stolen by the navigator's edge/swipe-back gesture (which otherwise
+        // pulls the screen back to the previous page instead of selecting a word).
+        onStartShouldSetPanResponderCapture: () => !readOnly,
+        onMoveShouldSetPanResponderCapture: () => !readOnly,
+        onPanResponderTerminationRequest: () => false,
+        onShouldBlockNativeResponder: () => true,
         onPanResponderGrant: (evt: GestureResponderEvent) => {
           if (readOnly) return
           const { locationX, locationY } = evt.nativeEvent
