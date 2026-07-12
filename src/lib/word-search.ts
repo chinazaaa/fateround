@@ -383,14 +383,18 @@ export function tallyWordSearchScores(
 
   // Earliest find per (player, word) — a player scores a word once. `nonHintTime` tracks the
   // earliest find that was NOT a reveal, so revealing a word can't steal the speed bonus.
+  // `lastFound` is each player's latest find time — their finish time, used to break score
+  // ties so a faster solver outranks a slower one on equal points.
   const wordTime = new Map<string, number>()
   const nonHintTime = new Map<string, number>()
+  const lastFound = new Map<string, number>()
   for (const f of found) {
     if (!activeIds.has(f.player_id)) continue
     const key = `${f.player_id}|${f.word}`
     const t = new Date(f.found_at).getTime()
     if (!wordTime.has(key) || t < wordTime.get(key)!) wordTime.set(key, t)
     if (!f.via_hint && (!nonHintTime.has(key) || t < nonHintTime.get(key)!)) nonHintTime.set(key, t)
+    if (t > (lastFound.get(f.player_id) ?? -Infinity)) lastFound.set(f.player_id, t)
   }
 
   for (const word of metadata.words) {
@@ -426,7 +430,13 @@ export function tallyWordSearchScores(
       points: points.get(p.id) ?? 0,
       wordsFound: wordsFound.get(p.id) ?? 0,
     }))
-    .sort((a, b) => b.points - a.points || b.wordsFound - a.wordsFound || a.name.localeCompare(b.name))
+    .sort(
+      (a, b) =>
+        b.points - a.points ||
+        b.wordsFound - a.wordsFound ||
+        (lastFound.get(a.player_id) ?? Infinity) - (lastFound.get(b.player_id) ?? Infinity) ||
+        a.name.localeCompare(b.name)
+    )
 }
 
 // ── Duration / timer ─────────────────────────────────────────────────────────

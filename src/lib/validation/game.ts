@@ -283,6 +283,10 @@ export const boardGameLobbySettingsSchema = z.object({
   quick_draw_variant: z.enum(['lie', 'guess']).optional(),
   quick_draw_play_mode: z.enum(['team', 'individual']).optional(),
   quick_draw_num_teams: z.coerce.number().int().min(2).max(4).optional(),
+  crossword_theme: z.string().max(64).optional(),
+  crossword_difficulty: z.enum(['easy', 'medium', 'hard']).optional(),
+  word_search_theme: z.string().max(64).optional(),
+  word_search_difficulty: z.enum(['easy', 'medium', 'hard']).optional(),
 })
 
 export type BoardGameLobbySettingsInput = z.infer<typeof boardGameLobbySettingsSchema>

@@ -158,6 +158,20 @@ describe('tallyWordSearchScores', () => {
     expect(p1.points).toBe(WORD_SEARCH_WORD_POINTS + WORD_SEARCH_HINT_PENALTY)
   })
 
+  it('breaks a score tie by finish time — the faster solver ranks higher', () => {
+    // Both find both words (each is first on one word → equal points), but p2's last find is
+    // earlier, so p2 finished sooner and must rank first.
+    const rows = [
+      found({ player_id: 'p1', word: 'TIGER', found_at: '2026-07-12T00:00:01.000Z' }),
+      found({ player_id: 'p2', word: 'PANDA', found_at: '2026-07-12T00:00:02.000Z' }),
+      found({ player_id: 'p2', word: 'TIGER', found_at: '2026-07-12T00:00:05.000Z' }),
+      found({ player_id: 'p1', word: 'PANDA', found_at: '2026-07-12T00:00:06.000Z' }),
+    ]
+    const scores = tallyWordSearchScores(META, rows, PLAYERS)
+    expect(scores[0].points).toBe(scores[1].points)
+    expect(scores[0].player_id).toBe('p2')
+  })
+
   it('adds a per-letter length bonus on Hard only', () => {
     const rows = [found({ player_id: 'p1', word: 'TIGER' })]
     const easy = tallyWordSearchScores({ ...META, difficulty: 'easy' }, rows, PLAYERS)

@@ -29,8 +29,10 @@ import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { parseMahjongRuleOptions, parseMahjongRuleset } from '@/lib/mahjong-rulesets'
 import { clampSudokuGameDuration } from '@/lib/sudoku'
-import { clampCrosswordGameDuration } from '@/lib/crossword'
-import { clampWordSearchGameDuration } from '@/lib/word-search'
+import { clampCrosswordGameDuration, parseCrosswordDifficulty } from '@/lib/crossword'
+import { clampWordSearchGameDuration, parseWordSearchDifficulty } from '@/lib/word-search'
+import { findCrosswordTheme } from '@/lib/crossword-puzzles'
+import { findWordSearchTheme } from '@/lib/word-search-puzzles'
 import { MATCHING_PAIRS_GAME_DURATION_OPTIONS } from '@/lib/memory-match'
 import { clampQuiplashRounds, clampQuiplashSubmitTimer, clampQuiplashVoteTimer } from '@/lib/quiplash'
 import {
@@ -117,6 +119,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     quick_draw_play_mode,
     quick_draw_num_teams,
     ayo_variant,
+    crossword_theme,
+    crossword_difficulty,
+    word_search_theme,
+    word_search_difficulty,
   } = parsed.data
   const gameCode = parsed.data.gameId.toUpperCase()
 
@@ -143,7 +149,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     quick_draw_variant === undefined &&
     quick_draw_play_mode === undefined &&
     quick_draw_num_teams === undefined &&
-    ayo_variant === undefined
+    ayo_variant === undefined &&
+    crossword_theme === undefined &&
+    crossword_difficulty === undefined &&
+    word_search_theme === undefined &&
+    word_search_difficulty === undefined
   ) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
@@ -290,6 +300,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.game_duration_seconds = clampCrazyEightsGameDuration(game_duration_seconds)
     } else {
       return NextResponse.json({ error: 'This game type does not support game length settings' }, { status: 400 })
+    }
+  }
+
+  // Crossword / Word Search puzzle theme + difficulty. Stored on the game and consumed at
+  // start (they pick the word bank + grid), so they're safe to change while still waiting.
+  if (crossword_theme !== undefined || crossword_difficulty !== undefined) {
+    if (limitOnlyType !== 'crossword') {
+      return NextResponse.json({ error: 'This game type has no crossword theme settings' }, { status: 400 })
+    }
+    if (crossword_theme !== undefined) gameUpdate.crossword_theme = findCrosswordTheme(crossword_theme).id
+    if (crossword_difficulty !== undefined)
+      gameUpdate.crossword_difficulty = parseCrosswordDifficulty(crossword_difficulty)
+  }
+  if (word_search_theme !== undefined || word_search_difficulty !== undefined) {
+    if (limitOnlyType !== 'word_search') {
+      return NextResponse.json({ error: 'This game type has no word search theme settings' }, { status: 400 })
+    }
+    if (word_search_theme !== undefined) gameUpdate.word_search_theme = findWordSearchTheme(word_search_theme).id
+    if (word_search_difficulty !== undefined) {
+      gameUpdate.word_search_difficulty = parseWordSearchDifficulty(word_search_difficulty)
     }
   }
 
