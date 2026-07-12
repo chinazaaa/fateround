@@ -52,7 +52,7 @@ export function WordList({
         </span>
       </div>
       <div className="flex items-center gap-2">
-        <div className="flex-1 min-w-0 overflow-x-auto">
+        <div className="flex-1 min-w-0 overflow-x-auto pr-3 [mask-image:linear-gradient(to_right,#000_88%,transparent)]">
           <div className="grid grid-rows-2 grid-flow-col auto-cols-max gap-x-2 gap-y-0.5">
             {ordered.map((word) => {
               const ownerId = wordOwners.get(word) ?? null
