@@ -397,7 +397,8 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
     [metadata, submissions, effectiveWatchedId]
   )
   const watchedSolvedCells = useMemo(
-    () => (metadata && effectiveWatchedId ? buildPlayerSolvedGrid(metadata, submissions, effectiveWatchedId) : undefined),
+    () =>
+      metadata && effectiveWatchedId ? buildPlayerSolvedGrid(metadata, submissions, effectiveWatchedId) : undefined,
     [metadata, submissions, effectiveWatchedId]
   )
 

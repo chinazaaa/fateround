@@ -979,12 +979,12 @@ export async function POST(req: NextRequest) {
                             ),
                           }
                         : isMafiaGame(game_type)
-                      ? {
-                          mafia_doctor_enabled: parsed.data.mafia_doctor_enabled !== false,
-                          mafia_detective_enabled: parsed.data.mafia_detective_enabled !== false,
-                          mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
-                        }
-                      : {}),
+                          ? {
+                              mafia_doctor_enabled: parsed.data.mafia_doctor_enabled !== false,
+                              mafia_detective_enabled: parsed.data.mafia_detective_enabled !== false,
+                              mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
+                            }
+                          : {}),
     ...(isCustomGame(game_type) && parsed.data.custom_slots
       ? {
           custom_slots: {

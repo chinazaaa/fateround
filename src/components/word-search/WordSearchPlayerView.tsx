@@ -641,7 +641,9 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
             {!isViewer && (
               <div className="mx-auto min-h-[3rem] min-w-[10rem] px-4 flex items-center justify-center glass-card">
                 <span className="text-2xl font-extrabold tracking-[0.25em] text-[var(--foreground)]">
-                  {previewWord || <span className="text-sm font-normal tracking-normal text-muted">Drag to spell a word</span>}
+                  {previewWord || (
+                    <span className="text-sm font-normal tracking-normal text-muted">Drag to spell a word</span>
+                  )}
                 </span>
               </div>
             )}

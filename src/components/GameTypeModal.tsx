@@ -39,7 +39,14 @@ export function GameTypeModal({ open, onClose, selected, onSelect }: GameTypeMod
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Choose a game" subtitle="Pick the vibe for your party" size="lg" fillHeight>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Choose a game"
+      subtitle="Pick the vibe for your party"
+      size="lg"
+      fillHeight
+    >
       <div className="space-y-4">
         {/* Pinned so the search stays visible above the on-screen keyboard while
             results scroll. Negative margins pull it over the body padding so no
