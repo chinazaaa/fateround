@@ -35,6 +35,23 @@ const flipSchema = z.object({
   isMatch: z.boolean(),
 })
 
+const playerLocks = new Map<string, Promise<void>>()
+
+async function acquireLock(playerId: string) {
+  while (playerLocks.has(playerId)) {
+    await playerLocks.get(playerId)
+  }
+  let resolveLock!: () => void
+  const lockPromise = new Promise<void>((resolve) => {
+    resolveLock = resolve
+  })
+  playerLocks.set(playerId, lockPromise)
+  return () => {
+    playerLocks.delete(playerId)
+    resolveLock()
+  }
+}
+
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, flipSchema)
   if (bodyError) return bodyError
@@ -60,164 +77,179 @@ export async function POST(req: NextRequest) {
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const playerId = auth.player.id
 
-  // Load the active round to get metadata.
-  const { data: round } = await supabase
-    .from('rounds')
-    .select('id, memory_match_metadata')
-    .eq('game_id', code)
-    .eq('round_number', currentRoundNumber)
-    .maybeSingle()
-  if (!round) return NextResponse.json({ error: 'Round not found' }, { status: 404 })
+  const release = await acquireLock(playerId)
+  try {
+    // Load the active round to get metadata.
+    const { data: round } = await supabase
+      .from('rounds')
+      .select('id, memory_match_metadata')
+      .eq('game_id', code)
+      .eq('round_number', currentRoundNumber)
+      .maybeSingle()
+    if (!round) return NextResponse.json({ error: 'Round not found' }, { status: 404 })
 
-  const meta = parseMatchingPairsMetadata(round.memory_match_metadata)
-  if (!meta) return NextResponse.json({ error: 'Round metadata missing' }, { status: 500 })
+    const meta = parseMatchingPairsMetadata(round.memory_match_metadata)
+    if (!meta) return NextResponse.json({ error: 'Round metadata missing' }, { status: 500 })
 
-  const gridSizePairs = meta.gridSizePairs as MatchingPairsGridSize
+    const gridSizePairs = meta.gridSizePairs as MatchingPairsGridSize
 
-  // Validate pair_index is in range.
-  if (pairIndex < 0 || pairIndex >= gridSizePairs) {
-    return NextResponse.json({ error: 'Invalid pair index' }, { status: 400 })
-  }
+    // Validate pair_index is in range.
+    if (pairIndex < 0 || pairIndex >= gridSizePairs) {
+      return NextResponse.json({ error: 'Invalid pair index' }, { status: 400 })
+    }
 
-  // Reject if this pair was already matched (prevents duplicate scoring).
-  const { data: existingMatch } = await supabase
-    .from('memory_match_submissions')
-    .select('id')
-    .eq('round_id', round.id)
-    .eq('player_id', playerId)
-    .eq('pair_index', pairIndex)
-    .eq('is_match', true)
-    .maybeSingle()
+    // Reject if this pair was already matched (prevents duplicate scoring).
+    const { data: existingMatch } = await supabase
+      .from('memory_match_submissions')
+      .select('id')
+      .eq('round_id', round.id)
+      .eq('player_id', playerId)
+      .eq('pair_index', pairIndex)
+      .eq('is_match', true)
+      .maybeSingle()
 
-  if (existingMatch) {
-    return NextResponse.json({ error: 'This pair was already matched' }, { status: 409 })
-  }
+    if (existingMatch) {
+      return NextResponse.json({ error: 'This pair was already matched' }, { status: 409 })
+    }
 
-  // Load the player's current progress to get their streak state.
-  const { data: progressRow } = await supabase
-    .from('memory_match_progress')
-    .select('pairs_matched, wrong_attempts, finished')
-    .eq('round_id', round.id)
-    .eq('player_id', playerId)
-    .maybeSingle()
+    // Load the player's current progress to get their streak state.
+    const { data: progressRow } = await supabase
+      .from('memory_match_progress')
+      .select('pairs_matched, wrong_attempts, finished')
+      .eq('round_id', round.id)
+      .eq('player_id', playerId)
+      .maybeSingle()
 
-  if (progressRow?.finished) {
-    return NextResponse.json({ error: 'You have already finished this game' }, { status: 409 })
-  }
+    if (progressRow?.finished) {
+      return NextResponse.json({ error: 'You have already finished this game' }, { status: 409 })
+    }
 
-  // Compute current streak from previous submissions.
-  const { data: prevSubs } = await supabase
-    .from('memory_match_submissions')
-    .select('is_match, streak_at_time')
-    .eq('round_id', round.id)
-    .eq('player_id', playerId)
-    .order('submitted_at', { ascending: true })
+    // Compute current streak from previous submissions.
+    const { data: prevSubs } = await supabase
+      .from('memory_match_submissions')
+      .select('is_match, streak_at_time')
+      .eq('round_id', round.id)
+      .eq('player_id', playerId)
+      .order('submitted_at', { ascending: true })
 
-  // Reconstruct current_streak from the last run of consecutive matches.
-  let currentStreak = 0
-  if (prevSubs && prevSubs.length > 0) {
-    // Walk backwards: find the longest trailing run of is_match=true
-    for (let i = prevSubs.length - 1; i >= 0; i--) {
-      const s = prevSubs[i] as { is_match: boolean }
-      if (s.is_match) {
-        currentStreak++
-      } else {
-        break
+    // Reconstruct current_streak from the last run of consecutive matches.
+    let currentStreak = 0
+    if (prevSubs && prevSubs.length > 0) {
+      // Walk backwards: find the longest trailing run of is_match=true
+      for (let i = prevSubs.length - 1; i >= 0; i--) {
+        const s = prevSubs[i] as { is_match: boolean }
+        if (s.is_match) {
+          currentStreak++
+        } else {
+          break
+        }
       }
     }
-  }
 
-  // Compute what happens with this flip.
-  const streakBonus = isMatch ? computeStreakBonus(currentStreak) : 0
-  const newStreak = isMatch ? currentStreak + 1 : 0
+    // Compute what happens with this flip.
+    const streakBonus = isMatch ? computeStreakBonus(currentStreak) : 0
+    const newStreak = isMatch ? currentStreak + 1 : 0
 
-  // Current total points (from last submission if any).
-  const { data: lastSub } = await supabase
-    .from('memory_match_submissions')
-    .select('points_after')
-    .eq('round_id', round.id)
-    .eq('player_id', playerId)
-    .order('submitted_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+    // Current total points (from last submission if any).
+    const { data: lastSub } = await supabase
+      .from('memory_match_submissions')
+      .select('points_after')
+      .eq('round_id', round.id)
+      .eq('player_id', playerId)
+      .order('submitted_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
-  const prevPoints = (lastSub as { points_after: number } | null)?.points_after ?? 0
-  const matchPoints = isMatch ? MATCHING_PAIRS_POINTS_PER_PAIR + streakBonus : 0
-  const penaltyPoints = !isMatch ? MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY : 0
-  const pointsDelta = matchPoints - penaltyPoints
-  const pointsAfter = Math.max(0, prevPoints + pointsDelta)
+    const prevPoints = (lastSub as { points_after: number } | null)?.points_after ?? 0
+    const matchPoints = isMatch ? MATCHING_PAIRS_POINTS_PER_PAIR + streakBonus : 0
+    const penaltyPoints = !isMatch ? MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY : 0
+    const pointsDelta = matchPoints - penaltyPoints
+    const pointsAfter = Math.max(0, prevPoints + pointsDelta)
 
-  // Insert submission row.
-  const { error: subError } = await supabase.from('memory_match_submissions').insert({
-    game_id: code,
-    round_id: round.id,
-    player_id: playerId,
-    pair_index: pairIndex,
-    is_match: isMatch,
-    streak_at_time: newStreak,
-    streak_bonus: streakBonus,
-    points_after: pointsAfter,
-  })
-  if (subError) {
-    return NextResponse.json({ error: internalErrorMessage('matching-pairs/flip', subError) }, { status: 500 })
-  }
-
-  // Update progress counters.
-  const newPairsMatched = (progressRow?.pairs_matched ?? 0) + (isMatch ? 1 : 0)
-  const newWrongAttempts = (progressRow?.wrong_attempts ?? 0) + (isMatch ? 0 : 1)
-  const justFinished = isMatch && newPairsMatched >= gridSizePairs
-
-  let finishRank: number | null = null
-  if (justFinished) {
-    // Use atomic RPC to prevent duplicate ranks under concurrent finishers.
-    const { data: finishData, error: finishError } = await supabase.rpc('matching_pairs_finish_player', {
-      p_round_id: round.id,
-      p_player_id: playerId,
-      p_pairs_matched: newPairsMatched,
-      p_wrong_attempts: newWrongAttempts,
+    // Insert submission row.
+    const { error: subError } = await supabase.from('memory_match_submissions').insert({
+      game_id: code,
+      round_id: round.id,
+      player_id: playerId,
+      pair_index: pairIndex,
+      is_match: isMatch,
+      streak_at_time: newStreak,
+      streak_bonus: streakBonus,
+      points_after: pointsAfter,
     })
-    if (finishError) {
-      return NextResponse.json({ error: internalErrorMessage('matching-pairs/flip', finishError) }, { status: 500 })
+    if (subError) {
+      return NextResponse.json({ error: internalErrorMessage('matching-pairs/flip', subError) }, { status: 500 })
     }
-    const result = finishData as { error?: string; finish_rank?: number } | null
-    if (result?.error) {
-      return NextResponse.json(
-        { error: result.error === 'ALREADY_FINISHED' ? 'Player already finished' : 'Failed to finish' },
-        { status: 409 }
-      )
-    }
-    finishRank = result?.finish_rank ?? null
-  } else {
-    // Non-finishing update: pairs_matched or wrong_attempts.
-    const { error: progressError } = await supabase
-      .from('memory_match_progress')
-      .update({
-        pairs_matched: newPairsMatched,
-        wrong_attempts: newWrongAttempts,
-        updated_at: new Date().toISOString(),
-      })
+
+    // Count matches and wrong attempts from memory_match_submissions to be 100% accurate and race-free.
+    const { data: allRoundSubs, error: countError } = await supabase
+      .from('memory_match_submissions')
+      .select('is_match')
       .eq('round_id', round.id)
       .eq('player_id', playerId)
 
-    if (progressError) {
-      return NextResponse.json({ error: internalErrorMessage('matching-pairs/flip', progressError) }, { status: 500 })
+    if (countError) {
+      return NextResponse.json({ error: internalErrorMessage('matching-pairs/flip', countError) }, { status: 500 })
     }
-  }
 
-  // If everyone is done, end the round (and the game if this was the final round).
-  if (justFinished) {
-    await finishMatchingPairsRoundIfAllDone(supabase, code, round.id, currentRoundNumber, totalRounds, gridSizePairs)
-  }
+    const newPairsMatched = (allRoundSubs ?? []).filter((s) => s.is_match).length
+    const newWrongAttempts = (allRoundSubs ?? []).filter((s) => !s.is_match).length
+    const justFinished = isMatch && newPairsMatched >= gridSizePairs
 
-  return NextResponse.json({
-    success: true,
-    pointsDelta,
-    pointsAfter,
-    streakBonus,
-    wrongPenalty: isMatch ? 0 : MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY,
-    currentStreak: newStreak,
-    pairsMatched: newPairsMatched,
-    finished: justFinished,
-    finishRank,
-  })
+    let finishRank: number | null = null
+    if (justFinished) {
+      // Use atomic RPC to prevent duplicate ranks under concurrent finishers.
+      const { data: finishData, error: finishError } = await supabase.rpc('matching_pairs_finish_player', {
+        p_round_id: round.id,
+        p_player_id: playerId,
+        p_pairs_matched: newPairsMatched,
+        p_wrong_attempts: newWrongAttempts,
+      })
+      if (finishError) {
+        return NextResponse.json({ error: internalErrorMessage('matching-pairs/flip', finishError) }, { status: 500 })
+      }
+      const result = finishData as { error?: string; finish_rank?: number } | null
+      if (result?.error) {
+        return NextResponse.json(
+          { error: result.error === 'ALREADY_FINISHED' ? 'Player already finished' : 'Failed to finish' },
+          { status: 409 }
+        )
+      }
+      finishRank = result?.finish_rank ?? null
+    } else {
+      // Non-finishing update: pairs_matched or wrong_attempts.
+      const { error: progressError } = await supabase
+        .from('memory_match_progress')
+        .update({
+          pairs_matched: newPairsMatched,
+          wrong_attempts: newWrongAttempts,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('round_id', round.id)
+        .eq('player_id', playerId)
+
+      if (progressError) {
+        return NextResponse.json({ error: internalErrorMessage('matching-pairs/flip', progressError) }, { status: 500 })
+      }
+    }
+
+    // If everyone is done, end the round (and the game if this was the final round).
+    if (justFinished) {
+      await finishMatchingPairsRoundIfAllDone(supabase, code, round.id, currentRoundNumber, totalRounds, gridSizePairs)
+    }
+
+    return NextResponse.json({
+      success: true,
+      pointsDelta,
+      pointsAfter,
+      streakBonus,
+      wrongPenalty: isMatch ? 0 : MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY,
+      currentStreak: newStreak,
+      pairsMatched: newPairsMatched,
+      finished: justFinished,
+      finishRank,
+    })
+  } finally {
+    release()
+  }
 }
