@@ -1725,7 +1725,7 @@ export async function processMonopolyPayRent(
     const turnFinish = finishTurnAfterSpaceAction(board, (statesRaw ?? []) as MonopolyPlayerState[], playerId)
     const timerSeconds = await getMonopolyTimerSeconds(supabase, gameId)
 
-    const { error: updateError } = await supabase
+    const { data: waived, error: updateError } = await supabase
       .from('monopoly_boards')
       .update({
         phase: turnFinish.phase,
@@ -1739,8 +1739,10 @@ export async function processMonopolyPayRent(
       })
       .eq('game_id', gameId)
       .eq('updated_at', board.updated_at)
+      .select('game_id')
 
     if (updateError) return { error: internalErrorMessage('monopoly_boards', updateError) }
+    if ((waived?.length ?? 0) === 0) return { error: 'Board changed, please try again.' }
     return {}
   }
 
