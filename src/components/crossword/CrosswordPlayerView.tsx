@@ -859,13 +859,12 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   if (view === 'finished') {
-    const myRow = leaderboard.find((row) => row.player_id === myPlayerId)
-    const iWon =
-      !!myRow &&
-      leaderboard.length > 1 &&
-      leaderboard[0] != null &&
-      myRow.points === leaderboard[0].points &&
-      leaderboard[0].points > 0
+    // A crossword has exactly one winner: the single top-ranked player after all
+    // tiebreaks (points → words → finish time → name), matching the mobile view.
+    // Post the community win only when that winner is me — never every player tied
+    // on points, which would put multiple "winners" on the board for one game.
+    const leader = leaderboard[0]
+    const iWon = !!leader && leader.player_id === myPlayerId && leader.wordsCompleted > 0
     return (
       <div className="min-h-screen flex flex-col">
         <GamePlayerChrome />
@@ -905,7 +904,7 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
             <PostWinToCommunity
               gameType="crossword"
               gameCode={gameCode}
-              winnerName={myRow?.name ?? ''}
+              winnerName={leader?.name ?? ''}
               roundKey={game?.session_started_at ?? undefined}
             />
           )}

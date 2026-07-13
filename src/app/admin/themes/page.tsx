@@ -67,14 +67,50 @@ export default function AdminThemesPage() {
     void load()
   }, [load])
 
+  const [importing, setImporting] = useState(false)
+  const [importMsg, setImportMsg] = useState<string | null>(null)
+  const importBuiltins = async () => {
+    setImporting(true)
+    setImportMsg(null)
+    try {
+      const res = await fetch('/api/admin/puzzle-themes/import-builtins', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) {
+        setImportMsg(json.error ?? 'Import failed')
+        return
+      }
+      setImportMsg(
+        json.inserted > 0 ? `Imported ${json.inserted} built-in theme(s).` : 'Built-in themes are already imported.'
+      )
+      load()
+    } catch {
+      setImportMsg('Network error')
+    } finally {
+      setImporting(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-black tracking-tight">Puzzle themes</h1>
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          Named word packs hosts can pick for Crossword, Word Search and Word Scramble. Lock a difficulty to make e.g.
-          &ldquo;Geography Hard&rdquo; its own theme; leave it unlocked to let the host choose.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight">Puzzle themes</h1>
+          <p className="mt-1 max-w-2xl text-sm text-[var(--muted)]">
+            Named word packs hosts can pick for Crossword, Word Search and Word Scramble. Lock a difficulty to make e.g.
+            &ldquo;Geography Hard&rdquo; its own theme; leave it unlocked to let the host choose.
+          </p>
+        </div>
+        <div className="text-right">
+          <button
+            type="button"
+            onClick={importBuiltins}
+            disabled={importing}
+            className="btn-secondary px-4 py-2 text-sm disabled:opacity-50"
+          >
+            {importing ? 'Importing…' : 'Import built-in themes'}
+          </button>
+          {importMsg && <p className="mt-1 text-xs text-[var(--muted)]">{importMsg}</p>}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -94,7 +130,9 @@ export default function AdminThemesPage() {
         ))}
       </div>
 
-      <CreateThemeForm gameType={gameType} onCreated={load} />
+      {/* key remounts the form when the game type changes, resetting all fields (and the file
+          input) so a crossword CSV can't be left over when switching to word search etc. */}
+      <CreateThemeForm key={gameType} gameType={gameType} onCreated={load} />
 
       <div className="space-y-3">
         <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--muted)]">
@@ -121,17 +159,6 @@ function CreateThemeForm({ gameType, onCreated }: { gameType: GameTypeId; onCrea
   const [error, setError] = useState<string | null>(null)
   const [okMsg, setOkMsg] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
-
-  // Reset the form when the admin switches game type so a crossword CSV can't be submitted for
-  // word search etc.
-  useEffect(() => {
-    setName('')
-    setDifficulty('')
-    setCsv('')
-    setError(null)
-    setOkMsg(null)
-    if (fileRef.current) fileRef.current.value = ''
-  }, [gameType])
 
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -283,6 +310,11 @@ function ThemeRow({ theme, onChanged }: { theme: Theme; onChanged: () => void })
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <span className="font-semibold">{theme.name}</span>
+          {theme.is_builtin && (
+            <span className="ml-2 rounded-full border border-[var(--border)] px-2 py-0.5 text-xs font-semibold text-[var(--muted)]">
+              built-in
+            </span>
+          )}
           <span className="ml-2 text-xs text-[var(--muted)]">{theme.entry_count} words</span>
           {theme.difficulty ? (
             <span className="ml-2 rounded-full bg-[var(--primary)]/15 px-2 py-0.5 text-xs font-semibold capitalize text-[var(--primary)]">
