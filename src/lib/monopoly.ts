@@ -1720,7 +1720,29 @@ export async function processMonopolyPayRent(
   const buildings = parseBuildings(board.property_buildings)
   const mortgaged = parseMortgaged(board.mortgaged_properties)
   const ownerId = owners[String(spaceIndex)]
-  if (!ownerId || ownerId === playerId) return { error: 'Invalid rent state' }
+  if (!ownerId || ownerId === playerId) {
+    const { data: statesRaw } = await supabase.from('monopoly_player_state').select('*').eq('game_id', gameId)
+    const turnFinish = finishTurnAfterSpaceAction(board, (statesRaw ?? []) as MonopolyPlayerState[], playerId)
+    const timerSeconds = await getMonopolyTimerSeconds(supabase, gameId)
+
+    const { error: updateError } = await supabase
+      .from('monopoly_boards')
+      .update({
+        phase: turnFinish.phase,
+        current_turn_index: turnFinish.turnIndex,
+        consecutive_doubles: turnFinish.consecutiveDoubles,
+        status_message: 'Rent waived due to ownership change.',
+        pending_space: null,
+        pending_debt: null,
+        turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, turnFinish.phase),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('game_id', gameId)
+      .eq('updated_at', board.updated_at)
+
+    if (updateError) return { error: internalErrorMessage('monopoly_boards', updateError) }
+    return {}
+  }
 
   const rent =
     board.pending_debt?.debt_type === 'rent' && board.pending_debt?.amount != null
@@ -1861,8 +1883,19 @@ export async function processMonopolyBuild(
   const board = boardRaw as MonopolyBoard
 
   const isBuying = action === 'buy_house' || action === 'buy_hotel'
-  if (isBuying && (board.phase === 'pay_rent' || board.phase === 'raise_funds')) {
-    return { error: 'Cannot buy houses or hotels while rent or debt payment is pending' }
+  const isPayer =
+    (board.phase === 'pay_rent' && currentPlayerId(board) === playerId) ||
+    (board.phase === 'raise_funds' && board.pending_debt?.player_id === playerId)
+
+  if (isBuying && isPayer) {
+    return { error: 'You cannot buy buildings while you owe rent or debt' }
+  }
+
+  const pendingSpace = board.pending_debt?.space_index ?? board.pending_space
+  const isPendingProperty = (board.phase === 'pay_rent' || board.phase === 'raise_funds') && pendingSpace === spaceIndex
+
+  if (isPendingProperty) {
+    return { error: 'Cannot modify buildings on this property while its rent is pending collection' }
   }
 
   const space = spaceAt(spaceIndex)
