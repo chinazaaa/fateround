@@ -86,7 +86,13 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSourc
   }))
   if (!hasPartyRoomSettings(gameType)) return null
   const showPuzzleTheme = contentSource === 'platform'
-  const showPuzzleDifficulty = contentSource !== 'library'
+  // Difficulty = grid size, independent of where the words come from, so it stays editable under
+  // every source. A theme only locks it on the Platform tab (admin themes carry one); under
+  // Library/Your own there's no theme, so a stale theme value must not be treated as a lock.
+  const showPuzzleDifficulty = true
+  const crosswordDiffLock = contentSource === 'platform' ? lockedPuzzleDifficulty(party.crosswordTheme) : null
+  const wordSearchDiffLock = contentSource === 'platform' ? lockedPuzzleDifficulty(party.wordSearchTheme) : null
+  const wordScrambleDiffLock = contentSource === 'platform' ? lockedPuzzleDifficulty(party.wordScrambleTheme) : null
 
   const title = `${gameLabel(gameType)} room`
   const roundOptions = partyRoundOptions(gameType)
@@ -556,7 +562,7 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSourc
                 <Text style={styles.label}>Difficulty</Text>
                 <SegmentedControl
                   value={party.crosswordDifficulty}
-                  disabled={!!lockedPuzzleDifficulty(party.crosswordTheme)}
+                  disabled={!!crosswordDiffLock}
                   options={[
                     { value: 'easy', label: 'Easy', hint: 'Smaller grid, fewer words' },
                     { value: 'medium', label: 'Medium' },
@@ -602,7 +608,7 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSourc
                 <Text style={styles.label}>Difficulty</Text>
                 <SegmentedControl
                   value={party.wordSearchDifficulty}
-                  disabled={!!lockedPuzzleDifficulty(party.wordSearchTheme)}
+                  disabled={!!wordSearchDiffLock}
                   options={[
                     { value: 'easy', label: 'Easy', hint: 'Smaller grid, fewer words' },
                     { value: 'medium', label: 'Medium' },
@@ -648,7 +654,7 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSourc
                 <Text style={styles.label}>Difficulty</Text>
                 <SegmentedControl
                   value={party.wordScrambleDifficulty}
-                  disabled={!!lockedPuzzleDifficulty(party.wordScrambleTheme)}
+                  disabled={!!wordScrambleDiffLock}
                   options={[
                     { value: 'easy', label: 'Easy', hint: 'Short words' },
                     { value: 'medium', label: 'Medium' },

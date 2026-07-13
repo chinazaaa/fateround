@@ -1,11 +1,7 @@
 import type { GameType } from '@fateround/shared'
 import type { ThemeId } from '@fateround/shared/create-themes'
 import type { GamePlayerLimitsMap } from '@fateround/shared/lobby-limits'
-import {
-  clampLobbyMaxPlayers,
-  isLobbyLimitGameType,
-  lobbyDefaultMaxPlayers,
-} from '@fateround/shared/lobby-limits'
+import { clampLobbyMaxPlayers, isLobbyLimitGameType, lobbyDefaultMaxPlayers } from '@fateround/shared/lobby-limits'
 import { isCodewordsGame } from '@fateround/shared/game-type-checks'
 import type { LateJoinPolicy } from '@fateround/shared/viewers'
 import {
@@ -47,12 +43,7 @@ export { hasPartyRoomSettings, BATCH_20_PARTY_GAMES, isPollPartyGame } from '@/l
 export type { CustomContentState } from '@/lib/create-settings/custom-content'
 export { supportsCustomContent } from '@/lib/create-settings/custom-content'
 export type { PeopleSettings } from '@/lib/create-settings/people'
-export {
-  supportsImportMode,
-  participantModeOptions,
-  isCustomGame,
-  minParticipants,
-} from '@/lib/create-settings/people'
+export { supportsImportMode, participantModeOptions, isCustomGame, minParticipants } from '@/lib/create-settings/people'
 
 export type CreateWizardStep = 'setup' | 'people'
 
@@ -88,10 +79,7 @@ function themeForGameType(gameType: GameType, current: ThemeId): ThemeId {
   return allowed[0]?.id ?? 'default'
 }
 
-export function createInitialState(
-  gameType: GameType,
-  limits: GamePlayerLimitsMap
-): CreateWizardState {
+export function createInitialState(gameType: GameType, limits: GamePlayerLimitsMap): CreateWizardState {
   return {
     title: '',
     gameType,
@@ -116,10 +104,7 @@ export function applyGameTypeChange(
     gameType,
     theme: themeForGameType(gameType, prev.theme),
     maxPlayers: isLobbyLimitGameType(gameType) ? lobbyDefaultMaxPlayers(gameType, limits) : null,
-    lateJoinPolicy: clampLateJoinPolicyForGameType(
-      defaultLateJoinPolicyForGameType(gameType),
-      gameType
-    ),
+    lateJoinPolicy: clampLateJoinPolicyForGameType(defaultLateJoinPolicyForGameType(gameType), gameType),
     room: defaultGameRoomSettings(gameType),
     party: defaultPartyRoomSettings(gameType),
     custom: defaultCustomContentState(),
@@ -169,6 +154,10 @@ export function buildCreatePayload(state: CreateWizardState, limits: GamePlayerL
     ...gameRoomSettingsPayload(gameType, state.room),
     ...partyRoomSettingsPayload(gameType, state.party),
   }
+
+  // A stale admin theme (`pt:<id>`) left in party state must not fold its pool when the host has
+  // switched to a Library/Your-own source — that would override the custom pool and difficulty.
+  if (state.custom.source !== 'platform') delete payload.puzzle_theme_id
 
   if (maxPlayers != null) payload.max_players = maxPlayers
 
