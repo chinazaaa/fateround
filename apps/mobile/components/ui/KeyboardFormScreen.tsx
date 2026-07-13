@@ -9,7 +9,6 @@ import {
   ViewStyle,
 } from 'react-native'
 import type { RefreshControlProps } from 'react-native'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 type Props = {
   children: ReactNode
@@ -24,8 +23,11 @@ type Props = {
 
 /** Standard keyboard-safe layout for join/create/name forms. */
 export function KeyboardFormScreen({ children, contentContainerStyle, scroll = true, refreshControl, footer }: Props) {
-  const insets = useSafeAreaInsets()
-  const offset = Platform.OS === 'ios' ? insets.top + 12 : 0
+  // No keyboardVerticalOffset: the KeyboardAvoidingView already fills from the safe-area top, and
+  // its `padding` behavior measures the view's own frame — so any extra offset just lifts the
+  // footer/inputs above the keyboard, leaving a floating gap. 0 docks the footer snug on the
+  // keyboard's top edge (the footer's own padding keeps a little breathing room).
+  const offset = 0
 
   const body = scroll ? (
     <ScrollView
