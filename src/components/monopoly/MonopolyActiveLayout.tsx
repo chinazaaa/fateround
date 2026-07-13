@@ -40,7 +40,7 @@ export function MonopolyActiveLayout({
   themeId,
 }: {
   gameCode: string
-  game: Pick<Game, 'status' | 'session_started_at' | 'game_duration_seconds'> | null
+  game: Pick<Game, 'status' | 'session_started_at' | 'game_duration_seconds' | 'monopoly_forced_auctions'> | null
   board: MonopolyBoard
   states: MonopolyPlayerState[]
   players: Player[]
@@ -273,6 +273,7 @@ export function MonopolyActiveLayout({
                     colorBarClass={colorBarClass}
                     layout="board"
                     themeId={themeId}
+                    forcedAuctions={game?.monopoly_forced_auctions === true}
                   />
                 )
               }
