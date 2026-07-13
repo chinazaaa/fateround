@@ -859,7 +859,7 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  if (view === 'finished') {
+  if (view === 'finished' && game) {
     // A crossword has exactly one winner: the single top-ranked player after all
     // tiebreaks (points → words → finish time → name), matching the mobile view.
     // Post the community win only when that winner is me — never every player tied
