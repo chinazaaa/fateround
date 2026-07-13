@@ -241,6 +241,9 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
 
   useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
 
+  // Latest committed status, read by the games channel without resubscribing.
+  const gameStatusRef = useRef(game?.status)
+  gameStatusRef.current = game?.status
   useEffect(() => {
     const ch = supabase
       .channel(`crossword_game_${gameCode}`)
@@ -248,8 +251,12 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
-          setGame(payload.new as Game)
-          load()
+          const next = payload.new as Game
+          setGame(next)
+          // Only a full reload on a status transition (the case a re-derive is for); other
+          // games-row writes just refresh the game object above. Reloading on every UPDATE
+          // was a primary driver of the finish-screen flicker.
+          if (next.status !== gameStatusRef.current) load()
         }
       )
       .subscribe()
@@ -435,7 +442,13 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     }
   }, [view, solutionGrid, gameCode])
 
-  const leaderboard = metadata ? tallyCrosswordScores(metadata, submissions, players) : []
+  // Heaviest per-render call in the view (parses a Date per submission, then loops
+  // clues × active players × cells over *every* player's accumulated submissions). Left
+  // un-memoized it re-ran on every keystroke and every 1s tick, blocking the input thread.
+  const leaderboard = useMemo(
+    () => (metadata ? tallyCrosswordScores(metadata, submissions, players) : []),
+    [metadata, submissions, players]
+  )
   const me = players.find((p) => p.id === myPlayerId)
   const isSpectator = me?.spectator === true
   const isViewer = !!(game && me && playerIsViewer(me, game))
@@ -492,37 +505,42 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     return !playerHasSolvedCell(submissions, myPlayerId, row, col)
   }
 
-  function focusInput() {
+  const focusInput = useCallback(() => {
     // Focus SYNCHRONOUSLY inside the tap handler — iOS Safari only pops the on-screen
     // keyboard when focus() runs within the user gesture, not from a deferred callback.
     // preventScroll keeps the board from jumping to the off-screen input.
     inputRef.current?.focus({ preventScroll: true })
-  }
+  }, [])
 
-  function handleCellSelect(row: number, col: number) {
-    if (!metadata || metadata.blocked[row]?.[col]) return
-    // Re-tapping the active cell flips across/down.
-    if (selectedCell && selectedCell[0] === row && selectedCell[1] === col) {
-      setDirection((d) => {
-        const next: CrosswordDirection = d === 'across' ? 'down' : 'across'
-        return findClueAt(metadata, row, col, next) ? next : d
-      })
+  // Stable while metadata/selection are unchanged so the memoized board can skip ambient
+  // re-renders (1s tick, roster refresh) instead of rebuilding all its cells each time.
+  const handleCellSelect = useCallback(
+    (row: number, col: number) => {
+      if (!metadata || metadata.blocked[row]?.[col]) return
+      // Re-tapping the active cell flips across/down.
+      if (selectedCell && selectedCell[0] === row && selectedCell[1] === col) {
+        setDirection((d) => {
+          const next: CrosswordDirection = d === 'across' ? 'down' : 'across'
+          return findClueAt(metadata, row, col, next) ? next : d
+        })
+        focusInput()
+        return
+      }
+      // Prefer the direction whose word STARTS at this cell (so clicking a numbered cell shows
+      // that word's clue), then the current direction, then whatever's available.
+      const acrossClue = findClueAt(metadata, row, col, 'across')
+      const downClue = findClueAt(metadata, row, col, 'down')
+      const startsAcross = acrossClue && acrossClue.row === row && acrossClue.col === col
+      const startsDown = downClue && downClue.row === row && downClue.col === col
+      if (startsAcross && !startsDown) setDirection('across')
+      else if (startsDown && !startsAcross) setDirection('down')
+      else if (direction === 'across' && !acrossClue && downClue) setDirection('down')
+      else if (direction === 'down' && !downClue && acrossClue) setDirection('across')
+      setSelectedCell([row, col])
       focusInput()
-      return
-    }
-    // Prefer the direction whose word STARTS at this cell (so clicking a numbered cell shows
-    // that word's clue), then the current direction, then whatever's available.
-    const acrossClue = findClueAt(metadata, row, col, 'across')
-    const downClue = findClueAt(metadata, row, col, 'down')
-    const startsAcross = acrossClue && acrossClue.row === row && acrossClue.col === col
-    const startsDown = downClue && downClue.row === row && downClue.col === col
-    if (startsAcross && !startsDown) setDirection('across')
-    else if (startsDown && !startsAcross) setDirection('down')
-    else if (direction === 'across' && !acrossClue && downClue) setDirection('down')
-    else if (direction === 'down' && !downClue && acrossClue) setDirection('across')
-    setSelectedCell([row, col])
-    focusInput()
-  }
+    },
+    [metadata, selectedCell, direction, focusInput]
+  )
 
   function selectClue(clue: CrosswordClue) {
     setDirection(clue.direction)

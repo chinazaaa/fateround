@@ -42,7 +42,15 @@ function LogoWordmark({
   roundColor: string
 }) {
   return (
-    <Text style={[styles.wordmark, { fontSize: size, lineHeight: size * 1.05 }]} accessibilityRole="header">
+    <Text
+      style={[styles.wordmark, { fontSize: size, lineHeight: size * 1.05 }]}
+      accessibilityRole="header"
+      // Keep "FateRound" on ONE line — at the fixed hero width it sat right on the wrap
+      // boundary and dropped the "d" to a second line on narrower phones (e.g. iPhone 11).
+      // Shrink-to-fit instead of wrapping so it stays whole on every device.
+      numberOfLines={1}
+      adjustsFontSizeToFit
+    >
       <Text style={{ color: fateColor }}>Fate</Text>
       <Text style={{ color: roundColor }}>Round</Text>
     </Text>

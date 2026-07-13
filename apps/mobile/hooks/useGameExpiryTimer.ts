@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type { Game } from '@fateround/shared'
 import { apiUrl } from '@/lib/config'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
@@ -18,21 +18,31 @@ import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
  *
  * `extraActive` lets a caller add a guard beyond "active + duration > 0"
  * (Scrabble's chess-clock mode has no whole-game cap, so it must never arm).
+ *
+ * `onExpired` (usually `bootstrap.load`) is called after each attempt so the view
+ * re-fetches and lands on the finished screen even if the realtime `games` event is
+ * dropped — mobile has no polling fallback, so without this a missed event leaves the
+ * player stranded on the 0:00 board.
  */
 export function useGameExpiryTimer({
   endpoint,
   game,
   extraActive = true,
   retryMs = 5000,
+  onExpired,
 }: {
   endpoint: string
   game: Pick<Game, 'status' | 'session_started_at' | 'game_duration_seconds'> | null
   extraActive?: boolean
   retryMs?: number
+  onExpired?: () => void | Promise<void>
 }) {
   const duration = game?.game_duration_seconds ?? 0
   const active = game?.status === 'active' && duration > 0 && extraActive
   const secondsLeft = useDeadlineCountdown(game?.session_started_at ?? null, duration, active)
+  // Held in a ref so a fresh inline `onExpired` closure each render doesn't re-arm the timer.
+  const onExpiredRef = useRef(onExpired)
+  onExpiredRef.current = onExpired
 
   useEffect(() => {
     if (!active || secondsLeft > 0) return
@@ -48,7 +58,12 @@ export function useGameExpiryTimer({
         // realtime `games` sync surfaces the finish; a failed attempt just retries.
       } finally {
         clearTimeout(abortId)
-        if (!cancelled) retryId = setTimeout(() => void fire(), retryMs)
+        // Re-fetch regardless of the response — realtime can miss the status flip, which
+        // would otherwise strand the player on the 0:00 board until they leave and re-open.
+        if (!cancelled) {
+          void onExpiredRef.current?.()
+          retryId = setTimeout(() => void fire(), retryMs)
+        }
       }
     }
     void fire()

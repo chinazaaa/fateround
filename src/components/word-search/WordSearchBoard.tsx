@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { memo, useRef, useState } from 'react'
 import { selectionCells, type WordSearchMetadata } from '@/lib/word-search'
 
 /** Board-agnostic palette used to colour each player's found cells (mirrors CrosswordBoard). */
@@ -93,7 +93,11 @@ interface WordSearchBoardProps {
   readOnly?: boolean
 }
 
-export function WordSearchBoard({
+// Memoized like CrosswordBoard: an up-to-15×15 cell grid that otherwise rebuilds on every
+// parent render (1s timer tick, roster refreshes, other players' finds). Its data props are
+// memoized in the parent and `onSelect` is a stable useCallback, so it only re-renders on
+// real changes (its own drag selection, or cells actually changing).
+export const WordSearchBoard = memo(function WordSearchBoard({
   metadata,
   cellOwners,
   myFoundCells,
@@ -246,4 +250,4 @@ export function WordSearchBoard({
       </div>
     </div>
   )
-}
+})

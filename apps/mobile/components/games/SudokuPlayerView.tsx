@@ -444,7 +444,11 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('sudoku')} subtitle={bootstrap.code}>
       <ScrollView contentContainerStyle={styles.content}>
-        <SudokuGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} />
+        <SudokuGameTimerBar
+          gameCode={bootstrap.code}
+          game={bootstrap.game}
+          onExpired={() => void bootstrap.load()}
+        />
 
         {toast ? (
           <View style={[styles.toast, toast.ok ? styles.toastOk : styles.toastBad]}>
@@ -721,22 +725,25 @@ const makeStyles = (theme: Theme) =>
     // White label on the solid rose active chip — intentional.
     watchChipTextActive: { color: '#fff' },
     viewingHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 16 },
-    // Sudoku grid is a functional board (Step D) — frame + cell state colors left as-is.
-    board: { alignSelf: 'center', borderWidth: 2, borderColor: '#374151', marginTop: 8 },
+    // Theme-aware grid: light cells + dark digits in light mode, dark cells + light digits in
+    // dark mode. (Was hardcoded dark, so the board stayed black in light mode.) textFaint gives
+    // grid lines that read on both a white and a near-black background.
+    board: { alignSelf: 'center', borderWidth: 2, borderColor: theme.textFaint, marginTop: 8 },
     row: { flexDirection: 'row' },
     cell: {
       width: 34,
       height: 34,
       borderWidth: 1,
-      borderColor: '#374151',
+      borderColor: theme.textFaint,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: '#111827',
+      backgroundColor: theme.surface,
     },
-    cellGiven: { backgroundColor: '#1f2937' },
+    // Pre-filled clue cells sit one step off the base surface so they read as fixed.
+    cellGiven: { backgroundColor: theme.surfaceHover },
     cellSelected: { borderColor: '#f43f5e' },
-    // White digit on the dark grid cell — intentional (case 2).
-    cellText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+    // Digit follows the theme text colour (dark on light cells, light on dark cells).
+    cellText: { color: theme.text, fontWeight: '700', fontSize: 14 },
     // Dark digit on the pastel-green "my solved" cell so the value stays readable.
     cellTextSolved: { color: '#0b1220' },
     // Red digit marks a wrong guess left in place.

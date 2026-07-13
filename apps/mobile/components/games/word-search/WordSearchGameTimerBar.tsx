@@ -13,9 +13,14 @@ import { formatMinutesSeconds } from '@/components/games/word-search/standings'
 export function WordSearchGameTimerBar({
   gameCode,
   game,
+  onExpired,
 }: {
   gameCode: string
   game: Pick<Game, 'status' | 'session_started_at' | 'game_duration_seconds'> | null
+  /** Called after each expiry attempt so the view can re-fetch and switch to the finished
+   *  screen even if the realtime status update is missed (otherwise the player is stranded
+   *  on the 0:00 board). */
+  onExpired?: () => void
 }) {
   const styles = useThemedStyles(makeStyles)
   const duration = game?.game_duration_seconds ?? 0
@@ -32,7 +37,12 @@ export function WordSearchGameTimerBar({
       } catch {
         // Best-effort client expiry; retry until the game status update arrives.
       } finally {
-        if (!cancelled) retryId = setTimeout(() => void fire(), 5000)
+        // Re-fetch regardless of the response — realtime can miss the status flip, which would
+        // otherwise strand the player on the 0:00 screen until they leave and re-open.
+        if (!cancelled) {
+          onExpired?.()
+          retryId = setTimeout(() => void fire(), 5000)
+        }
       }
     }
     void fire()
@@ -40,7 +50,7 @@ export function WordSearchGameTimerBar({
       cancelled = true
       if (retryId) clearTimeout(retryId)
     }
-  }, [active, secondsLeft, gameCode])
+  }, [active, secondsLeft, gameCode, onExpired])
 
   if (!active) return null
 
