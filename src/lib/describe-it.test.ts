@@ -49,14 +49,15 @@ describe('describeItRoleLeaderboards', () => {
   const roster = ['A', 'B', 'C']
 
   it('splits guesser and describer points from the raw scored guesses', () => {
+    const at = '2026-01-01T00:00:00Z'
     const guesses = [
       // Turn 0 (A describes): B and C guess correctly.
-      { player_id: 'B', turn_index: 0, points: 30 },
-      { player_id: 'C', turn_index: 0, points: 20 },
+      { player_id: 'B', turn_index: 0, points: 30, created_at: at },
+      { player_id: 'C', turn_index: 0, points: 20, created_at: at },
       // Turn 1 (B describes): A guesses.
-      { player_id: 'A', turn_index: 1, points: 40 },
+      { player_id: 'A', turn_index: 1, points: 40, created_at: at },
       // Turn 2 (C describes): A guesses.
-      { player_id: 'A', turn_index: 2, points: 10 },
+      { player_id: 'A', turn_index: 2, points: 10, created_at: at },
     ]
     const { guessers, describers } = describeItRoleLeaderboards(guesses, roster, players)
 
@@ -76,8 +77,8 @@ describe('describeItRoleLeaderboards', () => {
 
   it('ignores unscored (team-mode) guesses and excludes spectators', () => {
     const guesses = [
-      { player_id: 'B', turn_index: 0, points: 0 }, // team-mode: points 0 → ignored
-      { player_id: 'C', turn_index: 0, points: 15 },
+      { player_id: 'B', turn_index: 0, points: 0, created_at: '2026-01-01T00:00:00Z' }, // team-mode: points 0 → ignored
+      { player_id: 'C', turn_index: 0, points: 15, created_at: '2026-01-01T00:00:00Z' },
     ]
     const withSpectator = [...players, { id: 'S', name: 'Spec', spectator: true }]
     const { guessers, describers } = describeItRoleLeaderboards(guesses, roster, withSpectator)

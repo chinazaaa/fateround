@@ -763,6 +763,7 @@ export interface DescribeItGuess {
   text: string
   correct: boolean
   points: number
+  created_at: string
 }
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
