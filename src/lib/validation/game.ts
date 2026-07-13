@@ -133,6 +133,9 @@ export const createGameSchema = z.object({
   word_search_difficulty: z.enum(['easy', 'medium', 'hard']).optional(),
   word_scramble_theme: z.string().optional(),
   word_scramble_difficulty: z.enum(['easy', 'medium', 'hard']).optional(),
+  // An admin-authored puzzle theme (puzzle_themes.id) picked in the theme dropdown. The server
+  // folds its saved word pool into the game and applies its locked difficulty.
+  puzzle_theme_id: z.string().uuid().optional(),
   mafia_doctor_enabled: z.boolean().optional(),
   mafia_detective_enabled: z.boolean().optional(),
   mafia_anonymous_votes: z.boolean().optional(),
