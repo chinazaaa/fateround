@@ -1702,10 +1702,21 @@ function CreateGameInner() {
               : wordScrambleTheme
             : undefined,
           word_scramble_difficulty: isWordScramble ? wordScrambleDifficulty : undefined,
+          // Only an admin theme picked under Platform folds a pool. Switching to Library/Your own
+          // leaves the prior `pt:<id>` in theme state; gate by source so a stale admin theme can't
+          // override the custom pool or the (now editable) difficulty.
           puzzle_theme_id:
-            puzzleThemeIdFromValue(
-              isCrossword ? crosswordTheme : isWordSearch ? wordSearchTheme : isWordScramble ? wordScrambleTheme : ''
-            ) ?? undefined,
+            questionSource === 'platform'
+              ? (puzzleThemeIdFromValue(
+                  isCrossword
+                    ? crosswordTheme
+                    : isWordSearch
+                      ? wordSearchTheme
+                      : isWordScramble
+                        ? wordScrambleTheme
+                        : ''
+                ) ?? undefined)
+              : undefined,
           elimination_config:
             eliminationEnabled && isEliminationCompatible
               ? eliminationMode === 'per-round'
