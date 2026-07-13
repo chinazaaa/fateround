@@ -36,6 +36,11 @@ import { clampWordScrambleGameDuration, parseWordScrambleDifficulty } from '@/li
 import { findCrosswordTheme } from '@/lib/crossword-puzzles'
 import { findWordSearchTheme } from '@/lib/word-search-puzzles'
 import { findWordScrambleTheme } from '@/lib/word-scramble-puzzles'
+import {
+  parseStoredCrosswordEntries,
+  parseStoredWordSearchEntries,
+  parseStoredWordScrambleEntries,
+} from '@/lib/custom-questions'
 import { MATCHING_PAIRS_GAME_DURATION_OPTIONS } from '@/lib/memory-match'
 import { clampQuiplashRounds, clampQuiplashSubmitTimer, clampQuiplashVoteTimer } from '@/lib/quiplash'
 import {
@@ -133,6 +138,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     word_scramble_theme,
     word_scramble_difficulty,
     puzzle_theme_id,
+    puzzle_custom_questions,
   } = parsed.data
   const gameCode = parsed.data.gameId.toUpperCase()
 
@@ -169,7 +175,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     word_search_difficulty === undefined &&
     word_scramble_theme === undefined &&
     word_scramble_difficulty === undefined &&
-    puzzle_theme_id === undefined
+    puzzle_theme_id === undefined &&
+    puzzle_custom_questions === undefined
   ) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
@@ -392,6 +399,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     gameUpdate[`${puzzleKind}_theme`] = pt.name as string
     const d = pt.difficulty as string | null
     if (d === 'easy' || d === 'medium' || d === 'hard') gameUpdate[`${puzzleKind}_difficulty`] = d
+  }
+
+  // Host-supplied puzzle pool from the lobby: a Library pack pick or a "Your own" CSV upload.
+  // Re-validate + normalise per game type (never trust the client's array), require 4+ entries,
+  // then store it as a custom pool. question_source='custom' makes start ignore the built-in theme.
+  if (puzzle_custom_questions !== undefined) {
+    const normalised =
+      limitOnlyType === 'crossword'
+        ? parseStoredCrosswordEntries(puzzle_custom_questions)
+        : limitOnlyType === 'word_search'
+          ? parseStoredWordSearchEntries(puzzle_custom_questions)
+          : limitOnlyType === 'word_scramble'
+            ? parseStoredWordScrambleEntries(puzzle_custom_questions)
+            : null
+    if (!normalised) {
+      return NextResponse.json({ error: 'This game type has no custom word pool' }, { status: 400 })
+    }
+    if (normalised.length < 4) {
+      return NextResponse.json({ error: 'Add at least 4 words' }, { status: 400 })
+    }
+    gameUpdate.custom_questions = normalised
+    gameUpdate.question_source = 'custom'
   }
 
   if (boardLobbyType === 'monopoly') {
