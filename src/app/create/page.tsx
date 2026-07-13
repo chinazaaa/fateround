@@ -3789,8 +3789,12 @@ function CreateGameInner() {
                         </button>
                       ))}
                     </div>
-                    {lockedPuzzleDifficulty(wordSearchTheme) && (
+                    {lockedPuzzleDifficulty(wordSearchTheme) ? (
                       <p className="mt-2 text-xs text-muted">Difficulty is set by this theme.</p>
+                    ) : (
+                      <p className="mt-2 text-xs text-muted">
+                        Sets the grid size, number of words and directions — not how tricky the words are.
+                      </p>
                     )}
                   </Field>
                 )}
@@ -3945,8 +3949,12 @@ function CreateGameInner() {
                         </button>
                       ))}
                     </div>
-                    {lockedPuzzleDifficulty(wordScrambleTheme) && (
+                    {lockedPuzzleDifficulty(wordScrambleTheme) ? (
                       <p className="mt-2 text-xs text-muted">Difficulty is set by this theme.</p>
+                    ) : (
+                      <p className="mt-2 text-xs text-muted">
+                        Sets the word length — easy uses short words, hard uses longer ones.
+                      </p>
                     )}
                   </Field>
                 )}
@@ -4099,8 +4107,12 @@ function CreateGameInner() {
                         </button>
                       ))}
                     </div>
-                    {lockedPuzzleDifficulty(crosswordTheme) && (
+                    {lockedPuzzleDifficulty(crosswordTheme) ? (
                       <p className="mt-2 text-xs text-muted">Difficulty is set by this theme.</p>
+                    ) : (
+                      <p className="mt-2 text-xs text-muted">
+                        Sets the grid size and number of words — not how tricky the words are.
+                      </p>
                     )}
                   </Field>
                 )}
