@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import * as SecureStore from 'expo-secure-store'
+import { Alert, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import {
   type Game,
   type Round,
@@ -52,15 +51,6 @@ type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_fou
 
 const cellKey = (row: number, col: number) => `${row}-${col}`
 
-// Players pick their on-screen keyboard: QWERTY (phone muscle memory) or A–Z (easier to
-// scan). Default QWERTY; the choice is remembered on the device.
-const KEY_LAYOUTS = {
-  qwerty: ['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'],
-  abc: ['ABCDEFGHI', 'JKLMNOPQR', 'STUVWXYZ'],
-} as const
-type KeyboardLayout = keyof typeof KEY_LAYOUTS
-const KEYBOARD_LAYOUT_KEY = 'crossword_keyboard_layout'
-
 function emptyLetters(size: number): string[][] {
   return Array.from({ length: size }, () => Array(size).fill(''))
 }
@@ -99,21 +89,40 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [nowMs, setNowMs] = useState<number>(() => Date.now())
   const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
-  const [keyboardLayout, setKeyboardLayout] = useState<KeyboardLayout>('qwerty')
   const [solutionGrid, setSolutionGrid] = useState<string[][] | null>(null)
 
-  // Load the saved keyboard-layout preference (per device).
-  useEffect(() => {
-    void SecureStore.getItemAsync(KEYBOARD_LAYOUT_KEY).then((v) => {
-      if (v === 'abc' || v === 'qwerty') setKeyboardLayout(v)
-    })
+  // A hidden TextInput drives the device's own keyboard (matching web). Focusing it raises
+  // the OS keyboard; every keystroke is captured via onChangeText / onKeyPress below.
+  const inputRef = useRef<TextInput | null>(null)
+  // Mirror the selection in refs so rapid keystrokes always target the *current* cell — two
+  // characters can arrive before React re-renders, and reading state from a stale closure
+  // would write both to the same cell and leave the next one blank.
+  const selectedCellRef = useRef<[number, number] | null>(null)
+  const directionRef = useRef<CrosswordDirection>('across')
+  const setSelected = useCallback((cell: [number, number] | null) => {
+    selectedCellRef.current = cell
+    setSelectedCell(cell)
   }, [])
-  const toggleKeyboardLayout = useCallback(() => {
-    setKeyboardLayout((prev) => {
-      const next: KeyboardLayout = prev === 'qwerty' ? 'abc' : 'qwerty'
-      void SecureStore.setItemAsync(KEYBOARD_LAYOUT_KEY, next)
-      return next
-    })
+  const setDir = useCallback((dir: CrosswordDirection) => {
+    directionRef.current = dir
+    setDirection(dir)
+  }, [])
+  const focusInput = useCallback(() => {
+    // Focus synchronously inside the tap gesture so iOS raises the keyboard immediately.
+    inputRef.current?.focus()
+  }, [])
+
+  // Track the software keyboard height so the pinned clue bar rides just above it on iOS.
+  // Android resizes the window (adjustResize), so the dock already sits above the keyboard.
+  const [keyboardHeight, setKeyboardHeight] = useState(0)
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return
+    const show = Keyboard.addListener('keyboardWillShow', (e) => setKeyboardHeight(e.endCoordinates.height))
+    const hide = Keyboard.addListener('keyboardWillHide', () => setKeyboardHeight(0))
+    return () => {
+      show.remove()
+      hide.remove()
+    }
   }, [])
 
   const showToast = useCallback((msg: string, ok: boolean) => {
@@ -232,12 +241,12 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
   useEffect(() => {
     setLocalLetters(gridSize > 0 ? emptyLetters(gridSize) : [])
     setWrongDrafts(gridSize > 0 ? emptyBooleans(gridSize) : [])
-    setSelectedCell(null)
-    setDirection('across')
+    setSelected(null)
+    setDir('across')
     // Drop the previous game's answer grid too, so a replay's finish screen refetches the new
     // puzzle's solution instead of pairing new clues with stale letters (garbled answer key).
     setSolutionGrid(null)
-  }, [sessionKey, gridSize])
+  }, [sessionKey, gridSize, setSelected, setDir])
 
   const me = bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
   const viewing = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
@@ -358,35 +367,36 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
   /** Move the cursor to the next un-solved cell along the active word. */
   const advanceCursor = (row: number, col: number) => {
     if (!metadata) return
-    const clue = findClueAt(metadata, row, col, direction)
+    const clue = findClueAt(metadata, row, col, directionRef.current)
     if (!clue) return
     const cells = crosswordWordCells(clue)
     const idx = cells.findIndex(([r, c]) => r === row && c === col)
     for (let i = idx + 1; i < cells.length; i++) {
       const [r, c] = cells[i]!
       if (isCellEditable(r, c)) {
-        setSelectedCell([r, c])
+        setSelected([r, c])
         return
       }
     }
-    if (idx + 1 < cells.length) setSelectedCell(cells[idx + 1]!)
+    if (idx + 1 < cells.length) setSelected(cells[idx + 1]!)
   }
 
   const stepBack = (row: number, col: number) => {
     if (!metadata) return
-    const clue = findClueAt(metadata, row, col, direction)
+    const clue = findClueAt(metadata, row, col, directionRef.current)
     if (!clue) return
     const cells = crosswordWordCells(clue)
     const idx = cells.findIndex(([r, c]) => r === row && c === col)
-    if (idx > 0) setSelectedCell(cells[idx - 1]!)
+    if (idx > 0) setSelected(cells[idx - 1]!)
   }
 
   const handleCellSelect = (row: number, col: number) => {
     if (viewing || !metadata || metadata.blocked[row]?.[col]) return
     // Re-tapping the active cell flips across/down.
     if (selectedCell && selectedCell[0] === row && selectedCell[1] === col) {
-      const next: CrosswordDirection = direction === 'across' ? 'down' : 'across'
-      if (findClueAt(metadata, row, col, next)) setDirection(next)
+      const next: CrosswordDirection = directionRef.current === 'across' ? 'down' : 'across'
+      if (findClueAt(metadata, row, col, next)) setDir(next)
+      focusInput()
       return
     }
     const acrossClue = findClueAt(metadata, row, col, 'across')
@@ -395,16 +405,18 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     // cell shows that word's clue), then the current direction, then whatever's available.
     const startsAcross = acrossClue && acrossClue.row === row && acrossClue.col === col
     const startsDown = downClue && downClue.row === row && downClue.col === col
-    if (startsAcross && !startsDown) setDirection('across')
-    else if (startsDown && !startsAcross) setDirection('down')
-    else if (direction === 'across' && !acrossClue && downClue) setDirection('down')
-    else if (direction === 'down' && !downClue && acrossClue) setDirection('across')
-    setSelectedCell([row, col])
+    if (startsAcross && !startsDown) setDir('across')
+    else if (startsDown && !startsAcross) setDir('down')
+    else if (directionRef.current === 'across' && !acrossClue && downClue) setDir('down')
+    else if (directionRef.current === 'down' && !downClue && acrossClue) setDir('across')
+    setSelected([row, col])
+    focusInput()
   }
 
   const selectClue = (clue: CrosswordClue) => {
-    setDirection(clue.direction)
-    setSelectedCell([clue.row, clue.col])
+    setDir(clue.direction)
+    setSelected([clue.row, clue.col])
+    focusInput()
   }
 
   const submitLetter = async (row: number, col: number, letter: string, hint: boolean) => {
@@ -437,23 +449,41 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   const handleTypeLetter = (letter: string) => {
-    if (viewing || !selectedCell) return
-    const [row, col] = selectedCell
+    // Read the live selection from the ref, not a render-time closure: successive keystrokes
+    // can fire before React commits the advanced cursor, so a stale `selectedCell` here would
+    // overwrite the previous cell and leave the next one blank.
+    const cell = selectedCellRef.current
+    if (viewing || !cell) return
+    const [row, col] = cell
     if (!isCellEditable(row, col)) return
     const upper = letter.toUpperCase()
     setLetterDraft(row, col, upper, false)
     void submitLetter(row, col, upper, false)
     advanceCursor(row, col)
+    focusInput()
   }
 
   const handleBackspace = () => {
-    if (viewing || !selectedCell) return
-    const [row, col] = selectedCell
+    const cell = selectedCellRef.current
+    if (viewing || !cell) return
+    const [row, col] = cell
     if (isCellEditable(row, col) && localLetters[row]?.[col]) {
       setLetterDraft(row, col, '', false)
     } else {
       stepBack(row, col)
     }
+  }
+
+  // The hidden TextInput's value is held at '' — each incoming character is captured and the
+  // field snaps back to empty (matching web). Letters arrive via onChangeText on every OS
+  // keyboard (Gboard often skips onKeyPress for letters); Backspace is caught via onKeyPress,
+  // which fires reliably for it on both platforms even when the field is already empty.
+  const handleInputChange = (text: string) => {
+    const char = text.slice(-1)
+    if (/^[a-zA-Z]$/.test(char)) handleTypeLetter(char)
+  }
+  const handleKeyPress = ({ nativeEvent }: { nativeEvent: { key: string } }) => {
+    if (nativeEvent.key === 'Backspace') handleBackspace()
   }
 
   const handleReveal = () => {
@@ -467,6 +497,7 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
         onPress: () => {
           void submitLetter(row, col, localLetters[row]?.[col] || 'A', true)
           advanceCursor(row, col)
+          focusInput()
         },
       },
     ])
@@ -739,11 +770,17 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
           </View>
         </ScrollView>
 
-        {/* Pinned input dock — always visible so every key (and Erase) is reachable. */}
+        {/* Pinned clue bar. Tapping a cell raises the device's own keyboard (see hidden
+            TextInput below); the bar rides just above it on iOS via keyboardHeight padding. */}
         {metadata && boardGrid.length > 0 && !viewing && bootstrap.game?.status !== 'finished' ? (
-          <View style={styles.inputDock}>
+          <View style={[styles.inputDock, keyboardHeight > 0 ? { paddingBottom: keyboardHeight } : null]}>
             <View style={styles.clueBar}>
-              <View style={styles.clueBarText}>
+              <Pressable
+                style={styles.clueBarText}
+                onPress={() => {
+                  if (selectedCell) focusInput()
+                }}
+              >
                 {activeClue ? (
                   <Text style={styles.clueBarLine} numberOfLines={2}>
                     <Text style={styles.clueBarNum}>
@@ -755,7 +792,7 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
                 ) : (
                   <Text style={styles.clueBarHint}>Tap a cell to start filling the grid.</Text>
                 )}
-              </View>
+              </Pressable>
               <Pressable
                 style={[
                   styles.revealBtn,
@@ -769,37 +806,24 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
               </Pressable>
             </View>
 
-            {/* On-screen keyboard (QWERTY or A–Z, player's choice) */}
-            <View style={styles.keyboard}>
-              <Pressable style={styles.layoutToggle} onPress={toggleKeyboardLayout} hitSlop={8}>
-                <Text style={styles.layoutToggleText}>
-                  ⌨ {keyboardLayout === 'qwerty' ? 'Switch to A–Z' : 'Switch to QWERTY'}
-                </Text>
-              </Pressable>
-              {KEY_LAYOUTS[keyboardLayout].map((rowLetters, ri) => (
-                <View key={ri} style={styles.keyRow}>
-                  {rowLetters.split('').map((letter) => (
-                    <Pressable
-                      key={letter}
-                      style={[styles.key, !selectedCell && styles.keyDisabled]}
-                      disabled={!selectedCell}
-                      onPress={() => handleTypeLetter(letter)}
-                    >
-                      <Text style={styles.keyText}>{letter}</Text>
-                    </Pressable>
-                  ))}
-                  {ri === KEY_LAYOUTS[keyboardLayout].length - 1 ? (
-                    <Pressable
-                      style={[styles.key, styles.keyErase, !selectedCell && styles.keyDisabled]}
-                      disabled={!selectedCell}
-                      onPress={handleBackspace}
-                    >
-                      <Text style={styles.keyEraseText}>⌫ Erase</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-              ))}
-            </View>
+            {/* Hidden input that drives the on-device keyboard while capturing each keystroke. */}
+            <TextInput
+              ref={inputRef}
+              value=""
+              onChangeText={handleInputChange}
+              onKeyPress={handleKeyPress}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              autoComplete="off"
+              spellCheck={false}
+              keyboardType="ascii-capable"
+              returnKeyType="done"
+              blurOnSubmit={false}
+              caretHidden
+              contextMenuHidden
+              editable={!viewing}
+              style={styles.hiddenInput}
+            />
           </View>
         ) : null}
       </View>
@@ -958,26 +982,8 @@ const makeStyles = (theme: Theme) =>
     },
     revealBtnDisabled: { opacity: 0.4 },
     revealText: { color: '#b45309', fontWeight: '800', fontSize: 13 },
-    keyboard: { gap: 6, marginTop: 4 },
-    layoutToggle: { alignSelf: 'flex-end', paddingVertical: 2, paddingHorizontal: 4 },
-    layoutToggleText: { color: theme.textMuted, fontSize: 12, fontWeight: '600' },
-    keyRow: { flexDirection: 'row', justifyContent: 'center', gap: 4 },
-    key: {
-      flex: 1,
-      maxWidth: 34,
-      height: 42,
-      borderRadius: 6,
-      backgroundColor: theme.surface,
-      borderWidth: 1,
-      borderColor: theme.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    keyWide: { maxWidth: 48, flex: 1.4 },
-    keyErase: { maxWidth: 96, flex: 2.6, paddingHorizontal: 6 },
-    keyEraseText: { color: theme.text, fontSize: 13, fontWeight: '800' },
-    keyDisabled: { opacity: 0.4 },
-    keyText: { color: theme.text, fontSize: 16, fontWeight: '700' },
+    // Off-screen but rendered & editable, so focus() reliably raises the OS keyboard.
+    hiddenInput: { position: 'absolute', bottom: 0, left: 0, width: 1, height: 1, opacity: 0 },
     clueLists: { flexDirection: 'row', gap: 10, marginTop: 12 },
     clueCol: {
       flex: 1,

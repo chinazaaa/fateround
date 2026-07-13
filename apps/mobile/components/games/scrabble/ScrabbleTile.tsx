@@ -58,6 +58,8 @@ const styles = StyleSheet.create({
   tileBoard: { backgroundColor: '#fef3c7' },
   tileSelected: { borderColor: '#f43f5e' },
   tilePending: { borderColor: '#22c55e' },
-  letter: { fontWeight: '900', color: '#171717' },
+  // Stretch + centre so the heavy-weight lone "I" (narrowest glyph) isn't clipped to nothing
+  // by the New Architecture's text measurement.
+  letter: { fontWeight: '900', color: '#171717', alignSelf: 'stretch', textAlign: 'center' },
   points: { position: 'absolute', fontWeight: '800', color: '#525252' },
 })

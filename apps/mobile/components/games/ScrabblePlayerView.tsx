@@ -734,7 +734,7 @@ const makeStyles = (theme: Theme) =>
     alignItems: 'center',
     justifyContent: 'center',
   },
-  letterBtnText: { color: theme.text, fontWeight: '800', fontSize: 16 },
+  letterBtnText: { color: theme.text, fontWeight: '800', fontSize: 16, alignSelf: 'stretch', textAlign: 'center' },
   promoCancel: { padding: 12, marginTop: 8 },
   promoCancelText: { color: theme.textMuted, textAlign: 'center' },
 })
