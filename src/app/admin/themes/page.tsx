@@ -7,7 +7,12 @@ type GameTypeId = 'crossword' | 'word_search' | 'word_scramble'
 const GAME_TYPES: { id: GameTypeId; label: string; columns: string; sample: string }[] = [
   { id: 'crossword', label: 'Crossword', columns: 'answer,clue', sample: '/crossword-answers-sample.csv' },
   { id: 'word_search', label: 'Word Search', columns: 'word', sample: '/word-search-words-sample.csv' },
-  { id: 'word_scramble', label: 'Word Scramble', columns: 'word,hint (hint optional)', sample: '/word-scramble-words-sample.csv' },
+  {
+    id: 'word_scramble',
+    label: 'Word Scramble',
+    columns: 'word,hint (hint optional)',
+    sample: '/word-scramble-words-sample.csv',
+  },
 ]
 
 const DIFFICULTIES = [
@@ -217,7 +222,12 @@ function CreateThemeForm({ gameType, onCreated }: { gameType: GameTypeId; onCrea
       {okMsg && <p className="mt-2 text-sm text-emerald-500">{okMsg}</p>}
 
       <div className="mt-3">
-        <button type="button" disabled={!canSubmit} onClick={submit} className="btn-primary px-5 py-2 text-sm disabled:opacity-50">
+        <button
+          type="button"
+          disabled={!canSubmit}
+          onClick={submit}
+          className="btn-primary px-5 py-2 text-sm disabled:opacity-50"
+        >
           {busy ? 'Creating…' : 'Create theme'}
         </button>
       </div>
@@ -332,7 +342,12 @@ function ThemeRow({ theme, onChanged }: { theme: Theme; onChanged: () => void })
             />
           </label>
           {error && <p className="text-sm text-red-500">{error}</p>}
-          <button type="button" disabled={busy} onClick={save} className="btn-primary px-5 py-2 text-sm disabled:opacity-50">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={save}
+            className="btn-primary px-5 py-2 text-sm disabled:opacity-50"
+          >
             {busy ? 'Saving…' : 'Save changes'}
           </button>
         </div>

@@ -53,7 +53,10 @@ export async function POST(req: NextRequest) {
   const cleanName = typeof name === 'string' ? name.trim() : ''
   if (!cleanName) return NextResponse.json({ error: 'A theme name is required' }, { status: 400 })
   if (cleanName.length > PUZZLE_THEME_MAX_NAME) {
-    return NextResponse.json({ error: `Theme name must be ${PUZZLE_THEME_MAX_NAME} characters or fewer` }, { status: 400 })
+    return NextResponse.json(
+      { error: `Theme name must be ${PUZZLE_THEME_MAX_NAME} characters or fewer` },
+      { status: 400 }
+    )
   }
   // difficulty is optional: null/'' => host chooses; otherwise it locks the game to that level.
   const diff = difficulty == null || difficulty === '' ? null : difficulty

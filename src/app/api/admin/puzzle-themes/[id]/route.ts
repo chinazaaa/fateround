@@ -24,7 +24,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     .eq('id', id)
     .maybeSingle()
 
-  if (error) return NextResponse.json({ error: internalErrorMessage('admin/puzzle-themes/[id]', error) }, { status: 500 })
+  if (error)
+    return NextResponse.json({ error: internalErrorMessage('admin/puzzle-themes/[id]', error) }, { status: 500 })
   if (!data) return NextResponse.json({ error: 'Theme not found' }, { status: 404 })
   return NextResponse.json({ theme: data })
 }
@@ -50,7 +51,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .select('game_type')
     .eq('id', id)
     .maybeSingle()
-  if (readErr) return NextResponse.json({ error: internalErrorMessage('admin/puzzle-themes/[id]', readErr) }, { status: 500 })
+  if (readErr)
+    return NextResponse.json({ error: internalErrorMessage('admin/puzzle-themes/[id]', readErr) }, { status: 500 })
   if (!existing) return NextResponse.json({ error: 'Theme not found' }, { status: 404 })
 
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
@@ -59,7 +61,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const cleanName = typeof name === 'string' ? name.trim() : ''
     if (!cleanName) return NextResponse.json({ error: 'A theme name is required' }, { status: 400 })
     if (cleanName.length > PUZZLE_THEME_MAX_NAME) {
-      return NextResponse.json({ error: `Theme name must be ${PUZZLE_THEME_MAX_NAME} characters or fewer` }, { status: 400 })
+      return NextResponse.json(
+        { error: `Theme name must be ${PUZZLE_THEME_MAX_NAME} characters or fewer` },
+        { status: 400 }
+      )
     }
     update.name = cleanName
   }
@@ -95,7 +100,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .select('id, game_type, name, difficulty, entry_count')
     .single()
 
-  if (error) return NextResponse.json({ error: internalErrorMessage('admin/puzzle-themes/[id]', error) }, { status: 500 })
+  if (error)
+    return NextResponse.json({ error: internalErrorMessage('admin/puzzle-themes/[id]', error) }, { status: 500 })
   return NextResponse.json({
     theme: data,
     stats: stats
@@ -111,6 +117,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params
   const supabase = getSupabaseAdmin()
   const { error } = await supabase.from('puzzle_themes').delete().eq('id', id)
-  if (error) return NextResponse.json({ error: internalErrorMessage('admin/puzzle-themes/[id]', error) }, { status: 500 })
+  if (error)
+    return NextResponse.json({ error: internalErrorMessage('admin/puzzle-themes/[id]', error) }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
