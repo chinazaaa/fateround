@@ -196,20 +196,33 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
 
   useEffect(() => {
     if (!roundId) return
+    // Many players ⇒ a solve INSERT per player per word. Applying each as its own setState re-renders
+    // the whole host board per event. Buffer and flush in one update a few times a second instead.
+    const pending: WordScrambleSolve[] = []
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
+    const flush = () => {
+      flushTimer = null
+      if (pending.length === 0) return
+      const batch = pending.splice(0, pending.length)
+      setSolves((prev) => {
+        const ids = new Set(prev.map((s) => s.id))
+        const add = batch.filter((r) => (ids.has(r.id) ? false : (ids.add(r.id), true)))
+        return add.length ? [...prev, ...add] : prev
+      })
+    }
     const ch = supabase
       .channel(`word_scramble_host_solves_${roundId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'word_scramble_solves', filter: `round_id=eq.${roundId}` },
         (payload) => {
-          setSolves((prev) => {
-            const next = payload.new as WordScrambleSolve
-            return prev.some((s) => s.id === next.id) ? prev : [...prev, next]
-          })
+          pending.push(payload.new as WordScrambleSolve)
+          if (!flushTimer) flushTimer = setTimeout(flush, 200)
         }
       )
       .subscribe()
     return () => {
+      if (flushTimer) clearTimeout(flushTimer)
       void supabase.removeChannel(ch)
     }
   }, [roundId])

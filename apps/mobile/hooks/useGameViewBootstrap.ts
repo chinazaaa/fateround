@@ -241,14 +241,27 @@ export function useGameTableSync(
       typeof t === 'string' ? { table: t, column: 'game_id' } : { table: t.table, column: t.column ?? 'game_id' }
     )
 
+    // Debounce reloads so a burst of changes coalesces into one reload. But a plain reset-on-every-
+    // event debounce STARVES under a sustained flood (e.g. crossword/word-search/word-scramble with
+    // many players — an INSERT every ~50ms never leaves the 90ms gap the debounce needs to fire), so
+    // everyone else's live progress freezes until typing pauses. Cap the total wait so a continuous
+    // flood still refreshes ~2.5x/second while isolated changes keep the snappy 90ms latency.
+    const MAX_WAIT_MS = 400
     let debounce: ReturnType<typeof setTimeout> | null = null
+    let firstScheduledAt = 0
+    const fire = () => {
+      debounce = null
+      firstScheduledAt = 0
+      void Promise.resolve()
+        .then(() => reloadRef.current())
+        .catch(() => {})
+    }
     const schedule = () => {
+      const now = Date.now()
+      if (firstScheduledAt === 0) firstScheduledAt = now
       if (debounce) clearTimeout(debounce)
-      debounce = setTimeout(() => {
-        void Promise.resolve()
-          .then(() => reloadRef.current())
-          .catch(() => {})
-      }, 90)
+      const delay = Math.min(90, Math.max(0, MAX_WAIT_MS - (now - firstScheduledAt)))
+      debounce = setTimeout(fire, delay)
     }
 
     let channel = supabase.channel(uniqueTopic(`sync-${gameCode}`))

@@ -233,20 +233,33 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
 
   useEffect(() => {
     if (!roundId) return
+    // Many players ⇒ a found-word INSERT per player per word. Applying each as its own setState
+    // re-renders the whole host board per event. Buffer and flush in one update a few times a second.
+    const pending: WordSearchFound[] = []
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
+    const flush = () => {
+      flushTimer = null
+      if (pending.length === 0) return
+      const batch = pending.splice(0, pending.length)
+      setFound((prev) => {
+        const ids = new Set(prev.map((f) => f.id))
+        const add = batch.filter((r) => (ids.has(r.id) ? false : (ids.add(r.id), true)))
+        return add.length ? [...prev, ...add] : prev
+      })
+    }
     const ch = supabase
       .channel(`word_search_host_found_${roundId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'word_search_found', filter: `round_id=eq.${roundId}` },
         (payload) => {
-          setFound((prev) => {
-            const next = payload.new as WordSearchFound
-            return prev.some((f) => f.id === next.id) ? prev : [...prev, next]
-          })
+          pending.push(payload.new as WordSearchFound)
+          if (!flushTimer) flushTimer = setTimeout(flush, 200)
         }
       )
       .subscribe()
     return () => {
+      if (flushTimer) clearTimeout(flushTimer)
       void supabase.removeChannel(ch)
     }
   }, [roundId])

@@ -268,41 +268,52 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
 
   useEffect(() => {
     if (!roundId) return
-    const ch = supabase
-      .channel(`crossword_subs_${roundId}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'crossword_submissions', filter: `round_id=eq.${roundId}` },
-        (payload) => {
-          setSubmissions((prev) => {
-            const next = payload.new as CrosswordSubmission
-            if (prev.some((s) => s.id === next.id)) return prev
-            // Absorb the optimistic own-cell row (added on submit) so we don't keep a duplicate.
-            if (
-              next.is_correct &&
-              prev.some(
+    // With many players every keystroke is an INSERT for EVERYONE — applying each one as its own
+    // setState re-renders the whole board per keystroke-per-player and starves your own typing.
+    // Buffer incoming rows and flush them in a single update a few times a second instead.
+    const pending: CrosswordSubmission[] = []
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
+    const flush = () => {
+      flushTimer = null
+      if (pending.length === 0) return
+      const batch = pending.splice(0, pending.length)
+      setSubmissions((prev) => {
+        const ids = new Set(prev.map((s) => s.id))
+        const working = [...prev]
+        let changed = false
+        for (const next of batch) {
+          if (ids.has(next.id)) continue
+          ids.add(next.id)
+          // Absorb the optimistic own-cell row (added on submit) so we don't keep a duplicate.
+          const optIdx = next.is_correct
+            ? working.findIndex(
                 (s) =>
                   s.id.startsWith('optimistic-') &&
                   s.player_id === next.player_id &&
                   s.cell_row === next.cell_row &&
                   s.cell_col === next.cell_col
               )
-            ) {
-              return prev.map((s) =>
-                s.id.startsWith('optimistic-') &&
-                s.player_id === next.player_id &&
-                s.cell_row === next.cell_row &&
-                s.cell_col === next.cell_col
-                  ? next
-                  : s
-              )
-            }
-            return [...prev, next]
-          })
+            : -1
+          if (optIdx >= 0) working[optIdx] = next
+          else working.push(next)
+          changed = true
+        }
+        return changed ? working : prev
+      })
+    }
+    const ch = supabase
+      .channel(`crossword_subs_${roundId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'crossword_submissions', filter: `round_id=eq.${roundId}` },
+        (payload) => {
+          pending.push(payload.new as CrosswordSubmission)
+          if (!flushTimer) flushTimer = setTimeout(flush, 200)
         }
       )
       .subscribe()
     return () => {
+      if (flushTimer) clearTimeout(flushTimer)
       void supabase.removeChannel(ch)
     }
   }, [roundId])

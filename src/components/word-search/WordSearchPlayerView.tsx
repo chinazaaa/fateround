@@ -250,20 +250,40 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
 
   useEffect(() => {
     if (!roundId) return
+    // With many players, found-word INSERTs arrive for EVERYONE — applying each as its own setState
+    // re-renders the whole board (+ leaderboard tally) per event and starves your own input.
+    // Buffer incoming rows and flush them in a single update a few times a second instead.
+    const pending: WordSearchFound[] = []
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
+    const flush = () => {
+      flushTimer = null
+      if (pending.length === 0) return
+      const batch = pending.splice(0, pending.length)
+      setFound((prev) => {
+        const seen = new Set(prev.map((f) => `${f.player_id}|${f.word}`))
+        const add = batch.filter((r) => {
+          const key = `${r.player_id}|${r.word}`
+          return seen.has(key) ? false : (seen.add(key), true)
+        })
+        return add.length ? [...prev, ...add] : prev
+      })
+    }
     const ch = supabase
       .channel(`word_search_found_${roundId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'word_search_found', filter: `round_id=eq.${roundId}` },
         (payload) => {
-          addFound(payload.new as WordSearchFound)
+          pending.push(payload.new as WordSearchFound)
+          if (!flushTimer) flushTimer = setTimeout(flush, 200)
         }
       )
       .subscribe()
     return () => {
+      if (flushTimer) clearTimeout(flushTimer)
       void supabase.removeChannel(ch)
     }
-  }, [roundId, addFound])
+  }, [roundId])
 
   useEffect(() => {
     const ch = supabase
