@@ -22,7 +22,10 @@ export async function GET(req: NextRequest) {
   const { data, error } = await supabase
     .from('puzzle_themes')
     .select('id, game_type, name, difficulty, entry_count')
+    // Admin-authored themes only: the built-in themes are already listed in the create dropdown
+    // from the code registry, so returning the backfilled built-in rows too would duplicate them.
     .eq('game_type', gameType)
+    .eq('is_builtin', false)
     .order('sort_order', { ascending: true })
     .order('name', { ascending: true })
 
