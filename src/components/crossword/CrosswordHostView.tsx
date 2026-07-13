@@ -422,13 +422,11 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
     () => (metadata ? tallyCrosswordScores(metadata, submissions, players) : []),
     [metadata, submissions, players]
   )
-  const hostRow = leaderboard.find((row) => row.player_id === hostPlayerId)
-  const hostWon =
-    !!hostRow &&
-    leaderboard.length > 1 &&
-    leaderboard[0] != null &&
-    hostRow.points === leaderboard[0].points &&
-    leaderboard[0].points > 0
+  // A crossword has exactly one winner: the single top-ranked player after all
+  // tiebreaks (points → words → finish time → name). Post the host's community win
+  // only when the host is that winner — never every player tied on points.
+  const leader = leaderboard[0]
+  const hostWon = !!leader && leader.player_id === hostPlayerId && leader.wordsCompleted > 0
   const hostPlays = hostMode === 'player' && !!hostPlayerId
 
   // When the host is only watching, they view one player's board (switchable), with that
@@ -719,7 +717,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
             <PostWinToCommunity
               gameType="crossword"
               gameCode={gameCode}
-              winnerName={hostRow?.name ?? ''}
+              winnerName={leader?.name ?? ''}
               roundKey={game?.session_started_at ?? undefined}
             />
           )}
