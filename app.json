@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "2b684f51-4910-4aba-b945-cf9b1d1a1ba4"
+      }
+    },
+    "android": {
+      "package": "com.fateround.fateround"
+    }
+  }
+}

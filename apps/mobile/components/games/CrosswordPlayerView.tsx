@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import {
   type Game,
   type Round,
@@ -30,6 +30,7 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { CrosswordBoardView } from '@/components/games/crossword/CrosswordBoardView'
 import { CrosswordGameTimerBar } from '@/components/games/crossword/CrosswordGameTimerBar'
+import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -112,18 +113,13 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     inputRef.current?.focus()
   }, [])
 
-  // Track the software keyboard height so the pinned clue bar rides just above it on iOS.
-  // Android resizes the window (adjustResize), so the dock already sits above the keyboard.
-  const [keyboardHeight, setKeyboardHeight] = useState(0)
-  useEffect(() => {
-    if (Platform.OS !== 'ios') return
-    const show = Keyboard.addListener('keyboardWillShow', (e) => setKeyboardHeight(e.endCoordinates.height))
-    const hide = Keyboard.addListener('keyboardWillHide', () => setKeyboardHeight(0))
-    return () => {
-      show.remove()
-      hide.remove()
-    }
-  }, [])
+  // Keyboard handling mirrors web: the board sits in a normally-scrolling page (no pinned
+  // dock fighting the keyboard). The scroll is keyboard-aware, and we nudge the active cell
+  // near the top so it's never hidden behind the OS keyboard.
+  const scrollRef = useRef<ScrollView>(null)
+  const boardOffsetRef = useRef(0)
+  // Cell pixel size the board renders at (mirrors BOARD_MAX_WIDTH / size in CrosswordBoardView).
+  const cellPx = metadata && metadata.size > 0 ? Math.floor(340 / metadata.size) : 0
 
   const showToast = useCallback((msg: string, ok: boolean) => {
     setToast({ msg, ok })
@@ -251,6 +247,15 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
   const me = bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
   const viewing = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
 
+  // Keep the active cell clear of the keyboard: scroll it near the top of the page whenever it
+  // changes. Across-word moves keep the same row (same y → no visible scroll); down-word moves
+  // follow the cursor down one cell at a time.
+  useEffect(() => {
+    if (!selectedCell || viewing || cellPx === 0) return
+    const y = boardOffsetRef.current + selectedCell[0] * cellPx - 72
+    scrollRef.current?.scrollTo({ y: Math.max(0, y), animated: true })
+  }, [selectedCell, viewing, cellPx])
+
   const activePlayers = useMemo(() => bootstrap.players.filter((p) => p.spectator !== true), [bootstrap.players])
   const playerColors = useMemo(() => {
     const map: Record<string, string> = {}
@@ -302,6 +307,16 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
   const myRank = standings.findIndex((r) => r.player_id === bootstrap.myPlayerId) + 1
   const myCompletion =
     metadata && bootstrap.myPlayerId ? playerCompletionPercent(metadata, submissions, bootstrap.myPlayerId) : 0
+
+  // Finishing a single word keeps the keyboard up (you move on to the next clue), but once the
+  // whole grid is solved there's nothing left to type — dismiss the keyboard and clear the
+  // selection so the "Puzzle complete!" banner isn't hidden behind it.
+  useEffect(() => {
+    if (myCompletion >= 100) {
+      inputRef.current?.blur()
+      setSelected(null)
+    }
+  }, [myCompletion, setSelected])
 
   // Active word (across/down) covering the selected cell.
   const activeClue = useMemo(() => {
@@ -598,7 +613,7 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('crossword')} subtitle={bootstrap.code}>
       <View style={styles.playArea}>
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+        <KeyboardAwareGameScroll ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.content}>
           <CrosswordGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} />
 
           {toast ? (
@@ -687,24 +702,60 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
                 </View>
               ) : null}
 
-              <CrosswordBoardView
-                metadata={metadata}
-                letterGrid={boardGrid}
-                cellOwners={cellOwners}
-                mySolvedCells={boardSolvedCells}
-                playerColors={playerColors}
-                myPlayerId={viewing ? effectiveWatchedId : bootstrap.myPlayerId}
-                selectedCell={viewing ? null : selectedCell}
-                activeCells={viewing ? undefined : activeCells}
-                wrongCells={viewing ? undefined : wrongDrafts}
-                onCellSelect={handleCellSelect}
-                readOnly={viewing}
-              />
+              <View onLayout={(e) => (boardOffsetRef.current = e.nativeEvent.layout.y)}>
+                <CrosswordBoardView
+                  metadata={metadata}
+                  letterGrid={boardGrid}
+                  cellOwners={cellOwners}
+                  mySolvedCells={boardSolvedCells}
+                  playerColors={playerColors}
+                  myPlayerId={viewing ? effectiveWatchedId : bootstrap.myPlayerId}
+                  selectedCell={viewing ? null : selectedCell}
+                  activeCells={viewing ? undefined : activeCells}
+                  wrongCells={viewing ? undefined : wrongDrafts}
+                  onCellSelect={handleCellSelect}
+                  readOnly={viewing}
+                />
+              </View>
 
               {viewing ? (
                 <Text style={styles.viewingHint}>You are watching — tap a name above to switch boards.</Text>
               ) : (
                 <>
+                  {/* Active clue + Reveal, right below the board (matches web). Tapping it re-raises
+                      the device keyboard if it was dismissed. */}
+                  <View style={styles.clueBar}>
+                    <Pressable
+                      style={styles.clueBarText}
+                      onPress={() => {
+                        if (selectedCell) focusInput()
+                      }}
+                    >
+                      {activeClue ? (
+                        <Text style={styles.clueBarLine} numberOfLines={2}>
+                          <Text style={styles.clueBarNum}>
+                            {activeClue.number} {activeClue.direction === 'across' ? 'Across' : 'Down'}
+                          </Text>
+                          {'  '}
+                          {activeClue.clue}
+                        </Text>
+                      ) : (
+                        <Text style={styles.clueBarHint}>Tap a cell to start filling the grid.</Text>
+                      )}
+                    </Pressable>
+                    <Pressable
+                      style={[
+                        styles.revealBtn,
+                        (!selectedCell || submitting || !isCellEditable(selectedCell[0], selectedCell[1])) &&
+                          styles.revealBtnDisabled,
+                      ]}
+                      disabled={!selectedCell || submitting || !isCellEditable(selectedCell[0], selectedCell[1])}
+                      onPress={handleReveal}
+                    >
+                      <Text style={styles.revealText}>💡 Reveal</Text>
+                    </Pressable>
+                  </View>
+
                   {/* Clue lists */}
                   <View style={styles.clueLists}>
                     <ClueList
@@ -768,63 +819,27 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
           <View style={styles.rulesRow}>
             <GameRulesLink gameType="crossword" variant="subtle" />
           </View>
-        </ScrollView>
+        </KeyboardAwareGameScroll>
 
-        {/* Pinned clue bar. Tapping a cell raises the device's own keyboard (see hidden
-            TextInput below); the bar rides just above it on iOS via keyboardHeight padding. */}
+        {/* Off-screen input that drives the on-device keyboard while capturing each keystroke.
+            Kept out of the scroll flow so focusing it never shifts the layout. */}
         {metadata && boardGrid.length > 0 && !viewing && bootstrap.game?.status !== 'finished' ? (
-          <View style={[styles.inputDock, keyboardHeight > 0 ? { paddingBottom: keyboardHeight } : null]}>
-            <View style={styles.clueBar}>
-              <Pressable
-                style={styles.clueBarText}
-                onPress={() => {
-                  if (selectedCell) focusInput()
-                }}
-              >
-                {activeClue ? (
-                  <Text style={styles.clueBarLine} numberOfLines={2}>
-                    <Text style={styles.clueBarNum}>
-                      {activeClue.number} {activeClue.direction === 'across' ? 'Across' : 'Down'}
-                    </Text>
-                    {'  '}
-                    {activeClue.clue}
-                  </Text>
-                ) : (
-                  <Text style={styles.clueBarHint}>Tap a cell to start filling the grid.</Text>
-                )}
-              </Pressable>
-              <Pressable
-                style={[
-                  styles.revealBtn,
-                  (!selectedCell || submitting || !isCellEditable(selectedCell[0], selectedCell[1])) &&
-                    styles.revealBtnDisabled,
-                ]}
-                disabled={!selectedCell || submitting || !isCellEditable(selectedCell[0], selectedCell[1])}
-                onPress={handleReveal}
-              >
-                <Text style={styles.revealText}>💡 Reveal</Text>
-              </Pressable>
-            </View>
-
-            {/* Hidden input that drives the on-device keyboard while capturing each keystroke. */}
-            <TextInput
-              ref={inputRef}
-              value=""
-              onChangeText={handleInputChange}
-              onKeyPress={handleKeyPress}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              autoComplete="off"
-              spellCheck={false}
-              keyboardType="ascii-capable"
-              returnKeyType="done"
-              blurOnSubmit={false}
-              caretHidden
-              contextMenuHidden
-              editable={!viewing}
-              style={styles.hiddenInput}
-            />
-          </View>
+          <TextInput
+            ref={inputRef}
+            value=""
+            onChangeText={handleInputChange}
+            onKeyPress={handleKeyPress}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            autoComplete="off"
+            spellCheck={false}
+            keyboardType="ascii-capable"
+            returnKeyType="done"
+            caretHidden
+            contextMenuHidden
+            editable={!viewing}
+            style={styles.hiddenInput}
+          />
         ) : null}
       </View>
     </GameShell>
@@ -880,13 +895,6 @@ const makeStyles = (theme: Theme) =>
     playArea: { flex: 1 },
     scroll: { flex: 1 },
     content: { paddingBottom: 16, gap: 12 },
-    inputDock: {
-      borderTopWidth: 1,
-      borderTopColor: theme.border,
-      backgroundColor: theme.bg,
-      paddingTop: 8,
-      gap: 8,
-    },
     waiting: { color: theme.textMuted, textAlign: 'center', marginTop: 24 },
     statusRow: {
       flexDirection: 'row',
@@ -959,7 +967,6 @@ const makeStyles = (theme: Theme) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
-      marginTop: 12,
     },
     clueBarText: {
       flex: 1,
@@ -983,7 +990,7 @@ const makeStyles = (theme: Theme) =>
     revealBtnDisabled: { opacity: 0.4 },
     revealText: { color: '#b45309', fontWeight: '800', fontSize: 13 },
     // Off-screen but rendered & editable, so focus() reliably raises the OS keyboard.
-    hiddenInput: { position: 'absolute', bottom: 0, left: 0, width: 1, height: 1, opacity: 0 },
+    hiddenInput: { position: 'absolute', top: 0, left: 0, width: 1, height: 1, opacity: 0 },
     clueLists: { flexDirection: 'row', gap: 10, marginTop: 12 },
     clueCol: {
       flex: 1,

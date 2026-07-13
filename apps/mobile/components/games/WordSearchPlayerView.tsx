@@ -491,35 +491,38 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
               ) : null}
             </View>
 
-            {!viewing ? (
-              <View style={styles.wordStrip}>
-                <View style={styles.wordStripHeader}>
-                  <Text style={styles.wordStripTitle}>Words to find</Text>
-                  <Text style={styles.wordStripCount}>
-                    {myFoundWordSet.size}/{metadata.words.length}
-                  </Text>
-                </View>
-                <View style={styles.wordStripRow}>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    style={styles.wordStripScroll}
-                    contentContainerStyle={styles.wordStripScrollContent}
-                  >
-                    {wordColumns.map((col, ci) => (
-                      <View key={ci} style={styles.wordStripCol}>
-                        {col.map((word) => (
-                          <Text
-                            key={word}
-                            numberOfLines={1}
-                            style={[styles.stripWord, wordOwners.has(word) && styles.stripWordFound]}
-                          >
-                            {word}
-                          </Text>
-                        ))}
-                      </View>
-                    ))}
-                  </ScrollView>
+            {/* Word list shown to players and spectators alike. When viewing, wordOwners reflects
+                the watched player's finds (via boardPlayerId), so the strike-throughs and count
+                follow whoever's board is on screen. Only players get the reveal (💡) button. */}
+            <View style={styles.wordStrip}>
+              <View style={styles.wordStripHeader}>
+                <Text style={styles.wordStripTitle}>Words to find</Text>
+                <Text style={styles.wordStripCount}>
+                  {wordOwners.size}/{metadata.words.length}
+                </Text>
+              </View>
+              <View style={styles.wordStripRow}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.wordStripScroll}
+                  contentContainerStyle={styles.wordStripScrollContent}
+                >
+                  {wordColumns.map((col, ci) => (
+                    <View key={ci} style={styles.wordStripCol}>
+                      {col.map((word) => (
+                        <Text
+                          key={word}
+                          numberOfLines={1}
+                          style={[styles.stripWord, wordOwners.has(word) && styles.stripWordFound]}
+                        >
+                          {word}
+                        </Text>
+                      ))}
+                    </View>
+                  ))}
+                </ScrollView>
+                {!viewing ? (
                   <Pressable
                     style={[styles.revealIcon, (submitting || allWordsFound) && styles.revealBtnDisabled]}
                     disabled={submitting || allWordsFound}
@@ -528,9 +531,9 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
                   >
                     <Text style={styles.revealIconText}>💡</Text>
                   </Pressable>
-                </View>
+                ) : null}
               </View>
-            ) : null}
+            </View>
 
             {!viewing ? (
               allWordsFound ? (
