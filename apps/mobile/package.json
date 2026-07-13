@@ -4,6 +4,7 @@
   "main": "expo-router/entry",
   "private": true,
   "scripts": {
+    "eas-build-pre-install": "corepack enable && corepack prepare pnpm@10.23.0 --activate",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",

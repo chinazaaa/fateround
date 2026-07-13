@@ -247,7 +247,7 @@ export function postWordScrambleSubmit(
   guess: string,
   hint?: boolean
 ) {
-  return postJson<{ correct: boolean; word?: string; alreadySolved?: boolean; hint?: boolean }>(
+  return postJson<{ correct: boolean; word?: string; alreadySolved?: boolean; hint?: boolean; finished?: boolean }>(
     '/api/word-scramble/submit',
     { gameId, resumeToken, scrambleIndex, guess, hint }
   )

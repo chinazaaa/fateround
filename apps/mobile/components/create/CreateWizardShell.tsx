@@ -3,6 +3,7 @@ import { Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { GameType } from '@fateround/shared'
+import { isCrosswordGame, isWordSearchGame, isWordScrambleGame } from '@fateround/shared/game-type-checks'
 import { GameTypePickerField } from '@/components/create/GameTypePickerField'
 import { ParticipantListEditor } from '@/components/create/ParticipantListEditor'
 import { StepIndicator } from '@/components/create/StepIndicator'
@@ -175,19 +176,42 @@ export function CreateWizardShell() {
               onChange={(roomPatch) => patchState({ room: { ...state.room, ...roomPatch } })}
             />
 
-            <PartyRoomSettingsPanel
-              gameType={state.gameType}
-              party={state.party}
-              contentSource={state.custom.source}
-              onChange={(partyPatch) => patchState({ party: { ...state.party, ...partyPatch } })}
-            />
-
-            <CustomContentPanel
-              gameType={state.gameType}
-              custom={state.custom}
-              roundsCount={state.party.roundsCount}
-              onChange={(customPatch) => patchState({ custom: { ...state.custom, ...customPatch } })}
-            />
+            {/* Puzzle games (crossword/word_search/word_scramble) show the content SOURCE first —
+                players pick Platform/Library/Your own, then the theme + difficulty (which depend on
+                that choice) appear below. Other games keep source last. */}
+            {(() => {
+              const isPuzzle =
+                isCrosswordGame(state.gameType) ||
+                isWordSearchGame(state.gameType) ||
+                isWordScrambleGame(state.gameType)
+              const party = (
+                <PartyRoomSettingsPanel
+                  gameType={state.gameType}
+                  party={state.party}
+                  contentSource={state.custom.source}
+                  onChange={(partyPatch) => patchState({ party: { ...state.party, ...partyPatch } })}
+                />
+              )
+              const content = (
+                <CustomContentPanel
+                  gameType={state.gameType}
+                  custom={state.custom}
+                  roundsCount={state.party.roundsCount}
+                  onChange={(customPatch) => patchState({ custom: { ...state.custom, ...customPatch } })}
+                />
+              )
+              return isPuzzle ? (
+                <>
+                  {content}
+                  {party}
+                </>
+              ) : (
+                <>
+                  {party}
+                  {content}
+                </>
+              )
+            })()}
 
             <CustomSlotBuilderPanel
               gameType={state.gameType}
