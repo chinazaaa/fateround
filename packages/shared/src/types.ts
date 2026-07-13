@@ -336,6 +336,7 @@ export interface TriviaAnswer {
   choice_index: number
   is_correct: boolean
   points: number
+  response_ms: number
 }
 
 export type YahtzeeCategory =

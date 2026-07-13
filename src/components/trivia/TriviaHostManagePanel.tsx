@@ -107,8 +107,7 @@ export function TriviaHostManagePanel({
   const leaderboard = useMemo(() => tallyTriviaPlayerScores(answers, players), [answers, players])
   // A host who plays and finishes top can post their win too.
   const hostRow = leaderboard.find((row) => row.id === highlightPlayerId)
-  const hostWon =
-    !!hostRow && leaderboard[0] != null && hostRow.score === leaderboard[0].score && leaderboard[0].score > 0
+  const hostWon = !!hostRow && leaderboard[0] != null && hostRow === leaderboard[0] && leaderboard[0].score > 0
   const isLastRound = isLastRoundProp ?? (game.current_round_number ?? 0) >= (game.rounds_count ?? 0)
   const category = triviaCategoryLabel(triviaCategoryFromGame(game))
   const questionSource = parseQuestionSource(game.question_source, 'trivia')

@@ -32,27 +32,38 @@ export interface TriviaPlayerScore {
   name: string
   score: number
   correctCount: number
+  avgResponseMs: number
 }
 
 export function tallyTriviaPlayerScores(
-  answers: Array<{ player_id: string; points: number; is_correct: boolean }>,
+  answers: Array<{ player_id: string; points: number; is_correct: boolean; response_ms?: number }>,
   players: Array<{ id: string; name: string; spectator?: boolean }>
 ): TriviaPlayerScore[] {
   const activePlayers = players.filter((p) => p.spectator !== true)
-  const totals = new Map<string, { score: number; correct: number }>()
-  for (const p of activePlayers) totals.set(p.id, { score: 0, correct: 0 })
+  const totals = new Map<string, { score: number; correct: number; totalMs: number; answerCount: number }>()
+  for (const p of activePlayers) totals.set(p.id, { score: 0, correct: 0, totalMs: 0, answerCount: 0 })
 
   for (const a of answers) {
     const row = totals.get(a.player_id)
     if (!row) continue
     row.score += a.points
+    row.answerCount += 1
+    row.totalMs += a.response_ms ?? 0
     if (a.is_correct) row.correct += 1
   }
 
   return activePlayers
     .map((p) => {
-      const row = totals.get(p.id) ?? { score: 0, correct: 0 }
-      return { id: p.id, name: p.name, score: row.score, correctCount: row.correct }
+      const row = totals.get(p.id) ?? { score: 0, correct: 0, totalMs: 0, answerCount: 0 }
+      return {
+        id: p.id,
+        name: p.name,
+        score: row.score,
+        correctCount: row.correct,
+        avgResponseMs: row.answerCount > 0 ? Math.round(row.totalMs / row.answerCount) : 0,
+      }
     })
-    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+    // Score first, then speed (lower average response wins), name only as the final
+    // fallback — mirrors web src/lib/trivia.ts so both platforms pick the same winner.
+    .sort((a, b) => b.score - a.score || a.avgResponseMs - b.avgResponseMs || a.name.localeCompare(b.name))
 }

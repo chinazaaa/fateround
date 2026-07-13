@@ -67,7 +67,7 @@ export const AYO_SESSION_SELECT =
 export const BINGO_CARD_SELECT = 'id,game_id,player_id,cells,marked_indices'
 export const BINGO_CALLED_NUMBER_SELECT = 'id,game_id,number,called_at'
 export const BINGO_CLAIM_SELECT = 'id,game_id,player_id,pattern,status,created_at'
-export const TRIVIA_ANSWER_SELECT = 'id,game_id,round_id,player_id,choice_index,is_correct,points'
+export const TRIVIA_ANSWER_SELECT = 'id,game_id,round_id,player_id,choice_index,is_correct,response_ms,points'
 
 export const CRAZY8_SESSION_SELECT =
   'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at'
