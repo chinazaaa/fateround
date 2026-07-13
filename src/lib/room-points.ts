@@ -291,7 +291,7 @@ async function getCompetitiveStandings(
   if (isWordHuntGame(gameType)) {
     const { data: submissions } = await supabase
       .from('word_hunt_submissions')
-      .select('player_id, points_awarded')
+      .select('player_id, points_awarded, submitted_at')
       .eq('game_id', gameId)
     if (!submissions?.length) return []
     const playerRows = players.map((p) => ({

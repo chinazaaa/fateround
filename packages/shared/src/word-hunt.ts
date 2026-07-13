@@ -253,18 +253,26 @@ export function wordHuntSessionExpired(
 // ── Leaderboard ───────────────────────────────────────────────────────────────
 
 export function tallyWordHuntScores(
-  submissions: Pick<WordHuntSubmission, 'player_id' | 'points_awarded'>[],
+  submissions: Pick<WordHuntSubmission, 'player_id' | 'points_awarded' | 'submitted_at'>[],
   players: { id: string; name: string; spectator?: boolean | null }[]
 ): WordHuntPlayerScore[] {
   const activePlayers = players.filter((p) => p.spectator !== true)
   const totals = new Map<string, { points: number; word_count: number }>()
+  // Each player's finish time = their last submission. On equal points + words the earlier
+  // finisher wins — word-hunt is a speed race like word-search — so a tie resolves by speed
+  // rather than alphabetically. Submissions without a timestamp (the room-points ranking
+  // query) fall back to name order, as before.
+  const lastSubmit = new Map<string, number>()
   for (const p of activePlayers) totals.set(p.id, { points: 0, word_count: 0 })
 
   for (const s of submissions) {
     const current = totals.get(s.player_id)
-    if (current) {
-      current.points += s.points_awarded
-      current.word_count += 1
+    if (!current) continue
+    current.points += s.points_awarded
+    current.word_count += 1
+    if (s.submitted_at) {
+      const when = new Date(s.submitted_at).getTime()
+      if (when > (lastSubmit.get(s.player_id) ?? -Infinity)) lastSubmit.set(s.player_id, when)
     }
   }
 
@@ -273,5 +281,11 @@ export function tallyWordHuntScores(
       const t = totals.get(p.id) ?? { points: 0, word_count: 0 }
       return { player_id: p.id, name: p.name, points: t.points, word_count: t.word_count }
     })
-    .sort((a, b) => b.points - a.points || b.word_count - a.word_count || a.name.localeCompare(b.name))
+    .sort(
+      (a, b) =>
+        b.points - a.points ||
+        b.word_count - a.word_count ||
+        (lastSubmit.get(a.player_id) ?? Infinity) - (lastSubmit.get(b.player_id) ?? Infinity) ||
+        a.name.localeCompare(b.name)
+    )
 }
