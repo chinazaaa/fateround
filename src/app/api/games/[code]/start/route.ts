@@ -111,7 +111,12 @@ import {
   parseCrosswordDifficulty,
 } from '@/lib/crossword'
 import type { CrosswordMetadata } from '@/lib/crossword'
-import { buildCrosswordPuzzle, parseCrosswordEntries, findCrosswordTheme } from '@/lib/crossword-puzzles'
+import {
+  buildCrosswordPuzzle,
+  parseCrosswordEntries,
+  findCrosswordTheme,
+  crosswordThemeOptions,
+} from '@/lib/crossword-puzzles'
 import {
   buildWordSearchRoundRow,
   WORD_SEARCH_MIN_PLAYERS,
@@ -120,7 +125,12 @@ import {
   parseWordSearchDifficulty,
 } from '@/lib/word-search'
 import type { WordSearchMetadata, WordSearchPlacement } from '@/lib/word-search'
-import { buildWordSearchPuzzle, parseWordSearchEntries, findWordSearchTheme } from '@/lib/word-search-puzzles'
+import {
+  buildWordSearchPuzzle,
+  parseWordSearchEntries,
+  findWordSearchTheme,
+  wordSearchThemeOptions,
+} from '@/lib/word-search-puzzles'
 import {
   WORD_SCRAMBLE_MIN_PLAYERS,
   WORD_SCRAMBLE_DIFFICULTY_SPECS,
@@ -133,6 +143,7 @@ import {
   buildWordScrambleFromEntries,
   parseWordScrambleEntries,
   findWordScrambleTheme,
+  wordScrambleThemeOptions,
 } from '@/lib/word-scramble-puzzles'
 import { buildWordHuntRoundRow, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
 import { buildWordHuntMetadata } from '@/lib/word-hunt-dictionary'
@@ -749,7 +760,14 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     // same generator packs both. Falls back to the platform theme if custom is empty.
     let built: { metadata: CrosswordMetadata; solution: string[][] } | null = null
     const customRows = Array.isArray(game.custom_questions) ? (game.custom_questions as Record<string, string>[]) : []
-    if (customRows.length > 0) {
+    // A stale custom pool (e.g. from a replay, or before the host switched back to a built-in
+    // theme in the lobby) must NOT override a built-in platform theme. Only use the pool when the
+    // game is NOT on a built-in theme: a custom/library upload (question_source != platform) or an
+    // admin theme (platform, but *_theme holds the theme NAME, not a built-in id).
+    const onBuiltinTheme =
+      parseQuestionSource(game.question_source, gameType) === 'platform' &&
+      crosswordThemeOptions().some((t) => t.id === game.crossword_theme)
+    if (!onBuiltinTheme && customRows.length > 0) {
       const entries = parseCrosswordEntries(customRows)
       if (entries.length >= 4) {
         built = generateCrossword(entries, { size: 12, seed, targetWords: 12, minWords: 4 })
@@ -826,7 +844,11 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     // generator. Falls back to the platform theme if custom is empty or too small.
     let built: { metadata: WordSearchMetadata; solution: WordSearchPlacement[] } | null = null
     const customRows = Array.isArray(game.custom_questions) ? (game.custom_questions as Record<string, string>[]) : []
-    if (customRows.length > 0) {
+    // See crossword note: a stale pool must not override a built-in platform theme.
+    const onBuiltinTheme =
+      parseQuestionSource(game.question_source, gameType) === 'platform' &&
+      wordSearchThemeOptions().some((t) => t.id === game.word_search_theme)
+    if (!onBuiltinTheme && customRows.length > 0) {
       const entries = parseWordSearchEntries(customRows)
       if (entries.length >= 4) {
         const spec = WORD_SEARCH_DIFFICULTY_SPECS[parseWordSearchDifficulty(game.word_search_difficulty)]
@@ -909,7 +931,11 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     // same builder. Falls back to the platform theme if custom is empty or too small.
     let built: { metadata: WordScrambleMetadata; solution: string[] } | null = null
     const customRows = Array.isArray(game.custom_questions) ? (game.custom_questions as Record<string, string>[]) : []
-    if (customRows.length > 0) {
+    // See crossword note: a stale pool must not override a built-in platform theme.
+    const onBuiltinTheme =
+      parseQuestionSource(game.question_source, gameType) === 'platform' &&
+      wordScrambleThemeOptions().some((t) => t.id === game.word_scramble_theme)
+    if (!onBuiltinTheme && customRows.length > 0) {
       const entries = parseWordScrambleEntries(customRows)
       if (entries.length >= 4) built = buildWordScrambleFromEntries(entries, game.word_scramble_difficulty, seed)
       if (built) built.metadata.difficulty = parseWordScrambleDifficulty(game.word_scramble_difficulty)
