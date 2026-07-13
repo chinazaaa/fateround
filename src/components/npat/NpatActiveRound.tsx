@@ -458,8 +458,7 @@ export function NpatActiveRound({
 
   if (screen === 'finished') {
     const myNpatRow = leaderboard.find((row) => row.id === myPlayerId)
-    const iWonNpat =
-      !!myNpatRow && leaderboard[0] != null && myNpatRow.score === leaderboard[0].score && leaderboard[0].score > 0
+    const iWonNpat = !!myNpatRow && leaderboard[0] != null && myNpatRow === leaderboard[0] && leaderboard[0].score > 0
     return (
       <>
         <NpatFinalResultsShareBlock

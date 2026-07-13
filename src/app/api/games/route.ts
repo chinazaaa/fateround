@@ -420,6 +420,7 @@ export async function POST(req: NextRequest) {
     word_search_difficulty: rawWordSearchDifficulty,
     word_scramble_theme: rawWordScrambleTheme,
     word_scramble_difficulty: rawWordScrambleDifficulty,
+    puzzle_theme_id: rawPuzzleThemeId,
   } = parsed.data
 
   const elimParsed = eliminationConfigSchema.safeParse((body as Record<string, unknown>).elimination_config)
@@ -772,6 +773,33 @@ export async function POST(req: NextRequest) {
 
   const admin = getSupabaseAdmin()
 
+  // Admin-authored puzzle theme: resolve it server-side (its entries hold puzzle answers and are
+  // never sent to the client) and fold the saved word pool into custom_questions, applying the
+  // theme's locked difficulty when it has one. The start route already builds from
+  // custom_questions when present, so no start-route change is needed.
+  let puzzleThemeDifficulty: 'easy' | 'medium' | 'hard' | null = null
+  let puzzleThemeIdApplied: string | null = null
+  const puzzleThemeGameType = isCrosswordGame(game_type)
+    ? 'crossword'
+    : isWordSearchGame(game_type)
+      ? 'word_search'
+      : isWordScrambleGame(game_type)
+        ? 'word_scramble'
+        : null
+  if (rawPuzzleThemeId && puzzleThemeGameType) {
+    const { data: pt } = await admin
+      .from('puzzle_themes')
+      .select('id, game_type, difficulty, entries')
+      .eq('id', rawPuzzleThemeId)
+      .maybeSingle()
+    if (pt && pt.game_type === puzzleThemeGameType && Array.isArray(pt.entries) && pt.entries.length >= 4) {
+      custom_questions = pt.entries as unknown[]
+      puzzleThemeIdApplied = pt.id as string
+      const d = pt.difficulty as string | null
+      puzzleThemeDifficulty = d === 'easy' || d === 'medium' || d === 'hard' ? d : null
+    }
+  }
+
   const { error: gameError } = await admin.from('games').insert({
     id: gameCode,
     title,
@@ -875,20 +903,20 @@ export async function POST(req: NextRequest) {
       : {}),
     ...(isCrosswordGame(game_type)
       ? {
-          crossword_theme: findCrosswordTheme(rawCrosswordTheme).id,
-          crossword_difficulty: parseCrosswordDifficulty(rawCrosswordDifficulty),
+          crossword_theme: puzzleThemeIdApplied ?? findCrosswordTheme(rawCrosswordTheme).id,
+          crossword_difficulty: puzzleThemeDifficulty ?? parseCrosswordDifficulty(rawCrosswordDifficulty),
         }
       : {}),
     ...(isWordSearchGame(game_type)
       ? {
-          word_search_theme: findWordSearchTheme(rawWordSearchTheme).id,
-          word_search_difficulty: parseWordSearchDifficulty(rawWordSearchDifficulty),
+          word_search_theme: puzzleThemeIdApplied ?? findWordSearchTheme(rawWordSearchTheme).id,
+          word_search_difficulty: puzzleThemeDifficulty ?? parseWordSearchDifficulty(rawWordSearchDifficulty),
         }
       : {}),
     ...(isWordScrambleGame(game_type)
       ? {
-          word_scramble_theme: findWordScrambleTheme(rawWordScrambleTheme).id,
-          word_scramble_difficulty: parseWordScrambleDifficulty(rawWordScrambleDifficulty),
+          word_scramble_theme: puzzleThemeIdApplied ?? findWordScrambleTheme(rawWordScrambleTheme).id,
+          word_scramble_difficulty: puzzleThemeDifficulty ?? parseWordScrambleDifficulty(rawWordScrambleDifficulty),
         }
       : {}),
     ...(gameSupportsViewerSetting(game_type)

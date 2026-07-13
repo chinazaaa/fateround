@@ -544,7 +544,7 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
     !!hostWordHuntRow &&
     leaderboard.length > 1 &&
     leaderboard[0] != null &&
-    hostWordHuntRow.points === leaderboard[0].points &&
+    hostWordHuntRow === leaderboard[0] &&
     leaderboard[0].points > 0
 
   const finished = (

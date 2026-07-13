@@ -343,7 +343,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const leaderboard = useMemo(() => tallyNpatScores(answers, players), [answers, players])
   const hostNpatRow = leaderboard.find((row) => row.id === hostPlayerId)
   const hostWonNpat =
-    !!hostNpatRow && leaderboard[0] != null && hostNpatRow.score === leaderboard[0].score && leaderboard[0].score > 0
+    !!hostNpatRow && leaderboard[0] != null && hostNpatRow === leaderboard[0] && leaderboard[0].score > 0
   const showManageScoreboard =
     game?.status === 'active' &&
     currentMetadata != null &&

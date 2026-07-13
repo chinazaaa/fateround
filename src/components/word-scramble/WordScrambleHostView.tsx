@@ -380,7 +380,7 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
     !!hostRow &&
     leaderboard.length > 1 &&
     leaderboard[0] != null &&
-    hostRow.points === leaderboard[0].points &&
+    hostRow === leaderboard[0] &&
     leaderboard[0].points > 0
   const hostPlays = hostMode === 'player' && !!hostPlayerId
 

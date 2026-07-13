@@ -600,7 +600,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
       !!myRow &&
       leaderboard.length > 1 &&
       leaderboard[0] != null &&
-      myRow.points === leaderboard[0].points &&
+      myRow === leaderboard[0] &&
       leaderboard[0].points > 0
     return (
       <div className="min-h-screen flex flex-col">
