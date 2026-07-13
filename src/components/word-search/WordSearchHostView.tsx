@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { WordSearchBoard, wordSearchPlayerColor } from '@/components/word-search/WordSearchBoard'
 import { WordSearchGameTimerBar } from '@/components/word-search/WordSearchGameTimerBar'
@@ -207,6 +207,9 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
   useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
 
+  // Latest committed status, read by the games channel without resubscribing.
+  const gameStatusRef = useRef(game?.status)
+  gameStatusRef.current = game?.status
   useEffect(() => {
     const ch = supabase
       .channel(`word_search_host_game_${gameCode}`)
@@ -214,8 +217,11 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
-          setGame(payload.new as Game)
-          load()
+          const next = payload.new as Game
+          setGame(next)
+          // Reload only on a status flip; finish writes the games row several times and
+          // reloading on each replayed the finish cascade (the host's "glitches several times").
+          if (next.status !== gameStatusRef.current) load()
         }
       )
       .subscribe()
@@ -420,7 +426,10 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
     return map
   }, [activePlayers])
 
-  const leaderboard = metadata ? tallyWordSearchScores(metadata, found, players) : []
+  const leaderboard = useMemo(
+    () => (metadata ? tallyWordSearchScores(metadata, found, players) : []),
+    [metadata, found, players]
+  )
   const hostRow = leaderboard.find((row) => row.player_id === hostPlayerId)
   const hostWon =
     !!hostRow &&

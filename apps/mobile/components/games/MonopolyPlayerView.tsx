@@ -194,7 +194,11 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
   // End the game when the whole-game duration runs out. Without this the timer
   // bar drains to 0:00 but nothing tells the server to finish — matches web.
-  useGameExpiryTimer({ endpoint: `/api/games/${gameCode}/expire-monopoly`, game: bootstrap.game })
+  useGameExpiryTimer({
+    endpoint: `/api/games/${gameCode}/expire-monopoly`,
+    game: bootstrap.game,
+    onExpired: () => void bootstrap.load(),
+  })
 
   useEffect(() => {
     const id = setInterval(() => setTimerTick((t) => t + 1), 1000)

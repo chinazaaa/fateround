@@ -164,7 +164,11 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
 
   // End the game when the whole-game duration runs out (the timer bar otherwise
   // just drains to 0:00 with nothing telling the server to finish). Matches web.
-  useGameExpiryTimer({ endpoint: `/api/games/${gameCode}/expire-crazy-eights`, game: bootstrap.game })
+  useGameExpiryTimer({
+    endpoint: `/api/games/${gameCode}/expire-crazy-eights`,
+    game: bootstrap.game,
+    onExpired: () => void bootstrap.load(),
+  })
 
   // Advance a stalled turn when its per-turn timer runs out. Any active client
   // fires it (idempotent + deadline-gated server-side) — matches web.
