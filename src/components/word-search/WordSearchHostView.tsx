@@ -7,6 +7,7 @@ import { WordSearchGameTimerBar } from '@/components/word-search/WordSearchGameT
 import { WordSearchPlayerView } from '@/components/word-search/WordSearchPlayerView'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostManageSection } from '@/components/host/HostManageSection'
