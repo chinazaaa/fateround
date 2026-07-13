@@ -34,6 +34,7 @@ import {
   type WordScrambleDifficulty,
 } from '@fateround/shared/word-scramble'
 import type { BingoCallMode } from '@fateround/shared/create-party-games'
+import { puzzleThemeIdFromValue } from '@/lib/puzzle-themes'
 import {
   clampBingoCallInterval,
   clampBingoCallMode,
@@ -314,7 +315,11 @@ export function partyRoomSettingsPayload(gameType: GameType, party: PartyRoomSet
   if (gameType === 'crossword') {
     payload.rounds_count = 1
     payload.game_duration_seconds = clampCrosswordGameDuration(party.gameDurationSeconds)
-    payload.crossword_theme = party.crosswordTheme
+    // A `pt:<id>` theme is an admin theme — send puzzle_theme_id (server folds its word pool +
+    // locked difficulty); otherwise send the built-in theme id.
+    const themeId = puzzleThemeIdFromValue(party.crosswordTheme)
+    if (themeId) payload.puzzle_theme_id = themeId
+    else payload.crossword_theme = party.crosswordTheme
     payload.crossword_difficulty = parseCrosswordDifficulty(party.crosswordDifficulty)
     return payload
   }
@@ -322,7 +327,9 @@ export function partyRoomSettingsPayload(gameType: GameType, party: PartyRoomSet
   if (gameType === 'word_search') {
     payload.rounds_count = 1
     payload.game_duration_seconds = clampWordSearchGameDuration(party.gameDurationSeconds)
-    payload.word_search_theme = party.wordSearchTheme
+    const themeId = puzzleThemeIdFromValue(party.wordSearchTheme)
+    if (themeId) payload.puzzle_theme_id = themeId
+    else payload.word_search_theme = party.wordSearchTheme
     payload.word_search_difficulty = parseWordSearchDifficulty(party.wordSearchDifficulty)
     return payload
   }
@@ -330,7 +337,9 @@ export function partyRoomSettingsPayload(gameType: GameType, party: PartyRoomSet
   if (gameType === 'word_scramble') {
     payload.rounds_count = 1
     payload.game_duration_seconds = clampWordScrambleGameDuration(party.gameDurationSeconds)
-    payload.word_scramble_theme = party.wordScrambleTheme
+    const themeId = puzzleThemeIdFromValue(party.wordScrambleTheme)
+    if (themeId) payload.puzzle_theme_id = themeId
+    else payload.word_scramble_theme = party.wordScrambleTheme
     payload.word_scramble_difficulty = parseWordScrambleDifficulty(party.wordScrambleDifficulty)
     return payload
   }

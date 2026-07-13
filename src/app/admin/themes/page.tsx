@@ -158,11 +158,13 @@ function CreateThemeForm({ gameType, onCreated }: { gameType: GameTypeId; onCrea
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [okMsg, setOkMsg] = useState<string | null>(null)
+  const [fileName, setFileName] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    setFileName(file.name)
     setCsv(await file.text())
   }
 
@@ -185,6 +187,7 @@ function CreateThemeForm({ gameType, onCreated }: { gameType: GameTypeId; onCrea
       setName('')
       setDifficulty('')
       setCsv('')
+      setFileName(null)
       if (fileRef.current) fileRef.current.value = ''
       onCreated()
     } catch {
@@ -235,7 +238,17 @@ function CreateThemeForm({ gameType, onCreated }: { gameType: GameTypeId; onCrea
             Download sample CSV
           </a>
         </div>
-        <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFile} className="mb-2 block text-sm" />
+        <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFile} className="hidden" />
+        <div className="mb-2 flex flex-wrap items-center gap-3">
+          <button type="button" onClick={() => fileRef.current?.click()} className="btn-secondary px-3 py-1.5 text-sm">
+            ⬆ Upload CSV
+          </button>
+          {fileName ? (
+            <span className="text-xs text-[var(--muted)]">{fileName}</span>
+          ) : (
+            <span className="text-xs text-[var(--muted)]">or paste rows below</span>
+          )}
+        </div>
         <textarea
           value={csv}
           onChange={(e) => setCsv(e.target.value)}
