@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { uniqueTopic } from '@/lib/realtime'
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { GameRouter, resolveMobilePlayerView } from '@/components/games/GameRouter'
 import { PlayerSessionShell } from '@/components/session/PlayerSessionShell'
@@ -118,6 +118,9 @@ export default function GameScreen() {
     return (
       <View style={styles.centered}>
         <Text style={styles.errorText}>Missing game code</Text>
+        <Pressable style={styles.homeButton} onPress={() => router.replace('/')}>
+          <Text style={styles.homeButtonText}>Back to home</Text>
+        </Pressable>
       </View>
     )
   }
@@ -134,6 +137,10 @@ export default function GameScreen() {
     return (
       <View style={styles.centered}>
         <Text style={styles.errorText}>Game {gameCode} not found</Text>
+        <Text style={styles.errorHint}>Double-check the code, or head back and try again.</Text>
+        <Pressable style={styles.homeButton} onPress={() => router.replace('/')}>
+          <Text style={styles.homeButtonText}>Back to home</Text>
+        </Pressable>
       </View>
     )
   }
@@ -174,4 +181,18 @@ const makeStyles = (theme: Theme) =>
       fontSize: 18,
       textAlign: 'center',
     },
+    errorHint: {
+      color: theme.textMuted,
+      fontSize: 14,
+      textAlign: 'center',
+      marginTop: 8,
+    },
+    homeButton: {
+      marginTop: 24,
+      backgroundColor: theme.primary,
+      borderRadius: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 28,
+    },
+    homeButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   })
