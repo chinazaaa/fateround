@@ -114,6 +114,7 @@ import {
   customContentPayload,
   customContentCount,
 } from '@/lib/create-settings/custom-content'
+import { puzzleThemeIdFromValue } from '@/lib/puzzle-themes'
 import { isPairGame } from '@fateround/shared/poll-games'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -300,6 +301,9 @@ export function HostLobbySettingsSheet({
       largeGrid: (game.game_duration_seconds ?? 0) >= 16,
       theme: g[themeField] ?? '',
       difficulty: (g[diffField] as 'easy' | 'medium' | 'hard') ?? 'medium',
+      // Content source + pool for the puzzle games (Platform/Library/Your own). Library folds to a
+      // custom pool at rest, so it re-opens under "Your own" — same as the create screen.
+      custom: customContentStateFromGame(game),
     }
   })
   const [scrabble, setScrabble] = useState<ScrabbleLobbyState>(() => ({
@@ -523,18 +527,51 @@ export function HostLobbySettingsSheet({
         if (duration.gameDurationSeconds !== game.game_duration_seconds)
           board.game_duration_seconds = duration.gameDurationSeconds
         const g = game as unknown as Record<string, string | null | undefined>
-        if (gameType === 'crossword') {
-          if (duration.theme && duration.theme !== g.crossword_theme) board.crossword_theme = duration.theme
-          if (duration.difficulty !== (g.crossword_difficulty ?? 'medium'))
-            board.crossword_difficulty = duration.difficulty
-        } else if (gameType === 'word_search') {
-          if (duration.theme && duration.theme !== g.word_search_theme) board.word_search_theme = duration.theme
-          if (duration.difficulty !== (g.word_search_difficulty ?? 'medium'))
-            board.word_search_difficulty = duration.difficulty
-        } else if (gameType === 'word_scramble') {
-          if (duration.theme && duration.theme !== g.word_scramble_theme) board.word_scramble_theme = duration.theme
-          if (duration.difficulty !== (g.word_scramble_difficulty ?? 'medium'))
-            board.word_scramble_difficulty = duration.difficulty
+        if (gameType !== 'sudoku') {
+          // Resolve the puzzle content once (source-aware), then assign per-kind so the typed patch
+          // stays type-safe. Platform → built-in theme or admin puzzle_theme_id; Library/Your own →
+          // a re-validated custom pool. Difficulty (grid size) saves under every source.
+          const source = duration.custom.source
+          let themeToSend: string | undefined
+          let puzzleThemeIdToSend: string | undefined
+          let customQuestionsToSend: unknown[] | undefined
+          if (source === 'platform') {
+            const adminId = puzzleThemeIdFromValue(duration.theme)
+            if (adminId) {
+              puzzleThemeIdToSend = adminId
+            } else if (
+              game.question_source === 'custom' ||
+              (duration.theme && duration.theme !== g[`${gameType}_theme`])
+            ) {
+              // A built-in theme also reverts a game that was on a custom pool back to the built-in bank.
+              themeToSend = duration.theme
+            }
+          } else {
+            const built = customContentPayload(gameType, duration.custom)
+            const cq = Array.isArray(built.custom_questions) ? built.custom_questions : []
+            if (cq.length < 4) {
+              setError(source === 'library' ? 'Pick a library pack with at least 4 words' : 'Add at least 4 words')
+              return
+            }
+            // Only send when the pool actually changed, so re-opening + saving an unchanged custom
+            // game doesn't rewrite the identical pool every time.
+            const unchanged =
+              game.question_source === 'custom' && JSON.stringify(cq) === JSON.stringify(game.custom_questions ?? [])
+            if (!unchanged) customQuestionsToSend = cq
+          }
+          const difficultyChanged = duration.difficulty !== (g[`${gameType}_difficulty`] ?? 'medium')
+          if (gameType === 'crossword') {
+            if (themeToSend) board.crossword_theme = themeToSend
+            if (difficultyChanged) board.crossword_difficulty = duration.difficulty
+          } else if (gameType === 'word_search') {
+            if (themeToSend) board.word_search_theme = themeToSend
+            if (difficultyChanged) board.word_search_difficulty = duration.difficulty
+          } else if (gameType === 'word_scramble') {
+            if (themeToSend) board.word_scramble_theme = themeToSend
+            if (difficultyChanged) board.word_scramble_difficulty = duration.difficulty
+          }
+          if (puzzleThemeIdToSend) board.puzzle_theme_id = puzzleThemeIdToSend
+          if (customQuestionsToSend) board.puzzle_custom_questions = customQuestionsToSend
         }
       } else if (gameType === 'word_hunt') {
         if (duration.timerSeconds !== game.timer_seconds) board.timer_seconds = duration.timerSeconds
