@@ -239,6 +239,9 @@ export interface Game {
   mafia_doctor_enabled?: boolean
   mafia_detective_enabled?: boolean
   mafia_anonymous_votes?: boolean
+  monopoly_double_go_salary?: boolean
+  monopoly_forced_auctions?: boolean
+  monopoly_no_rent_in_jail?: boolean
   anonymous: boolean
   auto_reveal: boolean
   auto_submit_behavior: AutoSubmitBehavior

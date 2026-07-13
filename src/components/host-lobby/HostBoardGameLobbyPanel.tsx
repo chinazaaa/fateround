@@ -61,6 +61,9 @@ export function HostBoardGameLobbyPanel({
   const [maxPlayers, setMaxPlayers] = useState(6)
   const [turnTimer, setTurnTimer] = useState(0)
   const [gameDuration, setGameDuration] = useState(0)
+  const [monopolyDoubleGoSalary, setMonopolyDoubleGoSalary] = useState(false)
+  const [monopolyForcedAuctions, setMonopolyForcedAuctions] = useState(false)
+  const [monopolyNoRentInJail, setMonopolyNoRentInJail] = useState(false)
   const [whotPick3Enabled, setWhotPick3Enabled] = useState(true)
   const [whotPick2Stacking, setWhotPick2Stacking] = useState(true)
   const [whotCardsEnabled, setWhotCardsEnabled] = useState(true)
@@ -92,6 +95,11 @@ export function HostBoardGameLobbyPanel({
     setMaxPlayers(lobbyMaxPlayersFromGame(boardGameToLobbyLimitType(boardGameType), game, limits))
     setTurnTimer(game.timer_seconds ?? 0)
     setGameDuration(game.game_duration_seconds ?? 0)
+    if (boardGameType === 'monopoly') {
+      setMonopolyDoubleGoSalary(game.monopoly_double_go_salary === true)
+      setMonopolyForcedAuctions(game.monopoly_forced_auctions === true)
+      setMonopolyNoRentInJail(game.monopoly_no_rent_in_jail === true)
+    }
     if (boardGameType === 'whot') {
       setWhotPick3Enabled(game.whot_pick3_enabled !== false)
       setWhotPick2Stacking(game.whot_pick2_stacking !== false)
@@ -285,6 +293,40 @@ export function HostBoardGameLobbyPanel({
         {(boardGameType === 'monopoly' || boardGameType === 'whot' || boardGameType === 'crazy_eights') && (
           <HostLobbySettingBlock title="Game length" className="sm:col-span-2">
             <HostLobbyOptionChips value={gameDuration} options={durationOptions} onChange={onGameDurationChange} />
+          </HostLobbySettingBlock>
+        )}
+
+        {boardGameType === 'monopoly' && (
+          <HostLobbySettingBlock title="House rules" className="sm:col-span-2">
+            <div className="space-y-4">
+              <Toggle
+                label="Double GO Salary"
+                description="Collect $400 (instead of $200) when landing exactly on GO."
+                value={monopolyDoubleGoSalary}
+                onChange={(v: boolean) => {
+                  setMonopolyDoubleGoSalary(v)
+                  void patchSettings({ monopoly_double_go_salary: v })
+                }}
+              />
+              <Toggle
+                label="Forced Auctions"
+                description="If a player declines to buy an unowned property, it must go to auction."
+                value={monopolyForcedAuctions}
+                onChange={(v: boolean) => {
+                  setMonopolyForcedAuctions(v)
+                  void patchSettings({ monopoly_forced_auctions: v })
+                }}
+              />
+              <Toggle
+                label="No Rent in Jail"
+                description="Prevent players in jail from collecting rent on their properties."
+                value={monopolyNoRentInJail}
+                onChange={(v: boolean) => {
+                  setMonopolyNoRentInJail(v)
+                  void patchSettings({ monopoly_no_rent_in_jail: v })
+                }}
+              />
+            </div>
           </HostLobbySettingBlock>
         )}
 
