@@ -69,6 +69,7 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
   const [solves, setSolves] = useState<WordScrambleSolve[]>([])
   const [hints, setHints] = useState<WordScrambleHint[]>([])
   const [revealedPrefix, setRevealedPrefix] = useState<Record<number, string>>({})
+  const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
   const [answers, setAnswers] = useState<string[] | null>(null)
   const [nowMs, setNowMs] = useState<number>(Date.now())
   const [guess, setGuess] = useState('')
@@ -347,6 +348,25 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
   const myCurrent = metadata && myPlayerId ? playerCurrentIndex(metadata, solves, myPlayerId) : 0
   const allSolved = !!metadata && mySolvedCount >= metadata.count
   const currentScramble = metadata && myCurrent < metadata.count ? metadata.scrambles[myCurrent] : null
+
+  // ── Spectator: pick a player and watch their scrambles fill in live ──
+  const activePlayers = players.filter((p) => p.spectator !== true)
+  const effectiveWatchedId =
+    (watchedPlayerId && activePlayers.some((p) => p.id === watchedPlayerId) ? watchedPlayerId : null) ??
+    leaderboard[0]?.player_id ??
+    activePlayers[0]?.id ??
+    null
+  const watchedPlayer = players.find((p) => p.id === effectiveWatchedId)
+  const watchedSolvedCount = effectiveWatchedId ? playerSolvedIndices(solves, effectiveWatchedId).size : 0
+  const watchedCurrent = metadata && effectiveWatchedId ? playerCurrentIndex(metadata, solves, effectiveWatchedId) : 0
+  const watchedPct =
+    metadata && effectiveWatchedId ? wordScrambleCompletionPercent(metadata, solves, effectiveWatchedId) : 0
+  const watchedWords = useMemo(() => {
+    const m = new Map<number, string>()
+    if (effectiveWatchedId)
+      for (const s of solves) if (s.player_id === effectiveWatchedId) m.set(s.scramble_index, s.word)
+    return m
+  }, [solves, effectiveWatchedId])
 
   const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
     gameCode,
@@ -665,16 +685,71 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
           <>
             <div className="flex items-center justify-between px-1">
               <div>
-                <p className="font-bold text-slate-800 dark:text-slate-100 leading-tight">{me?.name ?? 'Me'}</p>
+                <p className="font-bold text-slate-800 dark:text-slate-100 leading-tight">
+                  {isViewer ? (watchedPlayer?.name ?? 'Player') : (me?.name ?? 'Me')}
+                </p>
                 <p className="text-sm text-muted">
                   {!isViewer && myRank > 0 ? `${myRank}${['th', 'st', 'nd', 'rd'][myRank % 10] ?? 'th'} · ` : ''}
-                  {mySolvedCount}/{metadata.count} solved · {myCompletion}%
+                  {isViewer ? watchedSolvedCount : mySolvedCount}/{metadata.count} solved ·{' '}
+                  {isViewer ? watchedPct : myCompletion}%
                 </p>
               </div>
             </div>
 
             {isViewer ? (
-              <p className="text-sm text-muted text-center py-8">You are watching this race.</p>
+              activePlayers.length === 0 ? (
+                <p className="text-sm text-muted text-center py-8">
+                  No players yet — pick one to watch once they join.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  <div className="glass-card p-3 space-y-2">
+                    <p className="label-caps text-xs">Watching a player</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {activePlayers.map((p) => {
+                        const active = p.id === effectiveWatchedId
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => setWatchedPlayerId(p.id)}
+                            className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${active ? 'bg-[var(--primary)] text-white' : 'bg-[var(--surface-inset-bg)] text-muted hover:text-[var(--foreground)]'}`}
+                          >
+                            {p.name}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {metadata.scrambles.map((scr, i) => {
+                      const solvedWord = watchedWords.get(i)
+                      const isCurrent = i === watchedCurrent && !solvedWord
+                      return (
+                        <div
+                          key={i}
+                          className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 ${
+                            solvedWord
+                              ? 'border-emerald-500/40 bg-emerald-500/5'
+                              : isCurrent
+                                ? 'border-[var(--primary)]'
+                                : 'border-[var(--border-strong)]'
+                          }`}
+                        >
+                          <span className="text-xs text-muted tabular-nums w-5">{i + 1}.</span>
+                          <span
+                            className={`flex-1 text-lg font-black tracking-widest uppercase ${solvedWord ? 'text-emerald-600 dark:text-emerald-400' : 'text-[var(--foreground)]'}`}
+                          >
+                            {solvedWord ?? scr}
+                          </span>
+                          <span className="w-5 text-center">{solvedWord ? '✓' : isCurrent ? '✍️' : ''}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
             ) : allSolved ? (
               <div className="glass-card p-6 text-center space-y-1">
                 <p className="text-2xl">🎉</p>
