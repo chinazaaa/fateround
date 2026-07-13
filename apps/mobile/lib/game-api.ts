@@ -996,6 +996,9 @@ export type BoardLobbyPatch = {
   mafia_doctor_enabled?: boolean
   mafia_detective_enabled?: boolean
   mafia_anonymous_votes?: boolean
+  monopoly_double_go_salary?: boolean
+  monopoly_forced_auctions?: boolean
+  monopoly_no_rent_in_jail?: boolean
   operative_timer_seconds?: number
   quick_draw_variant?: 'lie' | 'guess'
   quick_draw_play_mode?: 'team' | 'individual'
