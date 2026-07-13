@@ -94,11 +94,13 @@ export async function POST(req: NextRequest) {
   // The race can only END on a submit that completes a player's LAST word. On every other submit
   // no new completion is possible, so we skip the win-condition tally entirely (it used to run —
   // with its own game + round refetch — on every keystroke).
+  let finished = false
   if (mySolved.size + 1 >= meta.count) {
     const hasTimer = !!game.game_duration_seconds && game.game_duration_seconds > 0
     if (!hasTimer) {
       // No timer → the first player to finish everything ends the race (this player just did).
-      await markGameFinished(supabase, code, undefined, { onlyIfActive: true })
+      const { error } = await markGameFinished(supabase, code, undefined, { onlyIfActive: true })
+      finished = !error
     } else {
       // Timer games end only once EVERY active player has finished.
       const [allSolvesRes, playersRes] = await Promise.all([
@@ -113,10 +115,11 @@ export async function POST(req: NextRequest) {
       }
       const ids = ((playersRes.data ?? []) as { id: string }[]).map((p) => p.id)
       if (ids.length > 0 && ids.every((id) => (byPlayer.get(id)?.size ?? 0) >= meta.count)) {
-        await markGameFinished(supabase, code, undefined, { onlyIfActive: true })
+        const { error } = await markGameFinished(supabase, code, undefined, { onlyIfActive: true })
+        finished = !error
       }
     }
   }
 
-  return NextResponse.json({ correct: true, word: answer, hint })
+  return NextResponse.json({ correct: true, word: answer, hint, finished })
 }

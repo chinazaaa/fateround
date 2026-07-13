@@ -95,11 +95,18 @@ describe('tallyWordScrambleScores', () => {
     expect(p1.solved).toBe(1)
   })
 
-  it('applies the hint penalty and denies the first-solver bonus for a hinted solve', () => {
+  it('applies the reveal penalty and denies the first-solver bonus for a revealed solve', () => {
     const rows = [solve({ player_id: 'p1', scramble_index: 0, via_hint: true })]
     const scores = tallyWordScrambleScores(META, rows, PLAYERS)
     const p1 = scores.find((s) => s.player_id === 'p1')!
     expect(p1.points).toBe(WORD_SCRAMBLE_WORD_POINTS + WORD_SCRAMBLE_HINT_PENALTY)
+  })
+
+  it('gives a revealed word no length bonus, even on Hard', () => {
+    const rows = [solve({ player_id: 'p1', scramble_index: 0, word: 'ELEPHANT', via_hint: true })]
+    const hard = tallyWordScrambleScores({ ...META, difficulty: 'hard' }, rows, PLAYERS)
+    // base + reveal penalty only — no length bonus for a reveal.
+    expect(hard.find((s) => s.player_id === 'p1')!.points).toBe(WORD_SCRAMBLE_WORD_POINTS + WORD_SCRAMBLE_HINT_PENALTY)
   })
 
   it('subtracts the clue-hint penalty for each word where a clue was spent', () => {

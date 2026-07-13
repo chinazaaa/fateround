@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { type Game, type Round } from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import {
@@ -21,6 +21,7 @@ import { GameInfoChips } from '@/components/GameInfoChips'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { WordScrambleGameTimerBar } from '@/components/games/word-scramble/WordScrambleGameTimerBar'
+import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { pointsLeaderboard } from '@/lib/finish-leaderboards'
@@ -212,6 +213,9 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
             solved_at: new Date().toISOString(),
           })
           showToast(hint ? `Revealed ${res.word} · ${WORD_SCRAMBLE_HINT_PENALTY} pts` : 'Correct!', true)
+          // The race ends on the last solve — refetch so the finished screen shows immediately
+          // instead of briefly flashing "waiting for others".
+          if (res.finished) void bootstrap.load()
         } else {
           setWrong(true)
           setTimeout(() => setWrong(false), 400)
@@ -328,7 +332,7 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('word_scramble')} subtitle={bootstrap.code}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
         <WordScrambleGameTimerBar
           gameCode={bootstrap.code}
           game={bootstrap.game}
@@ -459,7 +463,7 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
         ) : (
           <Text style={styles.watching}>Waiting for the race…</Text>
         )}
-      </ScrollView>
+      </KeyboardAwareGameScroll>
     </GameShell>
   )
 }

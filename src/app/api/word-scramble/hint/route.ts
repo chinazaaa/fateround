@@ -26,11 +26,19 @@ export async function POST(req: NextRequest) {
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 
-  const { data: game } = await supabase
-    .from('games')
-    .select('id, status, session_started_at, game_duration_seconds')
-    .eq('id', code)
-    .maybeSingle()
+  // Game, round and auth are independent — fetch them together so the hint feels instant.
+  const [gameRes, roundRes, auth] = await Promise.all([
+    supabase.from('games').select('id, status, session_started_at, game_duration_seconds').eq('id', code).maybeSingle(),
+    supabase
+      .from('rounds')
+      .select('id, word_scramble_metadata')
+      .eq('game_id', code)
+      .eq('round_number', 1)
+      .maybeSingle(),
+    assertPlayer(supabase, code, resumeToken),
+  ])
+
+  const game = gameRes.data
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (game.status !== 'active') return NextResponse.json({ error: 'Game is not active' }, { status: 400 })
   if (wordScrambleGameSessionExpired(game.session_started_at, game.game_duration_seconds)) {
@@ -38,18 +46,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Time is up' }, { status: 400 })
   }
 
-  const auth = await assertPlayer(supabase, code, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
   if (auth.player.spectator === true) {
     return NextResponse.json({ error: 'Spectators cannot play' }, { status: 403 })
   }
 
-  const { data: round } = await supabase
-    .from('rounds')
-    .select('id, word_scramble_metadata')
-    .eq('game_id', code)
-    .eq('round_number', 1)
-    .maybeSingle()
+  const round = roundRes.data
   const meta = parseWordScrambleMetadata(round?.word_scramble_metadata)
   if (!round || !meta) return NextResponse.json({ error: 'Puzzle not found' }, { status: 404 })
   if (scrambleIndex >= meta.count) return NextResponse.json({ error: 'No such scramble' }, { status: 400 })

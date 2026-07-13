@@ -14,7 +14,7 @@ export const WORD_SCRAMBLE_GAME_DURATION_OPTIONS = [0, 120, 180, 300, 600, 900] 
 export const WORD_SCRAMBLE_WORD_POINTS = 10
 export const WORD_SCRAMBLE_FIRST_BONUS = 5
 export const WORD_SCRAMBLE_LENGTH_BONUS = 1
-export const WORD_SCRAMBLE_HINT_PENALTY = -2
+export const WORD_SCRAMBLE_HINT_PENALTY = -8
 export const WORD_SCRAMBLE_CLUE_PENALTY = -1
 
 export const WORD_SCRAMBLE_DIFFICULTIES: WordScrambleDifficulty[] = ['easy', 'medium', 'hard']
@@ -147,9 +147,13 @@ export function tallyWordScrambleScores(
       if (!entry) continue
       points.set(p.id, (points.get(p.id) ?? 0) + WORD_SCRAMBLE_WORD_POINTS)
       solved.set(p.id, (solved.get(p.id) ?? 0) + 1)
-      if (lengthBonus) points.set(p.id, (points.get(p.id) ?? 0) + entry.word.length * WORD_SCRAMBLE_LENGTH_BONUS)
-      if (entry.viaHint) points.set(p.id, (points.get(p.id) ?? 0) + WORD_SCRAMBLE_HINT_PENALTY)
-      else nonHint.push({ playerId: p.id, time: entry.time })
+      if (entry.viaHint) {
+        // Revealed words don't earn the length or first-solver bonus — just base minus penalty.
+        points.set(p.id, (points.get(p.id) ?? 0) + WORD_SCRAMBLE_HINT_PENALTY)
+      } else {
+        if (lengthBonus) points.set(p.id, (points.get(p.id) ?? 0) + entry.word.length * WORD_SCRAMBLE_LENGTH_BONUS)
+        nonHint.push({ playerId: p.id, time: entry.time })
+      }
     }
     nonHint.sort((a, b) => a.time - b.time)
     if (nonHint.length > 0)

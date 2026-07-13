@@ -447,6 +447,9 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
         })
         if (hint) showToast(`Revealed ${json.word} · ${WORD_SCRAMBLE_HINT_PENALTY} pts`, true)
         else showToast('Correct!', true)
+        // The server ends the race on the last solve — refetch so we jump straight to the finished
+        // screen instead of briefly showing "waiting for others".
+        if (json.finished) void load()
       } else {
         setWrongFlash(true)
         setTimeout(() => setWrongFlash(false), 400)
