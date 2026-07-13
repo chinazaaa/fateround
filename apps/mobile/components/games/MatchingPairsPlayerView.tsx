@@ -455,6 +455,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           gameCode={bootstrap.code}
           game={bootstrap.game}
           roundStartedAt={round?.started_at ?? null}
+          onExpired={() => void bootstrap.load()}
         />
         {finished && meta ? (
           <MatchingPairsWaitingForOthers

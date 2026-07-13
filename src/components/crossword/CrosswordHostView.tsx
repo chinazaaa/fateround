@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { CrosswordBoard, crosswordPlayerColor } from '@/components/crossword/CrosswordBoard'
 import { CrosswordGameTimerBar } from '@/components/crossword/CrosswordGameTimerBar'
@@ -198,6 +198,9 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
   useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
 
+  // Latest committed status, read by the games channel without resubscribing.
+  const gameStatusRef = useRef(game?.status)
+  gameStatusRef.current = game?.status
   useEffect(() => {
     const ch = supabase
       .channel(`crossword_host_game_${gameCode}`)
@@ -205,8 +208,12 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
-          setGame(payload.new as Game)
-          load()
+          const next = payload.new as Game
+          setGame(next)
+          // markGameFinished writes the games row more than once at finish (status, then
+          // finished_at / winner). Reloading on every UPDATE replayed the finish cascade
+          // several times — the host's "glitches several times". Reload only on a status flip.
+          if (next.status !== gameStatusRef.current) load()
         }
       )
       .subscribe()
@@ -411,7 +418,10 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
     return map
   }, [activePlayers])
 
-  const leaderboard = metadata ? tallyCrosswordScores(metadata, submissions, players) : []
+  const leaderboard = useMemo(
+    () => (metadata ? tallyCrosswordScores(metadata, submissions, players) : []),
+    [metadata, submissions, players]
+  )
   const hostRow = leaderboard.find((row) => row.player_id === hostPlayerId)
   const hostWon =
     !!hostRow &&

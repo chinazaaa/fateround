@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import type { CrosswordMetadata } from '@/lib/crossword'
 
 /** Board-agnostic palette used to colour each player's claimed cells. */
@@ -45,7 +46,10 @@ interface CrosswordBoardProps {
   readOnly?: boolean
 }
 
-export function CrosswordBoard({
+// Memoized: a 121–196 cell grid that otherwise rebuilds on every parent render (the 1s
+// timer tick, roster refreshes, other players' submissions). Its props are memoized in the
+// parent and `onCellSelect` is a stable useCallback, so this only re-renders on real changes.
+export const CrosswordBoard = memo(function CrosswordBoard({
   metadata,
   letterGrid,
   cellOwners,
@@ -152,4 +156,4 @@ export function CrosswordBoard({
       </div>
     </div>
   )
-}
+})

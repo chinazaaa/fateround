@@ -447,11 +447,35 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
       const resolved = String(result.letter ?? letter).toUpperCase()
       if (result.isCorrect) {
         setLetterDraft(row, col, resolved, false)
+        // Optimistically record my own correct cell so completion %, my-cell fill and the
+        // "Puzzle complete!" banner update instantly. A full reload per keystroke is what
+        // made typing lag — the realtime crossword_submissions subscription (useGameTableSync)
+        // reconciles this against server truth within ~90ms, replacing the optimistic row.
+        const pid = bootstrap.myPlayerId! // guarded non-null at the top of submitLetter
+        setSubmissions((prev) => {
+          if (prev.some((s) => s.player_id === pid && s.cell_row === row && s.cell_col === col && s.is_correct)) {
+            return prev
+          }
+          return [
+            ...prev,
+            {
+              id: `optimistic-${row}-${col}-${Date.now()}`,
+              game_id: bootstrap.code,
+              round_id: '',
+              player_id: pid,
+              cell_row: row,
+              cell_col: col,
+              submitted_letter: resolved,
+              is_correct: true,
+              via_hint: hint,
+              submitted_at: new Date().toISOString(),
+            } as CrosswordSubmission,
+          ]
+        })
         if (hint) showToast(`Revealed ${resolved} · ${CROSSWORD_HINT_PENALTY} pts`, false)
       } else {
         setLetterDraft(row, col, resolved, true)
       }
-      await bootstrap.load()
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Submission failed'
       // Timer expiry (or a finish race) flips the game — refetch to land on results.
@@ -614,7 +638,11 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('crossword')} subtitle={bootstrap.code}>
       <View style={styles.playArea}>
         <KeyboardAwareGameScroll ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.content}>
-          <CrosswordGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} />
+          <CrosswordGameTimerBar
+            gameCode={bootstrap.code}
+            game={bootstrap.game}
+            onExpired={() => void bootstrap.load()}
+          />
 
           {toast ? (
             <View style={[styles.toast, toast.ok ? styles.toastOk : styles.toastBad]}>

@@ -43,7 +43,30 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   const [joining, setJoining] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(async (): Promise<boolean> => {
+  // The game-specific callbacks are passed as fresh literals every render by most call
+  // sites. Mirror them in refs so `load` can stay referentially stable — otherwise `load`
+  // changes identity each render, the mount effect below refires every render, and the
+  // view spins in a continuous full-reload loop (the source of the crossword/word-search
+  // input lag and the finish-screen flicker). We always call the latest closure.
+  const loadGameStateRef = useRef(loadGameState)
+  loadGameStateRef.current = loadGameState
+  const computeScreenRef = useRef(computeScreen)
+  computeScreenRef.current = computeScreen
+  const afterResolveRef = useRef(afterResolve)
+  afterResolveRef.current = afterResolve
+
+  // Singleflight: overlapping load() calls (mount + realtime + submit) must not interleave
+  // their setStates, which is what makes the finished screen flicker. While one load runs,
+  // extra calls just flag a single trailing re-run so we still end on the freshest data.
+  const loadingRef = useRef(false)
+  const pendingRef = useRef(false)
+  // Finished latch, keyed on the session that finished. `start` only moves a game to
+  // 'active' from 'waiting' with a *new* session_started_at, so a later read that shows the
+  // SAME session as 'active' can only be read-replica lag — ignore it so results never bounce
+  // back to the board. A real replay passes through 'waiting' (which clears the latch).
+  const finishedSessionRef = useRef<string | null | undefined>(undefined)
+
+  const runLoad = useCallback(async (): Promise<boolean> => {
     try {
       const supabase = getSupabase()
       const [gameRes, playersRes] = await Promise.all([
@@ -63,7 +86,18 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         return true
       }
 
-      const { state, ok } = await loadGameState(gameData, playerRows)
+      // Stale-replica guard (see finishedSessionRef above).
+      if (
+        finishedSessionRef.current !== undefined &&
+        gameData.status === 'active' &&
+        (gameData.session_started_at ?? null) === finishedSessionRef.current
+      ) {
+        return true
+      }
+      if (gameData.status === 'finished') finishedSessionRef.current = gameData.session_started_at ?? null
+      else if (gameData.status === 'waiting') finishedSessionRef.current = undefined
+
+      const { state, ok } = await loadGameStateRef.current(gameData, playerRows)
 
       setGame(gameData)
       setPlayers(playerRows)
@@ -86,13 +120,31 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
       }
 
       const resolvedState = ok ? state : (null as GameState)
-      if (afterResolve) await afterResolve(gameData, playerId, resolvedState)
-      setScreen(computeScreen(gameData, playerId, resolvedState))
+      if (afterResolveRef.current) await afterResolveRef.current(gameData, playerId, resolvedState)
+      setScreen(computeScreenRef.current(gameData, playerId, resolvedState))
       return true
     } catch {
       return false
     }
-  }, [afterResolve, code, computeScreen, loadGameState, notFoundScreen])
+  }, [code, notFoundScreen])
+
+  const load = useCallback(async (): Promise<boolean> => {
+    if (loadingRef.current) {
+      pendingRef.current = true
+      return true
+    }
+    loadingRef.current = true
+    try {
+      let ok = await runLoad()
+      while (pendingRef.current) {
+        pendingRef.current = false
+        ok = await runLoad()
+      }
+      return ok
+    } finally {
+      loadingRef.current = false
+    }
+  }, [runLoad])
 
   const join = useCallback(
     async (
