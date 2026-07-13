@@ -1109,7 +1109,7 @@ export function describeItIndividualLeaderboard(
 // Only scored guesses (points > 0) exist in individual mode — team-mode guesses store
 // points = 0 and are naturally ignored. Spectators are excluded.
 export function describeItRoleLeaderboards(
-  guesses: Array<Pick<DescribeItGuess, 'player_id' | 'turn_index' | 'points'>>,
+  guesses: Array<Pick<DescribeItGuess, 'player_id' | 'turn_index' | 'points' | 'created_at'>>,
   roster: string[],
   players: Array<{ id: string; name: string; spectator?: boolean | null }>
 ): { guessers: DescribeItPlayerScore[]; describers: DescribeItPlayerScore[] } {
@@ -1117,27 +1117,39 @@ export function describeItRoleLeaderboards(
   const nameById = new Map(active.map((p) => [p.id, p.name]))
   const guesserPoints = new Map<string, number>()
   const describerPoints = new Map<string, number>()
+  // Latest scoring-guess time per role — the player who stopped needing to score earlier
+  // was faster, so a points tie breaks by speed before name.
+  const guesserLast = new Map<string, number>()
+  const describerLast = new Map<string, number>()
 
   for (const g of guesses) {
     const points = g.points ?? 0
     if (points <= 0) continue
+    const when = g.created_at ? new Date(g.created_at).getTime() : null
     // Guesser credit — only for a still-present (non-spectator) player.
     if (nameById.has(g.player_id)) {
       guesserPoints.set(g.player_id, (guesserPoints.get(g.player_id) ?? 0) + points)
+      if (when != null && when > (guesserLast.get(g.player_id) ?? -Infinity)) guesserLast.set(g.player_id, when)
     }
     // Describer credit — the player whose turn this guess landed on.
     const describerId = describerForIndividualTurn(roster, g.turn_index)
     if (describerId && nameById.has(describerId)) {
       describerPoints.set(describerId, (describerPoints.get(describerId) ?? 0) + points)
+      if (when != null && when > (describerLast.get(describerId) ?? -Infinity)) describerLast.set(describerId, when)
     }
   }
 
-  const rank = (totals: Map<string, number>): DescribeItPlayerScore[] =>
+  const rank = (totals: Map<string, number>, last: Map<string, number>): DescribeItPlayerScore[] =>
     active
       .map((p) => ({ id: p.id, name: p.name, score: totals.get(p.id) ?? 0 }))
-      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          (last.get(a.id) ?? Infinity) - (last.get(b.id) ?? Infinity) ||
+          a.name.localeCompare(b.name)
+      )
 
-  return { guessers: rank(guesserPoints), describers: rank(describerPoints) }
+  return { guessers: rank(guesserPoints, guesserLast), describers: rank(describerPoints, describerLast) }
 }
 
 export function isDescribeItResultsPhase(
