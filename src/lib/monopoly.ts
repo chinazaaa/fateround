@@ -1794,7 +1794,7 @@ export async function processMonopolyPayRent(
     .maybeSingle()
   if (!state || !ownerState) return { error: 'Player not found' }
 
-  if (settings.noRentInJail && ownerState.jail_turns > 0) {
+  if (settings.noRentInJail && ownerState.in_jail) {
     const { data: statesRaw } = await supabase.from('monopoly_player_state').select('*').eq('game_id', gameId)
     const turnFinish = finishTurnAfterSpaceAction(board, (statesRaw ?? []) as MonopolyPlayerState[], playerId)
 
