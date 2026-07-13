@@ -52,6 +52,7 @@ import {
 import { RoundCountPicker } from '@/components/create/RoundCountPicker'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { SelectField } from '@/components/create/SelectField'
+import { usePuzzleThemes, puzzleThemeIdFromValue } from '@/lib/puzzle-themes'
 import { SettingToggle } from '@/components/create/SettingToggle'
 import { TimerPicker } from '@/components/create/TimerPicker'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
@@ -71,6 +72,18 @@ type Props = {
 
 export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSource = 'platform' }: Props) {
   const styles = useThemedStyles(makeStyles)
+  // Admin-authored themes shown alongside the built-ins in the theme picker. A selected admin
+  // theme carries value `pt:<id>`; the payload builder sends puzzle_theme_id. Called before any
+  // early return to respect the rules of hooks.
+  const puzzleThemes = usePuzzleThemes(gameType)
+  const lockedPuzzleDifficulty = (value: string): 'easy' | 'medium' | 'hard' | null => {
+    const id = puzzleThemeIdFromValue(value)
+    return id ? (puzzleThemes.find((t) => t.id === id)?.difficulty ?? null) : null
+  }
+  const puzzleThemeOptions = puzzleThemes.map((t) => ({
+    value: `pt:${t.id}`,
+    label: t.difficulty ? `${t.name} (${t.difficulty})` : t.name,
+  }))
   if (!hasPartyRoomSettings(gameType)) return null
   const showPuzzleTheme = contentSource === 'platform'
   const showPuzzleDifficulty = contentSource !== 'library'
@@ -527,8 +540,14 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSourc
                 <SelectField
                   title="Crossword theme"
                   value={party.crosswordTheme}
-                  options={CROSSWORD_THEME_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
-                  onChange={(crosswordTheme) => onChange({ crosswordTheme })}
+                  options={[
+                    ...CROSSWORD_THEME_OPTIONS.map((option) => ({ value: option.id, label: option.label })),
+                    ...puzzleThemeOptions,
+                  ]}
+                  onChange={(crosswordTheme) => {
+                    const locked = lockedPuzzleDifficulty(crosswordTheme)
+                    onChange({ crosswordTheme, ...(locked ? { crosswordDifficulty: locked } : {}) })
+                  }}
                 />
               </View>
             ) : null}
@@ -537,6 +556,7 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSourc
                 <Text style={styles.label}>Difficulty</Text>
                 <SegmentedControl
                   value={party.crosswordDifficulty}
+                  disabled={!!lockedPuzzleDifficulty(party.crosswordTheme)}
                   options={[
                     { value: 'easy', label: 'Easy', hint: 'Smaller grid, fewer words' },
                     { value: 'medium', label: 'Medium' },
@@ -566,8 +586,14 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSourc
                 <SelectField
                   title="Word Search theme"
                   value={party.wordSearchTheme}
-                  options={WORD_SEARCH_THEME_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
-                  onChange={(wordSearchTheme) => onChange({ wordSearchTheme })}
+                  options={[
+                    ...WORD_SEARCH_THEME_OPTIONS.map((option) => ({ value: option.id, label: option.label })),
+                    ...puzzleThemeOptions,
+                  ]}
+                  onChange={(wordSearchTheme) => {
+                    const locked = lockedPuzzleDifficulty(wordSearchTheme)
+                    onChange({ wordSearchTheme, ...(locked ? { wordSearchDifficulty: locked } : {}) })
+                  }}
                 />
               </View>
             ) : null}
@@ -576,6 +602,7 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSourc
                 <Text style={styles.label}>Difficulty</Text>
                 <SegmentedControl
                   value={party.wordSearchDifficulty}
+                  disabled={!!lockedPuzzleDifficulty(party.wordSearchTheme)}
                   options={[
                     { value: 'easy', label: 'Easy', hint: 'Smaller grid, fewer words' },
                     { value: 'medium', label: 'Medium' },
@@ -605,8 +632,14 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSourc
                 <SelectField
                   title="Word Scramble theme"
                   value={party.wordScrambleTheme}
-                  options={WORD_SCRAMBLE_THEME_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
-                  onChange={(wordScrambleTheme) => onChange({ wordScrambleTheme })}
+                  options={[
+                    ...WORD_SCRAMBLE_THEME_OPTIONS.map((option) => ({ value: option.id, label: option.label })),
+                    ...puzzleThemeOptions,
+                  ]}
+                  onChange={(wordScrambleTheme) => {
+                    const locked = lockedPuzzleDifficulty(wordScrambleTheme)
+                    onChange({ wordScrambleTheme, ...(locked ? { wordScrambleDifficulty: locked } : {}) })
+                  }}
                 />
               </View>
             ) : null}
@@ -615,6 +648,7 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSourc
                 <Text style={styles.label}>Difficulty</Text>
                 <SegmentedControl
                   value={party.wordScrambleDifficulty}
+                  disabled={!!lockedPuzzleDifficulty(party.wordScrambleTheme)}
                   options={[
                     { value: 'easy', label: 'Easy', hint: 'Short words' },
                     { value: 'medium', label: 'Medium' },
