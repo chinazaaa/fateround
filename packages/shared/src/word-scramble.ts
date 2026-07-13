@@ -15,7 +15,7 @@ export const WORD_SCRAMBLE_WORD_POINTS = 10
 export const WORD_SCRAMBLE_FIRST_BONUS = 5
 export const WORD_SCRAMBLE_LENGTH_BONUS = 1
 export const WORD_SCRAMBLE_HINT_PENALTY = -8
-export const WORD_SCRAMBLE_CLUE_PENALTY = -1
+export const WORD_SCRAMBLE_CLUE_PENALTY = -4
 
 export const WORD_SCRAMBLE_DIFFICULTIES: WordScrambleDifficulty[] = ['easy', 'medium', 'hard']
 export const WORD_SCRAMBLE_DEFAULT_DIFFICULTY: WordScrambleDifficulty = 'medium'

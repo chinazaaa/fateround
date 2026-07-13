@@ -29,7 +29,7 @@ export const WORD_SCRAMBLE_LENGTH_BONUS = 1
  *  nets just WORD_POINTS + this (a small consolation, well below a real solve). */
 export const WORD_SCRAMBLE_HINT_PENALTY = -8
 /** Penalty for spending a "Clue" hint (reveals the word's clue/definition, one-time per word). */
-export const WORD_SCRAMBLE_CLUE_PENALTY = -1
+export const WORD_SCRAMBLE_CLUE_PENALTY = -4
 
 export const WORD_SCRAMBLE_DIFFICULTIES: WordScrambleDifficulty[] = ['easy', 'medium', 'hard']
 export const WORD_SCRAMBLE_DEFAULT_DIFFICULTY: WordScrambleDifficulty = 'medium'
