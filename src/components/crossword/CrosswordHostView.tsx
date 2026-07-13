@@ -225,20 +225,33 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
 
   useEffect(() => {
     if (!roundId) return
+    // Batch INSERT floods (every player's keystroke is an INSERT for everyone) into one update a
+    // few times a second so a busy room doesn't re-render the whole board per keystroke-per-player.
+    const pending: CrosswordSubmission[] = []
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
+    const flush = () => {
+      flushTimer = null
+      if (pending.length === 0) return
+      const batch = pending.splice(0, pending.length)
+      setSubmissions((prev) => {
+        const ids = new Set(prev.map((s) => s.id))
+        const add = batch.filter((s) => !ids.has(s.id) && (ids.add(s.id), true))
+        return add.length ? [...prev, ...add] : prev
+      })
+    }
     const ch = supabase
       .channel(`crossword_host_subs_${roundId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'crossword_submissions', filter: `round_id=eq.${roundId}` },
         (payload) => {
-          setSubmissions((prev) => {
-            const next = payload.new as CrosswordSubmission
-            return prev.some((s) => s.id === next.id) ? prev : [...prev, next]
-          })
+          pending.push(payload.new as CrosswordSubmission)
+          if (!flushTimer) flushTimer = setTimeout(flush, 200)
         }
       )
       .subscribe()
     return () => {
+      if (flushTimer) clearTimeout(flushTimer)
       void supabase.removeChannel(ch)
     }
   }, [roundId])
