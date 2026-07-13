@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { normalizeGameCode } from '@fateround/shared'
 import { HostGameScreen } from '@/components/host/HostGameScreen'
-import { getHostToken, setHostToken } from '@/lib/secure-session'
+import { getHostToken, setHostToken, getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { verifyHost } from '@/lib/game-api'
+import { autoJoinGame } from '@/lib/api'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
@@ -19,7 +20,7 @@ type Phase = 'checking' | 'ready' | 'denied' | 'notFound'
 export default function HostScreen() {
   const styles = useThemedStyles(makeStyles)
   const theme = useTheme()
-  const params = useLocalSearchParams<{ code: string; hostToken?: string; token?: string }>()
+  const params = useLocalSearchParams<{ code: string; hostToken?: string; token?: string; player?: string }>()
   const router = useRouter()
   const gameCode = typeof params.code === 'string' ? normalizeGameCode(params.code) : ''
   const [phase, setPhase] = useState<Phase>('checking')
@@ -40,8 +41,35 @@ export default function HostScreen() {
         (typeof params.token === 'string' ? params.token.trim() : '')
       if (linked) {
         await setHostToken(gameCode, linked)
-        // Drop the token from the URL so it isn't left in navigation history.
-        router.setParams({ hostToken: undefined, token: undefined })
+      }
+      // A host+player link (`hostPlayerUrl`) also carries the host's own seat as a
+      // `player` resume token. Adopt it into a local session so the lobby shows
+      // "You're playing" instead of the join form — otherwise the host, already
+      // seated server-side (their name is in the roster), could seat a second time.
+      const seatToken = typeof params.player === 'string' ? params.player.trim() : ''
+      if (seatToken) {
+        try {
+          // A local session always wins over a token from a link.
+          const existing = await getPlayerSession(gameCode)
+          if (!existing) {
+            const data = await autoJoinGame(gameCode, seatToken)
+            if (!cancelled && data.playerId) {
+              await setPlayerSession(
+                gameCode,
+                data.playerId,
+                data.playerName,
+                data.playerGender ?? 'both',
+                data.resumeToken ?? seatToken
+              )
+            }
+          }
+        } catch {
+          // Invalid/expired seat token — fall through; the host can still play along.
+        }
+      }
+      if (linked || seatToken) {
+        // Drop the tokens from the URL so they aren't left in navigation history.
+        router.setParams({ hostToken: undefined, token: undefined, player: undefined })
       }
       const stored = await getHostToken(gameCode)
       if (cancelled) return
@@ -78,6 +106,9 @@ export default function HostScreen() {
     return (
       <View style={styles.centered}>
         <Text style={styles.errorText}>Game {gameCode || ''} not found</Text>
+        <Pressable style={styles.homeButton} onPress={() => router.replace('/')}>
+          <Text style={styles.homeButtonText}>Back to home</Text>
+        </Pressable>
       </View>
     )
   }
@@ -87,6 +118,9 @@ export default function HostScreen() {
       <View style={styles.centered}>
         <Text style={styles.errorText}>You&apos;re not the host of this game.</Text>
         <Text style={styles.subText}>Open the host link from the device that created it.</Text>
+        <Pressable style={styles.homeButton} onPress={() => router.replace('/')}>
+          <Text style={styles.homeButtonText}>Back to home</Text>
+        </Pressable>
       </View>
     )
   }
@@ -106,4 +140,12 @@ const makeStyles = (theme: Theme) =>
     },
     errorText: { color: theme.text, fontSize: 18, textAlign: 'center' },
     subText: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
+    homeButton: {
+      marginTop: 16,
+      backgroundColor: theme.primary,
+      borderRadius: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 28,
+    },
+    homeButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   })
