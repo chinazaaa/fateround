@@ -111,7 +111,12 @@ import {
   parseCrosswordDifficulty,
 } from '@/lib/crossword'
 import type { CrosswordMetadata } from '@/lib/crossword'
-import { buildCrosswordPuzzle, parseCrosswordEntries, findCrosswordTheme } from '@/lib/crossword-puzzles'
+import {
+  buildCrosswordPuzzle,
+  parseCrosswordEntries,
+  findCrosswordTheme,
+  crosswordThemeOptions,
+} from '@/lib/crossword-puzzles'
 import {
   buildWordSearchRoundRow,
   WORD_SEARCH_MIN_PLAYERS,
@@ -120,7 +125,12 @@ import {
   parseWordSearchDifficulty,
 } from '@/lib/word-search'
 import type { WordSearchMetadata, WordSearchPlacement } from '@/lib/word-search'
-import { buildWordSearchPuzzle, parseWordSearchEntries, findWordSearchTheme } from '@/lib/word-search-puzzles'
+import {
+  buildWordSearchPuzzle,
+  parseWordSearchEntries,
+  findWordSearchTheme,
+  wordSearchThemeOptions,
+} from '@/lib/word-search-puzzles'
 import {
   WORD_SCRAMBLE_MIN_PLAYERS,
   WORD_SCRAMBLE_DIFFICULTY_SPECS,
@@ -133,6 +143,7 @@ import {
   buildWordScrambleFromEntries,
   parseWordScrambleEntries,
   findWordScrambleTheme,
+  wordScrambleThemeOptions,
 } from '@/lib/word-scramble-puzzles'
 import { buildWordHuntRoundRow, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
 import { buildWordHuntMetadata } from '@/lib/word-hunt-dictionary'
@@ -747,33 +758,50 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
 
     // Custom content pool (a stored answer/clue list) overrides the platform theme; the
     // same generator packs both. Falls back to the platform theme if custom is empty.
+    // Replay variety for BOTH custom pools and built-in themes: exclude answers used in earlier
+    // games of this room (tracked in pool_usage), resetting the cycle once the bank runs low.
+    const poolUsage = parsePoolUsage(game.pool_usage)
+    const crosswordUsed = { ...(poolUsage.crossword ?? {}) }
     let built: { metadata: CrosswordMetadata; solution: string[][] } | null = null
+    let nextCrosswordUsage: Record<string, number> | undefined
     const customRows = Array.isArray(game.custom_questions) ? (game.custom_questions as Record<string, string>[]) : []
-    if (customRows.length > 0) {
+    // A stale custom pool (e.g. from a replay, or before the host switched back to a built-in
+    // theme in the lobby) must NOT override a built-in platform theme. Only use the pool when the
+    // game is NOT on a built-in theme: a custom/library upload (question_source != platform) or an
+    // admin theme (platform, but *_theme holds the theme NAME, not a built-in id).
+    const onBuiltinTheme =
+      parseQuestionSource(game.question_source, gameType) === 'platform' &&
+      crosswordThemeOptions().some((t) => t.id === game.crossword_theme)
+    if (!onBuiltinTheme && customRows.length > 0) {
       const entries = parseCrosswordEntries(customRows)
       if (entries.length >= 4) {
-        built = generateCrossword(entries, { size: 12, seed, targetWords: 12, minWords: 4 })
+        let used = new Set(Object.keys(crosswordUsed).map((w) => w.toUpperCase()))
+        if (entries.filter((e) => !used.has(e.answer.toUpperCase())).length < 12) used = new Set()
+        const fresh = entries.filter((e) => !used.has(e.answer.toUpperCase()))
+        built = generateCrossword(fresh.length >= 4 ? fresh : entries, { size: 12, seed, targetWords: 12, minWords: 4 })
+        if (built) {
+          const clueTexts = new Set(built.metadata.clues.map((c) => c.clue))
+          const usedAnswers = entries.filter((e) => clueTexts.has(e.clue)).map((e) => e.answer.toUpperCase())
+          const base = used.size === 0 ? {} : crosswordUsed
+          for (const a of usedAnswers) base[a] = (base[a] ?? 0) + 1
+          nextCrosswordUsage = base
+        }
       }
     }
-    // Best-effort replay variety: exclude answers used in earlier games of this room
-    // (tracked in pool_usage), resetting the cycle once the bank runs low.
-    let nextCrosswordUsage: Record<string, number> | undefined
     let puzzle: { metadata: CrosswordMetadata; solution: string[][] }
     if (built) {
       puzzle = built
     } else {
-      const poolUsage = parsePoolUsage(game.pool_usage)
       const theme = findCrosswordTheme(game.crossword_theme)
       const spec = CROSSWORD_DIFFICULTY_SPECS[parseCrosswordDifficulty(game.crossword_difficulty)]
-      const usedCounts = { ...(poolUsage.crossword ?? {}) }
-      let used = new Set(Object.keys(usedCounts).map((w) => w.toUpperCase()))
+      let used = new Set(Object.keys(crosswordUsed).map((w) => w.toUpperCase()))
       if (theme.entries.filter((e) => !used.has(e.answer.toUpperCase())).length < spec.targetWords) {
         used = new Set() // cycle exhausted — start fresh
       }
       puzzle = buildCrosswordPuzzle(theme.id, game.crossword_difficulty, seed, [...used])
       const clueTexts = new Set(puzzle.metadata.clues.map((c) => c.clue))
       const usedAnswers = theme.entries.filter((e) => clueTexts.has(e.clue)).map((e) => e.answer.toUpperCase())
-      const base = used.size === 0 ? {} : usedCounts
+      const base = used.size === 0 ? {} : crosswordUsed
       for (const a of usedAnswers) base[a] = (base[a] ?? 0) + 1
       nextCrosswordUsage = base
     }
@@ -824,36 +852,51 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
 
     // A custom word pool (stored word list) overrides the platform theme; both feed the same
     // generator. Falls back to the platform theme if custom is empty or too small.
+    // Replay variety for BOTH custom pools and built-in themes (tracked in pool_usage).
+    const poolUsage = parsePoolUsage(game.pool_usage)
+    const wsUsed = { ...(poolUsage.word_search ?? {}) }
     let built: { metadata: WordSearchMetadata; solution: WordSearchPlacement[] } | null = null
+    let nextWordSearchUsage: Record<string, number> | undefined
     const customRows = Array.isArray(game.custom_questions) ? (game.custom_questions as Record<string, string>[]) : []
-    if (customRows.length > 0) {
+    // See crossword note: a stale pool must not override a built-in platform theme.
+    const onBuiltinTheme =
+      parseQuestionSource(game.question_source, gameType) === 'platform' &&
+      wordSearchThemeOptions().some((t) => t.id === game.word_search_theme)
+    if (!onBuiltinTheme && customRows.length > 0) {
       const entries = parseWordSearchEntries(customRows)
       if (entries.length >= 4) {
         const spec = WORD_SEARCH_DIFFICULTY_SPECS[parseWordSearchDifficulty(game.word_search_difficulty)]
-        built = generateWordSearch(
-          entries.map((e) => e.word),
-          { size: spec.size, seed, targetWords: spec.targetWords, directions: spec.directions, minWords: 4 }
-        )
-        if (built) built.metadata.difficulty = parseWordSearchDifficulty(game.word_search_difficulty)
+        const words = entries.map((e) => e.word)
+        let used = new Set(Object.keys(wsUsed).map((w) => w.toUpperCase()))
+        if (words.filter((w) => !used.has(w.toUpperCase())).length < spec.targetWords) used = new Set()
+        const fresh = words.filter((w) => !used.has(w.toUpperCase()))
+        built = generateWordSearch(fresh.length >= 4 ? fresh : words, {
+          size: spec.size,
+          seed,
+          targetWords: spec.targetWords,
+          directions: spec.directions,
+          minWords: 4,
+        })
+        if (built) {
+          built.metadata.difficulty = parseWordSearchDifficulty(game.word_search_difficulty)
+          const base = used.size === 0 ? {} : wsUsed
+          for (const w of built.metadata.words) base[w.toUpperCase()] = (base[w.toUpperCase()] ?? 0) + 1
+          nextWordSearchUsage = base
+        }
       }
     }
-    // Best-effort replay variety: exclude words used in earlier games of this room
-    // (tracked in pool_usage), resetting the cycle once the bank runs low.
-    let nextWordSearchUsage: Record<string, number> | undefined
     let puzzle: { metadata: WordSearchMetadata; solution: WordSearchPlacement[] }
     if (built) {
       puzzle = built
     } else {
-      const poolUsage = parsePoolUsage(game.pool_usage)
       const theme = findWordSearchTheme(game.word_search_theme)
       const spec = WORD_SEARCH_DIFFICULTY_SPECS[parseWordSearchDifficulty(game.word_search_difficulty)]
-      const usedCounts = { ...(poolUsage.word_search ?? {}) }
-      let used = new Set(Object.keys(usedCounts).map((w) => w.toUpperCase()))
+      let used = new Set(Object.keys(wsUsed).map((w) => w.toUpperCase()))
       if (theme.words.filter((w) => !used.has(w.toUpperCase())).length < spec.targetWords) {
         used = new Set() // cycle exhausted — start fresh
       }
       puzzle = buildWordSearchPuzzle(theme.id, game.word_search_difficulty, seed, [...used])
-      const base = used.size === 0 ? {} : usedCounts
+      const base = used.size === 0 ? {} : wsUsed
       for (const w of puzzle.metadata.words) base[w.toUpperCase()] = (base[w.toUpperCase()] ?? 0) + 1
       nextWordSearchUsage = base
     }
@@ -907,31 +950,51 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
 
     // A custom word pool (stored word[,hint] list) overrides the platform theme; both feed the
     // same builder. Falls back to the platform theme if custom is empty or too small.
+    // Replay variety for BOTH custom pools and built-in themes (tracked in pool_usage).
+    const poolUsage = parsePoolUsage(game.pool_usage)
+    const scrambleUsed = { ...(poolUsage.word_scramble ?? {}) }
+    const spec = WORD_SCRAMBLE_DIFFICULTY_SPECS[parseWordScrambleDifficulty(game.word_scramble_difficulty)]
     let built: { metadata: WordScrambleMetadata; solution: string[] } | null = null
-    const customRows = Array.isArray(game.custom_questions) ? (game.custom_questions as Record<string, string>[]) : []
-    if (customRows.length > 0) {
-      const entries = parseWordScrambleEntries(customRows)
-      if (entries.length >= 4) built = buildWordScrambleFromEntries(entries, game.word_scramble_difficulty, seed)
-      if (built) built.metadata.difficulty = parseWordScrambleDifficulty(game.word_scramble_difficulty)
-    }
-
-    // Best-effort replay variety: exclude answers used in earlier games of this room.
     let nextUsage: Record<string, number> | undefined
+    const customRows = Array.isArray(game.custom_questions) ? (game.custom_questions as Record<string, string>[]) : []
+    // See crossword note: a stale pool must not override a built-in platform theme.
+    const onBuiltinTheme =
+      parseQuestionSource(game.question_source, gameType) === 'platform' &&
+      wordScrambleThemeOptions().some((t) => t.id === game.word_scramble_theme)
+    if (!onBuiltinTheme && customRows.length > 0) {
+      const entries = parseWordScrambleEntries(customRows)
+      if (entries.length >= 4) {
+        let used = new Set(Object.keys(scrambleUsed).map((w) => w.toUpperCase()))
+        const freshInWindow = entries.filter(
+          (e) => e.word.length >= spec.minLen && e.word.length <= spec.maxLen && !used.has(e.word.toUpperCase())
+        )
+        if (freshInWindow.length < spec.count) used = new Set() // cycle exhausted — start fresh
+        const poolEntries = entries.filter((e) => !used.has(e.word.toUpperCase()))
+        built = buildWordScrambleFromEntries(
+          poolEntries.length >= 4 ? poolEntries : entries,
+          game.word_scramble_difficulty,
+          seed
+        )
+        if (built) {
+          built.metadata.difficulty = parseWordScrambleDifficulty(game.word_scramble_difficulty)
+          const base = used.size === 0 ? {} : scrambleUsed
+          for (const w of built.solution) base[w.toUpperCase()] = (base[w.toUpperCase()] ?? 0) + 1
+          nextUsage = base
+        }
+      }
+    }
     let puzzle: { metadata: WordScrambleMetadata; solution: string[] }
     if (built) {
       puzzle = built
     } else {
-      const poolUsage = parsePoolUsage(game.pool_usage)
       const theme = findWordScrambleTheme(game.word_scramble_theme)
-      const spec = WORD_SCRAMBLE_DIFFICULTY_SPECS[parseWordScrambleDifficulty(game.word_scramble_difficulty)]
-      const usedCounts = { ...(poolUsage.word_scramble ?? {}) }
-      let used = new Set(Object.keys(usedCounts).map((w) => w.toUpperCase()))
+      let used = new Set(Object.keys(scrambleUsed).map((w) => w.toUpperCase()))
       const fresh = theme.entries
         .map((e) => e.word)
         .filter((w) => w.length >= spec.minLen && w.length <= spec.maxLen && !used.has(w.toUpperCase()))
       if (fresh.length < spec.count) used = new Set() // cycle exhausted — start fresh
       puzzle = buildWordScramblePuzzle(theme.id, game.word_scramble_difficulty, seed, [...used])
-      const base = used.size === 0 ? {} : usedCounts
+      const base = used.size === 0 ? {} : scrambleUsed
       for (const w of puzzle.solution) base[w.toUpperCase()] = (base[w.toUpperCase()] ?? 0) + 1
       nextUsage = base
     }
