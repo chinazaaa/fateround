@@ -194,9 +194,12 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
       if (!bootstrap.myPlayerId || !bootstrap.myResumeToken || !metadata || submitting) return
       if (myCurrent >= metadata.count) return
       const index = myCurrent
+      const submittedGuess = guess
+      // Clear the field right away so it feels instant and the next word can be typed immediately.
+      if (!hint) setGuess('')
       setSubmitting(true)
       try {
-        const res = await postWordScrambleSubmit(gameCode, bootstrap.myResumeToken, index, guess, hint)
+        const res = await postWordScrambleSubmit(gameCode, bootstrap.myResumeToken, index, submittedGuess, hint)
         if (res.correct) {
           addSolve({
             id: `local-${index}-${bootstrap.myPlayerId}`,
@@ -208,12 +211,10 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
             via_hint: !!hint,
             solved_at: new Date().toISOString(),
           })
-          setGuess('')
           showToast(hint ? `Revealed ${res.word} · ${WORD_SCRAMBLE_HINT_PENALTY} pts` : 'Correct!', true)
         } else {
           setWrong(true)
           setTimeout(() => setWrong(false), 400)
-          setGuess('')
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Submission failed'

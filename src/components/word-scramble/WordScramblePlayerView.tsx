@@ -410,12 +410,22 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
     const index = myCurrent
     if (inFlight.current.has(index)) return
     inFlight.current.add(index)
+    const submittedGuess = guess
+    // Clear the field right away (the input stays editable) so it feels instant and the player
+    // can start typing the next word without waiting for the round trip.
+    if (!hint) setGuess('')
     setSubmitting(true)
     try {
       const res = await fetch('/api/word-scramble/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, scrambleIndex: index, guess, hint }),
+        body: JSON.stringify({
+          gameId: gameCode,
+          resumeToken: myResumeToken,
+          scrambleIndex: index,
+          guess: submittedGuess,
+          hint,
+        }),
       })
       const json = await res.json()
       if (!res.ok) {
@@ -435,13 +445,11 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
           via_hint: !!hint,
           solved_at: new Date().toISOString(),
         })
-        setGuess('')
         if (hint) showToast(`Revealed ${json.word} · ${WORD_SCRAMBLE_HINT_PENALTY} pts`, true)
         else showToast('Correct!', true)
       } else {
         setWrongFlash(true)
         setTimeout(() => setWrongFlash(false), 400)
-        setGuess('')
       }
     } finally {
       inFlight.current.delete(index)
