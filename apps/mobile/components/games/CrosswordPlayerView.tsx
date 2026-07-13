@@ -760,7 +760,9 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
                       }}
                     >
                       {activeClue ? (
-                        <Text style={styles.clueBarLine} numberOfLines={2}>
+                        // No line cap — the active clue is the main thing you're reading, so let a
+                        // long clue wrap fully instead of truncating with an ellipsis.
+                        <Text style={styles.clueBarLine}>
                           <Text style={styles.clueBarNum}>
                             {activeClue.number} {activeClue.direction === 'across' ? 'Across' : 'Down'}
                           </Text>
