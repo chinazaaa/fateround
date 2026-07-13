@@ -45,7 +45,7 @@ export function QuickDrawGuessFinishedResults({
     isIndividual &&
     myRow &&
     leaderboard[0] != null &&
-    myRow.score === topScore &&
+    myRow === leaderboard[0] &&
     topScore > 0 &&
     leaderboard.length > 1
   )

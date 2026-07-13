@@ -691,7 +691,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
       !!mySudokuRow &&
       leaderboard.length > 1 &&
       leaderboard[0] != null &&
-      mySudokuRow.points === leaderboard[0].points &&
+      mySudokuRow === leaderboard[0] &&
       leaderboard[0].points > 0
     return (
       <div className="min-h-screen flex flex-col">

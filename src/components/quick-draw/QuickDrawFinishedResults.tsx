@@ -39,7 +39,7 @@ export function QuickDrawFinishedResults({
   const myRow = highlightPlayerId ? leaderboard.find((row) => row.id === highlightPlayerId) : undefined
   const topScore = leaderboard[0]?.score ?? 0
   const iWon = Boolean(
-    myRow && leaderboard[0] != null && myRow.score === topScore && topScore > 0 && leaderboard.length > 1
+    myRow && leaderboard[0] != null && myRow === leaderboard[0] && topScore > 0 && leaderboard.length > 1
   )
   const winner = leaderboard[0]
 

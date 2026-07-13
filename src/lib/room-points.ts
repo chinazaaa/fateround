@@ -277,7 +277,7 @@ async function getCompetitiveStandings(
   if (isSudokuGame(gameType)) {
     const { data: submissions } = await supabase
       .from('sudoku_submissions')
-      .select('player_id, points_awarded')
+      .select('player_id, points_awarded, is_correct, submitted_at')
       .eq('game_id', gameId)
     if (!submissions?.length) return []
     const playerRows = players.map((p) => ({

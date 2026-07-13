@@ -49,7 +49,7 @@ export function WordRushFinishedResults({
     const myRow = highlightPlayerId ? playerLeaderboard.find((r) => r.id === highlightPlayerId) : undefined
     const topScore = playerLeaderboard[0]?.score ?? 0
     const iWon = Boolean(
-      myRow && playerLeaderboard[0] && myRow.score === topScore && topScore > 0 && playerLeaderboard.length > 1
+      myRow && playerLeaderboard[0] && myRow === playerLeaderboard[0] && topScore > 0 && playerLeaderboard.length > 1
     )
 
     return (
@@ -103,10 +103,11 @@ export function WordRushFinishedResults({
     )
   }
 
+  // Team mode does NOT post to the community leaderboard: that board ranks individual
+  // players, and a team's collective win is neither one person's nor a real player named
+  // after the team. Only individual-mode wins post (above), matching Describe It and
+  // Quick Draw. See [[community-win-single-winner]].
   const winnerTeam = teamLeaderboard[0]
-  const myTeam = teamRows.find((r) => r.player_id === highlightPlayerId)?.team
-  const topScore = winnerTeam?.score ?? 0
-  const iWon = Boolean(myTeam && winnerTeam && myTeam === winnerTeam.team && topScore > 0)
 
   return (
     <div className="space-y-4">
@@ -128,14 +129,6 @@ export function WordRushFinishedResults({
           emphasizeLeader
         />
       </div>
-      {iWon && (
-        <PostWinToCommunity
-          gameType="word_rush"
-          gameCode={game.id}
-          winnerName={teamLabel(winnerTeam!.team)}
-          roundKey={game.session_started_at ?? undefined}
-        />
-      )}
       <HostGameFinishedActions
         variant="winner"
         gameCode={game.id}

@@ -596,7 +596,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
       !!myWordHuntRow &&
       leaderboard.length > 1 &&
       leaderboard[0] != null &&
-      myWordHuntRow.points === leaderboard[0].points &&
+      myWordHuntRow === leaderboard[0] &&
       leaderboard[0].points > 0
     return (
       <div className="min-h-screen flex flex-col">
