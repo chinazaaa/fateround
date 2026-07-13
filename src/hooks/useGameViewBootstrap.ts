@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { supabasePollOk } from '@/hooks/usePolling'
 import { resolvePlayerSession } from '@/lib/player-resume'
@@ -108,7 +108,18 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   // (saved at tournament join) rides along so the server seats/reclaims only them.
   const tournamentToken = currentTournamentPlayerToken()
 
-  const load = useCallback(async (): Promise<boolean> => {
+  // Singleflight + finished-latch. Several transports call load() during the active→finished
+  // window (games realtime channel, roster poll, timer expiry, in-flight submits). Without
+  // coalescing they interleave setStates and the results screen flickers; without the latch a
+  // read-replica still returning the pre-finish `active` row bounces it back to the board.
+  const loadingRef = useRef(false)
+  const pendingRef = useRef(false)
+  // Keyed on the session that finished. `start` only moves a game to 'active' from 'waiting'
+  // with a NEW session_started_at, so a later read showing the SAME session as 'active' can
+  // only be replica lag — ignore it. A real replay passes through 'waiting' (clears the latch).
+  const finishedSessionRef = useRef<string | null | undefined>(undefined)
+
+  const runLoad = useCallback(async (): Promise<boolean> => {
     const [gameRes, plrsRes] = await Promise.all([
       supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
       supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
@@ -128,6 +139,17 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
       setScreen(notFoundScreen)
       return true
     }
+
+    // Stale-replica guard (see finishedSessionRef above).
+    if (
+      finishedSessionRef.current !== undefined &&
+      gameData.status === 'active' &&
+      (gameData.session_started_at ?? null) === finishedSessionRef.current
+    ) {
+      return true
+    }
+    if (gameData.status === 'finished') finishedSessionRef.current = gameData.session_started_at ?? null
+    else if (gameData.status === 'waiting') finishedSessionRef.current = undefined
 
     setGame(gameData)
     setPlayers(plrs)
@@ -156,7 +178,27 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
 
     setScreen(computeScreen(gameData, playerId, effectiveState))
     return ok
-  }, [gameCode, loadingScreen, notFoundScreen, loadGameState, computeScreen, afterResolve])
+  }, [gameCode, notFoundScreen, loadGameState, computeScreen, afterResolve])
+
+  const load = useCallback(async (): Promise<boolean> => {
+    // Coalesce overlapping calls: while one runs, extra callers flag a single trailing re-run
+    // so we still settle on the freshest snapshot instead of racing N interleaved loads.
+    if (loadingRef.current) {
+      pendingRef.current = true
+      return true
+    }
+    loadingRef.current = true
+    try {
+      let ok = await runLoad()
+      while (pendingRef.current) {
+        pendingRef.current = false
+        ok = await runLoad()
+      }
+      return ok
+    } finally {
+      loadingRef.current = false
+    }
+  }, [runLoad])
 
   useEffect(() => {
     void load()

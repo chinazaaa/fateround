@@ -413,7 +413,11 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('word_search')} subtitle={bootstrap.code}>
       <ScrollView contentContainerStyle={styles.content} scrollEnabled={!dragActive}>
-        <WordSearchGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} />
+        <WordSearchGameTimerBar
+          gameCode={bootstrap.code}
+          game={bootstrap.game}
+          onExpired={() => void bootstrap.load()}
+        />
 
         {toast ? (
           <View style={[styles.toast, toast.ok ? styles.toastOk : styles.toastBad]}>

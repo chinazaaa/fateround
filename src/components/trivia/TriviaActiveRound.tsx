@@ -218,7 +218,7 @@ export function TriviaActiveRound({
   if (screen === 'finished') {
     const myTriviaRow = leaderboard.find((row) => row.id === myPlayerId)
     const iWonTrivia =
-      !!myTriviaRow && leaderboard[0] != null && myTriviaRow.score === leaderboard[0].score && leaderboard[0].score > 0
+      !!myTriviaRow && leaderboard[0] != null && myTriviaRow === leaderboard[0] && leaderboard[0].score > 0
     return (
       <div className="space-y-5">
         {tournamentId && (

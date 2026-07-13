@@ -8,7 +8,9 @@ import { useThemedStyles } from '@/constants/theme-context'
 
 function themeLabel(options: { id: string; label: string }[], id: string | null | undefined): string | null {
   if (!id) return null
-  return options.find((o) => o.id === id)?.label ?? null
+  // Built-in id -> its label; an admin theme stores its NAME in the column, so a value that
+  // isn't a known built-in id is shown as-is (rather than dropped).
+  return options.find((o) => o.id === id)?.label ?? id
 }
 
 function formatDuration(seconds: number): string {

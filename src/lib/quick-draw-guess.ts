@@ -740,7 +740,7 @@ export function quickDrawGuessIndividualLeaderboard(
 }
 
 export function quickDrawGuessRoleLeaderboards(
-  guesses: Array<Pick<QuickDrawGuessGuess, 'player_id' | 'turn_index' | 'points'>>,
+  guesses: Array<Pick<QuickDrawGuessGuess, 'player_id' | 'turn_index' | 'points' | 'created_at'>>,
   roster: string[],
   players: Array<{ id: string; name: string; spectator?: boolean | null }>
 ) {

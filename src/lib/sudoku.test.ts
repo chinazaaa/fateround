@@ -53,20 +53,30 @@ describe('tallySudokuScores', () => {
     { id: 'b', name: 'Bob' },
   ]
 
-  it('sums points per player and sorts by score then name', () => {
-    const submissions = [
-      { player_id: 'a', points_awarded: 10 },
-      { player_id: 'a', points_awarded: -3 },
-      { player_id: 'b', points_awarded: 6 },
-    ]
+  const sub = (player_id: string, points_awarded: number, submitted_at = '2026-07-13T10:00:00Z') => ({
+    player_id,
+    points_awarded,
+    is_correct: points_awarded > 0,
+    submitted_at,
+  })
+
+  it('sums points per player and sorts by score', () => {
+    const submissions = [sub('a', 10), sub('a', -3), sub('b', 6)]
     expect(tallySudokuScores(submissions, players)).toEqual([
       { player_id: 'a', name: 'Alice', points: 7 },
       { player_id: 'b', name: 'Bob', points: 6 },
     ])
   })
 
+  it('breaks a score tie by earliest finish, not name', () => {
+    // Bob and Alice tie on points, but Bob's last correct submission is earlier, so he
+    // outranks Alice even though "Alice" sorts first alphabetically.
+    const submissions = [sub('a', 10, '2026-07-13T10:05:00Z'), sub('b', 10, '2026-07-13T10:02:00Z')]
+    expect(tallySudokuScores(submissions, players).map((r) => r.player_id)).toEqual(['b', 'a'])
+  })
+
   it('excludes spectators', () => {
-    const submissions = [{ player_id: 'a', points_awarded: 10 }]
+    const submissions = [sub('a', 10)]
     const withSpectator = [...players, { id: 's', name: 'Sam', spectator: true }]
     expect(tallySudokuScores(submissions, withSpectator)).toHaveLength(2)
     expect(tallySudokuScores(submissions, withSpectator).some((r) => r.player_id === 's')).toBe(false)

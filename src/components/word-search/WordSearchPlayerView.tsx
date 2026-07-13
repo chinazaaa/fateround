@@ -224,6 +224,9 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
 
   useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
 
+  // Latest committed status, read by the games channel without resubscribing.
+  const gameStatusRef = useRef(game?.status)
+  gameStatusRef.current = game?.status
   useEffect(() => {
     const ch = supabase
       .channel(`word_search_game_${gameCode}`)
@@ -231,8 +234,11 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
-          setGame(payload.new as Game)
-          load()
+          const next = payload.new as Game
+          setGame(next)
+          // Full reload only on a status transition; other games-row writes just refresh the
+          // object above. Reloading on every UPDATE was a primary driver of the finish flicker.
+          if (next.status !== gameStatusRef.current) load()
         }
       )
       .subscribe()
@@ -356,7 +362,12 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
     return m
   }, [myFoundWords, myPlayerId])
 
-  const leaderboard = metadata ? tallyWordSearchScores(metadata, found, players) : []
+  // Memoized: re-ran on every render (1s tick, each keystroke-free drag, others' found words)
+  // and loops words × players over every player's accumulated finds — the input-thread cost.
+  const leaderboard = useMemo(
+    () => (metadata ? tallyWordSearchScores(metadata, found, players) : []),
+    [metadata, found, players]
+  )
   const me = players.find((p) => p.id === myPlayerId)
   const isSpectator = me?.spectator === true
   const isViewer = !!(game && me && playerIsViewer(me, game))
@@ -447,13 +458,17 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
-  function handleSelect(start: [number, number], end: [number, number]) {
+  // Stable identity (reads the latest submitFound via a ref) so the memoized board skips
+  // ambient re-renders instead of rebuilding every cell on the 1s tick / roster refresh.
+  const submitFoundRef = useRef(submitFound)
+  submitFoundRef.current = submitFound
+  const handleSelect = useCallback((start: [number, number], end: [number, number]) => {
     // Keep the selection highlighted until its found/wrong result lands (cleared in the
     // submit's finally) so it never blinks off before the feedback appears.
     const cells = selectionCells(start, end)
     if (cells) setPendingCells(new Set(cells.map(([r, c]) => cellKey(r, c))))
-    void submitFound(start, end, false)
-  }
+    void submitFoundRef.current(start, end, false)
+  }, [])
 
   async function handleHint() {
     if (hinting || allFound) return
@@ -585,7 +600,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
       !!myRow &&
       leaderboard.length > 1 &&
       leaderboard[0] != null &&
-      myRow.points === leaderboard[0].points &&
+      myRow === leaderboard[0] &&
       leaderboard[0].points > 0
     return (
       <div className="min-h-screen flex flex-col">

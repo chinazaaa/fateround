@@ -224,6 +224,9 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
 
   useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
 
+  // Latest committed status, read by the games channel without resubscribing.
+  const gameStatusRef = useRef(game?.status)
+  gameStatusRef.current = game?.status
   useEffect(() => {
     const ch = supabase
       .channel(`word_scramble_game_${gameCode}`)
@@ -231,8 +234,11 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
-          setGame(payload.new as Game)
-          load()
+          const next = payload.new as Game
+          setGame(next)
+          // Full reload only on a status transition; other games-row writes just refresh the
+          // object above. Reloading on every UPDATE was a primary driver of the finish flicker.
+          if (next.status !== gameStatusRef.current) load()
         }
       )
       .subscribe()
@@ -341,7 +347,12 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
   const me = players.find((p) => p.id === myPlayerId)
   const isSpectator = me?.spectator === true
   const isViewer = !!(game && me && playerIsViewer(me, game))
-  const leaderboard = metadata ? tallyWordScrambleScores(metadata, solves, players, { hints }) : []
+  // Memoized: without it, tallyWordScrambleScores re-ran on every `setGuess` keystroke (and
+  // every 1s tick), which is the whole cause of the guess field lagging behind typing.
+  const leaderboard = useMemo(
+    () => (metadata ? tallyWordScrambleScores(metadata, solves, players, { hints }) : []),
+    [metadata, solves, players, hints]
+  )
   const myRank = leaderboard.findIndex((r) => r.player_id === myPlayerId) + 1
   const myCompletion = metadata && myPlayerId ? wordScrambleCompletionPercent(metadata, solves, myPlayerId) : 0
   const mySolvedCount = myPlayerId ? playerSolvedIndices(solves, myPlayerId).size : 0
@@ -589,7 +600,7 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
       !!myRow &&
       leaderboard.length > 1 &&
       leaderboard[0] != null &&
-      myRow.points === leaderboard[0].points &&
+      myRow === leaderboard[0] &&
       leaderboard[0].points > 0
     return (
       <div className="min-h-screen flex flex-col">

@@ -996,6 +996,9 @@ export type BoardLobbyPatch = {
   mafia_doctor_enabled?: boolean
   mafia_detective_enabled?: boolean
   mafia_anonymous_votes?: boolean
+  monopoly_double_go_salary?: boolean
+  monopoly_forced_auctions?: boolean
+  monopoly_no_rent_in_jail?: boolean
   operative_timer_seconds?: number
   quick_draw_variant?: 'lie' | 'guess'
   quick_draw_play_mode?: 'team' | 'individual'
@@ -1008,6 +1011,8 @@ export type BoardLobbyPatch = {
   word_search_difficulty?: 'easy' | 'medium' | 'hard'
   word_scramble_theme?: string
   word_scramble_difficulty?: 'easy' | 'medium' | 'hard'
+  /** Admin-authored theme (puzzle_themes.id); server folds its word pool + locked difficulty. */
+  puzzle_theme_id?: string
 }
 
 export function postLobbySettings(gameCode: string, hostToken: string, patch: BoardLobbyPatch) {

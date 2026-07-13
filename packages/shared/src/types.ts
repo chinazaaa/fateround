@@ -108,6 +108,9 @@ export interface Game {
   mafia_doctor_enabled?: boolean | null
   mafia_detective_enabled?: boolean | null
   mafia_anonymous_votes?: boolean | null
+  monopoly_double_go_salary?: boolean | null
+  monopoly_forced_auctions?: boolean | null
+  monopoly_no_rent_in_jail?: boolean | null
   quick_draw_variant?: QuickDrawVariant | null
   quick_draw_play_mode?: QuickDrawPlayMode | null
   quick_draw_num_teams?: number | null
@@ -336,6 +339,7 @@ export interface TriviaAnswer {
   choice_index: number
   is_correct: boolean
   points: number
+  response_ms: number
 }
 
 export type YahtzeeCategory =
@@ -762,6 +766,7 @@ export interface DescribeItGuess {
   text: string
   correct: boolean
   points: number
+  created_at: string
 }
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'

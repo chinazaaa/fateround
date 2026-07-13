@@ -1,8 +1,14 @@
 'use client'
 
-import { findCrosswordTheme } from '@/lib/crossword-puzzles'
-import { findWordSearchTheme } from '@/lib/word-search-puzzles'
-import { findWordScrambleTheme } from '@/lib/word-scramble-puzzles'
+import { crosswordThemeOptions } from '@/lib/crossword-puzzles'
+import { wordSearchThemeOptions } from '@/lib/word-search-puzzles'
+import { wordScrambleThemeOptions } from '@/lib/word-scramble-puzzles'
+
+/** Built-in theme id -> its label; an admin theme stores its NAME in the column, so a value
+ *  that isn't a known built-in id is shown as-is. */
+function themeChip(options: { id: string; label: string }[], value: string): string {
+  return options.find((o) => o.id === value)?.label ?? value
+}
 
 /** The subset of a game row this reads — kept loose so any game object can be passed. */
 type GameMeta = {
@@ -39,13 +45,14 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
   const gt = game.game_type ?? ''
 
   if (gt === 'crossword') {
-    if (!isCustomPool && game.crossword_theme) items.push(findCrosswordTheme(game.crossword_theme).label)
+    if (!isCustomPool && game.crossword_theme) items.push(themeChip(crosswordThemeOptions(), game.crossword_theme))
     if (game.crossword_difficulty) items.push(capitalize(game.crossword_difficulty))
   } else if (gt === 'word_search') {
-    if (!isCustomPool && game.word_search_theme) items.push(findWordSearchTheme(game.word_search_theme).label)
+    if (!isCustomPool && game.word_search_theme) items.push(themeChip(wordSearchThemeOptions(), game.word_search_theme))
     if (game.word_search_difficulty) items.push(capitalize(game.word_search_difficulty))
   } else if (gt === 'word_scramble') {
-    if (!isCustomPool && game.word_scramble_theme) items.push(findWordScrambleTheme(game.word_scramble_theme).label)
+    if (!isCustomPool && game.word_scramble_theme)
+      items.push(themeChip(wordScrambleThemeOptions(), game.word_scramble_theme))
     if (game.word_scramble_difficulty) items.push(capitalize(game.word_scramble_difficulty))
   }
 

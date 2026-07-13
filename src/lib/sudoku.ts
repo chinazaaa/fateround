@@ -524,23 +524,37 @@ export function sudokuGameSessionExpired(
 }
 
 export function tallySudokuScores(
-  submissions: Pick<SudokuSubmission, 'player_id' | 'points_awarded'>[],
+  submissions: Pick<SudokuSubmission, 'player_id' | 'points_awarded' | 'is_correct' | 'submitted_at'>[],
   players: { id: string; name: string; spectator?: boolean | null }[]
 ): SudokuPlayerScore[] {
   const activePlayers = players.filter((p) => p.spectator !== true)
   const totals = new Map<string, number>()
+  // Each player's finish time = their last *correct* submission. On equal points the
+  // earlier finisher outranks the slower one (mirrors word-search/crossword), so a tie
+  // resolves by speed rather than alphabetically — which matters now that the community
+  // win posts only to the single top row. Submissions without a timestamp (e.g. the
+  // room-points ranking query) fall back to name order, as before.
+  const lastCorrect = new Map<string, number>()
   for (const p of activePlayers) totals.set(p.id, 0)
 
   for (const s of submissions) {
     const current = totals.get(s.player_id)
-    if (current !== undefined) {
-      totals.set(s.player_id, current + s.points_awarded)
+    if (current === undefined) continue
+    totals.set(s.player_id, current + s.points_awarded)
+    if (s.is_correct && s.submitted_at) {
+      const t = new Date(s.submitted_at).getTime()
+      if (t > (lastCorrect.get(s.player_id) ?? -Infinity)) lastCorrect.set(s.player_id, t)
     }
   }
 
   return activePlayers
     .map((p) => ({ player_id: p.id, name: p.name, points: totals.get(p.id) ?? 0 }))
-    .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name))
+    .sort(
+      (a, b) =>
+        b.points - a.points ||
+        (lastCorrect.get(a.player_id) ?? Infinity) - (lastCorrect.get(b.player_id) ?? Infinity) ||
+        a.name.localeCompare(b.name)
+    )
 }
 
 /** Time spent by a player in seconds. If completed, stops at their final correct submission. */

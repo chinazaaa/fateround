@@ -94,6 +94,7 @@ export function MonopolyBoardCenter({
   colorBarClass,
   layout = 'board',
   themeId,
+  forcedAuctions,
 }: {
   board: MonopolyBoard
   myPlayerId: string | null
@@ -104,6 +105,7 @@ export function MonopolyBoardCenter({
   colorBarClass: (color?: MonopolyColorGroup) => string
   layout?: 'board' | 'dock'
   themeId?: string | null
+  forcedAuctions?: boolean
 }) {
   const palette = getBoardPalette(themeId)
   const turnPlayerId = currentPlayerId(board)
@@ -319,19 +321,21 @@ export function MonopolyBoardCenter({
             >
               Buy
             </BoardPrimaryButton>
-            <div className="grid grid-cols-2 gap-1.5">
+            <div className={forcedAuctions ? 'mt-1.5' : 'grid grid-cols-2 gap-1.5'}>
               <BoardSecondaryButton
                 onClick={() => postAction('/api/monopoly/buy', { decision: 'auction' })}
                 disabled={acting}
               >
                 Auction
               </BoardSecondaryButton>
-              <BoardSecondaryButton
-                onClick={() => postAction('/api/monopoly/buy', { decision: 'pass' })}
-                disabled={acting}
-              >
-                Pass
-              </BoardSecondaryButton>
+              {!forcedAuctions && (
+                <BoardSecondaryButton
+                  onClick={() => postAction('/api/monopoly/buy', { decision: 'pass' })}
+                  disabled={acting}
+                >
+                  Pass
+                </BoardSecondaryButton>
+              )}
             </div>
           </div>
         </div>

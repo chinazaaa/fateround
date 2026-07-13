@@ -15,7 +15,7 @@ function describerForIndividualTurn(roster: string[], turnIndex: number): string
 // Credits guesser points to whoever landed the correct guess, and describer
 // points to whoever was describing on that turn. Ranks both independently.
 function describeItRoleLeaderboards(
-  guesses: Array<Pick<DescribeItGuess, 'player_id' | 'turn_index' | 'points'>>,
+  guesses: Array<Pick<DescribeItGuess, 'player_id' | 'turn_index' | 'points' | 'created_at'>>,
   roster: string[],
   players: Array<{ id: string; name: string; spectator?: boolean | null }>
 ): { guessers: DescribeItPlayerScore[]; describers: DescribeItPlayerScore[] } {
@@ -23,25 +23,37 @@ function describeItRoleLeaderboards(
   const nameById = new Map(active.map((p) => [p.id, p.name]))
   const guesserPoints = new Map<string, number>()
   const describerPoints = new Map<string, number>()
+  // Latest scoring-guess time per role — earlier finisher wins a points tie (speed before
+  // name). Mirrors web src/lib/describe-it.ts describeItRoleLeaderboards.
+  const guesserLast = new Map<string, number>()
+  const describerLast = new Map<string, number>()
 
   for (const g of guesses) {
     const points = g.points ?? 0
     if (points <= 0) continue
+    const when = g.created_at ? new Date(g.created_at).getTime() : null
     if (nameById.has(g.player_id)) {
       guesserPoints.set(g.player_id, (guesserPoints.get(g.player_id) ?? 0) + points)
+      if (when != null && when > (guesserLast.get(g.player_id) ?? -Infinity)) guesserLast.set(g.player_id, when)
     }
     const describerId = describerForIndividualTurn(roster, g.turn_index)
     if (describerId && nameById.has(describerId)) {
       describerPoints.set(describerId, (describerPoints.get(describerId) ?? 0) + points)
+      if (when != null && when > (describerLast.get(describerId) ?? -Infinity)) describerLast.set(describerId, when)
     }
   }
 
-  const rank = (totals: Map<string, number>): DescribeItPlayerScore[] =>
+  const rank = (totals: Map<string, number>, last: Map<string, number>): DescribeItPlayerScore[] =>
     active
       .map((p) => ({ id: p.id, name: p.name, score: totals.get(p.id) ?? 0 }))
-      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          (last.get(a.id) ?? Infinity) - (last.get(b.id) ?? Infinity) ||
+          a.name.localeCompare(b.name)
+      )
 
-  return { guessers: rank(guesserPoints), describers: rank(describerPoints) }
+  return { guessers: rank(guesserPoints, guesserLast), describers: rank(describerPoints, describerLast) }
 }
 
 /**

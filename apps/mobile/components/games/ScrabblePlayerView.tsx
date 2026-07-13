@@ -431,7 +431,11 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
         isMyTurn={isMyTurn}
       />
 
-      <ScrabbleGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} />
+      <ScrabbleGameTimerBar
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onExpired={() => void bootstrap.load()}
+      />
 
       {isChess ? (
         chessClock.activeSecondsLeft > 0 ? (

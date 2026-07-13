@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { CrosswordBoard, crosswordPlayerColor } from '@/components/crossword/CrosswordBoard'
 import { CrosswordGameTimerBar } from '@/components/crossword/CrosswordGameTimerBar'
@@ -198,6 +198,9 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
   useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
 
+  // Latest committed status, read by the games channel without resubscribing.
+  const gameStatusRef = useRef(game?.status)
+  gameStatusRef.current = game?.status
   useEffect(() => {
     const ch = supabase
       .channel(`crossword_host_game_${gameCode}`)
@@ -205,8 +208,12 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
-          setGame(payload.new as Game)
-          load()
+          const next = payload.new as Game
+          setGame(next)
+          // markGameFinished writes the games row more than once at finish (status, then
+          // finished_at / winner). Reloading on every UPDATE replayed the finish cascade
+          // several times — the host's "glitches several times". Reload only on a status flip.
+          if (next.status !== gameStatusRef.current) load()
         }
       )
       .subscribe()
@@ -411,14 +418,15 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
     return map
   }, [activePlayers])
 
-  const leaderboard = metadata ? tallyCrosswordScores(metadata, submissions, players) : []
-  const hostRow = leaderboard.find((row) => row.player_id === hostPlayerId)
-  const hostWon =
-    !!hostRow &&
-    leaderboard.length > 1 &&
-    leaderboard[0] != null &&
-    hostRow.points === leaderboard[0].points &&
-    leaderboard[0].points > 0
+  const leaderboard = useMemo(
+    () => (metadata ? tallyCrosswordScores(metadata, submissions, players) : []),
+    [metadata, submissions, players]
+  )
+  // A crossword has exactly one winner: the single top-ranked player after all
+  // tiebreaks (points → words → finish time → name). Post the host's community win
+  // only when the host is that winner — never every player tied on points.
+  const leader = leaderboard[0]
+  const hostWon = !!leader && leader.player_id === hostPlayerId && leader.wordsCompleted > 0
   const hostPlays = hostMode === 'player' && !!hostPlayerId
 
   // When the host is only watching, they view one player's board (switchable), with that
@@ -709,7 +717,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
             <PostWinToCommunity
               gameType="crossword"
               gameCode={gameCode}
-              winnerName={hostRow?.name ?? ''}
+              winnerName={leader?.name ?? ''}
               roundKey={game?.session_started_at ?? undefined}
             />
           )}

@@ -194,7 +194,11 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
   // End the game when the whole-game duration runs out. Without this the timer
   // bar drains to 0:00 but nothing tells the server to finish — matches web.
-  useGameExpiryTimer({ endpoint: `/api/games/${gameCode}/expire-monopoly`, game: bootstrap.game })
+  useGameExpiryTimer({
+    endpoint: `/api/games/${gameCode}/expire-monopoly`,
+    game: bootstrap.game,
+    onExpired: () => void bootstrap.load(),
+  })
 
   useEffect(() => {
     const id = setInterval(() => setTimerTick((t) => t + 1), 1000)
@@ -631,13 +635,15 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             >
               <Text style={styles.centerSecondaryText}>Auction</Text>
             </Pressable>
-            <Pressable
-              style={[styles.centerSecondary, styles.centerFlex, acting && styles.btnDisabled]}
-              disabled={acting}
-              onPress={() => void act(() => postMonopolyBuy(bootstrap.code, bootstrap.myResumeToken!, 'pass'))}
-            >
-              <Text style={styles.centerSecondaryText}>Pass</Text>
-            </Pressable>
+            {bootstrap.game?.monopoly_forced_auctions === true ? null : (
+              <Pressable
+                style={[styles.centerSecondary, styles.centerFlex, acting && styles.btnDisabled]}
+                disabled={acting}
+                onPress={() => void act(() => postMonopolyBuy(bootstrap.code, bootstrap.myResumeToken!, 'pass'))}
+              >
+                <Text style={styles.centerSecondaryText}>Pass</Text>
+              </Pressable>
+            )}
           </View>
         </View>
       ) : null}
