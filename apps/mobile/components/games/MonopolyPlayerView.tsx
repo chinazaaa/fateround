@@ -635,13 +635,15 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             >
               <Text style={styles.centerSecondaryText}>Auction</Text>
             </Pressable>
-            <Pressable
-              style={[styles.centerSecondary, styles.centerFlex, acting && styles.btnDisabled]}
-              disabled={acting}
-              onPress={() => void act(() => postMonopolyBuy(bootstrap.code, bootstrap.myResumeToken!, 'pass'))}
-            >
-              <Text style={styles.centerSecondaryText}>Pass</Text>
-            </Pressable>
+            {bootstrap.game?.monopoly_forced_auctions === true ? null : (
+              <Pressable
+                style={[styles.centerSecondary, styles.centerFlex, acting && styles.btnDisabled]}
+                disabled={acting}
+                onPress={() => void act(() => postMonopolyBuy(bootstrap.code, bootstrap.myResumeToken!, 'pass'))}
+              >
+                <Text style={styles.centerSecondaryText}>Pass</Text>
+              </Pressable>
+            )}
           </View>
         </View>
       ) : null}

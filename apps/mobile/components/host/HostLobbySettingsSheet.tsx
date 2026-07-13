@@ -64,6 +64,11 @@ import {
   type ScrabbleLobbyState,
 } from '@/components/host/lobby-settings/ScrabbleLobbySection'
 import {
+  MonopolyLobbySection,
+  isMonopolyLobbyGame,
+  type MonopolyLobbyState,
+} from '@/components/host/lobby-settings/MonopolyLobbySection'
+import {
   ICallOnLobbySection,
   isICallOnLobbyGame,
   type ICallOnLobbyState,
@@ -199,6 +204,7 @@ export function HostLobbySettingsSheet({
   const isQuiplash = isQuiplashLobbyGame(gameType)
   const isDuration = isDurationGame(gameType)
   const isScrabble = isScrabbleLobbyGame(gameType)
+  const isMonopoly = isMonopolyLobbyGame(gameType)
   const isICallOn = isICallOnLobbyGame(gameType)
   const showPollQuestions = hasPollQuestionSettings(gameType)
   const isBingo = isBingoLobbyGame(gameType)
@@ -302,6 +308,11 @@ export function HostLobbySettingsSheet({
     timerSeconds: game.timer_seconds ?? 0,
     gameDurationSeconds: game.game_duration_seconds ?? 0,
     dictionaryId: game.scrabble_dictionary_id ?? 'enable',
+  }))
+  const [monopoly, setMonopoly] = useState<MonopolyLobbyState>(() => ({
+    doubleGoSalary: game.monopoly_double_go_salary === true,
+    forcedAuctions: game.monopoly_forced_auctions === true,
+    noRentInJail: game.monopoly_no_rent_in_jail === true,
   }))
   const [icallon, setIcallon] = useState<ICallOnLobbyState>(() => ({
     gameDurationSeconds: game.game_duration_seconds ?? 0,
@@ -493,6 +504,14 @@ export function HostLobbySettingsSheet({
     if (isQuiplash) {
       if (quiplash.timerSeconds !== game.timer_seconds) board.timer_seconds = quiplash.timerSeconds
       if (quiplash.voteTimer !== game.operative_timer_seconds) board.operative_timer_seconds = quiplash.voteTimer
+    }
+    if (isMonopoly) {
+      if (monopoly.doubleGoSalary !== (game.monopoly_double_go_salary === true))
+        board.monopoly_double_go_salary = monopoly.doubleGoSalary
+      if (monopoly.forcedAuctions !== (game.monopoly_forced_auctions === true))
+        board.monopoly_forced_auctions = monopoly.forcedAuctions
+      if (monopoly.noRentInJail !== (game.monopoly_no_rent_in_jail === true))
+        board.monopoly_no_rent_in_jail = monopoly.noRentInJail
     }
     if (isDuration) {
       if (
@@ -705,6 +724,10 @@ export function HostLobbySettingsSheet({
 
             {isQuiplash ? (
               <QuiplashLobbySection value={quiplash} onChange={(p) => setQuiplash((prev) => ({ ...prev, ...p }))} />
+            ) : null}
+
+            {isMonopoly ? (
+              <MonopolyLobbySection value={monopoly} onChange={(p) => setMonopoly((prev) => ({ ...prev, ...p }))} />
             ) : null}
 
             {isDuration ? (
