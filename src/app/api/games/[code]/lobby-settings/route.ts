@@ -105,6 +105,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     timer_seconds,
     game_duration_seconds,
     rounds_count,
+    monopoly_double_go_salary,
+    monopoly_forced_auctions,
+    monopoly_no_rent_in_jail,
     whot_pick3_enabled,
     whot_cards_enabled,
     whot_number_calls_enabled,
@@ -138,6 +141,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     timer_seconds === undefined &&
     game_duration_seconds === undefined &&
     rounds_count === undefined &&
+    monopoly_double_go_salary === undefined &&
+    monopoly_forced_auctions === undefined &&
+    monopoly_no_rent_in_jail === undefined &&
     whot_pick3_enabled === undefined &&
     whot_cards_enabled === undefined &&
     whot_number_calls_enabled === undefined &&
@@ -341,6 +347,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (word_scramble_difficulty !== undefined) {
       gameUpdate.word_scramble_difficulty = parseWordScrambleDifficulty(word_scramble_difficulty)
     }
+  }
+
+  if (boardLobbyType === 'monopoly') {
+    if (monopoly_double_go_salary !== undefined) gameUpdate.monopoly_double_go_salary = monopoly_double_go_salary
+    if (monopoly_forced_auctions !== undefined) gameUpdate.monopoly_forced_auctions = monopoly_forced_auctions
+    if (monopoly_no_rent_in_jail !== undefined) gameUpdate.monopoly_no_rent_in_jail = monopoly_no_rent_in_jail
+  } else if (
+    monopoly_double_go_salary !== undefined ||
+    monopoly_forced_auctions !== undefined ||
+    monopoly_no_rent_in_jail !== undefined
+  ) {
+    return NextResponse.json({ error: 'These rules only apply to Monopoly games' }, { status: 400 })
   }
 
   if (boardLobbyType === 'whot') {
