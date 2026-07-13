@@ -1,4 +1,4 @@
-import type { AyoSession, AyoSide, Participant, Player, TriviaAnswer, Vote } from '@fateround/shared'
+import type { AyoSession, AyoSide, Participant, Player, Vote } from '@fateround/shared'
 import type { LudoStanding } from '@fateround/shared/ludo'
 import type { SnakeLadderStanding } from '@fateround/shared/snake-and-ladder'
 import { formatMonopolyMoney } from '@fateround/shared/monopoly-board'
@@ -19,18 +19,6 @@ export function toLeaderboardRows(
     score: row.score,
     highlight: highlightFirst && index === 0,
   }))
-}
-
-export function tallyTriviaScores(answers: TriviaAnswer[], players: Player[]): FinishedLeaderboardRow[] {
-  const totals = new Map<string, number>()
-  for (const player of players) totals.set(player.id, 0)
-  for (const answer of answers) {
-    totals.set(answer.player_id, (totals.get(answer.player_id) ?? 0) + answer.points)
-  }
-  const rows = players
-    .map((player) => ({ name: player.name, score: totals.get(player.id) ?? 0 }))
-    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
-  return toLeaderboardRows(rows)
 }
 
 export function scoreListLeaderboard(
