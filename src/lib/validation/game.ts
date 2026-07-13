@@ -297,6 +297,8 @@ export const boardGameLobbySettingsSchema = z.object({
   word_search_difficulty: z.enum(['easy', 'medium', 'hard']).optional(),
   word_scramble_theme: z.string().max(64).optional(),
   word_scramble_difficulty: z.enum(['easy', 'medium', 'hard']).optional(),
+  // Switch the puzzle to an admin theme from the lobby (server folds its pool + difficulty).
+  puzzle_theme_id: z.string().uuid().optional(),
 })
 
 export type BoardGameLobbySettingsInput = z.infer<typeof boardGameLobbySettingsSchema>

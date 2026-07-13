@@ -7,6 +7,7 @@ import { CrosswordBoard, crosswordPlayerColor, CROSSWORD_MY_CELL_COLOR } from '@
 import { CrosswordGameTimerBar } from '@/components/crossword/CrosswordGameTimerBar'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import {
   parseCrosswordMetadata,
   crosswordWordCells,
@@ -869,37 +870,39 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
       <div className="min-h-screen flex flex-col">
         <GamePlayerChrome />
         <main className="pt-16 flex-1 px-4 py-8 max-w-lg mx-auto w-full space-y-6">
-          <div className="glass-card-strong p-8 text-center space-y-2">
-            <p className="text-4xl">🏆</p>
-            <p className="text-2xl font-black">Puzzle complete!</p>
-            {leaderboard[0] && (
-              <p className="text-muted text-base">
-                {leaderboard[0].name} wins with {leaderboard[0].points} pts
-              </p>
-            )}
-          </div>
-          <PaginatedLeaderboard
-            title="Final leaderboard"
-            rows={leaderboard.map((row, i) => {
-              const pct = metadata ? playerCompletionPercent(metadata, submissions, row.player_id) : 0
-              const timeSecs = getPlayerTimeSpent(
-                game,
-                submissions,
-                row.player_id,
-                pct,
-                nowMs,
-                players.find((p) => p.id === row.player_id)?.joined_at
-              )
-              return {
-                id: row.player_id,
-                name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,
-                score: row.points,
-                rank: i + 1,
-              }
-            })}
-            highlightId={myPlayerId ?? undefined}
-            scoreLabel={(n) => `${n} pts`}
-          />
+          <FinalResultsShareBlock game={game} participants={[]} votes={[]} rounds={[]} players={players}>
+            <div className="glass-card-strong p-8 text-center space-y-2">
+              <p className="text-4xl">🏆</p>
+              <p className="text-2xl font-black">Puzzle complete!</p>
+              {leaderboard[0] && (
+                <p className="text-muted text-base">
+                  {leaderboard[0].name} wins with {leaderboard[0].points} pts
+                </p>
+              )}
+            </div>
+            <PaginatedLeaderboard
+              title="Final leaderboard"
+              rows={leaderboard.map((row, i) => {
+                const pct = metadata ? playerCompletionPercent(metadata, submissions, row.player_id) : 0
+                const timeSecs = getPlayerTimeSpent(
+                  game,
+                  submissions,
+                  row.player_id,
+                  pct,
+                  nowMs,
+                  players.find((p) => p.id === row.player_id)?.joined_at
+                )
+                return {
+                  id: row.player_id,
+                  name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,
+                  score: row.points,
+                  rank: i + 1,
+                }
+              })}
+              highlightId={myPlayerId ?? undefined}
+              scoreLabel={(n) => `${n} pts`}
+            />
+          </FinalResultsShareBlock>
           {iWon && (
             <PostWinToCommunity
               gameType="crossword"

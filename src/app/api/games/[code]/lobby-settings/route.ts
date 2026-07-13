@@ -132,6 +132,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     word_search_difficulty,
     word_scramble_theme,
     word_scramble_difficulty,
+    puzzle_theme_id,
   } = parsed.data
   const gameCode = parsed.data.gameId.toUpperCase()
 
@@ -167,7 +168,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     word_search_theme === undefined &&
     word_search_difficulty === undefined &&
     word_scramble_theme === undefined &&
-    word_scramble_difficulty === undefined
+    word_scramble_difficulty === undefined &&
+    puzzle_theme_id === undefined
   ) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
@@ -319,13 +321,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
   }
 
-  // Crossword / Word Search puzzle theme + difficulty. Stored on the game and consumed at
-  // start (they pick the word bank + grid), so they're safe to change while still waiting.
+  // Crossword / Word Search / Word Scramble puzzle theme + difficulty. Stored on the game and
+  // consumed at start (they pick the word bank + grid), so they're safe to change while waiting.
+  // Selecting a BUILT-IN theme also clears any custom/admin word pool so the game reverts to the
+  // built-in code path (otherwise a stale pool from an earlier admin-theme pick would still win).
   if (crossword_theme !== undefined || crossword_difficulty !== undefined) {
     if (limitOnlyType !== 'crossword') {
       return NextResponse.json({ error: 'This game type has no crossword theme settings' }, { status: 400 })
     }
-    if (crossword_theme !== undefined) gameUpdate.crossword_theme = findCrosswordTheme(crossword_theme).id
+    if (crossword_theme !== undefined) {
+      gameUpdate.crossword_theme = findCrosswordTheme(crossword_theme).id
+      gameUpdate.custom_questions = null
+      gameUpdate.question_source = 'platform'
+    }
     if (crossword_difficulty !== undefined)
       gameUpdate.crossword_difficulty = parseCrosswordDifficulty(crossword_difficulty)
   }
@@ -333,7 +341,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (limitOnlyType !== 'word_search') {
       return NextResponse.json({ error: 'This game type has no word search theme settings' }, { status: 400 })
     }
-    if (word_search_theme !== undefined) gameUpdate.word_search_theme = findWordSearchTheme(word_search_theme).id
+    if (word_search_theme !== undefined) {
+      gameUpdate.word_search_theme = findWordSearchTheme(word_search_theme).id
+      gameUpdate.custom_questions = null
+      gameUpdate.question_source = 'platform'
+    }
     if (word_search_difficulty !== undefined) {
       gameUpdate.word_search_difficulty = parseWordSearchDifficulty(word_search_difficulty)
     }
@@ -342,11 +354,44 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (limitOnlyType !== 'word_scramble') {
       return NextResponse.json({ error: 'This game type has no word scramble theme settings' }, { status: 400 })
     }
-    if (word_scramble_theme !== undefined)
+    if (word_scramble_theme !== undefined) {
       gameUpdate.word_scramble_theme = findWordScrambleTheme(word_scramble_theme).id
+      gameUpdate.custom_questions = null
+      gameUpdate.question_source = 'platform'
+    }
     if (word_scramble_difficulty !== undefined) {
       gameUpdate.word_scramble_difficulty = parseWordScrambleDifficulty(word_scramble_difficulty)
     }
+  }
+
+  // Switch to an admin theme from the lobby: fold its saved pool + locked difficulty into the
+  // game (mirrors POST /api/games). Its words are secret, so resolved server-side. Stores the
+  // theme NAME in the *_theme column for the join-screen chips.
+  if (puzzle_theme_id !== undefined) {
+    const puzzleKind =
+      limitOnlyType === 'crossword'
+        ? 'crossword'
+        : limitOnlyType === 'word_search'
+          ? 'word_search'
+          : limitOnlyType === 'word_scramble'
+            ? 'word_scramble'
+            : null
+    if (!puzzleKind) {
+      return NextResponse.json({ error: 'This game type has no puzzle themes' }, { status: 400 })
+    }
+    const { data: pt } = await getSupabaseAdmin()
+      .from('puzzle_themes')
+      .select('game_type, name, difficulty, entries')
+      .eq('id', puzzle_theme_id)
+      .maybeSingle()
+    if (!pt || pt.game_type !== puzzleKind || !Array.isArray(pt.entries) || pt.entries.length < 4) {
+      return NextResponse.json({ error: 'Theme not found' }, { status: 400 })
+    }
+    gameUpdate.custom_questions = pt.entries as unknown[]
+    gameUpdate.question_source = 'platform'
+    gameUpdate[`${puzzleKind}_theme`] = pt.name as string
+    const d = pt.difficulty as string | null
+    if (d === 'easy' || d === 'medium' || d === 'hard') gameUpdate[`${puzzleKind}_difficulty`] = d
   }
 
   if (boardLobbyType === 'monopoly') {
