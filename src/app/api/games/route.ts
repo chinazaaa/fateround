@@ -778,7 +778,10 @@ export async function POST(req: NextRequest) {
   // theme's locked difficulty when it has one. The start route already builds from
   // custom_questions when present, so no start-route change is needed.
   let puzzleThemeDifficulty: 'easy' | 'medium' | 'hard' | null = null
-  let puzzleThemeIdApplied: string | null = null
+  // The admin theme's NAME is stored in the *_theme column so the join-screen info chips can
+  // display it (GameInfoChips shows any non-built-in value as-is). The words already live in
+  // custom_questions, so this column is display-only for admin themes.
+  let puzzleThemeNameApplied: string | null = null
   const puzzleThemeGameType = isCrosswordGame(game_type)
     ? 'crossword'
     : isWordSearchGame(game_type)
@@ -789,12 +792,12 @@ export async function POST(req: NextRequest) {
   if (rawPuzzleThemeId && puzzleThemeGameType) {
     const { data: pt } = await admin
       .from('puzzle_themes')
-      .select('id, game_type, difficulty, entries')
+      .select('id, game_type, name, difficulty, entries')
       .eq('id', rawPuzzleThemeId)
       .maybeSingle()
     if (pt && pt.game_type === puzzleThemeGameType && Array.isArray(pt.entries) && pt.entries.length >= 4) {
       custom_questions = pt.entries as unknown[]
-      puzzleThemeIdApplied = pt.id as string
+      puzzleThemeNameApplied = (pt.name as string) ?? null
       const d = pt.difficulty as string | null
       puzzleThemeDifficulty = d === 'easy' || d === 'medium' || d === 'hard' ? d : null
     }
@@ -903,19 +906,19 @@ export async function POST(req: NextRequest) {
       : {}),
     ...(isCrosswordGame(game_type)
       ? {
-          crossword_theme: puzzleThemeIdApplied ?? findCrosswordTheme(rawCrosswordTheme).id,
+          crossword_theme: puzzleThemeNameApplied ?? findCrosswordTheme(rawCrosswordTheme).id,
           crossword_difficulty: puzzleThemeDifficulty ?? parseCrosswordDifficulty(rawCrosswordDifficulty),
         }
       : {}),
     ...(isWordSearchGame(game_type)
       ? {
-          word_search_theme: puzzleThemeIdApplied ?? findWordSearchTheme(rawWordSearchTheme).id,
+          word_search_theme: puzzleThemeNameApplied ?? findWordSearchTheme(rawWordSearchTheme).id,
           word_search_difficulty: puzzleThemeDifficulty ?? parseWordSearchDifficulty(rawWordSearchDifficulty),
         }
       : {}),
     ...(isWordScrambleGame(game_type)
       ? {
-          word_scramble_theme: puzzleThemeIdApplied ?? findWordScrambleTheme(rawWordScrambleTheme).id,
+          word_scramble_theme: puzzleThemeNameApplied ?? findWordScrambleTheme(rawWordScrambleTheme).id,
           word_scramble_difficulty: puzzleThemeDifficulty ?? parseWordScrambleDifficulty(rawWordScrambleDifficulty),
         }
       : {}),
