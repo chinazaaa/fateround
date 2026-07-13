@@ -9,6 +9,7 @@ import {
   WORD_SCRAMBLE_WORD_POINTS,
   WORD_SCRAMBLE_FIRST_BONUS,
   WORD_SCRAMBLE_HINT_PENALTY,
+  WORD_SCRAMBLE_CLUE_PENALTY,
   WORD_SCRAMBLE_LENGTH_BONUS,
   type WordScrambleMetadata,
   type WordScrambleSolve,
@@ -52,6 +53,12 @@ describe('buildWordScramblePuzzle', () => {
     expect(a.solution).toEqual(b.solution)
     expect(a.metadata.scrambles).toEqual(b.metadata.scrambles)
   })
+
+  it('carries a clue for every platform word (for the Hint button)', () => {
+    const { metadata, solution } = buildWordScramblePuzzle('general', 'medium', 7)
+    expect(metadata.hints?.length).toBe(solution.length)
+    expect(metadata.hints?.every((h) => h.trim().length > 0)).toBe(true)
+  })
 })
 
 const META: WordScrambleMetadata = { scrambles: ['XXX', 'YYY'], count: 2, difficulty: 'medium' }
@@ -88,11 +95,28 @@ describe('tallyWordScrambleScores', () => {
     expect(p1.solved).toBe(1)
   })
 
-  it('applies the hint penalty and denies the first-solver bonus for a hinted solve', () => {
+  it('applies the reveal penalty and denies the first-solver bonus for a revealed solve', () => {
     const rows = [solve({ player_id: 'p1', scramble_index: 0, via_hint: true })]
     const scores = tallyWordScrambleScores(META, rows, PLAYERS)
     const p1 = scores.find((s) => s.player_id === 'p1')!
     expect(p1.points).toBe(WORD_SCRAMBLE_WORD_POINTS + WORD_SCRAMBLE_HINT_PENALTY)
+  })
+
+  it('gives a revealed word no length bonus, even on Hard', () => {
+    const rows = [solve({ player_id: 'p1', scramble_index: 0, word: 'ELEPHANT', via_hint: true })]
+    const hard = tallyWordScrambleScores({ ...META, difficulty: 'hard' }, rows, PLAYERS)
+    // base + reveal penalty only — no length bonus for a reveal.
+    expect(hard.find((s) => s.player_id === 'p1')!.points).toBe(WORD_SCRAMBLE_WORD_POINTS + WORD_SCRAMBLE_HINT_PENALTY)
+  })
+
+  it('subtracts the clue-hint penalty for each word where a clue was spent', () => {
+    const rows = [solve({ player_id: 'p1', scramble_index: 0, solved_at: '2026-07-12T00:00:01.000Z' })]
+    const scores = tallyWordScrambleScores(META, rows, PLAYERS, {
+      hints: [{ player_id: 'p1', scramble_index: 0, letters: 1 }],
+    })
+    const p1 = scores.find((s) => s.player_id === 'p1')!
+    // 10 base + 5 first bonus + 1 clue × (−1) = 14
+    expect(p1.points).toBe(WORD_SCRAMBLE_WORD_POINTS + WORD_SCRAMBLE_FIRST_BONUS + WORD_SCRAMBLE_CLUE_PENALTY)
   })
 
   it('adds a per-letter length bonus on Hard only', () => {

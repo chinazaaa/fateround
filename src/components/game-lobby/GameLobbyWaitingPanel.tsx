@@ -7,7 +7,8 @@ import { LeaveGameButton, leaveButtonQuietClassName } from '@/components/ui/Leav
 import { PlayerResumeCard } from '@/components/PlayerResumeCard'
 import { WhatsAppChannelLink } from '@/components/WhatsAppChannelLink'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
-import type { Player } from '@/types'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
+import type { Game, Player } from '@/types'
 
 type Props = {
   gameCode: string
@@ -19,6 +20,8 @@ type Props = {
   title?: string
   /** Game type (e.g. game.game_type) — shows the game's name + emoji so players know what they joined. */
   gameType?: string
+  /** Full game row — surfaces theme / difficulty / time chips so players know what they're joining. */
+  game?: Game | null
   description?: React.ReactNode
   rulesLink?: React.ReactNode
   activity?: React.ReactNode
@@ -39,6 +42,7 @@ export function GameLobbyWaitingPanel({
   onLeft,
   title = 'Waiting for host',
   gameType,
+  game,
   description,
   rulesLink,
   activity,
@@ -96,6 +100,7 @@ export function GameLobbyWaitingPanel({
             <span>{gameCfg.label}</span>
           </p>
         )}
+        {game ? <GameInfoChips game={game} className="pt-1" /> : null}
         <div className="flex justify-center pt-2">
           <WhatsAppChannelLink />
         </div>

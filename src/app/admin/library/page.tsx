@@ -59,6 +59,10 @@ const GAME_TYPE_META: Record<string, { label: string; color: string }> = {
     label: 'Word Search',
     color: 'text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/25',
   },
+  word_scramble: {
+    label: 'Word Scramble',
+    color: 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/25',
+  },
 }
 
 const TAG_META: Record<string, { label: string; color: string }> = {
@@ -82,6 +86,9 @@ const ALL_GAME_TYPES = [
   'quick_draw',
   'codewords',
   'pick_a_number',
+  'crossword',
+  'word_search',
+  'word_scramble',
 ]
 const ALL_STATUSES = ['pending', 'approved', 'rejected']
 const STATUSES = ['pending', 'approved', 'rejected'] as const
@@ -439,5 +446,8 @@ function previewText(gameType: string, q: unknown): string {
   const obj = q as Record<string, unknown>
   if (gameType === 'trivia') return String(obj.question ?? '')
   if (gameType === 'would_you_rather' || gameType === 'this_or_that') return `${obj.optionA} or ${obj.optionB}`
+  if (gameType === 'crossword') return `${obj.answer ?? ''} — ${obj.clue ?? ''}`
+  if (gameType === 'word_search') return String(obj.word ?? '')
+  if (gameType === 'word_scramble') return obj.hint ? `${obj.word} — ${obj.hint}` : String(obj.word ?? '')
   return JSON.stringify(q)
 }

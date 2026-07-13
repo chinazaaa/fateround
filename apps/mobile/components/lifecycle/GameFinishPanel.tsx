@@ -68,6 +68,9 @@ export function GameFinishPanel({
 
   const winner = winnerPlayerId ? bootstrap.players.find((p) => p.id === winnerPlayerId) : null
   const iWon = !!winner && !!bootstrap.myPlayerId && winner.id === bootstrap.myPlayerId
+  // Trophy when there's a winner, otherwise the game's finish emoji — the same
+  // hero emoji feeds the on-screen card and the shared image so they match.
+  const heroEmoji = winner ? '🏆' : emoji
 
   return (
     <ScrollView
@@ -82,7 +85,9 @@ export function GameFinishPanel({
           subtitle={subtitle}
           leaderboard={leaderboard}
           primaryAction={primaryAction}
-          emoji={emoji}
+          emoji={heroEmoji}
+          gameType={game.game_type}
+          gameTitle={game.title}
         />
       )}
       {notice}
@@ -104,8 +109,9 @@ export function GameFinishPanel({
         gameType={game.game_type}
         gameTitle={game.title}
         resultTitle={title}
+        resultSubtitle={subtitle}
         resultDetail={detail}
-        emoji={winner ? '🏆' : '🏁'}
+        emoji={heroEmoji}
         leaderboard={leaderboard}
       />
     </ScrollView>

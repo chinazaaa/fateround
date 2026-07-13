@@ -247,10 +247,18 @@ export function postWordScrambleSubmit(
   guess: string,
   hint?: boolean
 ) {
-  return postJson<{ correct: boolean; word?: string; alreadySolved?: boolean; hint?: boolean }>(
+  return postJson<{ correct: boolean; word?: string; alreadySolved?: boolean; hint?: boolean; finished?: boolean }>(
     '/api/word-scramble/submit',
     { gameId, resumeToken, scrambleIndex, guess, hint }
   )
+}
+
+export function postWordScrambleHint(gameId: string, resumeToken: string, scrambleIndex: number) {
+  return postJson<{ available: boolean; clue: string; letters?: number }>('/api/word-scramble/hint', {
+    gameId,
+    resumeToken,
+    scrambleIndex,
+  })
 }
 
 export async function fetchWordScrambleSolution(gameId: string): Promise<string[] | null> {

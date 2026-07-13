@@ -14,7 +14,8 @@ export const WORD_SCRAMBLE_GAME_DURATION_OPTIONS = [0, 120, 180, 300, 600, 900] 
 export const WORD_SCRAMBLE_WORD_POINTS = 10
 export const WORD_SCRAMBLE_FIRST_BONUS = 5
 export const WORD_SCRAMBLE_LENGTH_BONUS = 1
-export const WORD_SCRAMBLE_HINT_PENALTY = -2
+export const WORD_SCRAMBLE_HINT_PENALTY = -8
+export const WORD_SCRAMBLE_CLUE_PENALTY = -4
 
 export const WORD_SCRAMBLE_DIFFICULTIES: WordScrambleDifficulty[] = ['easy', 'medium', 'hard']
 export const WORD_SCRAMBLE_DEFAULT_DIFFICULTY: WordScrambleDifficulty = 'medium'
@@ -47,6 +48,13 @@ export interface WordScrambleSolve {
 }
 
 type SolveRow = Pick<WordScrambleSolve, 'player_id' | 'scramble_index' | 'word' | 'via_hint' | 'solved_at'>
+
+/** A per-word clue-hint row from word_scramble_hints (letters = 1 when a clue was spent; never answer text). */
+export interface WordScrambleHint {
+  player_id: string
+  scramble_index: number
+  letters: number
+}
 
 export function normalizeScrambleWord(word: string): string {
   return word
@@ -107,7 +115,7 @@ export function tallyWordScrambleScores(
   metadata: WordScrambleMetadata,
   solves: SolveRow[],
   players: { id: string; name: string; spectator?: boolean | null }[],
-  opts?: { lengthBonus?: boolean }
+  opts?: { lengthBonus?: boolean; hints?: WordScrambleHint[] }
 ): WordScramblePlayerScore[] {
   const lengthBonus =
     opts?.lengthBonus ?? WORD_SCRAMBLE_DIFFICULTY_SPECS[parseWordScrambleDifficulty(metadata.difficulty)].lengthBonus
@@ -139,13 +147,23 @@ export function tallyWordScrambleScores(
       if (!entry) continue
       points.set(p.id, (points.get(p.id) ?? 0) + WORD_SCRAMBLE_WORD_POINTS)
       solved.set(p.id, (solved.get(p.id) ?? 0) + 1)
-      if (lengthBonus) points.set(p.id, (points.get(p.id) ?? 0) + entry.word.length * WORD_SCRAMBLE_LENGTH_BONUS)
-      if (entry.viaHint) points.set(p.id, (points.get(p.id) ?? 0) + WORD_SCRAMBLE_HINT_PENALTY)
-      else nonHint.push({ playerId: p.id, time: entry.time })
+      if (entry.viaHint) {
+        // Revealed words don't earn the length or first-solver bonus — just base minus penalty.
+        points.set(p.id, (points.get(p.id) ?? 0) + WORD_SCRAMBLE_HINT_PENALTY)
+      } else {
+        if (lengthBonus) points.set(p.id, (points.get(p.id) ?? 0) + entry.word.length * WORD_SCRAMBLE_LENGTH_BONUS)
+        nonHint.push({ playerId: p.id, time: entry.time })
+      }
     }
     nonHint.sort((a, b) => a.time - b.time)
     if (nonHint.length > 0)
       points.set(nonHint[0].playerId, (points.get(nonHint[0].playerId) ?? 0) + WORD_SCRAMBLE_FIRST_BONUS)
+  }
+
+  // Subtract the clue-hint penalty for each word where the player spent a "Clue" hint.
+  for (const h of opts?.hints ?? []) {
+    if (!activeIds.has(h.player_id) || h.letters <= 0) continue
+    points.set(h.player_id, (points.get(h.player_id) ?? 0) + h.letters * WORD_SCRAMBLE_CLUE_PENALTY)
   }
 
   return activePlayers

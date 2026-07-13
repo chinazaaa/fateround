@@ -139,6 +139,9 @@ const makeStyles = (theme: Theme) =>
       fontWeight: '700',
       lineHeight: 8,
     },
-    letter: { color: theme.text, fontWeight: '800' },
+    // Stretch to the full cell width and centre the glyph. Without an explicit width the
+    // heavy-weight lone "I" (the narrowest glyph) measures too narrow on the New Architecture
+    // and gets clipped to nothing — the same "I" renders fine inside a multi-letter string.
+    letter: { color: theme.text, fontWeight: '800', alignSelf: 'stretch', textAlign: 'center' },
     letterWrong: { color: '#ef4444' },
   })

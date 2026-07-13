@@ -14,7 +14,10 @@
       "distribution": "internal",
       "channel": "preview",
       "environment": "preview",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "COREPACK_INTEGRITY_KEYS": "0"
+      }
     },
     "production": {
       "channel": "production",

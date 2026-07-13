@@ -44,6 +44,7 @@ import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
@@ -500,6 +501,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
             title={game?.title ?? 'Word Search'}
             gameType="word_search"
             subtitle="Race to spot every hidden word first."
+            meta={<GameInfoChips game={game} />}
           />
         }
       >
@@ -561,6 +563,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          game={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={me?.name ?? ''}
@@ -672,7 +675,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
         </div>
       )}
       <main className="pt-16 flex-1 px-3 py-4 max-w-lg mx-auto w-full space-y-4">
-        <WordSearchGameTimerBar gameCode={gameCode} game={game} />
+        <WordSearchGameTimerBar gameCode={gameCode} game={game} onExpired={load} />
 
         {isViewer ? (
           <ViewerModeBanner

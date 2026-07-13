@@ -64,11 +64,16 @@ type Props = {
   gameType: GameType
   party: PartyRoomSettings
   onChange: (patch: Partial<PartyRoomSettings>) => void
+  /** Content source for puzzle games (crossword/word_search/word_scramble). Theme shows only
+   *  for 'platform'; difficulty is hidden for 'library' (packs carry no difficulty). */
+  contentSource?: 'platform' | 'custom' | 'library'
 }
 
-export function PartyRoomSettingsPanel({ gameType, party, onChange }: Props) {
+export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSource = 'platform' }: Props) {
   const styles = useThemedStyles(makeStyles)
   if (!hasPartyRoomSettings(gameType)) return null
+  const showPuzzleTheme = contentSource === 'platform'
+  const showPuzzleDifficulty = contentSource !== 'library'
 
   const title = `${gameLabel(gameType)} room`
   const roundOptions = partyRoundOptions(gameType)
@@ -516,29 +521,33 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange }: Props) {
 
         {gameType === 'crossword' ? (
           <>
-            <View style={styles.field}>
-              <Text style={styles.label}>Theme</Text>
-              <SelectField
-                title="Crossword theme"
-                value={party.crosswordTheme}
-                options={CROSSWORD_THEME_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
-                onChange={(crosswordTheme) => onChange({ crosswordTheme })}
-              />
-            </View>
-            <View style={styles.field}>
-              <Text style={styles.label}>Difficulty</Text>
-              <SegmentedControl
-                value={party.crosswordDifficulty}
-                options={[
-                  { value: 'easy', label: 'Easy', hint: 'Smaller grid, fewer words' },
-                  { value: 'medium', label: 'Medium' },
-                  { value: 'hard', label: 'Hard', hint: 'Bigger grid, more words' },
-                ]}
-                onChange={(value) =>
-                  onChange({ crosswordDifficulty: value as PartyRoomSettings['crosswordDifficulty'] })
-                }
-              />
-            </View>
+            {showPuzzleTheme ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>Theme</Text>
+                <SelectField
+                  title="Crossword theme"
+                  value={party.crosswordTheme}
+                  options={CROSSWORD_THEME_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
+                  onChange={(crosswordTheme) => onChange({ crosswordTheme })}
+                />
+              </View>
+            ) : null}
+            {showPuzzleDifficulty ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>Difficulty</Text>
+                <SegmentedControl
+                  value={party.crosswordDifficulty}
+                  options={[
+                    { value: 'easy', label: 'Easy', hint: 'Smaller grid, fewer words' },
+                    { value: 'medium', label: 'Medium' },
+                    { value: 'hard', label: 'Hard', hint: 'Bigger grid, more words' },
+                  ]}
+                  onChange={(value) =>
+                    onChange({ crosswordDifficulty: value as PartyRoomSettings['crosswordDifficulty'] })
+                  }
+                />
+              </View>
+            ) : null}
             <TimerPicker
               label="Max time limit"
               value={party.gameDurationSeconds}
@@ -551,29 +560,33 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange }: Props) {
 
         {gameType === 'word_search' ? (
           <>
-            <View style={styles.field}>
-              <Text style={styles.label}>Theme</Text>
-              <SelectField
-                title="Word Search theme"
-                value={party.wordSearchTheme}
-                options={WORD_SEARCH_THEME_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
-                onChange={(wordSearchTheme) => onChange({ wordSearchTheme })}
-              />
-            </View>
-            <View style={styles.field}>
-              <Text style={styles.label}>Difficulty</Text>
-              <SegmentedControl
-                value={party.wordSearchDifficulty}
-                options={[
-                  { value: 'easy', label: 'Easy', hint: 'Smaller grid, fewer words' },
-                  { value: 'medium', label: 'Medium' },
-                  { value: 'hard', label: 'Hard', hint: 'Bigger grid, all directions' },
-                ]}
-                onChange={(value) =>
-                  onChange({ wordSearchDifficulty: value as PartyRoomSettings['wordSearchDifficulty'] })
-                }
-              />
-            </View>
+            {showPuzzleTheme ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>Theme</Text>
+                <SelectField
+                  title="Word Search theme"
+                  value={party.wordSearchTheme}
+                  options={WORD_SEARCH_THEME_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
+                  onChange={(wordSearchTheme) => onChange({ wordSearchTheme })}
+                />
+              </View>
+            ) : null}
+            {showPuzzleDifficulty ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>Difficulty</Text>
+                <SegmentedControl
+                  value={party.wordSearchDifficulty}
+                  options={[
+                    { value: 'easy', label: 'Easy', hint: 'Smaller grid, fewer words' },
+                    { value: 'medium', label: 'Medium' },
+                    { value: 'hard', label: 'Hard', hint: 'Bigger grid, all directions' },
+                  ]}
+                  onChange={(value) =>
+                    onChange({ wordSearchDifficulty: value as PartyRoomSettings['wordSearchDifficulty'] })
+                  }
+                />
+              </View>
+            ) : null}
             <TimerPicker
               label="Max time limit"
               value={party.gameDurationSeconds}
@@ -586,29 +599,33 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange }: Props) {
 
         {gameType === 'word_scramble' ? (
           <>
-            <View style={styles.field}>
-              <Text style={styles.label}>Theme</Text>
-              <SelectField
-                title="Word Scramble theme"
-                value={party.wordScrambleTheme}
-                options={WORD_SCRAMBLE_THEME_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
-                onChange={(wordScrambleTheme) => onChange({ wordScrambleTheme })}
-              />
-            </View>
-            <View style={styles.field}>
-              <Text style={styles.label}>Difficulty</Text>
-              <SegmentedControl
-                value={party.wordScrambleDifficulty}
-                options={[
-                  { value: 'easy', label: 'Easy', hint: 'Short words' },
-                  { value: 'medium', label: 'Medium' },
-                  { value: 'hard', label: 'Hard', hint: 'Long words + letter bonus' },
-                ]}
-                onChange={(value) =>
-                  onChange({ wordScrambleDifficulty: value as PartyRoomSettings['wordScrambleDifficulty'] })
-                }
-              />
-            </View>
+            {showPuzzleTheme ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>Theme</Text>
+                <SelectField
+                  title="Word Scramble theme"
+                  value={party.wordScrambleTheme}
+                  options={WORD_SCRAMBLE_THEME_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
+                  onChange={(wordScrambleTheme) => onChange({ wordScrambleTheme })}
+                />
+              </View>
+            ) : null}
+            {showPuzzleDifficulty ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>Difficulty</Text>
+                <SegmentedControl
+                  value={party.wordScrambleDifficulty}
+                  options={[
+                    { value: 'easy', label: 'Easy', hint: 'Short words' },
+                    { value: 'medium', label: 'Medium' },
+                    { value: 'hard', label: 'Hard', hint: 'Long words + letter bonus' },
+                  ]}
+                  onChange={(value) =>
+                    onChange({ wordScrambleDifficulty: value as PartyRoomSettings['wordScrambleDifficulty'] })
+                  }
+                />
+              </View>
+            ) : null}
             <TimerPicker
               label="Max time limit"
               value={party.gameDurationSeconds}

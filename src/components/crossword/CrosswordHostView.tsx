@@ -474,7 +474,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
 
   const watchBoard = (
     <div className="space-y-6">
-      <CrosswordGameTimerBar gameCode={gameCode} game={game} />
+      <CrosswordGameTimerBar gameCode={gameCode} game={game} onExpired={load} />
       <div>
         <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Puzzle progress</p>
         <p className="text-2xl font-black">{boardCompletion}%</p>

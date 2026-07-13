@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { type Game, type Round } from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import {
@@ -9,22 +9,26 @@ import {
   playerCurrentIndex,
   playerSolvedIndices,
   WORD_SCRAMBLE_HINT_PENALTY,
+  WORD_SCRAMBLE_CLUE_PENALTY,
   type WordScrambleMetadata,
   type WordScrambleSolve,
+  type WordScrambleHint,
 } from '@fateround/shared/word-scramble'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { WordScrambleGameTimerBar } from '@/components/games/word-scramble/WordScrambleGameTimerBar'
+import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { pointsLeaderboard } from '@/lib/finish-leaderboards'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { postWordScrambleSubmit, fetchWordScrambleSolution } from '@/lib/game-api'
+import { postWordScrambleSubmit, postWordScrambleHint, fetchWordScrambleSolution } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
-import { ROUND_SELECT, WORD_SCRAMBLE_SOLVE_SELECT } from '@/lib/supabase-selects'
+import { ROUND_SELECT, WORD_SCRAMBLE_SOLVE_SELECT, WORD_SCRAMBLE_HINT_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { formatMinutesSeconds, getPlayerTimeSpent, ordinal } from '@/components/games/word-search/standings'
 
@@ -39,12 +43,15 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
   const [metadata, setMetadata] = useState<WordScrambleMetadata | null>(null)
   const [solves, setSolves] = useState<WordScrambleSolve[]>([])
+  const [hints, setHints] = useState<WordScrambleHint[]>([])
+  const [revealedPrefix, setRevealedPrefix] = useState<Record<number, string>>({})
   const [answers, setAnswers] = useState<string[] | null>(null)
   const [guess, setGuess] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [wrong, setWrong] = useState(false)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [nowMs, setNowMs] = useState<number>(() => Date.now())
+  const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
 
   const showToast = useCallback((msg: string, ok: boolean) => {
     setToast({ msg, ok })
@@ -55,6 +62,17 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
     setSolves((prev) =>
       prev.some((s) => s.player_id === row.player_id && s.scramble_index === row.scramble_index) ? prev : [...prev, row]
     )
+  }, [])
+
+  const addHint = useCallback((row: WordScrambleHint) => {
+    setHints((prev) => {
+      const i = prev.findIndex((h) => h.player_id === row.player_id && h.scramble_index === row.scramble_index)
+      if (i === -1) return [...prev, row]
+      if (prev[i].letters >= row.letters) return prev
+      const next = [...prev]
+      next[i] = row
+      return next
+    })
   }, [])
 
   const loadGameState = useCallback(
@@ -105,6 +123,11 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
         const meta = roundRes.data ? parseWordScrambleMetadata((roundRes.data as Round).word_scramble_metadata) : null
         if (meta) setMetadata(meta)
         setSolves((rowsRes.data as WordScrambleSolve[]) ?? [])
+        const { data: hintRows } = await getSupabase()
+          .from('word_scramble_hints')
+          .select(WORD_SCRAMBLE_HINT_SELECT)
+          .eq('game_id', gameCode.toUpperCase())
+        setHints((hintRows as WordScrambleHint[]) ?? [])
         return
       }
       if (!playerId || game.status !== 'active') return
@@ -120,13 +143,18 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
         .select(WORD_SCRAMBLE_SOLVE_SELECT)
         .eq('round_id', roundData.id)
       setSolves((rows as WordScrambleSolve[]) ?? [])
+      const { data: hintRows } = await getSupabase()
+        .from('word_scramble_hints')
+        .select(WORD_SCRAMBLE_HINT_SELECT)
+        .eq('round_id', roundData.id)
+      setHints((hintRows as WordScrambleHint[]) ?? [])
     },
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
-    [{ table: 'games', column: 'id' }, 'rounds', 'word_scramble_solves'],
+    [{ table: 'games', column: 'id' }, 'rounds', 'word_scramble_solves', 'word_scramble_hints'],
     () => bootstrap.load(),
     !!bootstrap.game
   )
@@ -151,8 +179,8 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
   const me = bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
   const viewing = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
   const standings = useMemo(
-    () => (metadata ? tallyWordScrambleScores(metadata, solves, bootstrap.players) : []),
-    [metadata, solves, bootstrap.players]
+    () => (metadata ? tallyWordScrambleScores(metadata, solves, bootstrap.players, { hints }) : []),
+    [metadata, solves, hints, bootstrap.players]
   )
   const myRank = standings.findIndex((r) => r.player_id === bootstrap.myPlayerId) + 1
   const myCompletion =
@@ -161,16 +189,39 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
   const myCurrent = metadata && bootstrap.myPlayerId ? playerCurrentIndex(metadata, solves, bootstrap.myPlayerId) : 0
   const allSolved = !!metadata && mySolved >= metadata.count
   const currentScramble = metadata && myCurrent < metadata.count ? metadata.scrambles[myCurrent] : null
-  const currentHint = metadata?.hints && myCurrent < metadata.count ? metadata.hints[myCurrent] : ''
+  const hintAvailable = !!(metadata?.hints && myCurrent < metadata.count && (metadata.hints[myCurrent] ?? '').trim())
+
+  // ── Spectator: pick a player and watch their scrambles fill in live ──
+  const activePlayers = useMemo(() => bootstrap.players.filter((p) => p.spectator !== true), [bootstrap.players])
+  const effectiveWatchedId =
+    (watchedPlayerId && activePlayers.some((p) => p.id === watchedPlayerId) ? watchedPlayerId : null) ??
+    standings[0]?.player_id ??
+    activePlayers[0]?.id ??
+    null
+  const watchedPlayer = bootstrap.players.find((p) => p.id === effectiveWatchedId)
+  const watchedSolvedCount = metadata && effectiveWatchedId ? playerSolvedIndices(solves, effectiveWatchedId).size : 0
+  const watchedCurrent = metadata && effectiveWatchedId ? playerCurrentIndex(metadata, solves, effectiveWatchedId) : 0
+  const watchedPct =
+    metadata && effectiveWatchedId ? wordScrambleCompletionPercent(metadata, solves, effectiveWatchedId) : 0
+  // index → the solved answer word for the watched player (only solved indices appear).
+  const watchedWords = useMemo(() => {
+    const m = new Map<number, string>()
+    if (effectiveWatchedId)
+      for (const s of solves) if (s.player_id === effectiveWatchedId) m.set(s.scramble_index, s.word)
+    return m
+  }, [solves, effectiveWatchedId])
 
   const submit = useCallback(
     async (hint: boolean) => {
       if (!bootstrap.myPlayerId || !bootstrap.myResumeToken || !metadata || submitting) return
       if (myCurrent >= metadata.count) return
       const index = myCurrent
+      const submittedGuess = guess
+      // Clear the field right away so it feels instant and the next word can be typed immediately.
+      if (!hint) setGuess('')
       setSubmitting(true)
       try {
-        const res = await postWordScrambleSubmit(gameCode, bootstrap.myResumeToken, index, guess, hint)
+        const res = await postWordScrambleSubmit(gameCode, bootstrap.myResumeToken, index, submittedGuess, hint)
         if (res.correct) {
           addSolve({
             id: `local-${index}-${bootstrap.myPlayerId}`,
@@ -182,12 +233,13 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
             via_hint: !!hint,
             solved_at: new Date().toISOString(),
           })
-          setGuess('')
           showToast(hint ? `Revealed ${res.word} · ${WORD_SCRAMBLE_HINT_PENALTY} pts` : 'Correct!', true)
+          // The race ends on the last solve — refetch so the finished screen shows immediately
+          // instead of briefly flashing "waiting for others".
+          if (res.finished) void bootstrap.load()
         } else {
           setWrong(true)
           setTimeout(() => setWrong(false), 400)
-          setGuess('')
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Submission failed'
@@ -200,6 +252,42 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
     [bootstrap, metadata, myCurrent, guess, submitting, gameCode, addSolve, showToast]
   )
 
+  const myClue = revealedPrefix[myCurrent] ?? ''
+
+  const revealClue = useCallback(async () => {
+    if (!bootstrap.myPlayerId || !bootstrap.myResumeToken || !metadata || submitting) return
+    if (myCurrent >= metadata.count) return
+    const index = myCurrent
+    setSubmitting(true)
+    try {
+      const res = await postWordScrambleHint(gameCode, bootstrap.myResumeToken, index)
+      if (!res.available) {
+        showToast('No clue for this word', false)
+        return
+      }
+      const clue = typeof res.clue === 'string' ? res.clue : (metadata.hints?.[index] ?? '')
+      setRevealedPrefix((prev) => ({ ...prev, [index]: clue }))
+      addHint({ player_id: bootstrap.myPlayerId, scramble_index: index, letters: 1 })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not get a hint'
+      if (msg.toLowerCase().includes('time')) await bootstrap.load()
+      else showToast(msg, false)
+    } finally {
+      setSubmitting(false)
+    }
+  }, [bootstrap, metadata, myCurrent, submitting, gameCode, addHint, showToast])
+
+  const confirmRevealClue = useCallback(() => {
+    Alert.alert(
+      'Reveal the clue?',
+      `Shows a clue for this word — costs ${Math.abs(WORD_SCRAMBLE_CLUE_PENALTY)} point.`,
+      [
+        { text: 'Keep trying', style: 'cancel' },
+        { text: 'Reveal clue', onPress: () => void revealClue() },
+      ]
+    )
+  }, [revealClue])
+
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
   if (bootstrap.screen === 'join' && bootstrap.game) {
@@ -211,6 +299,7 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
       />
     )
   }
@@ -264,8 +353,12 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('word_scramble')} subtitle={bootstrap.code}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <WordScrambleGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} />
+      <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
+        <WordScrambleGameTimerBar
+          gameCode={bootstrap.code}
+          game={bootstrap.game}
+          onExpired={() => void bootstrap.load()}
+        />
 
         {toast ? (
           <View style={[styles.toast, toast.ok ? styles.toastOk : styles.toastBad]}>
@@ -276,15 +369,65 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
         {metadata ? (
           <>
             <View style={styles.statusRow}>
-              <Text style={styles.statusName}>{me?.name ?? 'Me'}</Text>
+              <Text style={styles.statusName}>{viewing ? (watchedPlayer?.name ?? 'Player') : (me?.name ?? 'Me')}</Text>
               <Text style={styles.statusMeta}>
                 {!viewing && myRank > 0 ? `${ordinal(myRank)} · ` : ''}
-                {mySolved}/{metadata.count} · {myCompletion}%
+                {viewing ? watchedSolvedCount : mySolved}/{metadata.count} · {viewing ? watchedPct : myCompletion}%
               </Text>
             </View>
 
             {viewing ? (
-              <Text style={styles.watching}>You are watching this race.</Text>
+              activePlayers.length === 0 ? (
+                <Text style={styles.watching}>No players yet — pick one to watch once they join.</Text>
+              ) : (
+                <>
+                  <View style={styles.watchCard}>
+                    <Text style={styles.watchLabel}>Watching a player</Text>
+                    <View style={styles.watchChips}>
+                      {activePlayers.map((p) => {
+                        const active = p.id === effectiveWatchedId
+                        return (
+                          <Pressable
+                            key={p.id}
+                            style={[styles.watchChip, active && styles.watchChipActive]}
+                            onPress={() => setWatchedPlayerId(p.id)}
+                          >
+                            <Text
+                              style={[styles.watchChipText, active && styles.watchChipTextActive]}
+                              numberOfLines={1}
+                            >
+                              {p.name}
+                            </Text>
+                          </Pressable>
+                        )
+                      })}
+                    </View>
+                  </View>
+
+                  <View style={styles.scrambleList}>
+                    {metadata.scrambles.map((scr, i) => {
+                      const solvedWord = watchedWords.get(i)
+                      const isCurrent = i === watchedCurrent && !solvedWord
+                      return (
+                        <View
+                          key={i}
+                          style={[
+                            styles.scrambleRow,
+                            solvedWord ? styles.scrambleRowSolved : null,
+                            isCurrent ? styles.scrambleRowCurrent : null,
+                          ]}
+                        >
+                          <Text style={styles.scrambleIndex}>{i + 1}.</Text>
+                          <Text style={[styles.scrambleWord, solvedWord ? styles.scrambleWordSolved : null]}>
+                            {solvedWord ?? scr}
+                          </Text>
+                          <Text style={styles.scrambleStatus}>{solvedWord ? '✓' : isCurrent ? '✍️' : ''}</Text>
+                        </View>
+                      )
+                    })}
+                  </View>
+                </>
+              )
             ) : allSolved ? (
               <View style={styles.doneBanner}>
                 <Text style={styles.doneTitle}>🎉 All solved!</Text>
@@ -314,7 +457,11 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
                     </View>
                   ))}
                 </View>
-                {currentHint ? <Text style={styles.hint}>Hint: {currentHint}</Text> : null}
+                {myClue ? (
+                  <Text style={styles.revealedPrefix}>
+                    Clue: <Text style={styles.revealedClueText}>{myClue}</Text>
+                  </Text>
+                ) : null}
 
                 <View style={styles.inputRow}>
                   <TextInput
@@ -339,22 +486,31 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
                   </Pressable>
                 </View>
 
-                <Pressable
-                  style={[styles.revealBtn, submitting && styles.btnDisabled]}
-                  disabled={submitting}
-                  onPress={() =>
-                    Alert.alert(
-                      'Reveal the answer?',
-                      `This shows the word but costs you ${Math.abs(WORD_SCRAMBLE_HINT_PENALTY)} points.`,
-                      [
-                        { text: 'Keep trying', style: 'cancel' },
-                        { text: 'Reveal', style: 'destructive', onPress: () => void submit(true) },
-                      ]
-                    )
-                  }
-                >
-                  <Text style={styles.revealText}>💡 Reveal answer ({WORD_SCRAMBLE_HINT_PENALTY} pts)</Text>
-                </Pressable>
+                <View style={styles.helpRow}>
+                  <Pressable
+                    style={[styles.hintBtn, (submitting || !hintAvailable || !!myClue) && styles.btnDisabled]}
+                    disabled={submitting || !hintAvailable || !!myClue}
+                    onPress={confirmRevealClue}
+                  >
+                    <Text style={styles.hintText}>🔎 Clue ({WORD_SCRAMBLE_CLUE_PENALTY})</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.revealBtn, submitting && styles.btnDisabled]}
+                    disabled={submitting}
+                    onPress={() =>
+                      Alert.alert(
+                        'Reveal the answer?',
+                        `This shows the word but costs you ${Math.abs(WORD_SCRAMBLE_HINT_PENALTY)} points.`,
+                        [
+                          { text: 'Keep trying', style: 'cancel' },
+                          { text: 'Reveal', style: 'destructive', onPress: () => void submit(true) },
+                        ]
+                      )
+                    }
+                  >
+                    <Text style={styles.revealText}>💡 Reveal ({WORD_SCRAMBLE_HINT_PENALTY})</Text>
+                  </Pressable>
+                </View>
               </>
             )}
 
@@ -378,7 +534,7 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
         ) : (
           <Text style={styles.watching}>Waiting for the race…</Text>
         )}
-      </ScrollView>
+      </KeyboardAwareGameScroll>
     </GameShell>
   )
 }
@@ -394,6 +550,51 @@ const makeStyles = (theme: Theme) =>
     statusName: { color: theme.text, fontWeight: '800', fontSize: 15 },
     statusMeta: { color: theme.textMuted, fontSize: 13 },
     watching: { color: theme.textMuted, textAlign: 'center', marginTop: 24 },
+    watchCard: {
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 12,
+      padding: 12,
+      gap: 8,
+    },
+    watchLabel: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      letterSpacing: 0.6,
+    },
+    watchChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    watchChip: {
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.bgElevated,
+    },
+    watchChipActive: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+    watchChipText: { color: theme.textSecondary, fontSize: 13, fontWeight: '700', maxWidth: 140 },
+    watchChipTextActive: { color: theme.primaryMuted },
+    scrambleList: { gap: 6 },
+    scrambleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    scrambleRowSolved: { borderColor: '#10b98155', backgroundColor: 'rgba(16,185,129,0.08)' },
+    scrambleRowCurrent: { borderColor: theme.primary },
+    scrambleIndex: { color: theme.textMuted, fontSize: 13, width: 24, fontVariant: ['tabular-nums'] },
+    scrambleWord: { flex: 1, color: theme.text, fontSize: 17, fontWeight: '800', letterSpacing: 2 },
+    scrambleWordSolved: { color: '#059669' },
+    scrambleStatus: { fontSize: 14, width: 22, textAlign: 'center' },
     doneBanner: {
       backgroundColor: theme.surface,
       borderWidth: 1,
@@ -424,6 +625,8 @@ const makeStyles = (theme: Theme) =>
     tileWrong: { borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.12)' },
     tileText: { color: theme.text, fontSize: 24, fontWeight: '900' },
     hint: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
+    revealedPrefix: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
+    revealedClueText: { color: theme.text, fontWeight: '700' },
     inputRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
     input: {
       flex: 1,
@@ -442,8 +645,19 @@ const makeStyles = (theme: Theme) =>
     goBtn: { backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 18, paddingVertical: 13 },
     goText: { color: '#fff', fontWeight: '800', fontSize: 15 },
     btnDisabled: { opacity: 0.4 },
+    helpRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+    hintBtn: {
+      flex: 1,
+      alignItems: 'center',
+      backgroundColor: 'rgba(14,165,233,0.15)',
+      borderRadius: 10,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+    },
+    hintText: { color: '#0369a1', fontWeight: '800', fontSize: 13 },
     revealBtn: {
-      alignSelf: 'center',
+      flex: 1,
+      alignItems: 'center',
       backgroundColor: 'rgba(245,158,11,0.15)',
       borderRadius: 10,
       paddingHorizontal: 16,

@@ -465,7 +465,7 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
 
   const watchBoard = (
     <div className="space-y-6">
-      <WordSearchGameTimerBar gameCode={gameCode} game={game} />
+      <WordSearchGameTimerBar gameCode={gameCode} game={game} onExpired={load} />
       <div>
         <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Words found</p>
         <p className="text-2xl font-black">{boardCompletion}%</p>

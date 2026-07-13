@@ -926,9 +926,9 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       const spec = WORD_SCRAMBLE_DIFFICULTY_SPECS[parseWordScrambleDifficulty(game.word_scramble_difficulty)]
       const usedCounts = { ...(poolUsage.word_scramble ?? {}) }
       let used = new Set(Object.keys(usedCounts).map((w) => w.toUpperCase()))
-      const fresh = theme.words.filter(
-        (w) => w.length >= spec.minLen && w.length <= spec.maxLen && !used.has(w.toUpperCase())
-      )
+      const fresh = theme.entries
+        .map((e) => e.word)
+        .filter((w) => w.length >= spec.minLen && w.length <= spec.maxLen && !used.has(w.toUpperCase()))
       if (fresh.length < spec.count) used = new Set() // cycle exhausted — start fresh
       puzzle = buildWordScramblePuzzle(theme.id, game.word_scramble_difficulty, seed, [...used])
       const base = used.size === 0 ? {} : usedCounts

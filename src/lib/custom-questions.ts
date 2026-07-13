@@ -524,9 +524,10 @@ export function parseQuestionSource(raw: unknown, gameType?: GameType | string):
   // Describe It supports uploaded ('custom') words only — it has no library tier,
   // so never persist 'library' (gameplay would silently fall back to the platform pool).
   if (isDescribeItGame(gameType)) return raw === 'custom' ? 'custom' : 'platform'
-  // Crossword / Word Search: library is folded into 'custom' at create (the start route just
-  // checks custom_questions), so only 'platform'/'custom' persist.
-  if (isCrosswordGame(gameType) || isWordSearchGame(gameType)) return raw === 'custom' ? 'custom' : 'platform'
+  // Crossword / Word Search / Word Scramble: library is folded into 'custom' at create (the
+  // start route just checks custom_questions), so only 'platform'/'custom' persist.
+  if (isCrosswordGame(gameType) || isWordSearchGame(gameType) || isWordScrambleGame(gameType))
+    return raw === 'custom' ? 'custom' : 'platform'
   return 'platform'
 }
 
@@ -698,6 +699,9 @@ export function questionUploadHint(gameType?: GameType | string): string {
   }
   if (isWordSearchGame(gameType)) {
     return '.csv — one word per row under a "word" header. 4+ words.'
+  }
+  if (isWordScrambleGame(gameType)) {
+    return '.csv — word and optional hint columns (header row). 4+ words.'
   }
   return '.csv or .xlsx — option_a and option_b columns'
 }
@@ -894,6 +898,13 @@ export function questionSourceOptions(gameType: GameType | string): {
       { value: 'platform', label: 'Platform', hint: 'Use our built-in themed word banks.' },
       { value: 'library', label: 'Library', hint: 'Pick a community word pack.' },
       { value: 'custom', label: 'Your own', hint: 'Upload a CSV of words (4+ words).' },
+    ]
+  }
+  if (isWordScrambleGame(gameType)) {
+    return [
+      { value: 'platform', label: 'Platform', hint: 'Use our built-in themed word banks.' },
+      { value: 'library', label: 'Library', hint: 'Pick a community word pack.' },
+      { value: 'custom', label: 'Your own', hint: 'Upload a CSV of words + optional hints (4+ words).' },
     ]
   }
   const platformCount = isTriviaGame(gameType)
