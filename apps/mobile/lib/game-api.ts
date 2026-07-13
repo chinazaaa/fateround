@@ -1013,6 +1013,8 @@ export type BoardLobbyPatch = {
   word_scramble_difficulty?: 'easy' | 'medium' | 'hard'
   /** Admin-authored theme (puzzle_themes.id); server folds its word pool + locked difficulty. */
   puzzle_theme_id?: string
+  /** Host-supplied puzzle pool (a Library pack or "Your own" upload); server re-validates + normalises. */
+  puzzle_custom_questions?: unknown[]
 }
 
 export function postLobbySettings(gameCode: string, hostToken: string, patch: BoardLobbyPatch) {
