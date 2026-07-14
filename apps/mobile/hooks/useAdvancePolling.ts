@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { Game } from '@fateround/shared'
 import { apiUrl } from '@/lib/config'
+import { useAppActive } from '@/hooks/useAppActive'
 
 const DEFAULT_INTERVAL_MS = 4000
 
@@ -22,9 +23,12 @@ export function useAdvancePolling({
   const inFlight = useRef(false)
   const onAdvancedRef = useRef(onAdvanced)
   onAdvancedRef.current = onAdvanced
+  // Pause the network POST loop while backgrounded (RN suspends it unreliably
+  // anyway); resuming re-runs this effect, which polls once immediately.
+  const appActive = useAppActive()
 
   useEffect(() => {
-    if (!enabled || game?.status !== 'active') return
+    if (!enabled || game?.status !== 'active' || !appActive) return
 
     let cancelled = false
 
@@ -51,5 +55,5 @@ export function useAdvancePolling({
       cancelled = true
       clearInterval(id)
     }
-  }, [enabled, endpoint, game?.status, gameCode, intervalMs])
+  }, [enabled, endpoint, game?.status, gameCode, intervalMs, appActive])
 }

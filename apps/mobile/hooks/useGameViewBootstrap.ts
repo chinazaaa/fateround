@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { AppState } from 'react-native'
 import type { Game, Player } from '@fateround/shared'
 import { normalizeGameCode } from '@fateround/shared'
 import { joinGame } from '@/lib/api'
@@ -264,19 +265,43 @@ export function useGameTableSync(
       debounce = setTimeout(fire, delay)
     }
 
-    let channel = supabase.channel(uniqueTopic(`sync-${gameCode}`))
-    for (const { table, column } of norm) {
-      channel = channel.on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table, filter: `${column}=eq.${gameCode}` },
-        () => schedule()
-      )
+    // (Re)build and subscribe a fresh channel. Broken out so the AppState resume
+    // path can tear the old one down and start clean — see the listener below.
+    const subscribe = () => {
+      let channel = supabase.channel(uniqueTopic(`sync-${gameCode}`))
+      for (const { table, column } of norm) {
+        channel = channel.on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table, filter: `${column}=eq.${gameCode}` },
+          () => schedule()
+        )
+      }
+      channel.subscribe()
+      return channel
     }
 
-    channel.subscribe()
+    let channel = subscribe()
+
+    // While the app is backgrounded, React Native suspends JS timers and the OS
+    // may silently drop the websocket; realtime-js does not reliably notice on
+    // resume, so changes that landed while away never arrive. On every
+    // background→active edge, drop the (possibly dead) channel, re-subscribe a
+    // fresh one, and fire one reload to reconcile whatever we missed.
+    let prevAppState = AppState.currentState
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      const wasBackground = prevAppState !== 'active'
+      prevAppState = state
+      if (!wasBackground || state !== 'active') return
+      void supabase.removeChannel(channel)
+      channel = subscribe()
+      void Promise.resolve()
+        .then(() => reloadRef.current())
+        .catch(() => {})
+    })
 
     return () => {
       if (debounce) clearTimeout(debounce)
+      appStateSub.remove()
       void supabase.removeChannel(channel)
     }
     // `tables` is intentionally keyed via tablesKey (contents, not identity).
