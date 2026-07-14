@@ -11,14 +11,13 @@ import {
 import { batch5GameLabel } from '@fateround/shared/batch-5-games'
 import {
   QUIPLASH_MAX_ANSWER_LENGTH,
+  QUIPLASH_REVEAL_SECONDS,
   answerAuthorName,
   answerOptionLabel,
   canPlayerVoteInRound,
   countVotesForRound,
   parseQuiplashMetadata,
-  phaseDeadlineCountdown,
   quiplashRoundVotingHint,
-  revealCountdownSeconds,
   roundVoteOptions,
   soloRoundPoints,
   tallyQuiplashScores,
@@ -31,9 +30,9 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { PhaseStepper } from '@/components/party/PhaseStepper'
 import { PlayerSessionControls } from '@/components/session/PlayerSessionControls'
 import { RoundBreakCard } from '@/components/party/RoundBreakCard'
+import { DeadlineTimerBadge } from '@/components/ui/DeadlineTimerBadge'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
-import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useAdvancePolling } from '@/hooks/useAdvancePolling'
 import { postQuiplashAnswer, postQuiplashVote } from '@/lib/game-api'
@@ -60,8 +59,6 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
   const [submitting, setSubmitting] = useState(false)
   const scrollRef = useRef<ScrollView>(null)
   const scrollInputIntoView = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)
-  const [countdown, setCountdown] = useState(0)
-  const [revealCountdown, setRevealCountdown] = useState(0)
   const styles = useThemedStyles(makeStyles)
   const theme = useTheme()
 
@@ -176,28 +173,6 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
     answerCount: roundAnswers.length,
   })
 
-  useEffect(() => {
-    if (!session?.turn_deadline_at) {
-      setCountdown(0)
-      return
-    }
-    const tick = () => setCountdown(phaseDeadlineCountdown(session.turn_deadline_at))
-    tick()
-    const id = setInterval(tick, 500)
-    return () => clearInterval(id)
-  }, [session?.turn_deadline_at, session?.phase])
-
-  useEffect(() => {
-    if (session?.phase !== 'reveal' || !currentRound?.ended_at) {
-      setRevealCountdown(0)
-      return
-    }
-    const tick = () => setRevealCountdown(revealCountdownSeconds(currentRound.ended_at))
-    tick()
-    const id = setInterval(tick, 500)
-    return () => clearInterval(id)
-  }, [session?.phase, currentRound?.ended_at])
-
   const submitAnswer = async () => {
     if (cannotParticipate) return
     if (!bootstrap.myResumeToken || !currentRound || submitting || myAnswer) return
@@ -304,7 +279,10 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
         {session.phase === 'reveal' ? (
           <Text style={styles.helper}>Who wrote what — points go to every vote your answer received.</Text>
         ) : null}
-        {countdown > 0 ? <TimerBadge seconds={countdown} /> : null}
+        <DeadlineTimerBadge
+          deadlineAt={session.turn_deadline_at}
+          active={!!session.turn_deadline_at}
+        />
 
         {session.phase === 'writing' ? (
           cannotParticipate ? (
@@ -416,8 +394,14 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
                 )
               })}
             </View>
-            {revealCountdown > 0 ? (
-              <RoundBreakCard title="Round results" message="Next round starting soon…" secondsLeft={revealCountdown} />
+            {currentRound.ended_at ? (
+              <RoundBreakCard
+                title="Round results"
+                message="Next round starting soon…"
+                deadlineAt={new Date(
+                  new Date(currentRound.ended_at).getTime() + QUIPLASH_REVEAL_SECONDS * 1000
+                ).toISOString()}
+              />
             ) : null}
           </>
         ) : null}
