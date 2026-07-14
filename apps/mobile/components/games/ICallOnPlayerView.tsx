@@ -14,7 +14,6 @@ import {
   NPAT_CATEGORY_LABELS,
   NPAT_CATEGORY_POINTS,
   NPAT_LETTER_PICK_SECONDS,
-  NPAT_REVEAL_SECONDS,
   answerTotal,
   availableLettersForPick,
   clampNpatMarkingTimer,
@@ -35,8 +34,6 @@ import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
-import { TimerBadge } from '@/components/ui/TimerBadge'
-import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useAdvancePolling } from '@/hooks/useAdvancePolling'
 import { postNpatLetter, postNpatMark, postNpatSubmit } from '@/lib/game-api'
@@ -50,6 +47,11 @@ import { ICallOnScoreboard } from '@/components/games/i_call_on/ICallOnScoreboar
 import { ICallOnGameTimerBar } from '@/components/games/i_call_on/ICallOnGameTimerBar'
 import { ICallOnLiveLeaderboard } from '@/components/games/i_call_on/ICallOnLiveLeaderboard'
 import { ICallOnRoundHeader } from '@/components/games/i_call_on/ICallOnRoundHeader'
+import {
+  ICallOnAutoSendHint,
+  ICallOnPhaseCountdown,
+  ICallOnRevealCountdown,
+} from '@/components/games/i_call_on/ICallOnCountdowns'
 import { isInCatalogue } from '@/components/games/i_call_on/npat-catalogue'
 import { postNpatCallerApproveOverrides, postNpatDispute, postNpatDraft } from '@/components/games/i_call_on/npat-api'
 import {
@@ -210,16 +212,6 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
       : metadata?.phase === 'marking'
         ? markingTimer
         : NPAT_LETTER_PICK_SECONDS
-  const secondsLeft = useDeadlineCountdown(
-    metadata?.phase_started_at ?? null,
-    phaseDelay,
-    !!(timedPhase && metadata?.phase_started_at)
-  )
-  const revealSecondsLeft = useDeadlineCountdown(
-    currentRound?.ended_at ?? null,
-    NPAT_REVEAL_SECONDS,
-    metadata?.phase === 'reveal'
-  )
 
   // ---- reset per-round local state ------------------------------------------
   useEffect(() => {
@@ -533,13 +525,13 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     />
   )
 
-  const phaseTimer =
-    timedPhase && metadata.phase_started_at ? (
-      <View style={styles.timerWrap}>
-        <TimerBadge seconds={secondsLeft} urgentAt={10} />
-        <Text style={styles.timerLabel}>{secondsLeft}s left</Text>
-      </View>
-    ) : null
+  const phaseTimer = (
+    <ICallOnPhaseCountdown
+      anchorTime={metadata.phase_started_at}
+      delaySeconds={phaseDelay}
+      active={!!(timedPhase && metadata.phase_started_at)}
+    />
+  )
 
   const gameTimerBar = <ICallOnGameTimerBar game={bootstrap.game} />
   const roundHeaderCard = (
@@ -550,9 +542,9 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
       callerName={callerName}
       callerIndex={callerIndex}
       callerCount={metadata.caller_order?.length ?? 0}
-      secondsLeft={secondsLeft}
+      secondsLeft={null}
       showSeconds={false}
-      revealSecondsLeft={revealSecondsLeft}
+      revealSecondsLeft={null}
       showReveal={false}
     />
   )
@@ -634,9 +626,11 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
                 <Text style={styles.primaryText}>Submit answers</Text>
               </Pressable>
               {submitError ? <Text style={styles.submitError}>{submitError}</Text> : null}
-              {secondsLeft <= 10 ? (
-                <Text style={styles.autoSendHint}>Unsubmitted answers are sent automatically when time runs out.</Text>
-              ) : null}
+              <ICallOnAutoSendHint
+                anchorTime={metadata.phase_started_at}
+                delaySeconds={phaseDelay}
+                active={metadata.phase === 'writing'}
+              />
             </>
           )}
           {scoreboard(false, true)}
@@ -776,11 +770,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
         {gameTimerBar}
         <View style={styles.revealHead}>
           <Text style={styles.revealTitle}>Round {currentRound.round_number} scores</Text>
-          {currentRound.ended_at ? (
-            <Text style={styles.revealCountdown}>Next letter in {revealSecondsLeft}s…</Text>
-          ) : (
-            <Text style={styles.revealCountdown}>Next letter coming up…</Text>
-          )}
+          <ICallOnRevealCountdown endedAt={currentRound.ended_at} />
         </View>
         {myRoundTotal != null && !isViewer ? (
           <View style={styles.scoredCard}>

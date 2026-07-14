@@ -3,11 +3,6 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { type Game, type Participant, type Player, type Round } from '@fateround/shared'
 import { batch9GameLabel } from '@fateround/shared/batch-9-games'
 import {
-  finalResultsAutoRevealSeconds,
-  ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
-  roundResultsWaitMessage,
-} from '@fateround/shared/round-timing'
-import {
   HOT_SEAT_SUBMISSION_TYPES,
   hotSeatPlayerDisplayName,
   type HotSeatSubmission,
@@ -21,9 +16,8 @@ import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/g
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { PollReactionBar } from '@/components/games/poll/PollReactionBar'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
-import { TimerBadge } from '@/components/ui/TimerBadge'
-import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
-import { useRoundTimer } from '@/hooks/useRoundTimer'
+import { RoundTimerBadge } from '@/components/party/RoundTimerBadge'
+import { RoundResultsWaitText } from '@/components/party/RoundResultsWaitText'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { getHotSeatSubmissions, postHotSeat } from '@/lib/game-api'
 import { playSound } from '@/lib/sounds'
@@ -183,32 +177,11 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
   const writePhaseActive =
     bootstrap.screen === 'playing' && currentRound?.status === 'active' && !isInHotSeat && !submitted
 
-  // Countdown for the writing phase (auto-submits whatever's typed on expiry).
-  const timeLeft = useRoundTimer({
-    game: bootstrap.game,
-    currentRound: writePhaseActive ? currentRound : null,
-    active: writePhaseActive,
-    onExpire: () => void submitRef.current(),
-  })
-
   const showingResults =
     bootstrap.screen === 'playing' && bootstrap.game?.status === 'active' && currentRound?.status === 'finished'
 
   const isLastRound =
     !!currentRound && !!bootstrap.game && (currentRound.round_number ?? 0) >= (bootstrap.game.rounds_count ?? 0)
-
-  const nextRoundCountdown = useDeadlineCountdown(
-    currentRound?.ended_at,
-    isLastRound ? finalResultsAutoRevealSeconds(bootstrap.game?.game_type) : ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
-    !!showingResults
-  )
-
-  const waitMessage = roundResultsWaitMessage({
-    isLastRound,
-    autoReveal: true,
-    nextRoundSecondsLeft: isLastRound ? 0 : nextRoundCountdown,
-    finalRevealSecondsLeft: isLastRound ? nextRoundCountdown : undefined,
-  })
 
   const selectedTypeMeta = HOT_SEAT_SUBMISSION_TYPES.find((t) => t.type === submissionType)
 
@@ -333,7 +306,14 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
             {bootstrap.myPlayerId ? (
               <PollReactionBar gameCode={bootstrap.code} playerId={bootstrap.myPlayerId} />
             ) : null}
-            <Text style={styles.waiting}>{waitMessage}</Text>
+            <RoundResultsWaitText
+              anchorTime={currentRound.ended_at}
+              isLastRound={isLastRound}
+              autoReveal
+              gameType={bootstrap.game?.game_type}
+              active={showingResults}
+              style={styles.waiting}
+            />
           </View>
         ) : isInHotSeat ? (
           <TurnBanner text="Everyone is writing about you…" isMyTurn={false} />
@@ -343,11 +323,13 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
           </View>
         ) : (
           <>
-            {timeLeft > 0 ? (
-              <View style={styles.timerRow}>
-                <TimerBadge seconds={timeLeft} />
-              </View>
-            ) : null}
+            <RoundTimerBadge
+              game={bootstrap.game}
+              currentRound={writePhaseActive ? currentRound : null}
+              active={writePhaseActive}
+              onExpire={() => void submitRef.current()}
+              containerStyle={styles.timerRow}
+            />
             <Text style={styles.section}>Pick a vibe</Text>
             <View style={styles.typeRow}>
               {HOT_SEAT_SUBMISSION_TYPES.map(({ type, emoji, label }) => (
