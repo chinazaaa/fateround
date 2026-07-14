@@ -208,13 +208,27 @@ export function useJoinFlow(deps: JoinFlowDeps) {
         }
       }
 
+      // If this device already holds a seat here (a racing auto-join, a reconnect, a second
+      // tab), send its resume token so the server reclaims THAT row — role and all — instead
+      // of cutting a fresh one. On an active game a fresh row defaults to spectator, which is
+      // how a real player gets silently demoted to a viewer. Mirrors useGameViewBootstrap.
+      // Only a genuine "seat me" POST carries it: identity edits go through the isSelfEdit
+      // PATCH above, and leaving clears the session (so a deliberate rejoin still gets a new row).
+      const existingToken = isSelfEdit ? null : (getPlayerSession(gameCode)?.resumeToken ?? null)
+
       const res = await fetch('/api/players', {
         method: isSelfEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
           isSelfEdit
             ? { ...body, playerId: myPlayerId, resumeToken: editResumeToken }
-            : { ...body, ...activeJoinExtras, ...joinExtras, ...(tournamentToken ? { tournamentToken } : {}) }
+            : {
+                ...body,
+                ...activeJoinExtras,
+                ...joinExtras,
+                ...(tournamentToken ? { tournamentToken } : {}),
+                ...(existingToken ? { resumeToken: existingToken } : {}),
+              }
         ),
       })
       const data = await res.json()
