@@ -2,7 +2,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 
-const h = vi.hoisted(() => ({ session: null as { playerId: string; playerName: string; playerGender: string; resumeToken: string | null } | null }))
+const h = vi.hoisted(() => ({
+  session: null as { playerId: string; playerName: string; playerGender: string; resumeToken: string | null } | null,
+}))
 
 vi.mock('@/lib/supabase', () => {
   const chain = () => {
