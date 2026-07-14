@@ -35,6 +35,7 @@ import {
 } from '@/lib/npat'
 import { isInCatalogue } from '@/lib/npat-catalogue'
 import { useNpatAdvance } from '@/hooks/useNpatAdvance'
+import { isAdvanceDriver } from '@/lib/advance-driver'
 import { playVoteSubmittedSound } from '@/lib/sounds'
 import { useToast } from '@/components/ui/Toast'
 import type { Game, NpatAnswer, NpatCategory, NpatMark, Player, Round } from '@/types'
@@ -240,10 +241,13 @@ export function NpatActiveRound({
     }
   }, [currentRound?.id, reviewTargetId, reviewTargetAnswer?.player_id, metadata?.phase, myMark?.marked_at, myMark?.id])
 
+  // W5: only an elected quorum of clients drives auto-advance (see isAdvanceDriver).
+  const isDriver = useMemo(() => isAdvanceDriver(players, myPlayerId), [players, myPlayerId])
+
   useNpatAdvance({
     gameCode,
     game,
-    enabled: !skipGameSync && game.status === 'active',
+    enabled: !skipGameSync && game.status === 'active' && isDriver,
     onAdvanced: onReload,
   })
 
@@ -255,7 +259,7 @@ export function NpatActiveRound({
       (currentRound.status === 'finished' &&
         currentRound.ended_at != null &&
         revealCountdownSeconds(currentRound.ended_at) <= 0)
-    if (!betweenRounds) return
+    if (!betweenRounds || !isDriver) return
 
     let cancelled = false
     const sync = async () => {
@@ -277,7 +281,7 @@ export function NpatActiveRound({
       cancelled = true
       window.clearInterval(interval)
     }
-  }, [skipGameSync, game.status, gameCode, currentRound?.id, currentRound?.status, currentRound?.ended_at, onReload])
+  }, [skipGameSync, isDriver, game.status, gameCode, currentRound?.id, currentRound?.status, currentRound?.ended_at, onReload])
 
   const screen: PlayScreen = useMemo(() => {
     if (game.status === 'finished') return 'finished'

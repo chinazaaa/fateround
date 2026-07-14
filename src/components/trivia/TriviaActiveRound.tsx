@@ -16,6 +16,7 @@ import {
 } from '@/lib/trivia'
 import { useRoundTimer } from '@/hooks/useRoundTimer'
 import { useTriviaRevealAdvance } from '@/hooks/useTriviaRevealAdvance'
+import { isAdvanceDriver } from '@/lib/advance-driver'
 import { useTriviaNotifications } from '@/hooks/useTriviaNotifications'
 import { playVoteSubmittedSound } from '@/lib/sounds'
 import { useToast } from '@/components/ui/Toast'
@@ -143,11 +144,14 @@ export function TriviaActiveRound({
 
   const correct = myAnswer?.is_correct ?? lastResult?.isCorrect
 
+  // W5: only an elected quorum of clients drives auto-advance (see isAdvanceDriver).
+  const isDriver = useMemo(() => isAdvanceDriver(players, myPlayerId), [players, myPlayerId])
+
   useTriviaRevealAdvance({
     gameCode,
     game,
     rounds,
-    enabled: !skipGameSync && game.status === 'active',
+    enabled: !skipGameSync && game.status === 'active' && isDriver,
     onAdvanced: onReload,
   })
 
