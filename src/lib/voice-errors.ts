@@ -6,7 +6,10 @@ import { DisconnectReason } from 'livekit-client'
  * strings — connect-time errors are handled separately by the `onError` paths.
  *
  * Shared by both voice UIs (AudioChat + RoomVoiceRail) so the copy stays in one
- * place.
+ * place. There is a deliberate twin at `apps/mobile/lib/voice-errors.ts`: same
+ * policy (which reasons are silent), platform-specific strings — mobile has no
+ * tabs and is a touch UI. Change the policy here, change it there too; see that
+ * file's header for why they aren't one shared function.
  */
 export function voiceDisconnectMessage(reason?: DisconnectReason): string | null {
   switch (reason) {

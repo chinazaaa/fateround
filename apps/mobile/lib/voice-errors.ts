@@ -2,8 +2,23 @@ import { DisconnectReason } from 'livekit-client'
 
 /**
  * Player-facing message for a LiveKit disconnect, or `null` when the disconnect
- * is expected and should stay silent (our own Leave). Mirrors the web helper at
- * `src/lib/voice-errors.ts`; kept separate because the two apps don't share code.
+ * is expected and should stay silent (our own Leave).
+ *
+ * Deliberately NOT hoisted into `@fateround/shared` alongside the web twin at
+ * `src/lib/voice-errors.ts` (the apps do share code — 46 game views import that
+ * package). The *policy* — which reasons are silent — is identical, but the
+ * copy is intentionally platform-specific: there are no tabs here, and this is
+ * a touch UI ("Tap Join voice", not "Join voice again"). Sharing one function
+ * would force web's wording onto mobile and make it wrong. Keep the two switches
+ * in step by hand; if the policy ever grows past this, share the *classification*
+ * (reason → kind) and let each app own its strings.
+ *
+ * INVARIANT — if you ever add an `onError` to <LiveKitRoom> here, it must stay
+ * silent for a teardown we initiated. LiveKit's internal `shouldConnect` guard
+ * only clears when the `connect` prop flips false; we unmount instead (token →
+ * null), so the cancelled connect lands on `onError` looking like a real
+ * failure. That shipped a bogus "Could not connect to voice chat" on web — see
+ * the `leavingRef` guard in `src/components/AudioChat.tsx`.
  */
 export function voiceDisconnectMessage(reason?: DisconnectReason): string | null {
   switch (reason) {
