@@ -17,6 +17,7 @@ import { CodewordsHostLobby } from '@/components/host/lobby/CodewordsHostLobby'
 import { TeamRosterHostLobby } from '@/components/host/lobby/TeamRosterHostLobby'
 import { WordPoolLobbyEditor, supportsLobbyWordPool } from '@/components/host/lobby/WordPoolLobbyEditor'
 import { clearPlayerSession, getPlayerSession, type PlayerSession } from '@/lib/secure-session'
+import { subscribePlayerSession } from '@/lib/session-events'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useGamePlayerLimits } from '@/hooks/useGamePlayerLimits'
@@ -91,8 +92,12 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
     }
   }, [gameCode, load])
 
+  // Re-read on change, not just on mount: rotating the player code from the share
+  // sheet mints a new resume token, and ours authenticates the ready-up calls.
   useEffect(() => {
-    void getPlayerSession(gameCode).then((session) => setHostSession(session))
+    const read = () => void getPlayerSession(gameCode).then((session) => setHostSession(session))
+    read()
+    return subscribePlayerSession(gameCode, read)
   }, [gameCode])
 
   const onSelfRemoved = useCallback(() => {

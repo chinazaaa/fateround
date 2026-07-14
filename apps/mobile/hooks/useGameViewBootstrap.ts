@@ -5,6 +5,7 @@ import { normalizeGameCode } from '@fateround/shared'
 import { joinGame } from '@/lib/api'
 import { recordRecentGame } from '@/lib/recent-games'
 import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
+import { subscribePlayerSession } from '@/lib/session-events'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 import { uniqueTopic } from '@/lib/realtime'
 
@@ -197,6 +198,12 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   useEffect(() => {
     void load()
   }, [load])
+
+  // Rotating the player code mints a new resume token; ours would otherwise stay
+  // cached from bootstrap and every move would authenticate with the dead one.
+  useEffect(() => {
+    return subscribePlayerSession(code, () => void load())
+  }, [code, load])
 
   return {
     code,
