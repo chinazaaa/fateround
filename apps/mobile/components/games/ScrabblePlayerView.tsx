@@ -23,13 +23,10 @@ import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/g
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ScrabbleTile } from '@/components/games/scrabble/ScrabbleTile'
 import { ScrabbleGameTimerBar } from '@/components/games/scrabble/ScrabbleGameTimerBar'
-import { ScrabbleScoreboard, type ScrabbleScoreRow } from '@/components/games/scrabble/ScrabbleScoreboard'
 import { ScrabbleShareCard, type ScrabbleShareStanding } from '@/components/games/scrabble/ScrabbleShareCard'
+import { ScrabbleLiveScoreboard, ScrabbleTurnBadge } from '@/components/games/scrabble/ScrabbleClocks'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
-import { formatScrabbleClock, useScrabbleChessClock } from '@/components/games/scrabble/useScrabbleChessClock'
-import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
-import { useAbsoluteDeadline } from '@/components/party/useAbsoluteDeadline'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import {
   postScrabbleExchange,
@@ -158,41 +155,10 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
 
   const { width } = useWindowDimensions()
   const cellSize = Math.min(Math.floor((width - 32) / SCRABBLE_BOARD_SIZE), 24)
-  const turnSecondsLeft = useAbsoluteDeadline(
-    activeSession?.turn_deadline_at,
-    activeSession?.clock_mode === 'standard' && activeSession?.phase === 'playing'
-  )
-  const chessClock = useScrabbleChessClock(activeSession ?? null, playerStates, () => {
-    void postScrabbleExpireTurn(bootstrap.code).then(() => bootstrap.load()).catch(() => {})
-  })
-
-  const isChess = chessClock.isChess
-  const scoreRows = useMemo<ScrabbleScoreRow[]>(
-    () =>
-      playerStates
-        .slice()
-        .sort((a, b) => b.score - a.score)
-        .map((s) => {
-          // In chess-clock mode surface each player's live time bank next to their score
-          // (mirrors web BoardScores clockLabel). Timed-out seats are struck through.
-          const clockText =
-            isChess && !s.timed_out
-              ? formatScrabbleClock(
-                  chessClock.clocksByPlayer.get(s.player_id) ?? (s.clock_ms_remaining ?? 0) / 1000
-                )
-              : null
-          return {
-            id: s.player_id,
-            name: bootstrap.players.find((p) => p.id === s.player_id)?.name ?? 'Player',
-            score: s.score,
-            isTurn: s.player_id === turnPlayerId,
-            isMe: s.player_id === bootstrap.myPlayerId,
-            timedOut: !!s.timed_out,
-            clockText,
-          }
-        }),
-    [playerStates, bootstrap.players, bootstrap.myPlayerId, isChess, chessClock.clocksByPlayer, turnPlayerId]
-  )
+  // Both live clocks (chess tick + standard deadline) live inside ScrabbleTurnBadge /
+  // ScrabbleLiveScoreboard leaves so this board/rack parent doesn't re-render 4× a
+  // second (M1). Only the mode flag is needed up here.
+  const isChess = activeSession?.clock_mode === 'chess'
 
   useEffect(() => {
     if (!activeSession || activeSession.phase !== 'playing') return
@@ -437,13 +403,13 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
         onExpired={() => void bootstrap.load()}
       />
 
-      {isChess ? (
-        chessClock.activeSecondsLeft > 0 ? (
-          <TimerBadge seconds={chessClock.activeSecondsLeft} urgentAt={15} />
-        ) : null
-      ) : turnSecondsLeft > 0 ? (
-        <TimerBadge seconds={turnSecondsLeft} />
-      ) : null}
+      <ScrabbleTurnBadge
+        session={activeSession}
+        playerStates={playerStates}
+        onChessExpire={() =>
+          void postScrabbleExpireTurn(bootstrap.code).then(() => bootstrap.load()).catch(() => {})
+        }
+      />
 
       {isChess && myState?.timed_out ? (
         <Text style={styles.timedOutBanner}>
@@ -455,7 +421,13 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
 
       {lastMoveText ? <Text style={styles.lastMove}>{lastMoveText}</Text> : null}
 
-      <ScrabbleScoreboard rows={scoreRows} />
+      <ScrabbleLiveScoreboard
+        session={activeSession}
+        playerStates={playerStates}
+        players={bootstrap.players}
+        myPlayerId={bootstrap.myPlayerId}
+        turnPlayerId={turnPlayerId}
+      />
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <View style={styles.board}>

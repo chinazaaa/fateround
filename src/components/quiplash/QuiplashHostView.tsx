@@ -113,7 +113,7 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
   useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [
       { table: 'games', column: 'id' },
@@ -127,7 +127,11 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   useQuiplashAdvance({
     gameCode,

@@ -36,11 +36,6 @@ import {
 } from '@fateround/shared/poll-games'
 import { isImportClaimMode } from '@fateround/shared/participant-mode'
 import { hotSeatPlayerDisplayName } from '@fateround/shared/hot-seat'
-import {
-  finalResultsAutoRevealSeconds,
-  ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
-  roundResultsWaitMessage,
-} from '@fateround/shared/round-timing'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { ParticipantClaimJoinScreen } from '@/components/join/ParticipantClaimJoinScreen'
@@ -82,9 +77,8 @@ import {
   spectatorMessage,
 } from '@/components/games/poll/gender'
 import { ParticipantAvatar } from '@/components/ui/ParticipantAvatar'
-import { TimerBadge } from '@/components/ui/TimerBadge'
-import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
-import { useRoundTimer } from '@/hooks/useRoundTimer'
+import { RoundTimerBadge } from '@/components/party/RoundTimerBadge'
+import { RoundResultsWaitText } from '@/components/party/RoundResultsWaitText'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postVote } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
@@ -206,26 +200,11 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
     !!bootstrap.game &&
     (currentRound.round_number ?? 0) >= (bootstrap.game.rounds_count ?? 0)
 
-  const nextRoundCountdown = useDeadlineCountdown(
-    currentRound?.ended_at,
-    isLastRound
-      ? finalResultsAutoRevealSeconds(bootstrap.game?.game_type)
-      : ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
-    showingRoundResults
-  )
-
   const voteTimerActive =
     bootstrap.screen === 'playing' &&
     !isViewer &&
     currentRound?.status === 'active' &&
     !myVote
-
-  const timeLeft = useRoundTimer({
-    game: bootstrap.game,
-    currentRound: voteTimerActive ? currentRound : null,
-    active: voteTimerActive,
-    onExpire: () => autoSubmitPickerRef.current(),
-  })
 
   const updateParticipantPhoto = useCallback((participantId: string, photoUrl: string | null) => {
     setPollState((prev) => ({
@@ -652,12 +631,6 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
 
   if (showingRoundResults && currentRound && gameType) {
     const autoReveal = (bootstrap.game as { auto_reveal?: boolean | null }).auto_reveal !== false
-    const waitMessage = roundResultsWaitMessage({
-      isLastRound,
-      autoReveal,
-      nextRoundSecondsLeft: isLastRound ? 0 : nextRoundCountdown,
-      finalRevealSecondsLeft: isLastRound ? nextRoundCountdown : undefined,
-    })
     const resultsSubtitle = roundsCount > 0
       ? `Round ${currentRound.round_number} / ${roundsCount} results`
       : `Round ${currentRound.round_number} results`
@@ -694,7 +667,14 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
           <ConfessionsTicker
             confessions={pollState.confessions.filter((c) => c.round_id === currentRound.id)}
           />
-          <Text style={styles.waiting}>{waitMessage}</Text>
+          <RoundResultsWaitText
+            anchorTime={currentRound.ended_at}
+            isLastRound={isLastRound}
+            autoReveal={autoReveal}
+            gameType={bootstrap.game?.game_type}
+            active={showingRoundResults}
+            style={styles.waiting}
+          />
         </ScrollView>
       </GameShell>
     )
@@ -711,11 +691,14 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
       onPromoted={() => bootstrap.load()}
     >
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        {voteTimerActive && timeLeft > 0 && (!isPan || (isPicker && !panRevealed)) ? (
-          <View style={styles.timerRow}>
-            <TimerBadge seconds={timeLeft} />
-          </View>
-        ) : null}
+        <RoundTimerBadge
+          game={bootstrap.game}
+          currentRound={voteTimerActive ? currentRound : null}
+          active={voteTimerActive}
+          onExpire={() => autoSubmitPickerRef.current()}
+          show={!isPan || (isPicker && !panRevealed)}
+          containerStyle={styles.timerRow}
+        />
         {isViewer ? (
           <Text style={styles.waiting}>You are watching — voting is disabled.</Text>
         ) : isPan ? (

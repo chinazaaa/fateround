@@ -62,6 +62,8 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
   const [notFound, setNotFound] = useState(false)
   const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<SnakeLadderSession | null>(null)
+  const sessionRef = useRef<SnakeLadderSession | null>(null)
+  sessionRef.current = session
   const [states, setStates] = useState<SnakeLadderPlayerState[]>([])
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
@@ -125,13 +127,45 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
   }, [game?.status])
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(
+  // Delta fast-path (dual-table). Screen derives from game.status, so session/state writes
+  // only update the board — patch locally and skip the reload; active→finished rides the
+  // games-row event, and the fallback poll reconciles.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as SnakeLadderSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null
+  }, [])
+  const applyStateRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as SnakeLadderPlayerState
+    setStates((prev) => {
+      const i = prev.findIndex((s) => s.id === next.id)
+      if (i === -1) return [...prev, next]
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true
+  }, [])
+
+  const connected = useGameTableSync(
     gameCode,
-    [{ table: 'games', column: 'id' }, 'players', 'snake_ladder_sessions', 'snake_ladder_player_state'],
+    [
+      { table: 'games', column: 'id' },
+      'players',
+      { table: 'snake_ladder_sessions', apply: applySessionRow },
+      { table: 'snake_ladder_player_state', apply: applyStateRow },
+    ],
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {

@@ -54,6 +54,13 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<YahtzeeSession | null>(null)
+  // Mirror for the realtime apply callback; updated in an effect (never during
+  // render) so a replayed render can't leave it stale. The callback also writes it
+  // synchronously so consecutive deltas compare against the latest.
+  const sessionRef = useRef<YahtzeeSession | null>(null)
+  useEffect(() => {
+    sessionRef.current = session
+  }, [session])
   const [scores, setScores] = useState<YahtzeePlayerScore[]>([])
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
@@ -123,13 +130,45 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
   }, [game?.status])
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(
+  // Delta fast-path (dual-table). Screen derives from game.status, so session/score writes
+  // only update the board — patch locally and skip the reload; active→finished rides the
+  // games-row event, and the fallback poll reconciles.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as YahtzeeSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null
+  }, [])
+  const applyScoreRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as YahtzeePlayerScore
+    setScores((prev) => {
+      const i = prev.findIndex((s) => s.id === next.id)
+      if (i === -1) return [...prev, next]
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true
+  }, [])
+
+  const connected = useGameTableSync(
     gameCode,
-    [{ table: 'games', column: 'id' }, 'players', 'yahtzee_sessions', 'yahtzee_player_scores'],
+    [
+      { table: 'games', column: 'id' },
+      'players',
+      { table: 'yahtzee_sessions', apply: applySessionRow },
+      { table: 'yahtzee_player_scores', apply: applyScoreRow },
+    ],
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {

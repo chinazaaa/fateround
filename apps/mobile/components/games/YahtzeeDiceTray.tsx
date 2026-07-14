@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
-import { TimerBadge } from '@/components/ui/TimerBadge'
+import { DeadlineTimerBadge } from '@/components/ui/DeadlineTimerBadge'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { playSound } from '@/lib/sounds'
@@ -80,7 +80,7 @@ export function YahtzeeDiceTray({
   onRoll,
   rolling,
   timerActive,
-  secondsLeft,
+  turnDeadlineAt,
 }: {
   dice: number[]
   held: boolean[]
@@ -92,7 +92,7 @@ export function YahtzeeDiceTray({
   onRoll: () => void
   rolling: boolean
   timerActive: boolean
-  secondsLeft: number
+  turnDeadlineAt?: string | null
 }) {
   const styles = useThemedStyles(makeStyles)
 
@@ -171,7 +171,7 @@ export function YahtzeeDiceTray({
 
       {timerActive ? (
         <View style={styles.timerRow}>
-          <TimerBadge seconds={secondsLeft} urgentAt={20} enableAlerts={isMyTurn} />
+          <DeadlineTimerBadge deadlineAt={turnDeadlineAt} active={timerActive} urgentAt={20} enableAlerts={isMyTurn} />
         </View>
       ) : null}
 
@@ -193,9 +193,7 @@ export function YahtzeeDiceTray({
           disabled={!canRoll || rolling}
           onPress={onRoll}
         >
-          <Text style={styles.rollBtnText}>
-            {hasRolled ? `Roll again (${rollsRemaining} left)` : 'Roll dice'}
-          </Text>
+          <Text style={styles.rollBtnText}>{hasRolled ? `Roll again (${rollsRemaining} left)` : 'Roll dice'}</Text>
         </Pressable>
       )}
     </View>

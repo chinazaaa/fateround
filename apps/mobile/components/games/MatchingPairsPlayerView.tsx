@@ -20,17 +20,15 @@ import {
   pairIcon,
   parseMatchingPairsMetadata,
 } from '@fateround/shared/memory-match'
-import { ROUND_RESULTS_AUTO_ADVANCE_SECONDS, finalResultsAutoRevealSeconds } from '@fateround/shared/round-timing'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { GameFinishedScreen, GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { pointsLeaderboard } from '@/lib/finish-leaderboards'
-import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postMatchingPairsFlip } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
@@ -50,6 +48,7 @@ import {
   type MatchingPairsProgressWithTiming,
 } from '@/components/games/matching-pairs/matchingPairsScore'
 import { MatchingPairsBreakdownList } from '@/components/games/matching-pairs/MatchingPairsBreakdown'
+import { MatchingPairsRoundResults } from '@/components/games/matching-pairs/MatchingPairsRoundResults'
 
 // The shared MEMORY_MATCH_PROGRESS_SELECT / MatchingPairsProgress type omit the
 // `finished_at` + `created_at` columns (both exist on memory_match_progress).
@@ -253,12 +252,6 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   const showingRoundResults =
     bootstrap.screen === 'playing' && bootstrap.game?.status === 'active' && round?.status === 'finished'
 
-  const nextRoundCountdown = useDeadlineCountdown(
-    round?.ended_at ?? null,
-    isLastRound ? finalResultsAutoRevealSeconds(bootstrap.game?.game_type) : ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
-    showingRoundResults
-  )
-
   // Per-round standings for the interstitial (best points this round per player).
   const roundStandings = useMemo(() => {
     if (!round) return []
@@ -420,25 +413,22 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
   // ── Round-results interstitial (multi-round, between rounds) ───────────────
   if (showingRoundResults) {
-    const myTotal = pointsLeaderboard(roundStandings, bootstrap.myPlayerId).find((r) => r.you)
-    const nextLine = isLastRound
-      ? nextRoundCountdown > 0
-        ? `Final results in ${nextRoundCountdown}…`
-        : 'Tallying final results…'
-      : nextRoundCountdown > 0
-        ? `Next round in ${nextRoundCountdown}…`
-        : 'Starting next round…'
+    const roundBoard = pointsLeaderboard(roundStandings, bootstrap.myPlayerId)
+    const myTotal = roundBoard.find((r) => r.you)
     return (
       <GameShell
         bootstrap={bootstrap}
         title={batch3GameLabel('matching_pairs')}
         subtitle={`${roundLabel}Score ${points}`}
       >
-        <GameFinishedScreen
-          title={`Round ${currentRoundNumber}/${totalRounds} complete!`}
-          subtitle={nextLine}
+        <MatchingPairsRoundResults
+          currentRoundNumber={currentRoundNumber}
+          totalRounds={totalRounds}
+          isLastRound={isLastRound}
+          endedAt={round?.ended_at ?? null}
+          gameType={bootstrap.game?.game_type}
           detail={myTotal ? `Your score: ${myTotal.score} pts` : undefined}
-          leaderboard={pointsLeaderboard(roundStandings, bootstrap.myPlayerId)}
+          leaderboard={roundBoard}
         />
       </GameShell>
     )

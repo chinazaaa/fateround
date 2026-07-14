@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
 /** A table to watch. A bare string filters by `game_id`; use the object form for tables
@@ -13,11 +13,21 @@ export type WatchedTable =
       /**
        * Called synchronously with the changed row (`payload.new`) on INSERT/UPDATE, so the
        * view can put the pushed data on screen immediately instead of waiting out the
-       * debounce + refetch round-trip. The debounced `reload` still runs afterwards as
-       * reconciliation, and remains the only signal for DELETEs (which carry no new row).
-       * Only useful for tables whose select is plain columns (no embedded relations).
+       * debounce + refetch round-trip.
+       *
+       * Return value controls the follow-up reconciliation reload:
+       *  - return `true`  → the row was fully absorbed into local state; SKIP the debounced
+       *    `reload` for this event. Use this for high-frequency writes that touch only this
+       *    table and don't change the screen (e.g. an in-progress move updating the session
+       *    row). This is what turns "1 write → full multi-table refetch × every client" into
+       *    a cheap local patch. The `usePolling` fallback stays the periodic safety net.
+       *  - return `void`/`false` → run the debounced `reload` as before (reconciliation). Use
+       *    this for events that also change other tables or the derived screen (status → finished).
+       *
+       * DELETEs (no new row) always reload regardless. Only safe for tables whose select is
+       * plain columns (no embedded relations) — the raw pushed row is applied as-is.
        */
-      apply?: (row: Record<string, unknown>) => void
+      apply?: (row: Record<string, unknown>) => void | boolean
     }
 
 /** The slice of the Realtime payload we consume; typed loosely to survive client upgrades. */
@@ -61,11 +71,22 @@ export function useGameTableSync(
 
   // `apply` callbacks change identity every render; read the latest through a ref so the
   // subscription (keyed on table names only) never has to be torn down and rebuilt.
-  const applyRef = useRef(new Map<string, ((row: Record<string, unknown>) => void) | undefined>())
+  const applyRef = useRef(new Map<string, ((row: Record<string, unknown>) => void | boolean) | undefined>())
   applyRef.current = new Map(norm.map((t) => [t.table, t.apply]))
 
+  // Whether the Realtime channel is currently SUBSCRIBED. Returned so callers can gate their
+  // safety-net poll (`usePolling(..., { enabled: !connected })`) — no redundant full reloads
+  // while realtime is healthy. On a socket drop `connected` flips false and the poll re-enables;
+  // callers pass `runImmediately: false`, so the first reconcile lands within one interval (the
+  // backstop for a sustained outage — Supabase auto-reconnects transient drops before then).
+  const [connected, setConnected] = useState(false)
+
   useEffect(() => {
-    if (!enabled || !gameCode || norm.length === 0) return
+    if (!enabled || !gameCode || norm.length === 0) {
+      setConnected(false)
+      return
+    }
+    setConnected(false)
 
     let debounce: ReturnType<typeof setTimeout> | null = null
     const schedule = () => {
@@ -88,24 +109,33 @@ export function useGameTableSync(
         { event: '*', schema: 'public', table, filter: `${column}=eq.${gameCode}` },
         (payload: ChangePayload) => {
           const apply = applyRef.current.get(table)
+          let handled = false
           if (apply && payload?.eventType !== 'DELETE' && payload?.new && Object.keys(payload.new).length > 0) {
             try {
-              apply(payload.new)
+              // `=== true` so a legacy void-returning apply (or a thrown one) falls through
+              // to the reconciling reload exactly as before — the skip is strictly opt-in.
+              handled = apply(payload.new) === true
             } catch {
               // a bad pushed row must not kill the channel — the reload reconciles
+              handled = false
             }
           }
-          schedule()
+          // Skip the debounced reconciliation reload only when apply fully absorbed the row.
+          // DELETEs, other tables, and non-opted-in applies still reload.
+          if (!handled) schedule()
         }
       )
     }
-    channel.subscribe()
+    channel.subscribe((status) => setConnected(status === 'SUBSCRIBED'))
 
     return () => {
       if (debounce) clearTimeout(debounce)
+      setConnected(false)
       supabase.removeChannel(channel)
     }
     // `key` stabilises the tables array; `reload`/`apply` are read via refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameCode, enabled, key])
+
+  return connected
 }

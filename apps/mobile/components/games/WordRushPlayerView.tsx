@@ -33,10 +33,9 @@ import { RoundBreakCard } from '@/components/party/RoundBreakCard'
 import { TeamBadge } from '@/components/party/TeamBadge'
 import { TeamPickerGrid } from '@/components/party/TeamPickerGrid'
 import { TeamScoreGrid } from '@/components/party/TeamScoreGrid'
-import { useAbsoluteDeadline } from '@/components/party/useAbsoluteDeadline'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
-import { TimerBadge } from '@/components/ui/TimerBadge'
+import { DeadlineTimerBadge } from '@/components/ui/DeadlineTimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import {
   postWordRushAdvance,
@@ -189,12 +188,6 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
             : (nameById.get(a.player_id) ?? 'Player'),
       }))
   }, [answers, bootstrap.players, mode])
-
-  const turnSecondsLeft = useAbsoluteDeadline(session?.turn_deadline_at, session?.phase === 'playing')
-  const intermissionSecondsLeft = useAbsoluteDeadline(
-    session?.intermission_deadline_at,
-    session?.phase === 'intermission'
-  )
 
   // Drive the round forward when a phase timer runs out — any active non-viewer
   // client fires (idempotent + deadline-gated server-side), matching web. The turn
@@ -393,7 +386,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
           </View>
         ) : null}
 
-        {turnSecondsLeft > 0 && session.phase === 'playing' ? <TimerBadge seconds={turnSecondsLeft} /> : null}
+        <DeadlineTimerBadge deadlineAt={session?.turn_deadline_at} active={session.phase === 'playing'} />
 
         {mode === 'team' ? (
           <TeamScoreGrid
@@ -421,7 +414,8 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
           <RoundBreakCard
             title="Round break"
             message={session.status_message ?? 'Next round starting soon…'}
-            secondsLeft={intermissionSecondsLeft}
+            deadlineAt={session?.intermission_deadline_at}
+            active={session.phase === 'intermission'}
             detail={mode === 'team' ? `Up next: ${teamLabel(session.active_team)}` : undefined}
           />
         ) : null}

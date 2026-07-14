@@ -133,7 +133,7 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
   useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [
       { table: 'games', column: 'id' },
@@ -145,7 +145,11 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
     ],
     load
   )
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   useEffect(() => {
     if (game?.status === 'finished') setTab('manage')

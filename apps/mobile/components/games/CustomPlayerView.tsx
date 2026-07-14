@@ -14,9 +14,8 @@ import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ParticipantAvatar } from '@/components/ui/ParticipantAvatar'
-import { TimerBadge } from '@/components/ui/TimerBadge'
+import { RoundTimerBadge } from '@/components/party/RoundTimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { useRoundTimer } from '@/hooks/useRoundTimer'
 import { postVote } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { PARTICIPANT_SELECT, ROUND_SELECT, VOTE_SELECT } from '@/lib/supabase-selects'
@@ -125,12 +124,6 @@ export function CustomPlayerView({ gameCode }: { gameCode: string }) {
 
   const voteTimerActive =
     bootstrap.screen === 'playing' && currentRound?.status === 'active' && !submitted
-  const timeLeft = useRoundTimer({
-    game: bootstrap.game,
-    currentRound: voteTimerActive ? currentRound : null,
-    active: !!voteTimerActive,
-    onExpire: () => {},
-  })
 
   const photoById = useMemo(
     () => new Map(state.participants.map((p) => [p.id, p.photo_url])),
@@ -235,7 +228,11 @@ export function CustomPlayerView({ gameCode }: { gameCode: string }) {
       subtitle={`Round ${currentRound.round_number} / ${bootstrap.game.rounds_count ?? '?'}`}
     >
       <ScrollView contentContainerStyle={styles.content}>
-        {voteTimerActive && timeLeft > 0 ? <TimerBadge seconds={timeLeft} /> : null}
+        <RoundTimerBadge
+          game={bootstrap.game}
+          currentRound={voteTimerActive ? currentRound : null}
+          active={!!voteTimerActive}
+        />
 
         <TurnBanner
           text={bannerText}
