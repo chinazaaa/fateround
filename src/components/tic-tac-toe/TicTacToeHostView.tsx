@@ -119,13 +119,18 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
     return prev != null && prev.status === 'active' && next.status === 'active'
   }, [])
 
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     ['players', { table: 'games', column: 'id' }, { table: 'tic_tac_toe_sessions', apply: applySessionRow }],
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  // Safety-net poll only while realtime is disconnected — no redundant reloads when healthy.
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {

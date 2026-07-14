@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
 /** A table to watch. A bare string filters by `game_id`; use the object form for tables
@@ -74,8 +74,17 @@ export function useGameTableSync(
   const applyRef = useRef(new Map<string, ((row: Record<string, unknown>) => void | boolean) | undefined>())
   applyRef.current = new Map(norm.map((t) => [t.table, t.apply]))
 
+  // Whether the Realtime channel is currently SUBSCRIBED. Returned so callers can gate their
+  // safety-net poll (`usePolling(..., { enabled: !connected })`) — no redundant full reloads
+  // while realtime is healthy, but the poll resumes instantly if the socket drops.
+  const [connected, setConnected] = useState(false)
+
   useEffect(() => {
-    if (!enabled || !gameCode || norm.length === 0) return
+    if (!enabled || !gameCode || norm.length === 0) {
+      setConnected(false)
+      return
+    }
+    setConnected(false)
 
     let debounce: ReturnType<typeof setTimeout> | null = null
     const schedule = () => {
@@ -115,13 +124,16 @@ export function useGameTableSync(
         }
       )
     }
-    channel.subscribe()
+    channel.subscribe((status) => setConnected(status === 'SUBSCRIBED'))
 
     return () => {
       if (debounce) clearTimeout(debounce)
+      setConnected(false)
       supabase.removeChannel(channel)
     }
     // `key` stabilises the tables array; `reload`/`apply` are read via refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameCode, enabled, key])
+
+  return connected
 }

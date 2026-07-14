@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 
 const cap = vi.hoisted(() => ({
   ons: [] as Array<{
@@ -11,6 +11,7 @@ const cap = vi.hoisted(() => ({
   subscribed: false,
   removed: false,
   channelName: '',
+  statusCb: undefined as ((status: string) => void) | undefined,
 }))
 
 vi.mock('@/lib/supabase', () => {
@@ -19,8 +20,9 @@ vi.mock('@/lib/supabase', () => {
       cap.ons.push({ event, config, cb })
       return channel
     },
-    subscribe() {
+    subscribe(cb?: (status: string) => void) {
       cap.subscribed = true
+      cap.statusCb = cb
       return channel
     },
   }
@@ -44,6 +46,7 @@ beforeEach(() => {
   cap.subscribed = false
   cap.removed = false
   cap.channelName = ''
+  cap.statusCb = undefined
   vi.useFakeTimers()
 })
 afterEach(() => vi.useRealTimers())
@@ -135,6 +138,15 @@ describe('useGameTableSync', () => {
     expect(apply).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(150)
     expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns connected only while the channel reports SUBSCRIBED (gates the safety-net poll)', () => {
+    const { result } = renderHook(() => useGameTableSync('ABCD', ['scrabble_sessions'], () => {}))
+    expect(result.current).toBe(false) // not connected until the channel confirms
+    act(() => cap.statusCb?.('SUBSCRIBED'))
+    expect(result.current).toBe(true)
+    act(() => cap.statusCb?.('CHANNEL_ERROR')) // socket dropped → poll should resume
+    expect(result.current).toBe(false)
   })
 
   it('does not subscribe when disabled or missing gameCode', () => {
