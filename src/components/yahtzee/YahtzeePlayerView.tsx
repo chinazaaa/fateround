@@ -160,7 +160,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     return true
   }, [])
 
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [
       'players',
@@ -171,7 +171,11 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   // Ready-up ring: readiness = holding a seat, so this reuses /players/ready (which
   // toggles the spectator flag). `ready:false` sits the player back out.

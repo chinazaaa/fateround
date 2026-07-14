@@ -146,7 +146,7 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   }, [])
 
   // Realtime push: patch session + hands locally on plays (see above), reload for games/players.
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [
       { table: 'games', column: 'id' },
@@ -157,7 +157,11 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {

@@ -139,7 +139,7 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
     return true
   }, [])
 
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [
       { table: 'games', column: 'id' },
@@ -150,7 +150,11 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   )
 
   // Safety-net poll in case a realtime event is missed / the socket drops.
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()

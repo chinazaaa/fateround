@@ -154,7 +154,7 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
     return true
   }, [])
 
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [
       { table: 'games', column: 'id' },
@@ -164,7 +164,11 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {

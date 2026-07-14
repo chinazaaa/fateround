@@ -117,13 +117,17 @@ export function CheckersHostView({ gameCode, hostToken }: { gameCode: string; ho
     return prev != null && prev.status === 'active' && next.status === 'active'
   }, [])
 
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     ['players', { table: 'games', column: 'id' }, { table: 'checkers_sessions', apply: applySessionRow }],
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {

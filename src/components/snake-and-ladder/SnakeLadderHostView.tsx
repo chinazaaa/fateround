@@ -150,7 +150,7 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
     return true
   }, [])
 
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [
       { table: 'games', column: 'id' },
@@ -161,7 +161,11 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {

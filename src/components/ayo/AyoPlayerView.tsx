@@ -126,13 +126,17 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
     return prev != null && prev.status === 'active' && next.status === 'active'
   }, [])
 
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     ['players', { table: 'games', column: 'id' }, { table: 'ayo_sessions', apply: applySessionRow }],
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()

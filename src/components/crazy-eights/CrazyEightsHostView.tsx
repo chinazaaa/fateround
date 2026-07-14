@@ -155,7 +155,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
     return true
   }, [])
 
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [
       'players',
@@ -166,7 +166,11 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {

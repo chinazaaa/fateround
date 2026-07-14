@@ -128,19 +128,22 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
   }, [])
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     ['players', { table: 'games', column: 'id' }, { table: 'chess_sessions', apply: applySessionRow }],
     load
   )
 
   // Fallback poll: tighter while the match is live, so a dropped realtime channel
-  // costs seconds of move lag instead of most of a minute.
+  // costs seconds of move lag instead of most of a minute. Only runs while the
+  // channel is down — no redundant reloads alongside healthy realtime.
   usePolling(() => load(), [gameCode, load], {
     intervalMs:
       game?.status === 'active' && session?.status === 'active'
         ? POLL_INTERVALS.duelFallback
         : POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
   })
 
   const handlePlayerRemoved = useCallback(

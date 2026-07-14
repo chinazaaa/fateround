@@ -127,7 +127,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     return true
   }, [])
 
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [
       'players',
@@ -138,7 +138,11 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
