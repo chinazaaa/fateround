@@ -20,9 +20,9 @@ import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
-import { TimerBadge } from '@/components/ui/TimerBadge'
+import { CountdownTimerBadge } from '@/components/party/CountdownTimerBadge'
 import { TwoTruthsSubmitterBadge } from '@/components/games/TwoTruthsSubmitterBadge'
-import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
+import { useDeadlineExpiry } from '@/hooks/useDeadlineExpiry'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useAdvancePolling } from '@/hooks/useAdvancePolling'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
@@ -147,19 +147,20 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     return rounds.filter((r) => r.status === 'pending').sort((a, b) => a.round_number - b.round_number)[0] ?? null
   }, [rounds, bootstrap.game?.status])
 
-  // Round countdown + auto-lock when the guessing time runs out.
+  // Round countdown + auto-lock when the guessing time runs out. The countdown
+  // itself lives in a self-ticking leaf (badge); here we only need the expiry
+  // edge, so a one-shot timeout drives it instead of a 2Hz tick (M1).
   const timerSeconds = bootstrap.game?.timer_seconds ?? 0
   const timerActive = !!currentRound && currentRound.status === 'active' && !isFeatured && timerSeconds > 0
-  const secondsLeft = useDeadlineCountdown(currentRound?.started_at, timerSeconds, timerActive)
 
   // Reset the per-round expiry flag whenever the round changes.
   useEffect(() => {
     setTimeExpired(false)
   }, [currentRound?.id])
 
-  useEffect(() => {
-    if (timerActive && !myGuess && secondsLeft <= 0) setTimeExpired(true)
-  }, [timerActive, myGuess, secondsLeft])
+  useDeadlineExpiry(currentRound?.started_at, timerSeconds, timerActive && !myGuess, () =>
+    setTimeExpired(true)
+  )
 
   const canSubmitStatements = !!stmtA.trim() && !!stmtB.trim() && !!stmtC.trim() && lieIndex != null
 
@@ -485,7 +486,11 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
         {liveBanners}
         {submitterBadge}
         <Text style={styles.featured}>Which is {featuredName}&apos;s lie?</Text>
-        {timerActive && !myGuess && !timeExpired ? <TimerBadge seconds={secondsLeft} /> : null}
+        <CountdownTimerBadge
+          anchorTime={currentRound.started_at}
+          delaySeconds={timerSeconds}
+          active={timerActive && !myGuess && !timeExpired}
+        />
         {metadata ? (
           <View style={styles.choices}>
             {metadata.statements.map((text, index) => {
