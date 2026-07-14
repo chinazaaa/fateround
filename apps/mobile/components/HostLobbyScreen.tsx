@@ -5,7 +5,6 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game, Player } from '@fateround/shared'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 import { startGame, postPlayAgain, postFinishGame, removePlayerAsHost } from '@/lib/game-api'
-import { gameHasMobileVoice } from '@/lib/voice-games'
 import { gameLabel } from '@/lib/mobile-registry'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
@@ -237,7 +236,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
 
         {/* Under the header (not above it, where it read as the header itself).
             Bleed to full width to counteract the scroll's horizontal padding. */}
-        {game && gameHasMobileVoice(game.game_type) ? (
+        {game ? (
           <View style={styles.voiceRailWrap}>
             <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} />
           </View>

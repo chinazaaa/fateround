@@ -4,7 +4,6 @@ import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game, Player } from '@fateround/shared'
 import { gameLabel } from '@/lib/mobile-registry'
-import { gameHasMobileVoice } from '@/lib/voice-games'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { TransferHostSheet } from '@/components/host/TransferHostSheet'
@@ -133,9 +132,7 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
 
       {/* Voice rail sits UNDER the header (matches PlayerSessionShell) so the
           "Join voice" bar never renders above/into the header chrome. */}
-      {gameHasMobileVoice(game.game_type) ? (
-        <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} />
-      ) : null}
+      <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} />
 
       {showPlayView ? (
         <HostViewProvider value={{ hostToken, hostPlayerId, onReload: () => onReload?.() }}>

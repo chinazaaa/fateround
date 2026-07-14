@@ -6,7 +6,6 @@ import type { Game } from '@fateround/shared'
 import { gameLabel } from '@/lib/mobile-registry'
 import { clearPlayerSession, getHostToken, getPlayerSession } from '@/lib/secure-session'
 import { subscribePlayerSession } from '@/lib/session-events'
-import { gameHasMobileVoice } from '@/lib/voice-games'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { PlayerSessionMenu } from '@/components/session/PlayerSessionMenu'
 import { HeaderBadgeContext } from '@/components/session/HeaderBadgeContext'
@@ -165,7 +164,7 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
           </View>
         </View>
 
-        {game && gameHasMobileVoice(game.game_type) ? <VoiceRail gameCode={gameCode} mode="player" /> : null}
+        {game ? <VoiceRail gameCode={gameCode} mode="player" /> : null}
         {/* Not gated on gameEnded: a host may transfer host after the game finishes
             (e.g. so the new host can start "play again") — the nominee must still
             see the invite on the finished screen. The banner self-hides unless
