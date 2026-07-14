@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { Game } from '@fateround/shared'
 import { postTriviaAdvance } from '@/lib/game-api'
+import { useAppActive } from '@/hooks/useAppActive'
 
 const INTERVAL_MS = 4000
 
@@ -22,7 +23,8 @@ export function useTriviaAutoAdvance({
   const onSyncedRef = useRef(onSynced)
   onSyncedRef.current = onSynced
 
-  const active = enabled && !!game && game.status === 'active'
+  const appActive = useAppActive()
+  const active = enabled && !!game && game.status === 'active' && appActive
 
   useEffect(() => {
     if (!active) return
