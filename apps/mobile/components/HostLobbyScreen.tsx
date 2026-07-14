@@ -43,6 +43,9 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [loading, setLoading] = useState(true)
+  // Measured, not hardcoded — the pinned footer grows when Start shows an error,
+  // and the floating voice pill has to keep clearing it.
+  const [footerHeight, setFooterHeight] = useState(0)
   const [starting, setStarting] = useState(false)
   const [replaying, setReplaying] = useState(false)
   const [ending, setEnding] = useState(false)
@@ -234,14 +237,6 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
           <Text style={styles.code}>{gameCode}</Text>
         </Pressable>
 
-        {/* Under the header (not above it, where it read as the header itself).
-            Bleed to full width to counteract the scroll's horizontal padding. */}
-        {game ? (
-          <View style={styles.voiceRailWrap}>
-            <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} />
-          </View>
-        ) : null}
-
         {/* Not gated on hostPlayerId: a host-only viewer (not seated / "stopped
             playing") must still see the ring to watch players ready up and start.
             The ring is null-safe on myPlayerId, and isHost hides the ready toggle. */}
@@ -348,7 +343,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
         ) : null}
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={styles.footer} onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}>
         {/* Error lives in the pinned footer, next to the Start button, so a failed
             Start is visible immediately (it used to render at the bottom of the
             scroll, out of view). */}
@@ -445,6 +440,12 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
         visible={transferOpen}
         onClose={() => setTransferOpen(false)}
       />
+      {/* Floats over the screen, above the pinned Start/End footer. Mounted at
+          the shell root — inside the ScrollView it would scroll away. The footer
+          height is measured, not hardcoded: it grows when Start errors. */}
+      {game ? (
+        <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} bottomOffset={footerHeight} />
+      ) : null}
     </SafeAreaView>
   )
 }
@@ -489,7 +490,6 @@ const makeStyles = (theme: Theme) =>
     content: { padding: 24, gap: 8, paddingBottom: 32, ...centeredContent },
     // Cancel the content's 24px horizontal padding so the voice bar spans edge to
     // edge like the pinned rails on the other chromes.
-    voiceRailWrap: { marginHorizontal: -24 },
     eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1, flexWrap: 'wrap' },
     eyebrow: { color: theme.primary, fontSize: 13, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
     typePill: {

@@ -130,10 +130,6 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
         ) : null}
       </View>
 
-      {/* Voice rail sits UNDER the header (matches PlayerSessionShell) so the
-          "Join voice" bar never renders above/into the header chrome. */}
-      <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} />
-
       {showPlayView ? (
         <HostViewProvider value={{ hostToken, hostPlayerId, onReload: () => onReload?.() }}>
           <View style={styles.playBody}>
@@ -145,6 +141,9 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
           {children}
         </ScrollView>
       )}
+      {/* Floats over the screen — mounted at the shell root (not in the scroll
+          body, where it would scroll away). */}
+      <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} />
       <ShareGameSheet
         visible={shareOpen}
         gameCode={gameCode}

@@ -19,6 +19,12 @@ export type VoiceRailProps = {
   gameCode: string
   mode: VoiceMode
   hostToken?: string
+  /**
+   * Extra bottom clearance, for screens with their own pinned bottom bar (the
+   * host lobby's Start game / End lobby footer). Measure it rather than
+   * hardcoding a height — the footer grows when it shows an error.
+   */
+  bottomOffset?: number
 }
 
 function mapParticipants(participants: ReturnType<typeof useParticipants>): VoiceParticipant[] {
@@ -49,12 +55,12 @@ function ConnectedControls({
 
   return (
     <>
-      <View style={styles.bar}>
+      <View style={styles.pill}>
         <Pressable
           style={[styles.mainBtn, muted ? styles.mainBtnMuted : styles.mainBtnLive]}
           onPress={() => void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
         >
-          <Text style={styles.mainBtnText}>{muted ? '🔇 Unmute' : `🎙️ ${displayName}`}</Text>
+          <Text style={styles.mainBtnText}>{muted ? '🔇' : '🎙️'}</Text>
         </Pressable>
         <Pressable style={styles.secondaryBtn} onPress={() => setShowList(true)}>
           <Text style={styles.secondaryText}>👥 {people.length || presenceHint}</Text>
@@ -100,10 +106,10 @@ function DisconnectedBar({
 }) {
   const styles = useThemedStyles(makeStyles)
   return (
-    <View style={styles.bar}>
+    <View style={styles.pill}>
       <Pressable style={styles.joinBtn} disabled={isConnecting} onPress={onJoin}>
         <Text style={styles.joinText}>
-          {isConnecting ? 'Connecting…' : `🎙️ Join voice${presenceCount > 0 ? ` · ${presenceCount} in call` : ''}`}
+          {isConnecting ? 'Connecting…' : `🎙️ Join${presenceCount > 0 ? ` · ${presenceCount}` : ''}`}
         </Text>
       </Pressable>
     </View>
@@ -111,8 +117,9 @@ function DisconnectedBar({
 }
 
 /** LiveKit voice UI — only loaded in dev/production builds, not Expo Go. */
-export function VoiceRailNative({ gameCode, mode, hostToken }: VoiceRailProps) {
+export function VoiceRailNative({ gameCode, mode, hostToken, bottomOffset = 0 }: VoiceRailProps) {
   const { show } = useToast()
+  const styles = useThemedStyles(makeStyles)
   const voice = useVoiceRoom({ gameCode, mode, hostToken })
   const wasConnectedRef = useRef(false)
 
@@ -151,8 +158,23 @@ export function VoiceRailNative({ gameCode, mode, hostToken }: VoiceRailProps) {
 
   if (!LIVEKIT_URL || !voice.ready) return null
 
+  // Floats over the screen (Toast's pattern) rather than sitting in the layout:
+  // an in-flow bar cost ~50pt of vertical space on EVERY game screen, which is
+  // why voice used to be gated to an allowlist. `box-none` so only the pill
+  // itself takes touches — the game underneath stays fully interactive.
+  //
+  // No safe-area inset here: every shell that mounts this wraps in
+  // <SafeAreaView edges={['top','bottom']}>, and absolute children position
+  // against the parent's PADDING box — the bottom inset is already applied, so
+  // adding it again would float the pill above the home indicator.
+  const floating = (children: React.ReactNode) => (
+    <View style={[styles.floatWrap, { bottom: 16 + bottomOffset }]} pointerEvents="box-none">
+      {children}
+    </View>
+  )
+
   if (!voice.token) {
-    return (
+    return floating(
       <DisconnectedBar
         presenceCount={voice.isConnecting ? 0 : voice.presenceCount}
         isConnecting={voice.isConnecting}
@@ -161,7 +183,7 @@ export function VoiceRailNative({ gameCode, mode, hostToken }: VoiceRailProps) {
     )
   }
 
-  return (
+  return floating(
     <LiveKitRoom
       serverUrl={LIVEKIT_URL}
       token={voice.token}
@@ -187,15 +209,29 @@ export function VoiceRailNative({ gameCode, mode, hostToken }: VoiceRailProps) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  bar: {
+  // Anchored to the shell root (NOT a scroll body — it would scroll away).
+  // zIndex sits below Toast's 100 so toasts still render above the pill.
+  floatWrap: {
+    position: 'absolute',
+    right: 12,
+    zIndex: 90,
+    alignItems: 'flex-end',
+  },
+  pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.surfaceHover,
+    gap: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.surfaceHover,
     backgroundColor: theme.bgElevated,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    elevation: 4,
   },
   joinBtn: {
     flex: 1,

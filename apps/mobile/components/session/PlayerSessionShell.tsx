@@ -164,13 +164,14 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
           </View>
         </View>
 
-        {game ? <VoiceRail gameCode={gameCode} mode="player" /> : null}
         {/* Not gated on gameEnded: a host may transfer host after the game finishes
             (e.g. so the new host can start "play again") — the nominee must still
             see the invite on the finished screen. The banner self-hides unless
             there's a pending nomination for this player. */}
         <HostNominationBanner gameCode={gameCode} playerId={playerId} resumeToken={resumeToken} />
         <View style={styles.body}>{children}</View>
+        {/* Floats over the screen — last child so it paints above the body. */}
+        {game ? <VoiceRail gameCode={gameCode} mode="player" /> : null}
         <ShareGameSheet
           visible={shareOpen}
           gameCode={gameCode}
