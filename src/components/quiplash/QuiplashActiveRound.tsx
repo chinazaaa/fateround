@@ -20,6 +20,7 @@ import {
 } from '@/lib/quiplash'
 import { playerIsViewer } from '@/lib/viewers'
 import { useQuiplashAdvance } from '@/hooks/useQuiplashAdvance'
+import { isAdvanceDriver } from '@/lib/advance-driver'
 import { playVoteSubmittedSound } from '@/lib/sounds'
 import { useToast } from '@/components/ui/Toast'
 import type { Game, Player, QuiplashAnswer, QuiplashBattle, QuiplashSession, QuiplashVote, Round } from '@/types'
@@ -160,15 +161,18 @@ export function QuiplashActiveRound({
     return () => window.clearInterval(id)
   }, [session?.turn_deadline_at, session?.phase])
 
+  // W5: only an elected quorum of clients drives auto-advance (see isAdvanceDriver).
+  const isDriver = useMemo(() => isAdvanceDriver(players, myPlayerId), [players, myPlayerId])
+
   useQuiplashAdvance({
     gameCode,
     game,
-    enabled: !skipGameSync && game.status === 'active',
+    enabled: !skipGameSync && game.status === 'active' && isDriver,
     onAdvanced: onReload,
   })
 
   useEffect(() => {
-    if (skipGameSync || game.status !== 'active' || !session?.turn_deadline_at || countdown > 0) return
+    if (skipGameSync || !isDriver || game.status !== 'active' || !session?.turn_deadline_at || countdown > 0) return
     const key = `${session.phase}:${session.turn_deadline_at}`
     if (advancedDeadlineRef.current === key) return
     advancedDeadlineRef.current = key
@@ -177,7 +181,7 @@ export function QuiplashActiveRound({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ gameId: gameCode }),
     }).then(() => onReload?.())
-  }, [countdown, game.status, gameCode, onReload, session?.phase, session?.turn_deadline_at, skipGameSync])
+  }, [countdown, game.status, gameCode, isDriver, onReload, session?.phase, session?.turn_deadline_at, skipGameSync])
 
   const submitAnswer = async () => {
     if (!currentRound || !canSubmitAnswer || submitting || myAnswer) return

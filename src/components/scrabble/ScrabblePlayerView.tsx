@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ScrabbleCard,
@@ -53,6 +53,8 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
   const [session, setSession] = useState<ScrabbleSession | null>(null)
+  const sessionRef = useRef<ScrabbleSession | null>(null)
+  sessionRef.current = session
   const [playerStates, setPlayerStates] = useState<ScrabblePlayerState[]>([])
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
@@ -114,10 +116,46 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
   // Realtime push: reload on any change to this game's row + scrabble tables.
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'scrabble_sessions', 'scrabble_player_state'], load)
+  // Delta fast-path (dual-table). The screen depends on session.phase, so a play (phase stays
+  // 'playing') patches locally and skips the reload; when phase flips to 'finished' we reload
+  // so the results screen resolves. Player-state (racks/scores) never changes the screen → skip.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as ScrabbleSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null && prev.phase !== 'finished' && next.phase !== 'finished'
+  }, [])
+  const applyStateRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as ScrabblePlayerState
+    setPlayerStates((prev) => {
+      const i = prev.findIndex((s) => s.id === next.id)
+      if (i === -1) return [...prev, next]
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true
+  }, [])
+
+  const connected = useGameTableSync(
+    gameCode,
+    [
+      { table: 'games', column: 'id' },
+      'players',
+      { table: 'scrabble_sessions', apply: applySessionRow },
+      { table: 'scrabble_player_state', apply: applyStateRow },
+    ],
+    load
+  )
 
   // Safety-net poll in case a realtime event is missed / the socket drops.
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()

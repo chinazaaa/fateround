@@ -150,7 +150,7 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
     onJoinError: toastError,
   })
 
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [
       { table: 'games', column: 'id' },
@@ -162,7 +162,11 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
     ],
     load
   )
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   const pickTeam = async (team: number) => {
     if (!myResumeToken) {

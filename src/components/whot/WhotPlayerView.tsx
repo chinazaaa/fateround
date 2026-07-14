@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { WhotCard, WhotLoadingScreen, WhotSecondaryButton, WhotShell } from '@/components/whot/WhotChrome'
 import { WhotPlaySurface } from '@/components/whot/WhotPlaySurface'
@@ -55,6 +55,8 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
   const [session, setSession] = useState<WhotSession | null>(null)
+  const sessionRef = useRef<WhotSession | null>(null)
+  sessionRef.current = session
   const [hands, setHands] = useState<WhotPlayerHand[]>([])
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
@@ -109,11 +111,47 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
-  // Realtime push: reload on any change to this game's row + its tables. `players` keeps
-  // the replay ready-up ring live as people tap "ready".
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'players', 'whot_sessions', 'whot_player_hands'], load)
+  // Delta fast-path (dual-table). The screen is derived purely from game.status, so session
+  // and hand writes only update the board/hand UI — patch them locally and skip the full
+  // reload. The active→finished transition rides the games-row event (no apply → still
+  // reloads), and the fallback poll stays the reconciliation net.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as WhotSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true // stale/reordered
+    setSession(next)
+    sessionRef.current = next
+    return prev != null // first session still reloads (harmless; games event also covers start)
+  }, [])
+  const applyHandRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as WhotPlayerHand
+    setHands((prev) => {
+      const i = prev.findIndex((h) => h.id === next.id)
+      if (i === -1) return [...prev, next].sort((a, b) => a.player_order - b.player_order)
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true // a hand change never changes the screen — always safe to skip the reload
+  }, [])
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  // Realtime push: patch session + hands locally on plays (see above), reload for games/players.
+  const connected = useGameTableSync(
+    gameCode,
+    [
+      { table: 'games', column: 'id' },
+      'players',
+      { table: 'whot_sessions', apply: applySessionRow },
+      { table: 'whot_player_hands', apply: applyHandRow },
+    ],
+    load
+  )
+
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   // Ready-up ring: readiness = holding a seat, so this reuses /players/ready (which
   // toggles the spectator flag). `ready:false` sits the player back out.

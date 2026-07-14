@@ -144,26 +144,34 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   // event must not roll the board back); an optimistic local move keeps the previous
   // updated_at, so the authoritative row for that same move still lands.
   const applySessionRow = useCallback(
-    (row: Record<string, unknown>) => {
-      acceptSession(row as unknown as ChessSession)
+    (row: Record<string, unknown>): boolean => {
+      const prev = sessionRef.current
+      const accepted = acceptSession(row as unknown as ChessSession)
+      // Skip the reconciliation reload for an ordinary in-progress move (the board is fully
+      // patched above and the tighter duel poll reconciles); the first row and any status
+      // transition (→ finished) still reload so the result screen resolves.
+      return prev != null && prev.status === 'active' && accepted.status === 'active'
     },
     [acceptSession]
   )
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     ['players', { table: 'games', column: 'id' }, { table: 'chess_sessions', apply: applySessionRow }],
     load
   )
 
   // Fallback poll: tighter while the match is live, so a dropped realtime channel
-  // costs seconds of move lag instead of most of a minute.
+  // costs seconds of move lag instead of most of a minute. Only runs while the
+  // channel is down — no redundant reloads alongside healthy realtime.
   usePolling(() => load(), [gameCode, load], {
     intervalMs:
       screen === 'active' && session?.status === 'active'
         ? POLL_INTERVALS.duelFallback
         : POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
   })
 
   useLobbyOpenNotification(game?.status, () => {
