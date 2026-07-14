@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostManageSection } from '@/components/host/HostManageSection'
@@ -72,6 +72,8 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<ScrabbleSession | null>(null)
+  const sessionRef = useRef<ScrabbleSession | null>(null)
+  sessionRef.current = session
   const [playerStates, setPlayerStates] = useState<ScrabblePlayerState[]>([])
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
@@ -130,7 +132,37 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
   }, [game?.status, session])
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'scrabble_sessions', 'scrabble_player_state'], load)
+  // Delta fast-path (dual-table). A play (phase stays 'playing') patches locally and skips the
+  // reload; phase → 'finished' reloads so results resolve. Player-state never changes the screen.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as ScrabbleSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null && prev.phase !== 'finished' && next.phase !== 'finished'
+  }, [])
+  const applyStateRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as ScrabblePlayerState
+    setPlayerStates((prev) => {
+      const i = prev.findIndex((s) => s.id === next.id)
+      if (i === -1) return [...prev, next]
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true
+  }, [])
+
+  useGameTableSync(
+    gameCode,
+    [
+      { table: 'games', column: 'id' },
+      { table: 'scrabble_sessions', apply: applySessionRow },
+      { table: 'scrabble_player_state', apply: applyStateRow },
+    ],
+    load
+  )
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 

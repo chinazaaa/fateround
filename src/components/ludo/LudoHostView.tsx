@@ -51,6 +51,8 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<LudoSession | null>(null)
+  const sessionRef = useRef<LudoSession | null>(null)
+  sessionRef.current = session
   const [states, setStates] = useState<LudoPlayerState[]>([])
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
@@ -102,7 +104,39 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   }, [game?.status])
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(gameCode, ['players', { table: 'games', column: 'id' }, 'ludo_sessions', 'ludo_player_state'], load)
+  // Delta fast-path (dual-table). Screen derives from game.status, so session/state writes
+  // only update the board — patch locally and skip the reload; active→finished rides the
+  // games-row event, and the fallback poll reconciles.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as LudoSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null
+  }, [])
+  const applyStateRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as LudoPlayerState
+    setStates((prev) => {
+      const i = prev.findIndex((s) => s.id === next.id)
+      if (i === -1) return [...prev, next]
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true
+  }, [])
+
+  useGameTableSync(
+    gameCode,
+    [
+      'players',
+      { table: 'games', column: 'id' },
+      { table: 'ludo_sessions', apply: applySessionRow },
+      { table: 'ludo_player_state', apply: applyStateRow },
+    ],
+    load
+  )
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
