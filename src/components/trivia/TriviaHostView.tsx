@@ -95,7 +95,11 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
   useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
 
   // Realtime push: reload on any change to this game's row + its tables.
-  const connected = useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'players', 'rounds', 'trivia_answers'], load)
+  const connected = useGameTableSync(
+    gameCode,
+    [{ table: 'games', column: 'id' }, 'players', 'rounds', 'trivia_answers'],
+    load
+  )
 
   usePolling(
     async () => {

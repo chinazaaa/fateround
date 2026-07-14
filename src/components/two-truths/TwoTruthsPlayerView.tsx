@@ -101,7 +101,11 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   useTurnNotifications({ status: game?.status })
 
   // Realtime push: reload on any change to this game's row + its tables.
-  const connected = useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'rounds', 'ttl_statements', 'ttl_guesses'], load)
+  const connected = useGameTableSync(
+    gameCode,
+    [{ table: 'games', column: 'id' }, 'rounds', 'ttl_statements', 'ttl_guesses'],
+    load
+  )
 
   usePolling(() => load(), [gameCode, load], {
     intervalMs: POLL_INTERVALS.realtimeFallback,

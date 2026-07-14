@@ -281,7 +281,16 @@ export function NpatActiveRound({
       cancelled = true
       window.clearInterval(interval)
     }
-  }, [skipGameSync, isDriver, game.status, gameCode, currentRound?.id, currentRound?.status, currentRound?.ended_at, onReload])
+  }, [
+    skipGameSync,
+    isDriver,
+    game.status,
+    gameCode,
+    currentRound?.id,
+    currentRound?.status,
+    currentRound?.ended_at,
+    onReload,
+  ])
 
   const screen: PlayScreen = useMemo(() => {
     if (game.status === 'finished') return 'finished'
