@@ -5,6 +5,7 @@ import { getPlayerSession } from '@/lib/secure-session'
 import { subscribePlayerSession } from '@/lib/session-events'
 import type { AudioAuth } from '@/lib/voice-types'
 import { useHostVoiceDisplayName, useHostVoiceIdentity } from '@/hooks/useHostVoiceIdentity'
+import { useAppActive } from '@/hooks/useAppActive'
 
 export type VoiceMode = 'player' | 'host'
 
@@ -26,6 +27,11 @@ export function useVoiceRoom({ gameCode, mode, hostToken }: Options) {
   const [token, setToken] = useState<string | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
   const [presenceCount, setPresenceCount] = useState(0)
+  // The rail now mounts on every game (matching web), so this 12s presence POST
+  // runs for every player of every game. Pause it while backgrounded — same M3
+  // rule the other network pollers follow; a resume re-runs the effect, which
+  // polls once immediately.
+  const appActive = useAppActive()
   const [error, setError] = useState<string | null>(null)
 
   const authRef = useRef<AudioAuth | null>(null)
@@ -76,7 +82,7 @@ export function useVoiceRoom({ gameCode, mode, hostToken }: Options) {
   }, [gameCode])
 
   useEffect(() => {
-    if (token || !resolvedRoomCode || !identity || !auth) {
+    if (token || !resolvedRoomCode || !identity || !auth || !appActive) {
       setPresenceCount(0)
       return
     }
@@ -101,7 +107,7 @@ export function useVoiceRoom({ gameCode, mode, hostToken }: Options) {
       active = false
       clearInterval(interval)
     }
-  }, [token, resolvedRoomCode, identity, auth])
+  }, [token, resolvedRoomCode, identity, auth, appActive])
 
   const join = useCallback(async () => {
     if (!identity || !auth || !displayName || !resolvedRoomCode) return
