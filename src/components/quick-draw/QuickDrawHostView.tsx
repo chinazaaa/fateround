@@ -167,7 +167,7 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
   useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [
       { table: 'games', column: 'id' },
@@ -182,7 +182,11 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   useQuickDrawAdvance({
     gameCode,

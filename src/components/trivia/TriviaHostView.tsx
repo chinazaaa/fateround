@@ -95,7 +95,11 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
   useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'players', 'rounds', 'trivia_answers'], load)
+  const connected = useGameTableSync(
+    gameCode,
+    [{ table: 'games', column: 'id' }, 'players', 'rounds', 'trivia_answers'],
+    load
+  )
 
   usePolling(
     async () => {
@@ -103,7 +107,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
       return load()
     },
     [gameCode, load],
-    { intervalMs: POLL_INTERVALS.realtimeFallback }
+    { intervalMs: POLL_INTERVALS.realtimeFallback, enabled: !connected, runImmediately: false }
   )
 
   const changeHostMode = async (mode: TriviaHostMode) => {

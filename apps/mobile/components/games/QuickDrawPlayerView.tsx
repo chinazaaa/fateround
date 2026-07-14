@@ -36,12 +36,11 @@ import { RoundBreakCard } from '@/components/party/RoundBreakCard'
 import { TeamBadge } from '@/components/party/TeamBadge'
 import { TeamPickerGrid } from '@/components/party/TeamPickerGrid'
 import { TeamScoreGrid } from '@/components/party/TeamScoreGrid'
-import { useAbsoluteDeadline } from '@/components/party/useAbsoluteDeadline'
 import { LiveDrawingCanvas } from '@/components/quick-draw/DrawingCanvas'
 import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
-import { TimerBadge } from '@/components/ui/TimerBadge'
+import { DeadlineTimerBadge } from '@/components/ui/DeadlineTimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import {
   postQuickDrawGuess,
@@ -252,9 +251,6 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
       })
   }, [guesses, bootstrap.players, bootstrap.myPlayerId, mode, session?.turn_index])
 
-  const turnSecondsLeft = useAbsoluteDeadline(session?.turn_deadline_at, session?.phase === 'turn')
-  const breakSecondsLeft = useAbsoluteDeadline(session?.break_deadline_at, session?.phase === 'break')
-
   // Drive the guess game forward when a phase timer runs out — any active
   // non-viewer client fires (idempotent + deadline-gated server-side), matching
   // web. Without this an all-mobile guess table's turn/break hangs at 0.
@@ -436,7 +432,7 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
           </View>
         ) : null}
 
-        {turnSecondsLeft > 0 && session.phase === 'turn' ? <TimerBadge seconds={turnSecondsLeft} /> : null}
+        <DeadlineTimerBadge deadlineAt={session?.turn_deadline_at} active={session.phase === 'turn'} />
 
         {mode === 'team' ? (
           <TeamScoreGrid
@@ -464,7 +460,8 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
           <RoundBreakCard
             title={isLastTurn ? 'Last turn done' : 'Round break'}
             message={session.status_message ?? 'Next turn starting soon…'}
-            secondsLeft={breakSecondsLeft}
+            deadlineAt={session?.break_deadline_at}
+            active={session.phase === 'break'}
             detail={breakDetail}
           />
         ) : null}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { normalizeGameCode, type Game, type Player } from '@fateround/shared'
 import {
   type MafiaChatMessage,
@@ -447,18 +447,25 @@ function MafiaChatSection({
   return (
     <>
       <Text style={[styles.sectionTitle, accent === 'mafia' && styles.mafiaChatTitle]}>{title}</Text>
-      <ScrollView style={styles.chatLog} nestedScrollEnabled>
-        {messages.length === 0 ? (
+      {messages.length === 0 ? (
+        <View style={styles.chatLog}>
           <Text style={styles.chatEmpty}>No messages yet.</Text>
-        ) : (
-          messages.map((m) => (
-            <Text key={m.id} style={styles.chatLine}>
-              <Text style={styles.chatName}>{m.sender_name}: </Text>
-              {m.message}
+        </View>
+      ) : (
+        // Virtualized so a long game's chat only renders the visible rows.
+        <FlatList
+          style={styles.chatLog}
+          data={messages}
+          keyExtractor={(m) => m.id}
+          nestedScrollEnabled
+          renderItem={({ item }) => (
+            <Text style={styles.chatLine}>
+              <Text style={styles.chatName}>{item.sender_name}: </Text>
+              {item.message}
             </Text>
-          ))
-        )}
-      </ScrollView>
+          )}
+        />
+      )}
       <View style={styles.chatRow}>
         <TextInput
           style={styles.chatInput}

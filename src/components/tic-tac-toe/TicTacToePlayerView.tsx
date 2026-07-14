@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   TicTacToeCard,
@@ -52,6 +52,9 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
   const [session, setSession] = useState<TicTacToeSession | null>(null)
+  // Mirror the latest session for the realtime apply guard (below) without resubscribing.
+  const sessionRef = useRef<TicTacToeSession | null>(null)
+  sessionRef.current = session
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
 
@@ -111,10 +114,35 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
-  // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(gameCode, ['players', { table: 'games', column: 'id' }, 'tic_tac_toe_sessions'], load)
+  // Put a pushed session row on screen immediately, and — for an ordinary in-progress move —
+  // skip the follow-up full reload (games + players + session). A move only mutates this one
+  // row, so the local patch is complete; returning true tells useGameTableSync not to refetch,
+  // turning "1 move → 3 queries × every client" into a single realtime message. Any status
+  // change (→ finished) or the first row returns void so a full load still runs and the
+  // derived screen recomputes (winner screen); the fallback poll stays the reconciliation net.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as TicTacToeSession
+    const prev = sessionRef.current
+    // Drop a late/reordered event that would roll the board back behind what's shown.
+    if (prev && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null && prev.status === 'active' && next.status === 'active'
+  }, [])
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  // Realtime push: patch the session locally on moves (see above), reload for everything else.
+  const connected = useGameTableSync(
+    gameCode,
+    ['players', { table: 'games', column: 'id' }, { table: 'tic_tac_toe_sessions', apply: applySessionRow }],
+    load
+  )
+
+  // Safety-net poll only while realtime is disconnected — no redundant reloads when healthy.
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()

@@ -65,6 +65,8 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [board, setBoard] = useState<MonopolyBoard | null>(null)
+  const boardRef = useRef<MonopolyBoard | null>(null)
+  boardRef.current = board
   const [states, setStates] = useState<MonopolyPlayerState[]>([])
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
@@ -120,13 +122,45 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
   }, [game?.status])
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(
+  // Delta fast-path (dual-table). Screen derives from game.status, so board/state writes only
+  // update the UI — patch locally and skip the reload; active→finished rides the games-row
+  // event, and the fallback poll reconciles.
+  const applyBoardRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as MonopolyBoard
+    const prev = boardRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    setBoard(next)
+    boardRef.current = next
+    return prev != null
+  }, [])
+  const applyStateRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as MonopolyPlayerState
+    setStates((prev) => {
+      const i = prev.findIndex((s) => s.id === next.id)
+      if (i === -1) return [...prev, next]
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true
+  }, [])
+
+  const connected = useGameTableSync(
     gameCode,
-    [{ table: 'games', column: 'id' }, 'players', 'monopoly_boards', 'monopoly_player_state'],
+    [
+      { table: 'games', column: 'id' },
+      'players',
+      { table: 'monopoly_boards', apply: applyBoardRow },
+      { table: 'monopoly_player_state', apply: applyStateRow },
+    ],
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {

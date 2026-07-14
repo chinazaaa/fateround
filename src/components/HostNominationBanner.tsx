@@ -42,14 +42,36 @@ export function HostNominationBanner() {
   }, [code])
 
   useEffect(() => {
+    if (!code) return
     void check()
-    const t = setInterval(check, 5000)
     window.addEventListener('focus', check)
+    // Event-driven: the pending nomination lives on the games row, so react to its realtime
+    // UPDATE directly (reading the payload — no fetch) instead of polling every 5s for a rare
+    // event. This ran on every player of every game (~10 games-queries/s per 50-player room).
+    // Distinct channel topic so it can't collide with the game view's `sync-<code>` channel
+    // (supabase-js keys channels by topic and throws on reuse).
+    const channel = supabase
+      .channel(`host-nomination-${code}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${code}` },
+        (payload) => {
+          const pending = (payload.new as { pending_host_player_id?: string | null })?.pending_host_player_id ?? null
+          const session = getPlayerSession(code)
+          const isMe = !!pending && !!session?.playerId && pending === session.playerId
+          setNominated(isMe)
+          if (!isMe) setDismissed(false)
+        }
+      )
+      .subscribe()
+    // Slow safety net in case a socket blip drops the realtime event (realtime is primary).
+    const t = setInterval(check, 30000)
     return () => {
       clearInterval(t)
       window.removeEventListener('focus', check)
+      supabase.removeChannel(channel)
     }
-  }, [check])
+  }, [code, check])
 
   const accept = async () => {
     if (!code) return

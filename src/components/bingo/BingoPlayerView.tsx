@@ -15,6 +15,7 @@ import type { BingoCalledNumber, BingoCard, BingoClaim, Game } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useBingoWinNotification, useBingoStartNotification } from '@/hooks/useBingoNotifications'
 import { useBingoAutoCall } from '@/hooks/useBingoAutoCall'
+import { isAdvanceDriver } from '@/lib/advance-driver'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
@@ -235,10 +236,11 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     calledNumbers.length
   )
 
+  // W5: only an elected quorum of clients drives auto-call (see isAdvanceDriver).
   useBingoAutoCall({
     gameCode,
     game,
-    enabled: screen === 'active',
+    enabled: screen === 'active' && isAdvanceDriver(players, myPlayerId),
     onSynced: load,
   })
 
