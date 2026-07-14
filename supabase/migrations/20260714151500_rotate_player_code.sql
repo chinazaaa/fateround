@@ -7,24 +7,20 @@ DECLARE
   candidate text;
   attempts int := 0;
 BEGIN
-  -- First, ensure the old token is valid for this game.
-  IF NOT EXISTS (
-    SELECT 1 FROM players p WHERE p.game_id = p_game_id AND p.resume_token = p_old_token
-  ) THEN
-    RAISE EXCEPTION 'Player code not found';
-  END IF;
-
   LOOP
     candidate := '';
     FOR i IN 1..6 LOOP
       candidate := candidate || substr(chars, floor(random() * length(chars))::int + 1, 1);
     END LOOP;
-    
+
     -- Ensure uniqueness within the game
     IF NOT EXISTS (
       SELECT 1 FROM players p WHERE p.game_id = p_game_id AND p.resume_token = candidate
     ) THEN
       UPDATE players SET resume_token = candidate WHERE game_id = p_game_id AND resume_token = p_old_token;
+      IF NOT FOUND THEN
+        RAISE EXCEPTION 'Player code not found';
+      END IF;
       RETURN candidate;
     END IF;
 
