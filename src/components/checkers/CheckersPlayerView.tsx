@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   CheckersCard,
@@ -53,6 +53,8 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
   const { error: toastError } = useToast()
   const { confirm } = useConfirm()
   const [session, setSession] = useState<CheckersSession | null>(null)
+  const sessionRef = useRef<CheckersSession | null>(null)
+  sessionRef.current = session
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
 
@@ -110,7 +112,22 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
-  useGameTableSync(gameCode, ['players', { table: 'games', column: 'id' }, 'checkers_sessions'], load)
+  // Delta fast-path: patch the session locally on an ordinary move and skip the full reload;
+  // a status change (→ finished) or the first row still reloads. See useGameTableSync `apply`.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as CheckersSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null && prev.status === 'active' && next.status === 'active'
+  }, [])
+
+  useGameTableSync(
+    gameCode,
+    ['players', { table: 'games', column: 'id' }, { table: 'checkers_sessions', apply: applySessionRow }],
+    load
+  )
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 

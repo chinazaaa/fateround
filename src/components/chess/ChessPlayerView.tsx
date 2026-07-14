@@ -144,8 +144,13 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   // event must not roll the board back); an optimistic local move keeps the previous
   // updated_at, so the authoritative row for that same move still lands.
   const applySessionRow = useCallback(
-    (row: Record<string, unknown>) => {
-      acceptSession(row as unknown as ChessSession)
+    (row: Record<string, unknown>): boolean => {
+      const prev = sessionRef.current
+      const accepted = acceptSession(row as unknown as ChessSession)
+      // Skip the reconciliation reload for an ordinary in-progress move (the board is fully
+      // patched above and the tighter duel poll reconciles); the first row and any status
+      // transition (→ finished) still reload so the result screen resolves.
+      return prev != null && prev.status === 'active' && accepted.status === 'active'
     },
     [acceptSession]
   )

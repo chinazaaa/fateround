@@ -88,6 +88,30 @@ describe('useGameTableSync', () => {
     expect(reload).toHaveBeenCalledTimes(1) // reconciliation still runs
   })
 
+  it('skips the reconciliation reload when apply returns true (the W1 delta fast-path)', async () => {
+    const reload = vi.fn()
+    const apply = vi.fn(() => true) // "row fully absorbed — no refetch needed"
+    renderHook(() => useGameTableSync('ABCD', [{ table: 'tic_tac_toe_sessions', apply }], reload))
+
+    const row = { id: 's1', updated_at: '2026-01-01T00:00:01Z', status: 'active' }
+    cap.ons[0].cb({ eventType: 'UPDATE', new: row })
+    expect(apply).toHaveBeenCalledExactlyOnceWith(row)
+    await vi.advanceTimersByTimeAsync(150)
+    expect(reload).not.toHaveBeenCalled() // the whole point: no full multi-table refetch
+  })
+
+  it('still reloads when apply returns false (a status change that must reconcile)', async () => {
+    const reload = vi.fn()
+    // Mimics a view that skips ordinary moves but reloads on the finishing row.
+    const apply = vi.fn((row: Record<string, unknown>) => row.status === 'active')
+    renderHook(() => useGameTableSync('ABCD', [{ table: 'tic_tac_toe_sessions', apply }], reload))
+
+    cap.ons[0].cb({ eventType: 'UPDATE', new: { id: 's1', status: 'active' } }) // move → skip
+    cap.ons[0].cb({ eventType: 'UPDATE', new: { id: 's1', status: 'finished' } }) // finish → reload
+    await vi.advanceTimersByTimeAsync(150)
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
   it('skips apply for DELETEs and payloads without a row, but always reloads', async () => {
     const reload = vi.fn()
     const apply = vi.fn()

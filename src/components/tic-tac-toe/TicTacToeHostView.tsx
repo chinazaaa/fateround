@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostManageSection } from '@/components/host/HostManageSection'
@@ -50,6 +50,8 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<TicTacToeSession | null>(null)
+  const sessionRef = useRef<TicTacToeSession | null>(null)
+  sessionRef.current = session
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [hostMode, setHostModeState] = useState<TicTacToeHostMode>('player')
@@ -105,7 +107,23 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
   }, [game?.status, session])
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(gameCode, ['players', { table: 'games', column: 'id' }, 'tic_tac_toe_sessions'], load)
+  // Delta fast-path: patch the session locally on an ordinary move and skip the full reload;
+  // a status change (→ finished) or the first row still reloads so the results screen resolves.
+  // See useGameTableSync's `apply` contract (mirrors TicTacToePlayerView).
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as TicTacToeSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null && prev.status === 'active' && next.status === 'active'
+  }, [])
+
+  useGameTableSync(
+    gameCode,
+    ['players', { table: 'games', column: 'id' }, { table: 'tic_tac_toe_sessions', apply: applySessionRow }],
+    load
+  )
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 

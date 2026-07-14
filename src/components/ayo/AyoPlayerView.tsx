@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AyoCard, AyoLoadingScreen, AyoSecondaryButton, AyoShell } from '@/components/ayo/AyoChrome'
 import { AyoFinalResultsShareBlock } from '@/components/ayo/AyoFinalResultsShareBlock'
@@ -56,6 +56,8 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
   const { animation: sowAnimation, playSowAnimation } = useAyoSowAnimation()
   const { confirm } = useConfirm()
   const [session, setSession] = useState<AyoSession | null>(null)
+  const sessionRef = useRef<AyoSession | null>(null)
+  sessionRef.current = session
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
 
@@ -113,7 +115,22 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
-  useGameTableSync(gameCode, ['players', { table: 'games', column: 'id' }, 'ayo_sessions'], load)
+  // Delta fast-path: patch the session locally on an ordinary move and skip the full reload;
+  // a status change (→ finished) or the first row still reloads. See useGameTableSync `apply`.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as AyoSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null && prev.status === 'active' && next.status === 'active'
+  }, [])
+
+  useGameTableSync(
+    gameCode,
+    ['players', { table: 'games', column: 'id' }, { table: 'ayo_sessions', apply: applySessionRow }],
+    load
+  )
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
