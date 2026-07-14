@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
-import { GamePlayerChrome } from '@/components/GamePlayerChrome'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import {
@@ -1098,7 +1097,6 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 function MatchingPairsPlayShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col">
-      <GamePlayerChrome />
       <main className="pt-16 flex-1 px-4 py-8 max-w-lg mx-auto w-full space-y-6">{children}</main>
     </div>
   )
