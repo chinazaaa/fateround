@@ -15,6 +15,7 @@ import {
 } from '@/lib/two-truths'
 import { useRoundTimer } from '@/hooks/useRoundTimer'
 import { useTwoTruthsAdvance } from '@/hooks/useTwoTruthsAdvance'
+import { isAdvanceDriver } from '@/lib/advance-driver'
 import { playVoteSubmittedSound } from '@/lib/sounds'
 import { useToast } from '@/components/ui/Toast'
 import type { Game, Player, Round, TtlGuess } from '@/types'
@@ -113,10 +114,13 @@ export function TwoTruthsActiveRound({
     setSubmittingIndex(null)
   }, [currentRound?.id])
 
+  // W5: only an elected quorum of clients drives auto-advance (see isAdvanceDriver).
+  const isDriver = useMemo(() => isAdvanceDriver(players, myPlayerId), [players, myPlayerId])
+
   useTwoTruthsAdvance({
     gameCode,
     game,
-    enabled: !skipGameSync && game.status === 'active',
+    enabled: !skipGameSync && game.status === 'active' && isDriver,
     onAdvanced: onReload,
   })
 

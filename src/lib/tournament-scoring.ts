@@ -294,6 +294,34 @@ export async function applyKnockoutGroupCut(
   }
 }
 
+/**
+ * Add each player's earned points (and +1 game played) in a single statement.
+ * `points` maps tournament_player id → points earned this game; games_played is
+ * bumped for every entry, matching the pre-batch loop (which counted a game even
+ * for a zero-point placement). No-op on an empty map. W9: replaced one
+ * `increment_tournament_points` RPC per player.
+ */
+export async function incrementTournamentPointsBatch(
+  supabase: SupabaseClient,
+  points: Record<string, number>
+): Promise<void> {
+  const pointUpdates = Object.entries(points).map(([player_id, pts]) => ({ player_id, points: pts }))
+  if (pointUpdates.length === 0) return
+  const { error } = await supabase.rpc('increment_tournament_points_batch', { p_updates: pointUpdates })
+  if (error) console.error('[tournament-scoring] Failed to increment points', error)
+}
+
+/**
+ * Decrement one life from each given tournament_player, eliminating any that hit
+ * zero — in a single statement. No-op on an empty list. W9: replaced a SELECT +
+ * UPDATE per bottom-N player.
+ */
+export async function applyTournamentLifeLoss(supabase: SupabaseClient, playerIds: string[]): Promise<void> {
+  if (playerIds.length === 0) return
+  const { error } = await supabase.rpc('apply_tournament_life_loss', { p_player_ids: playerIds })
+  if (error) console.error('[tournament-scoring] Failed to apply life loss', error)
+}
+
 export async function awardTournamentPlacements(supabase: SupabaseClient, gameId: string): Promise<void> {
   const { data: game } = await supabase.from('games').select('tournament_id, game_type').eq('id', gameId).maybeSingle()
 
@@ -374,15 +402,7 @@ export async function awardTournamentPlacements(supabase: SupabaseClient, gameId
     return
   }
 
-  for (const [tpId, earned] of Object.entries(points)) {
-    const { error: rpcError } = await supabase.rpc('increment_tournament_points', {
-      p_player_id: tpId,
-      p_points: earned,
-    })
-    if (rpcError) {
-      console.error('[tournament-scoring] Failed to increment points for player', tpId, rpcError)
-    }
-  }
+  await incrementTournamentPointsBatch(supabase, points)
 
   // Tournament lives: decrement lives for bottom-N players
   if (tournament.elimination_config) {
@@ -400,24 +420,12 @@ export async function awardTournamentPlacements(supabase: SupabaseClient, gameId
             ? belowCutoff
             : sortedByPlacement.slice(0, eliminateCount)
 
-      for (const [tpId] of bottomN) {
-        const { data: tp } = await supabase
-          .from('tournament_players')
-          .select('lives_remaining')
-          .eq('id', tpId)
-          .maybeSingle()
-
-        const newLives = (tp?.lives_remaining ?? 1) - 1
-
-        if (newLives <= 0) {
-          await supabase
-            .from('tournament_players')
-            .update({ is_eliminated: true, eliminated_at: new Date().toISOString(), lives_remaining: 0 })
-            .eq('id', tpId)
-        } else {
-          await supabase.from('tournament_players').update({ lives_remaining: newLives }).eq('id', tpId)
-        }
-      }
+      // Decrement lives (and eliminate on zero) for the whole bottom-N in one
+      // statement — was a SELECT + UPDATE per player.
+      await applyTournamentLifeLoss(
+        supabase,
+        bottomN.map(([tpId]) => tpId)
+      )
 
       // Check if only 1 player remains — finish tournament early
       const { count: remaining } = await supabase

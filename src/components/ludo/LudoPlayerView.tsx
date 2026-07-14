@@ -55,6 +55,8 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
   const [session, setSession] = useState<LudoSession | null>(null)
+  const sessionRef = useRef<LudoSession | null>(null)
+  sessionRef.current = session
   const [states, setStates] = useState<LudoPlayerState[]>([])
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
@@ -112,9 +114,47 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(gameCode, ['players', { table: 'games', column: 'id' }, 'ludo_sessions', 'ludo_player_state'], load)
+  // Delta fast-path (dual-table). Screen derives from game.status, so session/state writes
+  // only update the board — patch locally and skip the reload; active→finished rides the
+  // games-row event, and the fallback poll reconciles.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as LudoSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null
+  }, [])
+  const applyStateRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as LudoPlayerState
+    setStates((prev) => {
+      const i = prev.findIndex((s) => s.id === next.id)
+      // Keep rows ordered by player_order so a row inserted mid-game via realtime
+      // (e.g. a late-admitted player) doesn't land out of order on the board.
+      if (i === -1) return [...prev, next].sort((a, b) => a.player_order - b.player_order)
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true
+  }, [])
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  const connected = useGameTableSync(
+    gameCode,
+    [
+      'players',
+      { table: 'games', column: 'id' },
+      { table: 'ludo_sessions', apply: applySessionRow },
+      { table: 'ludo_player_state', apply: applyStateRow },
+    ],
+    load
+  )
+
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   // Ready-up ring: readiness = holding a seat, so this reuses /players/ready (which
   // toggles the spectator flag). `ready:false` sits the player back out.

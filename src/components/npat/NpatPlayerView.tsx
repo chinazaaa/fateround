@@ -108,9 +108,17 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
   useTurnNotifications({ status: game?.status })
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'rounds', 'npat_answers', 'npat_marks'], load)
+  const connected = useGameTableSync(
+    gameCode,
+    [{ table: 'games', column: 'id' }, 'players', 'rounds', 'npat_answers', 'npat_marks'],
+    load
+  )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   const openLobbyJoin = useCallback(() => {
     setScreen('join')

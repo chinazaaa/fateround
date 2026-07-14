@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Chess } from 'chess.js'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
@@ -50,6 +50,8 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<ChessSession | null>(null)
+  const sessionRef = useRef<ChessSession | null>(null)
+  sessionRef.current = session
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [hostMode, setHostModeState] = useState<ChessHostMode>('player')
@@ -113,25 +115,35 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
   // reconciles everything else. Skip rows older than what we're already showing (a late
   // event must not roll the board back); an optimistic local move keeps the previous
   // updated_at, so the authoritative row for that same move still lands.
-  const applySessionRow = useCallback((row: Record<string, unknown>) => {
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
     const next = row as unknown as ChessSession
-    setSession((cur) => (cur && Date.parse(next.updated_at) < Date.parse(cur.updated_at) ? cur : next))
+    const prev = sessionRef.current
+    // Late/reordered event: keep what we already show and skip the reload (we have newer).
+    if (prev && Date.parse(next.updated_at) < Date.parse(prev.updated_at)) return true
+    setSession(next)
+    sessionRef.current = next
+    // Skip the reconciliation reload for an ordinary in-progress move; reload on the first
+    // row and any status transition (→ finished) so the result screen resolves.
+    return prev != null && prev.status === 'active' && next.status === 'active'
   }, [])
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     ['players', { table: 'games', column: 'id' }, { table: 'chess_sessions', apply: applySessionRow }],
     load
   )
 
   // Fallback poll: tighter while the match is live, so a dropped realtime channel
-  // costs seconds of move lag instead of most of a minute.
+  // costs seconds of move lag instead of most of a minute. Only runs while the
+  // channel is down — no redundant reloads alongside healthy realtime.
   usePolling(() => load(), [gameCode, load], {
     intervalMs:
       game?.status === 'active' && session?.status === 'active'
         ? POLL_INTERVALS.duelFallback
         : POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
   })
 
   const handlePlayerRemoved = useCallback(

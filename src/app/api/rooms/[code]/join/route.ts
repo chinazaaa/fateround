@@ -5,6 +5,7 @@ import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { generateGameCode } from '@/lib/utils'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 
 const supabase = getSupabaseAnon()
 
@@ -13,6 +14,9 @@ const supabase = getSupabaseAnon()
 const roomJoinSchema = z.object({ memberCode: z.unknown().optional(), displayName: z.unknown().optional() })
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
+  const limited = await enforceRateLimit(req, RATE_LIMITS.join)
+  if (limited) return limited
+
   const { code } = await params
   const roomCode = code.toUpperCase()
 
