@@ -16,9 +16,9 @@ export function PlayerResumeCard({
   className?: string
   compact?: boolean
 }) {
-  const resumeToken = resumeTokenProp ?? getPlayerSession(gameCode)?.resumeToken ?? null
+  const session = getPlayerSession(gameCode)
+  const resumeToken = resumeTokenProp ?? session?.resumeToken ?? null
   const [open, setOpen] = useState(false)
-  const [revealed, setRevealed] = useState(false)
 
   if (!resumeToken) return null
 
@@ -26,10 +26,12 @@ export function PlayerResumeCard({
 
   if (compact) {
     return (
-      <p className={`text-faint text-xs ${className}`}>
-        <span className="uppercase tracking-wider text-[10px]">Player code</span>{' '}
-        <span className="font-mono font-semibold tracking-[0.15em] text-muted">{resumeToken}</span>
-      </p>
+      <div className={`flex items-center justify-between gap-2 ${className}`}>
+        <p className="text-faint text-xs">
+          <span className="uppercase tracking-wider text-[10px]">Player code</span>{' '}
+          <span className="font-mono font-semibold tracking-[0.15em] text-muted">{resumeToken}</span>
+        </p>
+      </div>
     )
   }
 
@@ -84,15 +86,10 @@ export function PlayerResumeCard({
           Hide
         </button>
       </div>
-      <button
-        type="button"
-        onClick={() => setRevealed((v) => !v)}
-        className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-left"
-      >
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
         <p className="text-faint text-[10px] uppercase tracking-wider">Your player code</p>
-        <p className="font-mono font-bold text-xl tracking-[0.2em] mt-1">{revealed ? resumeToken : '••••••'}</p>
-        <p className="text-faint text-xs mt-1">{revealed ? 'Tap to hide' : 'Tap to reveal'}</p>
-      </button>
+        <p className="font-mono font-bold text-xl tracking-[0.2em] mt-1">{resumeToken}</p>
+      </div>
       <p className="text-body font-mono text-sm break-all">{url}</p>
       <InviteLinkActions url={url} copyLabel="Copy continue link" successMessage="Continue link copied" />
     </div>
