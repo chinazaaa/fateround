@@ -157,7 +157,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
   }, [gameCode, load])
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [
       { table: 'games', column: 'id' },
@@ -170,7 +170,11 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   // Seed the words editor from the saved custom words once the game loads.
   useEffect(() => {

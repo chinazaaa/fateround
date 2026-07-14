@@ -107,13 +107,17 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
   }, [gameCode, load])
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [{ table: 'games', column: 'id' }, 'players', 'ttl_statements', 'rounds', 'ttl_guesses'],
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   useTwoTruthsAdvance({
     gameCode,
