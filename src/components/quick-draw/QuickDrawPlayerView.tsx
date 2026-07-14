@@ -145,6 +145,7 @@ function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [
       { table: 'games', column: 'id' },
+      'players',
       'rounds',
       'quick_draw_sessions',
       'quick_draw_assignments',

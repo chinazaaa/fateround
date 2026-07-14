@@ -2,7 +2,7 @@
 
 // Yahtzee: player-facing roll/hold/score loop.
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   YahtzeeCard,
@@ -56,8 +56,14 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
   const [session, setSession] = useState<YahtzeeSession | null>(null)
+  // Mirror of `session` for the realtime apply callback to read without a
+  // resubscribe. Updated in an effect (never during render) so an aborted/replayed
+  // render can't leave it holding an uncommitted value; the apply callback also
+  // writes it synchronously so consecutive deltas compare against the latest.
   const sessionRef = useRef<YahtzeeSession | null>(null)
-  sessionRef.current = session
+  useEffect(() => {
+    sessionRef.current = session
+  }, [session])
   const [scores, setScores] = useState<YahtzeePlayerScore[]>([])
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
@@ -85,7 +91,11 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   // reload. This needs the resolved playerId (to tell whose turn it is), so it runs after
   // session resolution and before the screen is computed — exactly where the pre-migration
   // inline sync sat. Side effect only (updates local held/turn refs); no screen change.
-  const afterResolve = useCallback((_game: Game, playerId: string | null, sessionData: YahtzeeSession | null): void => {
+  // Reset the local held-dice mirror when the session resolves to a new turn (or
+  // it isn't our active mid-turn). Shared by the reconciling reload (afterResolve)
+  // AND the realtime delta path (applySessionRow): the delta path skips the reload,
+  // so without calling this a turn change would leave stale held dice on screen.
+  const syncHeldToSession = useCallback((sessionData: YahtzeeSession | null, playerId: string | null): void => {
     if (!sessionData) return
     const turnChanged = turnIndexRef.current !== sessionData.current_turn_index
     const isMyActiveTurn = playerId != null && currentPlayerId(sessionData) === playerId
@@ -96,6 +106,12 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
       setLocalHeld(sessionData.held ?? [false, false, false, false, false])
     }
   }, [])
+
+  const afterResolve = useCallback(
+    (_game: Game, playerId: string | null, sessionData: YahtzeeSession | null): void =>
+      syncHeldToSession(sessionData, playerId),
+    [syncHeldToSession]
+  )
 
   const computeScreen = useCallback((gameData: Game, playerId: string | null): Screen => {
     if (!playerId) {
@@ -140,14 +156,20 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   // Delta fast-path (dual-table). Screen derives from game.status, so session/score writes
   // only update the board — patch locally and skip the reload; active→finished rides the
   // games-row event, and the fallback poll reconciles.
-  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
-    const next = row as unknown as YahtzeeSession
-    const prev = sessionRef.current
-    if (prev && next.updated_at < prev.updated_at) return true
-    setSession(next)
-    sessionRef.current = next
-    return prev != null
-  }, [])
+  const applySessionRow = useCallback(
+    (row: Record<string, unknown>): boolean => {
+      const next = row as unknown as YahtzeeSession
+      const prev = sessionRef.current
+      if (prev && next.updated_at < prev.updated_at) return true
+      setSession(next)
+      sessionRef.current = next
+      // The reconciling reload is skipped on the delta path, so mirror
+      // afterResolve's turn-change reset here or held dice stay stale across turns.
+      syncHeldToSession(next, myPlayerId)
+      return prev != null
+    },
+    [syncHeldToSession, myPlayerId]
+  )
   const applyScoreRow = useCallback((row: Record<string, unknown>): boolean => {
     const next = row as unknown as YahtzeePlayerScore
     setScores((prev) => {

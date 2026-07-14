@@ -112,7 +112,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
   const connected = useGameTableSync(
     gameCode,
-    [{ table: 'games', column: 'id' }, 'mafia_sessions', 'mafia_player_states', 'mafia_chat_messages'],
+    [{ table: 'games', column: 'id' }, 'players', 'mafia_sessions', 'mafia_player_states', 'mafia_chat_messages'],
     load
   )
   usePolling(() => load(), [gameCode, load], {

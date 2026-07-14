@@ -76,7 +76,9 @@ export function useGameTableSync(
 
   // Whether the Realtime channel is currently SUBSCRIBED. Returned so callers can gate their
   // safety-net poll (`usePolling(..., { enabled: !connected })`) — no redundant full reloads
-  // while realtime is healthy, but the poll resumes instantly if the socket drops.
+  // while realtime is healthy. On a socket drop `connected` flips false and the poll re-enables;
+  // callers pass `runImmediately: false`, so the first reconcile lands within one interval (the
+  // backstop for a sustained outage — Supabase auto-reconnects transient drops before then).
   const [connected, setConnected] = useState(false)
 
   useEffect(() => {

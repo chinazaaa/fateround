@@ -158,6 +158,7 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
     gameCode,
     [
       { table: 'games', column: 'id' },
+      'players',
       { table: 'scrabble_sessions', apply: applySessionRow },
       { table: 'scrabble_player_state', apply: applyStateRow },
     ],

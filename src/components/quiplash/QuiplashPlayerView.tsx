@@ -113,6 +113,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [
       { table: 'games', column: 'id' },
+      'players',
       'rounds',
       'quiplash_sessions',
       'quiplash_answers',

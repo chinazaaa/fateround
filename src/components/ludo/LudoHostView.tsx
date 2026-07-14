@@ -119,7 +119,9 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     const next = row as unknown as LudoPlayerState
     setStates((prev) => {
       const i = prev.findIndex((s) => s.id === next.id)
-      if (i === -1) return [...prev, next]
+      // Keep rows ordered by player_order so a row inserted mid-game via realtime
+      // (e.g. a late-admitted player) doesn't land out of order on the board.
+      if (i === -1) return [...prev, next].sort((a, b) => a.player_order - b.player_order)
       const copy = [...prev]
       copy[i] = next
       return copy

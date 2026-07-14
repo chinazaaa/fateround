@@ -110,7 +110,7 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
   // Realtime push: reload on any change to this game's row + its tables.
   const connected = useGameTableSync(
     gameCode,
-    [{ table: 'games', column: 'id' }, 'rounds', 'npat_answers', 'npat_marks'],
+    [{ table: 'games', column: 'id' }, 'players', 'rounds', 'npat_answers', 'npat_marks'],
     load
   )
 

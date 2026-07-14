@@ -54,8 +54,13 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<YahtzeeSession | null>(null)
+  // Mirror for the realtime apply callback; updated in an effect (never during
+  // render) so a replayed render can't leave it stale. The callback also writes it
+  // synchronously so consecutive deltas compare against the latest.
   const sessionRef = useRef<YahtzeeSession | null>(null)
-  sessionRef.current = session
+  useEffect(() => {
+    sessionRef.current = session
+  }, [session])
   const [scores, setScores] = useState<YahtzeePlayerScore[]>([])
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)

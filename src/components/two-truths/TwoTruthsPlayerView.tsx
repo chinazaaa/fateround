@@ -103,7 +103,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   // Realtime push: reload on any change to this game's row + its tables.
   const connected = useGameTableSync(
     gameCode,
-    [{ table: 'games', column: 'id' }, 'rounds', 'ttl_statements', 'ttl_guesses'],
+    [{ table: 'games', column: 'id' }, 'players', 'rounds', 'ttl_statements', 'ttl_guesses'],
     load
   )
 

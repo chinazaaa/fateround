@@ -32,11 +32,14 @@ declare
   v_now timestamptz := now();
   v_cutoff timestamptz := v_now - make_interval(secs => p_window_seconds);
 begin
-  -- Retention: drop any rows whose window has already elapsed.
-  delete from api_rate_limit_attempts a where a.window_started_at < v_cutoff;
+  -- Reset THIS key's window if it has elapsed. Scoped to p_key on purpose: the
+  -- window length varies per bucket (a short-window rule must not purge a
+  -- long-window rule's rows), so a global sweep here would be incorrect. Stale
+  -- rows for inactive keys are left for a separate GC if ever needed.
+  delete from api_rate_limit_attempts a where a.key = p_key and a.window_started_at < v_cutoff;
 
-  -- Insert a fresh window, or increment within the active one. Because stale rows
-  -- were just deleted, an existing row here is guaranteed to be within the window.
+  -- Insert a fresh window, or increment within the active one. Because a stale
+  -- row for this key was just deleted, an existing row here is within the window.
   insert into api_rate_limit_attempts as a (key, count, window_started_at)
     values (p_key, 1, v_now)
   on conflict (key) do update set count = a.count + 1
