@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import { GamePlayerChrome } from '@/components/GamePlayerChrome'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
@@ -600,7 +599,6 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
       leaderboard[0].points > 0
     return (
       <div className="min-h-screen flex flex-col">
-        <GamePlayerChrome />
         <main className="pt-16 flex-1 px-4 py-8 max-w-lg mx-auto w-full space-y-4">
           <WordHuntFinalResultsShareBlock
             game={game}
@@ -627,7 +625,6 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--background)]">
-      <GamePlayerChrome />
       {toast && (
         <div
           className={`fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full text-sm font-semibold shadow-lg ${toast.ok ? 'bg-[var(--primary)] text-white' : 'bg-[var(--kill)] text-white'}`}

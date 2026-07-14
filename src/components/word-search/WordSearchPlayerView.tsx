@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { GamePlayerChrome } from '@/components/GamePlayerChrome'
 import {
   WordSearchBoard,
   wordSearchPlayerColor,
@@ -625,7 +624,6 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
       leaderboard[0].points > 0
     return (
       <div className="min-h-screen flex flex-col">
-        <GamePlayerChrome />
         <main className="pt-16 flex-1 px-4 py-8 max-w-lg mx-auto w-full space-y-6">
           <FinalResultsShareBlock game={game} participants={[]} votes={[]} rounds={[]} players={players}>
             <div className="glass-card-strong p-8 text-center space-y-2">
@@ -704,7 +702,6 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50/80 dark:bg-slate-950/50">
-      <GamePlayerChrome />
       {toast && (
         <div
           className={`fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full text-sm font-semibold shadow-lg ${toast.ok ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}
