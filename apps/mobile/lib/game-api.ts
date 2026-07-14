@@ -1306,6 +1306,14 @@ export function patchPlayerName(gameCode: string, playerId: string, playerName: 
   })
 }
 
+/** Issue a fresh player code, invalidating the old one and any link that carries it. */
+export function rotatePlayerResumeToken(gameCode: string, resumeToken: string) {
+  return postJson<{ newToken: string }>('/api/players/resume/rotate', {
+    gameCode: gameCode.toUpperCase(),
+    resumeToken,
+  })
+}
+
 export function leaveGame(gameCode: string, playerId: string, resumeToken: string) {
   return jsonRequest<{ success: boolean }>('/api/players', 'DELETE', {
     gameCode: gameCode.toUpperCase(),

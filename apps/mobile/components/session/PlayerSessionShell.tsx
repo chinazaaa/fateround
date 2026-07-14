@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game } from '@fateround/shared'
 import { gameLabel } from '@/lib/mobile-registry'
 import { clearPlayerSession, getHostToken, getPlayerSession } from '@/lib/secure-session'
+import { subscribePlayerSession } from '@/lib/session-events'
 import { gameHasMobileVoice } from '@/lib/voice-games'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { PlayerSessionMenu } from '@/components/session/PlayerSessionMenu'
@@ -59,6 +60,12 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
   useEffect(() => {
     void reloadSession()
   }, [reloadSession])
+
+  // Rotating the player code from the share sheet mints a new resume token; ours
+  // authenticates the host claim/decline calls in HostNominationBanner.
+  useEffect(() => {
+    return subscribePlayerSession(gameCode, () => void reloadSession())
+  }, [gameCode, reloadSession])
 
   // If you're the host of this game, don't sit in the player shell (with a
   // "Host" button to click) — go straight to the full host experience, which

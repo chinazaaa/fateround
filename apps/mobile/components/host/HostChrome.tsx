@@ -17,6 +17,7 @@ import { centeredContent } from '@/constants/layout'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { getPlayerSession, type PlayerSession } from '@/lib/secure-session'
+import { subscribePlayerSession } from '@/lib/session-events'
 
 type Props = {
   gameCode: string
@@ -51,8 +52,12 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
   const resumeToken = session?.resumeToken ?? null
   const hostPlayerId = session?.playerId ?? null
 
+  // Re-read on change, not just on mount: rotating the player code from the share
+  // sheet mints a new resume token, and ours authenticates host claim/ready calls.
   useEffect(() => {
-    void getPlayerSession(gameCode).then(setSession)
+    const read = () => void getPlayerSession(gameCode).then(setSession)
+    read()
+    return subscribePlayerSession(gameCode, read)
   }, [gameCode])
 
   // Play tab embeds the host's own player experience (join screen if not seated yet).
