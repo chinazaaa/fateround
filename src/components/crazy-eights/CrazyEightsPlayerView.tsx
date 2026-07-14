@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   CrazyEightsCard,
@@ -71,6 +71,8 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
   const [session, setSession] = useState<CrazyEightsSession | null>(null)
+  const sessionRef = useRef<CrazyEightsSession | null>(null)
+  sessionRef.current = session
   const [hands, setHands] = useState<CrazyEightsPlayerHand[]>([])
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
@@ -130,9 +132,37 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
   // Realtime push: reload on any change to this game's row + its tables.
+  // Delta fast-path (dual-table). Screen derives from game.status, so session/hand writes
+  // only update the board UI — patch locally and skip the reload; the active→finished
+  // transition rides the games-row event, and the fallback poll reconciles.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as CrazyEightsSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null
+  }, [])
+  const applyHandRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as CrazyEightsPlayerHand
+    setHands((prev) => {
+      const i = prev.findIndex((h) => h.id === next.id)
+      if (i === -1) return [...prev, next].sort((a, b) => a.player_order - b.player_order)
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true
+  }, [])
+
   useGameTableSync(
     gameCode,
-    ['players', { table: 'games', column: 'id' }, 'crazy_eights_sessions', 'crazy_eights_player_hands'],
+    [
+      'players',
+      { table: 'games', column: 'id' },
+      { table: 'crazy_eights_sessions', apply: applySessionRow },
+      { table: 'crazy_eights_player_hands', apply: applyHandRow },
+    ],
     load
   )
 

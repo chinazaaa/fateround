@@ -62,6 +62,8 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<WhotSession | null>(null)
+  const sessionRef = useRef<WhotSession | null>(null)
+  sessionRef.current = session
   const [hands, setHands] = useState<WhotPlayerHand[]>([])
   // Host game-settings sheet — opened from the ⚙ icon in the voice rail (the
   // old inline host-controls bar is gone; its actions live in the rail now).
@@ -120,9 +122,40 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     else if (game?.status === 'finished') setTab('manage')
   }, [game?.status])
 
-  // Realtime push: reload on any change to this game's row + its tables. `players` is
-  // included so the replay ready-up ring updates live as people tap "ready".
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'players', 'whot_sessions', 'whot_player_hands'], load)
+  // Delta fast-path (dual-table). Tab/screen derive from game.status, so session and hand
+  // writes only update the board UI — patch them locally and skip the full reload; the
+  // active→finished transition rides the games-row event, and the fallback poll reconciles.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as WhotSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null
+  }, [])
+  const applyHandRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as WhotPlayerHand
+    setHands((prev) => {
+      const i = prev.findIndex((h) => h.id === next.id)
+      if (i === -1) return [...prev, next].sort((a, b) => a.player_order - b.player_order)
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true
+  }, [])
+
+  // Realtime push: patch session + hands locally on plays (see above), reload for games/players.
+  useGameTableSync(
+    gameCode,
+    [
+      { table: 'games', column: 'id' },
+      'players',
+      { table: 'whot_sessions', apply: applySessionRow },
+      { table: 'whot_player_hands', apply: applyHandRow },
+    ],
+    load
+  )
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
