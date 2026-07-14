@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { createPlayerSchema, updatePlayerSchema, deletePlayerSchema } from '@/lib/validation'
+import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
 import { normalizeResumeToken } from '@/lib/utils'
@@ -207,6 +208,9 @@ function resolveIdentityGender(
 }
 
 export async function POST(req: NextRequest) {
+  const limited = await enforceRateLimit(req, RATE_LIMITS.join)
+  if (limited) return limited
+
   const { data: body, error: bodyError } = await parseJsonBody(req, createPlayerSchema)
   if (bodyError) return bodyError
 

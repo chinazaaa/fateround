@@ -119,7 +119,13 @@ export function tallyWordScrambleScores(
 ): WordScramblePlayerScore[] {
   const lengthBonus =
     opts?.lengthBonus ?? WORD_SCRAMBLE_DIFFICULTY_SPECS[parseWordScrambleDifficulty(metadata.difficulty)].lengthBonus
-  const activePlayers = players.filter((p) => p.spectator !== true)
+  // Dedupe by id: during the finish churn `players` can transiently hold a player twice (a
+  // realtime + poll merge race), which would double-count their word points and duplicate their
+  // leaderboard row. Count each player once.
+  const seenPlayerIds = new Set<string>()
+  const activePlayers = players.filter(
+    (p) => p.spectator !== true && !seenPlayerIds.has(p.id) && (seenPlayerIds.add(p.id), true)
+  )
   const activeIds = new Set(activePlayers.map((p) => p.id))
 
   const points = new Map<string, number>()

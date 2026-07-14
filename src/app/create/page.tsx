@@ -828,6 +828,12 @@ function CreateGameInner() {
   const isCrossword = isCrosswordGame(settings.game_type)
   const isWordSearch = isWordSearchGame(settings.game_type)
   const isWordScramble = isWordScrambleGame(settings.game_type)
+  // Difficulty = grid size, which is independent of where the words come from, so it stays editable
+  // under every source. A theme only locks difficulty on the Platform tab (admin themes carry one);
+  // under Library/Your own there's no theme, so never treat a stale theme value as a lock there.
+  const crosswordDiffLock = questionSource === 'platform' ? lockedPuzzleDifficulty(crosswordTheme) : null
+  const wordSearchDiffLock = questionSource === 'platform' ? lockedPuzzleDifficulty(wordSearchTheme) : null
+  const wordScrambleDiffLock = questionSource === 'platform' ? lockedPuzzleDifficulty(wordScrambleTheme) : null
   const isWordHunt = isWordHuntGame(settings.game_type)
   const isMatchingPairs = isMatchingPairsGame(settings.game_type)
   const showViewerToggle = gameSupportsViewerSetting(settings.game_type)
@@ -1696,10 +1702,21 @@ function CreateGameInner() {
               : wordScrambleTheme
             : undefined,
           word_scramble_difficulty: isWordScramble ? wordScrambleDifficulty : undefined,
+          // Only an admin theme picked under Platform folds a pool. Switching to Library/Your own
+          // leaves the prior `pt:<id>` in theme state; gate by source so a stale admin theme can't
+          // override the custom pool or the (now editable) difficulty.
           puzzle_theme_id:
-            puzzleThemeIdFromValue(
-              isCrossword ? crosswordTheme : isWordSearch ? wordSearchTheme : isWordScramble ? wordScrambleTheme : ''
-            ) ?? undefined,
+            questionSource === 'platform'
+              ? (puzzleThemeIdFromValue(
+                  isCrossword
+                    ? crosswordTheme
+                    : isWordSearch
+                      ? wordSearchTheme
+                      : isWordScramble
+                        ? wordScrambleTheme
+                        : ''
+                ) ?? undefined)
+              : undefined,
           elimination_config:
             eliminationEnabled && isEliminationCompatible
               ? eliminationMode === 'per-round'
@@ -3768,28 +3785,29 @@ function CreateGameInner() {
                     </select>
                   </Field>
                 )}
-                {questionSource !== 'library' && (
+                {
+                  /* Difficulty = grid size, shown for every source (Platform/Library/Your own). */
                   <Field label="Difficulty">
                     <div className="grid grid-cols-3 gap-3">
                       {WORD_SEARCH_DIFFICULTIES.map((difficulty) => (
                         <button
                           key={difficulty}
                           type="button"
-                          disabled={!!lockedPuzzleDifficulty(wordSearchTheme)}
+                          disabled={!!wordSearchDiffLock}
                           onClick={() => setWordSearchDifficulty(difficulty)}
                           className={[
                             'rounded-2xl border-2 px-4 py-3 text-center capitalize',
                             wordSearchDifficulty === difficulty
                               ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
                               : 'border-[var(--border-strong)] text-muted',
-                            lockedPuzzleDifficulty(wordSearchTheme) ? 'opacity-50' : '',
+                            wordSearchDiffLock ? 'opacity-50' : '',
                           ].join(' ')}
                         >
                           <span className="font-bold block text-base">{difficulty}</span>
                         </button>
                       ))}
                     </div>
-                    {lockedPuzzleDifficulty(wordSearchTheme) ? (
+                    {wordSearchDiffLock ? (
                       <p className="mt-2 text-xs text-muted">Difficulty is set by this theme.</p>
                     ) : (
                       <p className="mt-2 text-xs text-muted">
@@ -3797,7 +3815,7 @@ function CreateGameInner() {
                       </p>
                     )}
                   </Field>
-                )}
+                }
                 <Field label="Max time limit">
                   <select
                     value={wordSearchGameDuration}
@@ -3928,28 +3946,29 @@ function CreateGameInner() {
                     </select>
                   </Field>
                 )}
-                {questionSource !== 'library' && (
+                {
+                  /* Difficulty = grid size, shown for every source (Platform/Library/Your own). */
                   <Field label="Difficulty">
                     <div className="grid grid-cols-3 gap-3">
                       {WORD_SCRAMBLE_DIFFICULTIES.map((difficulty) => (
                         <button
                           key={difficulty}
                           type="button"
-                          disabled={!!lockedPuzzleDifficulty(wordScrambleTheme)}
+                          disabled={!!wordScrambleDiffLock}
                           onClick={() => setWordScrambleDifficulty(difficulty)}
                           className={[
                             'rounded-2xl border-2 px-4 py-3 text-center capitalize',
                             wordScrambleDifficulty === difficulty
                               ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
                               : 'border-[var(--border-strong)] text-muted',
-                            lockedPuzzleDifficulty(wordScrambleTheme) ? 'opacity-50' : '',
+                            wordScrambleDiffLock ? 'opacity-50' : '',
                           ].join(' ')}
                         >
                           <span className="font-bold block text-base">{difficulty}</span>
                         </button>
                       ))}
                     </div>
-                    {lockedPuzzleDifficulty(wordScrambleTheme) ? (
+                    {wordScrambleDiffLock ? (
                       <p className="mt-2 text-xs text-muted">Difficulty is set by this theme.</p>
                     ) : (
                       <p className="mt-2 text-xs text-muted">
@@ -3957,7 +3976,7 @@ function CreateGameInner() {
                       </p>
                     )}
                   </Field>
-                )}
+                }
                 <Field label="Max time limit">
                   <select
                     value={wordScrambleGameDuration}
@@ -4086,28 +4105,29 @@ function CreateGameInner() {
                     </select>
                   </Field>
                 )}
-                {questionSource !== 'library' && (
+                {
+                  /* Difficulty = grid size, shown for every source (Platform/Library/Your own). */
                   <Field label="Difficulty">
                     <div className="grid grid-cols-3 gap-3">
                       {CROSSWORD_DIFFICULTIES.map((difficulty) => (
                         <button
                           key={difficulty}
                           type="button"
-                          disabled={!!lockedPuzzleDifficulty(crosswordTheme)}
+                          disabled={!!crosswordDiffLock}
                           onClick={() => setCrosswordDifficulty(difficulty)}
                           className={[
                             'rounded-2xl border-2 px-4 py-3 text-center capitalize',
                             crosswordDifficulty === difficulty
                               ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
                               : 'border-[var(--border-strong)] text-muted',
-                            lockedPuzzleDifficulty(crosswordTheme) ? 'opacity-50' : '',
+                            crosswordDiffLock ? 'opacity-50' : '',
                           ].join(' ')}
                         >
                           <span className="font-bold block text-base">{difficulty}</span>
                         </button>
                       ))}
                     </div>
-                    {lockedPuzzleDifficulty(crosswordTheme) ? (
+                    {crosswordDiffLock ? (
                       <p className="mt-2 text-xs text-muted">Difficulty is set by this theme.</p>
                     ) : (
                       <p className="mt-2 text-xs text-muted">
@@ -4115,7 +4135,7 @@ function CreateGameInner() {
                       </p>
                     )}
                   </Field>
-                )}
+                }
                 <Field label="Max time limit">
                   <select
                     value={crosswordGameDuration}

@@ -1013,6 +1013,8 @@ export type BoardLobbyPatch = {
   word_scramble_difficulty?: 'easy' | 'medium' | 'hard'
   /** Admin-authored theme (puzzle_themes.id); server folds its word pool + locked difficulty. */
   puzzle_theme_id?: string
+  /** Host-supplied puzzle pool (a Library pack or "Your own" upload); server re-validates + normalises. */
+  puzzle_custom_questions?: unknown[]
 }
 
 export function postLobbySettings(gameCode: string, hostToken: string, patch: BoardLobbyPatch) {
@@ -1300,6 +1302,14 @@ export function patchPlayerName(gameCode: string, playerId: string, playerName: 
     gameCode: gameCode.toUpperCase(),
     playerId,
     playerName,
+    resumeToken,
+  })
+}
+
+/** Issue a fresh player code, invalidating the old one and any link that carries it. */
+export function rotatePlayerResumeToken(gameCode: string, resumeToken: string) {
+  return postJson<{ newToken: string }>('/api/players/resume/rotate', {
+    gameCode: gameCode.toUpperCase(),
     resumeToken,
   })
 }

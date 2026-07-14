@@ -89,17 +89,21 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
   useApplyGameTheme(mafiaState?.theme)
 
   // Table sync triggers state reload
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'mafia_sessions', 'mafia_player_states'], () => {
-    void load()
-  })
+  const connected = useGameTableSync(
+    gameCode,
+    [{ table: 'games', column: 'id' }, 'players', 'mafia_sessions', 'mafia_player_states'],
+    () => {
+      void load()
+    }
+  )
 
-  // Polling fallback
+  // Polling fallback — only while realtime is disconnected.
   usePolling(
     () => {
       void load()
     },
     [gameCode, load],
-    { intervalMs: POLL_INTERVALS.realtimeFallback }
+    { intervalMs: POLL_INTERVALS.realtimeFallback, enabled: !connected, runImmediately: false }
   )
 
   useEffect(() => {

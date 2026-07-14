@@ -156,7 +156,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   useTurnNotifications({ status: game?.status })
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [
       { table: 'games', column: 'id' },
@@ -169,7 +169,11 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
 
   const pickTeam = async (team: number) => {
     if (!myPlayerId) return

@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { GamePlayerChrome } from '@/components/GamePlayerChrome'
 import {
   WordSearchBoard,
   wordSearchPlayerColor,
@@ -12,6 +11,7 @@ import { WordList } from '@/components/word-search/WordList'
 import { WordSearchGameTimerBar } from '@/components/word-search/WordSearchGameTimerBar'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import {
   parseWordSearchMetadata,
   buildFoundOwnerGrid,
@@ -249,20 +249,40 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
 
   useEffect(() => {
     if (!roundId) return
+    // With many players, found-word INSERTs arrive for EVERYONE — applying each as its own setState
+    // re-renders the whole board (+ leaderboard tally) per event and starves your own input.
+    // Buffer incoming rows and flush them in a single update a few times a second instead.
+    const pending: WordSearchFound[] = []
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
+    const flush = () => {
+      flushTimer = null
+      if (pending.length === 0) return
+      const batch = pending.splice(0, pending.length)
+      setFound((prev) => {
+        const seen = new Set(prev.map((f) => `${f.player_id}|${f.word}`))
+        const add = batch.filter((r) => {
+          const key = `${r.player_id}|${r.word}`
+          return seen.has(key) ? false : (seen.add(key), true)
+        })
+        return add.length ? [...prev, ...add] : prev
+      })
+    }
     const ch = supabase
       .channel(`word_search_found_${roundId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'word_search_found', filter: `round_id=eq.${roundId}` },
         (payload) => {
-          addFound(payload.new as WordSearchFound)
+          pending.push(payload.new as WordSearchFound)
+          if (!flushTimer) flushTimer = setTimeout(flush, 200)
         }
       )
       .subscribe()
     return () => {
+      if (flushTimer) clearTimeout(flushTimer)
       void supabase.removeChannel(ch)
     }
-  }, [roundId, addFound])
+  }, [roundId])
 
   useEffect(() => {
     const ch = supabase
@@ -594,7 +614,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  if (view === 'finished') {
+  if (view === 'finished' && game) {
     const myRow = leaderboard.find((row) => row.player_id === myPlayerId)
     const iWon =
       !!myRow &&
@@ -604,39 +624,40 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
       leaderboard[0].points > 0
     return (
       <div className="min-h-screen flex flex-col">
-        <GamePlayerChrome />
         <main className="pt-16 flex-1 px-4 py-8 max-w-lg mx-auto w-full space-y-6">
-          <div className="glass-card-strong p-8 text-center space-y-2">
-            <p className="text-4xl">🏆</p>
-            <p className="text-2xl font-black">Hunt complete!</p>
-            {leaderboard[0] && (
-              <p className="text-muted text-base">
-                {leaderboard[0].name} wins with {leaderboard[0].points} pts
-              </p>
-            )}
-          </div>
-          <PaginatedLeaderboard
-            title="Final leaderboard"
-            rows={leaderboard.map((row, i) => {
-              const pct = metadata ? wordSearchCompletionPercent(metadata, found, row.player_id) : 0
-              const timeSecs = getPlayerTimeSpent(
-                game,
-                foundAsTimeRows(found),
-                row.player_id,
-                pct,
-                nowMs,
-                players.find((p) => p.id === row.player_id)?.joined_at
-              )
-              return {
-                id: row.player_id,
-                name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,
-                score: row.points,
-                rank: i + 1,
-              }
-            })}
-            highlightId={myPlayerId ?? undefined}
-            scoreLabel={(n) => `${n} pts`}
-          />
+          <FinalResultsShareBlock game={game} participants={[]} votes={[]} rounds={[]} players={players}>
+            <div className="glass-card-strong p-8 text-center space-y-2">
+              <p className="text-4xl">🏆</p>
+              <p className="text-2xl font-black">Hunt complete!</p>
+              {leaderboard[0] && (
+                <p className="text-muted text-base">
+                  {leaderboard[0].name} wins with {leaderboard[0].points} pts
+                </p>
+              )}
+            </div>
+            <PaginatedLeaderboard
+              title="Final leaderboard"
+              rows={leaderboard.map((row, i) => {
+                const pct = metadata ? wordSearchCompletionPercent(metadata, found, row.player_id) : 0
+                const timeSecs = getPlayerTimeSpent(
+                  game,
+                  foundAsTimeRows(found),
+                  row.player_id,
+                  pct,
+                  nowMs,
+                  players.find((p) => p.id === row.player_id)?.joined_at
+                )
+                return {
+                  id: row.player_id,
+                  name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,
+                  score: row.points,
+                  rank: i + 1,
+                }
+              })}
+              highlightId={myPlayerId ?? undefined}
+              scoreLabel={(n) => `${n} pts`}
+            />
+          </FinalResultsShareBlock>
           {iWon && (
             <PostWinToCommunity
               gameType="word_search"
@@ -681,7 +702,6 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50/80 dark:bg-slate-950/50">
-      <GamePlayerChrome />
       {toast && (
         <div
           className={`fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full text-sm font-semibold shadow-lg ${toast.ok ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}

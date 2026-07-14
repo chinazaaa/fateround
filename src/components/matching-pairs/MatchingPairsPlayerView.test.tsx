@@ -128,7 +128,6 @@ vi.mock('@/hooks/useRoomMemberJoin', () => ({
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ error: vi.fn() }),
 }))
-vi.mock('@/components/GamePlayerChrome', () => ({ GamePlayerChrome: () => null }))
 
 // ── Group 1: Progress Realtime Handler ─────────────────────────────────────
 

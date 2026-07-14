@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, FlatList, Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native'
 import { captureRef } from 'react-native-view-shot'
 import * as Sharing from 'expo-sharing'
 import * as Clipboard from 'expo-clipboard'
@@ -229,9 +229,14 @@ export function SecretMessageHostScreen({ gameCode, hostToken, game, players, on
           ) : messages.length === 0 ? (
             <Text style={styles.empty}>No messages yet — share your link to start receiving.</Text>
           ) : (
-            <View style={styles.messageList}>
-              {messages.map((message) => (
-                <View key={message.id} style={styles.messageCard}>
+            <FlatList
+              style={styles.messageList}
+              data={messages}
+              keyExtractor={(message) => message.id}
+              nestedScrollEnabled
+              contentContainerStyle={styles.messageListContent}
+              renderItem={({ item: message }) => (
+                <View style={styles.messageCard}>
                   <View style={styles.messageBody}>
                     {message.message_type === 'gif' && message.media_url ? (
                       <Text style={styles.messageText}>[GIF] {message.media_url}</Text>
@@ -269,8 +274,8 @@ export function SecretMessageHostScreen({ gameCode, hostToken, game, players, on
                     </Pressable>
                   </View>
                 </View>
-              ))}
-            </View>
+              )}
+            />
           )}
         </View>
       ) : null}
@@ -377,7 +382,10 @@ const makeStyles = (theme: Theme) =>
     inboxCount: { color: theme.textFaint, fontSize: 13, fontWeight: '600' },
     loader: { marginVertical: 12 },
     empty: { color: theme.textMuted, fontSize: 14, lineHeight: 20, paddingVertical: 8 },
-    messageList: { gap: 10 },
+    // Bounded so the virtualized inbox scrolls within its own box (only visible
+    // rows render) instead of laying every message out inside the page scroll.
+    messageList: { maxHeight: 460 },
+    messageListContent: { gap: 10 },
     messageCard: {
       flexDirection: 'row',
       alignItems: 'flex-start',

@@ -6,6 +6,7 @@ import { WordScrambleGameTimerBar } from '@/components/word-scramble/WordScrambl
 import { WordScramblePlayerView } from '@/components/word-scramble/WordScramblePlayerView'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostManageSection } from '@/components/host/HostManageSection'
@@ -195,20 +196,33 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
 
   useEffect(() => {
     if (!roundId) return
+    // Many players ⇒ a solve INSERT per player per word. Applying each as its own setState re-renders
+    // the whole host board per event. Buffer and flush in one update a few times a second instead.
+    const pending: WordScrambleSolve[] = []
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
+    const flush = () => {
+      flushTimer = null
+      if (pending.length === 0) return
+      const batch = pending.splice(0, pending.length)
+      setSolves((prev) => {
+        const ids = new Set(prev.map((s) => s.id))
+        const add = batch.filter((r) => (ids.has(r.id) ? false : (ids.add(r.id), true)))
+        return add.length ? [...prev, ...add] : prev
+      })
+    }
     const ch = supabase
       .channel(`word_scramble_host_solves_${roundId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'word_scramble_solves', filter: `round_id=eq.${roundId}` },
         (payload) => {
-          setSolves((prev) => {
-            const next = payload.new as WordScrambleSolve
-            return prev.some((s) => s.id === next.id) ? prev : [...prev, next]
-          })
+          pending.push(payload.new as WordScrambleSolve)
+          if (!flushTimer) flushTimer = setTimeout(flush, 200)
         }
       )
       .subscribe()
     return () => {
+      if (flushTimer) clearTimeout(flushTimer)
       void supabase.removeChannel(ch)
     }
   }, [roundId])
@@ -560,37 +574,47 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
       manage={manage}
       finished={
         <>
-          <FinishedWinnerHero winnerName={leaderboard[0]?.name} game={game} />
-          <PaginatedLeaderboard
-            title="Final leaderboard"
-            rows={leaderboard.map((row, i) => {
-              const pct = metadata ? wordScrambleCompletionPercent(metadata, solves, row.player_id) : 0
-              const timeSecs = getPlayerTimeSpent(
-                game,
-                solvesAsTimeRows(solves),
-                row.player_id,
-                pct,
-                nowMs,
-                players.find((p) => p.id === row.player_id)?.joined_at
-              )
-              return {
-                id: row.player_id,
-                name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,
-                score: row.points,
-                rank: i + 1,
-              }
-            })}
-            scoreLabel={(n) => `${n} pts`}
-            emphasizeLeader
-          />
-          <button
-            type="button"
-            onClick={() => void confirmPlayAgain()}
-            disabled={playingAgain}
-            className="btn-secondary w-full py-3 text-base font-bold disabled:opacity-60"
+          <FinalResultsShareBlock
+            game={game}
+            participants={[]}
+            votes={[]}
+            rounds={[]}
+            players={players}
+            playAgainButton={
+              <button
+                type="button"
+                onClick={() => void confirmPlayAgain()}
+                disabled={playingAgain}
+                className="btn-secondary w-full py-3 text-base font-bold disabled:opacity-60"
+              >
+                {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
+              </button>
+            }
           >
-            {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
-          </button>
+            <FinishedWinnerHero winnerName={leaderboard[0]?.name} game={game} />
+            <PaginatedLeaderboard
+              title="Final leaderboard"
+              rows={leaderboard.map((row, i) => {
+                const pct = metadata ? wordScrambleCompletionPercent(metadata, solves, row.player_id) : 0
+                const timeSecs = getPlayerTimeSpent(
+                  game,
+                  solvesAsTimeRows(solves),
+                  row.player_id,
+                  pct,
+                  nowMs,
+                  players.find((p) => p.id === row.player_id)?.joined_at
+                )
+                return {
+                  id: row.player_id,
+                  name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,
+                  score: row.points,
+                  rank: i + 1,
+                }
+              })}
+              scoreLabel={(n) => `${n} pts`}
+              emphasizeLeader
+            />
+          </FinalResultsShareBlock>
           <button
             type="button"
             onClick={() => void confirmReturnToLobby()}

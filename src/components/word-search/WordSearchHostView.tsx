@@ -7,6 +7,7 @@ import { WordSearchGameTimerBar } from '@/components/word-search/WordSearchGameT
 import { WordSearchPlayerView } from '@/components/word-search/WordSearchPlayerView'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostManageSection } from '@/components/host/HostManageSection'
@@ -232,20 +233,33 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
 
   useEffect(() => {
     if (!roundId) return
+    // Many players ⇒ a found-word INSERT per player per word. Applying each as its own setState
+    // re-renders the whole host board per event. Buffer and flush in one update a few times a second.
+    const pending: WordSearchFound[] = []
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
+    const flush = () => {
+      flushTimer = null
+      if (pending.length === 0) return
+      const batch = pending.splice(0, pending.length)
+      setFound((prev) => {
+        const ids = new Set(prev.map((f) => f.id))
+        const add = batch.filter((r) => (ids.has(r.id) ? false : (ids.add(r.id), true)))
+        return add.length ? [...prev, ...add] : prev
+      })
+    }
     const ch = supabase
       .channel(`word_search_host_found_${roundId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'word_search_found', filter: `round_id=eq.${roundId}` },
         (payload) => {
-          setFound((prev) => {
-            const next = payload.new as WordSearchFound
-            return prev.some((f) => f.id === next.id) ? prev : [...prev, next]
-          })
+          pending.push(payload.new as WordSearchFound)
+          if (!flushTimer) flushTimer = setTimeout(flush, 200)
         }
       )
       .subscribe()
     return () => {
+      if (flushTimer) clearTimeout(flushTimer)
       void supabase.removeChannel(ch)
     }
   }, [roundId])
@@ -661,37 +675,47 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
       manage={manage}
       finished={
         <>
-          <FinishedWinnerHero winnerName={leaderboard[0]?.name} game={game} />
-          <PaginatedLeaderboard
-            title="Final leaderboard"
-            rows={leaderboard.map((row, i) => {
-              const pct = metadata ? wordSearchCompletionPercent(metadata, found, row.player_id) : 0
-              const timeSecs = getPlayerTimeSpent(
-                game,
-                foundAsTimeRows(found),
-                row.player_id,
-                pct,
-                nowMs,
-                players.find((p) => p.id === row.player_id)?.joined_at
-              )
-              return {
-                id: row.player_id,
-                name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,
-                score: row.points,
-                rank: i + 1,
-              }
-            })}
-            scoreLabel={(n) => `${n} pts`}
-            emphasizeLeader
-          />
-          <button
-            type="button"
-            onClick={() => void confirmPlayAgain()}
-            disabled={playingAgain}
-            className="btn-secondary w-full py-3 text-base font-bold disabled:opacity-60"
+          <FinalResultsShareBlock
+            game={game}
+            participants={[]}
+            votes={[]}
+            rounds={[]}
+            players={players}
+            playAgainButton={
+              <button
+                type="button"
+                onClick={() => void confirmPlayAgain()}
+                disabled={playingAgain}
+                className="btn-secondary w-full py-3 text-base font-bold disabled:opacity-60"
+              >
+                {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
+              </button>
+            }
           >
-            {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
-          </button>
+            <FinishedWinnerHero winnerName={leaderboard[0]?.name} game={game} />
+            <PaginatedLeaderboard
+              title="Final leaderboard"
+              rows={leaderboard.map((row, i) => {
+                const pct = metadata ? wordSearchCompletionPercent(metadata, found, row.player_id) : 0
+                const timeSecs = getPlayerTimeSpent(
+                  game,
+                  foundAsTimeRows(found),
+                  row.player_id,
+                  pct,
+                  nowMs,
+                  players.find((p) => p.id === row.player_id)?.joined_at
+                )
+                return {
+                  id: row.player_id,
+                  name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,
+                  score: row.points,
+                  rank: i + 1,
+                }
+              })}
+              scoreLabel={(n) => `${n} pts`}
+              emphasizeLeader
+            />
+          </FinalResultsShareBlock>
           <button
             type="button"
             onClick={() => void confirmReturnToLobby()}

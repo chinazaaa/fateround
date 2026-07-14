@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { GamePlayerChrome } from '@/components/GamePlayerChrome'
 import { WordScrambleGameTimerBar } from '@/components/word-scramble/WordScrambleGameTimerBar'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -249,18 +248,40 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
 
   useEffect(() => {
     if (!roundId) return
+    // Many players ⇒ a solve INSERT per player per word, delivered to EVERYONE. Applying each as its
+    // own setState re-renders the board (+ leaderboard tally) per event and starves your own input.
+    // Buffer incoming rows and flush them in a single update a few times a second instead.
+    const pending: WordScrambleSolve[] = []
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
+    const flush = () => {
+      flushTimer = null
+      if (pending.length === 0) return
+      const batch = pending.splice(0, pending.length)
+      setSolves((prev) => {
+        const seen = new Set(prev.map((s) => `${s.player_id}|${s.scramble_index}`))
+        const add = batch.filter((r) => {
+          const key = `${r.player_id}|${r.scramble_index}`
+          return seen.has(key) ? false : (seen.add(key), true)
+        })
+        return add.length ? [...prev, ...add] : prev
+      })
+    }
     const ch = supabase
       .channel(`word_scramble_solves_${roundId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'word_scramble_solves', filter: `round_id=eq.${roundId}` },
-        (payload) => addSolve(payload.new as WordScrambleSolve)
+        (payload) => {
+          pending.push(payload.new as WordScrambleSolve)
+          if (!flushTimer) flushTimer = setTimeout(flush, 200)
+        }
       )
       .subscribe()
     return () => {
+      if (flushTimer) clearTimeout(flushTimer)
       void supabase.removeChannel(ch)
     }
-  }, [roundId, addSolve])
+  }, [roundId])
 
   useEffect(() => {
     if (!roundId) return
@@ -604,7 +625,6 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
       leaderboard[0].points > 0
     return (
       <div className="min-h-screen flex flex-col">
-        <GamePlayerChrome />
         <main className="pt-16 flex-1 px-4 py-8 max-w-lg mx-auto w-full space-y-6">
           <div ref={finishedCaptureRef} className="space-y-6">
             {game ? <ShareResultsCaptureHeader game={game} /> : null}
@@ -680,7 +700,6 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
   // ── Playing ──────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen flex flex-col bg-slate-50/80 dark:bg-slate-950/50">
-      <GamePlayerChrome />
       {toast && (
         <div
           className={`fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full text-sm font-semibold shadow-lg ${toast.ok ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}

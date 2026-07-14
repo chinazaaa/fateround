@@ -24,6 +24,7 @@ import {
 } from '@/lib/quick-draw'
 import { playerIsViewer } from '@/lib/viewers'
 import { useQuickDrawAdvance } from '@/hooks/useQuickDrawAdvance'
+import { isAdvanceDriver } from '@/lib/advance-driver'
 import { playVoteSubmittedSound } from '@/lib/sounds'
 import { useToast } from '@/components/ui/Toast'
 import type {
@@ -186,15 +187,18 @@ export function QuickDrawActiveRound({
     return () => window.clearInterval(id)
   }, [session?.turn_deadline_at, session?.phase])
 
+  // W5: only an elected quorum of clients drives auto-advance (see isAdvanceDriver).
+  const isDriver = useMemo(() => isAdvanceDriver(players, myPlayerId), [players, myPlayerId])
+
   useQuickDrawAdvance({
     gameCode,
     game,
-    enabled: !skipGameSync && game.status === 'active',
+    enabled: !skipGameSync && game.status === 'active' && isDriver,
     onAdvanced: onReload,
   })
 
   useEffect(() => {
-    if (skipGameSync || game.status !== 'active' || !session?.turn_deadline_at || countdown > 0) return
+    if (skipGameSync || !isDriver || game.status !== 'active' || !session?.turn_deadline_at || countdown > 0) return
     const key = `${session.phase}:${session.drawing_index}:${session.turn_deadline_at}`
     if (advancedDeadlineRef.current === key) return
     advancedDeadlineRef.current = key
@@ -207,6 +211,7 @@ export function QuickDrawActiveRound({
     countdown,
     game.status,
     gameCode,
+    isDriver,
     onReload,
     session?.phase,
     session?.drawing_index,

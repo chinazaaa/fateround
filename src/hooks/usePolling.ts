@@ -18,23 +18,23 @@ export const POLL_INTERVALS = {
 
 const MAX_BACKOFF_MS = 60_000
 
-export function isRetriablePollError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false
-  const e = error as { code?: string; message?: string; status?: number }
-  if (e.status === 503 || e.status === 504) return true
-  if (e.code === 'PGRST000' || e.code === 'PGRST001' || e.code === 'PGRST002' || e.code === 'PGRST003') {
-    return true
-  }
-  const msg = (e.message ?? '').toLowerCase()
-  return (
-    msg.includes('timeout') || msg.includes('schema cache') || msg.includes('fetch failed') || msg.includes('network')
-  )
-}
-
-/** Returns false when any result has a retriable Supabase/PostgREST error. */
+/**
+ * Returns false when any result carries an error.
+ *
+ * Callers gate `setState(res.data ?? [])` on this, so ANY error has to be disqualifying,
+ * not just a retriable one. A permission error (42501 — which this repo hits whenever a
+ * column lacks a column-level GRANT, since migration 0122 made grants column-level)
+ * arrives as `{ data: null, error }`; counting that as "ok" let callers apply `?? []` and
+ * wipe a good roster to empty, rendering the game as though everyone had left.
+ *
+ * "No rows" is NOT an error here: client reads use `.maybeSingle()` or a plain select,
+ * both of which return `{ data: null | [], error: null }` when empty — so a genuinely
+ * empty read still applies normally. (`.single()` would report empty as a PGRST116
+ * error, but it's confined to server routes, which don't use this helper.)
+ */
 export function supabasePollOk(...results: { error: unknown }[]): boolean {
   for (const r of results) {
-    if (r.error && isRetriablePollError(r.error)) return false
+    if (r.error) return false
   }
   return true
 }
@@ -48,10 +48,11 @@ type UsePollingOptions = {
 /**
  * Polls on an interval with:
  * - pause while the browser tab is hidden
- * - exponential backoff on failures (503 / PGRST002 / network)
+ * - exponential backoff on failures (any read error — transient or permanent)
  * - immediate refresh when the tab becomes visible again
  *
- * Poll should return `false` on retriable failure, or throw.
+ * Poll should return `false` on failure, or throw. A permanent failure (e.g. a missing
+ * GRANT) backs off to MAX_BACKOFF_MS rather than hammering the database at full rate.
  */
 export function usePolling(
   poll: () => void | Promise<boolean | void>,

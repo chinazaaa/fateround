@@ -7,6 +7,7 @@ import { CrosswordGameTimerBar } from '@/components/crossword/CrosswordGameTimer
 import { CrosswordPlayerView } from '@/components/crossword/CrosswordPlayerView'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostManageSection } from '@/components/host/HostManageSection'
@@ -224,20 +225,33 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
 
   useEffect(() => {
     if (!roundId) return
+    // Batch INSERT floods (every player's keystroke is an INSERT for everyone) into one update a
+    // few times a second so a busy room doesn't re-render the whole board per keystroke-per-player.
+    const pending: CrosswordSubmission[] = []
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
+    const flush = () => {
+      flushTimer = null
+      if (pending.length === 0) return
+      const batch = pending.splice(0, pending.length)
+      setSubmissions((prev) => {
+        const ids = new Set(prev.map((s) => s.id))
+        const add = batch.filter((s) => !ids.has(s.id) && (ids.add(s.id), true))
+        return add.length ? [...prev, ...add] : prev
+      })
+    }
     const ch = supabase
       .channel(`crossword_host_subs_${roundId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'crossword_submissions', filter: `round_id=eq.${roundId}` },
         (payload) => {
-          setSubmissions((prev) => {
-            const next = payload.new as CrosswordSubmission
-            return prev.some((s) => s.id === next.id) ? prev : [...prev, next]
-          })
+          pending.push(payload.new as CrosswordSubmission)
+          if (!flushTimer) flushTimer = setTimeout(flush, 200)
         }
       )
       .subscribe()
     return () => {
+      if (flushTimer) clearTimeout(flushTimer)
       void supabase.removeChannel(ch)
     }
   }, [roundId])
@@ -670,37 +684,47 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
       manage={manage}
       finished={
         <>
-          <FinishedWinnerHero winnerName={leaderboard[0]?.name} game={game} />
-          <PaginatedLeaderboard
-            title="Final leaderboard"
-            rows={leaderboard.map((row, i) => {
-              const pct = metadata ? playerCompletionPercent(metadata, submissions, row.player_id) : 0
-              const timeSecs = getPlayerTimeSpent(
-                game,
-                submissions,
-                row.player_id,
-                pct,
-                nowMs,
-                players.find((p) => p.id === row.player_id)?.joined_at
-              )
-              return {
-                id: row.player_id,
-                name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,
-                score: row.points,
-                rank: i + 1,
-              }
-            })}
-            scoreLabel={(n) => `${n} pts`}
-            emphasizeLeader
-          />
-          <button
-            type="button"
-            onClick={() => void confirmPlayAgain()}
-            disabled={playingAgain}
-            className="btn-secondary w-full py-3 text-base font-bold disabled:opacity-60"
+          <FinalResultsShareBlock
+            game={game}
+            participants={[]}
+            votes={[]}
+            rounds={[]}
+            players={players}
+            playAgainButton={
+              <button
+                type="button"
+                onClick={() => void confirmPlayAgain()}
+                disabled={playingAgain}
+                className="btn-secondary w-full py-3 text-base font-bold disabled:opacity-60"
+              >
+                {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
+              </button>
+            }
           >
-            {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
-          </button>
+            <FinishedWinnerHero winnerName={leaderboard[0]?.name} game={game} />
+            <PaginatedLeaderboard
+              title="Final leaderboard"
+              rows={leaderboard.map((row, i) => {
+                const pct = metadata ? playerCompletionPercent(metadata, submissions, row.player_id) : 0
+                const timeSecs = getPlayerTimeSpent(
+                  game,
+                  submissions,
+                  row.player_id,
+                  pct,
+                  nowMs,
+                  players.find((p) => p.id === row.player_id)?.joined_at
+                )
+                return {
+                  id: row.player_id,
+                  name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,
+                  score: row.points,
+                  rank: i + 1,
+                }
+              })}
+              scoreLabel={(n) => `${n} pts`}
+              emphasizeLeader
+            />
+          </FinalResultsShareBlock>
           <button
             type="button"
             onClick={() => void confirmReturnToLobby()}

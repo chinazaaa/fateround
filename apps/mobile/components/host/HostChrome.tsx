@@ -4,7 +4,6 @@ import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game, Player } from '@fateround/shared'
 import { gameLabel } from '@/lib/mobile-registry'
-import { gameHasMobileVoice } from '@/lib/voice-games'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { TransferHostSheet } from '@/components/host/TransferHostSheet'
@@ -17,6 +16,7 @@ import { centeredContent } from '@/constants/layout'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { getPlayerSession, type PlayerSession } from '@/lib/secure-session'
+import { subscribePlayerSession } from '@/lib/session-events'
 
 type Props = {
   gameCode: string
@@ -51,8 +51,12 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
   const resumeToken = session?.resumeToken ?? null
   const hostPlayerId = session?.playerId ?? null
 
+  // Re-read on change, not just on mount: rotating the player code from the share
+  // sheet mints a new resume token, and ours authenticates host claim/ready calls.
   useEffect(() => {
-    void getPlayerSession(gameCode).then(setSession)
+    const read = () => void getPlayerSession(gameCode).then(setSession)
+    read()
+    return subscribePlayerSession(gameCode, read)
   }, [gameCode])
 
   // Play tab embeds the host's own player experience (join screen if not seated yet).
@@ -126,12 +130,6 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
         ) : null}
       </View>
 
-      {/* Voice rail sits UNDER the header (matches PlayerSessionShell) so the
-          "Join voice" bar never renders above/into the header chrome. */}
-      {gameHasMobileVoice(game.game_type) ? (
-        <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} />
-      ) : null}
-
       {showPlayView ? (
         <HostViewProvider value={{ hostToken, hostPlayerId, onReload: () => onReload?.() }}>
           <View style={styles.playBody}>
@@ -143,6 +141,9 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
           {children}
         </ScrollView>
       )}
+      {/* Floats over the screen — mounted at the shell root (not in the scroll
+          body, where it would scroll away). */}
+      <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} />
       <ShareGameSheet
         visible={shareOpen}
         gameCode={gameCode}

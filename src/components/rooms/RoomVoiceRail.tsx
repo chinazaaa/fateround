@@ -96,6 +96,10 @@ export function RoomVoiceRail({
 
   const serverUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL
   const joinAudioRef = useRef<() => Promise<void>>(null)
+  // See AudioChat: we tear the room down by unmounting <LiveKitRoom> rather than
+  // flipping `connect` to false, so LiveKit's own shouldConnect guard never
+  // clears and our own Leave reaches `onError` looking like a failed connect.
+  const leavingRef = useRef(false)
   const authRef = useRef(auth)
   authRef.current = auth
 
@@ -165,6 +169,7 @@ export function RoomVoiceRail({
         throw new Error(errData.error || 'Failed to fetch audio token')
       }
       const data = await res.json()
+      leavingRef.current = false
       setToken(data.token)
       localStorage.setItem(
         `fateround_voice_${resolvedRoomCode.toUpperCase()}`,
@@ -198,6 +203,7 @@ export function RoomVoiceRail({
   }
 
   const leaveAudio = (manual = true) => {
+    leavingRef.current = true
     setToken(null)
     if (manual) {
       localStorage.removeItem(`fateround_voice_${resolvedRoomCode.toUpperCase()}`)
@@ -311,6 +317,9 @@ export function RoomVoiceRail({
       connect
       onDisconnected={handleDisconnected}
       onError={(err) => {
+        // Our own teardown rejects the in-flight connect — not a connection
+        // failure, so it must never surface as one.
+        if (leavingRef.current) return
         // Keep LiveKit's raw reason in the console for debugging, but never show
         // it to players — surface a plain, friendly message instead.
         console.error('[voice] LiveKit connection error', err)

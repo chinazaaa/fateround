@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game } from '@fateround/shared'
 import { gameLabel } from '@/lib/mobile-registry'
 import { clearPlayerSession, getHostToken, getPlayerSession } from '@/lib/secure-session'
-import { gameHasMobileVoice } from '@/lib/voice-games'
+import { subscribePlayerSession } from '@/lib/session-events'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { PlayerSessionMenu } from '@/components/session/PlayerSessionMenu'
 import { HeaderBadgeContext } from '@/components/session/HeaderBadgeContext'
@@ -59,6 +59,12 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
   useEffect(() => {
     void reloadSession()
   }, [reloadSession])
+
+  // Rotating the player code from the share sheet mints a new resume token; ours
+  // authenticates the host claim/decline calls in HostNominationBanner.
+  useEffect(() => {
+    return subscribePlayerSession(gameCode, () => void reloadSession())
+  }, [gameCode, reloadSession])
 
   // If you're the host of this game, don't sit in the player shell (with a
   // "Host" button to click) — go straight to the full host experience, which
@@ -158,13 +164,14 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
           </View>
         </View>
 
-        {game && gameHasMobileVoice(game.game_type) ? <VoiceRail gameCode={gameCode} mode="player" /> : null}
         {/* Not gated on gameEnded: a host may transfer host after the game finishes
             (e.g. so the new host can start "play again") — the nominee must still
             see the invite on the finished screen. The banner self-hides unless
             there's a pending nomination for this player. */}
         <HostNominationBanner gameCode={gameCode} playerId={playerId} resumeToken={resumeToken} />
         <View style={styles.body}>{children}</View>
+        {/* Floats over the screen — last child so it paints above the body. */}
+        {game ? <VoiceRail gameCode={gameCode} mode="player" /> : null}
         <ShareGameSheet
           visible={shareOpen}
           gameCode={gameCode}

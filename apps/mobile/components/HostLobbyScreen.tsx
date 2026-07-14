@@ -5,7 +5,6 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game, Player } from '@fateround/shared'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 import { startGame, postPlayAgain, postFinishGame, removePlayerAsHost } from '@/lib/game-api'
-import { gameHasMobileVoice } from '@/lib/voice-games'
 import { gameLabel } from '@/lib/mobile-registry'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
@@ -17,6 +16,7 @@ import { CodewordsHostLobby } from '@/components/host/lobby/CodewordsHostLobby'
 import { TeamRosterHostLobby } from '@/components/host/lobby/TeamRosterHostLobby'
 import { WordPoolLobbyEditor, supportsLobbyWordPool } from '@/components/host/lobby/WordPoolLobbyEditor'
 import { clearPlayerSession, getPlayerSession, type PlayerSession } from '@/lib/secure-session'
+import { subscribePlayerSession } from '@/lib/session-events'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useGamePlayerLimits } from '@/hooks/useGamePlayerLimits'
@@ -43,6 +43,9 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [loading, setLoading] = useState(true)
+  // Measured, not hardcoded — the pinned footer grows when Start shows an error,
+  // and the floating voice pill has to keep clearing it.
+  const [footerHeight, setFooterHeight] = useState(0)
   const [starting, setStarting] = useState(false)
   const [replaying, setReplaying] = useState(false)
   const [ending, setEnding] = useState(false)
@@ -91,8 +94,12 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
     }
   }, [gameCode, load])
 
+  // Re-read on change, not just on mount: rotating the player code from the share
+  // sheet mints a new resume token, and ours authenticates the ready-up calls.
   useEffect(() => {
-    void getPlayerSession(gameCode).then((session) => setHostSession(session))
+    const read = () => void getPlayerSession(gameCode).then((session) => setHostSession(session))
+    read()
+    return subscribePlayerSession(gameCode, read)
   }, [gameCode])
 
   const onSelfRemoved = useCallback(() => {
@@ -230,14 +237,6 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
           <Text style={styles.code}>{gameCode}</Text>
         </Pressable>
 
-        {/* Under the header (not above it, where it read as the header itself).
-            Bleed to full width to counteract the scroll's horizontal padding. */}
-        {game && gameHasMobileVoice(game.game_type) ? (
-          <View style={styles.voiceRailWrap}>
-            <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} />
-          </View>
-        ) : null}
-
         {/* Not gated on hostPlayerId: a host-only viewer (not seated / "stopped
             playing") must still see the ring to watch players ready up and start.
             The ring is null-safe on myPlayerId, and isHost hides the ready toggle. */}
@@ -344,7 +343,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
         ) : null}
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={styles.footer} onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}>
         {/* Error lives in the pinned footer, next to the Start button, so a failed
             Start is visible immediately (it used to render at the bottom of the
             scroll, out of view). */}
@@ -441,6 +440,12 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
         visible={transferOpen}
         onClose={() => setTransferOpen(false)}
       />
+      {/* Floats over the screen, above the pinned Start/End footer. Mounted at
+          the shell root — inside the ScrollView it would scroll away. The footer
+          height is measured, not hardcoded: it grows when Start errors. */}
+      {game ? (
+        <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} bottomOffset={footerHeight} />
+      ) : null}
     </SafeAreaView>
   )
 }
@@ -485,7 +490,6 @@ const makeStyles = (theme: Theme) =>
     content: { padding: 24, gap: 8, paddingBottom: 32, ...centeredContent },
     // Cancel the content's 24px horizontal padding so the voice bar spans edge to
     // edge like the pinned rails on the other chromes.
-    voiceRailWrap: { marginHorizontal: -24 },
     eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1, flexWrap: 'wrap' },
     eyebrow: { color: theme.primary, fontSize: 13, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
     typePill: {

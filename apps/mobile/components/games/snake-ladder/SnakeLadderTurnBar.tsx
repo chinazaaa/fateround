@@ -1,31 +1,35 @@
 import { useEffect, useRef } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { pulseTurnAlert } from '@/lib/local-turn-alerts'
+import { useAbsoluteDeadline } from '@/components/party/useAbsoluteDeadline'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
 /**
  * Shows whose turn it is plus a live countdown when the host configured a turn
  * timer. Flips to an urgent state as time runs low. Mirrors the web
- * SnakeLadderTurnBar (secondsLeft / hasTimer / urgent).
+ * SnakeLadderTurnBar (secondsLeft / hasTimer / urgent). Owns the 500ms countdown
+ * internally (M1) so ticking re-renders this leaf, not the whole player view.
  */
 export function SnakeLadderTurnBar({
   turnPlayerName,
   isMyTurn,
-  secondsLeft,
-  hasTimer,
+  deadlineAt,
+  active = true,
   urgentAt = 5,
 }: {
   turnPlayerName?: string | null
   isMyTurn?: boolean
-  secondsLeft?: number
-  hasTimer?: boolean
+  deadlineAt?: string | null
+  active?: boolean
   urgentAt?: number
 }) {
   const styles = useThemedStyles(makeStyles)
-  const showTimer = !!hasTimer && secondsLeft != null && secondsLeft > 0
-  const urgent = showTimer && (secondsLeft as number) <= urgentAt
-  const prevSecondsRef = useRef(secondsLeft ?? 0)
+  const hasTimer = !!deadlineAt
+  const secondsLeft = useAbsoluteDeadline(deadlineAt, active && hasTimer)
+  const showTimer = active && hasTimer && secondsLeft > 0
+  const urgent = showTimer && secondsLeft <= urgentAt
+  const prevSecondsRef = useRef(secondsLeft)
 
   useEffect(() => {
     if (!showTimer) {

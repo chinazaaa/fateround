@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { Game } from '@fateround/shared'
 import { postBingoSync } from '@/lib/game-api'
+import { useAppActive } from '@/hooks/useAppActive'
 
 const INTERVAL_MS = 4000
 
@@ -20,8 +21,9 @@ export function useBingoAutoCall({
   const onSyncedRef = useRef(onSynced)
   onSyncedRef.current = onSynced
 
+  const appActive = useAppActive()
   const autoMode = game?.bingo_call_mode === 'auto'
-  const active = enabled && !!game && game.status === 'active' && autoMode
+  const active = enabled && !!game && game.status === 'active' && autoMode && appActive
 
   useEffect(() => {
     if (!active) return

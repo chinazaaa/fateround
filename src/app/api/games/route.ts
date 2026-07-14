@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
+import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { GAME_BROWSE_FIELDS, countPlayersByGame, type BrowseGameRow } from '@/lib/game-browse'
 import { generateGameCode, generateToken } from '@/lib/utils'
@@ -352,6 +353,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const limited = await enforceRateLimit(req, RATE_LIMITS.gameCreate)
+  if (limited) return limited
+
   const body = await req.json()
   const parsed = createGameSchema.safeParse(body)
   if (!parsed.success) {

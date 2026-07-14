@@ -138,12 +138,16 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
   useHostPlayerReconciliation(players, hostPlayerId, clearHostPlayer)
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [{ table: 'games', column: 'id' }, 'players', 'word_rush_sessions', 'word_rush_players', 'word_rush_answers'],
     load
   )
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+    enabled: !connected,
+    runImmediately: false,
+  })
   const { secondsLeft, intermissionLeft, urgent } = useWordRushTimer(gameCode, session, true)
 
   const saveSettings = async (patch: Record<string, unknown>) => {

@@ -2,9 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native'
 import * as Clipboard from 'expo-clipboard'
 import { AppButton } from '@/components/ui/AppButton'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { GameLinkQrCode } from '@/components/session/GameLinkQrCode'
+import { useToast } from '@/components/ui/Toast'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
+import { rotatePlayerResumeToken } from '@/lib/game-api'
+import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
+import { notifyPlayerSessionChanged } from '@/lib/session-events'
 import {
   buildShareLinks,
   displayGameUrl,
@@ -23,11 +28,16 @@ type Props = {
 export function ShareGameInviteContent({
   gameCode,
   hostToken,
-  resumeToken,
+  resumeToken: resumeTokenProp,
   compact = false,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
+  const { success, error: toastError } = useToast()
   const code = gameCode.toUpperCase()
+  // Our callers read the session once and pass it down, so a rotation done here
+  // would leave them holding the dead token. Prefer the one we just minted.
+  const [rotatedToken, setRotatedToken] = useState<string | null>(null)
+  const resumeToken = rotatedToken ?? resumeTokenProp
   const links = useMemo(
     () => buildShareLinks({ gameCode, hostToken, resumeToken }),
     [gameCode, hostToken, resumeToken]
@@ -35,6 +45,8 @@ export function ShareGameInviteContent({
   const [tab, setTab] = useState<ShareLinkKey>('invite')
   const [copied, setCopied] = useState(false)
   const [codeCopied, setCodeCopied] = useState(false)
+  const [rotating, setRotating] = useState(false)
+  const [confirmRotate, setConfirmRotate] = useState(false)
 
   useEffect(() => {
     if (!links.some((link) => link.key === tab)) {
@@ -70,6 +82,31 @@ export function ShareGameInviteContent({
       // dismissed
     }
   }
+
+  const onRotate = async () => {
+    if (rotating || !resumeToken) return
+    const session = await getPlayerSession(gameCode)
+    if (!session) {
+      setConfirmRotate(false)
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
+    setRotating(true)
+    try {
+      const { newToken } = await rotatePlayerResumeToken(gameCode, resumeToken)
+      await setPlayerSession(gameCode, session.playerId, session.playerName, session.playerGender, newToken)
+      setRotatedToken(newToken)
+      notifyPlayerSessionChanged(gameCode)
+      setConfirmRotate(false)
+      success('Your new player code is active.')
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to rotate code')
+    } finally {
+      setRotating(false)
+    }
+  }
+
+  const canRotate = Boolean(resumeToken) && (active.key === 'play' || active.key === 'self')
 
   return (
     <View style={styles.wrap}>
@@ -116,7 +153,29 @@ export function ShareGameInviteContent({
           variant="secondary"
           onPress={() => void onCopy()}
         />
+        {canRotate ? (
+          <Pressable
+            style={styles.rotate}
+            onPress={() => setConfirmRotate(true)}
+            disabled={rotating}
+          >
+            <Text style={[styles.rotateText, rotating && styles.rotateTextDisabled]}>
+              {rotating ? 'Rotating…' : 'Rotate code'}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
+
+      <ConfirmDialog
+        visible={confirmRotate}
+        title="Rotate player code?"
+        message="If you accidentally shared your player code, you can generate a new one to protect your seat. Your old continue link will stop working immediately."
+        confirmLabel="Rotate code"
+        destructive
+        confirming={rotating}
+        onConfirm={() => void onRotate()}
+        onCancel={() => setConfirmRotate(false)}
+      />
     </View>
   )
 }
@@ -210,5 +269,17 @@ const makeStyles = (theme: Theme) =>
   },
   actions: {
     gap: theme.space.sm,
+  },
+  rotate: {
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  rotateText: {
+    color: theme.error,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  rotateTextDisabled: {
+    opacity: 0.6,
   },
 })

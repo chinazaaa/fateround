@@ -14,7 +14,6 @@ import { YahtzeeShareCard } from '@/components/games/YahtzeeShareCard'
 import { useToast } from '@/components/ui/Toast'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
-import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useYahtzeeTurnExpiry } from '@/hooks/useYahtzeeTurnExpiry'
@@ -110,7 +109,6 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   // Turn timer: count down from turn_deadline_at during the rolling phase, and
   // ask the server to expire the turn once the deadline passes.
   const timerActive = bootstrap.screen === 'playing' && session?.phase === 'rolling' && !!session?.turn_deadline_at
-  const secondsLeft = useDeadlineCountdown(session?.turn_deadline_at, 0, timerActive)
   useYahtzeeTurnExpiry(bootstrap.code, session, bootstrap.screen === 'playing')
 
   const roll = async () => {
@@ -231,7 +229,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
           onRoll={() => void roll()}
           rolling={acting}
           timerActive={timerActive}
-          secondsLeft={secondsLeft}
+          turnDeadlineAt={session?.turn_deadline_at}
         />
 
         {session.status_message ? <Text style={styles.status}>{session.status_message}</Text> : null}
