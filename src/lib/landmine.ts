@@ -117,13 +117,31 @@ export function shufflePlayerOrder<T>(items: T[]): T[] {
  * Pick `count` mine words from a category pool. `entries` are ordered with the most
  * obvious answers first; we weight the draw toward the front so rounds actually land
  * (a random obscure mine nobody hits is a damp squib). Duplicates avoided.
+ *
+ * `opts.usage` is a mine-word → times-used map (from `games.pool_usage`, see pool-usage.ts).
+ * We restrict the draw to the LEAST-used words so the mine spreads across the pool instead of
+ * landing on the same obvious answer every game; once every word has been used equally the
+ * whole pool is fair game again (natural reset). Front-weighting still applies among the
+ * equally-fresh candidates, so the mine stays plausibly obvious.
  */
-export function pickMines(entries: string[], count: number): string[] {
+export function pickMines(entries: string[], count: number, opts?: { usage?: Record<string, number> }): string[] {
   const pool = entries.map((e) => e.trim()).filter(Boolean)
   if (pool.length === 0) return []
   const n = Math.min(Math.max(1, Math.floor(count)), pool.length)
+
+  const usage = opts?.usage
+  let candidates = pool
+  if (usage) {
+    const used = (w: string) => usage[normalizeAnswer(w)] ?? 0
+    const minUsed = Math.min(...pool.map(used))
+    const freshest = pool.filter((w) => used(w) === minUsed)
+    // Only narrow to the freshest words if there are enough of them for this round; otherwise
+    // fall back to the full pool so we never fail to fill `count` mines.
+    if (freshest.length >= n) candidates = freshest
+  }
+
   const chosen: string[] = []
-  const remaining = [...pool]
+  const remaining = [...candidates]
   while (chosen.length < n && remaining.length > 0) {
     // Triangular-ish weighting: bias index toward 0 (the obvious answers) by taking
     // the min of two random draws.
@@ -506,7 +524,11 @@ export async function clearLandmineSessionData(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error: string | null }> {
-  return clearSessionTables(supabase, gameId, ['landmine_marks', 'landmine_answers', 'landmine_round_mines'], {
+  // NOTE: landmine_round_mines is NOT cleared here. clearSessionTables deletes by `game_id`,
+  // but that table is keyed only by `round_id` (no game_id column) — deleting by game_id 400s
+  // and fails the whole play-again flow. Its rows cascade away when the game's rounds are
+  // deleted (round_id REFERENCES rounds ON DELETE CASCADE), so no explicit clear is needed.
+  return clearSessionTables(supabase, gameId, ['landmine_marks', 'landmine_answers'], {
     resetSpectators: true,
   })
 }

@@ -116,6 +116,16 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     runImmediately: false,
   })
 
+  // Safety reload while the game is active, even when realtime LOOKS connected. Landmine is
+  // phase-based (category → writing → marking → reveal), so a single dropped realtime event
+  // would otherwise leave a client stuck on the old phase until the next event — which is what
+  // made the marking screen show up late / out of order. This self-heals a miss within ~10s.
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.activeGame,
+    enabled: connected && game?.status === 'active',
+    runImmediately: false,
+  })
+
   const openLobbyJoin = useCallback(() => {
     setScreen('join')
     void load()

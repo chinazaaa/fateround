@@ -12,9 +12,11 @@ import {
   gameLandmineMode,
   gameLandmineCategoryTimer,
   LANDMINE_REVEAL_SECONDS,
+  normalizeAnswer,
   parseLandmineMetadata,
   pickMines,
 } from '@/lib/landmine'
+import { mergeUsageRecords, parsePoolUsage } from '@/lib/pool-usage'
 import type { Game, LandmineMetadata, Round } from '@/types'
 
 export type LandmineAdvanceCode =
@@ -138,7 +140,11 @@ export async function applyCategoryPick(
   const metadata = parseLandmineMetadata(round.landmine_metadata)
   if (!metadata || metadata.phase !== 'category_pick') return false
 
-  const mines = pickMines(categoryEntryList(category), metadata.mine_count)
+  // Bias the mine away from words already used as mines in this room (games.pool_usage), so it
+  // isn't the same obvious answer every game / replay. Persists across play-again like other games.
+  const { data: g } = await supabase.from('games').select('pool_usage').eq('id', gameId).maybeSingle()
+  const priorUsage = parsePoolUsage(g?.pool_usage).landmine ?? {}
+  const mines = pickMines(categoryEntryList(category), metadata.mine_count, { usage: priorUsage })
   const now = new Date().toISOString()
 
   const { data: updated, error } = await supabase
@@ -165,6 +171,22 @@ export async function applyCategoryPick(
   // Store the secret mine(s) for this round (server-only table).
   await supabase.from('landmine_round_mines').upsert({ round_id: round.id, words: mines }, { onConflict: 'round_id' })
   await ensureBlankAnswers(supabase, gameId, round.id, playerIds)
+
+  // Record the chosen mine(s) in pool_usage so the next pick prefers fresher words. Best-effort:
+  // a failure here only reduces variety, so it must not fail the round.
+  const bump = new Map<string, number>()
+  for (const word of mines) {
+    const key = normalizeAnswer(word)
+    if (key) bump.set(key, (bump.get(key) ?? 0) + 1)
+  }
+  if (bump.size > 0) {
+    const rawUsage = (g?.pool_usage ?? {}) as Record<string, unknown>
+    const nextLandmine = mergeUsageRecords(priorUsage, bump)
+    await supabase
+      .from('games')
+      .update({ pool_usage: { ...rawUsage, landmine: nextLandmine } })
+      .eq('id', gameId)
+  }
   return true
 }
 

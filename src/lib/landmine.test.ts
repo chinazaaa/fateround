@@ -100,6 +100,31 @@ describe('landmine helpers', () => {
     expect(new Set(mines).size).toBe(2)
   })
 
+  it('pickMines prefers the least-used word so the mine varies across games', () => {
+    const entries = ['apple', 'banana', 'cherry']
+    const usage = { apple: 3, banana: 2 } // cherry never used → must be chosen
+    for (let i = 0; i < 25; i++) {
+      expect(pickMines(entries, 1, { usage })).toEqual(['cherry'])
+    }
+  })
+
+  it('pickMines falls back to the full pool when there are not enough fresh words', () => {
+    const entries = ['apple', 'banana', 'cherry']
+    const usage = { apple: 0, banana: 5, cherry: 5 } // only 1 fresh but 2 needed
+    const mines = pickMines(entries, 2, { usage })
+    expect(mines).toHaveLength(2)
+    expect(new Set(mines).size).toBe(2)
+  })
+
+  it('pickMines with all words equally used treats the whole pool as fresh', () => {
+    const entries = ['apple', 'banana', 'cherry']
+    const usage = { apple: 2, banana: 2, cherry: 2 }
+    const seen = new Set<string>()
+    for (let i = 0; i < 60; i++) seen.add(pickMines(entries, 1, { usage })[0]!)
+    // No word is excluded once usage is level again.
+    expect(seen.size).toBeGreaterThan(1)
+  })
+
   it('reviewer assignments never map a player to themselves', () => {
     const ids = ['a', 'b', 'c', 'd']
     const map = buildReviewerAssignments(ids, 1)
