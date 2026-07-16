@@ -1,6 +1,7 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import Svg, { Polygon } from 'react-native-svg'
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import type { LudoColor, LudoPiece, LudoPlayerState, LudoVariant, Player } from '@fateround/shared'
 import {
   LUDO_COLOR_HEX,
@@ -165,6 +166,57 @@ function LudoPlayerCard({
   )
 }
 
+const TOKEN_MOVE_MS = 300
+
+/** A single board token whose (left, top) animates when the piece moves to a new
+ *  cell, mirroring the web board's CSS slide transition. The parent keys each token
+ *  per piece so the instance persists across state updates and the position tweens
+ *  instead of teleporting. */
+function LudoToken({
+  left,
+  top,
+  size,
+  color,
+  selectable,
+  disabled,
+  label,
+  onPress,
+  styles,
+}: {
+  left: number
+  top: number
+  size: number
+  color: string
+  selectable: boolean
+  disabled: boolean
+  label: number | null
+  onPress: () => void
+  styles: ReturnType<typeof makeStyles>
+}) {
+  const l = useSharedValue(left)
+  const t = useSharedValue(top)
+  useEffect(() => {
+    l.value = withTiming(left, { duration: TOKEN_MOVE_MS, easing: Easing.inOut(Easing.ease) })
+    t.value = withTiming(top, { duration: TOKEN_MOVE_MS, easing: Easing.inOut(Easing.ease) })
+  }, [left, top, l, t])
+  const posStyle = useAnimatedStyle(() => ({ left: l.value, top: t.value }))
+  return (
+    <Animated.View style={[styles.tokenWrap, { width: size, height: size }, posStyle]}>
+      <Pressable
+        style={[
+          styles.tokenInner,
+          { borderRadius: size / 2, backgroundColor: color },
+          selectable && styles.tokenSelectable,
+        ]}
+        disabled={disabled}
+        onPress={onPress}
+      >
+        {label != null ? <Text style={styles.tokenLabel}>{label}</Text> : null}
+      </Pressable>
+    </Animated.View>
+  )
+}
+
 export function LudoBoard({
   states,
   players,
@@ -192,24 +244,21 @@ export function LudoBoard({
   const { width, height } = useWindowDimensions()
   // Size the board to whichever is tighter — the screen width, or the vertical
   // space left after the turn bar, player cards, dice, and roll controls. The
-  // ~470px reserve keeps the whole board (plus those controls) on-screen on
-  // shorter phones instead of overflowing; taller phones still hit the 24px cap.
+  // reserve has to cover BOTH the pinned chrome (turn bar + dice/roll footer,
+  // ~360px) AND the two player-card rows + onboarding text that scroll inline
+  // with the board (~200px); under-reserving made the board too tall so those
+  // card rows clipped off the top/bottom and the whole thing read as overflowing.
+  // A 20px cell cap keeps the board compact (like the Monopoly board) so the
+  // full stack fits without the board dominating the screen.
   const cellSize = Math.max(
-    Math.min(
-      Math.floor((width - 24) / BOARD_SIZE),
-      Math.floor((height - 470) / BOARD_SIZE),
-      24
-    ),
+    Math.min(Math.floor((width - 24) / BOARD_SIZE), Math.floor((height - 560) / BOARD_SIZE), 20),
     14
   )
   const boardPx = cellSize * BOARD_SIZE
   const starSize = Math.max(Math.round(cellSize * 0.55), 9)
   const arrowSize = Math.max(Math.round(cellSize * 0.42), 7)
 
-  const selectablePieceIds = useMemo(
-    () => [...new Set(legalMoves.map((m) => m.pieceId))],
-    [legalMoves]
-  )
+  const selectablePieceIds = useMemo(() => [...new Set(legalMoves.map((m) => m.pieceId))], [legalMoves])
 
   const overlayPieces = useMemo(
     () => buildOverlayPieces(states, myPlayerId, selectablePieceIds),
@@ -292,11 +341,9 @@ export function LudoBoard({
       {myColor ? (
         <Text style={styles.onboarding}>
           You are{' '}
-          <Text style={[styles.onboardingColor, { color: COLOR_VIVID[myColor] }]}>
-            {LUDO_COLOR_LABELS[myColor]}
-          </Text>
-          . Roll a 6 on either die to leave your yard onto your ★ start square, then follow the arrows
-          clockwise into your home column.
+          <Text style={[styles.onboardingColor, { color: COLOR_VIVID[myColor] }]}>{LUDO_COLOR_LABELS[myColor]}</Text>.
+          Roll a 6 on either die to leave your yard onto your ★ start square, then follow the arrows clockwise into your
+          home column.
         </Text>
       ) : null}
 
@@ -368,9 +415,7 @@ export function LudoBoard({
                     {isStart ? (
                       <Text style={[styles.star, { fontSize: starSize, color: '#fff' }]}>★</Text>
                     ) : isSafe && kind.color ? (
-                      <Text style={[styles.star, { fontSize: starSize, color: COLOR_VIVID[kind.color] }]}>
-                        ★
-                      </Text>
+                      <Text style={[styles.star, { fontSize: starSize, color: COLOR_VIVID[kind.color] }]}>★</Text>
                     ) : direction ? (
                       <Text style={[styles.arrow, { fontSize: arrowSize }]}>{ARROW_GLYPH[direction]}</Text>
                     ) : null}
@@ -400,35 +445,46 @@ export function LudoBoard({
             </Svg>
           </View>
 
+          {/* Empty yard slot rings drawn under the tokens (web parity) — so a
+              vacated base slot still reads as a home ring instead of blank board. */}
+          {[...stateByColor.keys()].flatMap((color) =>
+            BASE_SLOTS[color].map((slot, i) => {
+              const ringSize = Math.max(cellSize * 0.55, 14)
+              const left = ((slot.col + 0.5) / BOARD_SIZE) * boardPx - ringSize / 2
+              const top = ((slot.row + 0.5) / BOARD_SIZE) * boardPx - ringSize / 2
+              return (
+                <View
+                  key={`yard-${color}-${i}`}
+                  pointerEvents="none"
+                  style={[
+                    styles.yardRing,
+                    { left, top, width: ringSize, height: ringSize, borderRadius: ringSize / 2 },
+                  ]}
+                />
+              )
+            })
+          )}
+
           {overlayPieces.map((p) => {
-            const left = ((p.col + 0.5) / BOARD_SIZE) * boardPx
-            const top = ((p.row + 0.5) / BOARD_SIZE) * boardPx
             const tokenSize = Math.max(cellSize * 0.55, 14)
+            const left = ((p.col + 0.5) / BOARD_SIZE) * boardPx - tokenSize / 2
+            const top = ((p.row + 0.5) / BOARD_SIZE) * boardPx - tokenSize / 2
+            const move = p.selectable ? pickLudoMoveForPiece(legalMoves, p.pieceId) : null
             return (
-              <Pressable
+              <LudoToken
                 key={p.key}
-                style={[
-                  styles.token,
-                  {
-                    left: left - tokenSize / 2,
-                    top: top - tokenSize / 2,
-                    width: tokenSize,
-                    height: tokenSize,
-                    borderRadius: tokenSize / 2,
-                    backgroundColor: LUDO_COLOR_HEX[p.color],
-                  },
-                  p.selectable && styles.tokenSelectable,
-                ]}
+                left={left}
+                top={top}
+                size={tokenSize}
+                color={LUDO_COLOR_HEX[p.color]}
+                selectable={p.selectable}
                 disabled={!p.selectable || acting}
+                label={p.playerId === myPlayerId ? p.pieceId + 1 : null}
                 onPress={() => {
-                  const move = pickLudoMoveForPiece(legalMoves, p.pieceId)
                   if (move) onMovePiece(move.pieceId, move.diceIndex)
                 }}
-              >
-                {p.playerId === myPlayerId ? (
-                  <Text style={styles.tokenLabel}>{p.pieceId + 1}</Text>
-                ) : null}
-              </Pressable>
+                styles={styles}
+              />
             )
           })}
         </View>
@@ -470,13 +526,17 @@ const makeStyles = (theme: Theme) =>
     highlightCell: { backgroundColor: 'rgba(252,211,77,0.55)' },
     star: { fontWeight: '900', textAlign: 'center' },
     arrow: { color: 'rgba(100,116,139,0.85)', fontWeight: '700', textAlign: 'center' },
-    token: {
+    tokenWrap: {
       position: 'absolute',
+      zIndex: 10,
+    },
+    tokenInner: {
+      width: '100%',
+      height: '100%',
       borderWidth: 2,
       borderColor: '#fff',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 10,
     },
     tokenSelectable: {
       borderColor: '#fcd34d',
@@ -485,6 +545,15 @@ const makeStyles = (theme: Theme) =>
       shadowRadius: 4,
     },
     tokenLabel: { color: '#fff', fontSize: 9, fontWeight: '800' },
+    // Empty base-slot ring — white fill with a faint inset-like border, matching
+    // the web yard rings that sit under the tokens.
+    yardRing: {
+      position: 'absolute',
+      backgroundColor: '#ffffff',
+      borderWidth: 2,
+      borderColor: 'rgba(0,0,0,0.12)',
+      zIndex: 5,
+    },
     cornerLabel: {
       position: 'absolute',
       alignItems: 'center',
