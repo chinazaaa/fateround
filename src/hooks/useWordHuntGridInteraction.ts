@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useEffect } from 'react'
 import { WORD_HUNT_MIN_WORD_LENGTH, areWordHuntCellsAdjacent, wordFromPath } from '@/lib/word-hunt'
 import { canExtendWordHuntPath } from '@/lib/word-hunt-client'
 
@@ -84,7 +84,9 @@ export function useWordHuntGridInteraction(
 ) {
   const gridRef = useRef<HTMLDivElement>(null)
   const selectedPathRef = useRef(selectedPath)
-  selectedPathRef.current = selectedPath
+  useEffect(() => {
+    selectedPathRef.current = selectedPath
+  }, [selectedPath])
   const draggingRef = useRef(false)
   const movedRef = useRef(false)
   const lastCellRef = useRef<number | null>(null)
@@ -92,7 +94,9 @@ export function useWordHuntGridInteraction(
   const pointerStartRef = useRef({ x: 0, y: 0 })
   const cellRectsRef = useRef<CellRect[]>([])
   const optionsRef = useRef(options)
-  optionsRef.current = options
+  useEffect(() => {
+    optionsRef.current = options
+  }, [options])
 
   const commitPath = useCallback(
     (path: number[]) => {

@@ -16,7 +16,9 @@ export function useWordHuntGameTimer(
   const secondsLeft = useDeadlineCountdown(game?.session_started_at, duration, active)
   const expireInFlightRef = useRef(false)
   const onExpiredRef = useRef(onExpired)
-  onExpiredRef.current = onExpired
+  useEffect(() => {
+    onExpiredRef.current = onExpired
+  }, [onExpired])
 
   const refreshAfterExpire = useCallback(async () => {
     await onExpiredRef.current?.()

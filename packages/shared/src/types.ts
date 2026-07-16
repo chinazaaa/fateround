@@ -111,6 +111,7 @@ export interface Game {
   monopoly_double_go_salary?: boolean | null
   monopoly_forced_auctions?: boolean | null
   monopoly_no_rent_in_jail?: boolean | null
+  monopoly_estate_dividend?: boolean | null
   quick_draw_variant?: QuickDrawVariant | null
   quick_draw_play_mode?: QuickDrawPlayMode | null
   quick_draw_num_teams?: number | null

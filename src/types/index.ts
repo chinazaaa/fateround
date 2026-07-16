@@ -242,6 +242,7 @@ export interface Game {
   monopoly_double_go_salary?: boolean
   monopoly_forced_auctions?: boolean
   monopoly_no_rent_in_jail?: boolean
+  monopoly_estate_dividend?: boolean
   anonymous: boolean
   auto_reveal: boolean
   auto_submit_behavior: AutoSubmitBehavior

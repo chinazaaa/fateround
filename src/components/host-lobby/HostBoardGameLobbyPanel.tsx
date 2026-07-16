@@ -64,6 +64,7 @@ export function HostBoardGameLobbyPanel({
   const [monopolyDoubleGoSalary, setMonopolyDoubleGoSalary] = useState(false)
   const [monopolyForcedAuctions, setMonopolyForcedAuctions] = useState(false)
   const [monopolyNoRentInJail, setMonopolyNoRentInJail] = useState(false)
+  const [monopolyEstateDividend, setMonopolyEstateDividend] = useState(false)
   const [whotPick3Enabled, setWhotPick3Enabled] = useState(true)
   const [whotPick2Stacking, setWhotPick2Stacking] = useState(true)
   const [whotCardsEnabled, setWhotCardsEnabled] = useState(true)
@@ -99,6 +100,7 @@ export function HostBoardGameLobbyPanel({
       setMonopolyDoubleGoSalary(game.monopoly_double_go_salary === true)
       setMonopolyForcedAuctions(game.monopoly_forced_auctions === true)
       setMonopolyNoRentInJail(game.monopoly_no_rent_in_jail === true)
+      setMonopolyEstateDividend(game.monopoly_estate_dividend === true)
     }
     if (boardGameType === 'whot') {
       setWhotPick3Enabled(game.whot_pick3_enabled !== false)
@@ -324,6 +326,15 @@ export function HostBoardGameLobbyPanel({
                 onChange={(v: boolean) => {
                   setMonopolyNoRentInJail(v)
                   void patchSettings({ monopoly_no_rent_in_jail: v })
+                }}
+              />
+              <Toggle
+                label="Robin Hood Estate Dividend"
+                description="When a player leaves mid-game, their estate is liquidated and split equally among remaining players."
+                value={monopolyEstateDividend}
+                onChange={(v: boolean) => {
+                  setMonopolyEstateDividend(v)
+                  void patchSettings({ monopoly_estate_dividend: v })
                 }}
               />
             </div>
