@@ -1839,6 +1839,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  landmine: {
+    id: 'landmine',
+    label: 'Landmine',
+    tagline: 'Type a blind answer — dodge the hidden mine',
+    headerEmoji: '🧨💥',
+    card: {
+      accent: '#ef4444',
+      accentSoft: 'rgba(239, 68, 68, 0.15)',
+      emoji: '🧨',
+      players: '3–20 players',
+      vibe: 'Risky word bluff',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '✓',
+        label: 'Safe',
+        color: '#22c55e',
+        leaderboardLabel: 'Top scorers',
+        activeClass: 'bg-emerald-500/20 text-emerald-100 border-emerald-400',
+        borderClass: 'border-emerald-500/50 bg-emerald-500/10',
+        textColor: '#86efac',
+      },
+      marry: {
+        emoji: '⭐',
+        label: 'Original',
+        color: '#0ea5e9',
+        leaderboardLabel: 'Original answers',
+        activeClass: 'bg-sky-500/20 text-sky-100 border-sky-400',
+        borderClass: 'border-sky-500/50 bg-sky-500/10',
+        textColor: '#7dd3fc',
+      },
+      kill: {
+        emoji: '💥',
+        label: 'Mine',
+        color: '#ef4444',
+        leaderboardLabel: 'Mines hit',
+        activeClass: 'bg-red-500/20 text-red-100 border-red-400',
+        borderClass: 'border-red-500/50 bg-red-500/10',
+        textColor: '#fca5a5',
+      },
+    },
+  },
 }
 
 /** Home page “Popular games” grid — order is display order. */
@@ -1896,6 +1939,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'crossword',
   'word_search',
   'word_scramble',
+  'landmine',
 ]
 
 // Games pinned to the top of the picker / games list, in this exact order.
@@ -1918,6 +1962,7 @@ const PINNED_GAME_TYPES: GameType[] = [
   'describe_it',
   'word_rush',
   'i_call_on',
+  'landmine',
   'smash_marry_kill',
   'bingo',
   'this_or_that',
@@ -1976,6 +2021,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'crossword' || raw === 'crosswords') return 'crossword'
   if (raw === 'word_search' || raw === 'word-search' || raw === 'wordsearch') return 'word_search'
   if (raw === 'word_scramble' || raw === 'word-scramble' || raw === 'wordscramble') return 'word_scramble'
+  if (raw === 'landmine' || raw === 'land-mine') return 'landmine'
   return 'smash_marry_kill'
 }
 
@@ -2080,6 +2126,8 @@ export function gameHowItWorks(
       return 'Players join with their name — everyone gets the same jumbled words. Type the unscrambled answer; correct answers lock in and score, with a speed bonus for solving each scramble first and a bonus for longer words. First to unscramble them all wins — or the highest score when the timer runs out.'
     case 'i_call_on':
       return "Players join with their name. Set a game timer (or play all 26 letters). Each letter cycle someone calls A–Z, everyone fills Name, Animal, Place, Thing, and Food, then marks the next player's sheet. Duplicates score 5 automatically; unique valid answers score 10. Everyone sees all marks live."
+    case 'landmine':
+      return "Players join with their name. Each round someone picks a category and the system secretly plants a “mine” — one of the obvious answers. Everyone types a blind answer, then marks the next player's for validity before the mine is revealed. A valid answer scores 10 (plus 5 if nobody else said it); hit the mine and you score 0 — or get knocked out in Elimination mode."
     case 'most_likely_to':
       return joiners
         ? 'Players add their name to the poll when joining. Each round shows a "most likely to…" prompt — vote for who fits best. Votes stay anonymous.'
@@ -2348,6 +2396,7 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   crossword: true,
   word_search: true,
   word_scramble: true,
+  landmine: true,
   mafia: false,
 }
 
@@ -2393,6 +2442,7 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   crossword: false,
   word_search: false,
   word_scramble: false,
+  landmine: false,
   mafia: false,
 }
 
@@ -2528,6 +2578,10 @@ export function isSnakeAndLadderGame(gameType: GameType | string | undefined): b
 
 export function isICallOnGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'i_call_on'
+}
+
+export function isLandmineGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'landmine'
 }
 
 export function isSudokuGame(gameType: GameType | string | undefined): boolean {

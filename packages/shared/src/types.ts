@@ -52,6 +52,7 @@ export type GameType =
   | 'crossword'
   | 'word_search'
   | 'word_scramble'
+  | 'landmine'
 
 export interface Game {
   id: string
@@ -116,6 +117,9 @@ export interface Game {
   quick_draw_num_teams?: number | null
   mahjong_ruleset?: MahjongRuleset | null
   mahjong_rule_options?: MahjongRuleOptions | null
+  landmine_mode?: LandmineMode | null
+  landmine_mine_count?: number | null
+  landmine_originality_bonus?: boolean | null
   question_source?: string | null
   trivia_category?: TriviaCategory | string | null
   created_at?: string | null
@@ -298,6 +302,7 @@ export interface Round {
   anime_metadata?: AnimeMetadata | null
   trivia_metadata?: TriviaMetadata | null
   memory_match_metadata?: MatchingPairsMetadata | null
+  landmine_metadata?: LandmineMetadata | null
   sudoku_metadata?: SudokuMetadata | null
   ttl_metadata?: TtlMetadata | null
   quiplash_metadata?: QuiplashMetadata | null
@@ -814,6 +819,46 @@ export interface NpatMark {
   valid_place: boolean
   valid_thing: boolean
   valid_food: boolean
+  marked_at: string | null
+}
+
+// Landmine — single-answer variant of I Call On with a secret mine + two scoring modes.
+export type LandminePhase = 'category_pick' | 'writing' | 'marking' | 'reveal'
+export type LandmineMode = 'zero_points' | 'elimination'
+export type LandmineOutcome = 'valid' | 'original' | 'void' | 'mine' | 'empty'
+
+export interface LandmineMetadata {
+  phase: LandminePhase
+  phase_started_at: string | null
+  category: string | null
+  caller_order: string[]
+  caller_index: number
+  reviewer_assignments: Record<string, string>
+  revealed_mines?: string[]
+  mine_count: number
+  scores_computed?: boolean
+}
+
+export interface LandmineAnswer {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  answer: string
+  submitted_at: string | null
+  points: number | null
+  outcome: LandmineOutcome | null
+  mine_hit: boolean | null
+  is_original: boolean | null
+}
+
+export interface LandmineMark {
+  id: string
+  game_id: string
+  round_id: string
+  marker_player_id: string
+  target_player_id: string
+  valid: boolean
   marked_at: string | null
 }
 

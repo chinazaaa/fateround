@@ -70,6 +70,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   crossword: 'crossword',
   word_search: 'word-search',
   word_scramble: 'word-scramble',
+  landmine: 'landmine',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -2810,6 +2811,64 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       { title: 'Solve to win', description: 'Unscramble words for points — highest score takes the crown.' },
     ],
     perfectFor: ['Puzzle lovers', 'Family game night', 'Commutes', 'Remote teams'],
+  }),
+
+  landmine: landing('landmine', {
+    seoTitle: 'Landmine — Free Online Party Word Game',
+    seoDescription:
+      'Play Landmine online. Type a blind answer to a category — but one common answer is a hidden mine. Dodge it to score, hit it and you’re zeroed or knocked out.',
+    keywords: [
+      'landmine game',
+      'party word game online',
+      'category bluff game',
+      'word game with friends online',
+      'elimination party game',
+      'free party game no signup',
+      'guess the safe answer game',
+    ],
+    heroSubtitle:
+      'Pick a category, type a blind answer — but the system has secretly planted a mine on one of the obvious ones. Play it safe or play it clever.',
+    highlights: ['Zero Points or Elimination', 'Peer-marked answers', 'Hidden mine each round'],
+    features: [
+      {
+        title: 'Dodge the mine',
+        description:
+          'The obvious answer might be the mine — the safest word is rarely the first one that comes to mind.',
+        emoji: '🧨',
+      },
+      {
+        title: 'Mark together',
+        description: 'Everyone marks the next player’s answer Valid or Void before the mine is revealed.',
+        emoji: '👀',
+      },
+      SHARED_FEATURES.realtime,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Join the room', description: 'Enter your name and wait for the host to start.' },
+      {
+        title: 'Answer blind',
+        description: 'A category is revealed and a mine is secretly planted — type one answer before time runs out.',
+      },
+      {
+        title: 'Mark, then reveal',
+        description:
+          'Mark the next player’s answer, then the mine is revealed — valid answers score 10 (+5 if unique), the mine scores 0 or knocks you out.',
+      },
+    ],
+    perfectFor: ['Friend groups', 'Party nights', 'Icebreakers', 'Family game night'],
+    extraFaqs: [
+      {
+        question: 'How does scoring work?',
+        answer:
+          'A valid answer that isn’t the mine scores 10 points, plus 5 more if nobody else gave the same answer. An answer marked Void by your reviewer scores 0. Hit the mine and you score 0 for the round (Zero Points mode) or get knocked out (Elimination mode).',
+      },
+      {
+        question: 'What’s the difference between the two modes?',
+        answer:
+          'Zero Points is softer — hitting the mine just scores you 0 for that round and everyone plays every round. Elimination is higher-stakes — hit the mine and you’re out, last player standing wins. Elimination plays best with 5+ players.',
+      },
+    ],
   }),
 }
 
