@@ -56,6 +56,7 @@ import {
   isCrosswordGame,
   isWordSearchGame,
   isWordScrambleGame,
+  isLandmineGame,
 } from '@/lib/game-types'
 import { wstAutoRoundCount } from '@/lib/who-said-this'
 import { parseLudoVariant } from '@/lib/ludo'
@@ -125,6 +126,15 @@ import {
   NPAT_DEFAULT_MARKING_TIMER,
   NPAT_DEFAULT_TIMER,
 } from '@/lib/npat'
+import {
+  clampLandmineMarkingTimer,
+  clampLandmineWritingTimer,
+  clampLandmineMineCount,
+  clampLandmineRoundCount,
+  parseLandmineMode,
+  LANDMINE_DEFAULT_MARKING_TIMER,
+  LANDMINE_DEFAULT_ROUND_COUNT,
+} from '@/lib/landmine'
 import {
   clampCodewordsTimer,
   CODEWORDS_DEFAULT_OPERATIVE_TIMER,
@@ -395,6 +405,10 @@ export async function POST(req: NextRequest) {
     word_rush_mode: rawWordRushMode,
     word_rush_prompt_mode: rawWordRushPromptMode,
     word_rush_difficulty: rawWordRushDifficulty,
+    landmine_mode: rawLandmineMode,
+    landmine_mine_count: rawLandmineMineCount,
+    landmine_originality_bonus: rawLandmineOriginalityBonus,
+    landmine_host_override: rawLandmineHostOverride,
     allow_viewers: rawAllowViewers,
     allow_late_players: rawAllowLatePlayers,
     late_join_policy: rawLateJoinPolicy,
@@ -499,7 +513,8 @@ export async function POST(req: NextRequest) {
     isWordRushGame(game_type) ||
     isCrosswordGame(game_type) ||
     isWordSearchGame(game_type) ||
-    isWordScrambleGame(game_type)
+    isWordScrambleGame(game_type) ||
+    isLandmineGame(game_type)
       ? 'joiners'
       : isWhoSaidThis(game_type)
         ? 'import'
@@ -582,7 +597,9 @@ export async function POST(req: NextRequest) {
                     ? clampQuiplashRounds(rounds_count ?? QUIPLASH_DEFAULT_ROUNDS)
                     : isQuickDrawGame(game_type)
                       ? clampQuickDrawRounds(rounds_count ?? QUICK_DRAW_DEFAULT_ROUNDS)
-                      : Math.min(Math.max(Number(rounds_count) || 3, 1), maxRounds)
+                      : isLandmineGame(game_type)
+                        ? clampLandmineRoundCount(rounds_count ?? LANDMINE_DEFAULT_ROUND_COUNT)
+                        : Math.min(Math.max(Number(rounds_count) || 3, 1), maxRounds)
 
   if (
     question_source === 'custom' &&
@@ -684,7 +701,13 @@ export async function POST(req: NextRequest) {
                                     rawMaxPlayers,
                                     lobbyDefaultMaxPlayers('i_call_on', lobbyLimits)
                                   )
-                                : isSudokuGame(game_type)
+                                : isLandmineGame(game_type)
+                                  ? resolveMaxPlayers(
+                                      'landmine',
+                                      rawMaxPlayers,
+                                      lobbyDefaultMaxPlayers('landmine', lobbyLimits)
+                                    )
+                                  : isSudokuGame(game_type)
                                   ? resolveMaxPlayers(
                                       'sudoku',
                                       rawMaxPlayers,
@@ -824,7 +847,9 @@ export async function POST(req: NextRequest) {
               ? clampTtlTimer(timer_seconds)
               : isICallOnGame(game_type)
                 ? clampNpatTimer(timer_seconds)
-                : isMonopolyGame(game_type)
+                : isLandmineGame(game_type)
+                  ? clampLandmineWritingTimer(timer_seconds)
+                  : isMonopolyGame(game_type)
                   ? clampMonopolyTurnTimer(timer_seconds)
                   : isWordHuntGame(game_type)
                     ? clampWordHuntTimer(timer_seconds)
@@ -871,6 +896,12 @@ export async function POST(req: NextRequest) {
             ),
             game_duration_seconds: clampNpatGameDuration(rawGameDurationSeconds ?? NPAT_DEFAULT_GAME_DURATION),
           }
+        : isLandmineGame(game_type)
+          ? {
+              operative_timer_seconds: clampLandmineMarkingTimer(
+                Number(rawOperativeTimerSeconds) || LANDMINE_DEFAULT_MARKING_TIMER
+              ),
+            }
         : isQuiplashGame(game_type)
           ? {
               operative_timer_seconds: clampQuiplashVoteTimer(
@@ -891,6 +922,14 @@ export async function POST(req: NextRequest) {
       ? {
           describe_it_num_teams: clampDescribeItTeams(rawDescribeItNumTeams),
           describe_it_mode: clampDescribeItMode(rawDescribeItMode),
+        }
+      : {}),
+    ...(isLandmineGame(game_type)
+      ? {
+          landmine_mode: parseLandmineMode(rawLandmineMode),
+          landmine_mine_count: clampLandmineMineCount(rawLandmineMineCount),
+          landmine_originality_bonus: rawLandmineOriginalityBonus !== false,
+          landmine_host_override: rawLandmineHostOverride === true,
         }
       : {}),
     ...(isQuickDrawGame(game_type)

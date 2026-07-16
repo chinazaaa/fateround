@@ -75,6 +75,7 @@ const BATCH_9_VIEWS = {
     () => import('@/components/games/AnonymousMessagesPlayerView'),
     'AnonymousMessagesPlayerView'
   ),
+  landmine: lazyView(() => import('@/components/games/LandminePlayerView'), 'LandminePlayerView'),
 } as const satisfies Partial<Record<GameType, PlayerView>>
 
 const MOBILE_PLAYER_VIEWS: Partial<Record<GameType, PlayerView>> = {

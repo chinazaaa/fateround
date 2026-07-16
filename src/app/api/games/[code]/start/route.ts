@@ -32,6 +32,7 @@ import {
   isCrosswordGame,
   isWordSearchGame,
   isWordScrambleGame,
+  isLandmineGame,
 } from '@/lib/game-types'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { getCustomSlotCount } from '@/lib/custom-game'
@@ -102,6 +103,12 @@ import {
 import { WORD_RUSH_MIN_PLAYERS, WORD_RUSH_MIN_PLAYERS_INDIVIDUAL } from '@/lib/word-rush'
 import { initializeWordRushGame } from '@/lib/word-rush-server'
 import { buildNpatInitialRound, NPAT_MIN_PLAYERS, shufflePlayerOrder as npatShufflePlayerOrder } from '@/lib/npat'
+import {
+  buildLandmineInitialRound,
+  clampLandmineMineCount,
+  LANDMINE_MIN_PLAYERS,
+  shufflePlayerOrder as landmineShufflePlayerOrder,
+} from '@/lib/landmine'
 import { buildSudokuRoundRow, SUDOKU_MIN_PLAYERS } from '@/lib/sudoku'
 import {
   buildCrosswordRoundRow,
@@ -704,6 +711,39 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
 
     const { error: elimError } = await initializeEliminationLives(code.toUpperCase(), game.elimination_config)
     if (elimError) return NextResponse.json({ error: elimError }, { status: 500 })
+
+    return NextResponse.json({ success: true })
+  }
+
+  if (isLandmineGame(gameType)) {
+    const playerIds = playersData.filter((p) => p.spectator !== true).map((p) => p.id)
+    if (playerIds.length < LANDMINE_MIN_PLAYERS) {
+      return NextResponse.json({ error: `Need at least ${LANDMINE_MIN_PLAYERS} players to start` }, { status: 400 })
+    }
+
+    const playerOrder = landmineShufflePlayerOrder(playerIds)
+    const roundRow = buildLandmineInitialRound({
+      gameId: code.toUpperCase(),
+      playerOrder,
+      mineCount: clampLandmineMineCount(game.landmine_mine_count),
+      now,
+    })
+
+    const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRow)
+    if (roundError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', roundError) }, { status: 500 })
+
+    const { error: gameError } = await getSupabaseAdmin()
+      .from('games')
+      .update({
+        status: 'active',
+        session_started_at: sessionStartedAt,
+        current_round_number: 1,
+      })
+      .eq('id', code.toUpperCase())
+
+    if (gameError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
 
     return NextResponse.json({ success: true })
   }

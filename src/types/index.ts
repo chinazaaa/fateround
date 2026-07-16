@@ -51,6 +51,7 @@ export type GameType =
   | 'crossword'
   | 'word_search'
   | 'word_scramble'
+  | 'landmine'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'
@@ -105,6 +106,61 @@ export interface NpatMark {
   valid_place: boolean
   valid_thing: boolean
   valid_food: boolean
+  marked_at: string | null
+}
+
+// ---------------------------------------------------------------------------
+// Landmine — party word game. The system shows a category, secretly picks one
+// (or a few) common answers as the "mine"; players type a blind answer; answers
+// are peer-marked Valid/Void BEFORE the mine is revealed; then the mine is shown
+// and hitters are zeroed (zero_points) or knocked out (elimination).
+// Structurally a single-answer variant of NPAT (I Call On) with a secret mine.
+// ---------------------------------------------------------------------------
+export type LandminePhase = 'category_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
+export type LandmineMode = 'zero_points' | 'elimination'
+
+/** markerId -> Valid(true)/Void(false) override applied by the host in host_review. */
+export type LandmineHostOverrides = Record<string, boolean>
+
+export interface LandmineMetadata {
+  phase: LandminePhase
+  phase_started_at: string | null
+  /** Category shown to the room once the caller picks it. */
+  category: string | null
+  /** Rotating "caller" who picks the category each round (reused from NPAT). */
+  caller_order: string[]
+  caller_index: number
+  /** markerId -> targetId ring; each player marks one other, never themselves. */
+  reviewer_assignments: Record<string, string>
+  host_overrides?: LandmineHostOverrides
+  /** The mine word(s) — populated ONLY at reveal (secret until then). */
+  revealed_mines?: string[]
+  mine_count: number
+  scores_computed?: boolean
+}
+
+export type LandmineOutcome = 'valid' | 'original' | 'void' | 'mine' | 'empty'
+
+export interface LandmineAnswer {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  answer: string
+  submitted_at: string | null
+  points: number | null
+  outcome: LandmineOutcome | null
+  mine_hit: boolean | null
+  is_original: boolean | null
+}
+
+export interface LandmineMark {
+  id: string
+  game_id: string
+  round_id: string
+  marker_player_id: string
+  target_player_id: string
+  valid: boolean
   marked_at: string | null
 }
 
@@ -340,6 +396,14 @@ export interface Game {
   mahjong_ruleset?: MahjongRuleset | null
   /** Mahjong — house rules and match-settlement options. */
   mahjong_rule_options?: MahjongRuleOptions | null
+  /** Landmine — 'zero_points' (mine scores 0, all rounds) or 'elimination' (mine knocks you out). */
+  landmine_mode?: LandmineMode | null
+  /** Landmine — number of mines per round (1–3). */
+  landmine_mine_count?: number | null
+  /** Landmine — award +5 when nobody else gave your answer. */
+  landmine_originality_bonus?: boolean | null
+  /** Landmine — enable the host_review phase so the host can overturn contested marks. */
+  landmine_host_override?: boolean | null
 }
 
 export type MonopolyPhase = 'roll' | 'buy' | 'jail' | 'pay_rent' | 'auction' | 'raise_funds' | 'finished'
@@ -1437,6 +1501,7 @@ export interface Round {
   trivia_metadata?: TriviaMetadata | null
   ttl_metadata?: TtlMetadata | null
   npat_metadata?: NpatMetadata | null
+  landmine_metadata?: LandmineMetadata | null
   quiplash_metadata?: QuiplashMetadata | null
   quick_draw_metadata?: QuickDrawMetadata | null
 }
