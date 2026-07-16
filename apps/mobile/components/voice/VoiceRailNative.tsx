@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { AppState, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useState } from 'react'
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { AudioSession, LiveKitRoom, useLocalParticipant, useParticipants } from '@livekit/react-native'
 import type { DisconnectReason } from 'livekit-client'
 import { voiceDisconnectMessage } from '@/lib/voice-errors'
@@ -116,33 +116,17 @@ export function VoiceRailNative({ gameCode, mode, hostToken, bottomOffset = 0 }:
   const { show } = useToast()
   const styles = useThemedStyles(makeStyles)
   const voice = useVoiceRoom({ gameCode, mode, hostToken })
-  const wasConnectedRef = useRef(false)
 
   useEffect(() => {
     if (voice.error) show(voice.error, 'error')
   }, [voice.error, show])
 
-  useEffect(() => {
-    if (voice.token) wasConnectedRef.current = true
-  }, [voice.token])
-
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (nextState) => {
-      // Only a true background transition should drop voice. iOS fires
-      // 'inactive' transiently for the mic-permission dialog, Control Center,
-      // notification banners, and audio-session acquisition — all of which
-      // happen right after Join, so treating it as "leave" self-kicks the user.
-      if (nextState === 'background' && voice.token) {
-        voice.leave()
-      }
-      if (nextState === 'active' && wasConnectedRef.current && !voice.token) {
-        show('Voice disconnected while the app was in the background. Tap Join voice to reconnect.', 'info')
-        wasConnectedRef.current = false
-      }
-    })
-    return () => sub.remove()
-  }, [voice.token, voice.leave, show])
-
+  // Voice intentionally stays connected while the app is backgrounded — the
+  // mic/audio keeps running so you can talk while looking at another app or
+  // with the screen locked. This relies on the iOS `audio` UIBackgroundMode
+  // (app.json) and the Android media-playback foreground-service permissions.
+  // A genuine drop (network/takeover) is still surfaced by LiveKitRoom's
+  // onDisconnected below, so we no longer tear voice down on AppState changes.
   useEffect(() => {
     if (!voice.token) return
     void AudioSession.startAudioSession()
