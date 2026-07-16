@@ -11,7 +11,7 @@ import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
 import { currentTurnPlayerId, CHESS_MIN_PLAYERS, isChessResultsPhase } from '@/lib/chess'
 import { supabase } from '@/lib/supabase'
-import { GAME_SELECT, PLAYER_SELECT, CHESS_SESSION_SELECT } from '@/lib/supabase-selects'
+import { GAME_SELECT, PLAYER_SELECT, CHESS_SESSION_SELECT, CHESS_SESSION_NOT_NULL_KEYS } from '@/lib/supabase-selects'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
@@ -130,7 +130,11 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
   // Realtime push: reload on any change to this game's row + its tables.
   const connected = useGameTableSync(
     gameCode,
-    ['players', { table: 'games', column: 'id' }, { table: 'chess_sessions', apply: applySessionRow }],
+    [
+      'players',
+      { table: 'games', column: 'id' },
+      { table: 'chess_sessions', apply: applySessionRow, requireKeys: CHESS_SESSION_NOT_NULL_KEYS },
+    ],
     load
   )
 

@@ -15,7 +15,7 @@ import { gameTypeConfig } from '@/lib/game-types'
 import { currentTurnPlayerId, isCheckersResultsPhase, CHECKERS_MIN_PLAYERS } from '@/lib/checkers'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
-import { CHECKERS_SESSION_SELECT } from '@/lib/supabase-selects'
+import { CHECKERS_SESSION_SELECT, CHECKERS_SESSION_NOT_NULL_KEYS } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
 import type { Game, CheckersSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -125,7 +125,11 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
 
   const connected = useGameTableSync(
     gameCode,
-    ['players', { table: 'games', column: 'id' }, { table: 'checkers_sessions', apply: applySessionRow }],
+    [
+      'players',
+      { table: 'games', column: 'id' },
+      { table: 'checkers_sessions', apply: applySessionRow, requireKeys: CHECKERS_SESSION_NOT_NULL_KEYS },
+    ],
     load
   )
 

@@ -28,6 +28,18 @@ export type WatchedTable =
        * plain columns (no embedded relations) — the raw pushed row is applied as-is.
        */
       apply?: (row: Record<string, unknown>) => void | boolean
+      /**
+       * NOT-NULL column names that must be present (non-null) for the pushed row to be trusted.
+       *
+       * Postgres logical replication (and therefore Supabase Realtime) OMITS unchanged TOAST-ed
+       * columns from UPDATE payloads — once a large jsonb/text value (a card deck, a board, a
+       * Scrabble tile bag) is stored out-of-line, an update that doesn't touch it delivers it as
+       * `null`. Applying such a partial row would wipe that state on screen. Because these columns
+       * are NOT NULL in the DB, a null here can only mean a truncated payload: when any listed key
+       * is null/undefined the `apply` fast-path is skipped and the debounced `reload` reconciles
+       * from a full fetch. Leave undefined for tables with no large NOT-NULL columns.
+       */
+      requireKeys?: readonly string[]
     }
 
 /** The slice of the Realtime payload we consume; typed loosely to survive client upgrades. */
@@ -64,8 +76,8 @@ export function useGameTableSync(
   const enabled = opts?.enabled ?? true
   const norm = tables.map((t) =>
     typeof t === 'string'
-      ? { table: t, column: 'game_id', apply: undefined }
-      : { table: t.table, column: t.column ?? 'game_id', apply: t.apply }
+      ? { table: t, column: 'game_id', apply: undefined, requireKeys: undefined }
+      : { table: t.table, column: t.column ?? 'game_id', apply: t.apply, requireKeys: t.requireKeys }
   )
   const key = norm.map((t) => `${t.table}:${t.column}`).join(',')
 
@@ -73,6 +85,10 @@ export function useGameTableSync(
   // subscription (keyed on table names only) never has to be torn down and rebuilt.
   const applyRef = useRef(new Map<string, ((row: Record<string, unknown>) => void | boolean) | undefined>())
   applyRef.current = new Map(norm.map((t) => [t.table, t.apply]))
+  // Per-table NOT-NULL columns that flag a TOAST-truncated partial payload (read via a ref for
+  // the same reason as `apply`).
+  const requireRef = useRef(new Map<string, readonly string[] | undefined>())
+  requireRef.current = new Map(norm.map((t) => [t.table, t.requireKeys]))
 
   // Whether the Realtime channel is currently SUBSCRIBED. Returned so callers can gate their
   // safety-net poll (`usePolling(..., { enabled: !connected })`) — no redundant full reloads
@@ -111,13 +127,21 @@ export function useGameTableSync(
           const apply = applyRef.current.get(table)
           let handled = false
           if (apply && payload?.eventType !== 'DELETE' && payload?.new && Object.keys(payload.new).length > 0) {
-            try {
-              // `=== true` so a legacy void-returning apply (or a thrown one) falls through
-              // to the reconciling reload exactly as before — the skip is strictly opt-in.
-              handled = apply(payload.new) === true
-            } catch {
-              // a bad pushed row must not kill the channel — the reload reconciles
-              handled = false
+            const requireKeys = requireRef.current.get(table)
+            // Realtime UPDATE payloads drop unchanged TOAST-ed columns (large jsonb/text), which
+            // then arrive null. Those columns are NOT NULL in the DB, so a null means the payload
+            // is partial: skip the fast-path and let the debounced reload refetch the full row —
+            // applying a truncated row would wipe board/deck/hand state on screen.
+            const complete = !requireKeys || requireKeys.every((k) => payload.new![k] != null)
+            if (complete) {
+              try {
+                // `=== true` so a legacy void-returning apply (or a thrown one) falls through
+                // to the reconciling reload exactly as before — the skip is strictly opt-in.
+                handled = apply(payload.new) === true
+              } catch {
+                // a bad pushed row must not kill the channel — the reload reconciles
+                handled = false
+              }
             }
           }
           // Skip the debounced reconciliation reload only when apply fully absorbed the row.

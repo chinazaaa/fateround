@@ -18,7 +18,14 @@ import {
   type LudoHostMode,
 } from '@/lib/ludo'
 import { supabase } from '@/lib/supabase'
-import { GAME_SELECT, LUDO_PLAYER_STATE_SELECT, LUDO_SESSION_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
+import {
+  GAME_SELECT,
+  LUDO_PLAYER_STATE_NOT_NULL_KEYS,
+  LUDO_PLAYER_STATE_SELECT,
+  LUDO_SESSION_NOT_NULL_KEYS,
+  LUDO_SESSION_SELECT,
+  PLAYER_SELECT,
+} from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
@@ -134,8 +141,8 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     [
       'players',
       { table: 'games', column: 'id' },
-      { table: 'ludo_sessions', apply: applySessionRow },
-      { table: 'ludo_player_state', apply: applyStateRow },
+      { table: 'ludo_sessions', apply: applySessionRow, requireKeys: LUDO_SESSION_NOT_NULL_KEYS },
+      { table: 'ludo_player_state', apply: applyStateRow, requireKeys: LUDO_PLAYER_STATE_NOT_NULL_KEYS },
     ],
     load
   )

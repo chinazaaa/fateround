@@ -19,7 +19,12 @@ import {
   WHOT_MIN_PLAYERS,
 } from '@/lib/whot'
 import { supabase } from '@/lib/supabase'
-import { WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT } from '@/lib/supabase-selects'
+import {
+  WHOT_PLAYER_HANDS_SELECT,
+  WHOT_SESSION_SELECT,
+  WHOT_SESSION_NOT_NULL_KEYS,
+  WHOT_HANDS_NOT_NULL_KEYS,
+} from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
 import type { Game, WhotPlayerHand, WhotSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -141,8 +146,8 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     [
       { table: 'games', column: 'id' },
       'players',
-      { table: 'whot_sessions', apply: applySessionRow },
-      { table: 'whot_player_hands', apply: applyHandRow },
+      { table: 'whot_sessions', apply: applySessionRow, requireKeys: WHOT_SESSION_NOT_NULL_KEYS },
+      { table: 'whot_player_hands', apply: applyHandRow, requireKeys: WHOT_HANDS_NOT_NULL_KEYS },
     ],
     load
   )

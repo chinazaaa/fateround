@@ -11,7 +11,7 @@ import { gameTypeConfig } from '@/lib/game-types'
 import { currentTurnPlayerId, isChessResultsPhase, CHESS_MIN_PLAYERS } from '@/lib/chess'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
-import { CHESS_SESSION_SELECT } from '@/lib/supabase-selects'
+import { CHESS_SESSION_SELECT, CHESS_SESSION_NOT_NULL_KEYS } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
 import type { Game, ChessSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -158,7 +158,11 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   // Realtime push: reload on any change to this game's row + its tables.
   const connected = useGameTableSync(
     gameCode,
-    ['players', { table: 'games', column: 'id' }, { table: 'chess_sessions', apply: applySessionRow }],
+    [
+      'players',
+      { table: 'games', column: 'id' },
+      { table: 'chess_sessions', apply: applySessionRow, requireKeys: CHESS_SESSION_NOT_NULL_KEYS },
+    ],
     load
   )
 

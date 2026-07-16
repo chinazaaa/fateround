@@ -127,6 +127,42 @@ describe('useGameTableSync', () => {
     expect(reload).toHaveBeenCalledTimes(1)
   })
 
+  it('skips apply and reloads when a requireKeys column is null (TOAST-truncated partial payload)', async () => {
+    const reload = vi.fn()
+    const apply = vi.fn(() => true) // would normally absorb the row and skip the reload
+    renderHook(() =>
+      useGameTableSync(
+        'ABCD',
+        [{ table: 'monopoly_boards', apply, requireKeys: ['property_owners', 'turn_order'] }],
+        reload
+      )
+    )
+
+    // Realtime dropped the unchanged TOAST-ed `property_owners` → arrives null.
+    cap.ons[0].cb({ eventType: 'UPDATE', new: { id: 'b1', turn_order: ['p1'], property_owners: null, phase: 'buy' } })
+    expect(apply).not.toHaveBeenCalled() // partial row must not be applied
+    await vi.advanceTimersByTimeAsync(150)
+    expect(reload).toHaveBeenCalledTimes(1) // full reload reconciles from a complete fetch
+  })
+
+  it('applies normally when every requireKeys column is present', async () => {
+    const reload = vi.fn()
+    const apply = vi.fn(() => true)
+    renderHook(() =>
+      useGameTableSync(
+        'ABCD',
+        [{ table: 'monopoly_boards', apply, requireKeys: ['property_owners', 'turn_order'] }],
+        reload
+      )
+    )
+
+    const row = { id: 'b1', turn_order: ['p1'], property_owners: { '1': 'p1' }, phase: 'buy' }
+    cap.ons[0].cb({ eventType: 'UPDATE', new: row })
+    expect(apply).toHaveBeenCalledExactlyOnceWith(row)
+    await vi.advanceTimersByTimeAsync(150)
+    expect(reload).not.toHaveBeenCalled() // complete payload → fast-path, no refetch
+  })
+
   it('survives a throwing apply — the reload still fires', async () => {
     const reload = vi.fn()
     const apply = vi.fn(() => {

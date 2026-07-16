@@ -28,6 +28,8 @@ import {
   PLAYER_SELECT,
   YAHTZEE_PLAYER_SCORES_SELECT,
   YAHTZEE_SESSION_SELECT,
+  YAHTZEE_SESSION_NOT_NULL_KEYS,
+  YAHTZEE_SCORES_NOT_NULL_KEYS,
 } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
@@ -158,8 +160,8 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
     [
       { table: 'games', column: 'id' },
       'players',
-      { table: 'yahtzee_sessions', apply: applySessionRow },
-      { table: 'yahtzee_player_scores', apply: applyScoreRow },
+      { table: 'yahtzee_sessions', apply: applySessionRow, requireKeys: YAHTZEE_SESSION_NOT_NULL_KEYS },
+      { table: 'yahtzee_player_scores', apply: applyScoreRow, requireKeys: YAHTZEE_SCORES_NOT_NULL_KEYS },
     ],
     load
   )

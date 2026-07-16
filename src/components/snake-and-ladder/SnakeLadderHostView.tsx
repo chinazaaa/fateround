@@ -20,6 +20,7 @@ import {
   GAME_SELECT,
   PLAYER_SELECT,
   SNAKE_LADDER_PLAYER_STATE_SELECT,
+  SNAKE_LADDER_SESSION_NOT_NULL_KEYS,
   SNAKE_LADDER_SESSION_SELECT,
 } from '@/lib/supabase-selects'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
@@ -155,7 +156,7 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
     [
       { table: 'games', column: 'id' },
       'players',
-      { table: 'snake_ladder_sessions', apply: applySessionRow },
+      { table: 'snake_ladder_sessions', apply: applySessionRow, requireKeys: SNAKE_LADDER_SESSION_NOT_NULL_KEYS },
       { table: 'snake_ladder_player_state', apply: applyStateRow },
     ],
     load

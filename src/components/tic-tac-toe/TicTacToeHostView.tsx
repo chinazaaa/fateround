@@ -10,7 +10,12 @@ import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
 import { currentTurnPlayerId, TIC_TAC_TOE_MIN_PLAYERS, isTicTacToeResultsPhase } from '@/lib/tic-tac-toe'
 import { supabase } from '@/lib/supabase'
-import { GAME_SELECT, PLAYER_SELECT, TIC_TAC_TOE_SESSION_SELECT } from '@/lib/supabase-selects'
+import {
+  GAME_SELECT,
+  PLAYER_SELECT,
+  TIC_TAC_TOE_SESSION_NOT_NULL_KEYS,
+  TIC_TAC_TOE_SESSION_SELECT,
+} from '@/lib/supabase-selects'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
@@ -121,7 +126,11 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
 
   const connected = useGameTableSync(
     gameCode,
-    ['players', { table: 'games', column: 'id' }, { table: 'tic_tac_toe_sessions', apply: applySessionRow }],
+    [
+      'players',
+      { table: 'games', column: 'id' },
+      { table: 'tic_tac_toe_sessions', apply: applySessionRow, requireKeys: TIC_TAC_TOE_SESSION_NOT_NULL_KEYS },
+    ],
     load
   )
 

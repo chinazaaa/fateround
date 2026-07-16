@@ -33,10 +33,10 @@ import {
 import { supabase } from '@/lib/supabase'
 import {
   GAME_SELECT,
+  MONOPOLY_BOARD_NOT_NULL_KEYS,
   MONOPOLY_BOARD_SELECT,
   MONOPOLY_PLAYER_STATE_SELECT,
   PLAYER_SELECT,
-  isCompleteMonopolyBoardRow,
 } from '@/lib/supabase-selects'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
@@ -135,11 +135,6 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
     const next = row as unknown as MonopolyBoard
     const prev = boardRef.current
     if (prev && next.updated_at < prev.updated_at) return true
-    // Realtime UPDATE payloads drop unchanged TOAST-ed columns (large jsonb such as
-    // property_owners) — they arrive as null once a game has enough owned properties. Applying
-    // such a partial row would wipe ownership/buildings on screen. Discard it and let the
-    // debounced full reload refetch the complete row.
-    if (!isCompleteMonopolyBoardRow(row)) return false
     setBoard(next)
     boardRef.current = next
     return prev != null
@@ -161,7 +156,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
     [
       { table: 'games', column: 'id' },
       'players',
-      { table: 'monopoly_boards', apply: applyBoardRow },
+      { table: 'monopoly_boards', apply: applyBoardRow, requireKeys: MONOPOLY_BOARD_NOT_NULL_KEYS },
       { table: 'monopoly_player_state', apply: applyStateRow },
     ],
     load

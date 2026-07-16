@@ -15,7 +15,11 @@ import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { gameTypeConfig } from '@/lib/game-types'
 import { currentPlayerId, SNAKE_LADDER_MIN_PLAYERS } from '@/lib/snake-and-ladder'
 import { supabase } from '@/lib/supabase'
-import { SNAKE_LADDER_PLAYER_STATE_SELECT, SNAKE_LADDER_SESSION_SELECT } from '@/lib/supabase-selects'
+import {
+  SNAKE_LADDER_PLAYER_STATE_SELECT,
+  SNAKE_LADDER_SESSION_NOT_NULL_KEYS,
+  SNAKE_LADDER_SESSION_SELECT,
+} from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
 import type { Game, SnakeLadderPlayerState, SnakeLadderSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -155,7 +159,7 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
     [
       { table: 'games', column: 'id' },
       'players',
-      { table: 'snake_ladder_sessions', apply: applySessionRow },
+      { table: 'snake_ladder_sessions', apply: applySessionRow, requireKeys: SNAKE_LADDER_SESSION_NOT_NULL_KEYS },
       { table: 'snake_ladder_player_state', apply: applyStateRow },
     ],
     load

@@ -16,7 +16,12 @@ import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { gameTypeConfig } from '@/lib/game-types'
 import { currentPlayerId, parseLudoDice, parseLudoVariant, LUDO_MIN_PLAYERS } from '@/lib/ludo'
 import { supabase } from '@/lib/supabase'
-import { LUDO_PLAYER_STATE_SELECT, LUDO_SESSION_SELECT } from '@/lib/supabase-selects'
+import {
+  LUDO_PLAYER_STATE_NOT_NULL_KEYS,
+  LUDO_PLAYER_STATE_SELECT,
+  LUDO_SESSION_NOT_NULL_KEYS,
+  LUDO_SESSION_SELECT,
+} from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
 import type { Game, LudoDiceRoll, LudoPlayerState, LudoSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -144,8 +149,8 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
     [
       'players',
       { table: 'games', column: 'id' },
-      { table: 'ludo_sessions', apply: applySessionRow },
-      { table: 'ludo_player_state', apply: applyStateRow },
+      { table: 'ludo_sessions', apply: applySessionRow, requireKeys: LUDO_SESSION_NOT_NULL_KEYS },
+      { table: 'ludo_player_state', apply: applyStateRow, requireKeys: LUDO_PLAYER_STATE_NOT_NULL_KEYS },
     ],
     load
   )

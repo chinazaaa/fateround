@@ -22,7 +22,14 @@ import {
   type WhotHostMode,
 } from '@/lib/whot'
 import { supabase } from '@/lib/supabase'
-import { GAME_SELECT, PLAYER_SELECT, WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT } from '@/lib/supabase-selects'
+import {
+  GAME_SELECT,
+  PLAYER_SELECT,
+  WHOT_PLAYER_HANDS_SELECT,
+  WHOT_SESSION_SELECT,
+  WHOT_SESSION_NOT_NULL_KEYS,
+  WHOT_HANDS_NOT_NULL_KEYS,
+} from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
@@ -151,8 +158,8 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     [
       { table: 'games', column: 'id' },
       'players',
-      { table: 'whot_sessions', apply: applySessionRow },
-      { table: 'whot_player_hands', apply: applyHandRow },
+      { table: 'whot_sessions', apply: applySessionRow, requireKeys: WHOT_SESSION_NOT_NULL_KEYS },
+      { table: 'whot_player_hands', apply: applyHandRow, requireKeys: WHOT_HANDS_NOT_NULL_KEYS },
     ],
     load
   )

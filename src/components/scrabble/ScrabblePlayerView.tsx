@@ -17,7 +17,12 @@ import { SCRABBLE_MIN_PLAYERS } from '@/lib/scrabble'
 import { currentTurnPlayerId, isScrabbleResultsPhase } from '@/lib/scrabble-board'
 import { tileSetForDictionary } from '@/lib/scrabble-rulesets'
 import { supabase } from '@/lib/supabase'
-import { SCRABBLE_SESSION_SELECT, SCRABBLE_PLAYER_STATE_SELECT } from '@/lib/supabase-selects'
+import {
+  SCRABBLE_SESSION_SELECT,
+  SCRABBLE_PLAYER_STATE_SELECT,
+  SCRABBLE_SESSION_NOT_NULL_KEYS,
+  SCRABBLE_PLAYER_STATE_NOT_NULL_KEYS,
+} from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
 import type { Game, ScrabbleSession, ScrabblePlayerState, ScrabblePlacedTile } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -144,8 +149,8 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
     [
       { table: 'games', column: 'id' },
       'players',
-      { table: 'scrabble_sessions', apply: applySessionRow },
-      { table: 'scrabble_player_state', apply: applyStateRow },
+      { table: 'scrabble_sessions', apply: applySessionRow, requireKeys: SCRABBLE_SESSION_NOT_NULL_KEYS },
+      { table: 'scrabble_player_state', apply: applyStateRow, requireKeys: SCRABBLE_PLAYER_STATE_NOT_NULL_KEYS },
     ],
     load
   )

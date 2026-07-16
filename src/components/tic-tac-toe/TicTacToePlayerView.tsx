@@ -15,7 +15,7 @@ import { gameTypeConfig } from '@/lib/game-types'
 import { currentTurnPlayerId, isTicTacToeResultsPhase, TIC_TAC_TOE_MIN_PLAYERS } from '@/lib/tic-tac-toe'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
-import { TIC_TAC_TOE_SESSION_SELECT } from '@/lib/supabase-selects'
+import { TIC_TAC_TOE_SESSION_NOT_NULL_KEYS, TIC_TAC_TOE_SESSION_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
 import type { Game, TicTacToeSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -133,7 +133,11 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
   // Realtime push: patch the session locally on moves (see above), reload for everything else.
   const connected = useGameTableSync(
     gameCode,
-    ['players', { table: 'games', column: 'id' }, { table: 'tic_tac_toe_sessions', apply: applySessionRow }],
+    [
+      'players',
+      { table: 'games', column: 'id' },
+      { table: 'tic_tac_toe_sessions', apply: applySessionRow, requireKeys: TIC_TAC_TOE_SESSION_NOT_NULL_KEYS },
+    ],
     load
   )
 

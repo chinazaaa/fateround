@@ -10,7 +10,12 @@ import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
 import { currentTurnPlayerId, CHECKERS_MIN_PLAYERS, isCheckersResultsPhase } from '@/lib/checkers'
 import { supabase } from '@/lib/supabase'
-import { GAME_SELECT, PLAYER_SELECT, CHECKERS_SESSION_SELECT } from '@/lib/supabase-selects'
+import {
+  GAME_SELECT,
+  PLAYER_SELECT,
+  CHECKERS_SESSION_SELECT,
+  CHECKERS_SESSION_NOT_NULL_KEYS,
+} from '@/lib/supabase-selects'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
@@ -119,7 +124,11 @@ export function CheckersHostView({ gameCode, hostToken }: { gameCode: string; ho
 
   const connected = useGameTableSync(
     gameCode,
-    ['players', { table: 'games', column: 'id' }, { table: 'checkers_sessions', apply: applySessionRow }],
+    [
+      'players',
+      { table: 'games', column: 'id' },
+      { table: 'checkers_sessions', apply: applySessionRow, requireKeys: CHECKERS_SESSION_NOT_NULL_KEYS },
+    ],
     load
   )
 

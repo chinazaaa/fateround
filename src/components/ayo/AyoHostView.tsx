@@ -18,7 +18,7 @@ import {
 } from '@/lib/ayo'
 import { useAyoSowAnimation } from '@/hooks/useAyoSowAnimation'
 import { supabase } from '@/lib/supabase'
-import { GAME_SELECT, PLAYER_SELECT, AYO_SESSION_SELECT } from '@/lib/supabase-selects'
+import { GAME_SELECT, PLAYER_SELECT, AYO_SESSION_SELECT, AYO_SESSION_NOT_NULL_KEYS } from '@/lib/supabase-selects'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
@@ -126,7 +126,11 @@ export function AyoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
 
   const connected = useGameTableSync(
     gameCode,
-    ['players', { table: 'games', column: 'id' }, { table: 'ayo_sessions', apply: applySessionRow }],
+    [
+      'players',
+      { table: 'games', column: 'id' },
+      { table: 'ayo_sessions', apply: applySessionRow, requireKeys: AYO_SESSION_NOT_NULL_KEYS },
+    ],
     load
   )
 

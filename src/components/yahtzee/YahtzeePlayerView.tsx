@@ -19,7 +19,12 @@ import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { gameTypeConfig } from '@/lib/game-types'
 import { currentPlayerId, totalScore, YAHTZEE_MIN_PLAYERS } from '@/lib/yahtzee'
 import { supabase } from '@/lib/supabase'
-import { YAHTZEE_PLAYER_SCORES_SELECT, YAHTZEE_SESSION_SELECT } from '@/lib/supabase-selects'
+import {
+  YAHTZEE_PLAYER_SCORES_SELECT,
+  YAHTZEE_SESSION_SELECT,
+  YAHTZEE_SESSION_NOT_NULL_KEYS,
+  YAHTZEE_SCORES_NOT_NULL_KEYS,
+} from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
 import type { Game, YahtzeeCategory, YahtzeePlayerScore, YahtzeeSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -187,8 +192,8 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     [
       'players',
       { table: 'games', column: 'id' },
-      { table: 'yahtzee_sessions', apply: applySessionRow },
-      { table: 'yahtzee_player_scores', apply: applyScoreRow },
+      { table: 'yahtzee_sessions', apply: applySessionRow, requireKeys: YAHTZEE_SESSION_NOT_NULL_KEYS },
+      { table: 'yahtzee_player_scores', apply: applyScoreRow, requireKeys: YAHTZEE_SCORES_NOT_NULL_KEYS },
     ],
     load
   )

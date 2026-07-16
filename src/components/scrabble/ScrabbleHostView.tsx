@@ -15,6 +15,8 @@ import {
   PLAYER_SELECT,
   SCRABBLE_SESSION_SELECT,
   SCRABBLE_PLAYER_STATE_SELECT,
+  SCRABBLE_SESSION_NOT_NULL_KEYS,
+  SCRABBLE_PLAYER_STATE_NOT_NULL_KEYS,
 } from '@/lib/supabase-selects'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
@@ -159,8 +161,8 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
     [
       { table: 'games', column: 'id' },
       'players',
-      { table: 'scrabble_sessions', apply: applySessionRow },
-      { table: 'scrabble_player_state', apply: applyStateRow },
+      { table: 'scrabble_sessions', apply: applySessionRow, requireKeys: SCRABBLE_SESSION_NOT_NULL_KEYS },
+      { table: 'scrabble_player_state', apply: applyStateRow, requireKeys: SCRABBLE_PLAYER_STATE_NOT_NULL_KEYS },
     ],
     load
   )

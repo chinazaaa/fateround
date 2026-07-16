@@ -31,6 +31,7 @@ import {
 } from '@/lib/crazy-eights'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
+import { CRAZY8_SESSION_NOT_NULL_KEYS, CRAZY8_HANDS_NOT_NULL_KEYS } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
 import type { Game, CrazyEightsPlayerHand, CrazyEightsSession, CrazyEightsCalledSuit } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -160,8 +161,8 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     [
       'players',
       { table: 'games', column: 'id' },
-      { table: 'crazy_eights_sessions', apply: applySessionRow },
-      { table: 'crazy_eights_player_hands', apply: applyHandRow },
+      { table: 'crazy_eights_sessions', apply: applySessionRow, requireKeys: CRAZY8_SESSION_NOT_NULL_KEYS },
+      { table: 'crazy_eights_player_hands', apply: applyHandRow, requireKeys: CRAZY8_HANDS_NOT_NULL_KEYS },
     ],
     load
   )

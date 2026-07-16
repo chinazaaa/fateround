@@ -42,14 +42,15 @@ export const MONOPOLY_BOARD_SELECT =
   'id,game_id,turn_order,current_turn_index,phase,last_dice,consecutive_doubles,property_owners,property_buildings,mortgaged_properties,houses_in_bank,hotels_in_bank,chance_deck,community_deck,chance_discard,community_discard,auction_state,pending_trade,pending_debt,pending_space,status_message,last_card_event,last_rent_event,last_cash_event,last_trade_event,turn_deadline_at,winner_player_id,created_at,updated_at'
 
 /**
- * `monopoly_boards` columns that are NOT NULL in the DB.
+ * NOT-NULL, potentially-large columns for each table read through the realtime delta fast-path.
  *
- * Realtime UPDATE payloads omit unchanged TOAST-ed columns — once a game has enough owned
- * properties for `property_owners` (and the other large jsonb columns) to be stored out-of-line,
- * a board update that doesn't touch them delivers them as `null`. Since these columns can never
- * legitimately be null, a null here proves the pushed row is partial: applying it would wipe
- * ownership, buildings and the decks on screen. Callers use {@link isCompleteMonopolyBoardRow}
- * to detect that and fall back to a full reload instead of the delta fast-path.
+ * Postgres logical replication (Supabase Realtime) OMITS unchanged TOAST-ed columns from UPDATE
+ * payloads: once a large jsonb/text value (a card deck, a game board, a Scrabble tile bag, a chess
+ * PGN) is stored out-of-line, an update that doesn't touch it delivers it as `null`. These columns
+ * are all NOT NULL in the DB, so a null can only mean the payload was truncated — applying it would
+ * wipe that state on screen (0 properties, empty hand, blank board). Passed to `useGameTableSync`
+ * as a watched table's `requireKeys`: when any listed column arrives null, the delta fast-path is
+ * skipped and the debounced full reload reconciles. Keep each list in sync with the table's SELECT.
  */
 export const MONOPOLY_BOARD_NOT_NULL_KEYS = [
   'property_owners',
@@ -62,11 +63,21 @@ export const MONOPOLY_BOARD_NOT_NULL_KEYS = [
   'turn_order',
 ] as const
 
-/** True when a pushed `monopoly_boards` row carries every NOT-NULL column (i.e. is not a
- *  TOAST-truncated partial realtime payload — see {@link MONOPOLY_BOARD_NOT_NULL_KEYS}). */
-export function isCompleteMonopolyBoardRow(row: Record<string, unknown>): boolean {
-  return MONOPOLY_BOARD_NOT_NULL_KEYS.every((key) => row[key] != null)
-}
+export const YAHTZEE_SESSION_NOT_NULL_KEYS = ['turn_order', 'dice', 'held'] as const
+export const YAHTZEE_SCORES_NOT_NULL_KEYS = ['scores'] as const
+export const WHOT_SESSION_NOT_NULL_KEYS = ['turn_order', 'draw_pile', 'discard_pile', 'finish_order'] as const
+export const WHOT_HANDS_NOT_NULL_KEYS = ['cards'] as const
+export const CRAZY8_SESSION_NOT_NULL_KEYS = ['turn_order', 'draw_pile', 'discard_pile', 'finish_order'] as const
+export const CRAZY8_HANDS_NOT_NULL_KEYS = ['cards'] as const
+export const LUDO_SESSION_NOT_NULL_KEYS = ['turn_order'] as const
+export const LUDO_PLAYER_STATE_NOT_NULL_KEYS = ['pieces'] as const
+export const SNAKE_LADDER_SESSION_NOT_NULL_KEYS = ['turn_order'] as const
+export const AYO_SESSION_NOT_NULL_KEYS = ['pits'] as const
+export const CHESS_SESSION_NOT_NULL_KEYS = ['fen', 'pgn'] as const
+export const CHECKERS_SESSION_NOT_NULL_KEYS = ['board', 'position_counts'] as const
+export const TIC_TAC_TOE_SESSION_NOT_NULL_KEYS = ['board', 'board_winners'] as const
+export const SCRABBLE_SESSION_NOT_NULL_KEYS = ['turn_order', 'board', 'bag'] as const
+export const SCRABBLE_PLAYER_STATE_NOT_NULL_KEYS = ['rack'] as const
 
 /** Default per-turn timer when host enables timing (seconds). 0 = off. */
 export const MONOPOLY_DEFAULT_TURN_TIMER = 45

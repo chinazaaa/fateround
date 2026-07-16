@@ -17,7 +17,7 @@ import {
 import { useAyoSowAnimation } from '@/hooks/useAyoSowAnimation'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
-import { AYO_SESSION_SELECT } from '@/lib/supabase-selects'
+import { AYO_SESSION_SELECT, AYO_SESSION_NOT_NULL_KEYS } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
 import type { Game, AyoSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -128,7 +128,11 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
 
   const connected = useGameTableSync(
     gameCode,
-    ['players', { table: 'games', column: 'id' }, { table: 'ayo_sessions', apply: applySessionRow }],
+    [
+      'players',
+      { table: 'games', column: 'id' },
+      { table: 'ayo_sessions', apply: applySessionRow, requireKeys: AYO_SESSION_NOT_NULL_KEYS },
+    ],
     load
   )
 

@@ -21,7 +21,13 @@ import {
   type CrazyEightsHostMode,
 } from '@/lib/crazy-eights'
 import { supabase } from '@/lib/supabase'
-import { CRAZY8_SESSION_SELECT, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
+import {
+  CRAZY8_SESSION_SELECT,
+  GAME_SELECT,
+  PLAYER_SELECT,
+  CRAZY8_SESSION_NOT_NULL_KEYS,
+  CRAZY8_HANDS_NOT_NULL_KEYS,
+} from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
@@ -160,8 +166,8 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
     [
       'players',
       { table: 'games', column: 'id' },
-      { table: 'crazy_eights_sessions', apply: applySessionRow },
-      { table: 'crazy_eights_player_hands', apply: applyHandRow },
+      { table: 'crazy_eights_sessions', apply: applySessionRow, requireKeys: CRAZY8_SESSION_NOT_NULL_KEYS },
+      { table: 'crazy_eights_player_hands', apply: applyHandRow, requireKeys: CRAZY8_HANDS_NOT_NULL_KEYS },
     ],
     load
   )
