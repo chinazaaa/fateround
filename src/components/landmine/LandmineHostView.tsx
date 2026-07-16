@@ -155,6 +155,14 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
     runImmediately: false,
   })
 
+  // Safety reload while active even when realtime looks connected — a dropped phase event would
+  // otherwise strand the view on the old phase (see LandminePlayerView for the full rationale).
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: POLL_INTERVALS.activeGame,
+    enabled: connected && game?.status === 'active',
+    runImmediately: false,
+  })
+
   useLandmineAdvance({
     gameCode,
     game: game ?? ({ status: 'waiting', id: gameCode } as Game),
@@ -238,7 +246,10 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
       setLandmineHostMode(gameCode, 'player')
       await load()
       success(`Joined as ${data.playerName}`)
-      setTab('play')
+      // Only jump to the play board if the game is already running. In the lobby the host needs
+      // to stay on Manage to actually start the game — jumping to the (empty) primary tab here
+      // was what dumped a freshly-joined host onto the Watch/Play placeholder.
+      if (game?.status === 'active') setTab('play')
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to join')
     } finally {
