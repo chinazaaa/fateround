@@ -41,6 +41,20 @@ While `HostLobby`/`HostLobbySkeleton` are mounted they set `data-host-lobby="act
 
 You don't touch any of this per game — it's automatic. Just render `HostLobby`.
 
+## Step 0 — know your host view's shape (read this first)
+
+This pattern drops in cleanly for host views built on **`HostGameLayout`** (the Play/Watch +
+Manage shell — ~28 of the games). Before you start, confirm the view you're editing uses it.
+A few games use different shells and need care (do them last, one at a time):
+
+| View | Shell | Note |
+|---|---|---|
+| `WhotHostView` | `HostRoomShell` | card-table/voice room layout — port carefully |
+| `MahjongHostView`, `SecretMessageHostView` | `HostPageShell` | not tabbed; adapt the waiting branch by hand |
+| Poll-family (no dedicated view) | `PollHostView` fallback | separate lobby (`HostModePanel`/`PollHostPlayShell`) — out of scope for this pass |
+
+For the standard `HostGameLayout` games, follow the Trivia pattern below.
+
 ## Wiring a game (the Trivia pattern)
 
 See `components/trivia/TriviaHostView.tsx`. In the host view:
@@ -70,15 +84,15 @@ See `components/trivia/TriviaHostView.tsx`. In the host view:
            game={game}
            gameTypeLabel={cfg.label}                 // gameTypeConfig(type).label
            players={players}
-           maxPlayers={game.max_players}
+           maxPlayers={lobbyMaxPlayersFromGameClient(type, game) ?? game.max_players}
            resumeToken={hostResumeToken}
            playCard={<HostModeSelector … />}          // the play-as-yourself card
            howToPlay={<HostRulesRow gameType={type} />}
            settingsChildren={lobbySettings}           // theme picker, edit settings, late-join, transfer
            onStart={() => void startGame()}
            starting={starting}
-           startDisabled={!canStart}
-           startDisabledHint={!canStart ? 'Waiting for at least one player to join.' : null}
+           startDisabled={!canStart}                  // reuse THIS game's gate — do NOT copy Trivia's `>= 1`
+           startDisabledHint={startGateHint}
            startLabel="Start <game>"
            onRemovePlayer={removePlayer}
            removingPlayerId={removingPlayerId}
@@ -97,6 +111,11 @@ See `components/trivia/TriviaHostView.tsx`. In the host view:
 
 - **`playCard`** — the existing `HostModeSelector` (Host only / Host + play). Reuse the
   view's current mode state and join/rename handlers.
+  - **Board/seat games with a token or seat picker** (Monopoly, etc.): pass the picker
+    through `HostModeSelector`'s `renderJoinForm` prop instead of the default name input.
+  - **Host-can't-play games** (tournament games, or host-run-only games): render an
+    explanatory note as `playCard` instead of the selector — see Trivia's `game.tournament_id`
+    branch.
 - **`settingsChildren`** — the game's lobby settings, in this order: theme picker →
   "Edit settings" button (opens the existing settings modal) → `HostLateJoinSettingsCard`
   (where supported) → `TransferHostControl`. Give the transfer trigger a real button style:
@@ -105,16 +124,33 @@ See `components/trivia/TriviaHostView.tsx`. In the host view:
 - **`children`** — team/word-pool panels that must appear on the main screen (Codewords,
   Describe It, Word Rush, etc.), rendered between the play card and the players list.
 
+### Start gate & capacity — get these right per game
+
+- **`startDisabled` / `startDisabledHint`:** every game has its **own** minimum (Trivia = 1
+  active player; team games need teams filled; some board games need N seats). **Reuse the
+  view's existing can-start / disabled-reason logic** — do not copy Trivia's `>= 1`. For the
+  lobby minimum, `isLobbyLimitGameType(type)` + the game's limits (`src/lib/game-limits.ts`)
+  tell you whether a floor applies. If the view already renders a start button with a
+  disabled reason, lift that same condition/string into `startDisabled`/`startDisabledHint`.
+- **`maxPlayers`:** prefer `lobbyMaxPlayersFromGameClient(type, game)` (handles games with a
+  computed/fixed seat count); fall back to `game.max_players`. Shown as `N / max`.
+
 ## Per-game rollout checklist
 
+- [ ] Confirm the view uses `HostGameLayout` (Step 0). If not, handle it separately.
 - [ ] `if (!game) return <HostLobbySkeleton />`
 - [ ] Compute `waitingLobby = status === 'waiting' && !replay_pending`
 - [ ] Render `HostLobby` (waiting) vs `HostGameLayout` (everything else)
-- [ ] Move host-mode selector into `playCard`
+- [ ] Move host-mode selector into `playCard` (use `renderJoinForm` for token/seat pickers;
+      a note instead of the selector for host-can't-play games)
 - [ ] Move theme/edit-settings/late-join/transfer into `settingsChildren`
-- [ ] `howToPlay={<HostRulesRow …/>}`, `maxPlayers`, and a sensible `startDisabled`/hint
+- [ ] `howToPlay={<HostRulesRow …/>}`
+- [ ] `maxPlayers` via `lobbyMaxPlayersFromGameClient` (not hardcoded)
+- [ ] **Start gate: reuse the game's real minimum** for `startDisabled`/hint — not `>= 1`
 - [ ] Team/pool panels (if any) via `children`
-- [ ] `tsc` clean; verify light + dark at a real `/host/<code>` URL
+- [ ] Keep the view's existing modals (settings, play-again) rendered in both branches
+- [ ] `tsc` clean; verify light + dark at a real `/host/<code>` URL — check the players
+      count, the start gate actually blocks below minimum, and the settings sheet knobs save
 
 ## Notes / open items
 
