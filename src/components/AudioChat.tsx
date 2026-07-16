@@ -292,7 +292,7 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
 
   return (
     <div
-      className={`fixed bottom-20 z-50 flex flex-col gap-2 ${
+      className={`voice-fab fixed bottom-20 z-50 flex flex-col gap-2 ${
         side === 'right' ? 'right-4 items-end' : 'left-4 items-start'
       }`}
     >
