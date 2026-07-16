@@ -3,11 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
+import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
+import { TransferHostControl } from '@/components/TransferHostControl'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { gameTypeConfig } from '@/lib/game-types'
 import { currentTurnPlayerId, CHECKERS_MIN_PLAYERS, isCheckersResultsPhase } from '@/lib/checkers'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT, CHECKERS_SESSION_SELECT } from '@/lib/supabase-selects'
@@ -344,11 +350,7 @@ export function CheckersHostView({ gameCode, hostToken }: { gameCode: string; ho
   useCheckersClockExpiry(gameCode, session, game?.status === 'active')
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
   if (!game) {
@@ -477,6 +479,55 @@ export function CheckersHostView({ gameCode, hostToken }: { gameCode: string; ho
           Return to lobby instead
         </button>
       </div>
+    )
+  }
+
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={gameTypeConfig('checkers').label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('checkers', game) ?? game.max_players}
+        playCard={
+          <HostModeSelector
+            mode={hostMode}
+            onChange={changeHostMode}
+            joinedPlayerId={hostPlayerId}
+            joinedPlayerName={hostPlayerName}
+            joinName={hostJoinName}
+            onJoinNameChange={setHostJoinName}
+            onJoin={() => void hostJoinGame()}
+            joining={hostJoining}
+            onEditName={renameHost}
+            spectatorHint="Spectate once it starts"
+            playerHint="Take a seat and play"
+          />
+        }
+        howToPlay={<HostRulesRow gameType="checkers" />}
+        settingsChildren={
+          <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+        }
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : readyPlayers.length < players.length
+              ? `Waiting for players to tap ready (${readyPlayers.length}/${CHECKERS_MIN_PLAYERS})`
+              : `Need exactly ${CHECKERS_MIN_PLAYERS} players to start (${players.length}/${CHECKERS_MIN_PLAYERS})`
+        }
+        startLabel="Start game"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      />
     )
   }
 
