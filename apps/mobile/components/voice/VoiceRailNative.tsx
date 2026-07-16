@@ -1,11 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { AppState, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
-import {
-  AudioSession,
-  LiveKitRoom,
-  useLocalParticipant,
-  useParticipants,
-} from '@livekit/react-native'
+import { AudioSession, LiveKitRoom, useLocalParticipant, useParticipants } from '@livekit/react-native'
 import type { DisconnectReason } from 'livekit-client'
 import { voiceDisconnectMessage } from '@/lib/voice-errors'
 import { LIVEKIT_URL } from '@/lib/config'
@@ -198,113 +193,117 @@ export function VoiceRailNative({ gameCode, mode, hostToken, bottomOffset = 0 }:
         if (message) show(message, 'error')
       }}
     >
-      <ConnectedControls
-        displayName={voice.displayName}
-        onLeave={voice.leave}
-        presenceHint={voice.presenceCount}
-      />
+      <ConnectedControls displayName={voice.displayName} onLeave={voice.leave} presenceHint={voice.presenceCount} />
     </LiveKitRoom>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  // Anchored to the shell root (NOT a scroll body — it would scroll away).
-  // zIndex sits below Toast's 100 so toasts still render above the pill.
-  floatWrap: {
-    position: 'absolute',
-    right: 12,
-    zIndex: 90,
-    alignItems: 'flex-end',
-  },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.surfaceHover,
-    backgroundColor: theme.bgElevated,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  joinBtn: {
-    flex: 1,
-    backgroundColor: theme.surfaceHover,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-  },
-  joinText: { color: theme.text, fontSize: 13, fontWeight: '700' },
-  mainBtn: {
-    flex: 1,
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-  },
-  // Translucent state fills kept (semantic green/rose wash); borders use the
-  // success/error roles.
-  mainBtnLive: { borderColor: theme.success, backgroundColor: '#14532d33' },
-  mainBtnMuted: { borderColor: theme.error, backgroundColor: '#3f1d2b33' },
-  mainBtnText: { color: theme.text, fontSize: 13, fontWeight: '700' },
-  secondaryBtn: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.surfaceHover,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  secondaryText: { color: theme.text, fontSize: 13, fontWeight: '700' },
-  leaveText: { color: theme.primaryMuted, fontSize: 13, fontWeight: '700' },
-  modalBackdrop: {
-    flex: 1,
-    // Dark scrim over the app — intentional in both schemes.
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  modalCard: {
-    backgroundColor: theme.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: 14,
-  },
-  modalTitle: {
-    color: theme.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 10,
-  },
-  modalEmpty: { color: theme.textMuted, fontSize: 14, marginBottom: 8 },
-  modalRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-  },
-  modalName: { color: theme.text, fontSize: 14, fontWeight: '600', flex: 1 },
-  modalState: { fontSize: 16 },
-  modalFoot: {
-    color: theme.textFaint,
-    fontSize: 11,
-    textAlign: 'center',
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: theme.border,
-  },
-})
+    // Anchored to the shell root (NOT a scroll body — it would scroll away).
+    // zIndex sits below Toast's 100 so toasts still render above the pill.
+    floatWrap: {
+      position: 'absolute',
+      right: 12,
+      zIndex: 90,
+      alignItems: 'flex-end',
+    },
+    pill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 6,
+      paddingVertical: 6,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: theme.surfaceHover,
+      backgroundColor: theme.bgElevated,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.18,
+      shadowRadius: 6,
+      elevation: 4,
+    },
+    joinBtn: {
+      flex: 1,
+      backgroundColor: theme.surfaceHover,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      alignItems: 'center',
+    },
+    joinText: { color: theme.text, fontSize: 13, fontWeight: '700' },
+    mainBtn: {
+      flex: 1,
+      borderRadius: 999,
+      borderWidth: 1,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      alignItems: 'center',
+    },
+    // Translucent state fills kept (semantic green/rose wash); borders use the
+    // success/error roles.
+    mainBtnLive: { borderColor: theme.success, backgroundColor: '#14532d33' },
+    mainBtnMuted: { borderColor: theme.error, backgroundColor: '#3f1d2b33' },
+    // alignSelf:'stretch' + textAlign:'center' — RN New Arch clips a lone emoji
+    // glyph inside a flexed Text to nothing (the mic button showed blank white).
+    mainBtnText: {
+      color: theme.text,
+      fontSize: 13,
+      fontWeight: '700',
+      alignSelf: 'stretch',
+      textAlign: 'center',
+    },
+    secondaryBtn: {
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surfaceHover,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+    },
+    secondaryText: { color: theme.text, fontSize: 13, fontWeight: '700' },
+    leaveText: { color: theme.primaryMuted, fontSize: 13, fontWeight: '700' },
+    modalBackdrop: {
+      flex: 1,
+      // Dark scrim over the app — intentional in both schemes.
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      justifyContent: 'center',
+      padding: 24,
+    },
+    modalCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 14,
+    },
+    modalTitle: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontWeight: '700',
+      letterSpacing: 1,
+      textTransform: 'uppercase',
+      marginBottom: 10,
+    },
+    modalEmpty: { color: theme.textMuted, fontSize: 14, marginBottom: 8 },
+    modalRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 8,
+    },
+    modalName: { color: theme.text, fontSize: 14, fontWeight: '600', flex: 1 },
+    modalState: { fontSize: 16 },
+    modalFoot: {
+      color: theme.textFaint,
+      fontSize: 11,
+      textAlign: 'center',
+      marginTop: 10,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: theme.border,
+    },
+  })
