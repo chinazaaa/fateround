@@ -2520,6 +2520,7 @@ export async function removeMonopolyPlayer(
     boardUpdate.last_trade_event = nextTradeEvent(board, trade.from_player_id, trade.to_player_id, 'declined')
   }
 
+  let finalDividend = 0
   // Robin Hood Estate Dividend: liquidate estate and split among remaining active players.
   if (settings.estateDividend && !winner && departingState) {
     const estateValue = computePlayerEstateValue(
@@ -2533,18 +2534,7 @@ export async function removeMonopolyPlayer(
     const dividend = activePlayers.length > 0 ? Math.floor(estateValue / activePlayers.length) : 0
 
     if (dividend > 0) {
-      // Credit each remaining active player
-      const updatePromises = activePlayers.map((active) =>
-        supabase
-          .from('monopoly_player_state')
-          .update({ cash: active.cash + dividend })
-          .eq('game_id', gameId)
-          .eq('player_id', active.player_id)
-      )
-      const results = await Promise.all(updatePromises)
-      const errRes = results.find((r) => r.error)
-      if (errRes?.error) return { error: internalErrorMessage('monopoly', errRes.error) }
-
+      finalDividend = dividend
       statusMessage =
         `🏹 ${removedName} left — estate of ${formatMonopolyMoney(estateValue)} split equally! ` +
         `Each player receives +${formatMonopolyMoney(dividend)}.`
@@ -2552,22 +2542,22 @@ export async function removeMonopolyPlayer(
     }
   }
 
-  const { error: boardError } = await supabase.from('monopoly_boards').update(boardUpdate).eq('game_id', gameId)
-  if (boardError) return { error: internalErrorMessage('monopoly', boardError) }
+  const { data: success, error: rpcError } = await supabase.rpc('monopoly_remove_player', {
+    p_game_id: gameId,
+    p_expected_updated_at: board.updated_at,
+    p_board_patch: boardUpdate,
+    p_player_id: playerId,
+    p_dividend: finalDividend,
+  })
 
-  const { error: stateError } = await supabase
-    .from('monopoly_player_state')
-    .delete()
-    .eq('game_id', gameId)
-    .eq('player_id', playerId)
-  if (stateError) return { error: internalErrorMessage('monopoly', stateError) }
+  if (rpcError) return { error: internalErrorMessage('monopoly', rpcError) }
+  if (!success) return { error: 'Board changed, please try again.' }
 
   if (winner) {
     await markGameFinished(supabase, gameId)
   }
 
-  const { error: playerError } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-  return { error: playerError?.message ?? null }
+  return { error: null }
 }
 
 function returnPlayerAssetsToBank(
