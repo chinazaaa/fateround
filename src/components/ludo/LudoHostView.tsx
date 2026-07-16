@@ -336,9 +336,13 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const hostPlays = hostMode === 'player' && !!hostPlayerId
   const isHostTurn = turnPlayerId === hostPlayerId
 
+  // Countdown shows whenever the game is active (so the host sees it during other
+  // players' turns too); the existing play-tab / watch gate only decides whether the
+  // host *drives* expiry, matching how players and spectators now work.
   const { secondsLeft, hasTimer, urgent } = useLudoTurnTimer(
     gameCode,
     session,
+    game?.status === 'active',
     game?.status === 'active' && (tab === 'play' ? isHostTurn : true)
   )
 

@@ -250,7 +250,13 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
   const isViewer = !!(game && activePlayer && playerIsViewer(activePlayer, game))
   const myName = activePlayer?.name ?? ''
 
-  const { secondsLeft, hasTimer, urgent } = useLudoTurnTimer(gameCode, session, game?.status === 'active' && !isViewer)
+  // Viewers see the countdown (enabled) but never fire the expire call (canExpire).
+  const { secondsLeft, hasTimer, urgent } = useLudoTurnTimer(
+    gameCode,
+    session,
+    game?.status === 'active',
+    game?.status === 'active' && !isViewer
+  )
 
   useLudoNotifications({
     game,

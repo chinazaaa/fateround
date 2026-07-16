@@ -75,6 +75,22 @@ describe('useTurnTimer', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('still counts down but never fires when canExpire is false (viewer watching)', async () => {
+    const { result } = renderTimer({ deadlineAt: inSeconds(3), canExpire: false })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10)
+    })
+    // Countdown is visible…
+    expect(result.current.secondsLeft).toBeGreaterThan(0)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000)
+    })
+    // …reaches zero, but the expire call is never made.
+    expect(result.current.secondsLeft).toBe(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('does not fire the expire call when gameCode is empty', async () => {
     renderTimer({ gameCode: '', deadlineAt: inSeconds(1) })
     await act(async () => {

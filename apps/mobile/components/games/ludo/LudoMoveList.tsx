@@ -13,11 +13,10 @@ const COLOR_VIVID: Record<LudoColor, string> = {
 }
 
 function toLabel(move: LudoMoveOption): string {
+  // Matches web LudoGamePanel's toLabel exactly (incl. base→track = "Onto the path").
   if (move.to.zone === 'finished') return 'Center — home!'
   if (move.to.zone === 'home') return `Home lane step ${move.to.pos + 1}`
-  if (move.to.zone === 'track') {
-    return move.from.zone === 'base' ? 'Leave base' : 'Onto the path'
-  }
+  if (move.to.zone === 'track') return 'Onto the path'
   return 'Leave base'
 }
 

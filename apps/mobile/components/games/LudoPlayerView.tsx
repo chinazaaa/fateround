@@ -10,8 +10,10 @@ import {
   parseLudoVariant,
   resolveLudoMovesForTurn,
   resolveRemainingDice,
+  START_POS,
+  TRACK_LENGTH,
 } from '@fateround/shared/ludo'
-import { moveDestinationCell } from '@fateround/shared/ludo-board-layout'
+import { moveDestinationCell, trackCellsAlongSteps } from '@fateround/shared/ludo-board-layout'
 import { LudoBoard } from '@/components/games/ludo/LudoBoard'
 import { LudoDicePair, LudoRemainingDice } from '@/components/games/ludo/LudoDice'
 import { LudoMoveList } from '@/components/games/ludo/LudoMoveList'
@@ -137,6 +139,14 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
     for (const move of legalMoves) {
       const dest = moveDestinationCell(myState.color, move.to)
       if (dest) cells.add(`${Math.round(dest.row)},${Math.round(dest.col)}`)
+      // Web parity: highlight the whole trail a track→track move travels, not just
+      // the landing cell, so the player can see the path the piece will take.
+      if (move.from.zone === 'track' && move.to.zone === 'track') {
+        const steps = (move.from.pos - START_POS[myState.color] + TRACK_LENGTH) % TRACK_LENGTH
+        for (const cell of trackCellsAlongSteps(myState.color, steps, move.diceValue)) {
+          cells.add(`${Math.round(cell.row)},${Math.round(cell.col)}`)
+        }
+      }
     }
     return cells
   }, [legalMoves, myState])
@@ -251,6 +261,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
         turnPlayerName={turnName}
         isMyTurn={isMyTurn}
         active={bootstrap.game.status === 'active'}
+        isViewer={isViewer}
       />
 
       {/* Only the (tall) board scrolls. */}
@@ -307,7 +318,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
         ) : null}
 
         {isMyTurn && session.phase === 'move' && legalMoves.length === 0 ? (
-          <Text style={styles.noMoves}>No legal moves for this roll — the turn will pass.</Text>
+          <Text style={styles.noMoves}>No legal moves for this roll — wait for the turn to pass.</Text>
         ) : null}
 
         {!isMyTurn ? (
