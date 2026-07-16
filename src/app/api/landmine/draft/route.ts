@@ -39,21 +39,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not an active player' }, { status: 403 })
   }
 
-  // Only write the draft when the answer isn't already locked in.
-  const { data: existing } = await supabase
-    .from('landmine_answers')
-    .select('submitted_at')
-    .eq('round_id', roundId)
-    .eq('player_id', auth.player.id)
-    .maybeSingle()
-  if (existing?.submitted_at) return NextResponse.json({ success: true })
-
+  // Atomic guard: update the answer ONLY while it isn't locked in. Conditioning the write on
+  // `submitted_at IS NULL` in the same statement closes the race where a queued draft fires
+  // just after the final submit and clobbers the locked answer. The row already exists (seeded
+  // at category pick); if it somehow doesn't, this is a harmless no-op and submit will create it.
   const { error } = await supabase
     .from('landmine_answers')
-    .upsert(
-      { game_id: code, round_id: roundId, player_id: auth.player.id, answer: trimLandmineAnswer(answer) },
-      { onConflict: 'player_id,round_id' }
-    )
+    .update({ answer: trimLandmineAnswer(answer) })
+    .eq('round_id', roundId)
+    .eq('player_id', auth.player.id)
+    .is('submitted_at', null)
   if (error) return NextResponse.json({ error: internalErrorMessage('landmine/draft', error) }, { status: 500 })
 
   return NextResponse.json({ success: true })

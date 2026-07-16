@@ -218,6 +218,11 @@ export function LandmineActiveRound({
         if (!opts?.silent) toastError('Your player session expired — rejoin to continue')
         return
       }
+      // Cancel any queued draft so it can't fire after this submit.
+      if (draftTimerRef.current != null) {
+        window.clearTimeout(draftTimerRef.current)
+        draftTimerRef.current = null
+      }
       submittingRef.current = true
       setSubmitting(true)
       try {

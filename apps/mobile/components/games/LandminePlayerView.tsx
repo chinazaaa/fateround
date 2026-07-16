@@ -249,8 +249,16 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     void act(() => postLandmineCategory(gameCode, token, roundId, categoryId))
   }
 
+  const cancelDraft = () => {
+    if (draftTimerRef.current != null) {
+      clearTimeout(draftTimerRef.current)
+      draftTimerRef.current = null
+    }
+  }
+
   const submitAnswer = (value: string) => {
     if (!token || !roundId || !value.trim()) return
+    cancelDraft() // don't let a queued draft fire after submit
     void act(() => postLandmineSubmit(gameCode, token, roundId, value.trim()))
   }
 
@@ -268,6 +276,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     const handle = setTimeout(() => {
       if (autoSubmittedRoundRef.current === currentRound.id) return
       autoSubmittedRoundRef.current = currentRound.id
+      cancelDraft()
       if (token && roundId)
         void postLandmineSubmit(gameCode, token, roundId, answerRef.current.trim()).then(() => bootstrap.load())
     }, msLeft)

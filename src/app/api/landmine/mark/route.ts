@@ -41,12 +41,17 @@ export async function POST(req: NextRequest) {
   const targetId = reviewTargetForMarker(metadata, markerId)
   if (!targetId) return NextResponse.json({ error: 'No review assignment for this player' }, { status: 400 })
 
-  const { data: targetAnswer } = await supabase
+  const { data: targetAnswer, error: answerError } = await supabase
     .from('landmine_answers')
     .select('answer')
     .eq('round_id', roundId)
     .eq('player_id', targetId)
     .maybeSingle()
+
+  // A failed lookup must NOT be silently turned into a forced Void — abort instead.
+  if (answerError) {
+    return NextResponse.json({ error: internalErrorMessage('landmine/mark', answerError) }, { status: 500 })
+  }
 
   // Empty answers are forced Void; peers only judge non-empty answers.
   const clamped = normalizeAnswer(targetAnswer?.answer) ? valid : false
