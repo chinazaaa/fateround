@@ -20,6 +20,7 @@ import { useGameExpiryTimer } from '@/hooks/useGameExpiryTimer'
 import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { CrazyEightsRoster } from '@/components/games/cards/CrazyEightsRoster'
 import { WhotCardFace } from '@/components/games/cards/WhotCardFace'
+import { CardHand } from '@/components/games/cards/CardHand'
 import { WhotShapeIcon } from '@/components/games/cards/WhotShapeIcon'
 import { useTurnDeadlineSeconds } from '@/components/games/cards/useTurnDeadlineSeconds'
 // Per-seat turn countdown chip (names the active seat) — replaces the bare TimerBadge.
@@ -134,6 +135,15 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
   const isOut = !!myHand && myHand.cards.length === 0 && bootstrap.game?.status === 'active'
   const isWatching = isViewer || isOut
+
+  // Desync guard: the hands table loaded (other players' rows are present) but
+  // NONE of them is ours. That means our session player id doesn't match the id
+  // the game dealt a hand to — typically after a rejoin that minted a new player
+  // id with no dealt hand. Without this we'd fall through to the normal hand
+  // section and render a misleading "Your hand (0)" as if we'd emptied our hand
+  // (and won). Show a recovery state instead, and never treat this as isOut.
+  const handMissing =
+    !isWatching && !myHand && hands.length > 0 && bootstrap.game?.status === 'active' && bootstrap.screen === 'playing'
 
   useGameTurnAlerts({
     gameCode: bootstrap.code,
@@ -351,21 +361,14 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
         />
         {timerSeconds > 0 ? <WhotTurnTimerChip turnName={turnName} seconds={timerSeconds} /> : null}
 
-        {isWatching ? (
+        {/* Pure spectators get the central ViewerModeBanner (top of the shell) +
+            the TurnBanner's "Spectating" text — so their screen matches a player's
+            minus the hand. This bespoke banner only covers the distinct "You're
+            out" state (finished your hand while the game continues). */}
+        {isOut ? (
           <View style={styles.watchBanner}>
-            <Text style={styles.watchTitle}>{isOut ? "You're out" : 'Watching'}</Text>
-            <Text style={styles.watchSub}>
-              {isOut
-                ? 'You played all your cards — follow the rest of the game and chat.'
-                : 'Read-only spectator — you can follow the game and chat.'}
-            </Text>
-          </View>
-        ) : null}
-
-        {isWatching ? (
-          <View style={styles.rosterHead}>
-            <Text style={styles.rosterTitle}>Players · {bootstrap.players.length}</Text>
-            <Text style={styles.rosterTag}>watch-only</Text>
+            <Text style={styles.watchTitle}>You&apos;re out</Text>
+            <Text style={styles.watchSub}>You played all your cards — follow the rest of the game and chat.</Text>
           </View>
         ) : null}
 
@@ -388,10 +391,6 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
 
         {drawReshuffles ? (
           <Text style={styles.reshuffleNote}>Draw pile empty — reshuffles from played cards</Text>
-        ) : null}
-
-        {isWatching ? (
-          <Text style={styles.spectateStatus}>Spectating — {turnName}&apos;s turn · you can chat</Text>
         ) : null}
 
         {!isWatching && choosingWhot && isMyTurn ? (
@@ -421,10 +420,19 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
           </View>
         ) : null}
 
-        {!isWatching ? (
+        {isWatching ? null : handMissing ? (
+          <View style={styles.handSyncCard}>
+            <Text style={styles.handSyncTitle}>Syncing your hand…</Text>
+            <Text style={styles.handSyncSub}>
+              Your cards didn&apos;t come through. This can happen after reconnecting — tap refresh.
+            </Text>
+            <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void bootstrap.load()}>
+              <Text style={styles.drawText}>Refresh</Text>
+            </Pressable>
+          </View>
+        ) : (
           <>
-            <Text style={styles.section}>Your hand ({myHand?.cards.length ?? 0})</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hand}>
+            <CardHand count={myHand?.cards.length ?? 0} many={(myHand?.cards.length ?? 0) >= 8}>
               {(myHand?.cards ?? []).map((card) => {
                 const playable = playableIds.has(card.id)
                 return (
@@ -437,7 +445,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
                   </Pressable>
                 )
               })}
-            </ScrollView>
+            </CardHand>
 
             {canDraw ? (
               <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void drawCard()}>
@@ -445,7 +453,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
               </Pressable>
             ) : null}
           </>
-        ) : null}
+        )}
       </ScrollView>
     </GameShell>
   )
@@ -468,15 +476,6 @@ const makeStyles = (theme: Theme) =>
     },
     watchTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
     watchSub: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
-    rosterHead: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginTop: 4,
-    },
-    rosterTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
-    rosterTag: { color: theme.textMuted, fontSize: 12, fontWeight: '600' },
-    spectateStatus: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 2 },
     reshuffleNote: { color: theme.textMuted, fontSize: 12, textAlign: 'center', marginTop: -2 },
     choosePanel: { gap: 8 },
     shapeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -491,7 +490,6 @@ const makeStyles = (theme: Theme) =>
       gap: 4,
     },
     callText: { color: theme.text, fontSize: 11, fontWeight: '600' },
-    hand: { gap: 8, paddingVertical: 8 },
     drawBtn: {
       backgroundColor: theme.surface,
       borderRadius: 10,
@@ -501,4 +499,15 @@ const makeStyles = (theme: Theme) =>
       borderColor: theme.border,
     },
     drawText: { color: theme.text, fontSize: 16, fontWeight: '600' },
+    handSyncCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 16,
+      gap: 10,
+      alignItems: 'center',
+    },
+    handSyncTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
+    handSyncSub: { color: theme.textMuted, fontSize: 13, textAlign: 'center', lineHeight: 18 },
   })

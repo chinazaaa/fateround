@@ -20,7 +20,11 @@ import {
   DESCRIBE_IT_MIN_PLAYERS,
   DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
 } from '@fateround/shared/describe-it'
-import { playerIsViewer } from '@fateround/shared/viewers'
+import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
+import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
+import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
@@ -36,7 +40,7 @@ import { TeamBadge } from '@/components/party/TeamBadge'
 import { TeamPickerGrid } from '@/components/party/TeamPickerGrid'
 import { TeamScoreGrid } from '@/components/party/TeamScoreGrid'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
-import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
+import { useGameScores } from '@/components/session/RosterDrawerContext'
 import { DeadlineTimerBadge } from '@/components/ui/DeadlineTimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import {
@@ -60,7 +64,16 @@ import { scoreListLeaderboard, toLeaderboardRows } from '@/lib/finish-leaderboar
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'late_join_choice'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 /** Team that plays turn `turnIndex` (mirrors web `teamForTurn`). */
 const teamForTurn = (turnIndex: number, numTeams: number): number => (turnIndex % numTeams) + 1
@@ -117,7 +130,13 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
 
   const computeScreen = useCallback(
     (game: Game, playerId: string | null, sessionData: DescribeItSession | null): Screen => {
-      if (!playerId) return 'join'
+      if (!playerId) {
+        const pre = preJoinScreen(game, false)
+        if (pre === 'game_ended') return 'game_ended'
+        if (pre === 'game_started_waiting') return 'game_started_waiting'
+        if (pre === 'late_join_choice') return 'late_join_choice'
+        return 'join'
+      }
       if (game.status === 'waiting') return 'waiting'
       if (isDescribeItResultsPhase(game.status, sessionData)) return 'finished'
       if (game.status === 'active') return 'playing'
@@ -136,6 +155,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     computeScreen,
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
+  const lateJoin = useLateJoinContext(gameCode, bootstrap.game, bootstrap.screen === 'late_join_choice')
 
   useGameTableSync(
     gameCode,
@@ -230,6 +250,13 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     () => describeItIndividualLeaderboard(teamRows, bootstrap.players),
     [teamRows, bootstrap.players]
   )
+  useGameScores(
+    useMemo(
+      () => (mode === 'team' ? null : Object.fromEntries(liveIndividualScores.map((row) => [row.id, row.score]))),
+      [mode, liveIndividualScores]
+    ),
+    { suffix: ' pts' }
+  )
 
   const guessFeed = useMemo(() => {
     const nameById = new Map(bootstrap.players.map((p) => [p.id, p.name]))
@@ -271,6 +298,32 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
+  if (bootstrap.screen === 'late_join_choice' && bootstrap.game) {
+    return (
+      <LateJoinChoiceScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        context={lateJoin.context}
+        contextLoading={lateJoin.loading}
+        nameInput={bootstrap.joinName}
+        onNameChange={bootstrap.setJoinName}
+        joining={bootstrap.joining}
+        error={bootstrap.error}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        onJoinAsPlayer={() => void bootstrap.join(undefined, { joinAsViewer: false })}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
     return (
       <JoinScreen
@@ -459,19 +512,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
             round={session.current_round}
             totalRounds={session.total_rounds}
           />
-        ) : (
-          <LeaderboardPanel
-            embedded
-            title="Leaderboard"
-            rows={liveIndividualScores.map((row) => ({
-              id: row.id,
-              name: row.name,
-              score: row.score,
-              highlight: row.id === bootstrap.myPlayerId,
-            }))}
-            highlightId={bootstrap.myPlayerId}
-          />
-        )}
+        ) : null}
 
         {session.phase === 'break' ? (
           <RoundBreakCard
