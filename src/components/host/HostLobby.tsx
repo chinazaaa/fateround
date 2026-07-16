@@ -82,12 +82,19 @@ export function HostLobby({
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  // Portals need document.body, which doesn't exist during SSR — render nothing until
+  // mounted on the client (same guard as ui/Modal). Also gates the footer-measuring effect
+  // so it runs only after the footer is actually in the DOM.
+  const [mounted, setMounted] = useState(false)
   const footerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => setMounted(true), [])
 
   // Flag the lobby so globals.css can hide the app header + fixed theme toggle and dock the
   // voice control above our footer. The footer height is measured (it grows with the
   // min-players hint) so the voice pill always clears it.
   useEffect(() => {
+    if (!mounted) return
     const root = document.documentElement
     root.setAttribute('data-host-lobby', 'active')
     const footer = footerRef.current
@@ -105,9 +112,11 @@ export function HostLobby({
       root.style.removeProperty('--lobby-footer-h')
       ro?.disconnect()
     }
-  }, [])
+  }, [mounted])
 
   const showStartHint = startDisabled && !starting && startDisabledHint
+
+  if (!mounted) return null
 
   return createPortal(
     <div className="fixed inset-0 z-40 flex flex-col bg-[var(--background)]">

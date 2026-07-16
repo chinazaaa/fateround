@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 /**
@@ -10,6 +10,10 @@ import { createPortal } from 'react-dom'
  * load, giving a seamless skeleton → lobby transition.
  */
 export function HostLobbySkeleton() {
+  // Portals need document.body — absent during SSR — so render nothing until mounted.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+
   useEffect(() => {
     const root = document.documentElement
     root.setAttribute('data-host-lobby', 'active')
@@ -17,6 +21,8 @@ export function HostLobbySkeleton() {
   }, [])
 
   const block = 'rounded-2xl bg-[var(--surface-inset-bg)]'
+
+  if (!mounted) return null
 
   return createPortal(
     <div className="fixed inset-0 z-40 flex flex-col bg-[var(--background)]">
