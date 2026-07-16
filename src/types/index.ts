@@ -410,6 +410,7 @@ export interface MonopolyPendingDebt {
   reason: string
   debt_type: 'rent' | 'tax' | 'card' | 'jail' | 'other'
   space_index?: number | null
+  next_debts?: MonopolyPendingDebt[]
 }
 
 export interface MonopolyAuctionState {
