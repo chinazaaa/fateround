@@ -196,19 +196,25 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     if (myAnswer?.answer) setAnswerText(myAnswer.answer)
   }, [currentRound?.id, metadata?.phase, myAnswer?.submitted_at, myAnswer?.answer])
 
-  // Load categories when this player is the caller in category_pick.
+  // Load categories when this player is the caller in category_pick. A failure surfaces a
+  // Retry (categoryLoad bump) so a transient error can't strand the caller on "Loading…".
+  const [categoryError, setCategoryError] = useState(false)
+  const [categoryLoad, setCategoryLoad] = useState(0)
   useEffect(() => {
     if (metadata?.phase !== 'category_pick' || !isCaller || isViewer) return
     let cancelled = false
+    setCategoryError(false)
     void fetchLandmineCategories()
       .then((data) => {
         if (!cancelled) setCategories(data.categories)
       })
-      .catch(() => {})
+      .catch(() => {
+        if (!cancelled) setCategoryError(true)
+      })
     return () => {
       cancelled = true
     }
-  }, [metadata?.phase, isCaller, isViewer])
+  }, [metadata?.phase, isCaller, isViewer, categoryLoad])
 
   const act = useCallback(async (fn: () => Promise<unknown>) => {
     if (submittingRef.current) return
@@ -364,7 +370,14 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
                   <Text style={styles.choiceText}>{c.name}</Text>
                 </Pressable>
               ))}
-              {categories.length === 0 ? <Text style={styles.meta}>Loading categories…</Text> : null}
+              {categories.length === 0 &&
+                (categoryError ? (
+                  <Pressable style={styles.choiceBtn} onPress={() => setCategoryLoad((n) => n + 1)}>
+                    <Text style={styles.choiceText}>Couldn’t load categories — tap to retry</Text>
+                  </Pressable>
+                ) : (
+                  <Text style={styles.meta}>Loading categories…</Text>
+                ))}
             </>
           ) : (
             <View style={styles.waitCard}>
@@ -421,7 +434,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   }
 
   // ── Marking ─────────────────────────────────────────────────────────────────
-  if (metadata.phase === 'marking' || metadata.phase === 'host_review') {
+  if (metadata.phase === 'marking') {
     const marked = !!myMark?.marked_at
     const targetName = playerDisplayName(reviewTargetId, bootstrap.players)
     const targetText = reviewTargetAnswer?.answer ?? ''
@@ -429,16 +442,10 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     return (
       <GameShell bootstrap={bootstrap} title="Landmine" subtitle={timer ? `Marking · ${timer}` : 'Marking'}>
         <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
-          {marked || isViewer || metadata.phase === 'host_review' ? (
+          {marked || isViewer ? (
             <View style={styles.waitCard}>
               <Text style={styles.waitEmoji}>✅</Text>
-              <Text style={styles.waitTitle}>
-                {metadata.phase === 'host_review'
-                  ? `${callerName} is reviewing…`
-                  : isViewer
-                    ? 'Marking in progress'
-                    : 'Your mark is in'}
-              </Text>
+              <Text style={styles.waitTitle}>{isViewer ? 'Marking in progress' : 'Your mark is in'}</Text>
             </View>
           ) : (
             <>

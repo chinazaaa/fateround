@@ -410,7 +410,6 @@ export async function POST(req: NextRequest) {
     landmine_mode: rawLandmineMode,
     landmine_mine_count: rawLandmineMineCount,
     landmine_originality_bonus: rawLandmineOriginalityBonus,
-    landmine_host_override: rawLandmineHostOverride,
     allow_viewers: rawAllowViewers,
     allow_late_players: rawAllowLatePlayers,
     late_join_policy: rawLateJoinPolicy,
@@ -935,7 +934,6 @@ export async function POST(req: NextRequest) {
           landmine_mode: parseLandmineMode(rawLandmineMode),
           landmine_mine_count: clampLandmineMineCount(rawLandmineMineCount),
           landmine_originality_bonus: rawLandmineOriginalityBonus !== false,
-          landmine_host_override: rawLandmineHostOverride === true,
         }
       : {}),
     ...(isQuickDrawGame(game_type)

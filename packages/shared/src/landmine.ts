@@ -19,7 +19,6 @@ export const LANDMINE_DEFAULT_MAX_PLAYERS = 20
 export const LANDMINE_DEFAULT_WRITING_TIMER = 45
 export const LANDMINE_DEFAULT_MARKING_TIMER = 45
 export const LANDMINE_DEFAULT_CATEGORY_TIMER = 10
-export const LANDMINE_HOST_REVIEW_SECONDS = 45
 export const LANDMINE_REVEAL_SECONDS = 10
 
 export const LANDMINE_WRITING_TIMER_OPTIONS = [30, 45, 60, 90] as const
@@ -78,13 +77,7 @@ export function parseLandmineMetadata(raw: unknown): LandmineMetadata | null {
   if (!raw || typeof raw !== 'object') return null
   const m = raw as Record<string, unknown>
   const phase = m.phase
-  if (
-    phase !== 'category_pick' &&
-    phase !== 'writing' &&
-    phase !== 'marking' &&
-    phase !== 'host_review' &&
-    phase !== 'reveal'
-  ) {
+  if (phase !== 'category_pick' && phase !== 'writing' && phase !== 'marking' && phase !== 'reveal') {
     return null
   }
   const reviewer_assignments: Record<string, string> = {}
@@ -96,12 +89,6 @@ export function parseLandmineMetadata(raw: unknown): LandmineMetadata | null {
   const caller_order = Array.isArray(m.caller_order)
     ? m.caller_order.filter((id): id is string => typeof id === 'string')
     : []
-  const host_overrides: LandmineMetadata['host_overrides'] = {}
-  if (m.host_overrides && typeof m.host_overrides === 'object') {
-    for (const [pid, v] of Object.entries(m.host_overrides as Record<string, unknown>)) {
-      if (typeof v === 'boolean') host_overrides[pid] = v
-    }
-  }
   const revealed_mines = Array.isArray(m.revealed_mines)
     ? m.revealed_mines.filter((w): w is string => typeof w === 'string')
     : undefined
@@ -112,7 +99,6 @@ export function parseLandmineMetadata(raw: unknown): LandmineMetadata | null {
     caller_order,
     caller_index: typeof m.caller_index === 'number' ? m.caller_index : 0,
     reviewer_assignments,
-    host_overrides: Object.keys(host_overrides).length > 0 ? host_overrides : undefined,
     revealed_mines,
     mine_count: typeof m.mine_count === 'number' ? m.mine_count : LANDMINE_DEFAULT_MINE_COUNT,
     scores_computed: m.scores_computed === true,
@@ -163,7 +149,6 @@ export function phaseDeadlineMs(
   if (metadata.phase === 'category_pick') return start + categoryTimerSeconds * 1000
   if (metadata.phase === 'writing') return start + writingTimerSeconds * 1000
   if (metadata.phase === 'marking') return start + markingTimerSeconds * 1000
-  if (metadata.phase === 'host_review') return start + LANDMINE_HOST_REVIEW_SECONDS * 1000
   return null
 }
 

@@ -447,7 +447,6 @@ function CreateGameInner() {
   const [landmineMode, setLandmineMode] = useState<'zero_points' | 'elimination'>('zero_points')
   const [landmineMineCount, setLandmineMineCount] = useState(1)
   const [landmineOriginality, setLandmineOriginality] = useState(true)
-  const [landmineHostOverride, setLandmineHostOverride] = useState(false)
   const [landmineCategoryTimer, setLandmineCategoryTimer] = useState(10)
   const [landmineMarkingTimer, setLandmineMarkingTimer] = useState(45)
   const [eliminationEnabled, setEliminationEnabled] = useState(false)
@@ -1576,7 +1575,6 @@ function CreateGameInner() {
           landmine_mode: isLandmine ? landmineMode : undefined,
           landmine_mine_count: isLandmine ? landmineMineCount : undefined,
           landmine_originality_bonus: isLandmine ? landmineOriginality : undefined,
-          landmine_host_override: isLandmine ? landmineHostOverride : undefined,
           quick_draw_variant: isQuickDraw ? settings.quick_draw_variant : undefined,
           quick_draw_play_mode:
             isQuickDraw && settings.quick_draw_variant === 'guess' ? settings.quick_draw_play_mode : undefined,
@@ -3073,20 +3071,6 @@ function CreateGameInner() {
                     onChange={(e) => setLandmineOriginality(e.target.checked)}
                   />
                 </label>
-                <div className="py-1">
-                  <label className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-semibold">Caller reviews the votes before the reveal</span>
-                    <input
-                      type="checkbox"
-                      checked={landmineHostOverride}
-                      onChange={(e) => setLandmineHostOverride(e.target.checked)}
-                    />
-                  </label>
-                  <p className="text-faint text-xs mt-1">
-                    Adds a quick step where the player who picked the category can fix any wrong Valid/Void votes before
-                    the mine is shown. Leave off for a faster game.
-                  </p>
-                </div>
                 <Field label="Late joiners">
                   <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
                 </Field>

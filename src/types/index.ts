@@ -116,11 +116,8 @@ export interface NpatMark {
 // and hitters are zeroed (zero_points) or knocked out (elimination).
 // Structurally a single-answer variant of NPAT (I Call On) with a secret mine.
 // ---------------------------------------------------------------------------
-export type LandminePhase = 'category_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
+export type LandminePhase = 'category_pick' | 'writing' | 'marking' | 'reveal'
 export type LandmineMode = 'zero_points' | 'elimination'
-
-/** markerId -> Valid(true)/Void(false) override applied by the host in host_review. */
-export type LandmineHostOverrides = Record<string, boolean>
 
 export interface LandmineMetadata {
   phase: LandminePhase
@@ -132,7 +129,6 @@ export interface LandmineMetadata {
   caller_index: number
   /** markerId -> targetId ring; each player marks one other, never themselves. */
   reviewer_assignments: Record<string, string>
-  host_overrides?: LandmineHostOverrides
   /** The mine word(s) — populated ONLY at reveal (secret until then). */
   revealed_mines?: string[]
   mine_count: number
@@ -402,8 +398,6 @@ export interface Game {
   landmine_mine_count?: number | null
   /** Landmine — award +5 when nobody else gave your answer. */
   landmine_originality_bonus?: boolean | null
-  /** Landmine — enable the host_review phase so the host can overturn contested marks. */
-  landmine_host_override?: boolean | null
 }
 
 export type MonopolyPhase = 'roll' | 'buy' | 'jail' | 'pay_rent' | 'auction' | 'raise_funds' | 'finished'

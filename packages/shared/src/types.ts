@@ -120,7 +120,6 @@ export interface Game {
   landmine_mode?: LandmineMode | null
   landmine_mine_count?: number | null
   landmine_originality_bonus?: boolean | null
-  landmine_host_override?: boolean | null
   question_source?: string | null
   trivia_category?: TriviaCategory | string | null
   created_at?: string | null
@@ -824,9 +823,8 @@ export interface NpatMark {
 }
 
 // Landmine — single-answer variant of I Call On with a secret mine + two scoring modes.
-export type LandminePhase = 'category_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
+export type LandminePhase = 'category_pick' | 'writing' | 'marking' | 'reveal'
 export type LandmineMode = 'zero_points' | 'elimination'
-export type LandmineHostOverrides = Record<string, boolean>
 export type LandmineOutcome = 'valid' | 'original' | 'void' | 'mine' | 'empty'
 
 export interface LandmineMetadata {
@@ -836,7 +834,6 @@ export interface LandmineMetadata {
   caller_order: string[]
   caller_index: number
   reviewer_assignments: Record<string, string>
-  host_overrides?: LandmineHostOverrides
   revealed_mines?: string[]
   mine_count: number
   scores_computed?: boolean

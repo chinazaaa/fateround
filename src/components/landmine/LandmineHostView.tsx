@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { LandmineActiveRound } from '@/components/landmine/LandmineActiveRound'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -69,7 +69,6 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [modeSetting, setModeSetting] = useState<LandmineMode>('zero_points')
   const [mineCount, setMineCount] = useState(1)
   const [originalityBonus, setOriginalityBonus] = useState(true)
-  const [hostOverride, setHostOverride] = useState(false)
   const [roundCount, setRoundCount] = useState(5)
   const [writingTimer, setWritingTimer] = useState(45)
   const [markingTimer, setMarkingTimer] = useState(45)
@@ -81,6 +80,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [hostJoining, setHostJoining] = useState(false)
   const [hostMode, setHostMode] = useState<LandmineHostMode>('player')
   const [tab, setTab] = useState<HostTab>('manage')
+  const settingsHydratedRef = useRef(false)
 
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
   useTurnNotifications({ status: game?.status })
@@ -112,14 +112,18 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
     if (!supabasePollOk(gameRes, plrsRes, rdsRes, ansRes, marksRes)) return false
     if (gameRes.data) {
       setGame(gameRes.data)
-      setModeSetting(gameLandmineMode(gameRes.data))
-      setMineCount(gameRes.data.landmine_mine_count ?? 1)
-      setOriginalityBonus(gameRes.data.landmine_originality_bonus !== false)
-      setHostOverride(gameRes.data.landmine_host_override === true)
-      setRoundCount(gameRes.data.rounds_count ?? 5)
-      setWritingTimer(gameRes.data.timer_seconds ?? 45)
-      setMarkingTimer(gameRes.data.operative_timer_seconds ?? 45)
-      setCategoryTimer(clampLandmineCategoryTimer(gameRes.data.game_duration_seconds))
+      // Hydrate the editable settings once — realtime reloads (player joins, etc.) must not
+      // clobber the host's in-progress edits before they Save/Start.
+      if (!settingsHydratedRef.current) {
+        settingsHydratedRef.current = true
+        setModeSetting(gameLandmineMode(gameRes.data))
+        setMineCount(gameRes.data.landmine_mine_count ?? 1)
+        setOriginalityBonus(gameRes.data.landmine_originality_bonus !== false)
+        setRoundCount(gameRes.data.rounds_count ?? 5)
+        setWritingTimer(gameRes.data.timer_seconds ?? 45)
+        setMarkingTimer(gameRes.data.operative_timer_seconds ?? 45)
+        setCategoryTimer(clampLandmineCategoryTimer(gameRes.data.game_duration_seconds))
+      }
     }
     setPlayers(plrsRes.data ?? [])
     setRounds(rdsRes.data ?? [])
@@ -247,7 +251,6 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
     landmine_mode: modeSetting,
     landmine_mine_count: mineCount,
     landmine_originality_bonus: originalityBonus,
-    landmine_host_override: hostOverride,
     rounds_count: roundCount,
     timer_seconds: writingTimer,
     operative_timer_seconds: markingTimer,
@@ -559,10 +562,6 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
                 checked={originalityBonus}
                 onChange={(e) => setOriginalityBonus(e.target.checked)}
               />
-            </label>
-            <label className="flex items-center justify-between gap-2">
-              <span className="text-sm font-semibold">Host can overturn marks</span>
-              <input type="checkbox" checked={hostOverride} onChange={(e) => setHostOverride(e.target.checked)} />
             </label>
             <button type="button" onClick={saveSettings} disabled={savingSettings} className="btn-secondary w-full">
               {savingSettings ? 'Saving…' : 'Save settings'}

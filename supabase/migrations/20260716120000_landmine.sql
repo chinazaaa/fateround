@@ -17,13 +17,13 @@ ALTER TABLE games ADD COLUMN IF NOT EXISTS landmine_mode text NOT NULL DEFAULT '
 ALTER TABLE games ADD COLUMN IF NOT EXISTS landmine_mine_count integer NOT NULL DEFAULT 1
   CHECK (landmine_mine_count BETWEEN 1 AND 3);
 ALTER TABLE games ADD COLUMN IF NOT EXISTS landmine_originality_bonus boolean NOT NULL DEFAULT true;
-ALTER TABLE games ADD COLUMN IF NOT EXISTS landmine_host_override boolean NOT NULL DEFAULT false;
--- Round count reuses games.rounds_count; writing timer reuses games.timer_seconds and the
--- marking timer reuses games.operative_timer_seconds (same as I Call On).
+-- Round count reuses games.rounds_count; answer timer reuses games.timer_seconds, the vote
+-- timer reuses games.operative_timer_seconds, and the category-pick timer reuses
+-- games.game_duration_seconds.
 
 -- games uses COLUMN-level SELECT grants for the public roles (migration 0122). ADD COLUMN
 -- does not extend them, so grant read on these non-secret settings or GAME_SELECT errors 42501.
-GRANT SELECT (landmine_mode, landmine_mine_count, landmine_originality_bonus, landmine_host_override)
+GRANT SELECT (landmine_mode, landmine_mine_count, landmine_originality_bonus)
   ON public.games TO anon, authenticated;
 
 -- ── Answers (one row per player per round; public for realtime) ──────────────────
@@ -178,5 +178,5 @@ ON CONFLICT DO NOTHING;
 --   DROP TABLE IF EXISTS landmine_answers;
 --   ALTER TABLE rounds DROP COLUMN IF EXISTS landmine_metadata;
 --   ALTER TABLE games DROP COLUMN IF EXISTS landmine_mode, DROP COLUMN IF EXISTS landmine_mine_count,
---     DROP COLUMN IF EXISTS landmine_originality_bonus, DROP COLUMN IF EXISTS landmine_host_override;
+--     DROP COLUMN IF EXISTS landmine_originality_bonus;
 -- ----------------------------------------------------------------------------

@@ -65,32 +65,6 @@ describe('landmine scoring', () => {
     expect(withoutBonus[0].outcome).toBe('valid')
   })
 
-  it('caller review (host_override) overturns a peer Void to Valid and re-scores', () => {
-    const answers = [answer('a', 'protractor')]
-    // The peer marked it Void (0). Without a review it stays 0.
-    const marks = [mark('x', 'a', false)]
-    const voided = computeRoundResults(answers, marks, ['pencil'], { originalityBonus: true })
-    expect(voided[0].points).toBe(0)
-    // The caller overrides player a's mark to valid → it now scores.
-    const reviewed = computeRoundResults(answers, marks, ['pencil'], {
-      originalityBonus: true,
-      hostOverrides: { a: true },
-    })
-    expect(reviewed[0].points).toBe(15)
-    expect(reviewed[0].outcome).toBe('original')
-  })
-
-  it('caller review can also VOID an answer the peer approved', () => {
-    const answers = [answer('a', 'protractor')]
-    const marks = [mark('x', 'a', true)]
-    const reviewed = computeRoundResults(answers, marks, ['pencil'], {
-      originalityBonus: true,
-      hostOverrides: { a: false },
-    })
-    expect(reviewed[0].outcome).toBe('void')
-    expect(reviewed[0].points).toBe(0)
-  })
-
   it('duplicate valid answers score 10 but no originality bonus', () => {
     const answers = [answer('a', 'pen'), answer('b', 'pen')]
     const marks = [mark('x', 'a', true), mark('y', 'b', true)]

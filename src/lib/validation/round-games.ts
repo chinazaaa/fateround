@@ -288,24 +288,8 @@ export const landmineMarkSchema = z.object({
 
 export type LandmineMarkInput = z.infer<typeof landmineMarkSchema>
 
-const landmineHostOverrideEntrySchema = z.object({
-  // Review TARGET (an answer owner), not the acting host.
-  playerId: uuidString('playerId'),
-  valid: z.boolean(),
-})
-
-export const landmineCallerApproveSchema = z.object({
-  gameId: gameCodeString(),
-  resumeToken: z.string().min(4),
-  roundId: uuidString('roundId'),
-  overrides: z.array(landmineHostOverrideEntrySchema),
-})
-
-export type LandmineCallerApproveInput = z.infer<typeof landmineCallerApproveSchema>
-
 export const landmineAdvanceSchema = z.object({
   gameId: gameCodeString(),
-  force: z.boolean().optional(),
 })
 
 export type LandmineAdvanceInput = z.infer<typeof landmineAdvanceSchema>

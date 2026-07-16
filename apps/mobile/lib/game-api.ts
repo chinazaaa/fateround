@@ -596,15 +596,6 @@ export function postLandmineMark(gameId: string, resumeToken: string, roundId: s
   return postJson<{ success: boolean }>('/api/landmine/mark', { gameId, resumeToken, roundId, valid })
 }
 
-export function postLandmineCallerApprove(
-  gameId: string,
-  resumeToken: string,
-  roundId: string,
-  overrides: { playerId: string; valid: boolean }[]
-) {
-  return postJson<{ success: boolean }>('/api/landmine/caller-approve', { gameId, resumeToken, roundId, overrides })
-}
-
 export function postChessMove(
   gameId: string,
   resumeToken: string,

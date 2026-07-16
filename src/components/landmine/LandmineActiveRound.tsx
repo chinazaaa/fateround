@@ -34,8 +34,6 @@ type PlayScreen =
   | 'writing_locked'
   | 'marking'
   | 'marking_locked'
-  | 'caller_review'
-  | 'review_wait'
   | 'revealed'
   | 'finished'
 
@@ -72,7 +70,6 @@ export function LandmineActiveRound({
   const [picking, setPicking] = useState(false)
   const [answerText, setAnswerText] = useState('')
   const [markValid, setMarkValid] = useState<boolean | null>(null)
-  const [reviewOverrides, setReviewOverrides] = useState<Record<string, boolean>>({})
   const [categories, setCategories] = useState<CategoryOption[]>([])
   const [tick, setTick] = useState(0)
   const answerRef = useRef('')
@@ -127,7 +124,6 @@ export function LandmineActiveRound({
     autoSubmittedRoundRef.current = null
     setAnswerText('')
     setMarkValid(null)
-    setReviewOverrides({})
     setSubmitting(false)
     submittingRef.current = false
     if (draftTimerRef.current != null) {
@@ -144,20 +140,29 @@ export function LandmineActiveRound({
     if (myAnswer?.answer) setAnswerText(myAnswer.answer)
   }, [currentRound?.id, metadata?.phase, myAnswer?.submitted_at, myAnswer?.answer])
 
-  // Fetch the category list when the caller needs to pick.
+  // Fetch the category list when the caller needs to pick. `categoryLoad` bumps to force a
+  // retry; failures surface an error + Retry button so a transient blip can't strand the caller.
+  const [categoryError, setCategoryError] = useState(false)
+  const [categoryLoad, setCategoryLoad] = useState(0)
   useEffect(() => {
     if (metadata?.phase !== 'category_pick' || !isCaller || readOnly) return
     let cancelled = false
+    setCategoryError(false)
     void fetch('/api/landmine/categories')
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error('failed')
+        return r.json()
+      })
       .then((data) => {
         if (!cancelled) setCategories(data.categories ?? [])
       })
-      .catch(() => {})
+      .catch(() => {
+        if (!cancelled) setCategoryError(true)
+      })
     return () => {
       cancelled = true
     }
-  }, [metadata?.phase, isCaller, readOnly])
+  }, [metadata?.phase, isCaller, readOnly, categoryLoad])
 
   const isDriver = useMemo(() => isAdvanceDriver(players, myPlayerId), [players, myPlayerId])
   useLandmineAdvance({
@@ -283,37 +288,6 @@ export function LandmineActiveRound({
     }
   }
 
-  const submitReview = async () => {
-    if (!currentRound || readOnly || submitting) return
-    if (!myResumeToken) return toastError('Your player session expired — rejoin to continue')
-    setSubmitting(true)
-    try {
-      const overrides = roundAnswers.map((a) => ({
-        playerId: a.player_id,
-        valid: reviewOverrides[a.player_id] ?? peerValidFor(a.player_id),
-      }))
-      const res = await fetch('/api/landmine/caller-approve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, roundId: currentRound.id, overrides }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to submit review')
-      await onReload?.()
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to submit review')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  // The peer mark's verdict for a given answer owner (default Valid).
-  const peerValidFor = (targetPlayerId: string): boolean => {
-    const mark = roundMarks.find((m) => m.target_player_id === targetPlayerId)
-    if (!normalizeAnswer(roundAnswers.find((a) => a.player_id === targetPlayerId)?.answer)) return false
-    return mark ? mark.valid : true
-  }
-
   const screen: PlayScreen = useMemo(() => {
     if (game.status === 'finished') return 'finished'
     if (!currentRound) return 'waiting'
@@ -322,7 +296,6 @@ export function LandmineActiveRound({
     if (phase === 'category_pick') return isCaller ? 'category_pick' : 'category_wait'
     if (phase === 'writing') return myAnswer?.submitted_at ? 'writing_locked' : 'writing'
     if (phase === 'marking') return myMark?.marked_at ? 'marking_locked' : 'marking'
-    if (phase === 'host_review') return isCaller ? 'caller_review' : 'review_wait'
     return 'waiting'
   }, [game.status, currentRound, metadata, isCaller, myAnswer, myMark])
 
@@ -448,8 +421,22 @@ export function LandmineActiveRound({
               {c.name}
             </button>
           ))}
-          {categories.length === 0 && <p className="text-muted text-sm">Loading categories…</p>}
         </div>
+        {categories.length === 0 &&
+          (categoryError ? (
+            <div className="text-center space-y-2">
+              <p className="text-sm text-red-300">Couldn’t load categories.</p>
+              <button
+                type="button"
+                onClick={() => setCategoryLoad((n) => n + 1)}
+                className="btn-secondary px-4 py-2 rounded-xl text-sm"
+              >
+                Retry
+              </button>
+            </div>
+          ) : (
+            <p className="text-muted text-sm text-center">Loading categories…</p>
+          ))}
       </div>
     )
   }
@@ -567,66 +554,6 @@ export function LandmineActiveRound({
           <p className="text-3xl">✅</p>
           <p className="font-bold">Your mark is in</p>
           <p className="text-sm text-muted">Waiting for the other markers…</p>
-        </div>
-        {answerBoard}
-      </div>
-    )
-  }
-
-  // ── Host review ───────────────────────────────────────────────────────────────
-  if (screen === 'caller_review') {
-    return (
-      <div className="glass-card p-6 space-y-4">
-        {roundHeader}
-        <div className="text-center space-y-1">
-          <p className="font-bold">Review the marks before the reveal</p>
-          <p className="text-sm text-muted">Overturn anything you disagree with, then reveal the mine.</p>
-        </div>
-        <div className="space-y-2">
-          {roundAnswers.map((a) => {
-            const current = reviewOverrides[a.player_id] ?? peerValidFor(a.player_id)
-            const name = playerDisplayName(a.player_id, players)
-            return (
-              <div
-                key={a.player_id}
-                className="flex items-center justify-between gap-2 rounded-lg border border-white/10 px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold truncate">{name}</p>
-                  <p className="text-sm text-muted truncate">{a.answer || '(no answer)'}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setReviewOverrides((prev) => ({ ...prev, [a.player_id]: !current }))}
-                  className={`text-xs font-bold px-3 py-1.5 rounded-full shrink-0 ${
-                    current ? 'bg-emerald-500/20 text-emerald-200' : 'bg-red-500/20 text-red-200'
-                  }`}
-                >
-                  {current ? '✓ Valid' : '✕ Void'}
-                </button>
-              </div>
-            )
-          })}
-        </div>
-        <button
-          type="button"
-          disabled={submitting}
-          onClick={() => void submitReview()}
-          className="btn-primary w-full py-3"
-        >
-          Reveal the mine
-        </button>
-      </div>
-    )
-  }
-
-  if (screen === 'review_wait') {
-    return (
-      <div className="glass-card p-6 space-y-4">
-        {roundHeader}
-        <div className="text-center space-y-1">
-          <p className="text-3xl">👀</p>
-          <p className="font-bold">{callerName} is reviewing the marks…</p>
         </div>
         {answerBoard}
       </div>

@@ -11,7 +11,6 @@ import {
   finalizeUnsubmittedAnswers,
   gameLandmineMode,
   gameLandmineCategoryTimer,
-  LANDMINE_HOST_REVIEW_SECONDS,
   LANDMINE_REVEAL_SECONDS,
   parseLandmineMetadata,
   pickMines,
@@ -83,7 +82,6 @@ function phaseExpired(metadata: LandmineMetadata, game: Game): boolean {
   if (metadata.phase === 'category_pick') return now >= start + gameLandmineCategoryTimer(game) * 1000
   if (metadata.phase === 'writing') return now >= start + writingTimer(game) * 1000
   if (metadata.phase === 'marking') return now >= start + markingTimer(game) * 1000
-  if (metadata.phase === 'host_review') return now >= start + LANDMINE_HOST_REVIEW_SECONDS * 1000
   return false
 }
 
@@ -115,16 +113,6 @@ function categoryEntryList(row: CategoryRow): string[] {
     })
     .map((s) => s.trim())
     .filter(Boolean)
-}
-
-async function loadCategory(supabase: SupabaseClient, categoryId: string): Promise<CategoryRow | null> {
-  const { data } = await supabase
-    .from('landmine_categories')
-    .select('id, name, entries')
-    .eq('id', categoryId)
-    .eq('is_active', true)
-    .maybeSingle()
-  return (data as CategoryRow) ?? null
 }
 
 async function randomCategory(supabase: SupabaseClient): Promise<CategoryRow | null> {
@@ -205,13 +193,6 @@ async function startMarkingPhase(
   return updateRoundMetadata(supabase, round.id, { ...metadata, phase: 'marking', phase_started_at: now })
 }
 
-async function startHostReviewPhase(supabase: SupabaseClient, round: Round): Promise<boolean> {
-  const metadata = parseLandmineMetadata(round.landmine_metadata)
-  if (!metadata || metadata.phase !== 'marking') return false
-  const now = new Date().toISOString()
-  return updateRoundMetadata(supabase, round.id, { ...metadata, phase: 'host_review', phase_started_at: now })
-}
-
 async function getRoundMines(supabase: SupabaseClient, roundId: string): Promise<string[]> {
   const { data } = await supabase.from('landmine_round_mines').select('words').eq('round_id', roundId).maybeSingle()
   const words = (data as { words?: unknown } | null)?.words
@@ -225,7 +206,7 @@ async function getRoundMines(supabase: SupabaseClient, roundId: string): Promise
 async function computeAndFinishRound(supabase: SupabaseClient, game: Game, round: Round): Promise<boolean> {
   const metadata = parseLandmineMetadata(round.landmine_metadata)
   if (!metadata || metadata.scores_computed) return false
-  if (metadata.phase !== 'marking' && metadata.phase !== 'host_review') return false
+  if (metadata.phase !== 'marking') return false
 
   const [{ data: answers }, { data: marks }, mines] = await Promise.all([
     supabase.from('landmine_answers').select('*').eq('round_id', round.id),
@@ -235,7 +216,6 @@ async function computeAndFinishRound(supabase: SupabaseClient, game: Game, round
 
   const results = computeRoundResults(answers ?? [], marks ?? [], mines, {
     originalityBonus: game.landmine_originality_bonus !== false,
-    hostOverrides: metadata.host_overrides,
   })
 
   for (const row of results) {
@@ -361,19 +341,6 @@ async function advanceActiveRoundPhase(
     const marked = await countRoundMarks(supabase, round.id, playerIds)
     const allMarked = playerIds.length > 0 && marked >= playerIds.length
     if (allMarked || phaseExpired(metadata, game)) {
-      // Host override enabled → give the host a review window; otherwise reveal now.
-      if (game.landmine_host_override === true) {
-        const ok = await startHostReviewPhase(supabase, round)
-        return ok ? 'phase_advanced' : 'round_active'
-      }
-      const ok = await computeAndFinishRound(supabase, game, round)
-      return ok ? 'phase_advanced' : 'round_active'
-    }
-    return 'round_active'
-  }
-
-  if (metadata.phase === 'host_review') {
-    if (phaseExpired(metadata, game)) {
       const ok = await computeAndFinishRound(supabase, game, round)
       return ok ? 'phase_advanced' : 'round_active'
     }
@@ -381,31 +348,6 @@ async function advanceActiveRoundPhase(
   }
 
   return 'round_active'
-}
-
-/** Host approves the round (host_review): store overrides, then reveal & finish. */
-export async function approveLandmineRound(
-  supabase: SupabaseClient,
-  game: Game,
-  roundId: string,
-  hostOverrides: NonNullable<LandmineMetadata['host_overrides']>
-): Promise<boolean> {
-  const { data: round } = await supabase
-    .from('rounds')
-    .select('*')
-    .eq('id', roundId)
-    .eq('game_id', game.id)
-    .maybeSingle()
-  if (!round || round.status !== 'active') return false
-  const metadata = parseLandmineMetadata(round.landmine_metadata)
-  if (!metadata || metadata.phase !== 'host_review') return false
-
-  const saved = await updateRoundMetadata(supabase, round.id, { ...metadata, host_overrides: hostOverrides })
-  if (!saved) return false
-
-  const { data: refreshed } = await supabase.from('rounds').select('*').eq('id', roundId).maybeSingle()
-  if (!refreshed) return false
-  return computeAndFinishRound(supabase, game, refreshed as Round)
 }
 
 /** True when the game should end after this round (mode-driven). */
@@ -493,11 +435,7 @@ async function startNextRound(
   return { ok: false, code: 'not_finished' }
 }
 
-export async function syncLandmineGameState(
-  supabase: SupabaseClient,
-  gameId: string,
-  opts?: { force?: boolean }
-): Promise<LandmineAdvanceResult> {
+export async function syncLandmineGameState(supabase: SupabaseClient, gameId: string): Promise<LandmineAdvanceResult> {
   const code = gameId.toUpperCase()
   const { data: game } = await supabase.from('games').select('*').eq('id', code).maybeSingle()
   if (!game) return { ok: false, code: 'game_not_found' }
@@ -511,7 +449,7 @@ export async function syncLandmineGameState(
   const pointerRound = roundList.find((r) => r.round_number === game.current_round_number) ?? null
   const playerIds = await countActivePlayers(supabase, code)
 
-  if (pointerRound && pointerRound.status === 'finished' && revealPending(pointerRound) && !opts?.force) {
+  if (pointerRound && pointerRound.status === 'finished' && revealPending(pointerRound)) {
     return { ok: true, code: 'reveal_pending' }
   }
 
@@ -522,7 +460,7 @@ export async function syncLandmineGameState(
   }
 
   const lastFinished = [...roundList].reverse().find((r) => r.status === 'finished') ?? null
-  if (lastFinished && revealPending(lastFinished) && !opts?.force) {
+  if (lastFinished && revealPending(lastFinished)) {
     return { ok: true, code: 'reveal_pending' }
   }
 

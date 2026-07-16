@@ -2832,7 +2832,8 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     features: [
       {
         title: 'Dodge the mine',
-        description: 'The obvious answer might be the mine — the safest word is rarely the first one that comes to mind.',
+        description:
+          'The obvious answer might be the mine — the safest word is rarely the first one that comes to mind.',
         emoji: '🧨',
       },
       {
@@ -2851,7 +2852,8 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       },
       {
         title: 'Mark, then reveal',
-        description: 'Mark the next player’s answer, then the mine is revealed — valid answers score 10 (+5 if unique), the mine scores 0 or knocks you out.',
+        description:
+          'Mark the next player’s answer, then the mine is revealed — valid answers score 10 (+5 if unique), the mine scores 0 or knocks you out.',
       },
     ],
     perfectFor: ['Friend groups', 'Party nights', 'Icebreakers', 'Family game night'],

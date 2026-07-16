@@ -97,7 +97,6 @@ export const createGameSchema = z.object({
   landmine_mode: z.enum(['zero_points', 'elimination']).optional(),
   landmine_mine_count: z.coerce.number().int().min(1).max(3).optional(),
   landmine_originality_bonus: z.boolean().optional(),
-  landmine_host_override: z.boolean().optional(),
   allow_viewers: z.boolean().optional(),
   allow_late_players: z.boolean().optional(),
   late_join_policy: z.enum(['lobby_only', 'viewers_only', 'viewers_and_players']).optional(),
