@@ -12,6 +12,7 @@ import {
   parseLandmineMetadata,
   phaseSecondsLeft,
   playerDisplayName,
+  revealCountdownSeconds,
   reviewTargetForMarker,
   roundCallerPlayerId,
   tallyLandmineScores,
@@ -173,8 +174,9 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     return metadata ? phaseSecondsLeft(metadata, writingTimer, markingTimer, categoryTimer) : null
   }, [metadata, tick, writingTimer, markingTimer, categoryTimer])
 
+  // Tick through every phase INCLUDING reveal so the "next round in Xs" countdown updates.
   useEffect(() => {
-    if (!metadata || metadata.phase === 'reveal') return
+    if (!metadata) return
     const id = setInterval(() => setTick((t) => t + 1), 1000)
     return () => clearInterval(id)
   }, [metadata?.phase, currentRound?.id])
@@ -196,12 +198,13 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     if (myAnswer?.answer) setAnswerText(myAnswer.answer)
   }, [currentRound?.id, metadata?.phase, myAnswer?.submitted_at, myAnswer?.answer])
 
-  // Load categories when this player is the caller in category_pick. A failure surfaces a
-  // Retry (categoryLoad bump) so a transient error can't strand the caller on "Loading…".
+  // Prefetch categories for EVERY player as soon as the game is active, so they're ready before
+  // this player becomes the caller — a cold fetch gated on becoming caller could outlast the
+  // (5–10s) pick timer and auto-pick before any options showed. A failure surfaces a Retry.
   const [categoryError, setCategoryError] = useState(false)
   const [categoryLoad, setCategoryLoad] = useState(0)
   useEffect(() => {
-    if (metadata?.phase !== 'category_pick' || !isCaller || isViewer) return
+    if (bootstrap.game?.status !== 'active' || isViewer) return
     let cancelled = false
     setCategoryError(false)
     void fetchLandmineCategories()
@@ -214,7 +217,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     return () => {
       cancelled = true
     }
-  }, [metadata?.phase, isCaller, isViewer, categoryLoad])
+  }, [bootstrap.game?.status, isViewer, categoryLoad])
 
   const act = useCallback(async (fn: () => Promise<unknown>) => {
     if (submittingRef.current) return
@@ -506,11 +509,17 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
 
   // ── Reveal ──────────────────────────────────────────────────────────────────
   const mines = metadata.revealed_mines ?? []
+  void tick // re-read each second so the countdown updates
+  const revealLeft = revealCountdownSeconds(currentRound.ended_at)
   return (
     <GameShell
       bootstrap={bootstrap}
       title="Landmine"
-      subtitle={`Round ${currentRound.round_number} · ${metadata.category ?? ''}`}
+      subtitle={
+        bootstrap.game?.status === 'active' && revealLeft > 0
+          ? `Next round in ${revealLeft}s`
+          : `Round ${currentRound.round_number} · ${metadata.category ?? ''}`
+      }
     >
       <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
         <View style={styles.waitCard}>
