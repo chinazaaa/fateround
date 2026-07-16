@@ -389,6 +389,43 @@ export function LandmineActiveRound({
     </div>
   )
 
+  // Shared transparency board — everyone sees every answer and its Valid/Void verdict live
+  // (the mine stays hidden until reveal). Mirrors I Call On's open scoreboard.
+  const answerBoard = (
+    <div className="space-y-1.5">
+      <p className="label-caps text-xs">Everyone’s answers</p>
+      {roundAnswers.map((a) => {
+        const name = playerDisplayName(a.player_id, players)
+        const hasText = !!normalizeAnswer(a.answer)
+        const mark = roundMarks.find((m) => m.target_player_id === a.player_id)
+        const verdict = !hasText
+          ? { text: '—', cls: 'text-muted' }
+          : mark?.marked_at
+            ? mark.valid
+              ? { text: '✓ Valid', cls: 'text-emerald-300' }
+              : { text: '✕ Void', cls: 'text-red-300' }
+            : { text: '· marking', cls: 'text-muted' }
+        return (
+          <div
+            key={a.player_id}
+            className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 ${
+              a.player_id === myPlayerId ? 'border-sky-500/40 bg-sky-500/5' : 'border-white/10'
+            }`}
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-semibold truncate">
+                {name}
+                {a.player_id === myPlayerId ? ' (you)' : ''}
+              </p>
+              <p className="text-sm text-muted truncate">{a.answer || '(no answer)'}</p>
+            </div>
+            <span className={`text-xs font-bold shrink-0 ${verdict.cls}`}>{verdict.text}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+
   // ── Category pick ─────────────────────────────────────────────────────────────
   if (screen === 'category_pick') {
     return (
@@ -517,17 +554,21 @@ export function LandmineActiveRound({
         </div>
         <p className="text-xs text-muted text-center">The mine is still hidden — judge only whether it fits.</p>
         {markValid !== null && <p className="sr-only">selected</p>}
+        {answerBoard}
       </div>
     )
   }
 
   if (screen === 'marking_locked') {
     return (
-      <div className="glass-card p-8 text-center space-y-2">
+      <div className="glass-card p-6 space-y-4">
         {roundHeader}
-        <p className="text-3xl">✅</p>
-        <p className="font-bold">Mark submitted</p>
-        <p className="text-sm text-muted">Waiting for the other markers…</p>
+        <div className="text-center space-y-1">
+          <p className="text-3xl">✅</p>
+          <p className="font-bold">Your mark is in</p>
+          <p className="text-sm text-muted">Waiting for the other markers…</p>
+        </div>
+        {answerBoard}
       </div>
     )
   }
@@ -581,10 +622,13 @@ export function LandmineActiveRound({
 
   if (screen === 'review_wait') {
     return (
-      <div className="glass-card p-8 text-center space-y-2">
+      <div className="glass-card p-6 space-y-4">
         {roundHeader}
-        <p className="text-3xl">👀</p>
-        <p className="font-bold">{callerName} is reviewing the marks…</p>
+        <div className="text-center space-y-1">
+          <p className="text-3xl">👀</p>
+          <p className="font-bold">{callerName} is reviewing the marks…</p>
+        </div>
+        {answerBoard}
       </div>
     )
   }

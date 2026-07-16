@@ -428,12 +428,16 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     const hasText = !!normalizeAnswer(targetText)
     return (
       <GameShell bootstrap={bootstrap} title="Landmine" subtitle={timer ? `Marking · ${timer}` : 'Marking'}>
-        <View style={styles.form}>
+        <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
           {marked || isViewer || metadata.phase === 'host_review' ? (
             <View style={styles.waitCard}>
               <Text style={styles.waitEmoji}>✅</Text>
               <Text style={styles.waitTitle}>
-                {metadata.phase === 'host_review' ? `${callerName} is reviewing…` : 'Mark submitted'}
+                {metadata.phase === 'host_review'
+                  ? `${callerName} is reviewing…`
+                  : isViewer
+                    ? 'Marking in progress'
+                    : 'Your mark is in'}
               </Text>
             </View>
           ) : (
@@ -460,7 +464,26 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
               <Text style={styles.meta}>The mine is still hidden — judge only whether it fits.</Text>
             </>
           )}
-        </View>
+          {/* Everyone sees every answer + its live verdict (mine stays hidden until reveal). */}
+          <Text style={[styles.meta, { textAlign: 'left', marginTop: 8, fontWeight: '700' }]}>Everyone’s answers</Text>
+          {roundAnswers.map((a) => {
+            const hasAns = !!normalizeAnswer(a.answer)
+            const m = marks.find((mk) => mk.target_player_id === a.player_id)
+            const verdict = !hasAns ? '—' : m?.marked_at ? (m.valid ? '✓ Valid' : '✕ Void') : '· marking'
+            return (
+              <View key={a.player_id} style={styles.resultRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.resultName}>
+                    {playerDisplayName(a.player_id, bootstrap.players)}
+                    {a.player_id === bootstrap.myPlayerId ? ' (you)' : ''}
+                  </Text>
+                  <Text style={styles.meta}>{a.answer || '(no answer)'}</Text>
+                </View>
+                <Text style={styles.resultBadge}>{verdict}</Text>
+              </View>
+            )
+          })}
+        </KeyboardAwareGameScroll>
       </GameShell>
     )
   }
