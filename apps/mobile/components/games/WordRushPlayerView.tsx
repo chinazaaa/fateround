@@ -19,7 +19,11 @@ import {
   teamLabel,
   wordRushMinLengthForRound,
 } from '@fateround/shared/word-rush'
-import { playerIsViewer } from '@fateround/shared/viewers'
+import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
+import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
+import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
@@ -34,7 +38,7 @@ import { TeamBadge } from '@/components/party/TeamBadge'
 import { TeamPickerGrid } from '@/components/party/TeamPickerGrid'
 import { TeamScoreGrid } from '@/components/party/TeamScoreGrid'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
-import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
+import { useGameScores } from '@/components/session/RosterDrawerContext'
 import { DeadlineTimerBadge } from '@/components/ui/DeadlineTimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import {
@@ -50,7 +54,16 @@ import { WORD_RUSH_ANSWER_SELECT, WORD_RUSH_PLAYER_SELECT, WORD_RUSH_SESSION_SEL
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'late_join_choice'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
@@ -94,7 +107,13 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
 
   const computeScreen = useCallback(
     (game: Game, playerId: string | null, sessionData: WordRushSession | null): Screen => {
-      if (!playerId) return 'join'
+      if (!playerId) {
+        const pre = preJoinScreen(game, false)
+        if (pre === 'game_ended') return 'game_ended'
+        if (pre === 'game_started_waiting') return 'game_started_waiting'
+        if (pre === 'late_join_choice') return 'late_join_choice'
+        return 'join'
+      }
       if (game.status === 'waiting') return 'waiting'
       if (isWordRushResultsPhase(game.status, sessionData)) return 'finished'
       if (game.status === 'active') return 'playing'
@@ -113,6 +132,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     computeScreen,
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
+  const lateJoin = useLateJoinContext(gameCode, bootstrap.game, bootstrap.screen === 'late_join_choice')
 
   useGameTableSync(
     gameCode,
@@ -173,6 +193,13 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     () => computeWordRushPlayerScores(bootstrap.players, teamRows),
     [bootstrap.players, teamRows]
   )
+  useGameScores(
+    useMemo(
+      () => (mode === 'team' ? null : Object.fromEntries(livePlayerScores.map((row) => [row.id, row.score]))),
+      [mode, livePlayerScores]
+    ),
+    { suffix: ' pts' }
+  )
 
   const recentCorrect = useMemo(() => {
     const nameById = new Map(bootstrap.players.map((p) => [p.id, p.name]))
@@ -206,6 +233,32 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
+  if (bootstrap.screen === 'late_join_choice' && bootstrap.game) {
+    return (
+      <LateJoinChoiceScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        context={lateJoin.context}
+        contextLoading={lateJoin.loading}
+        nameInput={bootstrap.joinName}
+        onNameChange={bootstrap.setJoinName}
+        joining={bootstrap.joining}
+        error={bootstrap.error}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        onJoinAsPlayer={() => void bootstrap.join(undefined, { joinAsViewer: false })}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
     return (
       <JoinScreen
@@ -396,19 +449,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
             round={teamRound}
             totalRounds={session.total_rounds}
           />
-        ) : (
-          <LeaderboardPanel
-            embedded
-            title="Leaderboard"
-            rows={livePlayerScores.map((row) => ({
-              id: row.id,
-              name: row.name,
-              score: row.score,
-              highlight: row.id === bootstrap.myPlayerId,
-            }))}
-            highlightId={bootstrap.myPlayerId}
-          />
-        )}
+        ) : null}
 
         {session.phase === 'intermission' ? (
           <RoundBreakCard

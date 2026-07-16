@@ -1485,4 +1485,39 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
   ],
+  landmine: [
+    {
+      title: 'Objective',
+      points: [
+        'A category is shown and the system secretly plants a “mine” — one of the most obvious answers.',
+        'Everyone types one answer blind, without knowing which one is the mine.',
+        'Play a valid answer that isn’t the mine to score; hit the mine and you’re zeroed (Zero Points mode) or knocked out (Elimination mode — last player standing wins).',
+      ],
+    },
+    {
+      title: 'How it works',
+      points: [
+        '3 to 20 players join with their name (Elimination mode plays best with 5 or more).',
+        'Each round a player picks a category and the system secretly picks the mine; everyone submits one answer before the timer ends.',
+        'Answers are shuffled and each is assigned to a different player to mark Valid or Void — this happens before the mine is revealed, so nobody can mark strategically.',
+        'The mine is revealed and scored: a valid, non-mine answer scores 10 (+5 if nobody else gave the same answer); a voided answer scores 0.',
+      ],
+    },
+    {
+      title: 'Modes, timers & options',
+      points: [
+        'Zero Points: hitting the mine scores 0 for that round; everyone plays a set number of rounds. Softer, better for casual groups.',
+        'Elimination: hitting the mine knocks you out; the last player standing wins.',
+        'The host sets the writing and marking timers, the number of mines per round (1, or 2–3 for more carnage), the originality bonus, and whether the host can overturn a contested mark.',
+      ],
+    },
+    {
+      title: 'Tips',
+      points: [
+        'The most obvious answer is the most likely mine — a slightly less common but still valid answer is the safe play.',
+        'Nobody else giving your answer earns a bonus, so avoid the crowd where you safely can.',
+        'When marking, judge only whether the answer fits the category — you won’t know the mine yet.',
+      ],
+    },
+  ],
 }

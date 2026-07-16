@@ -1,27 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
-import {
-  type MonopolyBoard,
-  type MonopolyPlayerState,
-  type Player,
-  normalizeGameCode,
-} from '@fateround/shared'
+import { type MonopolyBoard, type MonopolyPlayerState, type Player, normalizeGameCode } from '@fateround/shared'
 import { batch8GameLabel } from '@fateround/shared/batch-8-games'
-import {
-  MONOPOLY_JAIL_FINE,
-  spaceAt,
-} from '@fateround/shared/monopoly-board'
+import { MONOPOLY_JAIL_FINE, spaceAt } from '@fateround/shared/monopoly-board'
 import {
   monopolyEventBanner,
   monopolyEventSeqs,
   type MonopolyEventKind,
 } from '@/components/games/monopoly/monopoly-status-messages'
-import {
-  currentPlayerId,
-  monopolyPhaseLabel,
-  secondsUntilMonopolyDeadline,
-} from '@fateround/shared/monopoly'
-import { playerIsViewer } from '@fateround/shared/viewers'
+import { currentPlayerId, monopolyPhaseLabel, secondsUntilMonopolyDeadline } from '@fateround/shared/monopoly'
+import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import {
   firstAvailableMonopolyToken,
   MONOPOLY_PLAYER_TOKENS,
@@ -34,16 +22,14 @@ import { MONOPOLY_EDITION_THEMES } from '@fateround/shared/create-themes'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { MonopolyBoardView } from '@/components/games/monopoly/MonopolyBoardView'
 import { MonopolyGameTimerBar } from '@/components/games/monopoly/MonopolyGameTimerBar'
 import { MonopolyStatusCards } from '@/components/games/monopoly/MonopolyStatusCards'
 import { MonopolyShareCard } from '@/components/games/monopoly/MonopolyShareCard'
-import {
-  formatThemedMoney,
-  formatThemedText,
-  themedSpaceName,
-} from '@/components/games/monopoly/monopoly-theme'
+import { formatThemedMoney, formatThemedText, themedSpaceName } from '@/components/games/monopoly/monopoly-theme'
 import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -81,7 +67,15 @@ import { buildMonopolyStandings } from '@/lib/monopoly-standings'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 /**
  * Detects which board event (cash / rent / trade / card) most recently fired and
@@ -167,7 +161,12 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     waitingScreen: 'waiting',
     loadGameState,
     computeScreen: (game, playerId, boardData) => {
-      if (!playerId) return 'join'
+      if (!playerId) {
+        const pre = preJoinScreen(game, false)
+        if (pre === 'game_started_waiting') return 'game_started_waiting'
+        if (pre === 'game_ended') return 'game_ended'
+        return 'join'
+      }
       if (game.status === 'waiting') return 'waiting'
       if (game.status === 'finished' || boardData?.phase === 'finished') return 'finished'
       if (game.status === 'active') return 'playing'
@@ -250,7 +249,13 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         joinAsViewer: joiningAsViewer ? true : undefined,
         monopolyToken: joiningAsViewer ? undefined : selectedToken,
       })
-      await setPlayerSession(code, data.playerId, data.playerName, data.playerGender ?? 'both', data.resumeToken ?? null)
+      await setPlayerSession(
+        code,
+        data.playerId,
+        data.playerName,
+        data.playerGender ?? 'both',
+        data.resumeToken ?? null
+      )
       await bootstrap.load()
     } catch (err) {
       setJoinError(err instanceof Error ? err.message : 'Failed to join')
@@ -296,8 +301,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   // (which demands an immediate Accept/Decline), so only the build + raise-cash
   // nudges are surfaced here. Declared before any early return so the animation
   // effect below always runs (Rules of Hooks).
-  const buildActions =
-    board && bootstrap.myPlayerId ? getMonopolyBuildActionCount(board, bootstrap.myPlayerId) : 0
+  const buildActions = board && bootstrap.myPlayerId ? getMonopolyBuildActionCount(board, bootstrap.myPlayerId) : 0
   const showBuildNudge = !isViewer && !myState?.bankrupt && buildActions > 0
   const showRaiseCashNudge = !isViewer && showRaiseFunds
   const showAnyNudge = showBuildNudge || showRaiseCashNudge
@@ -397,6 +401,16 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
 
   if (bootstrap.screen === 'join' && bootstrap.game) {
     return (
@@ -405,8 +419,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           <View style={styles.viewerNote}>
             <Text style={styles.viewerNoteTitle}>Watching live</Text>
             <Text style={styles.viewerNoteBody}>
-              This game is already in progress — enter your name and join as a viewer to watch the board update in
-              real time (read-only).
+              This game is already in progress — enter your name and join as a viewer to watch the board update in real
+              time (read-only).
             </Text>
           </View>
         ) : null}
@@ -454,11 +468,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           <Text style={styles.lobbyHint}>Tokens in lobby:</Text>
           {/* One horizontal row of chips that scrolls sideways, so a full
               6-player lobby stays on a single line instead of wrapping down. */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.lobbyTokenRow}
-          >
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.lobbyTokenRow}>
             {bootstrap.players
               .filter((p) => !p.spectator)
               .map((p: Player, index: number) => (
@@ -520,10 +530,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       : null
 
   const bannerPhaseOwnsMessaging =
-    board.phase === 'buy' ||
-    board.phase === 'pay_rent' ||
-    board.phase === 'auction' ||
-    board.phase === 'raise_funds'
+    board.phase === 'buy' || board.phase === 'pay_rent' || board.phase === 'auction' || board.phase === 'raise_funds'
   // Show the freshly-fired event (cash/rent/trade) as a transient banner; when
   // nothing is flashing, fall back to the persistent board status message
   // (unless a phase panel or a card event already owns the messaging).
@@ -547,7 +554,10 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   // Current-space / cash chrome (mirrors web MonopolyCurrentSpace + MonopolyCashBadge).
   const mySpaceOwnerId = myState ? board.property_owners?.[String(myState.position)] : undefined
   const mySpace = myState ? spaceAt(myState.position) : null
-  const ownable = !!(mySpace && (mySpace.type === 'property' || mySpace.type === 'station' || mySpace.type === 'utility'))
+  const ownable = !!(
+    mySpace &&
+    (mySpace.type === 'property' || mySpace.type === 'station' || mySpace.type === 'utility')
+  )
   const spaceOwnerLabel = !myState
     ? null
     : mySpaceOwnerId === bootstrap.myPlayerId
@@ -718,9 +728,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               style={[styles.centerPrimary, styles.centerFlex, acting && styles.btnDisabled]}
               disabled={acting || !bidAmount || Number(bidAmount) <= auction.high_bid}
               onPress={() =>
-                void act(() =>
-                  postMonopolyAuction(bootstrap.code, bootstrap.myResumeToken!, 'bid', Number(bidAmount))
-                )
+                void act(() => postMonopolyAuction(bootstrap.code, bootstrap.myResumeToken!, 'bid', Number(bidAmount)))
               }
             >
               <Text style={styles.centerPrimaryText}>Bid</Text>
@@ -845,7 +853,9 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
         {board.last_card_event && activeEventKind === 'card' ? (
           <View style={styles.cardEvent}>
-            <Text style={styles.cardKind}>{board.last_card_event.kind === 'chance' ? 'Chance' : 'Community Chest'}</Text>
+            <Text style={styles.cardKind}>
+              {board.last_card_event.kind === 'chance' ? 'Chance' : 'Community Chest'}
+            </Text>
             <Text style={styles.cardText}>{formatThemedText(board.last_card_event.card_message, themeId)}</Text>
           </View>
         ) : null}
@@ -862,10 +872,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             <Text style={styles.panelLabel}>Players</Text>
           ) : (
             <View style={styles.tabBar}>
-              <Pressable
-                style={[styles.tab, panel === 'build' && styles.tabActive]}
-                onPress={() => setPanel('build')}
-              >
+              <Pressable style={[styles.tab, panel === 'build' && styles.tabActive]} onPress={() => setPanel('build')}>
                 <Text style={[styles.tabText, panel === 'build' && styles.tabTextActive]}>Build &amp; trade</Text>
                 {buildActions > 0 ? (
                   <View style={styles.tabBadge}>
@@ -925,279 +932,292 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  waitingWrap: { flex: 1, backgroundColor: theme.bg },
-  tokenList: { paddingHorizontal: 20, paddingBottom: 24 },
-  joinWrap: { flex: 1, backgroundColor: theme.bg },
-  joinContent: { paddingBottom: 32 },
-  viewerNote: {
-    marginHorizontal: 20,
-    marginTop: 16,
-    backgroundColor: theme.primarySoft,
-    borderColor: theme.borderAccent,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    gap: 4,
-  },
-  viewerNoteTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
-  viewerNoteBody: { color: theme.textSecondary, fontSize: 13, lineHeight: 18 },
-  tokenHeading: { color: theme.text, fontSize: 16, fontWeight: '600', paddingHorizontal: 24, marginTop: 8 },
-  tokenGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 16 },
-  tokenBtn: {
-    width: '30%',
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: 10,
-    alignItems: 'center',
-  },
-  tokenBtnActive: { borderColor: theme.primary },
-  tokenBtnTaken: { opacity: 0.45 },
-  tokenEmoji: { fontSize: 24 },
-  tokenLabel: { color: theme.text, fontSize: 11, marginTop: 4, textAlign: 'center' },
-  tokenOwner: { color: theme.textMuted, fontSize: 10, marginTop: 2 },
-  lobbyHint: { color: theme.textMuted, fontSize: 14, marginTop: 12 },
-  lobbyTokenRow: { flexDirection: 'row', gap: 8, marginTop: 8, paddingRight: 8 },
-  lobbyTokenChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: theme.radius.pill,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  lobbyTokenEmoji: { fontSize: 18 },
-  lobbyTokenName: { color: theme.text, fontSize: 14, fontWeight: '600', flexShrink: 1 },
-  playContent: { padding: 16, gap: 12, paddingBottom: 40 },
-  chromeRow: { flexDirection: 'row', gap: 8 },
-  chromeSpace: {
-    flex: 1,
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    justifyContent: 'center',
-  },
-  chromeCash: {
-    minWidth: 108,
-    backgroundColor: theme.primarySoft,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.borderAccent,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    justifyContent: 'center',
-  },
-  chromeCashBankrupt: { backgroundColor: theme.surface, borderColor: theme.border },
-  chromeLabel: {
-    color: theme.textFaint,
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  chromeSpaceName: { color: theme.text, fontSize: 15, fontWeight: '800', marginTop: 2 },
-  chromeSpaceOwner: { color: theme.textMuted, fontSize: 12, marginTop: 1 },
-  chromeCashValue: { color: theme.primary, fontSize: 18, fontWeight: '800', marginTop: 2 },
-  chromeCashValueBankrupt: { color: theme.textMuted },
-  banner: {
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  bannerPersonal: { backgroundColor: theme.primarySoft, borderColor: theme.borderAccent },
-  bannerNeutral: { backgroundColor: theme.surface, borderColor: theme.border },
-  bannerTag: {
-    color: theme.primary,
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1,
-    marginBottom: 3,
-  },
-  bannerText: { color: theme.text, fontSize: 14, lineHeight: 20 },
-  nudge: {
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-  },
-  nudgeText: { fontSize: 14, fontWeight: '700', lineHeight: 19 },
-  nudgeBuild: { backgroundColor: theme.primarySoft, borderColor: theme.borderAccent },
-  nudgeBuildText: { color: theme.primary },
-  nudgeDanger: { backgroundColor: '#ef44441a', borderColor: '#ef444455' },
-  nudgeDangerText: { color: '#ef4444' },
-  errorText: { color: theme.primary, fontSize: 13, fontWeight: '600' },
-  dice: { color: theme.text, fontSize: 16, fontWeight: '600' },
-  cardEvent: { backgroundColor: theme.surface, borderRadius: 12, padding: 12, gap: 4 },
-  cardKind: { color: '#fbbf24', fontSize: 12, textTransform: 'uppercase' },
-  cardText: { color: theme.text, fontSize: 14 },
-  panelWrap: { gap: 12 },
-  panelLabel: {
-    color: theme.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    paddingHorizontal: 2,
-  },
-  // Pill tab bar (mirrors web's inset tablist): a rounded inset track with two
-  // segments; the active tab is a raised/filled surface.
-  tabBar: {
-    flexDirection: 'row',
-    gap: 6,
-    padding: 4,
-    borderRadius: 14,
-    backgroundColor: theme.bg,
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  tab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    borderRadius: 10,
-    paddingVertical: 11,
-    paddingHorizontal: 8,
-  },
-  tabActive: {
-    backgroundColor: theme.surface,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  tabText: { color: theme.textMuted, fontSize: 14, fontWeight: '700' },
-  tabTextActive: { color: theme.text },
-  tabBadge: {
-    minWidth: 18,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 999,
-    backgroundColor: theme.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabBadgeText: { color: '#fff', fontSize: 10, fontWeight: '900' },
-  actionPanel: { backgroundColor: theme.surface, borderRadius: 12, padding: 14, gap: 10 },
-  actionTitle: { color: theme.text, fontSize: 17, fontWeight: '700' },
-  actionSub: { color: theme.textMuted, fontSize: 13 },
-  actionRow: { flexDirection: 'row', gap: 8 },
-  flexBtn: { flex: 1 },
-  primaryBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  // white on the solid rose button — intentional
-  primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  secondaryBtn: {
-    backgroundColor: theme.border,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  secondaryBtnText: { color: theme.text, fontWeight: '600', fontSize: 15 },
-  btnDisabled: { opacity: 0.5 },
-  spaceOwnerLine: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
-  raiseReason: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
-  // Board-center turn UI. Sits on the (dark) board centre, so it carries its own
-  // translucent dark card and uses light text for readability on any edition palette.
-  center: {
-    // No card — the turn UI sits directly on the board's centre felt (mirrors web).
-    alignItems: 'center',
-    gap: 3,
-    width: '100%',
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-  },
-  centerOn: { color: 'rgba(255,255,255,0.9)', fontSize: 9, fontWeight: '700', textAlign: 'center' },
-  centerCashLabel: {
-    color: 'rgba(251,191,36,0.85)',
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 1,
-    marginTop: 1,
-  },
-  // Bright amber, large + bold so the amount is unmistakable on the board.
-  centerCash: { color: '#fbbf24', fontSize: 24, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  centerCashBankrupt: { color: '#fca5a5' },
-  dieRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
-  die: { width: 22, height: 22, borderRadius: 5, backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center' },
-  dieText: { color: '#111827', fontSize: 13, fontWeight: '800' },
-  dieTotal: { color: '#ffffff', fontSize: 12, fontWeight: '700', marginLeft: 2 },
-  centerTimer: { backgroundColor: 'rgba(0,0,0,0.35)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 1, marginTop: 2 },
-  centerTimerText: { color: '#ffffff', fontSize: 11, fontWeight: '800' },
-  centerPanel: { alignItems: 'center', gap: 4, marginTop: 4, alignSelf: 'stretch' },
-  centerTitle: { color: '#ffffff', fontSize: 12, fontWeight: '800', textAlign: 'center' },
-  centerSub: { color: 'rgba(255,255,255,0.8)', fontSize: 10, textAlign: 'center' },
-  centerRow: { flexDirection: 'row', gap: 6, marginTop: 4, alignSelf: 'stretch' },
-  centerFlex: { flex: 1 },
-  centerPrimary: {
-    backgroundColor: '#f59e0b',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  centerPrimaryText: { color: '#1f2937', fontWeight: '800', fontSize: 13 },
-  centerSecondary: {
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  centerSecondaryText: { color: '#ffffff', fontWeight: '700', fontSize: 12 },
-  centerInput: {
-    alignSelf: 'stretch',
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderRadius: 8,
-    color: '#111827',
-    fontSize: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    textAlign: 'center',
-    marginTop: 2,
-  },
-  centerWaiting: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '700', marginTop: 2 },
-  specTurnName: { color: '#ffffff', fontSize: 15, fontWeight: '900', textAlign: 'center' },
-  specTurnSuffix: { color: 'rgba(255,255,255,0.6)', fontSize: 13, fontWeight: '600' },
-  centerWatchLabel: {
-    color: 'rgba(255,255,255,0.55)',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1.5,
-    marginTop: 4,
-  },
-  centerWatchMsg: {
-    color: 'rgba(255,255,255,0.82)',
-    fontSize: 11,
-    lineHeight: 15,
-    textAlign: 'center',
-    marginTop: 2,
-  },
-  bidInput: {
-    backgroundColor: theme.bg,
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: 10,
-    color: theme.text,
-    fontSize: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    textAlign: 'center',
-  },
-})
+    waitingWrap: { flex: 1, backgroundColor: theme.bg },
+    tokenList: { paddingHorizontal: 20, paddingBottom: 24 },
+    joinWrap: { flex: 1, backgroundColor: theme.bg },
+    joinContent: { paddingBottom: 32 },
+    viewerNote: {
+      marginHorizontal: 20,
+      marginTop: 16,
+      backgroundColor: theme.primarySoft,
+      borderColor: theme.borderAccent,
+      borderWidth: 1,
+      borderRadius: 12,
+      padding: 14,
+      gap: 4,
+    },
+    viewerNoteTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
+    viewerNoteBody: { color: theme.textSecondary, fontSize: 13, lineHeight: 18 },
+    tokenHeading: { color: theme.text, fontSize: 16, fontWeight: '600', paddingHorizontal: 24, marginTop: 8 },
+    tokenGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 16 },
+    tokenBtn: {
+      width: '30%',
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 10,
+      alignItems: 'center',
+    },
+    tokenBtnActive: { borderColor: theme.primary },
+    tokenBtnTaken: { opacity: 0.45 },
+    tokenEmoji: { fontSize: 24 },
+    tokenLabel: { color: theme.text, fontSize: 11, marginTop: 4, textAlign: 'center' },
+    tokenOwner: { color: theme.textMuted, fontSize: 10, marginTop: 2 },
+    lobbyHint: { color: theme.textMuted, fontSize: 14, marginTop: 12 },
+    lobbyTokenRow: { flexDirection: 'row', gap: 8, marginTop: 8, paddingRight: 8 },
+    lobbyTokenChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: theme.radius.pill,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+    },
+    lobbyTokenEmoji: { fontSize: 18 },
+    lobbyTokenName: { color: theme.text, fontSize: 14, fontWeight: '600', flexShrink: 1 },
+    playContent: { padding: 16, gap: 12, paddingBottom: 40 },
+    chromeRow: { flexDirection: 'row', gap: 8 },
+    chromeSpace: {
+      flex: 1,
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      justifyContent: 'center',
+    },
+    chromeCash: {
+      minWidth: 108,
+      backgroundColor: theme.primarySoft,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.borderAccent,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      justifyContent: 'center',
+    },
+    chromeCashBankrupt: { backgroundColor: theme.surface, borderColor: theme.border },
+    chromeLabel: {
+      color: theme.textFaint,
+      fontSize: 9,
+      fontWeight: '700',
+      letterSpacing: 1,
+      textTransform: 'uppercase',
+    },
+    chromeSpaceName: { color: theme.text, fontSize: 15, fontWeight: '800', marginTop: 2 },
+    chromeSpaceOwner: { color: theme.textMuted, fontSize: 12, marginTop: 1 },
+    chromeCashValue: { color: theme.primary, fontSize: 18, fontWeight: '800', marginTop: 2 },
+    chromeCashValueBankrupt: { color: theme.textMuted },
+    banner: {
+      borderRadius: 12,
+      borderWidth: 1,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+    },
+    bannerPersonal: { backgroundColor: theme.primarySoft, borderColor: theme.borderAccent },
+    bannerNeutral: { backgroundColor: theme.surface, borderColor: theme.border },
+    bannerTag: {
+      color: theme.primary,
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 1,
+      marginBottom: 3,
+    },
+    bannerText: { color: theme.text, fontSize: 14, lineHeight: 20 },
+    nudge: {
+      borderRadius: 12,
+      borderWidth: 1,
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+    },
+    nudgeText: { fontSize: 14, fontWeight: '700', lineHeight: 19 },
+    nudgeBuild: { backgroundColor: theme.primarySoft, borderColor: theme.borderAccent },
+    nudgeBuildText: { color: theme.primary },
+    nudgeDanger: { backgroundColor: '#ef44441a', borderColor: '#ef444455' },
+    nudgeDangerText: { color: '#ef4444' },
+    errorText: { color: theme.primary, fontSize: 13, fontWeight: '600' },
+    dice: { color: theme.text, fontSize: 16, fontWeight: '600' },
+    cardEvent: { backgroundColor: theme.surface, borderRadius: 12, padding: 12, gap: 4 },
+    cardKind: { color: '#fbbf24', fontSize: 12, textTransform: 'uppercase' },
+    cardText: { color: theme.text, fontSize: 14 },
+    panelWrap: { gap: 12 },
+    panelLabel: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      paddingHorizontal: 2,
+    },
+    // Pill tab bar (mirrors web's inset tablist): a rounded inset track with two
+    // segments; the active tab is a raised/filled surface.
+    tabBar: {
+      flexDirection: 'row',
+      gap: 6,
+      padding: 4,
+      borderRadius: 14,
+      backgroundColor: theme.bg,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    tab: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      borderRadius: 10,
+      paddingVertical: 11,
+      paddingHorizontal: 8,
+    },
+    tabActive: {
+      backgroundColor: theme.surface,
+      shadowColor: '#000',
+      shadowOpacity: 0.18,
+      shadowRadius: 4,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 2,
+    },
+    tabText: { color: theme.textMuted, fontSize: 14, fontWeight: '700' },
+    tabTextActive: { color: theme.text },
+    tabBadge: {
+      minWidth: 18,
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      borderRadius: 999,
+      backgroundColor: theme.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    tabBadgeText: { color: '#fff', fontSize: 10, fontWeight: '900' },
+    actionPanel: { backgroundColor: theme.surface, borderRadius: 12, padding: 14, gap: 10 },
+    actionTitle: { color: theme.text, fontSize: 17, fontWeight: '700' },
+    actionSub: { color: theme.textMuted, fontSize: 13 },
+    actionRow: { flexDirection: 'row', gap: 8 },
+    flexBtn: { flex: 1 },
+    primaryBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 10,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    // white on the solid rose button — intentional
+    primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+    secondaryBtn: {
+      backgroundColor: theme.border,
+      borderRadius: 10,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    secondaryBtnText: { color: theme.text, fontWeight: '600', fontSize: 15 },
+    btnDisabled: { opacity: 0.5 },
+    spaceOwnerLine: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
+    raiseReason: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
+    // Board-center turn UI. Sits on the (dark) board centre, so it carries its own
+    // translucent dark card and uses light text for readability on any edition palette.
+    center: {
+      // No card — the turn UI sits directly on the board's centre felt (mirrors web).
+      alignItems: 'center',
+      gap: 3,
+      width: '100%',
+      paddingHorizontal: 6,
+      paddingVertical: 4,
+    },
+    centerOn: { color: 'rgba(255,255,255,0.9)', fontSize: 9, fontWeight: '700', textAlign: 'center' },
+    centerCashLabel: {
+      color: 'rgba(251,191,36,0.85)',
+      fontSize: 9,
+      fontWeight: '800',
+      letterSpacing: 1,
+      marginTop: 1,
+    },
+    // Bright amber, large + bold so the amount is unmistakable on the board.
+    centerCash: { color: '#fbbf24', fontSize: 24, fontWeight: '900', fontVariant: ['tabular-nums'] },
+    centerCashBankrupt: { color: '#fca5a5' },
+    dieRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
+    die: {
+      width: 22,
+      height: 22,
+      borderRadius: 5,
+      backgroundColor: '#ffffff',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    dieText: { color: '#111827', fontSize: 13, fontWeight: '800' },
+    dieTotal: { color: '#ffffff', fontSize: 12, fontWeight: '700', marginLeft: 2 },
+    centerTimer: {
+      backgroundColor: 'rgba(0,0,0,0.35)',
+      borderRadius: 10,
+      paddingHorizontal: 8,
+      paddingVertical: 1,
+      marginTop: 2,
+    },
+    centerTimerText: { color: '#ffffff', fontSize: 11, fontWeight: '800' },
+    centerPanel: { alignItems: 'center', gap: 4, marginTop: 4, alignSelf: 'stretch' },
+    centerTitle: { color: '#ffffff', fontSize: 12, fontWeight: '800', textAlign: 'center' },
+    centerSub: { color: 'rgba(255,255,255,0.8)', fontSize: 10, textAlign: 'center' },
+    centerRow: { flexDirection: 'row', gap: 6, marginTop: 4, alignSelf: 'stretch' },
+    centerFlex: { flex: 1 },
+    centerPrimary: {
+      backgroundColor: '#f59e0b',
+      borderRadius: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      alignItems: 'center',
+      marginTop: 4,
+    },
+    centerPrimaryText: { color: '#1f2937', fontWeight: '800', fontSize: 13 },
+    centerSecondary: {
+      backgroundColor: 'rgba(255,255,255,0.16)',
+      borderRadius: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      alignItems: 'center',
+      marginTop: 4,
+    },
+    centerSecondaryText: { color: '#ffffff', fontWeight: '700', fontSize: 12 },
+    centerInput: {
+      alignSelf: 'stretch',
+      backgroundColor: 'rgba(255,255,255,0.92)',
+      borderRadius: 8,
+      color: '#111827',
+      fontSize: 14,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      textAlign: 'center',
+      marginTop: 2,
+    },
+    centerWaiting: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '700', marginTop: 2 },
+    specTurnName: { color: '#ffffff', fontSize: 15, fontWeight: '900', textAlign: 'center' },
+    specTurnSuffix: { color: 'rgba(255,255,255,0.6)', fontSize: 13, fontWeight: '600' },
+    centerWatchLabel: {
+      color: 'rgba(255,255,255,0.55)',
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 1.5,
+      marginTop: 4,
+    },
+    centerWatchMsg: {
+      color: 'rgba(255,255,255,0.82)',
+      fontSize: 11,
+      lineHeight: 15,
+      textAlign: 'center',
+      marginTop: 2,
+    },
+    bidInput: {
+      backgroundColor: theme.bg,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: 10,
+      color: theme.text,
+      fontSize: 16,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      textAlign: 'center',
+    },
+  })

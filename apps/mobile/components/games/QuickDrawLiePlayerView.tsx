@@ -35,7 +35,7 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { DrawingCanvas, DrawingPreview } from '@/components/quick-draw/DrawingCanvas'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
-import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
+import { useGameScores } from '@/components/session/RosterDrawerContext'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useQuickDrawAutoAdvance } from '@/hooks/useQuickDrawAutoAdvance'
@@ -174,7 +174,14 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
     readOnly: cannotParticipate,
   })
   const canVote = canPlayerVoteOnDrawing(activeDrawing, bootstrap.myPlayerId ?? '', { readOnly: cannotParticipate })
-  const leaderboard = tallyQuickDrawScores(state.titles, state.votes, state.drawings, bootstrap.players)
+  const leaderboard = useMemo(
+    () => tallyQuickDrawScores(state.titles, state.votes, state.drawings, bootstrap.players),
+    [state.titles, state.votes, state.drawings, bootstrap.players]
+  )
+  useGameScores(
+    useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard]),
+    { suffix: ' pts' }
+  )
 
   const countdown = session?.turn_deadline_at ? phaseDeadlineCountdown(session.turn_deadline_at) : 0
 
@@ -289,18 +296,6 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
         />
 
         {countdown > 0 && session.phase !== 'reveal' ? <TimerBadge seconds={countdown} /> : null}
-
-        <LeaderboardPanel
-          embedded
-          title="Leaderboard"
-          rows={leaderboard.map((row) => ({
-            id: row.id,
-            name: row.name,
-            score: row.score,
-            highlight: row.id === bootstrap.myPlayerId,
-          }))}
-          highlightId={bootstrap.myPlayerId}
-        />
 
         {session.phase !== 'drawing' && activeDrawing ? <Text style={styles.sub}>Drawing by {artistName}</Text> : null}
 

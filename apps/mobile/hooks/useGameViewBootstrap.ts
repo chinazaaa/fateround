@@ -5,6 +5,7 @@ import { normalizeGameCode } from '@fateround/shared'
 import { joinGame } from '@/lib/api'
 import { recordRecentGame } from '@/lib/recent-games'
 import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
+import { reconcilePlayerSession } from '@/lib/player-session-reconcile'
 import { subscribePlayerSession } from '@/lib/session-events'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 import { uniqueTopic } from '@/lib/realtime'
@@ -105,7 +106,12 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
       setPlayers(playerRows)
       setGameState(ok ? state : null)
 
-      const session = await getPlayerSession(code)
+      // Reconcile the stored session against the roster we just fetched: a drifted/
+      // stale player id (removed+rejoined, reclaim miss, rotated token) otherwise
+      // sticks forever and mismatches the dealt hand ("Your hand (0)"). Heals via
+      // the server's token-keyed resume, clears only on a confirmed 404. Web does
+      // this via resolvePlayerSession; mobile never had it.
+      const session = await reconcilePlayerSession(code, playerRows)
       const playerId = session?.playerId ?? null
       if (session) {
         setMyPlayerId(session.playerId)

@@ -255,6 +255,45 @@ export const npatDisputeSchema = z.object({
 
 export type NpatDisputeInput = z.infer<typeof npatDisputeSchema>
 
+// ── Landmine ────────────────────────────────────────────────────────────────────
+export const landmineCategorySchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  roundId: uuidString('roundId'),
+  categoryId: uuidString('categoryId'),
+})
+
+export type LandmineCategoryInput = z.infer<typeof landmineCategorySchema>
+
+export const landmineSubmitSchema = z.object({
+  gameId: gameCodeString(),
+  // Player action authorized by the secret resume_token.
+  resumeToken: z.string().min(4),
+  roundId: uuidString('roundId'),
+  answer: z.string().max(80),
+})
+
+export type LandmineSubmitInput = z.infer<typeof landmineSubmitSchema>
+
+export const landmineDraftSchema = landmineSubmitSchema
+
+export type LandmineDraftInput = z.infer<typeof landmineDraftSchema>
+
+export const landmineMarkSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  roundId: uuidString('roundId'),
+  valid: z.boolean(),
+})
+
+export type LandmineMarkInput = z.infer<typeof landmineMarkSchema>
+
+export const landmineAdvanceSchema = z.object({
+  gameId: gameCodeString(),
+})
+
+export type LandmineAdvanceInput = z.infer<typeof landmineAdvanceSchema>
+
 export const describeItTeamSchema = z.object({
   gameId: gameCodeString(),
   team: z.coerce.number().int().min(1).max(4),

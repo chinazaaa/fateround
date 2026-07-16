@@ -2,6 +2,7 @@ import { ReactNode } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import type { Game, GameType, Player } from '@fateround/shared'
 import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
+import { useRosterBase } from '@/components/session/RosterDrawerContext'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import type { BootstrapLike } from '@/lib/bootstrap-props'
 import { shellPropsFromBootstrap } from '@/lib/bootstrap-props'
@@ -100,13 +101,16 @@ export function GameShell({
   const me = pid && roster ? roster.find((p) => p.id === pid) : undefined
   const showViewerBanner = !!(g && me && code && playerIsViewer(me, g))
 
+  // Feed the roster drawer that lives in the session/host shell. This alone
+  // gives every game a plain roster; game views layer scores via useGameScores.
+  useRosterBase(roster, g, pid)
+
   // Suppress subtitles that only repeat the game code (e.g. "Code 8HDLLU" or
   // the bare code) — the session header already shows the code as its hero
   // text. Subtitles carrying real context ("Pick your team", phase labels) stay.
   const codeUpper = code?.trim().toUpperCase()
   const subUpper = subtitle?.trim().toUpperCase()
-  const subtitleIsJustCode =
-    !!subUpper && !!codeUpper && (subUpper === codeUpper || subUpper === `CODE ${codeUpper}`)
+  const subtitleIsJustCode = !!subUpper && !!codeUpper && (subUpper === codeUpper || subUpper === `CODE ${codeUpper}`)
   const showSubtitle = !!subtitle && !subtitleIsJustCode
 
   return (
@@ -219,80 +223,80 @@ export function TurnBanner({ text, isMyTurn }: { text: string; isMyTurn: boolean
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  centered: {
-    flex: 1,
-    backgroundColor: theme.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-    gap: 8,
-  },
-  title: {
-    color: theme.text,
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  body: {
-    color: theme.textMuted,
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  shell: {
-    flex: 1,
-    backgroundColor: theme.bg,
-    padding: 16,
-    gap: 14,
-  },
-  shellSubtitle: {
-    color: theme.textMuted,
-    fontSize: 15,
-    lineHeight: 21,
-  },
-  panel: {
-    backgroundColor: theme.surface,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: 24,
-    gap: 12,
-  },
-  panelText: {
-    color: theme.textSecondary,
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  finishedWrap: {
-    gap: 12,
-  },
-  finishedButton: {
-    backgroundColor: theme.primary,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  finishedButtonText: {
-    // White on the solid rose button — correct in both schemes.
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  turnBanner: {
-    backgroundColor: theme.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-  },
-  turnBannerActive: {
-    backgroundColor: theme.primarySoft,
-    borderColor: theme.primary,
-  },
-  turnText: {
-    color: theme.text,
-    fontSize: 16,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-})
+    centered: {
+      flex: 1,
+      backgroundColor: theme.bg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+      gap: 8,
+    },
+    title: {
+      color: theme.text,
+      fontSize: 22,
+      fontWeight: '700',
+    },
+    body: {
+      color: theme.textMuted,
+      fontSize: 16,
+      textAlign: 'center',
+    },
+    shell: {
+      flex: 1,
+      backgroundColor: theme.bg,
+      padding: 16,
+      gap: 14,
+    },
+    shellSubtitle: {
+      color: theme.textMuted,
+      fontSize: 15,
+      lineHeight: 21,
+    },
+    panel: {
+      backgroundColor: theme.surface,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 24,
+      gap: 12,
+    },
+    panelText: {
+      color: theme.textSecondary,
+      fontSize: 15,
+      lineHeight: 22,
+    },
+    finishedWrap: {
+      gap: 12,
+    },
+    finishedButton: {
+      backgroundColor: theme.primary,
+      borderRadius: 10,
+      paddingVertical: 12,
+      alignItems: 'center',
+      marginTop: 4,
+    },
+    finishedButtonText: {
+      // White on the solid rose button — correct in both schemes.
+      color: '#fff',
+      fontSize: 15,
+      fontWeight: '700',
+    },
+    turnBanner: {
+      backgroundColor: theme.surface,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+    },
+    turnBannerActive: {
+      backgroundColor: theme.primarySoft,
+      borderColor: theme.primary,
+    },
+    turnText: {
+      color: theme.text,
+      fontSize: 16,
+      fontWeight: '700',
+      textAlign: 'center',
+    },
+  })

@@ -8,7 +8,7 @@ import {
   tallyTriviaPlayerScores,
   TRIVIA_REVEAL_SECONDS,
 } from '@fateround/shared/trivia'
-import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
+import { useGameScores } from '@/components/session/RosterDrawerContext'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useRoundTimer } from '@/hooks/useRoundTimer'
@@ -69,6 +69,11 @@ export function TriviaActiveRound({
   )
 
   const leaderboard = useMemo(() => tallyTriviaPlayerScores(answers, players), [answers, players])
+  // Feed live scores into the roster drawer instead of an inline leaderboard.
+  useGameScores(
+    useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard]),
+    { suffix: ' pts' }
+  )
   const isLastRound = (game.current_round_number ?? 0) >= (game.rounds_count ?? 0)
 
   const screen: PlayScreen = useMemo(() => {
@@ -175,12 +180,6 @@ export function TriviaActiveRound({
         ) : null}
         {roundStillTiming ? <TimerBadge seconds={timeLeft} /> : null}
       </View>
-
-      <LeaderboardPanel
-        embedded
-        rows={leaderboard.map((row) => ({ id: row.id, name: row.name, score: row.score }))}
-        highlightId={myPlayerId}
-      />
 
       {screen === 'waiting' ? (
         <View style={styles.panel}>
