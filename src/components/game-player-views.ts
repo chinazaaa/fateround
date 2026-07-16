@@ -7,6 +7,7 @@ import { BingoPlayerView } from '@/components/bingo/BingoPlayerView'
 import { TriviaPlayerView } from '@/components/trivia/TriviaPlayerView'
 import { TwoTruthsPlayerView } from '@/components/two-truths/TwoTruthsPlayerView'
 import { NpatPlayerView } from '@/components/npat/NpatPlayerView'
+import { LandminePlayerView } from '@/components/landmine/LandminePlayerView'
 import { CodewordsPlayerView } from '@/components/codewords/CodewordsPlayerView'
 import { MonopolyPlayerView } from '@/components/monopoly/MonopolyPlayerView'
 import { YahtzeePlayerView } from '@/components/yahtzee/YahtzeePlayerView'
@@ -48,6 +49,7 @@ export const PLAYER_VIEW_REGISTRY: Partial<Record<GameType, GamePlayerView>> = {
   trivia: TriviaPlayerView,
   two_truths: TwoTruthsPlayerView,
   i_call_on: NpatPlayerView,
+  landmine: LandminePlayerView,
   monopoly: MonopolyPlayerView,
   yahtzee: YahtzeePlayerView,
   whot: WhotPlayerView,

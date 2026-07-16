@@ -71,6 +71,7 @@ import {
   isDescribeItGame,
   isWordRushGame,
   isICallOnGame,
+  isLandmineGame,
   isSudokuGame,
   isCrosswordGame,
   isWordSearchGame,
@@ -238,6 +239,12 @@ import {
   NPAT_MARKING_TIMER_OPTIONS,
   NPAT_TIMER_OPTIONS,
 } from '@/lib/npat'
+import {
+  LANDMINE_DEFAULT_ROUND_COUNT,
+  LANDMINE_DEFAULT_WRITING_TIMER,
+  LANDMINE_DEFAULT_MARKING_TIMER,
+  LANDMINE_DEFAULT_CATEGORY_TIMER,
+} from '@/lib/landmine'
 import { WORD_HUNT_DEFAULT_MAX_PLAYERS, WORD_HUNT_DEFAULT_TIMER, WORD_HUNT_TIMER_OPTIONS } from '@/lib/word-hunt'
 import { formatSudokuGameDuration, SUDOKU_GAME_DURATION_OPTIONS } from '@/lib/sudoku'
 import {
@@ -443,6 +450,11 @@ function CreateGameInner() {
   const [wordHuntTimer, setWordHuntTimer] = useState(WORD_HUNT_DEFAULT_TIMER)
   const [npatGameDuration, setNpatGameDuration] = useState(NPAT_DEFAULT_GAME_DURATION)
   const [npatMarkingTimer, setNpatMarkingTimer] = useState(NPAT_DEFAULT_MARKING_TIMER)
+  const [landmineMode, setLandmineMode] = useState<'zero_points' | 'elimination'>('zero_points')
+  const [landmineMineCount, setLandmineMineCount] = useState(1)
+  const [landmineOriginality, setLandmineOriginality] = useState(true)
+  const [landmineCategoryTimer, setLandmineCategoryTimer] = useState(10)
+  const [landmineMarkingTimer, setLandmineMarkingTimer] = useState(45)
   const [eliminationEnabled, setEliminationEnabled] = useState(false)
   const [eliminationMode, setEliminationMode] = useState<'per-round' | 'lives'>('per-round')
   const [eliminationRule, setEliminationRule] = useState<'bottom-n' | 'score-threshold'>('bottom-n')
@@ -824,6 +836,7 @@ function CreateGameInner() {
   const isWordRush = isWordRushGame(settings.game_type)
   const isMafia = isMafiaGame(settings.game_type)
   const isNpat = isICallOnGame(settings.game_type)
+  const isLandmine = isLandmineGame(settings.game_type)
   const isSudoku = isSudokuGame(settings.game_type)
   const isCrossword = isCrosswordGame(settings.game_type)
   const isWordSearch = isWordSearchGame(settings.game_type)
@@ -943,6 +956,7 @@ function CreateGameInner() {
     isQuickDraw ||
     isWordRush ||
     isNpat ||
+    isLandmine ||
     isSudoku ||
     isCrossword ||
     isWordSearch ||
@@ -990,9 +1004,24 @@ function CreateGameInner() {
       setNpatGameDuration(NPAT_DEFAULT_GAME_DURATION)
       setNpatMarkingTimer(NPAT_DEFAULT_MARKING_TIMER)
     }
+    if (isLandmineGame(type)) {
+      // Reset Landmine's own timers so switching from a game with different options can't leave
+      // them on a value outside Landmine's allowed set.
+      setLandmineCategoryTimer(LANDMINE_DEFAULT_CATEGORY_TIMER)
+      setLandmineMarkingTimer(LANDMINE_DEFAULT_MARKING_TIMER)
+    }
     setSettings({
       ...settings,
       game_type: type,
+      // Reset the shared rounds_count + writing timer to Landmine-valid defaults (they carry over
+      // from the previous game type and may not be in Landmine's option sets).
+      ...(isLandmineGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            rounds_count: LANDMINE_DEFAULT_ROUND_COUNT,
+            timer_seconds: LANDMINE_DEFAULT_WRITING_TIMER,
+          }
+        : {}),
       ...(isLobbyGame(type) ? { participant_mode: 'joiners', anonymous: true } : {}),
       ...(isAnonymousMessagesGame(type)
         ? { participant_mode: 'joiners' as const, anonymous: true, rounds_count: 1 }
@@ -1564,6 +1593,9 @@ function CreateGameInner() {
                         : null,
           trivia_category: isTrivia ? triviaCategory : undefined,
           describe_it_mode: isDescribeIt ? settings.describe_it_mode : undefined,
+          landmine_mode: isLandmine ? landmineMode : undefined,
+          landmine_mine_count: isLandmine ? landmineMineCount : undefined,
+          landmine_originality_bonus: isLandmine ? landmineOriginality : undefined,
           quick_draw_variant: isQuickDraw ? settings.quick_draw_variant : undefined,
           quick_draw_play_mode:
             isQuickDraw && settings.quick_draw_variant === 'guess' ? settings.quick_draw_play_mode : undefined,
@@ -1630,11 +1662,13 @@ function CreateGameInner() {
             ? codewordsOperativeTimer
             : isNpat
               ? npatMarkingTimer
-              : isQuiplash
-                ? quiplashVoteTimer
-                : isQuickDraw
-                  ? quickDrawTitleTimer
-                  : undefined,
+              : isLandmine
+                ? landmineMarkingTimer
+                : isQuiplash
+                  ? quiplashVoteTimer
+                  : isQuickDraw
+                    ? quickDrawTitleTimer
+                    : undefined,
           codewords_player_picks: isCodewords ? codewordsPlayerPicks : undefined,
           codewords_late_join: isCodewords ? lateJoinPolicy === 'viewers_and_players' : undefined,
           codewords_randomize_teams: isCodewords ? codewordsRandomizeTeams : undefined,
@@ -1667,7 +1701,9 @@ function CreateGameInner() {
                               ? (settings.game_duration_seconds ?? 0)
                               : isQuickDraw
                                 ? quickDrawVoteTimer
-                                : undefined,
+                                : isLandmine
+                                  ? landmineCategoryTimer
+                                  : undefined,
           whot_pick3_enabled: isWhot ? whotPick3Enabled : undefined,
           whot_pick2_stacking: isWhot ? whotPick2Stacking : undefined,
           whot_cards_enabled: isWhot ? whotCardsEnabled : undefined,
@@ -2968,6 +3004,99 @@ function CreateGameInner() {
                   against a real dictionary; highest score when the tiles run out wins. Set a game length so it
                   can&apos;t run for hours.
                 </p>
+              </SettingsGroup>
+            ) : isLandmine ? (
+              <SettingsGroup title="Landmine settings">
+                <Field label="Mode">
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      aria-pressed={landmineMode === 'zero_points'}
+                      onClick={() => setLandmineMode('zero_points')}
+                      className={[
+                        'rounded-2xl border-2 px-4 py-4 text-left',
+                        landmineMode === 'zero_points'
+                          ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                          : 'border-[var(--border-strong)] text-muted',
+                      ].join(' ')}
+                    >
+                      <span className="font-bold block text-base">Zero Points</span>
+                      <span className="text-faint text-xs sm:text-sm">Mine scores 0 — everyone plays all rounds</span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={landmineMode === 'elimination'}
+                      onClick={() => setLandmineMode('elimination')}
+                      className={[
+                        'rounded-2xl border-2 px-4 py-4 text-left',
+                        landmineMode === 'elimination'
+                          ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                          : 'border-[var(--border-strong)] text-muted',
+                      ].join(' ')}
+                    >
+                      <span className="font-bold block text-base">Elimination</span>
+                      <span className="text-faint text-xs sm:text-sm">Mine knocks you out — last standing wins</span>
+                    </button>
+                  </div>
+                </Field>
+                <Field label="Hidden mines each round">
+                  <select
+                    value={landmineMineCount}
+                    onChange={(e) => setLandmineMineCount(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {[1, 2, 3].map((n) => (
+                      <option key={n} value={n}>
+                        {n} mine{n > 1 ? 's' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-faint text-xs mt-1">
+                    How many of the answers are secretly booby-trapped each round. Type a mine and you score 0 (or get
+                    knocked out). More mines = riskier.
+                  </p>
+                </Field>
+                {landmineMode === 'zero_points' && (
+                  <Field label="Number of rounds">
+                    <SegmentedControl
+                      value={String(settings.rounds_count)}
+                      onChange={(v) => setSettings({ ...settings, rounds_count: Number(v) })}
+                      options={[3, 5, 8, 10].map((n) => ({ value: String(n), label: String(n) }))}
+                    />
+                  </Field>
+                )}
+                <Field label="Time to pick a category">
+                  <SegmentedControl
+                    value={String(landmineCategoryTimer)}
+                    onChange={(v) => setLandmineCategoryTimer(Number(v))}
+                    options={[5, 10].map((n) => ({ value: String(n), label: `${n}s` }))}
+                  />
+                </Field>
+                <Field label="Time to answer">
+                  <SegmentedControl
+                    value={String(settings.timer_seconds)}
+                    onChange={(v) => setSettings({ ...settings, timer_seconds: Number(v) })}
+                    options={[30, 45, 60, 90].map((n) => ({ value: String(n), label: `${n}s` }))}
+                  />
+                </Field>
+                <Field label="Time to vote on answers">
+                  <SegmentedControl
+                    value={String(landmineMarkingTimer)}
+                    onChange={(v) => setLandmineMarkingTimer(Number(v))}
+                    options={[20, 30, 45, 60].map((n) => ({ value: String(n), label: `${n}s` }))}
+                  />
+                </Field>
+                <label className="flex items-center justify-between gap-2 py-1">
+                  <span className="text-sm font-semibold">Originality bonus (+5 if nobody else said it)</span>
+                  <input
+                    type="checkbox"
+                    checked={landmineOriginality}
+                    onChange={(e) => setLandmineOriginality(e.target.checked)}
+                  />
+                </label>
+                <Field label="Late joiners">
+                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
+                </Field>
               </SettingsGroup>
             ) : isDescribeIt ? (
               <SettingsGroup title="Text Charades room">
@@ -4936,6 +5065,7 @@ function CreateGameInner() {
                     !isTrivia &&
                     !isPan &&
                     !isNpat &&
+                    !isLandmine &&
                     !isScrabble) ||
                   isHotSeatGame ? (
                     <SettingsGroup title={isHotSeatGame ? "Who's in the game" : "Who's in the poll"}>
@@ -4996,6 +5126,7 @@ function CreateGameInner() {
                   !isPan &&
                   !isTrivia &&
                   !isNpat &&
+                  !isLandmine &&
                   !isScrabble && (
                     <SettingsGroup title="Who appears in rounds">
                       <SegmentedControl
@@ -5009,7 +5140,7 @@ function CreateGameInner() {
                     </SettingsGroup>
                   )}
 
-                {!isAnonymousRoom && (
+                {!isAnonymousRoom && !isLandmine && (
                   <SettingsGroup
                     title="Advanced"
                     description="Timer behavior & privacy"

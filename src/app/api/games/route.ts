@@ -56,6 +56,7 @@ import {
   isCrosswordGame,
   isWordSearchGame,
   isWordScrambleGame,
+  isLandmineGame,
 } from '@/lib/game-types'
 import { wstAutoRoundCount } from '@/lib/who-said-this'
 import { parseLudoVariant } from '@/lib/ludo'
@@ -125,6 +126,17 @@ import {
   NPAT_DEFAULT_MARKING_TIMER,
   NPAT_DEFAULT_TIMER,
 } from '@/lib/npat'
+import {
+  clampLandmineMarkingTimer,
+  clampLandmineWritingTimer,
+  clampLandmineCategoryTimer,
+  clampLandmineMineCount,
+  clampLandmineRoundCount,
+  parseLandmineMode,
+  LANDMINE_DEFAULT_MARKING_TIMER,
+  LANDMINE_DEFAULT_CATEGORY_TIMER,
+  LANDMINE_DEFAULT_ROUND_COUNT,
+} from '@/lib/landmine'
 import {
   clampCodewordsTimer,
   CODEWORDS_DEFAULT_OPERATIVE_TIMER,
@@ -395,6 +407,9 @@ export async function POST(req: NextRequest) {
     word_rush_mode: rawWordRushMode,
     word_rush_prompt_mode: rawWordRushPromptMode,
     word_rush_difficulty: rawWordRushDifficulty,
+    landmine_mode: rawLandmineMode,
+    landmine_mine_count: rawLandmineMineCount,
+    landmine_originality_bonus: rawLandmineOriginalityBonus,
     allow_viewers: rawAllowViewers,
     allow_late_players: rawAllowLatePlayers,
     late_join_policy: rawLateJoinPolicy,
@@ -499,7 +514,8 @@ export async function POST(req: NextRequest) {
     isWordRushGame(game_type) ||
     isCrosswordGame(game_type) ||
     isWordSearchGame(game_type) ||
-    isWordScrambleGame(game_type)
+    isWordScrambleGame(game_type) ||
+    isLandmineGame(game_type)
       ? 'joiners'
       : isWhoSaidThis(game_type)
         ? 'import'
@@ -582,7 +598,9 @@ export async function POST(req: NextRequest) {
                     ? clampQuiplashRounds(rounds_count ?? QUIPLASH_DEFAULT_ROUNDS)
                     : isQuickDrawGame(game_type)
                       ? clampQuickDrawRounds(rounds_count ?? QUICK_DRAW_DEFAULT_ROUNDS)
-                      : Math.min(Math.max(Number(rounds_count) || 3, 1), maxRounds)
+                      : isLandmineGame(game_type)
+                        ? clampLandmineRoundCount(rounds_count ?? LANDMINE_DEFAULT_ROUND_COUNT)
+                        : Math.min(Math.max(Number(rounds_count) || 3, 1), maxRounds)
 
   if (
     question_source === 'custom' &&
@@ -684,85 +702,91 @@ export async function POST(req: NextRequest) {
                                     rawMaxPlayers,
                                     lobbyDefaultMaxPlayers('i_call_on', lobbyLimits)
                                   )
-                                : isSudokuGame(game_type)
+                                : isLandmineGame(game_type)
                                   ? resolveMaxPlayers(
-                                      'sudoku',
+                                      'landmine',
                                       rawMaxPlayers,
-                                      lobbyDefaultMaxPlayers('sudoku', lobbyLimits)
+                                      lobbyDefaultMaxPlayers('landmine', lobbyLimits)
                                     )
-                                  : isWordHuntGame(game_type)
+                                  : isSudokuGame(game_type)
                                     ? resolveMaxPlayers(
-                                        'word_hunt',
+                                        'sudoku',
                                         rawMaxPlayers,
-                                        lobbyDefaultMaxPlayers('word_hunt', lobbyLimits)
+                                        lobbyDefaultMaxPlayers('sudoku', lobbyLimits)
                                       )
-                                    : isTicTacToeGame(game_type)
+                                    : isWordHuntGame(game_type)
                                       ? resolveMaxPlayers(
-                                          'tic_tac_toe',
+                                          'word_hunt',
                                           rawMaxPlayers,
-                                          lobbyDefaultMaxPlayers('tic_tac_toe', lobbyLimits)
+                                          lobbyDefaultMaxPlayers('word_hunt', lobbyLimits)
                                         )
-                                      : isChessGame(game_type)
+                                      : isTicTacToeGame(game_type)
                                         ? resolveMaxPlayers(
-                                            'chess',
+                                            'tic_tac_toe',
                                             rawMaxPlayers,
-                                            lobbyDefaultMaxPlayers('chess', lobbyLimits)
+                                            lobbyDefaultMaxPlayers('tic_tac_toe', lobbyLimits)
                                           )
-                                        : isCheckersGame(game_type)
+                                        : isChessGame(game_type)
                                           ? resolveMaxPlayers(
-                                              'checkers',
+                                              'chess',
                                               rawMaxPlayers,
-                                              lobbyDefaultMaxPlayers('checkers', lobbyLimits)
+                                              lobbyDefaultMaxPlayers('chess', lobbyLimits)
                                             )
-                                          : isAyoGame(game_type)
+                                          : isCheckersGame(game_type)
                                             ? resolveMaxPlayers(
-                                                'ayo',
+                                                'checkers',
                                                 rawMaxPlayers,
-                                                lobbyDefaultMaxPlayers('ayo', lobbyLimits)
+                                                lobbyDefaultMaxPlayers('checkers', lobbyLimits)
                                               )
-                                            : isMafiaGame(game_type)
+                                            : isAyoGame(game_type)
                                               ? resolveMaxPlayers(
-                                                  'mafia',
+                                                  'ayo',
                                                   rawMaxPlayers,
-                                                  lobbyDefaultMaxPlayers('mafia', lobbyLimits)
+                                                  lobbyDefaultMaxPlayers('ayo', lobbyLimits)
                                                 )
-                                              : isScrabbleGame(game_type)
+                                              : isMafiaGame(game_type)
                                                 ? resolveMaxPlayers(
-                                                    'scrabble',
+                                                    'mafia',
                                                     rawMaxPlayers,
-                                                    lobbyDefaultMaxPlayers('scrabble', lobbyLimits)
+                                                    lobbyDefaultMaxPlayers('mafia', lobbyLimits)
                                                   )
-                                                : isDescribeItGame(game_type)
+                                                : isScrabbleGame(game_type)
                                                   ? resolveMaxPlayers(
-                                                      'describe_it',
+                                                      'scrabble',
                                                       rawMaxPlayers,
-                                                      lobbyDefaultMaxPlayers('describe_it', lobbyLimits)
+                                                      lobbyDefaultMaxPlayers('scrabble', lobbyLimits)
                                                     )
-                                                  : isWordRushGame(game_type)
+                                                  : isDescribeItGame(game_type)
                                                     ? resolveMaxPlayers(
-                                                        'word_rush',
+                                                        'describe_it',
                                                         rawMaxPlayers,
-                                                        lobbyDefaultMaxPlayers('word_rush', lobbyLimits)
+                                                        lobbyDefaultMaxPlayers('describe_it', lobbyLimits)
                                                       )
-                                                    : isCrosswordGame(game_type)
+                                                    : isWordRushGame(game_type)
                                                       ? resolveMaxPlayers(
-                                                          'crossword',
+                                                          'word_rush',
                                                           rawMaxPlayers,
-                                                          lobbyDefaultMaxPlayers('crossword', lobbyLimits)
+                                                          lobbyDefaultMaxPlayers('word_rush', lobbyLimits)
                                                         )
-                                                      : isWordSearchGame(game_type)
+                                                      : isCrosswordGame(game_type)
                                                         ? resolveMaxPlayers(
-                                                            'word_search',
+                                                            'crossword',
                                                             rawMaxPlayers,
-                                                            lobbyDefaultMaxPlayers('word_search', lobbyLimits)
+                                                            lobbyDefaultMaxPlayers('crossword', lobbyLimits)
                                                           )
-                                                        : isWordScrambleGame(game_type)
+                                                        : isWordSearchGame(game_type)
                                                           ? resolveMaxPlayers(
-                                                              'word_scramble',
+                                                              'word_search',
                                                               rawMaxPlayers,
-                                                              lobbyDefaultMaxPlayers('word_scramble', lobbyLimits)
+                                                              lobbyDefaultMaxPlayers('word_search', lobbyLimits)
                                                             )
-                                                          : null
+                                                          : isWordScrambleGame(game_type)
+                                                            ? resolveMaxPlayers(
+                                                                'word_scramble',
+                                                                rawMaxPlayers,
+                                                                lobbyDefaultMaxPlayers('word_scramble', lobbyLimits)
+                                                              )
+                                                            : null
   const isSecret = isSecretMessageGame(game_type)
   const lateJoinFields = gameSupportsViewerSetting(game_type)
     ? rawLateJoinPolicy
@@ -824,37 +848,39 @@ export async function POST(req: NextRequest) {
               ? clampTtlTimer(timer_seconds)
               : isICallOnGame(game_type)
                 ? clampNpatTimer(timer_seconds)
-                : isMonopolyGame(game_type)
-                  ? clampMonopolyTurnTimer(timer_seconds)
-                  : isWordHuntGame(game_type)
-                    ? clampWordHuntTimer(timer_seconds)
-                    : isChessGame(game_type)
-                      ? clampChessTimer(timer_seconds)
-                      : isCheckersGame(game_type)
-                        ? clampCheckersTimer(timer_seconds)
-                        : isAyoGame(game_type)
-                          ? clampAyoTimer(timer_seconds)
-                          : isMafiaGame(game_type)
-                            ? Number(timer_seconds) > 0
-                              ? Number(timer_seconds)
-                              : 60
-                            : isScrabbleGame(game_type)
-                              ? clampScrabbleTimer(timer_seconds)
-                              : isDescribeItGame(game_type)
-                                ? clampDescribeItTurnSeconds(timer_seconds)
-                                : isWordRushGame(game_type)
-                                  ? clampWordRushTurnSeconds(timer_seconds)
-                                  : isWhotGame(game_type)
-                                    ? clampBoardGameTurnTimer(timer_seconds, 'whot')
-                                    : isCrazyEightsGame(game_type)
-                                      ? clampBoardGameTurnTimer(timer_seconds, 'crazy_eights')
-                                      : isMahjongGame(game_type)
-                                        ? clampBoardGameTurnTimer(timer_seconds, 'mahjong')
-                                        : isMatchingPairsGame(game_type)
-                                          ? Math.max(0, Math.min(600, Math.round(Number(timer_seconds) || 0)))
-                                          : [15, 30, 60].includes(Number(timer_seconds))
-                                            ? Number(timer_seconds)
-                                            : 30,
+                : isLandmineGame(game_type)
+                  ? clampLandmineWritingTimer(timer_seconds)
+                  : isMonopolyGame(game_type)
+                    ? clampMonopolyTurnTimer(timer_seconds)
+                    : isWordHuntGame(game_type)
+                      ? clampWordHuntTimer(timer_seconds)
+                      : isChessGame(game_type)
+                        ? clampChessTimer(timer_seconds)
+                        : isCheckersGame(game_type)
+                          ? clampCheckersTimer(timer_seconds)
+                          : isAyoGame(game_type)
+                            ? clampAyoTimer(timer_seconds)
+                            : isMafiaGame(game_type)
+                              ? Number(timer_seconds) > 0
+                                ? Number(timer_seconds)
+                                : 60
+                              : isScrabbleGame(game_type)
+                                ? clampScrabbleTimer(timer_seconds)
+                                : isDescribeItGame(game_type)
+                                  ? clampDescribeItTurnSeconds(timer_seconds)
+                                  : isWordRushGame(game_type)
+                                    ? clampWordRushTurnSeconds(timer_seconds)
+                                    : isWhotGame(game_type)
+                                      ? clampBoardGameTurnTimer(timer_seconds, 'whot')
+                                      : isCrazyEightsGame(game_type)
+                                        ? clampBoardGameTurnTimer(timer_seconds, 'crazy_eights')
+                                        : isMahjongGame(game_type)
+                                          ? clampBoardGameTurnTimer(timer_seconds, 'mahjong')
+                                          : isMatchingPairsGame(game_type)
+                                            ? Math.max(0, Math.min(600, Math.round(Number(timer_seconds) || 0)))
+                                            : [15, 30, 60].includes(Number(timer_seconds))
+                                              ? Number(timer_seconds)
+                                              : 30,
     ...(isCodewordsGame(game_type)
       ? {
           operative_timer_seconds: clampCodewordsTimer(
@@ -871,26 +897,43 @@ export async function POST(req: NextRequest) {
             ),
             game_duration_seconds: clampNpatGameDuration(rawGameDurationSeconds ?? NPAT_DEFAULT_GAME_DURATION),
           }
-        : isQuiplashGame(game_type)
+        : isLandmineGame(game_type)
           ? {
-              operative_timer_seconds: clampQuiplashVoteTimer(
-                Number(rawOperativeTimerSeconds) || QUIPLASH_DEFAULT_VOTE_TIMER
+              operative_timer_seconds: clampLandmineMarkingTimer(
+                Number(rawOperativeTimerSeconds) || LANDMINE_DEFAULT_MARKING_TIMER
+              ),
+              // Category-pick timer lives in the shared game_duration_seconds column.
+              game_duration_seconds: clampLandmineCategoryTimer(
+                Number(rawGameDurationSeconds) || LANDMINE_DEFAULT_CATEGORY_TIMER
               ),
             }
-          : isQuickDrawGame(game_type)
+          : isQuiplashGame(game_type)
             ? {
-                operative_timer_seconds: clampQuickDrawTitleTimer(
-                  Number(rawOperativeTimerSeconds) || QUICK_DRAW_DEFAULT_TITLE_TIMER
-                ),
-                game_duration_seconds: clampQuickDrawVoteTimer(
-                  Number(rawGameDurationSeconds) || QUICK_DRAW_DEFAULT_VOTE_TIMER
+                operative_timer_seconds: clampQuiplashVoteTimer(
+                  Number(rawOperativeTimerSeconds) || QUIPLASH_DEFAULT_VOTE_TIMER
                 ),
               }
-            : {}),
+            : isQuickDrawGame(game_type)
+              ? {
+                  operative_timer_seconds: clampQuickDrawTitleTimer(
+                    Number(rawOperativeTimerSeconds) || QUICK_DRAW_DEFAULT_TITLE_TIMER
+                  ),
+                  game_duration_seconds: clampQuickDrawVoteTimer(
+                    Number(rawGameDurationSeconds) || QUICK_DRAW_DEFAULT_VOTE_TIMER
+                  ),
+                }
+              : {}),
     ...(isDescribeItGame(game_type)
       ? {
           describe_it_num_teams: clampDescribeItTeams(rawDescribeItNumTeams),
           describe_it_mode: clampDescribeItMode(rawDescribeItMode),
+        }
+      : {}),
+    ...(isLandmineGame(game_type)
+      ? {
+          landmine_mode: parseLandmineMode(rawLandmineMode),
+          landmine_mine_count: clampLandmineMineCount(rawLandmineMineCount),
+          landmine_originality_bonus: rawLandmineOriginalityBonus !== false,
         }
       : {}),
     ...(isQuickDrawGame(game_type)

@@ -48,6 +48,7 @@ import {
   WORD_SCRAMBLE_MAX_PLAYERS,
   WORD_SCRAMBLE_DEFAULT_MAX_PLAYERS,
 } from '@/lib/word-scramble'
+import { LANDMINE_MIN_PLAYERS, LANDMINE_MAX_PLAYERS, LANDMINE_DEFAULT_MAX_PLAYERS } from '@/lib/landmine'
 
 export const LOBBY_LIMIT_GAME_TYPES = [
   'anonymous_messages',
@@ -79,6 +80,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'crossword',
   'word_search',
   'word_scramble',
+  'landmine',
 ] as const
 
 export type LobbyLimitGameType = (typeof LOBBY_LIMIT_GAME_TYPES)[number]
@@ -242,6 +244,11 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     max: WORD_SCRAMBLE_MAX_PLAYERS,
     default: WORD_SCRAMBLE_DEFAULT_MAX_PLAYERS,
   },
+  landmine: {
+    min: LANDMINE_MIN_PLAYERS,
+    max: LANDMINE_MAX_PLAYERS,
+    default: LANDMINE_DEFAULT_MAX_PLAYERS,
+  },
 }
 
 export function isLobbyLimitGameType(value: string): value is LobbyLimitGameType {
@@ -279,6 +286,7 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
     crossword: { ...GAME_LIMIT_CODE_DEFAULTS.crossword },
     word_search: { ...GAME_LIMIT_CODE_DEFAULTS.word_search },
     word_scramble: { ...GAME_LIMIT_CODE_DEFAULTS.word_scramble },
+    landmine: { ...GAME_LIMIT_CODE_DEFAULTS.landmine },
   }
 }
 

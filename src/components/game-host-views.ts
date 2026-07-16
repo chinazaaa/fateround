@@ -21,6 +21,7 @@ import { AyoHostView } from '@/components/ayo/AyoHostView'
 import { ScrabbleHostView } from '@/components/scrabble/ScrabbleHostView'
 import { DescribeItHostView } from '@/components/describe-it/DescribeItHostView'
 import { NpatHostView } from '@/components/npat/NpatHostView'
+import { LandmineHostView } from '@/components/landmine/LandmineHostView'
 import { SudokuHostView } from '@/components/sudoku/SudokuHostView'
 import { WordHuntHostView } from '@/components/word-hunt/WordHuntHostView'
 import { MafiaHostView } from '@/components/mafia/MafiaHostView'
@@ -48,6 +49,7 @@ export const HOST_VIEW_REGISTRY: Partial<Record<GameType, GameHostView>> = {
   trivia: TriviaHostView,
   two_truths: TwoTruthsHostView,
   i_call_on: NpatHostView,
+  landmine: LandmineHostView,
   monopoly: MonopolyHostView,
   yahtzee: YahtzeeHostView,
   whot: WhotHostView,

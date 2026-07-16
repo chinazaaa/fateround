@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useLayoutEffect, useEffect, useRef } from 'react'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { wordHuntTimerSeconds } from '@/lib/word-hunt'
 import type { Game } from '@/types'
@@ -16,7 +16,9 @@ export function useWordHuntGameTimer(
   const secondsLeft = useDeadlineCountdown(game?.session_started_at, duration, active)
   const expireInFlightRef = useRef(false)
   const onExpiredRef = useRef(onExpired)
-  onExpiredRef.current = onExpired
+  useLayoutEffect(() => {
+    onExpiredRef.current = onExpired
+  }, [onExpired])
 
   const refreshAfterExpire = useCallback(async () => {
     await onExpiredRef.current?.()
