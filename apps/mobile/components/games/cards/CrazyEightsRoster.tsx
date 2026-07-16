@@ -1,14 +1,16 @@
-import { StyleSheet, Text, View } from 'react-native'
+import { ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { Player } from '@fateround/shared'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
 /**
- * In-game roster split into "Still playing" and "Watching" groups (mirrors the web
- * CrazyEightsStandings). Active players show a Turn badge + live card count; players
- * who emptied their hand show their finishing place (first out = 🏆 Winner) and pure
- * spectators show a Watching badge. Replaces the flat PlayerTurnRail so finishing
- * order and watch status are visible mid-game.
+ * Compact horizontal player rail for the card table — one fixed-height strip of
+ * chips (name + live card count, current turn highlighted) that scrolls sideways.
+ * Fixed height regardless of player count, so 6+ players never push the draw/
+ * discard pile off-screen. Finished players (emptied hand) trail at the end with
+ * their place (first out = 🏆). Pure spectators are NOT shown here — they live in
+ * the roster drawer (the header people icon). Card counts / turn / finishing order
+ * are gameplay info, so they stay on the board; the full name list is the drawer's.
  */
 export function CrazyEightsRoster({
   players,
@@ -25,125 +27,93 @@ export function CrazyEightsRoster({
 }) {
   const styles = useThemedStyles(makeStyles)
 
-  const isWatching = (p: Player) => {
-    const spectator = (p as { spectator?: boolean | null }).spectator === true
+  const isSpectator = (p: Player) => (p as { spectator?: boolean | null }).spectator === true
+  const handEmpty = (p: Player) => {
     // Only treat count 0 as "out" once the player's hand row is actually loaded —
     // otherwise a not-yet-fetched hand (absent key) would flag a still-playing player.
     const hasRow = Object.prototype.hasOwnProperty.call(handCounts, p.id)
-    return spectator || (hasRow && (handCounts[p.id] ?? 0) === 0)
+    return hasRow && (handCounts[p.id] ?? 0) === 0
   }
 
-  const active = players.filter((p) => !isWatching(p))
-  const watching = players.filter((p) => isWatching(p))
-
-  const renderRow = (p: Player, watch: boolean) => {
-    const count = handCounts[p.id] ?? 0
-    const isTurn = !watch && p.id === turnPlayerId
-    const isMe = p.id === myPlayerId
-    const finishIdx = finishOrder.indexOf(p.id)
-    const finished = finishIdx >= 0
-    const place = finishIdx + 1
-    const placeLabel =
-      finishIdx === 0 ? '🏆 Winner' : `${place}${place === 2 ? 'nd' : place === 3 ? 'rd' : 'th'}`
-
-    return (
-      <View key={p.id} style={[styles.row, isTurn && styles.rowTurn, watch && styles.rowWatch]}>
-        <Text style={[styles.name, isTurn && styles.nameTurn]} numberOfLines={1}>
-          {p.name}
-          {isMe ? ' (you)' : ''}
-        </Text>
-        <View style={styles.badges}>
-          {isTurn ? (
-            <View style={styles.turnBadge}>
-              <Text style={styles.turnBadgeText}>Turn</Text>
-            </View>
-          ) : null}
-          {finished ? (
-            <View style={[styles.placeBadge, finishIdx === 0 && styles.winBadge]}>
-              <Text style={[styles.placeText, finishIdx === 0 && styles.winText]}>{placeLabel}</Text>
-            </View>
-          ) : watch ? (
-            <View style={styles.watchBadge}>
-              <Text style={styles.watchText}>Watching</Text>
-            </View>
-          ) : null}
-          <Text style={styles.count}>
-            {finished ? (finishIdx === 0 ? '🏆' : '👀') : watch ? '👀' : `${count} 🃏`}
-          </Text>
-        </View>
-      </View>
-    )
-  }
+  // Pure spectators live in the roster drawer now; keep only players in the game.
+  // Active players keep their passed (turn) order; finished trail by finishing place.
+  const inGame = players.filter((p) => !isSpectator(p))
+  const active = inGame.filter((p) => !handEmpty(p))
+  const finished = inGame
+    .filter((p) => handEmpty(p))
+    .sort((a, b) => finishOrder.indexOf(a.id) - finishOrder.indexOf(b.id))
+  const ordered = [...active, ...finished]
+  if (ordered.length === 0) return null
 
   return (
     <View style={styles.wrap}>
-      {active.length > 0 ? (
-        <View style={styles.group}>
-          <Text style={styles.groupLabel}>Still playing</Text>
-          {active.map((p) => renderRow(p, false))}
-        </View>
-      ) : null}
-      {watching.length > 0 ? (
-        <View style={styles.group}>
-          <Text style={styles.groupLabel}>Watching</Text>
-          {watching.map((p) => renderRow(p, true))}
-        </View>
-      ) : null}
+      <Text style={styles.label}>Still playing</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.rail}
+        keyboardShouldPersistTaps="handled"
+      >
+        {ordered.map((p) => {
+          const count = handCounts[p.id] ?? 0
+          const isTurn = p.id === turnPlayerId
+          const isMe = p.id === myPlayerId
+          const finishIdx = finishOrder.indexOf(p.id)
+          const isFinished = finishIdx >= 0
+          const place = finishIdx + 1
+          const placeLabel = finishIdx === 0 ? '🏆' : `${place}${place === 2 ? 'nd' : place === 3 ? 'rd' : 'th'}`
+
+          return (
+            <View key={p.id} style={[styles.chip, isTurn && styles.chipTurn, isFinished && styles.chipFinished]}>
+              <Text style={[styles.name, isTurn && styles.nameTurn]} numberOfLines={1}>
+                {p.name}
+                {isMe ? ' (you)' : ''}
+              </Text>
+              {isFinished ? (
+                <Text style={styles.place}>{placeLabel}</Text>
+              ) : (
+                <View style={styles.countWrap}>
+                  {isTurn ? <Text style={styles.turnDot}>▸</Text> : null}
+                  <Text style={[styles.count, isTurn && styles.countTurn]}>{count} 🃏</Text>
+                </View>
+              )}
+            </View>
+          )
+        })}
+      </ScrollView>
     </View>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-    wrap: { alignSelf: 'stretch', gap: theme.space.sm },
-    group: { gap: 6 },
-    groupLabel: {
+    wrap: { alignSelf: 'stretch', gap: 6 },
+    label: {
       color: theme.textFaint,
       fontSize: 11,
       fontWeight: '800',
       textTransform: 'uppercase',
       letterSpacing: 0.6,
     },
-    row: {
+    rail: { flexDirection: 'row', gap: 8, paddingRight: 4 },
+    chip: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 8,
+      gap: 6,
       backgroundColor: theme.surface,
-      borderRadius: theme.radius.md,
+      borderRadius: theme.radius.pill,
       borderWidth: 1,
       borderColor: theme.border,
       paddingHorizontal: 12,
-      paddingVertical: 9,
+      paddingVertical: 7,
     },
-    rowTurn: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
-    rowWatch: { borderStyle: 'dashed', opacity: 0.75 },
-    name: { color: theme.text, fontWeight: '700', fontSize: 14, flexShrink: 1 },
+    chipTurn: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+    chipFinished: { opacity: 0.7, borderStyle: 'dashed' },
+    name: { color: theme.text, fontWeight: '700', fontSize: 13, maxWidth: 110 },
     nameTurn: { color: theme.text, fontWeight: '800' },
-    badges: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    turnBadge: {
-      backgroundColor: theme.primary,
-      borderRadius: theme.radius.pill,
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-    },
-    // White on the solid rose badge — intentional in both schemes.
-    turnBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
-    placeBadge: {
-      backgroundColor: theme.bgElevated,
-      borderRadius: theme.radius.pill,
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-    },
-    winBadge: { backgroundColor: theme.primarySoft },
-    placeText: { color: theme.textMuted, fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
-    winText: { color: theme.primary },
-    watchBadge: {
-      backgroundColor: theme.bgElevated,
-      borderRadius: theme.radius.pill,
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-    },
-    watchText: { color: theme.textMuted, fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+    countWrap: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+    turnDot: { color: theme.primary, fontSize: 12, fontWeight: '900' },
     count: { color: theme.textMuted, fontSize: 12, fontWeight: '700', fontVariant: ['tabular-nums'] },
+    countTurn: { color: theme.primary },
+    place: { color: theme.textMuted, fontSize: 12, fontWeight: '800' },
   })

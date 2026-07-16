@@ -1,15 +1,5 @@
 import { useEffect, useState } from 'react'
-import {
-  ActivityIndicator,
-  Alert,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native'
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game, Player } from '@fateround/shared'
 import { gameSupportsViewerSetting, lateJoinPolicyFromGame } from '@fateround/shared/viewers'
@@ -181,7 +171,7 @@ export function HostControlsSheet({
                 <View key={p.id} style={styles.playerRow}>
                   <Text style={styles.playerName} numberOfLines={1}>
                     {p.name}
-                    {isHost ? <Text style={styles.hostTag}>  · you</Text> : null}
+                    {isHost ? <Text style={styles.hostTag}> · you</Text> : null}
                   </Text>
                   {canEditSelf ? (
                     <Pressable onPress={() => startEditName(p.name)} hitSlop={8}>
@@ -283,79 +273,80 @@ export function HostControlsSheet({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  sheet: { flex: 1, backgroundColor: theme.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: theme.space.lg,
-    paddingVertical: theme.space.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.border,
-  },
-  title: { color: theme.text, fontSize: 20, fontWeight: '800' },
-  close: { color: theme.primaryMuted, fontSize: 16, fontWeight: '700' },
-  body: { padding: theme.space.lg, gap: theme.space.sm, paddingBottom: 40 },
-  sectionLabel: {
-    color: theme.textMuted,
-    fontSize: 12,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  sectionSpacer: { marginTop: theme.space.md },
-  muted: { color: theme.textMuted, fontSize: 14 },
-  playerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: theme.bgElevated,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingHorizontal: theme.space.md,
-    paddingVertical: 12,
-  },
-  playerName: { color: theme.text, fontSize: 16, fontWeight: '600', flex: 1 },
-  hostTag: { color: theme.textFaint, fontSize: 13, fontWeight: '700' },
-  removeText: { color: theme.error, fontSize: 14, fontWeight: '700' },
-  editText: { color: theme.primaryMuted, fontSize: 14, fontWeight: '700' },
-  editDisabled: { opacity: 0.5 },
-  cancelText: { color: theme.textMuted, fontSize: 14, fontWeight: '700' },
-  nameInput: {
-    flex: 1,
-    color: theme.text,
-    fontSize: 16,
-    fontWeight: '600',
-    paddingVertical: 0,
-  },
-  settingBlock: { gap: theme.space.xs },
-  settingTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
-  note: { color: theme.textFaint, fontSize: 12, lineHeight: 17, paddingHorizontal: 2 },
-  primaryBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: theme.radius.md,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  secondaryBtn: {
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  secondaryBtnText: { color: theme.text, fontWeight: '700', fontSize: 15 },
-  dangerBtn: {
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.error,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: theme.space.sm,
-  },
-  dangerBtnText: { color: theme.error, fontWeight: '700', fontSize: 15 },
-  btnDisabled: { opacity: 0.5 },
-  error: { color: theme.error, fontSize: 14, textAlign: 'center', marginTop: theme.space.sm },
-})
+    sheet: { flex: 1, backgroundColor: theme.bg },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: theme.space.lg,
+      paddingVertical: theme.space.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.border,
+    },
+    title: { color: theme.text, fontSize: 20, fontWeight: '800' },
+    close: { color: theme.primaryMuted, fontSize: 16, fontWeight: '700' },
+    body: { padding: theme.space.lg, gap: theme.space.sm, paddingBottom: 40 },
+    sectionLabel: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+    sectionSpacer: { marginTop: theme.space.md },
+    muted: { color: theme.textMuted, fontSize: 14 },
+    playerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: theme.space.md,
+      backgroundColor: theme.bgElevated,
+      borderRadius: theme.radius.md,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingHorizontal: theme.space.md,
+      paddingVertical: 12,
+    },
+    playerName: { color: theme.text, fontSize: 16, fontWeight: '600', flex: 1 },
+    hostTag: { color: theme.textFaint, fontSize: 13, fontWeight: '700' },
+    removeText: { color: theme.error, fontSize: 14, fontWeight: '700' },
+    editText: { color: theme.primaryMuted, fontSize: 14, fontWeight: '700' },
+    editDisabled: { opacity: 0.5 },
+    cancelText: { color: theme.textMuted, fontSize: 14, fontWeight: '700' },
+    nameInput: {
+      flex: 1,
+      color: theme.text,
+      fontSize: 16,
+      fontWeight: '600',
+      paddingVertical: 0,
+    },
+    settingBlock: { gap: theme.space.xs },
+    settingTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
+    note: { color: theme.textFaint, fontSize: 12, lineHeight: 17, paddingHorizontal: 2 },
+    primaryBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: theme.radius.md,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+    secondaryBtn: {
+      borderRadius: theme.radius.md,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    secondaryBtnText: { color: theme.text, fontWeight: '700', fontSize: 15 },
+    dangerBtn: {
+      borderRadius: theme.radius.md,
+      borderWidth: 1,
+      borderColor: theme.error,
+      paddingVertical: 14,
+      alignItems: 'center',
+      marginTop: theme.space.sm,
+    },
+    dangerBtnText: { color: theme.error, fontWeight: '700', fontSize: 15 },
+    btnDisabled: { opacity: 0.5 },
+    error: { color: theme.error, fontSize: 14, textAlign: 'center', marginTop: theme.space.sm },
+  })

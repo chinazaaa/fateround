@@ -16,10 +16,12 @@ import { batch6GameLabel } from '@fateround/shared/batch-6-games'
 import { SCRABBLE_BOARD_SIZE, scrabblePremiumAt } from '@fateround/shared/scrabble-constants'
 import { currentTurnPlayerId, scorePlacement, withPlacedTiles } from '@fateround/shared/scrabble-board'
 import { tileSetForDictionary } from '@fateround/shared/scrabble-rulesets'
-import { playerIsViewer } from '@fateround/shared/viewers'
+import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ScrabbleTile } from '@/components/games/scrabble/ScrabbleTile'
 import { ScrabbleGameTimerBar } from '@/components/games/scrabble/ScrabbleGameTimerBar'
@@ -28,12 +30,7 @@ import { ScrabbleLiveScoreboard, ScrabbleTurnBadge } from '@/components/games/sc
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import {
-  postScrabbleExchange,
-  postScrabbleExpireTurn,
-  postScrabblePass,
-  postScrabblePlay,
-} from '@/lib/game-api'
+import { postScrabbleExchange, postScrabbleExpireTurn, postScrabblePass, postScrabblePlay } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { SCRABBLE_PLAYER_STATE_SELECT, SCRABBLE_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
@@ -41,16 +38,21 @@ import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 type PendingTile = ScrabblePlacedTile & { rackIndex: number }
 
 // LayoutAnimation needs an explicit opt-in on Android; enables the smooth rack
 // reflow when tiles are shuffled or manually reordered.
-if (
-  Platform.OS === 'android' &&
-  UIManager.setLayoutAnimationEnabledExperimental
-) {
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true)
 }
 
@@ -98,7 +100,12 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   )
 
   const computeScreen = useCallback((game: Game, playerId: string | null): Screen => {
-    if (!playerId) return 'join'
+    if (!playerId) {
+      const pre = preJoinScreen(game, false)
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
+      if (pre === 'game_ended') return 'game_ended'
+      return 'join'
+    }
     if (game.status === 'waiting') return 'waiting'
     if (game.status === 'finished') return 'finished'
     return 'playing'
@@ -124,9 +131,7 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
 
   const activeSession = session ?? bootstrap.gameState
   const myState = playerStates.find((s) => s.player_id === bootstrap.myPlayerId)
-  const me = bootstrap.myPlayerId
-    ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
-    : undefined
+  const me = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
   // Late joiners are seated as read-only viewers (spectators). Disables all turn actions.
   const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
   const turnPlayerId = activeSession ? currentTurnPlayerId(activeSession) : null
@@ -165,7 +170,9 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
     if (activeSession.clock_mode !== 'standard' || !activeSession.turn_deadline_at) return
     const deadline = Date.parse(activeSession.turn_deadline_at)
     if (Number.isNaN(deadline) || Date.now() < deadline) return
-    void postScrabbleExpireTurn(bootstrap.code).then(() => bootstrap.load()).catch(() => {})
+    void postScrabbleExpireTurn(bootstrap.code)
+      .then(() => bootstrap.load())
+      .catch(() => {})
   }, [activeSession?.turn_deadline_at, activeSession?.phase, activeSession?.clock_mode, bootstrap.code, bootstrap.load])
 
   const rackLength = myState?.rack.length ?? 0
@@ -226,9 +233,7 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   }
 
   const lastMove = activeSession?.last_move ?? null
-  const lastMoveName = lastMove
-    ? bootstrap.players.find((p) => p.id === lastMove.player_id)?.name ?? 'Player'
-    : null
+  const lastMoveName = lastMove ? (bootstrap.players.find((p) => p.id === lastMove.player_id)?.name ?? 'Player') : null
   const lastMoveText =
     lastMove && lastMoveName
       ? lastMove.kind === 'play'
@@ -261,7 +266,10 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   }
 
   const placeAt = (row: number, col: number, letter: string, isBlank: boolean, rackIndex: number) => {
-    setPending((prev) => [...prev.filter((t) => !(t.row === row && t.col === col)), { row, col, letter, isBlank, rackIndex }])
+    setPending((prev) => [
+      ...prev.filter((t) => !(t.row === row && t.col === col)),
+      { row, col, letter, isBlank, rackIndex },
+    ])
     setSelectedRackIndex(null)
     setBlankPicker(null)
   }
@@ -287,9 +295,7 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   const onRackPress = (index: number, letter: string) => {
     if (!isMyTurn || acting) return
     if (exchangeMode) {
-      setExchangeIndices((prev) =>
-        prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
-      )
+      setExchangeIndices((prev) => (prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]))
       return
     }
     if (usedRackIndices.has(index)) return
@@ -303,6 +309,16 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
     // Mid-game: the only way in is as a read-only viewer (late joiners are seated as
     // spectators). Present the form as a viewer flow so the intent is clear.
@@ -380,191 +396,177 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-      <TurnBanner
-        text={
-          isViewer
-            ? `Spectating — ${turnPlayer?.name ?? 'Player'}'s turn`
-            : exchangeMode
-              ? `Exchange mode — pick tiles (${exchangeIndices.length})`
-              : pending.length > 0
-                ? placementPreview?.valid
-                  ? `Preview +${placementPreview.score} (${placementPreview.words.join(', ')})`
-                  : placementPreview?.error ?? 'Place tiles on the board'
-                : isMyTurn
-                  ? 'Your turn — pick a rack tile, then tap a square'
-                  : `${turnPlayer?.name ?? 'Player'}'s turn`
-        }
-        isMyTurn={isMyTurn}
-      />
+        <TurnBanner
+          text={
+            isViewer
+              ? `Spectating — ${turnPlayer?.name ?? 'Player'}'s turn`
+              : exchangeMode
+                ? `Exchange mode — pick tiles (${exchangeIndices.length})`
+                : pending.length > 0
+                  ? placementPreview?.valid
+                    ? `Preview +${placementPreview.score} (${placementPreview.words.join(', ')})`
+                    : (placementPreview?.error ?? 'Place tiles on the board')
+                  : isMyTurn
+                    ? 'Your turn — pick a rack tile, then tap a square'
+                    : `${turnPlayer?.name ?? 'Player'}'s turn`
+          }
+          isMyTurn={isMyTurn}
+        />
 
-      <ScrabbleGameTimerBar
-        gameCode={bootstrap.code}
-        game={bootstrap.game}
-        onExpired={() => void bootstrap.load()}
-      />
+        <ScrabbleGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} onExpired={() => void bootstrap.load()} />
 
-      <ScrabbleTurnBadge
-        session={activeSession}
-        playerStates={playerStates}
-        onChessExpire={() =>
-          void postScrabbleExpireTurn(bootstrap.code).then(() => bootstrap.load()).catch(() => {})
-        }
-      />
+        <ScrabbleTurnBadge
+          session={activeSession}
+          playerStates={playerStates}
+          onChessExpire={() =>
+            void postScrabbleExpireTurn(bootstrap.code)
+              .then(() => bootstrap.load())
+              .catch(() => {})
+          }
+        />
 
-      {isChess && myState?.timed_out ? (
-        <Text style={styles.timedOutBanner}>
-          ⏳ You&apos;re out of time — spectating. The game ends when every clock runs out.
-        </Text>
-      ) : null}
+        {isChess && myState?.timed_out ? (
+          <Text style={styles.timedOutBanner}>
+            ⏳ You&apos;re out of time — spectating. The game ends when every clock runs out.
+          </Text>
+        ) : null}
 
-      <Text style={styles.bagCount}>{tilesInBag} tiles left in bag</Text>
+        <Text style={styles.bagCount}>{tilesInBag} tiles left in bag</Text>
 
-      {lastMoveText ? <Text style={styles.lastMove}>{lastMoveText}</Text> : null}
+        {lastMoveText ? <Text style={styles.lastMove}>{lastMoveText}</Text> : null}
 
-      <ScrabbleLiveScoreboard
-        session={activeSession}
-        playerStates={playerStates}
-        players={bootstrap.players}
-        myPlayerId={bootstrap.myPlayerId}
-        turnPlayerId={turnPlayerId}
-      />
+        <ScrabbleLiveScoreboard
+          session={activeSession}
+          playerStates={playerStates}
+          players={bootstrap.players}
+          myPlayerId={bootstrap.myPlayerId}
+          turnPlayerId={turnPlayerId}
+        />
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={styles.board}>
-          {Array.from({ length: SCRABBLE_BOARD_SIZE }, (_, row) => (
-            <View key={row} style={styles.boardRow}>
-              {Array.from({ length: SCRABBLE_BOARD_SIZE }, (_, col) => {
-                const prem = scrabblePremiumAt(row, col)
-                const cell = previewBoard[row][col]
-                const isPending = pending.some((t) => t.row === row && t.col === col)
-                const isLast = activeSession.last_move?.tiles.some((t) => t.row === row && t.col === col)
-                const letter = cell?.letter ?? null
-                const points =
-                  letter && letter !== '?'
-                    ? tileSet.values[letter.toUpperCase()] ?? tileSet.values[letter] ?? undefined
-                    : undefined
-                return (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={styles.board}>
+            {Array.from({ length: SCRABBLE_BOARD_SIZE }, (_, row) => (
+              <View key={row} style={styles.boardRow}>
+                {Array.from({ length: SCRABBLE_BOARD_SIZE }, (_, col) => {
+                  const prem = scrabblePremiumAt(row, col)
+                  const cell = previewBoard[row][col]
+                  const isPending = pending.some((t) => t.row === row && t.col === col)
+                  const isLast = activeSession.last_move?.tiles.some((t) => t.row === row && t.col === col)
+                  const letter = cell?.letter ?? null
+                  const points =
+                    letter && letter !== '?'
+                      ? (tileSet.values[letter.toUpperCase()] ?? tileSet.values[letter] ?? undefined)
+                      : undefined
+                  return (
+                    <Pressable
+                      key={col}
+                      style={[
+                        styles.cell,
+                        { width: cellSize, height: cellSize },
+                        prem === 'TW' && styles.tw,
+                        prem === 'DW' && styles.dw,
+                        prem === 'TL' && styles.tl,
+                        prem === 'DL' && styles.dl,
+                        isLast && styles.lastCell,
+                      ]}
+                      disabled={!isMyTurn || acting}
+                      onPress={() => onCellPress(row, col)}
+                    >
+                      {!cell && prem ? <Text style={styles.premLabel}>{prem}</Text> : null}
+                      {letter ? (
+                        <ScrabbleTile
+                          letter={letter}
+                          points={points}
+                          size={Math.max(cellSize - 2, 14)}
+                          pending={isPending}
+                          onBoard
+                        />
+                      ) : null}
+                    </Pressable>
+                  )
+                })}
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+
+        {myState && rackLength > 0 && !isViewer ? (
+          <>
+            <View style={styles.rackHeader}>
+              <Text style={styles.rackHeaderText}>{reorderMode ? 'Tap two tiles to swap' : 'Your rack'}</Text>
+              {rackLength >= 2 && !exchangeMode ? (
+                <View style={styles.rackHeaderActions}>
                   <Pressable
-                    key={col}
-                    style={[
-                      styles.cell,
-                      { width: cellSize, height: cellSize },
-                      prem === 'TW' && styles.tw,
-                      prem === 'DW' && styles.dw,
-                      prem === 'TL' && styles.tl,
-                      prem === 'DL' && styles.dl,
-                      isLast && styles.lastCell,
-                    ]}
-                    disabled={!isMyTurn || acting}
-                    onPress={() => onCellPress(row, col)}
+                    style={[styles.shuffleBtn, reorderMode && styles.shuffleBtnActive]}
+                    hitSlop={8}
+                    onPress={toggleReorderMode}
                   >
-                    {!cell && prem ? <Text style={styles.premLabel}>{prem}</Text> : null}
-                    {letter ? (
-                      <ScrabbleTile
-                        letter={letter}
-                        points={points}
-                        size={Math.max(cellSize - 2, 14)}
-                        pending={isPending}
-                        onBoard
-                      />
-                    ) : null}
+                    <Text style={[styles.shuffleText, reorderMode && styles.shuffleTextActive]}>
+                      {reorderMode ? '✓ Done' : '↔ Reorder'}
+                    </Text>
+                  </Pressable>
+                  <Pressable style={styles.shuffleBtn} hitSlop={8} onPress={shuffleRack}>
+                    <Text style={styles.shuffleText}>🔀 Shuffle</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
+            <View style={styles.rack}>
+              {orderedRackIndices.map((index, slot) => {
+                const letter = myState.rack[index]
+                if (letter == null) return null
+                const used = usedRackIndices.has(index)
+                const selected = reorderMode ? reorderPick === slot : selectedRackIndex === index
+                const exchanging = exchangeIndices.includes(index)
+                const points = letter !== '?' ? (tileSet.values[letter] ?? undefined) : undefined
+                // Reorder mode is always tappable (cosmetic); play/exchange taps
+                // stay gated on the active turn.
+                const disabled = reorderMode ? false : !isMyTurn || acting || (used && !exchangeMode)
+                return (
+                  <Pressable key={index} disabled={disabled} onPress={() => handleRackTilePress(slot, index, letter)}>
+                    <ScrabbleTile letter={letter} points={points} size={40} selected={selected} pending={exchanging} />
                   </Pressable>
                 )
               })}
             </View>
-          ))}
-        </View>
-      </ScrollView>
+          </>
+        ) : null}
 
-      {myState && rackLength > 0 && !isViewer ? (
-        <>
-          <View style={styles.rackHeader}>
-            <Text style={styles.rackHeaderText}>
-              {reorderMode ? 'Tap two tiles to swap' : 'Your rack'}
-            </Text>
-            {rackLength >= 2 && !exchangeMode ? (
-              <View style={styles.rackHeaderActions}>
-                <Pressable
-                  style={[styles.shuffleBtn, reorderMode && styles.shuffleBtnActive]}
-                  hitSlop={8}
-                  onPress={toggleReorderMode}
-                >
-                  <Text style={[styles.shuffleText, reorderMode && styles.shuffleTextActive]}>
-                    {reorderMode ? '✓ Done' : '↔ Reorder'}
-                  </Text>
-                </Pressable>
-                <Pressable style={styles.shuffleBtn} hitSlop={8} onPress={shuffleRack}>
-                  <Text style={styles.shuffleText}>🔀 Shuffle</Text>
-                </Pressable>
-              </View>
-            ) : null}
+        {isMyTurn ? (
+          <View style={styles.actions}>
+            {!exchangeMode ? (
+              <>
+                <ActionBtn label="Recall" disabled={acting || pending.length === 0} onPress={() => setPending([])} />
+                <ActionBtn
+                  label={`Play${placementPreview?.valid ? ` +${placementPreview.score}` : ''}`}
+                  primary
+                  disabled={acting || !placementPreview?.valid}
+                  onPress={() => void submitPlay()}
+                />
+                <ActionBtn label="Pass" disabled={acting} onPress={() => void submitPass()} />
+                <ActionBtn
+                  label="Exchange"
+                  disabled={acting || !canExchange}
+                  onPress={() => {
+                    setExchangeMode(true)
+                    setPending([])
+                    setSelectedRackIndex(null)
+                  }}
+                />
+              </>
+            ) : (
+              <>
+                <ActionBtn label="Cancel" disabled={acting} onPress={() => setExchangeMode(false)} />
+                <ActionBtn
+                  label="Confirm exchange"
+                  primary
+                  disabled={acting || exchangeIndices.length === 0}
+                  onPress={() => void submitExchange()}
+                />
+              </>
+            )}
           </View>
-          <View style={styles.rack}>
-            {orderedRackIndices.map((index, slot) => {
-              const letter = myState.rack[index]
-              if (letter == null) return null
-              const used = usedRackIndices.has(index)
-              const selected = reorderMode ? reorderPick === slot : selectedRackIndex === index
-              const exchanging = exchangeIndices.includes(index)
-              const points = letter !== '?' ? tileSet.values[letter] ?? undefined : undefined
-              // Reorder mode is always tappable (cosmetic); play/exchange taps
-              // stay gated on the active turn.
-              const disabled = reorderMode ? false : !isMyTurn || acting || (used && !exchangeMode)
-              return (
-                <Pressable
-                  key={index}
-                  disabled={disabled}
-                  onPress={() => handleRackTilePress(slot, index, letter)}
-                >
-                  <ScrabbleTile
-                    letter={letter}
-                    points={points}
-                    size={40}
-                    selected={selected}
-                    pending={exchanging}
-                  />
-                </Pressable>
-              )
-            })}
-          </View>
-        </>
-      ) : null}
-
-      {isMyTurn ? (
-        <View style={styles.actions}>
-          {!exchangeMode ? (
-            <>
-              <ActionBtn label="Recall" disabled={acting || pending.length === 0} onPress={() => setPending([])} />
-              <ActionBtn
-                label={`Play${placementPreview?.valid ? ` +${placementPreview.score}` : ''}`}
-                primary
-                disabled={acting || !placementPreview?.valid}
-                onPress={() => void submitPlay()}
-              />
-              <ActionBtn label="Pass" disabled={acting} onPress={() => void submitPass()} />
-              <ActionBtn
-                label="Exchange"
-                disabled={acting || !canExchange}
-                onPress={() => {
-                  setExchangeMode(true)
-                  setPending([])
-                  setSelectedRackIndex(null)
-                }}
-              />
-            </>
-          ) : (
-            <>
-              <ActionBtn label="Cancel" disabled={acting} onPress={() => setExchangeMode(false)} />
-              <ActionBtn
-                label="Confirm exchange"
-                primary
-                disabled={acting || exchangeIndices.length === 0}
-                onPress={() => void submitExchange()}
-              />
-            </>
-          )}
-        </View>
-      ) : null}
+        ) : null}
       </ScrollView>
 
       <Modal visible={!!blankPicker} transparent animationType="fade">
@@ -619,98 +621,98 @@ function ActionBtn({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  // The whole game surface scrolls vertically so the board, rack, and action
-  // buttons are all reachable on short screens (GameShell itself doesn't scroll).
-  pageScroll: { flex: 1, marginHorizontal: -16 },
-  pageScrollContent: { paddingHorizontal: 16, paddingBottom: 24, gap: 8 },
-  timedOutBanner: {
-    color: theme.textMuted,
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    textAlign: 'center',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  bagCount: {
-    color: theme.textMuted,
-    textAlign: 'center',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  lastMove: {
-    color: theme.textFaint,
-    textAlign: 'center',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  rackHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  rackHeaderText: {
-    color: theme.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  rackHeaderActions: { flexDirection: 'row', gap: 8 },
-  shuffleBtn: {
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.surface,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  shuffleBtnActive: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
-  shuffleText: { color: theme.text, fontSize: 12, fontWeight: '700' },
-  shuffleTextActive: { color: theme.primaryMuted },
-  board: { alignSelf: 'center', borderWidth: 2, borderColor: theme.border, marginVertical: 8 },
-  boardRow: { flexDirection: 'row' },
-  cell: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#c9b896',
-    borderWidth: 0.5,
-    borderColor: '#8b7355',
-  },
-  tw: { backgroundColor: '#dc2626' },
-  dw: { backgroundColor: '#f472b6' },
-  tl: { backgroundColor: '#2563eb' },
-  dl: { backgroundColor: '#38bdf8' },
-  lastCell: { backgroundColor: '#fde68a' },
-  premLabel: { fontSize: 7, fontWeight: '800', color: 'rgba(255,255,255,0.85)' },
-  rack: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginVertical: 8 },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
-  actionBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: theme.border,
-  },
-  actionPrimary: { backgroundColor: theme.primary },
-  actionDisabled: { opacity: 0.45 },
-  actionText: { color: theme.text, fontWeight: '700', fontSize: 13 },
-  // white on the solid rose primary button — intentional
-  actionTextPrimary: { color: '#fff' },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 16 },
-  modalScroll: { backgroundColor: theme.surface, borderRadius: 12, padding: 16 },
-  modalTitle: { color: theme.text, fontSize: 18, fontWeight: '800', marginBottom: 12 },
-  letterGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
-  letterBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: theme.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  letterBtnText: { color: theme.text, fontWeight: '800', fontSize: 16, alignSelf: 'stretch', textAlign: 'center' },
-  promoCancel: { padding: 12, marginTop: 8 },
-  promoCancelText: { color: theme.textMuted, textAlign: 'center' },
-})
+    // The whole game surface scrolls vertically so the board, rack, and action
+    // buttons are all reachable on short screens (GameShell itself doesn't scroll).
+    pageScroll: { flex: 1, marginHorizontal: -16 },
+    pageScrollContent: { paddingHorizontal: 16, paddingBottom: 24, gap: 8 },
+    timedOutBanner: {
+      color: theme.textMuted,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      textAlign: 'center',
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    bagCount: {
+      color: theme.textMuted,
+      textAlign: 'center',
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    lastMove: {
+      color: theme.textFaint,
+      textAlign: 'center',
+      fontSize: 12,
+      marginTop: 2,
+    },
+    rackHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: 8,
+    },
+    rackHeaderText: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    rackHeaderActions: { flexDirection: 'row', gap: 8 },
+    shuffleBtn: {
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surface,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    shuffleBtnActive: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+    shuffleText: { color: theme.text, fontSize: 12, fontWeight: '700' },
+    shuffleTextActive: { color: theme.primaryMuted },
+    board: { alignSelf: 'center', borderWidth: 2, borderColor: theme.border, marginVertical: 8 },
+    boardRow: { flexDirection: 'row' },
+    cell: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#c9b896',
+      borderWidth: 0.5,
+      borderColor: '#8b7355',
+    },
+    tw: { backgroundColor: '#dc2626' },
+    dw: { backgroundColor: '#f472b6' },
+    tl: { backgroundColor: '#2563eb' },
+    dl: { backgroundColor: '#38bdf8' },
+    lastCell: { backgroundColor: '#fde68a' },
+    premLabel: { fontSize: 7, fontWeight: '800', color: 'rgba(255,255,255,0.85)' },
+    rack: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginVertical: 8 },
+    actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
+    actionBtn: {
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 8,
+      backgroundColor: theme.border,
+    },
+    actionPrimary: { backgroundColor: theme.primary },
+    actionDisabled: { opacity: 0.45 },
+    actionText: { color: theme.text, fontWeight: '700', fontSize: 13 },
+    // white on the solid rose primary button — intentional
+    actionTextPrimary: { color: '#fff' },
+    modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 16 },
+    modalScroll: { backgroundColor: theme.surface, borderRadius: 12, padding: 16 },
+    modalTitle: { color: theme.text, fontSize: 18, fontWeight: '800', marginBottom: 12 },
+    letterGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
+    letterBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 8,
+      backgroundColor: theme.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    letterBtnText: { color: theme.text, fontWeight: '800', fontSize: 16, alignSelf: 'stretch', textAlign: 'center' },
+    promoCancel: { padding: 12, marginTop: 8 },
+    promoCancelText: { color: theme.textMuted, textAlign: 'center' },
+  })

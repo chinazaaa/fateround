@@ -3,12 +3,7 @@ import { Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import Svg, { Circle, Path } from 'react-native-svg'
 import type { Theme } from '@/constants/theme'
-import {
-  useTheme,
-  useThemedStyles,
-  useThemeMode,
-  type ThemeMode,
-} from '@/constants/theme-context'
+import { useTheme, useThemedStyles, useThemeMode, type ThemeMode } from '@/constants/theme-context'
 import { usePreferences } from '@/constants/preferences-context'
 
 const APPEARANCE_OPTIONS: { value: ThemeMode; label: string }[] = [
@@ -17,7 +12,7 @@ const APPEARANCE_OPTIONS: { value: ThemeMode; label: string }[] = [
   { value: 'dark', label: 'Dark' },
 ]
 
-function GearIcon({ color }: { color: string }) {
+export function GearIcon({ color }: { color: string }) {
   return (
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
       <Circle cx={12} cy={12} r={3} stroke={color} strokeWidth={2} />
@@ -41,8 +36,7 @@ export function SettingsSheet({ visible, onClose }: { visible: boolean; onClose:
   const theme = useTheme()
   const styles = useThemedStyles(makeStyles)
   const { mode, setMode } = useThemeMode()
-  const { soundEnabled, setSoundEnabled, notificationsEnabled, setNotificationsEnabled } =
-    usePreferences()
+  const { soundEnabled, setSoundEnabled, notificationsEnabled, setNotificationsEnabled } = usePreferences()
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -72,9 +66,7 @@ export function SettingsSheet({ visible, onClose }: { visible: boolean; onClose:
                         accessibilityRole="button"
                         accessibilityState={{ selected: active }}
                       >
-                        <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                          {opt.label}
-                        </Text>
+                        <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{opt.label}</Text>
                       </Pressable>
                     )
                   })}

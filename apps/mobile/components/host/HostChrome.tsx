@@ -1,20 +1,24 @@
-import { ReactNode, useEffect, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game, Player } from '@fateround/shared'
 import { gameLabel } from '@/lib/mobile-registry'
+import { removePlayerAsHost } from '@/lib/game-api'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
+import { RosterDrawerProvider, type RosterRow } from '@/components/session/RosterDrawerContext'
+import { RosterDrawer } from '@/components/session/RosterDrawer'
+import { RosterButton } from '@/components/session/RosterButton'
 import { TransferHostSheet } from '@/components/host/TransferHostSheet'
 import { HostControlsSheet } from '@/components/host/HostControlsSheet'
 import { HostViewProvider } from '@/components/host/HostViewContext'
 import { GameRouter, hasMobilePlayerView } from '@/components/games/GameRouter'
 import { HeaderAction } from '@/components/ui/HeaderAction'
-import { SettingsButton } from '@/components/ui/SettingsSheet'
+import { GearIcon } from '@/components/ui/SettingsSheet'
 import { centeredContent } from '@/constants/layout'
 import type { Theme } from '@/constants/theme'
-import { useThemedStyles } from '@/constants/theme-context'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { getPlayerSession, type PlayerSession } from '@/lib/secure-session'
 import { subscribePlayerSession } from '@/lib/session-events'
 
@@ -34,10 +38,9 @@ type Props = {
   onReload?: () => void
 }
 
-type HostTab = 'manage' | 'play'
-
 export function HostChrome({ gameCode, hostToken, game, children, playFirst, players, onReload }: Props) {
   const router = useRouter()
+  const theme = useTheme()
   const styles = useThemedStyles(makeStyles)
   const code = gameCode.toUpperCase()
   const typeLabel = gameLabel(game.game_type)
@@ -45,9 +48,6 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
   const [transferOpen, setTransferOpen] = useState(false)
   const [controlsOpen, setControlsOpen] = useState(false)
   const [session, setSession] = useState<PlayerSession | null>(null)
-  // Legacy tabs (host-run games like bingo/trivia): default to their Manage
-  // control surface. Play-along games use playFirst and never see these tabs.
-  const [tab, setTab] = useState<HostTab>('manage')
   const resumeToken = session?.resumeToken ?? null
   const hostPlayerId = session?.playerId ?? null
 
@@ -59,213 +59,224 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
     return subscribePlayerSession(gameCode, read)
   }, [gameCode])
 
-  // Play tab embeds the host's own player experience (join screen if not seated yet).
   const canPlay = hasMobilePlayerView(game.game_type)
-  // When the game is over, show the shared finished screen (winner + standings +
-  // inline host actions) rather than the in-game Manage controls (e.g. bingo's
-  // number caller) or the Play/Manage tabs. Requires the host to be seated as a
-  // player; a host-only host falls back to the game's own finished controls.
+  // Play-along games (playFirst) render the game board inline. Host-run games
+  // (bingo/trivia/…) render their control console — the `children` — as the main
+  // screen: no Play/Manage tab, so the drive controls (call number, advance
+  // phase, next round) are always in reach. When the game is over, a seated host
+  // sees the shared finished screen (winner + standings + inline host actions);
+  // a host-only host falls back to the console's own finished controls.
   const finished = game.status === 'finished'
   const seated = !!hostPlayerId
-  const showPlayView = canPlay && (playFirst || tab === 'play' || (finished && seated))
-  // The ⚙ Host controls sheet (players + remove, settings, end game, play again)
-  // is available to any host screen that hands us the roster — both play-first
-  // games and host-run games (bingo/trivia/…), which keep their Manage tab too.
+  const showPlayView = canPlay && (playFirst || (finished && seated))
+  // The ⚙ Host controls sheet (settings, end game, play again) and the roster
+  // drawer's Remove are available to any host screen that hands us the roster.
   const showHostControls = !!players && !!onReload
 
-  return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <View style={styles.header}>
-        <View style={styles.toolbar}>
-          <Pressable
-            style={styles.backBtn}
-            onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
-            hitSlop={8}
-          >
-            <Text style={styles.backIcon}>←</Text>
-          </Pressable>
-          <View style={styles.toolbarActions}>
-            <SettingsButton />
-            {showHostControls ? (
-              <HeaderAction label="⚙ Host settings" onPress={() => setControlsOpen(true)} />
-            ) : (
-              <HeaderAction label="Transfer" onPress={() => setTransferOpen(true)} />
-            )}
-            <HeaderAction label="Share code" accent onPress={() => setShareOpen(true)} />
-          </View>
-        </View>
+  const removeRow = useCallback(
+    (row: RosterRow) => {
+      Alert.alert('Remove player', `Remove ${row.name} from the game?`, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            void removePlayerAsHost(gameCode, row.id, hostToken).then(() => onReload?.())
+          },
+        },
+      ])
+    },
+    [gameCode, hostToken, onReload]
+  )
+  const manage = useMemo(
+    () => (showHostControls ? { hostPlayerId, onRemove: removeRow } : null),
+    [showHostControls, hostPlayerId, removeRow]
+  )
 
-        <View style={styles.meta}>
-          <Text style={styles.kicker}>Hosting</Text>
-          <View style={styles.codeRow}>
-            <Text style={styles.code}>{code}</Text>
-            <View style={styles.typePill}>
-              <Text style={styles.typePillText}>{typeLabel}</Text>
+  return (
+    <RosterDrawerProvider fallbackPlayers={players} fallbackGame={game} myPlayerId={hostPlayerId} manage={manage}>
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <View style={styles.header}>
+          <View style={styles.toolbar}>
+            <View style={styles.toolbarLeading}>
+              <Pressable
+                style={styles.backBtn}
+                onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+                hitSlop={8}
+              >
+                <Text style={styles.backIcon}>←</Text>
+              </Pressable>
+              <RosterButton />
+            </View>
+            <View style={styles.toolbarActions}>
+              {showHostControls ? (
+                <Pressable
+                  style={({ pressed }) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
+                  onPress={() => setControlsOpen(true)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Host settings"
+                >
+                  <GearIcon color={theme.textSecondary} />
+                </Pressable>
+              ) : (
+                <HeaderAction label="Transfer" onPress={() => setTransferOpen(true)} />
+              )}
+              <HeaderAction label="Share code" accent onPress={() => setShareOpen(true)} />
             </View>
           </View>
-          {game.title ? (
-            <Text style={styles.title} numberOfLines={2}>
-              {game.title}
-            </Text>
-          ) : null}
+
+          <View style={styles.meta}>
+            <Text style={styles.kicker}>Hosting</Text>
+            <View style={styles.codeRow}>
+              <Text style={styles.code}>{code}</Text>
+              <View style={styles.typePill}>
+                <Text style={styles.typePillText}>{typeLabel}</Text>
+              </View>
+            </View>
+            {game.title ? (
+              <Text style={styles.title} numberOfLines={2}>
+                {game.title}
+              </Text>
+            ) : null}
+          </View>
         </View>
 
-        {!playFirst && canPlay && !finished ? (
-          <View style={styles.tabs}>
-            {(['play', 'manage'] as HostTab[]).map((t) => {
-              const active = tab === t
-              return (
-                <Pressable
-                  key={t}
-                  style={[styles.tab, active && styles.tabActive]}
-                  onPress={() => setTab(t)}
-                >
-                  <Text style={[styles.tabText, active && styles.tabTextActive]}>
-                    {t === 'manage' ? 'Manage' : 'Play'}
-                  </Text>
-                </Pressable>
-              )
-            })}
-          </View>
-        ) : null}
-      </View>
-
-      {showPlayView ? (
-        <HostViewProvider value={{ hostToken, hostPlayerId, onReload: () => onReload?.() }}>
-          <View style={styles.playBody}>
-            <GameRouter gameCode={gameCode} gameType={game.game_type} />
-          </View>
-        </HostViewProvider>
-      ) : (
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          {children}
-        </ScrollView>
-      )}
-      {/* Floats over the screen — mounted at the shell root (not in the scroll
+        {showPlayView ? (
+          <HostViewProvider value={{ hostToken, hostPlayerId, onReload: () => onReload?.() }}>
+            <View style={styles.playBody}>
+              <GameRouter gameCode={gameCode} gameType={game.game_type} />
+            </View>
+          </HostViewProvider>
+        ) : (
+          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+            {children}
+          </ScrollView>
+        )}
+        {/* Floats over the screen — mounted at the shell root (not in the scroll
           body, where it would scroll away). */}
-      <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} />
-      <ShareGameSheet
-        visible={shareOpen}
-        gameCode={gameCode}
-        hostToken={hostToken}
-        resumeToken={resumeToken}
-        onClose={() => setShareOpen(false)}
-      />
-      <TransferHostSheet
-        gameCode={gameCode}
-        hostToken={hostToken}
-        visible={transferOpen}
-        onClose={() => setTransferOpen(false)}
-      />
-      {showHostControls ? (
-        <HostControlsSheet
-          visible={controlsOpen}
-          onClose={() => setControlsOpen(false)}
+        <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} />
+        <ShareGameSheet
+          visible={shareOpen}
           gameCode={gameCode}
           hostToken={hostToken}
-          game={game}
-          players={players ?? []}
-          hostPlayerId={hostPlayerId}
-          hostResumeToken={resumeToken}
-          onReload={() => onReload?.()}
-          onTransfer={() => {
-            setControlsOpen(false)
-            setTransferOpen(true)
-          }}
+          resumeToken={resumeToken}
+          onClose={() => setShareOpen(false)}
         />
-      ) : null}
-    </SafeAreaView>
+        <TransferHostSheet
+          gameCode={gameCode}
+          hostToken={hostToken}
+          visible={transferOpen}
+          onClose={() => setTransferOpen(false)}
+        />
+        {showHostControls ? (
+          <HostControlsSheet
+            visible={controlsOpen}
+            onClose={() => setControlsOpen(false)}
+            gameCode={gameCode}
+            hostToken={hostToken}
+            game={game}
+            players={players ?? []}
+            hostPlayerId={hostPlayerId}
+            hostResumeToken={resumeToken}
+            onReload={() => onReload?.()}
+            onTransfer={() => {
+              setControlsOpen(false)
+              setTransferOpen(true)
+            }}
+          />
+        ) : null}
+        <RosterDrawer />
+      </SafeAreaView>
+    </RosterDrawerProvider>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.bg },
-  header: {
-    borderBottomWidth: 1,
-    borderBottomColor: theme.surfaceHover,
-    paddingBottom: theme.space.md,
-    gap: theme.space.md,
-  },
-  toolbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: theme.space.md,
-    paddingTop: theme.space.xs,
-    gap: theme.space.sm,
-  },
-  toolbarActions: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
-  tabs: {
-    flexDirection: 'row',
-    marginHorizontal: theme.space.lg,
-    marginTop: theme.space.xs,
-    backgroundColor: theme.surface,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: 3,
-    gap: 3,
-  },
-  tab: { flex: 1, paddingVertical: 9, borderRadius: theme.radius.sm, alignItems: 'center' },
-  tabActive: { backgroundColor: theme.primary },
-  tabText: { color: theme.textMuted, fontSize: 14, fontWeight: '800' },
-  tabTextActive: { color: '#fff' },
-  playBody: { flex: 1, ...centeredContent },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backIcon: { color: theme.text, fontSize: 20, fontWeight: '600' },
-  meta: {
-    paddingHorizontal: theme.space.lg,
-    gap: 6,
-  },
-  kicker: {
-    color: theme.primary,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-  },
-  codeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.space.sm,
-    flexWrap: 'wrap',
-  },
-  code: {
-    color: theme.text,
-    fontSize: 26,
-    fontWeight: '800',
-    letterSpacing: 3,
-  },
-  typePill: {
-    borderRadius: theme.radius.pill,
-    backgroundColor: theme.primarySoft,
-    borderWidth: 1,
-    borderColor: theme.borderAccent,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  typePillText: {
-    color: theme.primaryMuted,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  title: {
-    color: theme.textMuted,
-    fontSize: 16,
-    fontWeight: '600',
-    lineHeight: 22,
-  },
-  content: { padding: theme.space.lg, gap: theme.space.md, paddingBottom: 40, ...centeredContent },
-})
+    safe: { flex: 1, backgroundColor: theme.bg },
+    header: {
+      borderBottomWidth: 1,
+      borderBottomColor: theme.surfaceHover,
+      paddingBottom: theme.space.md,
+      gap: theme.space.md,
+    },
+    toolbar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: theme.space.md,
+      paddingTop: theme.space.xs,
+      gap: theme.space.sm,
+    },
+    toolbarLeading: { flexDirection: 'row', alignItems: 'center', gap: theme.space.xs },
+    toolbarActions: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
+    iconBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    iconBtnPressed: { opacity: 0.7 },
+    playBody: { flex: 1, ...centeredContent },
+    backBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    backIcon: { color: theme.text, fontSize: 20, fontWeight: '600' },
+    meta: {
+      paddingHorizontal: theme.space.lg,
+      gap: 6,
+    },
+    kicker: {
+      color: theme.primary,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 1.4,
+      textTransform: 'uppercase',
+    },
+    codeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.space.sm,
+      flexWrap: 'wrap',
+    },
+    code: {
+      color: theme.text,
+      fontSize: 26,
+      fontWeight: '800',
+      letterSpacing: 3,
+    },
+    typePill: {
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.primarySoft,
+      borderWidth: 1,
+      borderColor: theme.borderAccent,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+    },
+    typePillText: {
+      color: theme.primaryMuted,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+    },
+    title: {
+      color: theme.textMuted,
+      fontSize: 16,
+      fontWeight: '600',
+      lineHeight: 22,
+    },
+    content: { padding: theme.space.lg, gap: theme.space.md, paddingBottom: 40, ...centeredContent },
+  })

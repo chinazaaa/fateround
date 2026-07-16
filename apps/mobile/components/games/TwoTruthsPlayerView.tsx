@@ -15,11 +15,12 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
-import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
+import { useGameScores } from '@/components/session/RosterDrawerContext'
 import { CountdownTimerBadge } from '@/components/party/CountdownTimerBadge'
 import { TwoTruthsSubmitterBadge } from '@/components/games/TwoTruthsSubmitterBadge'
 import { useDeadlineExpiry } from '@/hooks/useDeadlineExpiry'
@@ -35,7 +36,15 @@ import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
-type Screen = 'loading' | 'join' | 'late_join_choice' | 'waiting' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'late_join_choice'
+  | 'game_started_waiting'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   const [statements, setStatements] = useState<TtlStatement[]>([])
@@ -71,10 +80,11 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   const computeScreen = useCallback((game: Game, playerId: string | null): Screen => {
     if (game.status === 'finished') return 'finished'
     if (!playerId) {
+      const pre = preJoinScreen(game, false)
+      // Viewers disabled mid-game → "game in progress, wait for the next lobby".
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
       // Late opener with viewers allowed: offer watch-or-play instead of a bare join.
-      if (game.status === 'active' && preJoinScreen(game, false) === 'late_join_choice') {
-        return 'late_join_choice'
-      }
+      if (pre === 'late_join_choice') return 'late_join_choice'
       return 'join'
     }
     if (game.status === 'waiting') return 'waiting'
@@ -140,6 +150,10 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     () => tallyTtlScores(guesses, bootstrap.players, rounds),
     [guesses, bootstrap.players, rounds]
   )
+  useGameScores(
+    useMemo(() => Object.fromEntries(liveScores.map((row) => [row.id, row.score])), [liveScores]),
+    { suffix: ' pts' }
+  )
 
   // Next player whose statements are coming up (for the between-round preview).
   const upcomingRound = useMemo(() => {
@@ -158,9 +172,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     setTimeExpired(false)
   }, [currentRound?.id])
 
-  useDeadlineExpiry(currentRound?.started_at, timerSeconds, timerActive && !myGuess, () =>
-    setTimeExpired(true)
-  )
+  useDeadlineExpiry(currentRound?.started_at, timerSeconds, timerActive && !myGuess, () => setTimeExpired(true))
 
   const canSubmitStatements = !!stmtA.trim() && !!stmtB.trim() && !!stmtC.trim() && lieIndex != null
 
@@ -206,6 +218,15 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
     return (
       <JoinScreen
@@ -404,20 +425,6 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     </View>
   )
 
-  const liveBoard = (
-    <LeaderboardPanel
-      embedded
-      title="Leaderboard"
-      rows={liveScores.map((row) => ({
-        id: row.id,
-        name: row.name,
-        score: row.score,
-        highlight: row.id === bootstrap.myPlayerId,
-      }))}
-      highlightId={bootstrap.myPlayerId}
-    />
-  )
-
   if (currentRound.status === 'finished') {
     return (
       <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={roundSubtitle}>
@@ -449,7 +456,6 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
           <Text style={styles.waiting}>
             {revealSeconds && revealSeconds > 0 ? `Next round in ${revealSeconds}s…` : 'Waiting for next round…'}
           </Text>
-          {liveBoard}
         </ScrollView>
       </GameShell>
     )
@@ -472,7 +478,6 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
               ))}
             </View>
           ) : null}
-          {liveBoard}
         </ScrollView>
       </GameShell>
     )
@@ -516,7 +521,6 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
         ) : lockedOut ? (
           <Text style={styles.locked}>Time&apos;s up — waiting for results…</Text>
         ) : null}
-        {liveBoard}
       </ScrollView>
     </GameShell>
   )
