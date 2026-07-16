@@ -73,6 +73,12 @@ export function LandmineActiveRound({
   const [markValid, setMarkValid] = useState<boolean | null>(null)
   const [categories, setCategories] = useState<CategoryOption[]>([])
   const [tick, setTick] = useState(0)
+  // Optimistic lock-in: the POST is authoritative, but we flip to the locked view the instant it
+  // succeeds instead of waiting on a full state reload (that reload latency is what felt like
+  // "forever" on a slow connection). Keyed by round id so it resets each round.
+  const [lockedAnswerRound, setLockedAnswerRound] = useState<string | null>(null)
+  const [lockedAnswerText, setLockedAnswerText] = useState('')
+  const [lockedMarkRound, setLockedMarkRound] = useState<string | null>(null)
   const answerRef = useRef('')
   answerRef.current = answerText
   const draftTimerRef = useRef<number | null>(null)
@@ -127,6 +133,9 @@ export function LandmineActiveRound({
     autoSubmittedRoundRef.current = null
     setAnswerText('')
     setMarkValid(null)
+    setLockedAnswerRound(null)
+    setLockedAnswerText('')
+    setLockedMarkRound(null)
     setSubmitting(false)
     submittingRef.current = false
     if (draftTimerRef.current != null) {
@@ -244,7 +253,10 @@ export function LandmineActiveRound({
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? 'Failed to submit')
         if (!opts?.silent) playVoteSubmittedSound()
-        await onReload?.()
+        // Flip to the locked-in view immediately; reconcile via a background reload + realtime.
+        setLockedAnswerRound(currentRound.id)
+        setLockedAnswerText(value)
+        void onReload?.()
       } catch (err) {
         if (!opts?.silent) toastError(err instanceof Error ? err.message : 'Failed to submit')
       } finally {
@@ -290,7 +302,9 @@ export function LandmineActiveRound({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to mark')
       playVoteSubmittedSound()
-      await onReload?.()
+      // Flip to the marked view immediately; reconcile via a background reload + realtime.
+      setLockedMarkRound(currentRound.id)
+      void onReload?.()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to mark')
     } finally {
@@ -304,10 +318,16 @@ export function LandmineActiveRound({
     if (currentRound.status === 'finished' || metadata?.phase === 'reveal') return 'revealed'
     const phase = metadata?.phase ?? 'category_pick'
     if (phase === 'category_pick') return isCaller ? 'category_pick' : 'category_wait'
-    if (phase === 'writing') return myAnswer?.submitted_at ? 'writing_locked' : 'writing'
-    if (phase === 'marking') return myMark?.marked_at ? 'marking_locked' : 'marking'
+    if (phase === 'writing') {
+      const locked = !!myAnswer?.submitted_at || lockedAnswerRound === currentRound.id
+      return locked ? 'writing_locked' : 'writing'
+    }
+    if (phase === 'marking') {
+      const marked = !!myMark?.marked_at || lockedMarkRound === currentRound.id
+      return marked ? 'marking_locked' : 'marking'
+    }
     return 'waiting'
-  }, [game.status, currentRound, metadata, isCaller, myAnswer, myMark])
+  }, [game.status, currentRound, metadata, isCaller, myAnswer, myMark, lockedAnswerRound, lockedMarkRound])
 
   // ── Finished ────────────────────────────────────────────────────────────────
   if (screen === 'finished') {
@@ -507,7 +527,7 @@ export function LandmineActiveRound({
         {roundHeader}
         <p className="text-3xl">🔒</p>
         <p className="font-bold">Answer locked in</p>
-        <p className="text-sm text-muted">“{myAnswer?.answer}” — waiting for everyone else…</p>
+        <p className="text-sm text-muted">“{myAnswer?.answer || lockedAnswerText}” — waiting for everyone else…</p>
       </div>
     )
   }

@@ -524,7 +524,11 @@ export async function clearLandmineSessionData(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error: string | null }> {
-  return clearSessionTables(supabase, gameId, ['landmine_marks', 'landmine_answers', 'landmine_round_mines'], {
+  // NOTE: landmine_round_mines is NOT cleared here. clearSessionTables deletes by `game_id`,
+  // but that table is keyed only by `round_id` (no game_id column) — deleting by game_id 400s
+  // and fails the whole play-again flow. Its rows cascade away when the game's rounds are
+  // deleted (round_id REFERENCES rounds ON DELETE CASCADE), so no explicit clear is needed.
+  return clearSessionTables(supabase, gameId, ['landmine_marks', 'landmine_answers'], {
     resetSpectators: true,
   })
 }

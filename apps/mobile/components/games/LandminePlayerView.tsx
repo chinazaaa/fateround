@@ -67,6 +67,11 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   const [categories, setCategories] = useState<CategoryOption[]>([])
   const [acting, setActing] = useState(false)
   const [tick, setTick] = useState(0)
+  // Optimistic lock-in — flip to the locked view the instant the POST succeeds instead of
+  // waiting on a full reload (that reload latency is what felt slow on a poor connection).
+  const [lockedAnswerRound, setLockedAnswerRound] = useState<string | null>(null)
+  const [lockedAnswerText, setLockedAnswerText] = useState('')
+  const [lockedMarkRound, setLockedMarkRound] = useState<string | null>(null)
 
   const answerRef = useRef('')
   answerRef.current = answerText
@@ -183,6 +188,9 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
 
   useEffect(() => {
     setAnswerText('')
+    setLockedAnswerRound(null)
+    setLockedAnswerText('')
+    setLockedMarkRound(null)
     autoSubmittedRoundRef.current = null
     hydratedRoundRef.current = null
     if (draftTimerRef.current != null) {
@@ -259,15 +267,50 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
+  // Run an action, then flip the optimistic lock the instant the POST resolves and reconcile
+  // with a BACKGROUND reload (realtime also pushes) — so the button/screen don't wait on a
+  // full state refetch over a slow connection.
+  const runOptimistic = (rid: string, post: () => Promise<unknown>, onLocked: () => void) => {
+    if (submittingRef.current) return
+    submittingRef.current = true
+    setActing(true)
+    void (async () => {
+      try {
+        await post()
+        onLocked()
+        void bootstrap.load()
+      } catch {
+        // errors reconcile via realtime / next reload
+      } finally {
+        submittingRef.current = false
+        setActing(false)
+      }
+    })()
+  }
+
   const submitAnswer = (value: string) => {
     if (!token || !roundId || !value.trim()) return
     cancelDraft() // don't let a queued draft fire after submit
-    void act(() => postLandmineSubmit(gameCode, token, roundId, value.trim()))
+    const rid = roundId
+    const text = value.trim()
+    runOptimistic(
+      rid,
+      () => postLandmineSubmit(gameCode, token, rid, text),
+      () => {
+        setLockedAnswerRound(rid)
+        setLockedAnswerText(text)
+      }
+    )
   }
 
   const submitMark = (valid: boolean) => {
     if (!token || !roundId) return
-    void act(() => postLandmineMark(gameCode, token, roundId, valid))
+    const rid = roundId
+    runOptimistic(
+      rid,
+      () => postLandmineMark(gameCode, token, rid, valid),
+      () => setLockedMarkRound(rid)
+    )
   }
 
   // Auto-submit at the writing deadline.
@@ -404,7 +447,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
 
   // ── Writing ─────────────────────────────────────────────────────────────────
   if (metadata.phase === 'writing') {
-    const locked = !!myAnswer?.submitted_at
+    const locked = !!myAnswer?.submitted_at || lockedAnswerRound === currentRound.id
     return (
       <GameShell bootstrap={bootstrap} title="Landmine" subtitle={timer ? `${subtitle} · ${timer}` : subtitle}>
         <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
@@ -413,7 +456,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
             <View style={styles.waitCard}>
               <Text style={styles.waitEmoji}>🔒</Text>
               <Text style={styles.waitTitle}>{isViewer ? 'Watching' : 'Answer locked in'}</Text>
-              {!isViewer ? <Text style={styles.meta}>“{myAnswer?.answer}”</Text> : null}
+              {!isViewer ? <Text style={styles.meta}>“{myAnswer?.answer || lockedAnswerText}”</Text> : null}
             </View>
           ) : (
             <>
@@ -447,7 +490,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
 
   // ── Marking ─────────────────────────────────────────────────────────────────
   if (metadata.phase === 'marking') {
-    const marked = !!myMark?.marked_at
+    const marked = !!myMark?.marked_at || lockedMarkRound === currentRound.id
     const targetName = playerDisplayName(reviewTargetId, bootstrap.players)
     const targetText = reviewTargetAnswer?.answer ?? ''
     const hasText = !!normalizeAnswer(targetText)
