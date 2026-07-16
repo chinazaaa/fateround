@@ -20,6 +20,33 @@ import { DisconnectReason } from 'livekit-client'
  * failure. That shipped a bogus "Could not connect to voice chat" on web — see
  * the `leavingRef` guard in `src/components/AudioChat.tsx`.
  */
+export type VoiceDisconnectKind = 'silent' | 'fatal' | 'retry'
+
+/**
+ * How the UI should react to a LiveKit drop:
+ *  - `silent` — our own Leave; say nothing.
+ *  - `fatal`  — a real reconnect on this device/network can't succeed (another
+ *               device took over, or the network is blocking calls). Show the
+ *               message immediately; a silent retry would only fail again.
+ *  - `retry`  — a transient blip. Attempt a silent reconnect within a short
+ *               grace window before falling back to the Join button.
+ *
+ * Kept in step with {@link voiceDisconnectMessage} by hand (same reasons, see
+ * the note there on why the two switches aren't merged).
+ */
+export function voiceDisconnectKind(reason?: DisconnectReason): VoiceDisconnectKind {
+  switch (reason) {
+    case DisconnectReason.CLIENT_INITIATED:
+      return 'silent'
+    case DisconnectReason.DUPLICATE_IDENTITY:
+    case DisconnectReason.CONNECTION_TIMEOUT:
+    case DisconnectReason.MEDIA_FAILURE:
+      return 'fatal'
+    default:
+      return 'retry'
+  }
+}
+
 export function voiceDisconnectMessage(reason?: DisconnectReason): string | null {
   switch (reason) {
     // The user tapped Leave (token cleared → room unmounts) — nothing to say.

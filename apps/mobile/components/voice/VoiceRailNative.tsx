@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { AudioSession, LiveKitRoom, useLocalParticipant, useParticipants } from '@livekit/react-native'
 import type { DisconnectReason } from 'livekit-client'
-import { voiceDisconnectMessage } from '@/lib/voice-errors'
+import { voiceDisconnectKind, voiceDisconnectMessage } from '@/lib/voice-errors'
 import { LIVEKIT_URL } from '@/lib/config'
 import { useVoiceRoom, type VoiceMode } from '@/hooks/useVoiceRoom'
 import type { VoiceParticipant } from '@/lib/voice-types'
@@ -111,6 +111,20 @@ function DisconnectedBar({
   )
 }
 
+function ReconnectingBar({ onCancel }: { onCancel: () => void }) {
+  const styles = useThemedStyles(makeStyles)
+  return (
+    <View style={styles.pill}>
+      <View style={styles.joinBtn}>
+        <Text style={styles.joinText}>Reconnecting…</Text>
+      </View>
+      <Pressable style={styles.secondaryBtn} onPress={onCancel}>
+        <Text style={styles.leaveText}>Leave</Text>
+      </Pressable>
+    </View>
+  )
+}
+
 /** LiveKit voice UI — only loaded in dev/production builds, not Expo Go. */
 export function VoiceRailNative({ gameCode, mode, hostToken, bottomOffset = 0 }: VoiceRailProps) {
   const { show } = useToast()
@@ -153,6 +167,9 @@ export function VoiceRailNative({ gameCode, mode, hostToken, bottomOffset = 0 }:
   )
 
   if (!voice.token) {
+    // Between reconnect attempts (no live token yet) — hold the Reconnecting…
+    // pill instead of dropping to Join, so a brief blip stays seamless.
+    if (voice.reconnecting) return floating(<ReconnectingBar onCancel={voice.leave} />)
     return floating(
       <DisconnectedBar
         presenceCount={voice.isConnecting ? 0 : voice.presenceCount}
@@ -169,15 +186,26 @@ export function VoiceRailNative({ gameCode, mode, hostToken, bottomOffset = 0 }:
       connect
       audio
       video={false}
+      onConnected={() => voice.reconnected()}
       onDisconnected={(reason?: DisconnectReason) => {
+        const kind = voiceDisconnectKind(reason)
+        // Transient drop (network blip): retry silently within the grace window
+        // rather than flipping straight back to the Join button.
+        if (kind === 'retry') {
+          voice.beginReconnect()
+          return
+        }
         voice.leave()
-        // Surface the reason (network/firewall timeout, takeover) instead of a
-        // silent flip back to the Join button — except our own Leave.
+        // Surface a fatal reason (firewall/timeout, takeover) — except our own Leave.
         const message = voiceDisconnectMessage(reason)
         if (message) show(message, 'error')
       }}
     >
-      <ConnectedControls displayName={voice.displayName} onLeave={voice.leave} presenceHint={voice.presenceCount} />
+      {voice.reconnecting ? (
+        <ReconnectingBar onCancel={voice.leave} />
+      ) : (
+        <ConnectedControls displayName={voice.displayName} onLeave={voice.leave} presenceHint={voice.presenceCount} />
+      )}
     </LiveKitRoom>
   )
 }
