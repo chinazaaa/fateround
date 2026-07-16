@@ -41,6 +41,33 @@ export const CONFESSION_SELECT = 'id,game_id,round_id,text,created_at'
 export const MONOPOLY_BOARD_SELECT =
   'id,game_id,turn_order,current_turn_index,phase,last_dice,consecutive_doubles,property_owners,property_buildings,mortgaged_properties,houses_in_bank,hotels_in_bank,chance_deck,community_deck,chance_discard,community_discard,auction_state,pending_trade,pending_debt,pending_space,status_message,last_card_event,last_rent_event,last_cash_event,last_trade_event,turn_deadline_at,winner_player_id,created_at,updated_at'
 
+/**
+ * `monopoly_boards` columns that are NOT NULL in the DB.
+ *
+ * Realtime UPDATE payloads omit unchanged TOAST-ed columns — once a game has enough owned
+ * properties for `property_owners` (and the other large jsonb columns) to be stored out-of-line,
+ * a board update that doesn't touch them delivers them as `null`. Since these columns can never
+ * legitimately be null, a null here proves the pushed row is partial: applying it would wipe
+ * ownership, buildings and the decks on screen. Callers use {@link isCompleteMonopolyBoardRow}
+ * to detect that and fall back to a full reload instead of the delta fast-path.
+ */
+export const MONOPOLY_BOARD_NOT_NULL_KEYS = [
+  'property_owners',
+  'property_buildings',
+  'mortgaged_properties',
+  'chance_deck',
+  'community_deck',
+  'chance_discard',
+  'community_discard',
+  'turn_order',
+] as const
+
+/** True when a pushed `monopoly_boards` row carries every NOT-NULL column (i.e. is not a
+ *  TOAST-truncated partial realtime payload — see {@link MONOPOLY_BOARD_NOT_NULL_KEYS}). */
+export function isCompleteMonopolyBoardRow(row: Record<string, unknown>): boolean {
+  return MONOPOLY_BOARD_NOT_NULL_KEYS.every((key) => row[key] != null)
+}
+
 /** Default per-turn timer when host enables timing (seconds). 0 = off. */
 export const MONOPOLY_DEFAULT_TURN_TIMER = 45
 
