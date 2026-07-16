@@ -34,9 +34,10 @@ export function LudoTurnBar({
 }) {
   const styles = useThemedStyles(makeStyles)
   const hasTimer = !!session.turn_deadline_at && session.phase !== 'finished'
-  // Web parity: game.status === 'active' && !isViewer decides who drives the timer.
+  // Web parity: game.status === 'active' && !isViewer decides who *drives* expiry,
+  // but the countdown itself shows to everyone (viewers included) while active.
   const enabled = active && hasTimer && !isViewer
-  const secondsLeft = useAbsoluteDeadline(session.turn_deadline_at, enabled)
+  const secondsLeft = useAbsoluteDeadline(session.turn_deadline_at, active && hasTimer)
 
   useTurnExpiryTimer({
     deadlineAt: hasTimer ? session.turn_deadline_at : null,

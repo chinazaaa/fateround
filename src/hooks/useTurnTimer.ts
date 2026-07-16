@@ -12,11 +12,14 @@ import { secondsUntil } from '@/lib/timer-format'
  *
  * The game-specific "is there a live timer right now" test is passed in as `hasTimer`
  * (typically: deadline present AND the phase/status is a timed one) — it is also the
- * value returned. `enabled` gates whether *this* client drives it (defaults true, for
- * games with no per-client gate). `resetKey` re-arms the interval on a caller-significant
- * change that leaves `deadlineAt` untouched (e.g. a phase flip), mirroring the original
- * per-game effect dependencies. The expire call is skipped when `gameCode` is empty
- * (preserves the games that gate firing on a resolved game id).
+ * value returned. `enabled` gates whether *this* client shows the countdown (defaults
+ * true, for games with no per-client gate). `canExpire` gates whether this client may
+ * fire the expire call — it defaults to `enabled`, so display and firing move together
+ * unless a caller decouples them (e.g. Ludo lets viewers *see* the countdown but not
+ * *drive* it). `resetKey` re-arms the interval on a caller-significant change that
+ * leaves `deadlineAt` untouched (e.g. a phase flip), mirroring the original per-game
+ * effect dependencies. The expire call is skipped when `gameCode` is empty (preserves
+ * the games that gate firing on a resolved game id).
  */
 export function useTurnTimer({
   gameCode,
@@ -24,6 +27,7 @@ export function useTurnTimer({
   deadlineAt,
   hasTimer,
   enabled = true,
+  canExpire,
   resetKey,
   intervalMs = 1000,
   urgentThreshold = 10,
@@ -34,6 +38,7 @@ export function useTurnTimer({
   deadlineAt: string | null
   hasTimer: boolean
   enabled?: boolean
+  canExpire?: boolean
   resetKey?: unknown
   intervalMs?: number
   urgentThreshold?: number
@@ -42,6 +47,9 @@ export function useTurnTimer({
   const [secondsLeft, setSecondsLeft] = useState(0)
   const firingRef = useRef(false)
   const active = enabled && hasTimer
+  // Firing gate — separate from display so a client can watch the countdown without
+  // driving expiry. Defaults to `enabled` so existing callers are unchanged.
+  const mayExpire = (canExpire ?? enabled) && hasTimer
 
   useEffect(() => {
     if (!active || !deadlineAt) {
@@ -53,7 +61,7 @@ export function useTurnTimer({
       const left = secondsUntil(deadlineAt)
       setSecondsLeft(left)
 
-      if (left <= 0 && gameCode && !firingRef.current) {
+      if (left <= 0 && gameCode && mayExpire && !firingRef.current) {
         firingRef.current = true
         try {
           await fetch(endpoint, {
@@ -78,7 +86,7 @@ export function useTurnTimer({
     return () => window.clearInterval(id)
     // resetKey re-arms the interval on a caller-significant change (e.g. phase) that
     // leaves deadlineAt untouched, matching the original per-game effect deps.
-  }, [active, deadlineAt, gameCode, endpoint, intervalMs, cooldownMs, resetKey])
+  }, [active, mayExpire, deadlineAt, gameCode, endpoint, intervalMs, cooldownMs, resetKey])
 
   return {
     secondsLeft,
