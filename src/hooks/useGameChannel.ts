@@ -4,6 +4,7 @@
 import { useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { mergeWstPoolEntry } from '@/lib/who-said-this'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 import type { Game, Participant, Player, Round, Vote, Confession, WstQuotePoolEntry } from '@/types'
 
 export interface GameChannelState {
@@ -57,7 +58,11 @@ export function useGameChannel(
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
           const g = payload.new as Game
-          state.setGame(g)
+          // Realtime UPDATE payloads drop unchanged TOAST-ed columns (large jsonb such as
+          // custom_questions) — they arrive null. Merge over the previous state so a routine
+          // games update (e.g. a round advance bumping current_round_number) can't blank the
+          // Pick-a-Number pool. See mergeRealtimeGame.
+          state.setGame((prev) => mergeRealtimeGame(prev, g))
           cbRef.current.onGameUpdate?.(g)
         }
       )
