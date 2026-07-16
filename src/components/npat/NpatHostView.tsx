@@ -10,11 +10,15 @@ import { NpatScoreboard } from '@/components/npat/NpatScoreboard'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { useNpatAdvance } from '@/hooks/useNpatAdvance'
 import {
@@ -359,11 +363,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
   const cfg = gameTypeConfig('i_call_on')
@@ -577,6 +577,113 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       )}
     </div>
   )
+
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+
+  const lobbyModeCard = (
+    <HostModeSelector
+      mode={hostMode}
+      onChange={changeHostMode}
+      onEditName={renameHost}
+      joinedPlayerId={hostPlayerId}
+      joinedPlayerName={hostPlayerName}
+      joinName={hostJoinName}
+      onJoinNameChange={setHostJoinName}
+      onJoin={() => void hostJoinGame()}
+      joining={hostJoining}
+      spectatorHint="Watch the game once it starts"
+      playerHint="Play along with everyone"
+      playingNote={
+        <p className="text-sm text-muted">
+          Playing as <strong className="text-body">{hostPlayerName}</strong> — play from the Play tab once you start.
+        </p>
+      }
+    />
+  )
+
+  const lobbySettings = (
+    <>
+      <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+      <div className="rounded-2xl border border-[color-mix(in_srgb,var(--primary)_14%,var(--border))] bg-[var(--card-strong)]/95 p-5 space-y-3">
+        <p className="label-caps">Game settings</p>
+        <label className="block space-y-1">
+          <span className="text-sm font-semibold">Game length</span>
+          <select
+            value={gameDurationSeconds}
+            onChange={(e) => setGameDurationSeconds(Number(e.target.value))}
+            className="input-field w-full"
+          >
+            {NPAT_GAME_DURATION_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {formatNpatGameDuration(s)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block space-y-1">
+          <span className="text-sm font-semibold">Writing time (per letter)</span>
+          <select
+            value={timerSeconds}
+            onChange={(e) => setTimerSeconds(Number(e.target.value))}
+            className="input-field w-full"
+          >
+            {NPAT_TIMER_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}s
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block space-y-1">
+          <span className="text-sm font-semibold">Marking time (per letter)</span>
+          <select
+            value={markingTimerSeconds}
+            onChange={(e) => setMarkingTimerSeconds(Number(e.target.value))}
+            className="input-field w-full"
+          >
+            {NPAT_MARKING_TIMER_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}s
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="button" onClick={saveTimers} disabled={savingTimer} className="btn-secondary w-full">
+          {savingTimer ? 'Saving…' : 'Save timers'}
+        </button>
+      </div>
+      <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+    </>
+  )
+
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={cfg.label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('i_call_on', game) ?? game.max_players}
+        resumeToken={hostResumeToken}
+        playCard={lobbyModeCard}
+        howToPlay={<HostRulesRow gameType="i_call_on" />}
+        settingsChildren={lobbySettings}
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart ? null : `Need at least ${NPAT_MIN_PLAYERS} players to start (${players.length}/${NPAT_MIN_PLAYERS})`
+        }
+        startLabel="Start game"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      />
+    )
+  }
 
   return (
     <HostGameLayout

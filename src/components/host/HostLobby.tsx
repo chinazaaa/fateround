@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
-import { ThemeToggle } from '@/components/ThemeToggle'
 import { ShareGameModal } from '@/components/host/ShareGameModal'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostLobbySettingsSheet } from '@/components/host/HostLobbySettingsSheet'
@@ -14,13 +13,13 @@ import type { Game, Player } from '@/types'
 
 /**
  * Mobile-parity host lobby (the `waiting` state). A clean, single-column, full-screen
- * screen that mirrors apps/mobile's HostLobbyScreen: a slim top bar (home logo + theme
- * toggle + ⚙ Host settings), the room-code/share card, the "play as yourself" card, the
+ * screen that mirrors apps/mobile's HostLobbyScreen: a slim top bar (home logo +
+ * ⚙ Host settings), the room-code/share card, the "play as yourself" card, the
  * players list, and a pinned Start / End footer.
  *
  * While mounted it sets `data-host-lobby="active"` on <html>, which (via globals.css)
- * hides the app's marketing host header and its global fixed theme toggle — the lobby owns
- * its own chrome — and docks the floating voice control above the pinned footer (whose
+ * hides the app's marketing host header — the global fixed theme toggle stays as the
+ * lobby's single light/dark control — and docks the floating voice control above the pinned footer (whose
  * height it measures into `--lobby-footer-h`). Once the game starts, the view unmounts this
  * and the tabbed in-game layout (with the normal header) returns.
  *
@@ -128,7 +127,6 @@ export function HostLobby({
               <FateRoundLogo className="h-8 w-auto max-w-[7.5rem] sm:max-w-[9rem]" />
             </Link>
             <div className="flex items-center gap-2 shrink-0">
-              <ThemeToggle variant="inline" />
               <button
                 type="button"
                 onClick={() => setSettingsOpen(true)}

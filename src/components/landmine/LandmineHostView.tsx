@@ -9,11 +9,16 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { gameTypeConfig } from '@/lib/game-types'
 import { useLandmineAdvance } from '@/hooks/useLandmineAdvance'
 import {
   getLandmineHostMode,
@@ -368,12 +373,10 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
+
+  const cfg = gameTypeConfig('landmine')
 
   const playerManageBlock =
     game.status === 'waiting' || game.status === 'active' ? (
@@ -625,6 +628,160 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
       )}
     </div>
   )
+
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+
+  const lobbyModeCard = (
+    <HostModeSelector
+      mode={hostMode}
+      onChange={changeHostMode}
+      onEditName={renameHost}
+      joinedPlayerId={hostPlayerId}
+      joinedPlayerName={hostPlayerName}
+      joinName={hostJoinName}
+      onJoinNameChange={setHostJoinName}
+      onJoin={() => void hostJoinGame()}
+      joining={hostJoining}
+      spectatorHint="Watch the game once it starts"
+      playerHint="Play along with everyone"
+      playingNote={
+        <p className="text-sm text-muted">
+          Playing as <strong className="text-body">{hostPlayerName}</strong> — play from the Play tab once you start.
+        </p>
+      }
+    />
+  )
+
+  const lobbySettings = (
+    <>
+      <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+      <div className="rounded-2xl border border-[color-mix(in_srgb,var(--primary)_14%,var(--border))] bg-[var(--card-strong)]/95 p-5 space-y-3">
+        <p className="label-caps">Game settings</p>
+        <label className="block space-y-1">
+          <span className="text-sm font-semibold">Mode</span>
+          <select
+            value={modeSetting}
+            onChange={(e) => setModeSetting(e.target.value as LandmineMode)}
+            className="input-field w-full"
+          >
+            <option value="zero_points">Zero Points — mine scores 0</option>
+            <option value="elimination">Elimination — mine knocks you out</option>
+          </select>
+        </label>
+        {modeSetting === 'zero_points' && (
+          <label className="block space-y-1">
+            <span className="text-sm font-semibold">Rounds</span>
+            <select
+              value={roundCount}
+              onChange={(e) => setRoundCount(Number(e.target.value))}
+              className="input-field w-full"
+            >
+              {LANDMINE_ROUND_COUNT_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n} rounds
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label className="block space-y-1">
+          <span className="text-sm font-semibold">Mines per round</span>
+          <select
+            value={mineCount}
+            onChange={(e) => setMineCount(Number(e.target.value))}
+            className="input-field w-full"
+          >
+            {LANDMINE_MINE_COUNT_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n} mine{n > 1 ? 's' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block space-y-1">
+          <span className="text-sm font-semibold">Time to pick a category</span>
+          <select
+            value={categoryTimer}
+            onChange={(e) => setCategoryTimer(Number(e.target.value))}
+            className="input-field w-full"
+          >
+            {LANDMINE_CATEGORY_TIMER_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}s
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block space-y-1">
+          <span className="text-sm font-semibold">Time to answer</span>
+          <select
+            value={writingTimer}
+            onChange={(e) => setWritingTimer(Number(e.target.value))}
+            className="input-field w-full"
+          >
+            {LANDMINE_WRITING_TIMER_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}s
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block space-y-1">
+          <span className="text-sm font-semibold">Time to vote on answers</span>
+          <select
+            value={markingTimer}
+            onChange={(e) => setMarkingTimer(Number(e.target.value))}
+            className="input-field w-full"
+          >
+            {LANDMINE_MARKING_TIMER_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}s
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center justify-between gap-2">
+          <span className="text-sm font-semibold">Originality bonus (+5)</span>
+          <input type="checkbox" checked={originalityBonus} onChange={(e) => setOriginalityBonus(e.target.checked)} />
+        </label>
+        <button type="button" onClick={saveSettings} disabled={savingSettings} className="btn-secondary w-full">
+          {savingSettings ? 'Saving…' : 'Save settings'}
+        </button>
+      </div>
+      <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+    </>
+  )
+
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={cfg.label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('landmine', game) ?? game.max_players}
+        resumeToken={hostResumeToken}
+        playCard={lobbyModeCard}
+        howToPlay={<HostRulesRow gameType="landmine" />}
+        settingsChildren={lobbySettings}
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : `Need at least ${LANDMINE_MIN_PLAYERS} players to start (${players.length}/${LANDMINE_MIN_PLAYERS})`
+        }
+        startLabel="Start game"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      />
+    )
+  }
 
   return (
     <HostGameLayout
