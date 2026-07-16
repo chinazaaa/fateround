@@ -239,6 +239,12 @@ import {
   NPAT_MARKING_TIMER_OPTIONS,
   NPAT_TIMER_OPTIONS,
 } from '@/lib/npat'
+import {
+  LANDMINE_DEFAULT_ROUND_COUNT,
+  LANDMINE_DEFAULT_WRITING_TIMER,
+  LANDMINE_DEFAULT_MARKING_TIMER,
+  LANDMINE_DEFAULT_CATEGORY_TIMER,
+} from '@/lib/landmine'
 import { WORD_HUNT_DEFAULT_MAX_PLAYERS, WORD_HUNT_DEFAULT_TIMER, WORD_HUNT_TIMER_OPTIONS } from '@/lib/word-hunt'
 import { formatSudokuGameDuration, SUDOKU_GAME_DURATION_OPTIONS } from '@/lib/sudoku'
 import {
@@ -998,9 +1004,24 @@ function CreateGameInner() {
       setNpatGameDuration(NPAT_DEFAULT_GAME_DURATION)
       setNpatMarkingTimer(NPAT_DEFAULT_MARKING_TIMER)
     }
+    if (isLandmineGame(type)) {
+      // Reset Landmine's own timers so switching from a game with different options can't leave
+      // them on a value outside Landmine's allowed set.
+      setLandmineCategoryTimer(LANDMINE_DEFAULT_CATEGORY_TIMER)
+      setLandmineMarkingTimer(LANDMINE_DEFAULT_MARKING_TIMER)
+    }
     setSettings({
       ...settings,
       game_type: type,
+      // Reset the shared rounds_count + writing timer to Landmine-valid defaults (they carry over
+      // from the previous game type and may not be in Landmine's option sets).
+      ...(isLandmineGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            rounds_count: LANDMINE_DEFAULT_ROUND_COUNT,
+            timer_seconds: LANDMINE_DEFAULT_WRITING_TIMER,
+          }
+        : {}),
       ...(isLobbyGame(type) ? { participant_mode: 'joiners', anonymous: true } : {}),
       ...(isAnonymousMessagesGame(type)
         ? { participant_mode: 'joiners' as const, anonymous: true, rounds_count: 1 }
@@ -2990,6 +3011,7 @@ function CreateGameInner() {
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
+                      aria-pressed={landmineMode === 'zero_points'}
                       onClick={() => setLandmineMode('zero_points')}
                       className={[
                         'rounded-2xl border-2 px-4 py-4 text-left',
@@ -3003,6 +3025,7 @@ function CreateGameInner() {
                     </button>
                     <button
                       type="button"
+                      aria-pressed={landmineMode === 'elimination'}
                       onClick={() => setLandmineMode('elimination')}
                       className={[
                         'rounded-2xl border-2 px-4 py-4 text-left',

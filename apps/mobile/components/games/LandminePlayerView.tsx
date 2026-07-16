@@ -484,7 +484,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
           <Text style={[styles.meta, { textAlign: 'left', marginTop: 8, fontWeight: '700' }]}>Everyone’s answers</Text>
           {roundAnswers.map((a) => {
             const hasAns = !!normalizeAnswer(a.answer)
-            const m = marks.find((mk) => mk.target_player_id === a.player_id)
+            const m = marks.find((mk) => mk.round_id === currentRound.id && mk.target_player_id === a.player_id)
             const verdict = !hasAns ? '—' : m?.marked_at ? (m.valid ? '✓ Valid' : '✕ Void') : '· marking'
             return (
               <View key={a.player_id} style={styles.resultRow}>
