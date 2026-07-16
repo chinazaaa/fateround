@@ -276,6 +276,7 @@ export const boardGameLobbySettingsSchema = z.object({
   monopoly_double_go_salary: z.boolean().optional(),
   monopoly_forced_auctions: z.boolean().optional(),
   monopoly_no_rent_in_jail: z.boolean().optional(),
+  monopoly_estate_dividend: z.boolean().optional(),
   whot_pick3_enabled: z.boolean().optional(),
   whot_cards_enabled: z.boolean().optional(),
   whot_number_calls_enabled: z.boolean().optional(),

@@ -95,10 +95,13 @@ export async function getMonopolyGameSettings(
   doubleGo: boolean
   forcedAuctions: boolean
   noRentInJail: boolean
+  estateDividend: boolean
 }> {
   const { data } = await supabase
     .from('games')
-    .select('timer_seconds, monopoly_double_go_salary, monopoly_forced_auctions, monopoly_no_rent_in_jail')
+    .select(
+      'timer_seconds, monopoly_double_go_salary, monopoly_forced_auctions, monopoly_no_rent_in_jail, monopoly_estate_dividend'
+    )
     .eq('id', gameId)
     .maybeSingle()
   return {
@@ -106,6 +109,7 @@ export async function getMonopolyGameSettings(
     doubleGo: data?.monopoly_double_go_salary === true,
     forcedAuctions: data?.monopoly_forced_auctions === true,
     noRentInJail: data?.monopoly_no_rent_in_jail === true,
+    estateDividend: data?.monopoly_estate_dividend === true,
   }
 }
 
@@ -2444,7 +2448,9 @@ export async function removeMonopolyPlayer(
   mortgaged = returned.mortgaged
 
   const { data: statesRaw } = await supabase.from('monopoly_player_state').select('*').eq('game_id', gameId)
-  const states = ((statesRaw ?? []) as MonopolyPlayerState[]).filter((s) => s.player_id !== playerId)
+  const allStates = (statesRaw ?? []) as MonopolyPlayerState[]
+  const departingState = allStates.find((s) => s.player_id === playerId) ?? null
+  const states = allStates.filter((s) => s.player_id !== playerId)
 
   const { turnOrder, currentTurnIndex } = turnOrderAfterRemoval(board, playerId)
   const removedWasCurrent = currentPlayerId(board) === playerId
@@ -2514,22 +2520,44 @@ export async function removeMonopolyPlayer(
     boardUpdate.last_trade_event = nextTradeEvent(board, trade.from_player_id, trade.to_player_id, 'declined')
   }
 
-  const { error: boardError } = await supabase.from('monopoly_boards').update(boardUpdate).eq('game_id', gameId)
-  if (boardError) return { error: internalErrorMessage('monopoly', boardError) }
+  let finalDividend = 0
+  // Robin Hood Estate Dividend: liquidate estate and split among remaining active players.
+  if (settings.estateDividend && !winner && departingState) {
+    const estateValue = computePlayerEstateValue(
+      playerId,
+      departingState,
+      board.property_owners,
+      board.property_buildings,
+      board.mortgaged_properties
+    )
+    const activePlayers = states.filter((s) => !s.bankrupt)
+    const dividend = activePlayers.length > 0 ? Math.floor(estateValue / activePlayers.length) : 0
 
-  const { error: stateError } = await supabase
-    .from('monopoly_player_state')
-    .delete()
-    .eq('game_id', gameId)
-    .eq('player_id', playerId)
-  if (stateError) return { error: internalErrorMessage('monopoly', stateError) }
+    if (dividend > 0) {
+      finalDividend = dividend
+      statusMessage =
+        `🏹 ${removedName} left — estate of ${formatMonopolyMoney(estateValue)} split equally! ` +
+        `Each player receives +${formatMonopolyMoney(dividend)}.`
+      boardUpdate.status_message = statusMessage
+    }
+  }
+
+  const { data: success, error: rpcError } = await supabase.rpc('monopoly_remove_player', {
+    p_game_id: gameId,
+    p_expected_updated_at: board.updated_at,
+    p_board_patch: boardUpdate,
+    p_player_id: playerId,
+    p_dividend: finalDividend,
+  })
+
+  if (rpcError) return { error: internalErrorMessage('monopoly', rpcError) }
+  if (!success) return { error: 'Board changed, please try again.' }
 
   if (winner) {
     await markGameFinished(supabase, gameId)
   }
 
-  const { error: playerError } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-  return { error: playerError?.message ?? null }
+  return { error: null }
 }
 
 function returnPlayerAssetsToBank(
@@ -2587,6 +2615,41 @@ function releasePropertiesToBank(
     housesReturned,
     hotelsReturned,
   }
+}
+
+/**
+ * Liquidation value of a departing player's estate for the Robin Hood Estate Dividend.
+ * - Unmortgaged properties: full face value (price)
+ * - Mortgaged properties: half face value (mortgage value)
+ * - Buildings: half build cost (standard Monopoly sell-back rate)
+ * - Liquid cash included
+ */
+function computePlayerEstateValue(
+  playerId: string,
+  state: MonopolyPlayerState,
+  rawOwners: unknown,
+  rawBuildings: unknown,
+  rawMortgaged?: unknown
+): number {
+  const owners = parsePropertyOwners(rawOwners)
+  const buildings = parseBuildings(rawBuildings)
+  const mortgaged = parseMortgaged(rawMortgaged)
+  let value = state.cash
+
+  for (const [idx, owner] of Object.entries(owners)) {
+    if (owner !== playerId) continue
+    const space = spaceAt(Number(idx))
+    if (!space || space.price == null) continue
+    // Mortgaged properties valued at half price; unmortgaged at full face value
+    value += mortgaged[idx] ? mortgageValue(space) : space.price
+    const level = buildings[idx] ?? 0
+    if (level === MONOPOLY_HOTEL_LEVEL) {
+      value += Math.floor(((space.houseCost ?? 0) * (MONOPOLY_HOUSES_UNDER_HOTEL + 1)) / 2)
+    } else if (level > 0) {
+      value += Math.floor(((space.houseCost ?? 0) * level) / 2)
+    }
+  }
+  return value
 }
 
 /** Fix boards where bankrupt players still appear in property_owners (legacy assign bug). */
