@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { type Game, type LandmineAnswer, type LandmineMark, type Player, type Round } from '@fateround/shared'
 import {
+  clampLandmineCategoryTimer,
   clampLandmineMarkingTimer,
   clampLandmineWritingTimer,
   gameLandmineMode,
@@ -166,10 +167,11 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
 
   const writingTimer = clampLandmineWritingTimer(bootstrap.game?.timer_seconds)
   const markingTimer = clampLandmineMarkingTimer(bootstrap.game?.operative_timer_seconds)
+  const categoryTimer = clampLandmineCategoryTimer(bootstrap.game?.game_duration_seconds)
   const secondsLeft = useMemo(() => {
     void tick
-    return metadata ? phaseSecondsLeft(metadata, writingTimer, markingTimer) : null
-  }, [metadata, tick, writingTimer, markingTimer])
+    return metadata ? phaseSecondsLeft(metadata, writingTimer, markingTimer, categoryTimer) : null
+  }, [metadata, tick, writingTimer, markingTimer, categoryTimer])
 
   useEffect(() => {
     if (!metadata || metadata.phase === 'reveal') return

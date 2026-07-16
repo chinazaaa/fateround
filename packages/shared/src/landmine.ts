@@ -18,12 +18,13 @@ export const LANDMINE_DEFAULT_MAX_PLAYERS = 20
 
 export const LANDMINE_DEFAULT_WRITING_TIMER = 45
 export const LANDMINE_DEFAULT_MARKING_TIMER = 45
-export const LANDMINE_CATEGORY_PICK_SECONDS = 15
+export const LANDMINE_DEFAULT_CATEGORY_TIMER = 10
 export const LANDMINE_HOST_REVIEW_SECONDS = 45
 export const LANDMINE_REVEAL_SECONDS = 10
 
 export const LANDMINE_WRITING_TIMER_OPTIONS = [30, 45, 60, 90] as const
-export const LANDMINE_MARKING_TIMER_OPTIONS = [30, 45, 60] as const
+export const LANDMINE_MARKING_TIMER_OPTIONS = [20, 30, 45, 60] as const
+export const LANDMINE_CATEGORY_TIMER_OPTIONS = [5, 10] as const
 
 export const LANDMINE_VALID_POINTS = 10
 export const LANDMINE_ORIGINALITY_BONUS = 5
@@ -54,6 +55,15 @@ export function clampLandmineWritingTimer(seconds: number | undefined | null): n
 export function clampLandmineMarkingTimer(seconds: number | undefined | null): number {
   const n = Number(seconds)
   return (LANDMINE_MARKING_TIMER_OPTIONS as readonly number[]).includes(n) ? n : LANDMINE_DEFAULT_MARKING_TIMER
+}
+
+export function clampLandmineCategoryTimer(seconds: number | undefined | null): number {
+  const n = Number(seconds)
+  return (LANDMINE_CATEGORY_TIMER_OPTIONS as readonly number[]).includes(n) ? n : LANDMINE_DEFAULT_CATEGORY_TIMER
+}
+
+export function gameLandmineCategoryTimer(game: Pick<Game, 'game_duration_seconds'>): number {
+  return clampLandmineCategoryTimer(game.game_duration_seconds)
 }
 
 export function normalizeAnswer(text: string | null | undefined): string {
@@ -145,11 +155,12 @@ export function resolveActiveLandmineRound(rounds: Round[], currentRoundNumber: 
 export function phaseDeadlineMs(
   metadata: LandmineMetadata,
   writingTimerSeconds: number,
-  markingTimerSeconds: number
+  markingTimerSeconds: number,
+  categoryTimerSeconds: number = LANDMINE_DEFAULT_CATEGORY_TIMER
 ): number | null {
   if (!metadata.phase_started_at) return null
   const start = new Date(metadata.phase_started_at).getTime()
-  if (metadata.phase === 'category_pick') return start + LANDMINE_CATEGORY_PICK_SECONDS * 1000
+  if (metadata.phase === 'category_pick') return start + categoryTimerSeconds * 1000
   if (metadata.phase === 'writing') return start + writingTimerSeconds * 1000
   if (metadata.phase === 'marking') return start + markingTimerSeconds * 1000
   if (metadata.phase === 'host_review') return start + LANDMINE_HOST_REVIEW_SECONDS * 1000
@@ -159,9 +170,10 @@ export function phaseDeadlineMs(
 export function phaseSecondsLeft(
   metadata: LandmineMetadata,
   writingTimerSeconds: number,
-  markingTimerSeconds: number
+  markingTimerSeconds: number,
+  categoryTimerSeconds: number = LANDMINE_DEFAULT_CATEGORY_TIMER
 ): number | null {
-  const deadline = phaseDeadlineMs(metadata, writingTimerSeconds, markingTimerSeconds)
+  const deadline = phaseDeadlineMs(metadata, writingTimerSeconds, markingTimerSeconds, categoryTimerSeconds)
   if (deadline == null) return null
   return Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
 }

@@ -6,6 +6,7 @@ import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import {
   gameLandmineMode,
+  gameLandmineCategoryTimer,
   landmineModeLabel,
   normalizeAnswer,
   parseLandmineMetadata,
@@ -107,10 +108,11 @@ export function LandmineActiveRound({
 
   const writingTimer = clampLandmineWritingTimer(game.timer_seconds)
   const markingTimer = clampLandmineMarkingTimer(game.operative_timer_seconds)
+  const categoryTimer = gameLandmineCategoryTimer(game)
   const secondsLeft = useMemo(() => {
     void tick
-    return metadata ? phaseSecondsLeft(metadata, writingTimer, markingTimer) : null
-  }, [metadata, tick, writingTimer, markingTimer])
+    return metadata ? phaseSecondsLeft(metadata, writingTimer, markingTimer, categoryTimer) : null
+  }, [metadata, tick, writingTimer, markingTimer, categoryTimer])
 
   // Per-second tick for the countdown display.
   useEffect(() => {

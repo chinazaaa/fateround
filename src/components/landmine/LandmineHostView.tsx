@@ -26,6 +26,8 @@ import {
   LANDMINE_MIN_PLAYERS,
   LANDMINE_WRITING_TIMER_OPTIONS,
   LANDMINE_MARKING_TIMER_OPTIONS,
+  LANDMINE_CATEGORY_TIMER_OPTIONS,
+  clampLandmineCategoryTimer,
   LANDMINE_MINE_COUNT_OPTIONS,
   LANDMINE_ROUND_COUNT_OPTIONS,
   type LandmineHostMode,
@@ -71,6 +73,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [roundCount, setRoundCount] = useState(5)
   const [writingTimer, setWritingTimer] = useState(45)
   const [markingTimer, setMarkingTimer] = useState(45)
+  const [categoryTimer, setCategoryTimer] = useState(10)
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
@@ -116,6 +119,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
       setRoundCount(gameRes.data.rounds_count ?? 5)
       setWritingTimer(gameRes.data.timer_seconds ?? 45)
       setMarkingTimer(gameRes.data.operative_timer_seconds ?? 45)
+      setCategoryTimer(clampLandmineCategoryTimer(gameRes.data.game_duration_seconds))
     }
     setPlayers(plrsRes.data ?? [])
     setRounds(rdsRes.data ?? [])
@@ -247,6 +251,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
     rounds_count: roundCount,
     timer_seconds: writingTimer,
     operative_timer_seconds: markingTimer,
+    game_duration_seconds: categoryTimer,
   })
 
   const startGame = async () => {
@@ -506,7 +511,21 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
               </select>
             </label>
             <label className="block space-y-1">
-              <span className="text-sm font-semibold">Writing time</span>
+              <span className="text-sm font-semibold">Time to pick a category</span>
+              <select
+                value={categoryTimer}
+                onChange={(e) => setCategoryTimer(Number(e.target.value))}
+                className="input-field w-full"
+              >
+                {LANDMINE_CATEGORY_TIMER_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {s}s
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block space-y-1">
+              <span className="text-sm font-semibold">Time to answer</span>
               <select
                 value={writingTimer}
                 onChange={(e) => setWritingTimer(Number(e.target.value))}
@@ -520,7 +539,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
               </select>
             </label>
             <label className="block space-y-1">
-              <span className="text-sm font-semibold">Marking time</span>
+              <span className="text-sm font-semibold">Time to vote on answers</span>
               <select
                 value={markingTimer}
                 onChange={(e) => setMarkingTimer(Number(e.target.value))}

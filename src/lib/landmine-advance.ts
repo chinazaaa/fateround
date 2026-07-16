@@ -10,7 +10,7 @@ import {
   ensureDefaultMarks,
   finalizeUnsubmittedAnswers,
   gameLandmineMode,
-  LANDMINE_CATEGORY_PICK_SECONDS,
+  gameLandmineCategoryTimer,
   LANDMINE_HOST_REVIEW_SECONDS,
   LANDMINE_REVEAL_SECONDS,
   parseLandmineMetadata,
@@ -80,7 +80,7 @@ function phaseExpired(metadata: LandmineMetadata, game: Game): boolean {
   if (!metadata.phase_started_at) return false
   const start = new Date(metadata.phase_started_at).getTime()
   const now = Date.now()
-  if (metadata.phase === 'category_pick') return now >= start + LANDMINE_CATEGORY_PICK_SECONDS * 1000
+  if (metadata.phase === 'category_pick') return now >= start + gameLandmineCategoryTimer(game) * 1000
   if (metadata.phase === 'writing') return now >= start + writingTimer(game) * 1000
   if (metadata.phase === 'marking') return now >= start + markingTimer(game) * 1000
   if (metadata.phase === 'host_review') return now >= start + LANDMINE_HOST_REVIEW_SECONDS * 1000
