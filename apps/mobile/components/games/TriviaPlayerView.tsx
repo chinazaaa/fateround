@@ -6,6 +6,7 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
 import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
 import { TriviaActiveRound } from '@/components/games/trivia/TriviaActiveRound'
@@ -22,6 +23,7 @@ type Screen =
   | 'join'
   | 'late_join_choice'
   | 'game_started_waiting'
+  | 'game_ended'
   | 'waiting'
   | 'playing'
   | 'finished'
@@ -46,15 +48,19 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   const computeScreen = useCallback((game: Game, playerId: string | null): Screen => {
-    if (game.status === 'finished') return 'finished'
+    // Resolve the no-identity case BEFORE 'finished' — the finished render needs a
+    // seated player (myPlayerId), so a non-participant opening a finished link would
+    // otherwise get stuck on GameLoading. Route them to the game_ended screen.
     if (!playerId) {
       const pre = preJoinScreen(game, false)
+      if (pre === 'game_ended') return 'game_ended'
       // Viewers disabled mid-game → "game in progress, wait for the next lobby".
       if (pre === 'game_started_waiting') return 'game_started_waiting'
       // Late opener with viewers allowed: offer watch-or-play instead of a bare join.
       if (pre === 'late_join_choice') return 'late_join_choice'
       return 'join'
     }
+    if (game.status === 'finished') return 'finished'
     if (game.status === 'waiting') return 'waiting'
     return 'playing'
   }, [])
@@ -89,6 +95,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
   if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
     return (
       <GameStartedWaitingScreen

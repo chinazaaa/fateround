@@ -131,7 +131,9 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   const computeScreen = useCallback((game: Game, playerId: string | null): Screen => {
-    if (game.status === 'finished') return 'finished'
+    // Resolve the no-identity case BEFORE 'finished' so a non-participant opening
+    // a finished game gets the game_ended screen rather than a results view that
+    // assumes a seated player.
     if (!playerId) {
       const pre = preJoinScreen(game, false)
       if (pre === 'game_ended') return 'game_ended'
@@ -139,6 +141,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
       if (pre === 'late_join_choice') return 'late_join_choice'
       return 'join'
     }
+    if (game.status === 'finished') return 'finished'
     if (game.status === 'waiting') return 'waiting'
     return 'playing'
   }, [])

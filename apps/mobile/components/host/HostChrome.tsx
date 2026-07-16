@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -73,6 +73,8 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
   // drawer's Remove are available to any host screen that hands us the roster.
   const showHostControls = !!players && !!onReload
 
+  // Guards against a second remove for the same row while one is in flight.
+  const removingRef = useRef<Set<string>>(new Set())
   const removeRow = useCallback(
     (row: RosterRow) => {
       Alert.alert('Remove player', `Remove ${row.name} from the game?`, [
@@ -81,7 +83,14 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
           text: 'Remove',
           style: 'destructive',
           onPress: () => {
-            void removePlayerAsHost(gameCode, row.id, hostToken).then(() => onReload?.())
+            if (removingRef.current.has(row.id)) return
+            removingRef.current.add(row.id)
+            removePlayerAsHost(gameCode, row.id, hostToken)
+              .then(() => onReload?.())
+              .catch((err) => {
+                Alert.alert('Could not remove player', err instanceof Error ? err.message : 'Please try again.')
+              })
+              .finally(() => removingRef.current.delete(row.id))
           },
         },
       ])
