@@ -45,6 +45,12 @@ CREATE TABLE IF NOT EXISTS landmine_answers (
 CREATE INDEX IF NOT EXISTS idx_landmine_answers_game_id ON landmine_answers(game_id);
 CREATE INDEX IF NOT EXISTS idx_landmine_answers_round_id ON landmine_answers(round_id);
 
+-- Publicly readable (SELECT-only; all writes go through the service-role API routes). This
+-- deliberately mirrors I Call On (npat_answers): the UI masks answers during the writing phase
+-- and opens the full board from marking onward. A determined player could read the table
+-- directly during writing, exactly as in I Call On — an accepted trade-off for this casual
+-- party game. If blind-phase secrecy is ever hardened, do it for both games together by holding
+-- writing-phase text in a server-only table until marking (not by diverging one game here).
 ALTER TABLE landmine_answers ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "landmine_answers_read" ON landmine_answers;
 CREATE POLICY "landmine_answers_read" ON landmine_answers FOR SELECT USING (true);
