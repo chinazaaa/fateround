@@ -17,10 +17,20 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "prepare": "husky || true",
     "mobile": "npm --prefix apps/mobile start",
     "mobile:typecheck": "npm --prefix apps/mobile run typecheck",
     "vapid:generate": "web-push generate-vapid-keys",
     "indexnow:submit": "node scripts/submit-indexnow.mjs"
+  },
+  "lint-staged": {
+    "src/**/*.{ts,tsx}": [
+      "prettier --write",
+      "eslint --fix"
+    ],
+    "{apps,packages}/**/*.{ts,tsx}": [
+      "prettier --write"
+    ]
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.106.0",
@@ -65,7 +75,9 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-next": "^0.0.0",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "husky": "^9.1.7",
     "jsdom": "^29.1.1",
+    "lint-staged": "^17.0.8",
     "prettier": "^3.8.4",
     "tailwindcss": "^4",
     "typescript": "^5",
