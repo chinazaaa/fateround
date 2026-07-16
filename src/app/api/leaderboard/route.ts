@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDayWinners, getSetting, getStandings, WHATSAPP_INVITE_URL_KEY } from '@/lib/community-data'
+import {
+  getDayWinners,
+  getGameBySlug,
+  getGames,
+  getSetting,
+  getStandings,
+  WHATSAPP_INVITE_URL_KEY,
+} from '@/lib/community-data'
 import {
   formatDayLabel,
   formatMonthLabel,
@@ -25,8 +32,22 @@ export async function GET(req: NextRequest) {
   const dateParam = params.get('date')
   const date = isValidDateStr(dateParam) ? dateParam : watToday()
 
+  const gameParam = params.get('game')
+
   try {
     const whatsappInviteUrl = await getSetting(WHATSAPP_INVITE_URL_KEY)
+
+    // An unknown or inactive slug falls back to all games rather than erroring —
+    // a stale bookmark should still show a leaderboard.
+    const selected = gameParam ? await getGameBySlug(gameParam, { activeOnly: true }) : null
+    const gameId = selected?.id
+    const games = (await getGames({ activeOnly: true })).map((g) => ({
+      id: g.id,
+      name: g.name,
+      slug: g.slug,
+      accent: g.accent,
+    }))
+
     let response: LeaderboardResponse
 
     if (window === 'today') {
@@ -35,9 +56,11 @@ export async function GET(req: NextRequest) {
         label: formatDayLabel(date),
         rangeStart: date,
         rangeEnd: date,
-        today: await getDayWinners(date),
+        today: await getDayWinners(date, { gameId }),
         standings: [],
         whatsappInviteUrl,
+        game: selected?.slug ?? null,
+        games,
       }
     } else {
       const { start, end } = window === 'week' ? weekBounds(date) : monthBounds(date)
@@ -47,8 +70,10 @@ export async function GET(req: NextRequest) {
         rangeStart: start,
         rangeEnd: end,
         today: [],
-        standings: await getStandings(start, end),
+        standings: await getStandings(start, end, { gameId }),
         whatsappInviteUrl,
+        game: selected?.slug ?? null,
+        games,
       }
     }
 

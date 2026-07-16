@@ -48,6 +48,16 @@ export async function getGameByType(
   return (data?.[0] as CommunityGame | undefined) ?? null
 }
 
+// Resolve a leaderboard game by its public slug (used by the ?game= filter).
+export async function getGameBySlug(slug: string, opts: { activeOnly?: boolean } = {}): Promise<CommunityGame | null> {
+  const supabase = getSupabaseAdmin()
+  let query = supabase.from('community_games').select('*').eq('slug', slug).limit(1)
+  if (opts.activeOnly) query = query.eq('is_active', true)
+  const { data, error } = await query
+  if (error) throw error
+  return (data?.[0] as CommunityGame | undefined) ?? null
+}
+
 export async function getGames(opts: { activeOnly?: boolean } = {}): Promise<CommunityGame[]> {
   const supabase = getSupabaseAdmin()
   let query = supabase.from('community_games').select('*').order('sort_order', { ascending: true }).order('name')
@@ -101,15 +111,19 @@ export async function searchPlayers(q: string, limit = 8): Promise<string[]> {
 
 // Per-game winners for a single day (one row per active game; empty array if none
 // recorded). A game can be played in multiple rounds, so it may have many winners.
-export async function getDayWinners(dateStr: string): Promise<DailyGameWinner[]> {
+// Pass opts.gameId to narrow to a single game's card.
+export async function getDayWinners(dateStr: string, opts: { gameId?: string } = {}): Promise<DailyGameWinner[]> {
   const supabase = getSupabaseAdmin()
-  const games = await getGames({ activeOnly: true })
+  const all = await getGames({ activeOnly: true })
+  const games = opts.gameId ? all.filter((g) => g.id === opts.gameId) : all
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('community_results')
     .select('game_id, recorded_at, wins, player:community_players(display_name)')
     .eq('result_date', dateStr)
     .order('recorded_at', { ascending: true })
+  if (opts.gameId) query = query.eq('game_id', opts.gameId)
+  const { data, error } = await query
   if (error) throw error
 
   const winnersByGame = new Map<string, DailyWinner[]>()
@@ -255,14 +269,22 @@ export async function deleteResult(
 }
 
 // Rank players by win count over an inclusive date range. Ties on wins share a
-// rank; within a tie, ordered by distinct games won then name.
-export async function getStandings(startStr: string, endStr: string): Promise<LeaderboardStanding[]> {
+// rank; within a tie, ordered by distinct games won then name. Pass opts.gameId
+// to rank players within a single game (the distinct-games tie-break then always
+// resolves to 1, leaving name as the effective tie-break).
+export async function getStandings(
+  startStr: string,
+  endStr: string,
+  opts: { gameId?: string } = {}
+): Promise<LeaderboardStanding[]> {
   const supabase = getSupabaseAdmin()
-  const { data, error } = await supabase
+  let query = supabase
     .from('community_results')
     .select('game_id, wins, player:community_players(display_name)')
     .gte('result_date', startStr)
     .lte('result_date', endStr)
+  if (opts.gameId) query = query.eq('game_id', opts.gameId)
+  const { data, error } = await query
   if (error) throw error
 
   type Agg = { playerName: string; wins: number; games: Set<string> }
