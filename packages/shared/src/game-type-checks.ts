@@ -112,6 +112,10 @@ export function isWordScrambleGame(gameType: GameType | string | undefined): boo
   return eq(gameType, 'word_scramble')
 }
 
+export function isLandmineGame(gameType: GameType | string | undefined): boolean {
+  return eq(gameType, 'landmine')
+}
+
 export function isQuiplashGame(gameType: GameType | string | undefined): boolean {
   return eq(gameType, 'quiplash')
 }

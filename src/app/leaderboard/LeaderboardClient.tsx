@@ -30,19 +30,24 @@ function CrownIcon({ className = '' }: { className?: string }) {
   )
 }
 
+const ALL_GAMES = ''
+
 export function LeaderboardClient() {
   const today = watToday()
   const [tab, setTab] = useState<LeaderboardWindow>('today')
   const [selectedDate, setSelectedDate] = useState<string>(today)
+  const [game, setGame] = useState<string>(ALL_GAMES) // community game slug; '' = all
   const [data, setData] = useState<LeaderboardResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  const load = useCallback(async (window: LeaderboardWindow, date: string, signal: AbortSignal) => {
+  const load = useCallback(async (window: LeaderboardWindow, date: string, gameSlug: string, signal: AbortSignal) => {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch(`/api/leaderboard?window=${window}&date=${date}`, { cache: 'no-store', signal })
+      const query = new URLSearchParams({ window, date })
+      if (gameSlug) query.set('game', gameSlug)
+      const res = await fetch(`/api/leaderboard?${query}`, { cache: 'no-store', signal })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Failed to load')
       if (signal.aborted) return
@@ -57,12 +62,19 @@ export function LeaderboardClient() {
   }, [])
 
   useEffect(() => {
-    // Abort the in-flight request when the period/date changes so a stale
+    // Abort the in-flight request when the period/date/game changes so a stale
     // response can't resolve last and overwrite the newer selection.
     const controller = new AbortController()
-    load(tab, selectedDate, controller.signal)
+    load(tab, selectedDate, game, controller.signal)
     return () => controller.abort()
-  }, [tab, selectedDate, load])
+  }, [tab, selectedDate, game, load])
+
+  // Keep the last known game list so the dropdown doesn't empty out mid-load.
+  const [games, setGames] = useState<LeaderboardResponse['games']>([])
+  useEffect(() => {
+    if (data) setGames(data.games)
+  }, [data])
+  const gameName = games.find((g) => g.slug === game)?.name ?? null
 
   const step = (dir: -1 | 1) =>
     setSelectedDate((d) =>
@@ -97,12 +109,28 @@ export function LeaderboardClient() {
           </div>
         </header>
 
-        <div className="flex items-center justify-center gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-2">
           {TABS.map((t) => (
             <Chip key={t.key} active={tab === t.key} onClick={() => setTab(t.key)}>
               {t.label}
             </Chip>
           ))}
+          <label className="flex items-center gap-1.5">
+            <span className="sr-only">Filter by game</span>
+            <select
+              value={game}
+              disabled={games.length === 0}
+              onChange={(e) => setGame(e.target.value)}
+              className="input-field py-1.5 px-2 text-sm w-auto disabled:opacity-40"
+            >
+              <option value={ALL_GAMES}>All games</option>
+              {games.map((g) => (
+                <option key={g.slug} value={g.slug}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         {data && (
@@ -163,7 +191,7 @@ export function LeaderboardClient() {
         ) : !data ? null : tab === 'today' ? (
           <TodayView data={data} />
         ) : (
-          <StandingsView data={data} />
+          <StandingsView data={data} gameName={gameName} />
         )}
 
         <p className="text-center text-xs text-faint pt-2">
@@ -235,10 +263,12 @@ function TodayView({ data }: { data: LeaderboardResponse }) {
   )
 }
 
-function StandingsView({ data }: { data: LeaderboardResponse }) {
+function StandingsView({ data, gameName }: { data: LeaderboardResponse; gameName: string | null }) {
   if (data.standings.length === 0) {
     return (
-      <div className="glass-card p-8 text-center text-muted text-sm">No wins recorded for this {data.window} yet.</div>
+      <div className="glass-card p-8 text-center text-muted text-sm">
+        No {gameName ? `${gameName} ` : ''}wins recorded for this {data.window} yet.
+      </div>
     )
   }
 
@@ -261,6 +291,7 @@ function StandingsView({ data }: { data: LeaderboardResponse }) {
         <div className="text-4xl mb-1">🥇</div>
         <p className="text-xs uppercase tracking-widest text-faint">
           {joint ? 'Joint champions' : 'Champion'} of the {data.window}
+          {gameName ? ` · ${gameName}` : ''}
         </p>
         <p className="text-3xl font-black tracking-tight mt-1">{champions.map((c) => c.playerName).join(' & ')}</p>
         <p className="text-sm text-muted mt-1">

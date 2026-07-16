@@ -3,9 +3,12 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { type SnakeLadderPlayerState, type SnakeLadderSession } from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import { buildSnakeLadderStandings, currentPlayerId } from '@fateround/shared/snake-and-ladder'
+import { preJoinScreen } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -22,7 +25,15 @@ import { SnakeLadderDie } from '@/components/games/snake-ladder/SnakeLadderDie'
 import { SnakeLadderTurnBar } from '@/components/games/snake-ladder/SnakeLadderTurnBar'
 import { SnakeLadderShareCard } from '@/components/games/snake-ladder/SnakeLadderShareCard'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 /** Minimum time the die keeps spinning after a roll, so the moment reads as tactile. */
 const ROLL_MIN_MS = 700
@@ -77,7 +88,14 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
     waitingScreen: 'waiting',
     loadGameState,
     computeScreen: (game, playerId) => {
-      if (!playerId) return 'join'
+      if (!playerId) {
+        // Viewers-only for board games: route to the pre-join gates (watch, wait
+        // for lobby, or ended) instead of a player join the server would reject.
+        const pre = preJoinScreen(game, false)
+        if (pre === 'game_started_waiting') return 'game_started_waiting'
+        if (pre === 'game_ended') return 'game_ended'
+        return 'join'
+      }
       if (game.status === 'waiting') return 'waiting'
       if (game.status === 'active') return 'playing'
       return 'finished'
@@ -176,7 +194,19 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
+    // Mid-game the only way in is as a read-only viewer.
+    const joiningAsViewer = bootstrap.game.status === 'active'
     return (
       <JoinScreen
         gameCode={bootstrap.code}
@@ -184,7 +214,14 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
         joining={bootstrap.joining}
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
-        onJoin={() => void bootstrap.join()}
+        onJoin={() => void bootstrap.join(undefined, joiningAsViewer ? { joinAsViewer: true } : undefined)}
+        kicker={joiningAsViewer ? 'Watch game' : 'Join game'}
+        hint={
+          joiningAsViewer
+            ? 'Game in progress — enter a name to watch as a viewer (read-only).'
+            : 'No account needed — enter a display name and play.'
+        }
+        submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
       />
     )
   }

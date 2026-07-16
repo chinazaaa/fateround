@@ -25,6 +25,11 @@ export function LeaderboardPanel({
    * rows in a plain View (no inner scroll, no height cap) so the page scroll
    * handles them — nesting a second vertical ScrollView here would swallow the
    * page's drag gesture and block scrolling to content below the leaderboard.
+   *
+   * In-game PLAYER views should register scores with the roster drawer
+   * (useGameScores in RosterDrawerContext) instead of embedding this panel —
+   * that keeps the main screen for gameplay. This panel remains for finish
+   * screens and host consoles that show at-a-glance standings.
    */
   embedded?: boolean
 }) {

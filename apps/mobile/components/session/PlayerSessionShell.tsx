@@ -9,6 +9,9 @@ import { subscribePlayerSession } from '@/lib/session-events'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { PlayerSessionMenu } from '@/components/session/PlayerSessionMenu'
 import { HeaderBadgeContext } from '@/components/session/HeaderBadgeContext'
+import { RosterDrawerProvider } from '@/components/session/RosterDrawerContext'
+import { RosterDrawer } from '@/components/session/RosterDrawer'
+import { RosterButton } from '@/components/session/RosterButton'
 import { HostNominationBanner } from '@/components/session/HostNominationBanner'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { HeaderAction } from '@/components/ui/HeaderAction'
@@ -109,78 +112,84 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
   }
 
   return (
-    <HeaderBadgeContext.Provider value={setHeaderBadge}>
-      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        <View style={styles.header}>
-          <View style={styles.toolbar}>
-            <Pressable style={styles.backBtn} onPress={goHome} hitSlop={8}>
-              <Text style={styles.backIcon}>←</Text>
-            </Pressable>
-
-            <View style={styles.toolbarActions}>
-              <SettingsButton />
-              <HeaderAction label="Share" onPress={() => void onShare()} />
-              {hasHostToken ? <HeaderAction label="Host" accent onPress={() => void openHost()} /> : null}
-              {playerId && !gameEnded ? (
-                <PlayerSessionMenu
-                  gameCode={gameCode}
-                  gameType={game?.game_type}
-                  playerId={playerId}
-                  playerName={playerName}
-                  onRenamed={(name) => {
-                    setPlayerName(name)
-                    void reloadSession()
-                  }}
-                  onLeft={() => void onLeft()}
-                />
-              ) : null}
-            </View>
-          </View>
-
-          <View style={styles.meta}>
-            <View style={styles.codeRow}>
-              <Text style={styles.code}>{code}</Text>
-              {typeLabel ? (
-                <View style={styles.typePill}>
-                  <Text style={styles.typePillText}>{typeLabel}</Text>
-                </View>
-              ) : null}
-              {headerBadge ? (
-                <View style={styles.modePill}>
-                  <Text style={styles.modePillText}>{headerBadge}</Text>
-                </View>
-              ) : null}
-            </View>
-            {game?.title ? (
-              <Text style={styles.title} numberOfLines={1}>
-                {game.title}
-              </Text>
-            ) : null}
-            {game?.game_type ? (
-              <View style={styles.rulesRow}>
-                <GameRulesLink gameType={game.game_type} variant="subtle" />
+    <RosterDrawerProvider myPlayerId={playerId}>
+      <HeaderBadgeContext.Provider value={setHeaderBadge}>
+        <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+          <View style={styles.header}>
+            <View style={styles.toolbar}>
+              <View style={styles.toolbarLeading}>
+                <Pressable style={styles.backBtn} onPress={goHome} hitSlop={8}>
+                  <Text style={styles.backIcon}>←</Text>
+                </Pressable>
+                <RosterButton />
               </View>
-            ) : null}
-          </View>
-        </View>
 
-        {/* Not gated on gameEnded: a host may transfer host after the game finishes
+              <View style={styles.toolbarActions}>
+                <SettingsButton />
+                <HeaderAction label="Share" onPress={() => void onShare()} />
+                {hasHostToken ? <HeaderAction label="Host" accent onPress={() => void openHost()} /> : null}
+                {playerId && !gameEnded ? (
+                  <PlayerSessionMenu
+                    gameCode={gameCode}
+                    gameType={game?.game_type}
+                    playerId={playerId}
+                    playerName={playerName}
+                    onRenamed={(name) => {
+                      setPlayerName(name)
+                      void reloadSession()
+                    }}
+                    onLeft={() => void onLeft()}
+                  />
+                ) : null}
+              </View>
+            </View>
+
+            <View style={styles.meta}>
+              <View style={styles.codeRow}>
+                <Text style={styles.code}>{code}</Text>
+                {typeLabel ? (
+                  <View style={styles.typePill}>
+                    <Text style={styles.typePillText}>{typeLabel}</Text>
+                  </View>
+                ) : null}
+                {headerBadge ? (
+                  <View style={styles.modePill}>
+                    <Text style={styles.modePillText}>{headerBadge}</Text>
+                  </View>
+                ) : null}
+              </View>
+              {game?.title ? (
+                <Text style={styles.title} numberOfLines={1}>
+                  {game.title}
+                </Text>
+              ) : null}
+              {game?.game_type ? (
+                <View style={styles.rulesRow}>
+                  <GameRulesLink gameType={game.game_type} variant="subtle" />
+                </View>
+              ) : null}
+            </View>
+          </View>
+
+          {/* Not gated on gameEnded: a host may transfer host after the game finishes
             (e.g. so the new host can start "play again") — the nominee must still
             see the invite on the finished screen. The banner self-hides unless
             there's a pending nomination for this player. */}
-        <HostNominationBanner gameCode={gameCode} playerId={playerId} resumeToken={resumeToken} />
-        <View style={styles.body}>{children}</View>
-        {/* Floats over the screen — last child so it paints above the body. */}
-        {game ? <VoiceRail gameCode={gameCode} mode="player" /> : null}
-        <ShareGameSheet
-          visible={shareOpen}
-          gameCode={gameCode}
-          hostToken={hostToken}
-          resumeToken={resumeToken}
-          onClose={() => setShareOpen(false)}
-        />
-      </SafeAreaView>
-    </HeaderBadgeContext.Provider>
+          <HostNominationBanner gameCode={gameCode} playerId={playerId} resumeToken={resumeToken} />
+          <View style={styles.body}>{children}</View>
+          {/* Floats over the screen — last child so it paints above the body. */}
+          {game ? <VoiceRail gameCode={gameCode} mode="player" /> : null}
+          <ShareGameSheet
+            visible={shareOpen}
+            gameCode={gameCode}
+            hostToken={hostToken}
+            resumeToken={resumeToken}
+            onClose={() => setShareOpen(false)}
+          />
+          <RosterDrawer />
+        </SafeAreaView>
+      </HeaderBadgeContext.Provider>
+    </RosterDrawerProvider>
   )
 }
 
@@ -213,6 +222,11 @@ const makeStyles = (theme: Theme) =>
       justifyContent: 'center',
     },
     backIcon: { color: theme.text, fontSize: 20, fontWeight: '600' },
+    toolbarLeading: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.space.xs,
+    },
     toolbarActions: {
       flexDirection: 'row',
       alignItems: 'center',

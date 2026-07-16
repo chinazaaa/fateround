@@ -17,6 +17,7 @@ const META: Partial<Record<GameType, GameMeta>> = {
   word_scramble: { emoji: '🔀', blurb: 'Unscramble the words', category: 'puzzle' },
   describe_it: { emoji: '💬', blurb: 'Describe without saying', category: 'trivia' },
   i_call_on: { emoji: '🙋', blurb: 'Pick who answers', category: 'party' },
+  landmine: { emoji: '🧨', blurb: 'Dodge the hidden mine', category: 'party' },
   ludo: { emoji: '🎲', blurb: 'Race your pieces home', category: 'board' },
   mafia: { emoji: '🌙', blurb: 'Find the mafia', category: 'party' },
   mahjong: { emoji: '🀄', blurb: 'Match the tiles', category: 'board' },

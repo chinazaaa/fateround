@@ -570,6 +570,32 @@ export function postNpatCallerApprove(gameId: string, resumeToken: string, round
   })
 }
 
+// ── Landmine ──────────────────────────────────────────────────────────────────
+export async function fetchLandmineCategories(): Promise<{
+  categories: { id: string; name: string; entryCount: number }[]
+}> {
+  const res = await fetch(apiUrl('/api/landmine/categories'), { method: 'GET' })
+  const data = (await res.json()) as { categories?: { id: string; name: string; entryCount: number }[]; error?: string }
+  if (!res.ok) throw new Error(data.error ?? 'Request failed')
+  return { categories: data.categories ?? [] }
+}
+
+export function postLandmineCategory(gameId: string, resumeToken: string, roundId: string, categoryId: string) {
+  return postJson<{ success: boolean }>('/api/landmine/category', { gameId, resumeToken, roundId, categoryId })
+}
+
+export function postLandmineSubmit(gameId: string, resumeToken: string, roundId: string, answer: string) {
+  return postJson<{ success: boolean }>('/api/landmine/submit', { gameId, resumeToken, roundId, answer })
+}
+
+export function postLandmineDraft(gameId: string, resumeToken: string, roundId: string, answer: string) {
+  return postJson<{ success: boolean }>('/api/landmine/draft', { gameId, resumeToken, roundId, answer })
+}
+
+export function postLandmineMark(gameId: string, resumeToken: string, roundId: string, valid: boolean) {
+  return postJson<{ success: boolean }>('/api/landmine/mark', { gameId, resumeToken, roundId, valid })
+}
+
 export function postChessMove(
   gameId: string,
   resumeToken: string,

@@ -45,6 +45,7 @@ const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   matching_pairs: 'matching-pairs',
   quiplash: 'quiplash',
   quick_draw: 'quick-draw',
+  landmine: 'landmine',
 }
 
 export function gameRulesUrl(gameType: GameType | string): string | null {

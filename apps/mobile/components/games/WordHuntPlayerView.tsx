@@ -4,7 +4,11 @@ import { type Game, type Player, type Round, type WordHuntSubmission } from '@fa
 import { batch5GameLabel } from '@fateround/shared/batch-5-games'
 import { parseWordHuntMetadata, tallyWordHuntScores, wordHuntPoints } from '@fateround/shared/word-hunt'
 import { validateWordHuntSubmissionClient, validWordsSetFromMetadata } from '@fateround/shared/word-hunt-client'
-import { playerIsViewer } from '@fateround/shared/viewers'
+import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
+import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
+import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
@@ -22,7 +26,16 @@ import { WordHuntPlaySurface } from '@/components/games/word-hunt/WordHuntPlaySu
 import { WordHuntResultsReview } from '@/components/games/word-hunt/WordHuntResultsReview'
 import { WordHuntPersonalResults } from '@/components/games/word-hunt/WordHuntPersonalResults'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'late_join_choice'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
@@ -75,7 +88,13 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   const computeScreen = useCallback((game: Game, playerId: string | null): Screen => {
-    if (!playerId) return 'join'
+    if (!playerId) {
+      const pre = preJoinScreen(game, false)
+      if (pre === 'game_ended') return 'game_ended'
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
+      if (pre === 'late_join_choice') return 'late_join_choice'
+      return 'join'
+    }
     if (game.status === 'waiting') return 'waiting'
     if (game.status === 'finished') return 'finished'
     return 'playing'
@@ -91,6 +110,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     computeScreen,
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
+  const lateJoin = useLateJoinContext(gameCode, bootstrap.game, bootstrap.screen === 'late_join_choice')
 
   useGameTableSync(
     gameCode,
@@ -99,11 +119,11 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     !!bootstrap.game
   )
 
-  const { label: timeLabel, timeUp, secondsLeft } = useWordHuntTimer(
-    gameCode,
-    bootstrap.game,
-    () => void bootstrap.load()
-  )
+  const {
+    label: timeLabel,
+    timeUp,
+    secondsLeft,
+  } = useWordHuntTimer(gameCode, bootstrap.game, () => void bootstrap.load())
 
   const me = useMemo(
     () => bootstrap.players.find((p) => p.id === bootstrap.myPlayerId),
@@ -115,10 +135,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     () => submissions.filter((s) => s.player_id === bootstrap.myPlayerId),
     [submissions, bootstrap.myPlayerId]
   )
-  const foundWords = useMemo(
-    () => new Set(mySubmissions.map((s) => s.word.toLowerCase())),
-    [mySubmissions]
-  )
+  const foundWords = useMemo(() => new Set(mySubmissions.map((s) => s.word.toLowerCase())), [mySubmissions])
   const myPoints = useMemo(() => mySubmissions.reduce((sum, s) => sum + s.points_awarded, 0), [mySubmissions])
 
   const leaderboard = useMemo(
@@ -171,6 +188,32 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
+  if (bootstrap.screen === 'late_join_choice' && bootstrap.game) {
+    return (
+      <LateJoinChoiceScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        context={lateJoin.context}
+        contextLoading={lateJoin.loading}
+        nameInput={bootstrap.joinName}
+        onNameChange={bootstrap.setJoinName}
+        joining={bootstrap.joining}
+        error={bootstrap.error}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        onJoinAsPlayer={() => void bootstrap.join(undefined, { joinAsViewer: false })}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
     return (
       <JoinScreen
@@ -218,9 +261,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
                   highlightPlayerId={bootstrap.myPlayerId}
                 />
               ) : null}
-              {!isViewer ? (
-                <WordHuntPersonalResults submissions={mySubmissions} validWords={validWordsArray} />
-              ) : null}
+              {!isViewer ? <WordHuntPersonalResults submissions={mySubmissions} validWords={validWordsArray} /> : null}
             </View>
           }
         />

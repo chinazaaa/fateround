@@ -41,6 +41,7 @@ import { clearAyoSessionData, canAyoPlayAgain } from '@/lib/ayo'
 import { clearDescribeItSessionData, canDescribeItPlayAgain } from '@/lib/describe-it'
 import { clearScrabbleSessionData, canScrabblePlayAgain } from '@/lib/scrabble'
 import { clearNpatSessionData } from '@/lib/npat'
+import { clearLandmineSessionData } from '@/lib/landmine'
 import { clearSudokuSessionData } from '@/lib/sudoku'
 import { clearCrosswordSessionData } from '@/lib/crossword'
 import { clearWordSearchSessionData } from '@/lib/word-search'
@@ -111,6 +112,7 @@ type ClearableSessionGameType = Extract<
   | 'crossword'
   | 'word_search'
   | 'word_scramble'
+  | 'landmine'
 >
 
 /**
@@ -147,6 +149,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   crossword: clearCrosswordSessionData,
   word_search: clearWordSearchSessionData,
   word_scramble: clearWordScrambleSessionData,
+  landmine: clearLandmineSessionData,
 }
 
 async function handlePost(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
