@@ -19,7 +19,7 @@ import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { buildMonopolyStandings, MONOPOLY_MIN_PLAYERS, MONOPOLY_STARTING_CASH } from '@/lib/monopoly'
 import { formatThemedMoney } from '@/components/monopoly/monopoly-themes'
 import { supabase } from '@/lib/supabase'
-import { MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT } from '@/lib/supabase-selects'
+import { MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT, isCompleteMonopolyBoardRow } from '@/lib/supabase-selects'
 import { clearPlayerSession, isFetchNetworkError, messageFromFetchActionError } from '@/lib/utils'
 import type { Game, MonopolyBoard, MonopolyPlayerState } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -145,6 +145,11 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     const next = row as unknown as MonopolyBoard
     const prev = boardRef.current
     if (prev && next.updated_at < prev.updated_at) return true
+    // Realtime UPDATE payloads drop unchanged TOAST-ed columns (large jsonb such as
+    // property_owners) — they arrive as null once a game has enough owned properties. Applying
+    // such a partial row would wipe ownership/buildings on screen (players show 0 property, can't
+    // see who owns what). Discard it and let the debounced full reload refetch the complete row.
+    if (!isCompleteMonopolyBoardRow(row)) return false
     setBoard(next)
     boardRef.current = next
     return prev != null
