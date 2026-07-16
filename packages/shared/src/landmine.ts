@@ -168,6 +168,16 @@ export function playerDisplayName(playerId: string | null | undefined, players: 
   return players.find((p) => p.id === playerId)?.name ?? 'Someone'
 }
 
+/** Seconds left in the post-round reveal window before the next round starts. */
+export function revealCountdownSeconds(
+  endedAt: string | null | undefined,
+  revealSeconds = LANDMINE_REVEAL_SECONDS
+): number {
+  if (!endedAt) return revealSeconds
+  const deadline = new Date(endedAt).getTime() + revealSeconds * 1000
+  return Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
+}
+
 export function duplicateAnswerSet(answers: Pick<LandmineAnswer, 'answer'>[]): Set<string> {
   const counts = new Map<string, number>()
   for (const row of answers) {
