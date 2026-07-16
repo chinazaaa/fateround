@@ -13,6 +13,7 @@ import {
   phaseSecondsLeft,
   playerDisplayName,
   resolveActiveLandmineRound,
+  revealCountdownSeconds,
   reviewTargetForMarker,
   roundCallerPlayerId,
   tallyLandmineScores,
@@ -112,8 +113,10 @@ export function LandmineActiveRound({
   }, [metadata, tick, writingTimer, markingTimer, categoryTimer])
 
   // Per-second tick for the countdown display.
+  // Keep ticking through every phase INCLUDING reveal, so the "next round in Xs" countdown
+  // updates and players can see the wait is a timer, not a freeze.
   useEffect(() => {
-    if (!metadata || metadata.phase === 'reveal') return
+    if (!metadata) return
     const id = window.setInterval(() => setTick((t) => t + 1), 1000)
     return () => window.clearInterval(id)
   }, [metadata?.phase, currentRound?.id])
@@ -140,12 +143,14 @@ export function LandmineActiveRound({
     if (myAnswer?.answer) setAnswerText(myAnswer.answer)
   }, [currentRound?.id, metadata?.phase, myAnswer?.submitted_at, myAnswer?.answer])
 
-  // Fetch the category list when the caller needs to pick. `categoryLoad` bumps to force a
-  // retry; failures surface an error + Retry button so a transient blip can't strand the caller.
+  // Prefetch the category list as soon as the game is active — for EVERY player, not just the
+  // current caller — so it's already loaded by the time someone has to pick. Fetching only when
+  // you became the caller meant a cold request could outlast the (5–10s) pick timer and auto-pick
+  // before you saw any options. `categoryLoad` bumps to force a retry.
   const [categoryError, setCategoryError] = useState(false)
   const [categoryLoad, setCategoryLoad] = useState(0)
   useEffect(() => {
-    if (metadata?.phase !== 'category_pick' || !isCaller || readOnly) return
+    if (game.status !== 'active' || readOnly) return
     let cancelled = false
     setCategoryError(false)
     void fetch('/api/landmine/categories')
@@ -162,7 +167,7 @@ export function LandmineActiveRound({
     return () => {
       cancelled = true
     }
-  }, [metadata?.phase, isCaller, readOnly, categoryLoad])
+  }, [game.status, readOnly, categoryLoad])
 
   const isDriver = useMemo(() => isAdvanceDriver(players, myPlayerId), [players, myPlayerId])
   useLandmineAdvance({
@@ -568,10 +573,17 @@ export function LandmineActiveRound({
   // ── Reveal ────────────────────────────────────────────────────────────────────
   if (screen === 'revealed') {
     const mines = metadata.revealed_mines ?? []
+    void tick // re-read each second so the countdown below updates
+    const revealLeft = revealCountdownSeconds(currentRound.ended_at)
     return (
       <div className="glass-card p-6 space-y-4">
-        <div className="text-sm text-muted">
-          Round {currentRound.round_number} · {metadata.category}
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm text-muted">
+            Round {currentRound.round_number} · {metadata.category}
+          </div>
+          {game.status === 'active' && revealLeft > 0 && (
+            <span className="text-sm font-bold text-sky-300">Next round in {revealLeft}s</span>
+          )}
         </div>
         <div className="text-center space-y-1">
           <p className="text-3xl">💥</p>
