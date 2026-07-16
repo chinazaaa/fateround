@@ -186,6 +186,16 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     return () => clearInterval(id)
   }, [metadata?.phase, currentRound?.id])
 
+  // Safety reload while the game is active. Landmine is phase-based, so a single dropped realtime
+  // event would leave this client on the old phase until the next event (that's what made the
+  // marking screen appear late). A slow always-on reload self-heals a miss within ~10s. (Timers
+  // are suspended in the background; the bootstrap's app-foreground handler covers resume.)
+  useEffect(() => {
+    if (bootstrap.game?.status !== 'active') return
+    const id = setInterval(() => void bootstrap.load(), 10_000)
+    return () => clearInterval(id)
+  }, [bootstrap.game?.status, bootstrap.load])
+
   useEffect(() => {
     setAnswerText('')
     setLockedAnswerRound(null)
