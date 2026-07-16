@@ -34,6 +34,9 @@ export type CommunityResult = {
 // The leaderboard time windows.
 export type LeaderboardWindow = 'today' | 'week' | 'month'
 
+// A game offered in the public leaderboard's game filter.
+export type LeaderboardGameOption = Pick<CommunityGame, 'id' | 'name' | 'slug' | 'accent'>
+
 // One winner of a game on a given day, with how many times they won it (a player
 // can take several of the day's rounds).
 export type DailyWinner = {
@@ -54,7 +57,7 @@ export type LeaderboardStanding = {
   rank: number // shared rank on ties
   playerName: string
   wins: number
-  gamesWon: number // distinct games won (tie-breaker)
+  gamesWon: number // distinct games won (tie-breaker); always 1 when filtered to a game
 }
 
 // Shape returned by GET /api/leaderboard.
@@ -66,4 +69,6 @@ export type LeaderboardResponse = {
   today: DailyGameWinner[] // populated for window === 'today'
   standings: LeaderboardStanding[] // populated for window === 'week' | 'month'
   whatsappInviteUrl: string | null // community WhatsApp link, if the admin set one
+  game: string | null // slug the results are filtered to; null = all games
+  games: LeaderboardGameOption[] // active games, for the filter dropdown
 }
