@@ -97,9 +97,7 @@ export function mergeCodewordsGuesses(
   const rows = Array.isArray(incoming) ? incoming : [incoming]
   const byId = new Map(prev.map((g) => [g.id, g]))
   for (const guess of rows) byId.set(guess.id, guess)
-  return Array.from(byId.values()).sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  )
+  return Array.from(byId.values()).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
 }
 
 export function cellBackground(type: CodewordsCellType, revealed: boolean, showKey: boolean): string {

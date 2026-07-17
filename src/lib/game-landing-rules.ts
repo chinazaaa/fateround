@@ -925,6 +925,31 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     },
   ],
 
+  ping_pong: [
+    {
+      title: 'Objective',
+      points: [
+        "Hit the ball back and forth. Don't miss.",
+        'Score when your opponent whiffs it or hits it out of bounds.',
+        'First to the target score wins — but you have to win by two.',
+      ],
+    },
+    {
+      title: 'Setup',
+      points: [
+        'Two players join. The host picks the winning score (3 to 21).',
+        'One player takes the top paddle, the other takes the bottom.',
+      ],
+    },
+    {
+      title: 'How to play',
+      points: [
+        'Drag your paddle to block and return the ball.',
+        'If you tie at match point (like 6-6 in a game to 7), you enter overtime. Play continues until someone takes a 2-point lead.',
+      ],
+    },
+  ],
+
   chess: [
     {
       title: 'Objective',

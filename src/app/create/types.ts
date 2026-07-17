@@ -40,6 +40,7 @@ export interface Settings {
   mafia_doctor_enabled?: boolean
   mafia_detective_enabled?: boolean
   mafia_anonymous_votes?: boolean
+  ping_pong_points_to_win?: number
 }
 
 export type Step = 'settings' | 'participants' | 'done'

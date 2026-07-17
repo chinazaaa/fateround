@@ -65,6 +65,7 @@ export function useVoteState(deps: VoteStateDeps) {
     autoSubmitRefs,
     patchCurrentRound,
   } = deps
+  const { submittedRef } = autoSubmitRefs
   const toast = useToast()
 
   const [assignment, setAssignment] = useState<VoteAssignment>(emptyAssignment())
@@ -243,7 +244,7 @@ export function useVoteState(deps: VoteStateDeps) {
         patchCurrentRound({ mlt_question: data.revealedQuestion })
         if (typeof data.pickedNumber === 'number') setPickedNumber(data.pickedNumber)
       }
-      autoSubmitRefs.submittedRef.current = true
+      submittedRef.current = true
       setSubmitted(true)
       playVoteSubmittedSound()
     } catch {
@@ -268,7 +269,7 @@ export function useVoteState(deps: VoteStateDeps) {
   }
 
   function resetVoteState() {
-    autoSubmitRefs.submittedRef.current = false
+    submittedRef.current = false
     setSubmitted(false)
     setAssignment(emptyAssignment())
     setPairAssignment({})

@@ -428,7 +428,6 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
       }
     }
     completionReadyRef.current = true
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submissions, metadata, myPlayerId])
 
   // A replay reuses this component with a fresh round — drop the previous game's answer grid

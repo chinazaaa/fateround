@@ -12,19 +12,26 @@ import { parseThemeId } from '@/lib/themes'
  * No inline CSS variables are written — inline styles on `<html>` would beat
  * the `[data-theme='dark']` rules and break dark mode for themed games.
  */
-export function useApplyGameTheme(theme: string | null | undefined) {
+export function useApplyGameTheme(theme: string | null | undefined, gameType?: string | null) {
   useEffect(() => {
     const themeId = parseThemeId(theme)
     const root = document.documentElement
 
-    if (themeId === 'default') {
-      root.removeAttribute('data-game-theme')
-      return
+    if (gameType) {
+      root.setAttribute('data-game-type', gameType)
+    } else {
+      root.removeAttribute('data-game-type')
     }
 
-    root.setAttribute('data-game-theme', themeId)
+    if (themeId === 'default') {
+      root.removeAttribute('data-game-theme')
+    } else {
+      root.setAttribute('data-game-theme', themeId)
+    }
+
     return () => {
       root.removeAttribute('data-game-theme')
+      root.removeAttribute('data-game-type')
     }
-  }, [theme])
+  }, [theme, gameType])
 }
