@@ -1868,7 +1868,8 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
                             ? 'Join & play — joiners are the names in the poll'
                             : 'Pre-set roster — players claim their name from the list'}
           </p>
-          <GameRulesLink gameType={gameType} />
+          {/* HostLobby renders its own "How to play →" link, so skip this one there. */}
+          {!inHostLobby && <GameRulesLink gameType={gameType} />}
         </div>
 
         {!inHostLobby && (
