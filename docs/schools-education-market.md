@@ -192,6 +192,33 @@ Reuse Clubs for rosters/teams; the School row just carries the safety policy + b
 `/s/pampas` link with the school's logo) — decoupled from access control. Do **not** build it to
 hide games.
 
+### Scope of the safety guarantee (say this to schools; don't over-promise)
+
+The `fateround.com` public site is the **consumer app** and shows the full catalog — you can't and
+shouldn't lock down the open internet. So the guarantee is bounded, and that's fine:
+
+- **Guaranteed (hard, server-enforced):** *inside the managed environment* — school devices, the
+  teacher's managed room, the school account — students only see safe games and cannot launch the
+  party ones. This is fully enforceable because it's our policy inside our app.
+- **Not guaranteed (and not our job):** a student visiting `fateround.com` at home on their own phone
+  sees the public consumer app, same as visiting any website. No app controls that — it's parental-
+  controls / home-network territory.
+
+**Honest pitch line:** *"In your classroom environment, students only see and can only open approved
+games. What a child does on the open internet outside school is outside any app's control — same as
+any website."* Schools accept this instantly; it's true of every tool they use (Google, YouTube).
+
+**Two things schools already handle themselves (point to them; don't build them):**
+1. **Device / network control** — labs & school tablets usually run MDM or a filtered network. A
+   school that wants to block even the public catalog on *its* devices does it at that layer
+   (allowlist the managed link). That's their IT's job, not ours.
+2. **A dedicated in-school entry link** (a school join link, or the optional `/s/pampas`) bookmarked
+   on lab devices drops students straight into the managed context — convenience + right default, not
+   a wall. **The wall is the server-side enforcement in the managed room**, not the URL.
+
+**Avoid** promising "students will never see anything inappropriate anywhere" — the public site makes
+that untrue, and you don't need it to win the deal. The classroom guarantee is enough.
+
 ## 7. Product decisions to make *now* so this stays cheap later
 
 Even though this is parked, two low-cost choices today keep the door open (see §6B for the concrete
