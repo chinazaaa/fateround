@@ -182,6 +182,7 @@ import type {
   Confession,
   WstQuotePoolEntry,
   AnimeQuotePoolEntry,
+  WstQuoteSource,
 } from '@/types'
 import { parseThemeId } from '@/lib/themes'
 import { SegmentedControl } from '@/components/ui/CreateWizard'
@@ -237,6 +238,7 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const [updatingRounds, setUpdatingRounds] = useState(false)
   const [updatingTimer, setUpdatingTimer] = useState(false)
   const [updatingViewers, setUpdatingViewers] = useState(false)
+  const [updatingWstSource, setUpdatingWstSource] = useState(false)
   const [listSearch, setListSearch] = useState('')
   const [playersSearch, setPlayersSearch] = useState('')
   const [playerQuestionCount, setPlayerQuestionCount] = useState(0)
@@ -1210,6 +1212,33 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     }
   }
 
+  // Switch the Who Said This quote source (player / anime / both) from the lobby. The player
+  // and anime quote pools are stored independently, so switching just changes which one the
+  // game draws from at start — no pool is cleared, and the matching pool editor below reacts
+  // to the new `game.wst_quote_source`.
+  async function hostUpdateWstSource(next: WstQuoteSource) {
+    if (updatingWstSource || !game || (game.wst_quote_source ?? 'player') === next) return
+    const previous = game.wst_quote_source ?? 'player'
+    setGame((g) => (g ? { ...g, wst_quote_source: next } : g))
+    setUpdatingWstSource(true)
+    try {
+      const res = await fetch(`/api/games/${gameCode}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken, wst_quote_source: next }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setGame((g) => (g ? { ...g, wst_quote_source: previous } : g))
+        toast.error(data.error || 'Failed to update quote source')
+        return
+      }
+      if (data.game) setGame(data.game)
+    } finally {
+      setUpdatingWstSource(false)
+    }
+  }
+
   async function hostUpdateLateJoinPolicy(next: LateJoinPolicy) {
     if (updatingViewers || !game || lateJoinPolicyFromGame(game) === next) return
     const previous = lateJoinPolicyFromGame(game)
@@ -1942,6 +1971,28 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
                 </div>
               )
             })()}
+
+          {isWst && (
+            <div className="glass-card p-4 space-y-3">
+              <p className="text-muted text-xs uppercase tracking-wider">Quote source</p>
+              <SegmentedControl
+                value={wstSource}
+                onChange={(v) => hostUpdateWstSource(v as WstQuoteSource)}
+                options={[
+                  { value: 'player', label: 'Player Quotes', hint: 'Players submit quotes in the lobby' },
+                  { value: 'anime', label: 'Anime Quotes', hint: 'Quotes from anime characters' },
+                  { value: 'both', label: 'Both', hint: 'Mix player + anime quotes' },
+                ]}
+              />
+              <p className="text-faint text-xs leading-relaxed">
+                {wstSource === 'anime'
+                  ? 'Anime quotes are fetched below — no player submissions needed.'
+                  : wstSource === 'both'
+                    ? 'Players submit quotes and anime quotes are fetched — both are shuffled together.'
+                    : 'One round per player who joins and submits their quote.'}
+              </p>
+            </div>
+          )}
 
           {isWst && wstPoolStatus && (game?.wst_quote_source ?? 'player') !== 'anime' && (
             <div className="glass-card p-4 space-y-4">

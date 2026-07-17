@@ -183,6 +183,8 @@ export const updateGameSchema = z.object({
   // Chess host-default appearance — editable in the lobby (cosmetic, validated server-side).
   chess_board_theme: z.string().optional(),
   chess_piece_set: z.string().optional(),
+  // Who Said This quote source (player / anime / both) — editable from the lobby.
+  wst_quote_source: wstQuoteSourceEnum.optional(),
   participant_filter: participantFilterEnum.optional(),
   gender_based: z.boolean().optional(),
   pair_vote_mode: pairVoteModeEnum.optional(),

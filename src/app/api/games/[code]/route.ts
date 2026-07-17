@@ -63,6 +63,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     scrabble_clock_seconds: rawScrabbleClockSeconds,
     chess_board_theme: rawChessBoardTheme,
     chess_piece_set: rawChessPieceSet,
+    wst_quote_source: rawWstQuoteSource,
     codewords_player_picks: rawCwPlayerPicks,
     codewords_randomize_teams: rawCwRandomize,
     participant_filter,
@@ -99,6 +100,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   // to a known theme id, matching how create handles it.
   if (rawTheme !== undefined) {
     updatePayload.theme = parseThemeId(rawTheme)
+  }
+
+  // Who Said This quote source (player / anime / both). Consumed at start to pick which
+  // quote pool(s) to draw from; the player + anime pools are stored independently, so
+  // switching just re-selects and never clears either. Gated to waiting/finished by the
+  // assertHostGameSettings path above. Schema already validated it to the enum.
+  if (rawWstQuoteSource !== undefined) {
+    if (gameType !== 'who_said_this') {
+      return NextResponse.json({ error: 'Quote source only applies to Who Said This games' }, { status: 400 })
+    }
+    updatePayload.wst_quote_source = rawWstQuoteSource
   }
 
   // Codewords team-assignment mode (players pick / host assigns / randomize),
