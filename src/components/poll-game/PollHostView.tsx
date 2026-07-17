@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { filterParticipantsInRounds } from '@/lib/utils'
+import { filterParticipantsInRounds, getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
 import { hexToRgba } from '@/lib/color'
 import { LOAD_TIMEOUT_MS, POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useScrollHostViewToTop, scrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
@@ -56,6 +56,7 @@ import {
   isCustomGame,
   pairVoteModeOptions,
   parsePairVoteMode,
+  gameTypeLabel,
 } from '@/lib/game-types'
 import { WstQuotePoolStatus } from '@/components/who-said-this/WstQuotePoolStatus'
 import {
@@ -161,6 +162,9 @@ import { HostPlayerManageList } from '@/components/host/HostPlayerManageList'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostPageShell } from '@/components/host/HostPageShell'
 import { PollHostPlayShell } from '@/components/host/PollHostPlayShell'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostModeSelector } from '@/components/host/HostModeSelector'
+import { getPollHostMode, setPollHostMode, type PollHostMode } from '@/lib/poll-host-mode'
 import { computeAchievements } from '@/lib/achievements'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -235,6 +239,13 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   )
   const [activeHotSeatSubs, setActiveHotSeatSubs] = useState<{ id: string; player_id: string; round_id: string }[]>([])
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
+  // Host "play along" state for the mobile-parity HostLobby play card (WYR pilot). Mode
+  // persists via poll-host-mode localStorage so the active-state PollHostPlayShell stays in sync.
+  const [hostMode, setHostMode] = useState<PollHostMode>('player')
+  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
+  const [hostPlayerName, setHostPlayerName] = useState('')
+  const [hostJoinName, setHostJoinName] = useState('')
+  const [hostJoining, setHostJoining] = useState(false)
 
   const advancingRef = useRef(false)
   const autoFinishTriggeredRef = useRef(false)
@@ -1253,6 +1264,95 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     }
   }
 
+  // ── Host "play along" (HostLobby play card) ───────────────────────────────
+  // Seed host-play state from persisted mode + player session (the WYR lobby renders
+  // HostModeSelector instead of PollHostPlayShell, so it owns this state itself).
+  useEffect(() => {
+    setHostMode(getPollHostMode(gameCode))
+    const session = getPlayerSession(gameCode)
+    if (session) {
+      setHostPlayerId(session.playerId)
+      setHostPlayerName(session.playerName)
+      setHostResumeToken(session.resumeToken)
+    }
+  }, [gameCode])
+
+  const changeHostMode = async (mode: PollHostMode) => {
+    if (game?.status !== 'waiting') return
+    const prev = hostMode
+    setHostMode(mode)
+    setPollHostMode(gameCode, mode)
+    // Switching to "Host only" while holding a seat → give up the seat so the host
+    // drops out of the players list (a deliberate action, so the session is cleared too).
+    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
+      try {
+        const res = await fetch('/api/players', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.error ?? 'Failed to leave seat')
+        }
+        clearPlayerSession(gameCode)
+        setHostPlayerId(null)
+        setHostResumeToken(null)
+        setHostPlayerName('')
+        await refreshLobbyLists()
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to leave seat')
+      }
+    }
+  }
+
+  const renameHost = async (name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed || !hostPlayerId) return
+    try {
+      const res = await fetch('/api/players', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
+      setHostPlayerName(data.playerName)
+      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
+      await refreshLobbyLists()
+      toast.success('Name updated!')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update name')
+    }
+  }
+
+  const hostJoinGame = async () => {
+    const name = hostJoinName.trim()
+    if (!name) return
+    setHostJoining(true)
+    try {
+      const res = await fetch('/api/players', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameCode, playerName: name }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
+      setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender ?? 'both', data.resumeToken)
+      setHostPlayerId(data.playerId)
+      setHostResumeToken(data.resumeToken ?? null)
+      setHostPlayerName(data.playerName)
+      setHostMode('player')
+      setPollHostMode(gameCode, 'player')
+      await refreshLobbyLists()
+      toast.success(`Joined as ${data.playerName}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to join')
+    } finally {
+      setHostJoining(false)
+    }
+  }
+
   const activePlayerManagePanel =
     game?.status === 'active' ? (
       <div className="glass-card p-4 space-y-3">
@@ -1498,6 +1598,178 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
                                         ? `Need ${minPool}+ joined of one gender`
                                         : `Need ${minPool}+ names joined`
       : null
+
+    // ── Mobile-parity HostLobby (Would You Rather pilot) ───────────────────────
+    // WYR is a player-only, joiners, no-gender, always-anonymous lobby, so it maps
+    // cleanly onto the shared HostLobby: the players list, code/share card, visibility,
+    // theme, and late-join are all handled by the shell. Every other poll subtype falls
+    // through to the legacy inline waiting-room below (Phase 1 isolation).
+    if (isWyr && !game.replay_pending) {
+      const lobbyModeCard = (
+        <HostModeSelector
+          mode={hostMode}
+          onChange={changeHostMode}
+          joinedPlayerId={hostPlayerId}
+          joinedPlayerName={hostPlayerName}
+          joinName={hostJoinName}
+          onJoinNameChange={setHostJoinName}
+          onJoin={() => void hostJoinGame()}
+          joining={hostJoining}
+          onEditName={renameHost}
+          spectatorHint="Watch the game once it starts"
+          playerHint="Vote along with everyone"
+          playingNote={
+            <p className="text-sm text-muted">
+              Playing as <strong className="text-body">{hostPlayerName}</strong> — vote once the game starts.
+            </p>
+          }
+        />
+      )
+
+      const lobbySettings = (
+        <>
+          <div className="glass-card p-4 space-y-3">
+            <p className="text-muted text-xs uppercase tracking-wider">Rounds</p>
+            {roundsHint && <p className="text-faint text-xs">{roundsHint}</p>}
+            <div className="space-y-2">
+              <p className="text-muted text-[10px] uppercase tracking-wider">Rounds</p>
+              <input
+                type="number"
+                min={1}
+                max={Math.max(lobbyQuestionMax, 1)}
+                step={1}
+                defaultValue={game.rounds_count}
+                key={`${game.rounds_count}-${lobbyQuestionMax}`}
+                disabled={updatingRounds || lobbyQuestionMax < 1}
+                onBlur={(e) => {
+                  const n = clampLobbyQuestionRounds(e.target.value, lobbyQuestionMax)
+                  e.target.value = String(n)
+                  if (n !== game.rounds_count) hostUpdateRounds(n)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                }}
+                className="input-field w-28 py-2 text-sm disabled:opacity-50"
+              />
+            </div>
+            {roundOptions.length > 0 && (
+              <div className="flex gap-2 flex-wrap">
+                {roundOptions.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    disabled={n > maxRounds || updatingRounds}
+                    onClick={() => hostUpdateRounds(n)}
+                    className={`min-w-[2.5rem] px-3 py-2 rounded-xl border text-sm font-semibold disabled:opacity-40 ${
+                      game.rounds_count === n ? 'chip-active' : 'chip'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            )}
+            {roundsTooHigh && (
+              <p className="callout-warning">
+                {game.rounds_count} rounds is too many — pick {maxRounds} or fewer
+              </p>
+            )}
+            <div className="pt-3 border-t border-theme">{timerControl}</div>
+          </div>
+
+          <div className="glass-card p-4 space-y-3">
+            <div className="space-y-1">
+              <p className="text-muted text-xs uppercase tracking-wider">Player submissions</p>
+              <SegmentedControl
+                value={lobbyAllowsPlayerQuestions(game) ? 'on' : 'off'}
+                onChange={(v) => {
+                  hostUpdatePlayerQuestions({ player_questions_enabled: v === 'on' })
+                }}
+                options={[
+                  { value: 'on', label: 'Allowed' },
+                  { value: 'off', label: 'Disabled' },
+                ]}
+              />
+              <p className="text-faint text-xs">
+                {lobbyAllowsPlayerQuestions(game)
+                  ? 'Players can submit their own questions in the lobby before start.'
+                  : 'Only your uploaded or platform questions will be used.'}
+              </p>
+            </div>
+            {lobbyAllowsPlayerQuestions(game) && (
+              <div className="space-y-1">
+                <p className="text-muted text-xs uppercase tracking-wider">Question mix</p>
+                <SegmentedControl
+                  value={parsePlayerQuestionsOrder(game.player_questions_order)}
+                  onChange={(v) => {
+                    hostUpdatePlayerQuestions({ player_questions_order: v as PlayerQuestionsOrder })
+                  }}
+                  options={playerQuestionsOrderOptions(game).map((opt) => ({
+                    value: opt.value,
+                    label: opt.label,
+                  }))}
+                />
+                <p className="text-faint text-xs">
+                  {
+                    playerQuestionsOrderOptions(game).find(
+                      (opt) => opt.value === parsePlayerQuestionsOrder(game.player_questions_order)
+                    )?.hint
+                  }
+                </p>
+              </div>
+            )}
+            {savingPlayerQuestions && <p className="text-faint text-xs px-0.5">Saving…</p>}
+          </div>
+
+          {playAgainNeedsSetup(game) && (
+            <button
+              type="button"
+              onClick={() => openPoolSetup('lobby')}
+              disabled={savingLobbyPool}
+              className="btn-secondary w-full py-3"
+            >
+              Change questions or upload CSV
+            </button>
+          )}
+        </>
+      )
+
+      return (
+        <>
+          <HostLobby
+            gameCode={gameCode}
+            hostToken={hostToken}
+            game={game}
+            gameTypeLabel={gameTypeLabel(gameType) ?? 'Would You Rather'}
+            players={players}
+            maxPlayers={game.max_players}
+            resumeToken={hostResumeToken}
+            playCard={lobbyModeCard}
+            settingsChildren={lobbySettings}
+            onStart={() => void handleStart()}
+            starting={starting}
+            startDisabled={!canStart}
+            startDisabledHint={startDisabledHint}
+            startLabel="Start Would You Rather"
+            onRemovePlayer={hostRemovePlayer}
+            removingPlayerId={adminBusy}
+            highlightPlayerId={hostPlayerId}
+            onEnded={syncGameState}
+          />
+          {game && (
+            <PlayAgainSetup
+              open={poolSetup.open}
+              onClose={() => setPoolSetup((prev) => ({ ...prev, open: false }))}
+              game={game}
+              participants={participants}
+              onConfirm={handlePoolSetupConfirm}
+              loading={poolSetup.variant === 'lobby' ? savingLobbyPool : playingAgain}
+              variant={poolSetup.variant}
+            />
+          )}
+        </>
+      )
+    }
 
     return (
       <HostPageShell gameCode={gameCode}>
