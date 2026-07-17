@@ -2429,6 +2429,25 @@ export async function removeMonopolyPlayer(
   playerId: string,
   playerName?: string
 ): Promise<{ error: string | null }> {
+  // A Leave can land in the tiny window between reading the board and the CAS
+  // write inside monopoly_remove_player — another player's action, a turn
+  // advance, or the timer bumps updated_at and the claim returns false. Unlike
+  // in-turn actions (which the current player retries), nothing retries a Leave,
+  // so we retry here against a freshly re-read board before surfacing an error.
+  const MAX_ATTEMPTS = 4
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const result = await attemptRemoveMonopolyPlayer(supabase, gameId, playerId, playerName)
+    if (result !== 'retry') return result
+  }
+  return { error: 'Board changed, please try again.' }
+}
+
+async function attemptRemoveMonopolyPlayer(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  playerName?: string
+): Promise<{ error: string | null } | 'retry'> {
   const { data: boardRaw } = await supabase.from('monopoly_boards').select('*').eq('game_id', gameId).maybeSingle()
   if (!boardRaw) {
     const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
@@ -2550,7 +2569,7 @@ export async function removeMonopolyPlayer(
   })
 
   if (rpcError) return { error: internalErrorMessage('monopoly', rpcError) }
-  if (!success) return { error: 'Board changed, please try again.' }
+  if (!success) return 'retry' // lost the CAS race — caller re-reads a fresh board and tries again
 
   if (winner) {
     await markGameFinished(supabase, gameId)

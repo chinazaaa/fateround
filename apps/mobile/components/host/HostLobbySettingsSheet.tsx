@@ -115,7 +115,15 @@ import {
   customContentCount,
 } from '@/lib/create-settings/custom-content'
 import { puzzleThemeIdFromValue } from '@/lib/puzzle-themes'
-import { isPairGame } from '@fateround/shared/poll-games'
+import {
+  isPairGame,
+  isPollGame,
+  isVoterOnlyMode,
+  isWouldYouRather,
+  isNeverHaveIEver,
+  isMostLikelyTo,
+  isWhoSaidThis,
+} from '@fateround/shared/poll-games'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
@@ -208,6 +216,17 @@ export function HostLobbySettingsSheet({
   const isMonopoly = isMonopolyLobbyGame(gameType)
   const isICallOn = isICallOnLobbyGame(gameType)
   const showPollQuestions = hasPollQuestionSettings(gameType)
+  // "Rounds include" (all vs joined) applies only to import-roster poll games — a pre-set host
+  // list where not everyone may join. Mirrors web's participant_filter gate. Not tied to
+  // hasPollQuestionSettings: SMK / parent_approval need it but have no pair/player-question controls.
+  const showPollParticipantFilter =
+    isPollGame(gameType) &&
+    (game.participant_mode ?? 'import') !== 'joiners' &&
+    !isVoterOnlyMode(game) &&
+    !isWouldYouRather(gameType) &&
+    !isNeverHaveIEver(gameType) &&
+    !isMostLikelyTo(gameType) &&
+    !isWhoSaidThis(gameType)
   const isBingo = isBingoLobbyGame(gameType)
   const isMahjong = isMahjongLobbyGame(gameType)
   const isTrivia = isTriviaLobbyGame(gameType)
@@ -325,6 +344,7 @@ export function HostLobbySettingsSheet({
   }))
   const [poll, setPoll] = useState<PollQuestionsState>(() => ({
     pairVoteMode: game.pair_vote_mode === 'any' ? 'any' : 'one_each',
+    participantFilter: game.participant_filter === 'joined' ? 'joined' : 'all',
     playerQuestionsEnabled: game.player_questions_enabled ?? true,
     playerQuestionsOrder:
       game.player_questions_order === 'uploaded_first'
@@ -443,8 +463,10 @@ export function HostLobbySettingsSheet({
       if (icallon.timerSeconds !== game.timer_seconds) patch.timer_seconds = icallon.timerSeconds
       if (icallon.markingTimer !== game.operative_timer_seconds) patch.operative_timer_seconds = icallon.markingTimer
     }
-    if (showPollQuestions) {
+    if (showPollQuestions || showPollParticipantFilter) {
       if (isPairGame(gameType) && poll.pairVoteMode !== game.pair_vote_mode) patch.pair_vote_mode = poll.pairVoteMode
+      if (showPollParticipantFilter && poll.participantFilter !== (game.participant_filter ?? 'all'))
+        patch.participant_filter = poll.participantFilter
       if (supportsPlayerQuestions(gameType)) {
         if (poll.playerQuestionsEnabled !== game.player_questions_enabled)
           patch.player_questions_enabled = poll.playerQuestionsEnabled
@@ -783,11 +805,12 @@ export function HostLobbySettingsSheet({
               <ICallOnLobbySection value={icallon} onChange={(p) => setIcallon((prev) => ({ ...prev, ...p }))} />
             ) : null}
 
-            {showPollQuestions ? (
+            {showPollQuestions || showPollParticipantFilter ? (
               <PollQuestionsSection
                 gameType={gameType}
                 value={poll}
                 onChange={(p) => setPoll((prev) => ({ ...prev, ...p }))}
+                showParticipantFilter={showPollParticipantFilter}
               />
             ) : null}
 

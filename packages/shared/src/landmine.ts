@@ -24,7 +24,7 @@ export const LANDMINE_REVEAL_SECONDS = 10
 
 export const LANDMINE_WRITING_TIMER_OPTIONS = [30, 45, 60, 90] as const
 export const LANDMINE_MARKING_TIMER_OPTIONS = [20, 30, 45, 60] as const
-export const LANDMINE_CATEGORY_TIMER_OPTIONS = [5, 10] as const
+export const LANDMINE_CATEGORY_TIMER_OPTIONS = [5, 10, 15, 30] as const
 
 export const LANDMINE_VALID_POINTS = 10
 export const LANDMINE_ORIGINALITY_BONUS = 5

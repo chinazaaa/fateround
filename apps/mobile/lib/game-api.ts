@@ -588,6 +588,17 @@ export function postLandmineSubmit(gameId: string, resumeToken: string, roundId:
   return postJson<{ success: boolean }>('/api/landmine/submit', { gameId, resumeToken, roundId, answer })
 }
 
+// Manual mode: the setter submits the category + mine word(s) for their round.
+export function postLandmineSetup(
+  gameId: string,
+  resumeToken: string,
+  roundId: string,
+  category: string,
+  mines: string[]
+) {
+  return postJson<{ success: boolean }>('/api/landmine/setup', { gameId, resumeToken, roundId, category, mines })
+}
+
 export function postLandmineDraft(gameId: string, resumeToken: string, roundId: string, answer: string) {
   return postJson<{ success: boolean }>('/api/landmine/draft', { gameId, resumeToken, roundId, answer })
 }
@@ -981,6 +992,7 @@ export type LobbySettingsPatch = {
   codewords_player_picks?: boolean
   codewords_randomize_teams?: boolean
   pair_vote_mode?: 'one_each' | 'any'
+  participant_filter?: 'all' | 'joined'
   player_questions_enabled?: boolean
   player_questions_order?: 'players_first' | 'uploaded_first' | 'mixed'
   ai_questions_enabled?: boolean

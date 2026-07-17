@@ -3144,7 +3144,10 @@ function CreateGameInner() {
                     <button
                       type="button"
                       aria-pressed={landmineMineSource === 'system'}
-                      onClick={() => setLandmineMineSource('system')}
+                      onClick={() => {
+                        setLandmineMineSource('system')
+                        setLandmineCategoryTimer(10)
+                      }}
                       className={[
                         'rounded-2xl border-2 px-4 py-4 text-left',
                         landmineMineSource === 'system'
@@ -3160,7 +3163,12 @@ function CreateGameInner() {
                     <button
                       type="button"
                       aria-pressed={landmineMineSource === 'manual'}
-                      onClick={() => setLandmineMineSource('manual')}
+                      onClick={() => {
+                        setLandmineMineSource('manual')
+                        // Give setters more time to type, and default to a single cycle.
+                        setLandmineCategoryTimer(30)
+                        setSettings((s) => ({ ...s, rounds_count: 1 }))
+                      }}
                       className={[
                         'rounded-2xl border-2 px-4 py-4 text-left',
                         landmineMineSource === 'manual'
@@ -3235,15 +3243,28 @@ function CreateGameInner() {
                   </Field>
                 )}
                 {landmineMode === 'zero_points' && landmineMineSource === 'manual' && (
-                  <p className="text-faint text-xs">
-                    Manual mode runs one round per player, so everyone gets a turn to set the mine.
-                  </p>
+                  <Field label="Number of rounds">
+                    <SegmentedControl
+                      value={String(settings.rounds_count)}
+                      onChange={(v) => setSettings({ ...settings, rounds_count: Number(v) })}
+                      options={[1, 2, 3, 5].map((n) => ({ value: String(n), label: String(n) }))}
+                    />
+                    <p className="text-faint text-xs mt-1">
+                      One round = every player takes a turn setting the mine. So {settings.rounds_count} round
+                      {settings.rounds_count === 1 ? '' : 's'} means everyone sets{' '}
+                      {settings.rounds_count === 1 ? 'once' : `${settings.rounds_count} times`}.
+                    </p>
+                  </Field>
                 )}
-                <Field label="Time to pick a category">
+                <Field
+                  label={
+                    landmineMineSource === 'manual' ? 'Time to set the category & mine' : 'Time to pick a category'
+                  }
+                >
                   <SegmentedControl
                     value={String(landmineCategoryTimer)}
                     onChange={(v) => setLandmineCategoryTimer(Number(v))}
-                    options={[5, 10].map((n) => ({ value: String(n), label: `${n}s` }))}
+                    options={[5, 10, 15, 30].map((n) => ({ value: String(n), label: `${n}s` }))}
                   />
                 </Field>
                 <Field label="Time to answer">
@@ -5685,6 +5706,7 @@ function CreateGameInner() {
               >
                 Add all from paste
               </button>
+              {uploadError && <p className="text-red-400 text-sm">{uploadError}</p>}
             </div>
           )}
 

@@ -126,9 +126,8 @@ export function LandmineActiveRound({
 
   const writingTimer = clampLandmineWritingTimer(game.timer_seconds)
   const markingTimer = clampLandmineMarkingTimer(game.operative_timer_seconds)
-  // Manual setters get the (longer) answer timer to type a category + mine; auto mode uses the
-  // short category-pick timer. This must mirror phaseExpired() on the server.
-  const categoryTimer = manual ? writingTimer : gameLandmineCategoryTimer(game)
+  // The category-pick timer also drives the manual-mode setup phase (options run up to 30s).
+  const categoryTimer = gameLandmineCategoryTimer(game)
   const secondsLeft = useMemo(() => {
     void tick
     return metadata ? phaseSecondsLeft(metadata, writingTimer, markingTimer, categoryTimer) : null
