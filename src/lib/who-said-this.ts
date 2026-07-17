@@ -344,10 +344,17 @@ export function tallyAnimeWstVotes(votes: Vote[], choices: string[], correctChar
 export interface WstPlayerScore {
   playerId: string
   name: string
+  /** Speed-weighted points (fastest correct wins); 0 for legacy name-list rounds. */
+  points: number
   correctGuesses: number
 }
 
-/** Points for picking the right name each round. */
+/**
+ * Rank players by speed-weighted points ("fastest correct wins"): each correct answer earns
+ * points scaled by how quickly it came in, summed across rounds. Ties break on correct count,
+ * then average response time, then name. Choice rounds (deck + players-submit) carry per-vote
+ * `points`/`response_ms`; legacy name-list rounds fall back to a plain correct-count.
+ */
 export function tallyWstPlayerScores(
   rounds: {
     id: string
@@ -358,9 +365,17 @@ export function tallyWstPlayerScores(
   votes: Vote[],
   players: Player[]
 ): WstPlayerScore[] {
-  const scores = new Map<string, number>()
   const activePlayers = players.filter((p) => p.spectator !== true)
-  for (const p of activePlayers) scores.set(p.id, 0)
+  const points = new Map<string, number>()
+  const correct = new Map<string, number>()
+  const totalMs = new Map<string, number>()
+  const answered = new Map<string, number>()
+  for (const p of activePlayers) {
+    points.set(p.id, 0)
+    correct.set(p.id, 0)
+    totalMs.set(p.id, 0)
+    answered.set(p.id, 0)
+  }
 
   for (const round of rounds) {
     const roundVotes = votes.filter((v) => v.round_id === round.id)
@@ -368,28 +383,44 @@ export function tallyWstPlayerScores(
     if (round.anime_metadata) {
       const correctChar = round.anime_metadata.correct_character
       for (const vote of roundVotes) {
+        if (!points.has(vote.player_id)) continue
+        answered.set(vote.player_id, (answered.get(vote.player_id) ?? 0) + 1)
+        if (typeof vote.response_ms === 'number') {
+          totalMs.set(vote.player_id, (totalMs.get(vote.player_id) ?? 0) + vote.response_ms)
+        }
         if (vote.anime_choice === correctChar) {
-          scores.set(vote.player_id, (scores.get(vote.player_id) ?? 0) + 1)
+          correct.set(vote.player_id, (correct.get(vote.player_id) ?? 0) + 1)
+          // Prefer stored speed points; fall back to a flat point for legacy rows without them.
+          points.set(vote.player_id, (points.get(vote.player_id) ?? 0) + (vote.points ?? 1))
         }
       }
     } else {
       const correctId = wstCorrectParticipantIdFromRound(round, players)
       if (!correctId) continue
       for (const vote of roundVotes) {
+        if (!points.has(vote.player_id)) continue
         if (vote.target_participant_id === correctId) {
-          scores.set(vote.player_id, (scores.get(vote.player_id) ?? 0) + 1)
+          correct.set(vote.player_id, (correct.get(vote.player_id) ?? 0) + 1)
+          points.set(vote.player_id, (points.get(vote.player_id) ?? 0) + 1)
         }
       }
     }
   }
 
-  return [...scores.entries()]
-    .map(([playerId, correctGuesses]) => ({
-      playerId,
-      name: activePlayers.find((p) => p.id === playerId)?.name ?? 'Unknown',
-      correctGuesses,
+  return activePlayers
+    .map((p) => ({
+      playerId: p.id,
+      name: p.name,
+      points: points.get(p.id) ?? 0,
+      correctGuesses: correct.get(p.id) ?? 0,
+      avgMs: (answered.get(p.id) ?? 0) > 0 ? (totalMs.get(p.id) ?? 0) / (answered.get(p.id) ?? 1) : Infinity,
     }))
     .sort(
-      (a, b) => b.correctGuesses - a.correctGuesses || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+      (a, b) =>
+        b.points - a.points ||
+        b.correctGuesses - a.correctGuesses ||
+        a.avgMs - b.avgMs ||
+        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
     )
+    .map(({ playerId, name, points, correctGuesses }) => ({ playerId, name, points, correctGuesses }))
 }

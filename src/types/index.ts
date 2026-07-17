@@ -1519,6 +1519,9 @@ export interface Vote {
   target_participant_id: string | null
   anime_choice?: string | null
   picked_number?: number | null
+  /** Who Said This speed scoring: how quickly the answer came in, and the points it earned. */
+  response_ms?: number | null
+  points?: number | null
   created_at: string
 }
 

@@ -1,6 +1,34 @@
 import { describe, it, expect } from 'vitest'
-import { buildRoundsFromDeck, type WstDeckEntry } from '@/lib/who-said-this'
+import { buildRoundsFromDeck, tallyWstPlayerScores, type WstDeckEntry } from '@/lib/who-said-this'
 import { parseWstDeckImport, parseStoredWstDeck } from '@/lib/custom-questions'
+import type { Player, Vote } from '@/types'
+
+describe('tallyWstPlayerScores (speed-weighted)', () => {
+  const players = [
+    { id: 'a', name: 'Ann', spectator: false },
+    { id: 'b', name: 'Bob', spectator: false },
+    { id: 's', name: 'Spec', spectator: true },
+  ] as unknown as Player[]
+  const rounds = [{ id: 'r1', anime_metadata: { correct_character: 'Yoda' } }]
+  const votes = [
+    // Ann: correct, 400 pts (faster). Bob: correct, 300 pts (slower). Ranked by points.
+    { player_id: 'a', round_id: 'r1', anime_choice: 'Yoda', points: 400, response_ms: 1000 },
+    { player_id: 'b', round_id: 'r1', anime_choice: 'Yoda', points: 300, response_ms: 5000 },
+  ] as unknown as Vote[]
+
+  it('ranks by summed points and excludes spectators', () => {
+    const scores = tallyWstPlayerScores(rounds, votes, players)
+    expect(scores.map((s) => s.name)).toEqual(['Ann', 'Bob'])
+    expect(scores[0]).toMatchObject({ name: 'Ann', points: 400, correctGuesses: 1 })
+    expect(scores.find((s) => s.name === 'Spec')).toBeUndefined()
+  })
+
+  it('a wrong answer scores 0 points', () => {
+    const wrong = [{ player_id: 'b', round_id: 'r1', anime_choice: 'Vader', points: 0 }] as unknown as Vote[]
+    const scores = tallyWstPlayerScores(rounds, wrong, players)
+    expect(scores.find((s) => s.name === 'Bob')).toMatchObject({ points: 0, correctGuesses: 0 })
+  })
+})
 
 const DECK: WstDeckEntry[] = [
   { quote: 'Expecto Patronum!', options: ['Harry Potter', 'Ron Weasley', 'Draco Malfoy', 'Hagrid'], correctIndex: 0 },

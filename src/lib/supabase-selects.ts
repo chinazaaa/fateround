@@ -34,7 +34,7 @@ export const CROSSWORD_SUBMISSION_SELECT =
   'id,game_id,round_id,player_id,cell_row,cell_col,submitted_letter,is_correct,via_hint,submitted_at'
 
 export const VOTE_SELECT =
-  'id,player_id,round_id,game_id,kiss_participant_id,marry_participant_id,kill_participant_id,pair_assignments,wyr_choice,target_player_id,target_participant_id,anime_choice,picked_number,created_at'
+  'id,player_id,round_id,game_id,kiss_participant_id,marry_participant_id,kill_participant_id,pair_assignments,wyr_choice,target_player_id,target_participant_id,anime_choice,picked_number,response_ms,points,created_at'
 
 export const CONFESSION_SELECT = 'id,game_id,round_id,text,created_at'
 

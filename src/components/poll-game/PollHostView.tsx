@@ -3527,11 +3527,11 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             >
               {isWst && wstScores.length > 0 && (
                 <PaginatedLeaderboard
-                  title="Best guessers"
+                  title="Leaderboard"
                   rows={wstScores.map((row, i) => ({
                     id: row.playerId,
                     name: row.name,
-                    score: row.correctGuesses,
+                    score: row.points,
                     rank: i + 1,
                   }))}
                 />
