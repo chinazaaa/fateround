@@ -119,6 +119,8 @@ export interface NpatMark {
 // ---------------------------------------------------------------------------
 export type LandminePhase = 'category_pick' | 'writing' | 'marking' | 'reveal'
 export type LandmineMode = 'zero_points' | 'elimination'
+/** Who plants the mine: 'system' (server draws it) or 'manual' (a rotating player sets it). */
+export type LandmineMineSource = 'system' | 'manual'
 
 export interface LandmineMetadata {
   phase: LandminePhase
@@ -136,7 +138,8 @@ export interface LandmineMetadata {
   scores_computed?: boolean
 }
 
-export type LandmineOutcome = 'valid' | 'original' | 'void' | 'mine' | 'empty'
+/** 'setter' marks the manual-mode setter's mirror-payout row (blank answer, points = round total). */
+export type LandmineOutcome = 'valid' | 'original' | 'void' | 'mine' | 'empty' | 'setter'
 
 export interface LandmineAnswer {
   id: string
@@ -409,6 +412,8 @@ export interface Game {
   landmine_mine_count?: number | null
   /** Landmine — award +5 when nobody else gave your answer. */
   landmine_originality_bonus?: boolean | null
+  /** Landmine — 'system' (server draws the mine) or 'manual' (a rotating player sets it). */
+  landmine_mine_source?: LandmineMineSource | null
   /** Ping Pong — points required to win the match (3, 5, 7, 11, 15, or 21). */
   ping_pong_points_to_win?: number | null
 }
@@ -1546,6 +1551,9 @@ export interface Vote {
   target_participant_id: string | null
   anime_choice?: string | null
   picked_number?: number | null
+  /** Who Said This speed scoring: how quickly the answer came in, and the points it earned. */
+  response_ms?: number | null
+  points?: number | null
   created_at: string
 }
 
@@ -1590,13 +1598,26 @@ export interface WstQuotePoolEntry {
   game_id: string
   player_id: string | null
   quote_text: string
-  author_participant_id: string
+  /** Trivia-style answer options the submitter supplied (2–4). */
+  options: string[] | null
+  /** Index into `options` of the correct answer. */
+  correct_index: number | null
+  /** Legacy (name-list model) — unused by the current players-submit flow. */
+  author_participant_id: string | null
   created_at: string
   updated_at: string
 }
 
+/**
+ * Choice-round metadata for Who Said This: a quote whose author is guessed from a fixed
+ * set of string `choices` (rather than from the players in the room). `source: 'anime'` is
+ * the legacy auto-fetched pool; `source: 'deck'` is a host-provided Pre-set roster deck
+ * (Platform / Library / uploaded CSV). `anime_name` doubles as the deck's optional category
+ * label (e.g. "Harry Potter"). A round with this metadata present is a choice round
+ * (see `isAnimeRound`), regardless of source.
+ */
 export interface AnimeMetadata {
-  source: 'anime'
+  source: 'anime' | 'deck'
   anime_name: string
   correct_character: string
   choices: string[]
@@ -1613,7 +1634,11 @@ export interface AnimeQuotePoolEntry {
   created_at: string
 }
 
-export type WstQuoteSource = 'player' | 'anime' | 'both'
+// 'player' = Join & play (players submit quotes about themselves; guess who in the room).
+// 'deck' = Pre-set roster (host-provided quote+answer deck; guess the character from choices).
+// 'anime'/'both' are the legacy auto-fetch sources, retained for back-compat while that path
+// is migrated into Library decks.
+export type WstQuoteSource = 'player' | 'anime' | 'both' | 'deck'
 
 export interface BingoCard {
   id: string

@@ -122,7 +122,10 @@ export interface Game {
   landmine_mode?: LandmineMode | null
   landmine_mine_count?: number | null
   landmine_originality_bonus?: boolean | null
+  landmine_mine_source?: LandmineMineSource | null
   question_source?: string | null
+  /** Who Said This: 'player' (players submit) or 'deck' (host Platform/Library/CSV deck). */
+  wst_quote_source?: string | null
   trivia_category?: TriviaCategory | string | null
   created_at?: string | null
   bingo_call_mode?: 'manual' | 'auto' | string | null
@@ -351,6 +354,9 @@ export interface Vote {
   target_participant_id: string | null
   anime_choice?: string | null
   picked_number?: number | null
+  /** Who Said This speed scoring: how quickly the answer came in, and the points it earned. */
+  response_ms?: number | null
+  points?: number | null
   created_at: string
 }
 
@@ -843,7 +849,8 @@ export interface NpatMark {
 // Landmine — single-answer variant of I Call On with a secret mine + two scoring modes.
 export type LandminePhase = 'category_pick' | 'writing' | 'marking' | 'reveal'
 export type LandmineMode = 'zero_points' | 'elimination'
-export type LandmineOutcome = 'valid' | 'original' | 'void' | 'mine' | 'empty'
+export type LandmineMineSource = 'system' | 'manual'
+export type LandmineOutcome = 'valid' | 'original' | 'void' | 'mine' | 'empty' | 'setter'
 
 export interface LandmineMetadata {
   phase: LandminePhase

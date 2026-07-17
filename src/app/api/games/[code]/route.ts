@@ -23,7 +23,16 @@ import {
   isCheckersGame,
   isTicTacToeGame,
   isPingPongGame,
+  isLandmineGame,
 } from '@/lib/game-types'
+import {
+  clampLandmineCategoryTimer,
+  clampLandmineMarkingTimer,
+  clampLandmineMineCount,
+  clampLandmineWritingTimer,
+  parseLandmineMineSource,
+  parseLandmineMode,
+} from '@/lib/landmine'
 import { clampNpatGameDuration, clampNpatMarkingTimer, clampNpatTimer } from '@/lib/npat'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { clampChessTimer, clampChessBoardTheme, clampChessPieceSet } from '@/lib/chess'
@@ -194,6 +203,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     }
   } else if (rawPingPongPointsToWin !== undefined) {
     return NextResponse.json({ error: 'Points to win only applies to Ping Pong games' }, { status: 400 })
+  }
+
+  // Landmine host-lobby settings. Pre-start only (assertHostGameSettings restricts this PATCH to a
+  // waiting/finished game). The landmine timers live on the shared timer columns, so they're
+  // clamped here rather than in the generic timer blocks below.
+  if (isLandmineGame(gameType)) {
+    if (body.landmine_mode !== undefined) updatePayload.landmine_mode = parseLandmineMode(body.landmine_mode)
+    if (body.landmine_mine_source !== undefined) {
+      updatePayload.landmine_mine_source = parseLandmineMineSource(body.landmine_mine_source)
+    }
+    if (body.landmine_mine_count !== undefined) {
+      updatePayload.landmine_mine_count = clampLandmineMineCount(body.landmine_mine_count)
+    }
+    if (body.landmine_originality_bonus !== undefined) {
+      updatePayload.landmine_originality_bonus = body.landmine_originality_bonus !== false
+    }
+    if (rawTimerSeconds !== undefined) updatePayload.timer_seconds = clampLandmineWritingTimer(rawTimerSeconds)
+    if (rawOperativeTimerSeconds !== undefined) {
+      updatePayload.operative_timer_seconds = clampLandmineMarkingTimer(rawOperativeTimerSeconds)
+    }
+    if (rawGameDurationSeconds !== undefined) {
+      updatePayload.game_duration_seconds = clampLandmineCategoryTimer(rawGameDurationSeconds)
+    }
   }
 
   if (rawOperativeTimerSeconds !== undefined) {

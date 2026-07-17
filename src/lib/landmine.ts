@@ -6,6 +6,7 @@ import type {
   LandmineAnswer,
   LandmineMark,
   LandmineMetadata,
+  LandmineMineSource,
   LandmineMode,
   LandmineOutcome,
   LandminePhase,
@@ -57,6 +58,7 @@ export const LANDMINE_ORIGINALITY_BONUS = 5
 export const LANDMINE_MAX_ANSWER_LENGTH = 80
 
 export const LANDMINE_DEFAULT_MODE: LandmineMode = 'zero_points'
+export const LANDMINE_DEFAULT_MINE_SOURCE: LandmineMineSource = 'system'
 export const LANDMINE_DEFAULT_MINE_COUNT = 1
 export const LANDMINE_MINE_COUNT_OPTIONS = [1, 2, 3] as const
 export const LANDMINE_DEFAULT_ROUND_COUNT = 5
@@ -98,6 +100,29 @@ export function clampLandmineRoundCount(n: number | undefined | null): number {
 
 export function parseLandmineMode(raw: unknown): LandmineMode {
   return raw === 'elimination' ? 'elimination' : 'zero_points'
+}
+
+export function parseLandmineMineSource(raw: unknown): LandmineMineSource {
+  return raw === 'manual' ? 'manual' : 'system'
+}
+
+/** Read the game's mine source from its stored column, defaulting to 'system'. */
+export function gameLandmineMineSource(game: Pick<Game, 'landmine_mine_source'>): LandmineMineSource {
+  return parseLandmineMineSource(game.landmine_mine_source)
+}
+
+export function landmineMineSourceLabel(source: LandmineMineSource | null | undefined): string {
+  return parseLandmineMineSource(source) === 'manual' ? 'Manual' : 'Auto'
+}
+
+/**
+ * The players who actually answer + peer-mark this round. In manual mode the rotating setter
+ * (the round's caller/submitter) sits out, so they're excluded from the answering ring; in
+ * system mode the caller plays like everyone else.
+ */
+export function landmineAnsweringPlayerIds(playerIds: string[], setterId: string | null, manual: boolean): string[] {
+  if (!manual || !setterId) return playerIds
+  return playerIds.filter((id) => id !== setterId)
 }
 
 export function normalizeAnswer(text: string | null | undefined): string {
@@ -226,8 +251,12 @@ export function buildLandmineInitialRound(opts: {
   playerOrder: string[]
   mineCount: number
   now: string
+  /** Manual mode: the first setter (playerOrder[0]) sits out, so they're kept out of the ring. */
+  manual?: boolean
 }): Record<string, unknown> {
-  const assignments = buildReviewerAssignments(opts.playerOrder, 1)
+  const setterId = opts.playerOrder[0] ?? null
+  const answering = landmineAnsweringPlayerIds(opts.playerOrder, setterId, opts.manual ?? false)
+  const assignments = buildReviewerAssignments(answering, 1)
   return {
     game_id: opts.gameId,
     round_number: 1,
@@ -257,6 +286,8 @@ export function buildLandmineNextRound(opts: {
   playerIds: string[]
   mineCount: number
   now: string
+  /** Manual mode: this round's setter (the caller) sits out of the marking ring. */
+  manual?: boolean
 }): Record<string, unknown> | null {
   const { caller_order, caller_index, caller_id } = syncCallerOrder(
     opts.previousMetadata.caller_order,
@@ -269,7 +300,8 @@ export function buildLandmineNextRound(opts: {
   if (!submitterId) return null
 
   const callerIndex = caller_order.indexOf(submitterId)
-  const reviewerIds = opts.playerIds.length > 0 ? opts.playerIds : caller_order
+  const baseReviewers = opts.playerIds.length > 0 ? opts.playerIds : caller_order
+  const reviewerIds = landmineAnsweringPlayerIds(baseReviewers, submitterId, opts.manual ?? false)
 
   return {
     game_id: opts.gameId,

@@ -6,8 +6,10 @@ import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import {
   gameLandmineMode,
+  gameLandmineMineSource,
   gameLandmineCategoryTimer,
   landmineModeLabel,
+  clampLandmineMineCount,
   normalizeAnswer,
   parseLandmineMetadata,
   phaseSecondsLeft,
@@ -30,7 +32,9 @@ import type { Game, LandmineAnswer, LandmineMark, LandmineMetadata, Player, Roun
 type PlayScreen =
   | 'waiting'
   | 'category_pick'
+  | 'setup'
   | 'category_wait'
+  | 'setter_watch'
   | 'writing'
   | 'writing_locked'
   | 'marking'
@@ -72,6 +76,9 @@ export function LandmineActiveRound({
   const [answerText, setAnswerText] = useState('')
   const [markValid, setMarkValid] = useState<boolean | null>(null)
   const [categories, setCategories] = useState<CategoryOption[]>([])
+  // Manual mode: the setter types the category + mine word(s) themselves.
+  const [setupCategory, setSetupCategory] = useState('')
+  const [setupMines, setSetupMines] = useState<string[]>([''])
   const [tick, setTick] = useState(0)
   // Optimistic lock-in: the POST is authoritative, but we flip to the locked view the instant it
   // succeeds instead of waiting on a full state reload (that reload latency is what felt like
@@ -94,6 +101,10 @@ export function LandmineActiveRound({
   const callerId = currentRound ? roundCallerPlayerId(currentRound, metadata) : null
   const isCaller = callerId === myPlayerId
   const callerName = playerDisplayName(callerId, players)
+  const manual = gameLandmineMineSource(game) === 'manual'
+  // In manual mode the caller is the "setter": they plant the mine and sit out the round.
+  const isSetter = manual && isCaller
+  const mineCount = clampLandmineMineCount(metadata?.mine_count)
 
   const roundAnswers = useMemo(
     () => (currentRound ? answers.filter((a) => a.round_id === currentRound.id) : []),
@@ -103,7 +114,10 @@ export function LandmineActiveRound({
     () => (currentRound ? marks.filter((m) => m.round_id === currentRound.id) : []),
     [marks, currentRound]
   )
-  const myAnswer = roundAnswers.find((a) => a.player_id === myPlayerId) ?? null
+  // The setter's mirror-payout row (outcome 'setter') is not a real answer — keep it out of the
+  // answer boards and per-answer lists (it still counts in the leaderboard, which reads `answers`).
+  const playerAnswers = useMemo(() => roundAnswers.filter((a) => a.outcome !== 'setter'), [roundAnswers])
+  const myAnswer = roundAnswers.find((a) => a.player_id === myPlayerId && a.outcome !== 'setter') ?? null
   const myMark = roundMarks.find((m) => m.marker_player_id === myPlayerId) ?? null
   const reviewTargetId = reviewTargetForMarker(metadata, myPlayerId)
   const reviewTargetAnswer = reviewTargetId ? (roundAnswers.find((a) => a.player_id === reviewTargetId) ?? null) : null
@@ -112,7 +126,9 @@ export function LandmineActiveRound({
 
   const writingTimer = clampLandmineWritingTimer(game.timer_seconds)
   const markingTimer = clampLandmineMarkingTimer(game.operative_timer_seconds)
-  const categoryTimer = gameLandmineCategoryTimer(game)
+  // Manual setters get the (longer) answer timer to type a category + mine; auto mode uses the
+  // short category-pick timer. This must mirror phaseExpired() on the server.
+  const categoryTimer = manual ? writingTimer : gameLandmineCategoryTimer(game)
   const secondsLeft = useMemo(() => {
     void tick
     return metadata ? phaseSecondsLeft(metadata, writingTimer, markingTimer, categoryTimer) : null
@@ -133,6 +149,8 @@ export function LandmineActiveRound({
     autoSubmittedRoundRef.current = null
     setAnswerText('')
     setMarkValid(null)
+    setSetupCategory('')
+    setSetupMines([''])
     setLockedAnswerRound(null)
     setLockedAnswerText('')
     setLockedMarkRound(null)
@@ -159,7 +177,8 @@ export function LandmineActiveRound({
   const [categoryError, setCategoryError] = useState(false)
   const [categoryLoad, setCategoryLoad] = useState(0)
   useEffect(() => {
-    if (game.status !== 'active' || readOnly) return
+    // Manual mode doesn't use the admin category list — the setter types their own.
+    if (game.status !== 'active' || readOnly || manual) return
     let cancelled = false
     setCategoryError(false)
     void fetch('/api/landmine/categories')
@@ -176,7 +195,7 @@ export function LandmineActiveRound({
     return () => {
       cancelled = true
     }
-  }, [game.status, readOnly, categoryLoad])
+  }, [game.status, readOnly, categoryLoad, manual])
 
   const isDriver = useMemo(() => isAdvanceDriver(players, myPlayerId), [players, myPlayerId])
   useLandmineAdvance({
@@ -225,6 +244,37 @@ export function LandmineActiveRound({
     }
   }
 
+  const submitSetup = async () => {
+    if (!currentRound || readOnly || picking) return
+    if (!myResumeToken) return toastError('Your player session expired — rejoin to continue')
+    const category = setupCategory.trim()
+    const mines = setupMines.map((m) => m.trim()).filter(Boolean)
+    if (!category) return toastError('Type a category')
+    if (mines.length === 0) return toastError(`Type ${mineCount > 1 ? 'at least one mine' : 'the mine'}`)
+    setPicking(true)
+    try {
+      const res = await fetch('/api/landmine/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gameId: gameCode,
+          resumeToken: myResumeToken,
+          roundId: currentRound.id,
+          category,
+          mines,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to set up round')
+      playVoteSubmittedSound()
+      await onReload?.()
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to set up round')
+    } finally {
+      setPicking(false)
+    }
+  }
+
   const submitAnswerText = useCallback(
     async (value: string, opts?: { silent?: boolean }) => {
       if (!currentRound || readOnly || submittingRef.current) return
@@ -267,9 +317,10 @@ export function LandmineActiveRound({
     [currentRound, readOnly, myResumeToken, gameCode, onReload, toastError]
   )
 
-  // Auto-submit whatever is typed when the writing deadline passes.
+  // Auto-submit whatever is typed when the writing deadline passes. The setter sits out, so they
+  // never auto-submit an answer.
   useEffect(() => {
-    if (!currentRound || readOnly || metadata?.phase !== 'writing' || myAnswer?.submitted_at) return
+    if (!currentRound || readOnly || isSetter || metadata?.phase !== 'writing' || myAnswer?.submitted_at) return
     if (!metadata.phase_started_at) return
     const deadline = new Date(metadata.phase_started_at).getTime() + writingTimer * 1000
     const msLeft = Math.max(0, deadline - Date.now())
@@ -286,6 +337,7 @@ export function LandmineActiveRound({
     writingTimer,
     myAnswer?.submitted_at,
     readOnly,
+    isSetter,
     submitAnswerText,
   ])
 
@@ -317,7 +369,12 @@ export function LandmineActiveRound({
     if (!currentRound) return 'waiting'
     if (currentRound.status === 'finished' || metadata?.phase === 'reveal') return 'revealed'
     const phase = metadata?.phase ?? 'category_pick'
-    if (phase === 'category_pick') return isCaller ? 'category_pick' : 'category_wait'
+    if (phase === 'category_pick') {
+      if (manual) return isSetter ? 'setup' : 'category_wait'
+      return isCaller ? 'category_pick' : 'category_wait'
+    }
+    // Manual mode: the setter planted the mine and sits out — they watch, never answer or mark.
+    if (isSetter && (phase === 'writing' || phase === 'marking')) return 'setter_watch'
     if (phase === 'writing') {
       const locked = !!myAnswer?.submitted_at || lockedAnswerRound === currentRound.id
       return locked ? 'writing_locked' : 'writing'
@@ -327,7 +384,18 @@ export function LandmineActiveRound({
       return marked ? 'marking_locked' : 'marking'
     }
     return 'waiting'
-  }, [game.status, currentRound, metadata, isCaller, myAnswer, myMark, lockedAnswerRound, lockedMarkRound])
+  }, [
+    game.status,
+    currentRound,
+    metadata,
+    isCaller,
+    isSetter,
+    manual,
+    myAnswer,
+    myMark,
+    lockedAnswerRound,
+    lockedMarkRound,
+  ])
 
   // ── Finished ────────────────────────────────────────────────────────────────
   if (screen === 'finished') {
@@ -369,7 +437,8 @@ export function LandmineActiveRound({
         <p className="text-lg font-bold">Next round coming up…</p>
         {upcoming && (
           <p className="text-muted text-sm">
-            Up next: {playerDisplayName(upcoming.submitter_player_id, players)} picks the category
+            Up next: {playerDisplayName(upcoming.submitter_player_id, players)}{' '}
+            {manual ? 'sets the category & mine' : 'picks the category'}
           </p>
         )}
       </div>
@@ -397,7 +466,7 @@ export function LandmineActiveRound({
   const answerBoard = (
     <div className="space-y-1.5">
       <p className="label-caps text-xs">Everyone’s answers</p>
-      {roundAnswers.map((a) => {
+      {playerAnswers.map((a) => {
         const name = playerDisplayName(a.player_id, players)
         const hasText = !!normalizeAnswer(a.answer)
         const mark = roundMarks.find((m) => m.target_player_id === a.player_id)
@@ -471,12 +540,94 @@ export function LandmineActiveRound({
     )
   }
 
+  // ── Manual setup — the setter types the category + mine(s) ─────────────────────
+  if (screen === 'setup') {
+    return (
+      <div className="glass-card p-6 space-y-4">
+        {roundHeader}
+        <div className="text-center space-y-1">
+          <p className="text-3xl">🧨</p>
+          <p className="font-bold text-lg">You’re the setter — plant the mine</p>
+          <p className="text-sm text-muted">
+            Pick a category, then set the secret mine{mineCount > 1 ? 's' : ''}. You sit this round out and score
+            whatever the room scores.
+          </p>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <p className="label-caps text-xs mb-1">Category</p>
+            <input
+              type="text"
+              value={setupCategory}
+              onChange={(e) => setSetupCategory(e.target.value)}
+              placeholder="e.g. Countries in North America"
+              maxLength={80}
+              autoComplete="off"
+              className="input-field w-full"
+            />
+          </div>
+          <div className="space-y-2">
+            <p className="label-caps text-xs">Secret mine{mineCount > 1 ? `s (up to ${mineCount})` : ''}</p>
+            {Array.from({ length: mineCount }).map((_, i) => (
+              <input
+                key={i}
+                type="text"
+                value={setupMines[i] ?? ''}
+                onChange={(e) => {
+                  const next = [...setupMines]
+                  while (next.length < mineCount) next.push('')
+                  next[i] = e.target.value
+                  setSetupMines(next)
+                }}
+                placeholder={mineCount > 1 ? `Mine ${i + 1}` : 'The mine word'}
+                maxLength={LANDMINE_MAX_ANSWER_LENGTH}
+                autoComplete="off"
+                className="input-field w-full"
+              />
+            ))}
+            <p className="text-xs text-muted">
+              Anyone who types {mineCount > 1 ? 'one of these' : 'this'} scores 0. Keep it tempting but dodgeable.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={picking || readOnly || !setupCategory.trim() || setupMines.every((m) => !m.trim())}
+          onClick={() => void submitSetup()}
+          className="btn-primary w-full py-3 disabled:opacity-50"
+        >
+          Start the round
+        </button>
+      </div>
+    )
+  }
+
   if (screen === 'category_wait') {
     return (
       <div className="glass-card p-8 text-center space-y-2">
         {roundHeader}
         <p className="text-3xl">🎯</p>
-        <p className="font-bold">{callerName} is picking a category…</p>
+        <p className="font-bold">
+          {callerName} is {manual ? 'setting the category & mine' : 'picking a category'}…
+        </p>
+      </div>
+    )
+  }
+
+  // ── Manual setter watching their round play out ────────────────────────────────
+  if (screen === 'setter_watch') {
+    return (
+      <div className="glass-card p-6 space-y-4">
+        {roundHeader}
+        <div className="text-center space-y-1">
+          <p className="text-3xl">🕵️</p>
+          <p className="font-bold">You set this round — sit back and watch</p>
+          <p className="text-sm text-muted">
+            Category: <span className="font-semibold">{metadata.category}</span>. You’ll score the total everyone else
+            earns.
+          </p>
+        </div>
+        {answerBoard}
       </div>
     )
   }
@@ -516,7 +667,7 @@ export function LandmineActiveRound({
             Lock in
           </button>
         </div>
-        <p className="text-xs text-muted text-center">{roundAnswers.filter((a) => a.submitted_at).length} locked in</p>
+        <p className="text-xs text-muted text-center">{playerAnswers.filter((a) => a.submitted_at).length} locked in</p>
       </div>
     )
   }
@@ -611,29 +762,47 @@ export function LandmineActiveRound({
           <p className="text-2xl font-black text-red-400">{mines.join(', ') || '—'}</p>
         </div>
         <div className="space-y-2">
-          {roundAnswers.map((a) => {
-            const name = playerDisplayName(a.player_id, players)
-            const badge =
-              a.outcome === 'mine'
-                ? { text: '💥 Mine', cls: 'text-red-300' }
-                : a.outcome === 'void'
-                  ? { text: 'Void · 0', cls: 'text-muted' }
-                  : a.outcome === 'empty'
-                    ? { text: '— · 0', cls: 'text-muted' }
-                    : { text: `+${a.points ?? 0}${a.is_original ? ' ⭐' : ''}`, cls: 'text-emerald-300' }
+          {(() => {
+            const setterRow = manual ? roundAnswers.find((a) => a.outcome === 'setter') : null
             return (
-              <div
-                key={a.player_id}
-                className="flex items-center justify-between gap-2 rounded-lg border border-white/10 px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold truncate">{name}</p>
-                  <p className="text-sm text-muted truncate">{a.answer || '(no answer)'}</p>
-                </div>
-                <span className={`text-sm font-bold shrink-0 ${badge.cls}`}>{badge.text}</span>
-              </div>
+              <>
+                {setterRow && (
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate">
+                        {playerDisplayName(setterRow.player_id, players)}
+                      </p>
+                      <p className="text-sm text-muted truncate">🧨 Set this round’s mine</p>
+                    </div>
+                    <span className="text-sm font-bold shrink-0 text-amber-300">+{setterRow.points ?? 0}</span>
+                  </div>
+                )}
+                {playerAnswers.map((a) => {
+                  const name = playerDisplayName(a.player_id, players)
+                  const badge =
+                    a.outcome === 'mine'
+                      ? { text: '💥 Mine', cls: 'text-red-300' }
+                      : a.outcome === 'void'
+                        ? { text: 'Void · 0', cls: 'text-muted' }
+                        : a.outcome === 'empty'
+                          ? { text: '— · 0', cls: 'text-muted' }
+                          : { text: `+${a.points ?? 0}${a.is_original ? ' ⭐' : ''}`, cls: 'text-emerald-300' }
+                  return (
+                    <div
+                      key={a.player_id}
+                      className="flex items-center justify-between gap-2 rounded-lg border border-white/10 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold truncate">{name}</p>
+                        <p className="text-sm text-muted truncate">{a.answer || '(no answer)'}</p>
+                      </div>
+                      <span className={`text-sm font-bold shrink-0 ${badge.cls}`}>{badge.text}</span>
+                    </div>
+                  )
+                })}
+              </>
             )
-          })}
+          })()}
         </div>
         <PaginatedLeaderboard
           title="Standings"
