@@ -62,7 +62,9 @@ export function usePolling(
   const backoffRef = useRef(0)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pollRef = useRef(poll)
-  pollRef.current = poll
+  useEffect(() => {
+    pollRef.current = poll
+  }, [poll])
 
   useEffect(() => {
     if (!enabled) return

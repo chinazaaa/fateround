@@ -11,7 +11,9 @@ import type { GameStatus } from '@/types'
 export function useLobbyOpenNotification(status: GameStatus | undefined | null, onOpen?: () => void): void {
   const prevRef = useRef<GameStatus | null | undefined>(undefined)
   const onOpenRef = useRef(onOpen)
-  onOpenRef.current = onOpen
+  useEffect(() => {
+    onOpenRef.current = onOpen
+  }, [onOpen])
 
   useEffect(() => {
     const prev = prevRef.current

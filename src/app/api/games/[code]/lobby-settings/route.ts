@@ -333,6 +333,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.game_duration_seconds = clampWhotGameDuration(game_duration_seconds)
     } else if (boardLobbyType === 'crazy_eights') {
       gameUpdate.game_duration_seconds = clampCrazyEightsGameDuration(game_duration_seconds)
+    } else if (parseGameType(game.game_type) === 'ping_pong') {
+      gameUpdate.game_duration_seconds = Math.max(0, game_duration_seconds)
     } else {
       return NextResponse.json({ error: 'This game type does not support game length settings' }, { status: 400 })
     }

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/immutability */
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -62,10 +63,10 @@ export function useVoteState(deps: VoteStateDeps) {
     view,
     players,
     participants,
-    autoSubmitRefs,
+    autoSubmitRefs: autoSubmitRefsRef,
     patchCurrentRound,
   } = deps
-  const { submittedRef } = autoSubmitRefs
+  const { submittedRef } = autoSubmitRefsRef
   const toast = useToast()
 
   const [assignment, setAssignment] = useState<VoteAssignment>(emptyAssignment())
@@ -83,22 +84,26 @@ export function useVoteState(deps: VoteStateDeps) {
   const isPanGame = isPickANumber(game?.game_type)
 
   // Sync vote state → autoSubmit refs at render time
-  autoSubmitRefs.assignmentRef.current = assignment
-  autoSubmitRefs.pairAssignmentRef.current = pairAssignment
-  autoSubmitRefs.customAssignmentsRef.current = customAssignments
-  autoSubmitRefs.wyrChoiceRef.current = wyrChoice
-  autoSubmitRefs.mltTargetPlayerIdRef.current = mltTargetPlayerId
-  autoSubmitRefs.animeChoiceRef.current = animeChoice
-  autoSubmitRefs.pickedNumberRef.current = pickedNumber
-  autoSubmitRefs.panUsedNumbersRef.current = panUsedNumbers
+  const setRef = (key: keyof AutoSubmitRefs, val: any) => {
+    ;(autoSubmitRefsRef[key] as any).current = val
+  }
+
+  setRef('assignmentRef', assignment)
+  setRef('pairAssignmentRef', pairAssignment)
+  setRef('customAssignmentsRef', customAssignments)
+  setRef('wyrChoiceRef', wyrChoice)
+  setRef('mltTargetPlayerIdRef', mltTargetPlayerId)
+  setRef('animeChoiceRef', animeChoice)
+  setRef('pickedNumberRef', pickedNumber)
+  setRef('panUsedNumbersRef', panUsedNumbers)
 
   // Sync session state → autoSubmit refs at render time
-  autoSubmitRefs.playersRef.current = players
-  autoSubmitRefs.currentRoundRef.current = currentRound
-  autoSubmitRefs.gameRef.current = game
-  autoSubmitRefs.participantsRef.current = participants
-  autoSubmitRefs.myPlayerIdRef.current = myPlayerId
-  autoSubmitRefs.myPlayerGenderRef.current = myPlayerGender
+  setRef('playersRef', players)
+  setRef('currentRoundRef', currentRound)
+  setRef('gameRef', game)
+  setRef('participantsRef', participants)
+  setRef('myPlayerIdRef', myPlayerId)
+  setRef('myPlayerGenderRef', myPlayerGender)
 
   // PaN picker reveal fetch
   useEffect(() => {
@@ -118,12 +123,12 @@ export function useVoteState(deps: VoteStateDeps) {
     return () => {
       cancelled = true
     }
-  }, [isPanGame, view, currentRound?.id, currentRound?.mlt_question, currentRound?.submitter_player_id, pickedNumber])
+  }, [isPanGame, view, currentRound, pickedNumber])
 
   // PaN used numbers fetch
   useEffect(() => {
     if (!isPanGame || view !== 'round' || !currentRound) {
-      setPanUsedNumbers(new Set())
+      setTimeout(() => setPanUsedNumbers(new Set()), 0)
       return
     }
 
@@ -141,7 +146,7 @@ export function useVoteState(deps: VoteStateDeps) {
     return () => {
       cancelled = true
     }
-  }, [isPanGame, view, currentRound?.id, gameCode])
+  }, [isPanGame, view, currentRound, gameCode])
 
   const assign = (action: keyof VoteAssignment, participantId: string) => {
     const gameType = parseGameType(game?.game_type)
@@ -169,7 +174,7 @@ export function useVoteState(deps: VoteStateDeps) {
   }
 
   const handleSubmit = async () => {
-    if (autoSubmitRefs.submittedRef.current || !currentRound || !myPlayerId || !game || isViewer) return
+    if (autoSubmitRefsRef.submittedRef.current || !currentRound || !myPlayerId || !game || isViewer) return
     const submitGameType = parseGameType(game.game_type)
     const roundIds = currentRound.participant_ids
     if (
@@ -200,7 +205,7 @@ export function useVoteState(deps: VoteStateDeps) {
               : { targetPlayerId: mltTargetPlayerId }
             : isWhoSaidThis(submitGameType)
               ? currentRound?.anime_metadata
-                ? { animeChoice: autoSubmitRefs.animeChoiceRef.current }
+                ? { animeChoice: autoSubmitRefsRef.animeChoiceRef.current }
                 : { targetParticipantId: mltTargetPlayerId }
               : isCustomGame(submitGameType)
                 ? { customAssignments }

@@ -319,6 +319,8 @@ export function PingPongHostView({ gameCode, hostToken }: { gameCode: string; ho
       isViewer={false}
       theme={game?.theme}
       onPointScored={load}
+      sessionStartedAt={game?.session_started_at ?? null}
+      gameDurationSeconds={game?.game_duration_seconds ?? 0}
     />
   )
 
@@ -332,6 +334,8 @@ export function PingPongHostView({ gameCode, hostToken }: { gameCode: string; ho
       isViewer={true}
       theme={game.theme}
       onPointScored={load}
+      sessionStartedAt={game.session_started_at ?? null}
+      gameDurationSeconds={game.game_duration_seconds ?? 0}
     />
   ) : (
     <p className="text-muted text-sm text-center">Waiting for the round to begin…</p>

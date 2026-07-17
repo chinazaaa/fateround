@@ -16,8 +16,10 @@ export function useQuickDrawGuessTimer(gameCode: string, session: QuickDrawGuess
 
   useEffect(() => {
     if (status === 'finished') {
-      setSecondsLeft(0)
-      setBreakLeft(0)
+      setTimeout(() => {
+        setSecondsLeft(0)
+        setBreakLeft(0)
+      }, 0)
       return
     }
 

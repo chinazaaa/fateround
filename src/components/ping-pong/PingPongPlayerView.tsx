@@ -354,6 +354,8 @@ export function PingPongPlayerView({ gameCode }: { gameCode: string }) {
           isViewer={isViewer}
           theme={game?.theme}
           onPointScored={load}
+          sessionStartedAt={game?.session_started_at ?? null}
+          gameDurationSeconds={game?.game_duration_seconds ?? 0}
         />
       )}
       {myPlayerId && myName && (

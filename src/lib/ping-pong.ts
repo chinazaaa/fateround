@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { markGameFinished } from '@/lib/game-finish'
-import type { PingPongSession } from '@/types'
+import type { PingPongSession, Game } from '@/types'
 
 export const PING_PONG_MIN_PLAYERS = 2
 export const PING_PONG_MAX_PLAYERS = 2
@@ -10,9 +10,17 @@ export const PING_PONG_DEFAULT_MAX_PLAYERS = 2
 export const PING_PONG_POINTS_OPTIONS = [3, 5, 7, 11, 15, 21] as const
 export const PING_PONG_DEFAULT_POINTS = 7
 
+export const PING_PONG_GAME_DURATION_OPTIONS = [0, 60, 120, 180, 300, 600] as const
+export const PING_PONG_DEFAULT_GAME_DURATION = 0
+
 export function clampPingPongPoints(value: unknown): number {
   const n = Number(value)
   return (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(n) ? n : PING_PONG_DEFAULT_POINTS
+}
+
+export function formatPingPongDuration(seconds: number): string {
+  if (seconds === 0) return 'No timer'
+  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m`
 }
 
 export function pingPongServingSide(scoreX: number, scoreO: number, pointsToWin: number): 'X' | 'O' {
@@ -56,6 +64,59 @@ export function isPingPongResultsPhase(
   if (gameStatus === 'finished') return true
   if (!session) return false
   return session.status === 'finished' || !!session.winner_player_id
+}
+
+export function pingPongGameSessionExpired(sessionStartedAt: string | null, durationSeconds: number): boolean {
+  if (!sessionStartedAt || durationSeconds <= 0) return false
+  const elapsedSeconds = (Date.now() - new Date(sessionStartedAt).getTime()) / 1000
+  // allow 1s grace period
+  return elapsedSeconds > durationSeconds + 1
+}
+
+export async function finishExpiredPingPongGame(
+  supabase: SupabaseClient,
+  game: Pick<Game, 'id' | 'status' | 'game_type' | 'session_started_at' | 'game_duration_seconds'>
+): Promise<boolean> {
+  const { session, error } = await loadSession(supabase, game.id)
+  if (error || !session) return false
+  if (session.status === 'finished') return true
+
+  const { data: playerRows } = await supabase.from('players').select('id, name').eq('game_id', game.id)
+  const names = new Map<string, string>()
+  for (const p of playerRows ?? []) names.set(p.id, p.name)
+
+  const { score_x, score_o, player_x_id, player_o_id } = session
+  let winnerPlayerId: string | null = null
+  let statusMessage: string
+
+  if (score_x > score_o) {
+    winnerPlayerId = player_x_id
+    statusMessage = `Time's up! ${names.get(player_x_id) ?? 'Player X'} wins!`
+  } else if (score_o > score_x) {
+    winnerPlayerId = player_o_id
+    statusMessage = `Time's up! ${names.get(player_o_id) ?? 'Player O'} wins!`
+  } else {
+    statusMessage = `Time's up! Deuce! (${score_x} - ${score_o}) — next point wins!`
+    // We could leave it active if we wanted sudden death, but rules say end in Deuce.
+    // If it ends in Deuce, we don't have a winner yet. The host might have to restart.
+  }
+
+  const { updated } = await persistSession(
+    supabase,
+    game.id,
+    {
+      status: 'finished',
+      winner_player_id: winnerPlayerId,
+      status_message: statusMessage,
+    },
+    session.updated_at
+  )
+
+  if (updated) {
+    await markGameFinished(supabase, game.id)
+  }
+
+  return updated
 }
 
 export async function initializePingPongGame(
