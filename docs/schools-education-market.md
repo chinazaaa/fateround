@@ -146,13 +146,61 @@ without touching the flat base price.
 > Concrete figures deliberately omitted — real numbers need pilot data + a look at what schools
 > already pay for tools. The *structure* above is the recommendation; the *amounts* are a later pass.
 
+## 6B. How "hiding the party games" actually works (architecture)
+
+**The key reframe: hiding games is an *access-policy* problem, not a *URL* problem.** A per-school
+subdomain (`pampas.fateround.com`) is about *branding*; what a student can open is about
+*permissions*. Using the domain to control access would mean wildcard DNS + per-school SSL + tenant
+routing just to filter a list — heavy infra for the wrong reason. **Keep branding and access
+separate.** The mechanism is two small primitives:
+
+**1. Tag the content (once).** Every game — and every question pack — gets an **audience rating**:
+simplest is a `school_safe boolean`; richer is `audience: 'everyone' | 'teen' | 'mature'`. Mafia,
+Smash or Pass, Never Have I Ever, Smash Marry Kill, Hot Seat, etc. → not school-safe. This is a
+reusable data attribute (it also powers a general "family-friendly" filter for regular users and
+age-gating later), and it's the [`insurance decision`](#7-product-decisions-to-make-now-so-this-stays-cheap-later)
+below made concrete.
+
+**2. Make "school" a *mode on the account/org*, not a domain.** A **School** is an organization
+record; teachers belong to it (`profiles.school_id`). When a teacher creates a room *under their
+school*, the room is flagged **`managed`**, and the managed policy = { only `school_safe` games,
+no purchase prompts, private rooms only, no stranger contact }.
+
+**How the hiding then falls out:**
+- **Create-game grid is filtered by context.** Host acting under a school → grid shows only
+  school-safe games. Regular user → no school context → full catalog, unchanged. *Same screen, one
+  conditional filter — not a separate build.*
+- **Filter AND enforce server-side.** Merely hiding a tile is not safe — a student could URL-hop
+  straight into Mafia. The room-create endpoint **rejects** non-safe `game_type`s for a managed
+  context. Hidden-but-reachable is only acceptable as soft de-emphasis for *adult* users, never for
+  a school.
+- **Students inherit the policy from the room, no per-student flag needed.** They join the teacher's
+  managed room → safe catalog + no shop prompts + private, automatically. Policy travels with the
+  room via its host's org.
+
+**Data sketch (light):**
+```
+schools           (id, name, policy jsonb, created_at)         -- the org above classes
+profiles.school_id → schools(id)                                -- teachers belong to a school
+games.audience    text default 'everyone'  -- or games.school_safe boolean
+games rooms: managed boolean default false  -- set when host acts under a school
+```
+A **class = a Club** ([`clubs-spec.md`](./clubs-spec.md)); a **School = the org above the classes**.
+Reuse Clubs for rosters/teams; the School row just carries the safety policy + billing.
+
+**On subdomains / vanity URLs:** optional *later* branding only (`pampas.fateround.com` or a lighter
+`/s/pampas` link with the school's logo) — decoupled from access control. Do **not** build it to
+hide games.
+
 ## 7. Product decisions to make *now* so this stays cheap later
 
-Even though this is parked, two low-cost choices today keep the door open:
-- **Build content curation so a catalog can be *scoped* (e.g. a `school_safe` flag / audience tag on
-  games & question packs).** Retrofitting a safe subset later is painful.
+Even though this is parked, two low-cost choices today keep the door open (see §6B for the concrete
+shape):
+- **Build content curation so a catalog can be *scoped*** — add the `audience` / `school_safe` tag on
+  games & question packs, and make the create-game grid read a "allowed audience" from context.
+  Retrofitting a safe subset later is painful.
 - **Design monetization prompts behind a suppressible "managed mode" flag** rather than hard-coding
-  them into screens. A school edition just flips it off.
+  them into screens. A managed (school) room just flips it off.
 
 Neither blocks the consumer roadmap; both are cheap insurance.
 
