@@ -35,6 +35,13 @@ import {
   validateParticipants,
   type PeopleSettings,
 } from '@/lib/create-settings/people'
+import {
+  defaultWstCreateState,
+  validateWstCreate,
+  wstCreatePayload,
+  type WstCreateState,
+} from '@/lib/create-settings/who-said-this'
+import { isWhoSaidThis } from '@fateround/shared/poll-games'
 
 export type { GameRoomSettings } from '@/lib/create-settings/board-games'
 export { hasGameRoomSettings, BATCH_19_BOARD_GAMES } from '@/lib/create-settings/board-games'
@@ -44,6 +51,7 @@ export type { CustomContentState } from '@/lib/create-settings/custom-content'
 export { supportsCustomContent } from '@/lib/create-settings/custom-content'
 export type { PeopleSettings } from '@/lib/create-settings/people'
 export { supportsImportMode, participantModeOptions, isCustomGame, minParticipants } from '@/lib/create-settings/people'
+export type { WstCreateState, WstSource } from '@/lib/create-settings/who-said-this'
 
 export type CreateWizardStep = 'setup' | 'people'
 
@@ -58,6 +66,7 @@ export type CreateWizardState = {
   party: PartyRoomSettings
   custom: CustomContentState
   people: PeopleSettings
+  wst: WstCreateState
 }
 
 export type CreateSettingsRegistryEntry = {
@@ -91,6 +100,7 @@ export function createInitialState(gameType: GameType, limits: GamePlayerLimitsM
     party: defaultPartyRoomSettings(gameType),
     custom: defaultCustomContentState(),
     people: defaultPeopleSettings(gameType),
+    wst: defaultWstCreateState(),
   }
 }
 
@@ -109,6 +119,7 @@ export function applyGameTypeChange(
     party: defaultPartyRoomSettings(gameType),
     custom: defaultCustomContentState(),
     people: defaultPeopleSettings(gameType),
+    wst: defaultWstCreateState(),
   }
 }
 
@@ -117,6 +128,7 @@ export const CREATE_SETTINGS_REGISTRY: Partial<Record<GameType, CreateSettingsRe
 /** Everything the host must get right on the Setup step before the People step. */
 export function validateSetupStep(state: CreateWizardState): string | null {
   if (!state.title.trim()) return 'Enter a game title'
+  if (isWhoSaidThis(state.gameType)) return validateWstCreate(state.wst)
   const customError = validateCustomContent(state.gameType, state.custom, state.party.roundsCount)
   if (customError) return customError
   const slotError = validateCustomSlots(state.gameType, state.people)
@@ -153,6 +165,8 @@ export function buildCreatePayload(state: CreateWizardState, limits: GamePlayerL
     ...peoplePayload(gameType, state.people, state.party.anonymous, isPollPartyGame(gameType)),
     ...gameRoomSettingsPayload(gameType, state.room),
     ...partyRoomSettingsPayload(gameType, state.party),
+    // Who Said This overrides the question/participant fields with its own source model.
+    ...(isWhoSaidThis(gameType) ? wstCreatePayload(state.wst) : {}),
   }
 
   // A stale admin theme (`pt:<id>`) left in party state must not fold its pool when the host has

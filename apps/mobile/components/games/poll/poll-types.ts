@@ -17,7 +17,12 @@ export interface WstQuotePoolEntry {
   game_id: string
   player_id: string | null
   quote_text: string
-  author_participant_id: string
+  /** Trivia-style answer options the submitter supplied (2–4). */
+  options: string[] | null
+  /** Index into `options` of the correct answer. */
+  correct_index: number | null
+  /** Legacy (name-list model) — unused by the current players-submit flow. */
+  author_participant_id: string | null
   created_at: string
   updated_at: string
 }
