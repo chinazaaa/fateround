@@ -180,6 +180,9 @@ export const updateGameSchema = z.object({
   scrabble_dictionary_id: z.enum(SCRABBLE_DICTIONARY_OPTIONS).optional(),
   scrabble_clock_mode: z.enum(['standard', 'chess']).optional(),
   scrabble_clock_seconds: z.coerce.number().optional(),
+  // Chess host-default appearance — editable in the lobby (cosmetic, validated server-side).
+  chess_board_theme: z.string().optional(),
+  chess_piece_set: z.string().optional(),
   participant_filter: participantFilterEnum.optional(),
   gender_based: z.boolean().optional(),
   pair_vote_mode: pairVoteModeEnum.optional(),
