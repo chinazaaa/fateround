@@ -778,36 +778,41 @@ export function planMultiPlayerCashDeltas(
   currentDrawerCash?: number
 ): {
   drawerCash: number
-  error?: string
-  failedPlayerId?: string
+  failedDebts: { playerId: string; amount: number; creditorId: string | null }[]
   otherWrites: { player_id: string; cash_delta: number }[]
 } {
   const drawer = states.find((s) => s.player_id === drawerId)
-  if (!drawer && currentDrawerCash === undefined) {
-    return { drawerCash: 0, error: 'Player not found', otherWrites: [] }
-  }
-
   const baseCash = currentDrawerCash !== undefined ? currentDrawerCash : (drawer?.cash ?? 0)
-  const drawerCash = baseCash + drawerDelta
 
-  for (const [id, delta] of Object.entries(others)) {
-    const target = states.find((s) => s.player_id === id)
-    if (!target) continue
-    if (target.cash + delta < 0) {
-      return { drawerCash, error: 'Insufficient funds', failedPlayerId: id, otherWrites: [] }
+  let safeDrawerDelta = 0
+  const failedDebts: { playerId: string; amount: number; creditorId: string | null }[] = []
+  const otherWrites: { player_id: string; cash_delta: number }[] = []
+
+  if (drawerDelta < 0) {
+    if (baseCash + drawerDelta < 0) {
+      for (const [id, delta] of Object.entries(others)) {
+        failedDebts.push({ playerId: drawerId, amount: delta, creditorId: id })
+      }
+    } else {
+      safeDrawerDelta = drawerDelta
+      for (const [id, delta] of Object.entries(others)) {
+        otherWrites.push({ player_id: id, cash_delta: delta })
+      }
+    }
+  } else {
+    for (const [id, delta] of Object.entries(others)) {
+      const target = states.find((s) => s.player_id === id)
+      if (!target) continue
+      if (target.cash + delta < 0) {
+        failedDebts.push({ playerId: id, amount: Math.abs(delta), creditorId: drawerId })
+      } else {
+        safeDrawerDelta += Math.abs(delta)
+        otherWrites.push({ player_id: id, cash_delta: delta })
+      }
     }
   }
-  if (drawerCash < 0) {
-    return { drawerCash, error: 'Insufficient funds', failedPlayerId: drawerId, otherWrites: [] }
-  }
 
-  const otherWrites: { player_id: string; cash_delta: number }[] = []
-  for (const [id, delta] of Object.entries(others)) {
-    if (!states.some((s) => s.player_id === id)) continue
-    otherWrites.push({ player_id: id, cash_delta: delta })
-  }
-
-  return { drawerCash, otherWrites }
+  return { drawerCash: baseCash + safeDrawerDelta, failedDebts, otherWrites }
 }
 
 function nextTradeEvent(
@@ -1358,27 +1363,24 @@ export async function processMonopolyRoll(
         if (effect.getOutOfJail) getOutCards += 1
 
         const multi = planMultiPlayerCashDeltas(states, playerId, effect.cashDelta, effect.playerCashDeltas, cash)
-        if (multi.error) {
-          const failedId = multi.failedPlayerId ?? playerId
-          const owed =
-            failedId === playerId ? Math.abs(effect.cashDelta) : Math.abs(effect.playerCashDeltas[failedId] ?? 0)
-          const reason =
-            failedId === playerId
-              ? card.message
-              : `Could not pay ${formatMonopolyMoney(owed)} for card: ${card.message}`
-          if (failedId !== playerId) {
-            return bankruptPlayer(supabase, gameId, board, states, failedId, reason, board.updated_at, playerId, owed)
-          }
-          // Drawer can't pay: claim the board (folding last_dice/decks into the
-          // raise-funds transition) and write player state only if we won.
-          const cardDebt: MonopolyPendingDebt = {
-            player_id: playerId,
-            creditor_player_id: null,
-            amount: owed,
-            reason,
+        otherCashWrites = multi.otherWrites
+        cash = multi.drawerCash
+
+        if (multi.failedDebts.length > 0) {
+          const debts: MonopolyPendingDebt[] = multi.failedDebts.map((fd) => ({
+            player_id: fd.playerId,
+            creditor_player_id: fd.creditorId,
+            amount: fd.amount,
+            reason: card.message,
             debt_type: 'card',
             space_index: position,
+          }))
+
+          const firstDebt = debts[0]
+          if (debts.length > 1) {
+            firstDebt.next_debts = debts.slice(1)
           }
+
           await updatePlayerAndBoard(
             supabase,
             gameId,
@@ -1393,9 +1395,9 @@ export async function processMonopolyRoll(
             },
             {
               phase: 'raise_funds',
-              pending_debt: cardDebt,
-              pending_space: cardDebt.space_index ?? board.pending_space,
-              status_message: `${cardDebt.reason} — mortgage or sell buildings to raise cash, pay, or forfeit.`,
+              pending_debt: firstDebt,
+              pending_space: firstDebt.space_index ?? board.pending_space,
+              status_message: `${firstDebt.reason} — mortgage or sell buildings to raise cash, pay, or forfeit.`,
               turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, 'raise_funds'),
               auction_state: null,
               pending_trade: null,
@@ -1410,9 +1412,6 @@ export async function processMonopolyRoll(
           )
           return {}
         }
-        // Defer the other-player credits/debits into the final board claim.
-        otherCashWrites = multi.otherWrites
-        cash = multi.drawerCash
 
         if (effect.moveTo !== undefined) {
           position = effect.moveTo
@@ -2808,6 +2807,24 @@ export async function processMonopolySettleDebt(
   const turnFinish = finishTurnAfterSpaceAction(board, states, playerId)
   const settings = await getMonopolyGameSettings(supabase, gameId)
 
+  let nextPhase = turnFinish.phase
+  let upcomingTurnIndex = turnFinish.turnIndex
+  let nextDoubles = turnFinish.consecutiveDoubles
+  let nextDeadline = monopolyDeadlineForPhase(settings.timerSeconds, turnFinish.phase)
+  let nextDebtObj: MonopolyPendingDebt | null = null
+
+  if (debt.next_debts && debt.next_debts.length > 0) {
+    const nextDebt = debt.next_debts[0]
+    nextDebtObj = { ...nextDebt }
+    if (debt.next_debts.length > 1) {
+      nextDebtObj.next_debts = debt.next_debts.slice(1)
+    }
+    nextPhase = 'raise_funds'
+    upcomingTurnIndex = board.current_turn_index
+    nextDoubles = board.consecutive_doubles ?? 0
+    nextDeadline = monopolyDeadlineForPhase(settings.timerSeconds, 'raise_funds')
+  }
+
   // Claim the board and move the cash in ONE transaction; see above.
   const { error: rpcError } = await supabase.rpc('monopoly_settle_payment', {
     p_game_id: gameId,
@@ -2815,13 +2832,16 @@ export async function processMonopolySettleDebt(
     p_payer_id: playerId,
     p_creditor_id: creditorId,
     p_amount: amount,
-    p_phase: turnFinish.phase,
-    p_current_turn_index: turnFinish.turnIndex,
-    p_consecutive_doubles: turnFinish.consecutiveDoubles,
-    p_status_message: `Paid ${formatMonopolyMoney(amount)}.`,
+    p_phase: nextPhase,
+    p_current_turn_index: upcomingTurnIndex,
+    p_consecutive_doubles: nextDoubles,
+    p_status_message: nextDebtObj
+      ? `${nextDebtObj.reason} — mortgage or sell buildings to raise cash, pay, or forfeit.`
+      : `Paid ${formatMonopolyMoney(amount)}.`,
     p_last_rent_event: board.last_rent_event ?? null,
-    p_turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, turnFinish.phase),
+    p_turn_deadline_at: nextDeadline,
     p_payer_leaves_jail: false,
+    p_pending_debt: nextDebtObj as any, // Passed to our new RPC parameter
   })
   if (rpcError) {
     if (rpcError.message?.includes('INSUFFICIENT_FUNDS')) {
@@ -2921,6 +2941,20 @@ async function bankruptPlayer(
     get_out_of_jail_free: 0,
   })
 
+  let nextPhase = winner ? 'finished' : phaseForTurn(board, updatedStates, turnIndex)
+  let upcomingTurnIndex = turnIndex
+  let nextDebtObj: MonopolyPendingDebt | null = null
+
+  if (board.pending_debt?.next_debts && board.pending_debt.next_debts.length > 0 && !winner) {
+    const nextDebt = board.pending_debt.next_debts[0]
+    nextDebtObj = { ...nextDebt }
+    if (board.pending_debt.next_debts.length > 1) {
+      nextDebtObj.next_debts = board.pending_debt.next_debts.slice(1)
+    }
+    nextPhase = 'raise_funds'
+    upcomingTurnIndex = board.current_turn_index
+  }
+
   const { data: won, error: rpcError } = await supabase.rpc('monopoly_claim_and_apply', {
     p_game_id: gameId,
     p_expected_updated_at: expectedUpdatedAt,
@@ -2930,13 +2964,15 @@ async function bankruptPlayer(
       mortgaged_properties: returned.mortgaged,
       houses_in_bank: (board.houses_in_bank ?? MONOPOLY_HOUSES_IN_BANK) + returned.housesReturned,
       hotels_in_bank: (board.hotels_in_bank ?? MONOPOLY_HOTELS_IN_BANK) + returned.hotelsReturned,
-      phase: winner ? 'finished' : phaseForTurn(board, updatedStates, turnIndex),
-      current_turn_index: turnIndex,
+      phase: nextPhase,
+      current_turn_index: upcomingTurnIndex,
       winner_player_id: winner,
-      status_message: `${reason} — bankrupt! ${assetNote}`,
+      status_message: nextDebtObj
+        ? `${nextDebtObj.reason} — mortgage or sell buildings to raise cash, pay, or forfeit.`
+        : `${reason} — bankrupt! ${assetNote}`,
       last_cash_event: lastCashEvent,
-      pending_debt: null,
-      pending_space: null,
+      pending_debt: nextDebtObj as any,
+      pending_space: nextDebtObj?.space_index ?? null,
       auction_state: null,
       pending_trade: null,
     },

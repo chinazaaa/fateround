@@ -227,4 +227,46 @@ describe('processMonopolySettleDebt — atomic settlement', () => {
     expect(params.p_payer_leaves_jail).toBe(true)
     expect(m.updates).toHaveLength(0)
   })
+
+  it('advances the debt queue to the next player without ending the turn', async () => {
+    const nextDebt = {
+      player_id: 'owner',
+      creditor_player_id: null,
+      amount: 100,
+      reason: 'Owe £100 for something',
+      debt_type: 'card',
+    }
+    const m = makeMockSupabase({
+      board: baseBoard({
+        phase: 'raise_funds',
+        current_turn_index: 0,
+        pending_space: null,
+        pending_debt: {
+          player_id: 'payer',
+          creditor_player_id: null,
+          amount: 50,
+          reason: 'Need £50 for something',
+          debt_type: 'card',
+          next_debts: [nextDebt],
+        },
+      }),
+      states: [playerState('payer', 200), playerState('owner', 800)],
+    })
+    const result = await processMonopolySettleDebt(m.supabase, 'GAME1', 'payer')
+
+    expect(result.error).toBeUndefined()
+    expect(m.rpcCalls).toHaveLength(1)
+    const params = m.rpcCalls[0]!.params
+    expect(params.p_amount).toBe(50)
+
+    // Functionality assertions:
+    // 1. The game stays in raise_funds phase to resolve the new debt
+    expect(params.p_phase).toBe('raise_funds')
+    // 2. The turn does not advance to the next player; it's still the active player's turn to roll/end
+    expect(params.p_current_turn_index).toBe(0)
+    // 3. The status message instructs the next debtor
+    expect(params.p_status_message).toContain('Owe £100 for something — mortgage or sell buildings')
+    // 4. The new pending debt targets the next player
+    expect(params.p_pending_debt).toEqual(nextDebt)
+  })
 })
