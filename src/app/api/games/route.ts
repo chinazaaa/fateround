@@ -536,9 +536,7 @@ export async function POST(req: NextRequest) {
     isLandmineGame(game_type)
       ? 'joiners'
       : isWhoSaidThis(game_type)
-        ? isWstDeck
-          ? 'joiners'
-          : 'import'
+        ? 'joiners'
         : parseParticipantMode(rawMode)
 
   let participants: ParticipantInput[] = []
