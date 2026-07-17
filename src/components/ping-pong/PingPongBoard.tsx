@@ -288,7 +288,9 @@ export function PingPongBoard({
         try {
           const { event, payload } = JSON.parse(e.data)
           handleGameEvent(event, payload)
-        } catch {}
+        } catch {
+          // ignore malformed peer messages
+        }
       }
     } else if (mySide === 'O') {
       pc.ondatachannel = (e) => {
@@ -301,7 +303,9 @@ export function PingPongBoard({
           try {
             const { event, payload } = JSON.parse(msg.data)
             handleGameEvent(event, payload)
-          } catch {}
+          } catch {
+            // ignore malformed peer messages
+          }
         }
       }
     }
