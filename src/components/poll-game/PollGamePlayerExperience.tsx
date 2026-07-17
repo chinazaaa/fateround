@@ -583,13 +583,15 @@ export function PollGamePlayerExperience({
               ? isNameOnlyJoin || !joinNeedsGender
                 ? 'Update your name'
                 : 'Update your name or vote preference'
-              : isNameOnlyJoin
-                ? 'Enter your name to join'
-                : isJoinersMode
-                  ? 'Join the game — your name goes in the poll'
-                  : isVoterOnly
-                    ? 'Enter your name to vote — names on the list appear in rounds'
-                    : 'Select your name from the list'}
+              : isWhoSaidThis(game?.game_type)
+                ? 'Enter your name to join — answer the quotes to score'
+                : isNameOnlyJoin
+                  ? 'Enter your name to join'
+                  : isJoinersMode
+                    ? 'Join the game — your name goes in the poll'
+                    : isVoterOnly
+                      ? 'Enter your name to vote — names on the list appear in rounds'
+                      : 'Select your name from the list'}
           </p>
           {useFreeNameJoin ? (
             <input
