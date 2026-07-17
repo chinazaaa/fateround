@@ -12,7 +12,9 @@ type Props = {
   gameCode: string
   hostToken: string
   game: Game
-  onGameUpdate: (game: Game) => void
+  /** Optional — callers that don't poll/subscribe can sync immediately; others (e.g. the
+   *  central HostLobby sheet) pick up `game.theme` on their own. */
+  onGameUpdate?: (game: Game) => void
 }
 
 /**
@@ -28,13 +30,22 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
 
   const currentTheme = (game.theme as ThemeId | null | undefined) ?? 'default'
 
-  const options = useMemo(
-    () =>
-      isMonopoly
-        ? THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
-        : THEMES.filter((theme) => theme.id !== 'pirate' && theme.id !== 'arctic' && theme.id !== 'naija'),
-    [isMonopoly]
-  )
+  const options = useMemo(() => {
+    if (isMonopoly) return THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
+    if (game.game_type === 'ping_pong') {
+      return THEMES.filter((theme) => theme.id === 'default' || theme.id === 'grass_court').map((theme) =>
+        theme.id === 'default'
+          ? {
+              ...theme,
+              label: 'Table Tennis',
+              emoji: '🏓',
+              preview: { bg: '#064e3b', accent: '#f43f5e', text: '#ecfdf5' },
+            }
+          : theme
+      )
+    }
+    return THEMES.filter((theme) => theme.id !== 'pirate' && theme.id !== 'arctic' && theme.id !== 'naija')
+  }, [isMonopoly, game.game_type])
 
   const selectTheme = async (themeId: ThemeId) => {
     if (saving || themeId === currentTheme) return
@@ -47,7 +58,7 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Failed to update theme')
-      if (data.game) onGameUpdate(data.game)
+      if (data.game) onGameUpdate?.(data.game)
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to update theme')
     } finally {
@@ -83,6 +94,7 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
         theme={previewTheme}
         onClose={() => setPreviewTheme(null)}
         onSelect={(themeId) => void selectTheme(themeId)}
+        gameType={game.game_type}
       />
     </HostLobbySettingBlock>
   )

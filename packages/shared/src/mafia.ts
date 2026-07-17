@@ -1,10 +1,4 @@
-import type {
-  MafiaChatMessage,
-  MafiaMyState,
-  MafiaPhase,
-  MafiaPublicPlayer,
-  MafiaTeam,
-} from './types'
+import type { MafiaChatMessage, MafiaMyState, MafiaPhase, MafiaPublicPlayer, MafiaTeam } from './types'
 
 export const MAFIA_MIN_PLAYERS = 5
 export const MAFIA_MAX_PLAYERS = 16

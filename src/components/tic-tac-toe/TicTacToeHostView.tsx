@@ -3,11 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
+import { HostDuelLobbyPanel } from '@/components/host-lobby/HostDuelLobbyPanel'
+import { TransferHostControl } from '@/components/TransferHostControl'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { gameTypeConfig } from '@/lib/game-types'
 import { currentTurnPlayerId, TIC_TAC_TOE_MIN_PLAYERS, isTicTacToeResultsPhase } from '@/lib/tic-tac-toe'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT, TIC_TAC_TOE_SESSION_SELECT } from '@/lib/supabase-selects'
@@ -323,11 +329,7 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
   })
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
   if (!game) {
@@ -455,6 +457,63 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
           Return to lobby instead
         </button>
       </div>
+    )
+  }
+
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={gameTypeConfig('tic_tac_toe').label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('tic_tac_toe', game) ?? game.max_players}
+        playCard={
+          <HostModeSelector
+            mode={hostMode}
+            onChange={changeHostMode}
+            joinedPlayerId={hostPlayerId}
+            joinedPlayerName={hostPlayerName}
+            joinName={hostJoinName}
+            onJoinNameChange={setHostJoinName}
+            onJoin={() => void hostJoinGame()}
+            joining={hostJoining}
+            onEditName={renameHost}
+            spectatorHint="Spectate once it starts"
+            playerHint="Take a seat and play"
+          />
+        }
+        settingsChildren={
+          <>
+            <HostDuelLobbyPanel
+              gameCode={gameCode}
+              hostToken={hostToken}
+              game={game}
+              duelType="tic_tac_toe"
+              onGameUpdate={setGame}
+            />
+            <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+          </>
+        }
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : readyPlayers.length < players.length
+              ? `Waiting for players to tap ready (${readyPlayers.length}/${TIC_TAC_TOE_MIN_PLAYERS})`
+              : `Need exactly ${TIC_TAC_TOE_MIN_PLAYERS} players to start (${players.length}/${TIC_TAC_TOE_MIN_PLAYERS})`
+        }
+        startLabel="Start game"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      />
     )
   }
 

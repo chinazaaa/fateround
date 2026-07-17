@@ -15,6 +15,8 @@ type Props = {
   label?: string
   emptyMessage?: string
   hint?: string
+  /** When set, the count badge reads "N / capacity" instead of just N. */
+  capacity?: number
   className?: string
   alwaysShowReady?: boolean
   /** 'viewers' tints the header icon and uses an eye glyph. */
@@ -33,6 +35,7 @@ export function HostLobbyPlayersSection({
   label = 'Players',
   emptyMessage,
   hint,
+  capacity,
   className = '',
   alwaysShowReady,
   tone = 'players',
@@ -54,7 +57,7 @@ export function HostLobbyPlayersSection({
         </span>
         <p className="label-caps !text-[var(--muted)]">{label}</p>
         <span className="ml-auto rounded-full bg-[var(--surface-inset-bg)] px-2.5 py-0.5 text-xs font-bold text-body">
-          {players.length}
+          {capacity ? `${players.length} / ${capacity}` : players.length}
         </span>
       </div>
       <HostPlayerManageList

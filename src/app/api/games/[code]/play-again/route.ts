@@ -23,6 +23,7 @@ import {
   isWordHuntGame,
   isCrosswordGame,
   isWordSearchGame,
+  isPingPongGame,
 } from '@/lib/game-types'
 import { clearAnonymousRoomSessionData, reopenSecretMessageBoard } from '@/lib/anonymous-messages'
 import { clearBingoSessionData } from '@/lib/bingo'
@@ -35,6 +36,7 @@ import { clearLudoSessionData } from '@/lib/ludo'
 import { clearMahjongSessionData, canMahjongPlayAgain } from '@/lib/mahjong'
 import { clearSnakeAndLadderSessionData } from '@/lib/snake-and-ladder'
 import { clearTicTacToeSessionData, canTicTacToePlayAgain } from '@/lib/tic-tac-toe'
+import { clearPingPongSessionData, canPingPongPlayAgain } from '@/lib/ping-pong'
 import { clearChessSessionData, canChessPlayAgain } from '@/lib/chess'
 import { clearCheckersSessionData, canCheckersPlayAgain } from '@/lib/checkers'
 import { clearAyoSessionData, canAyoPlayAgain } from '@/lib/ayo'
@@ -113,6 +115,7 @@ type ClearableSessionGameType = Extract<
   | 'word_search'
   | 'word_scramble'
   | 'landmine'
+  | 'ping_pong'
 >
 
 /**
@@ -150,6 +153,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   word_search: clearWordSearchSessionData,
   word_scramble: clearWordScrambleSessionData,
   landmine: clearLandmineSessionData,
+  ping_pong: clearPingPongSessionData,
 }
 
 async function handlePost(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
@@ -178,6 +182,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
   const ticTacToeCanReplay = isTicTacToeGame(gameType)
     ? await canTicTacToePlayAgain(supabase, gameId, game.status)
     : false
+  const pingPongCanReplay = isPingPongGame(gameType) ? await canPingPongPlayAgain(supabase, gameId, game.status) : false
   const chessCanReplay = isChessGame(gameType) ? await canChessPlayAgain(supabase, gameId, game.status) : false
   const checkersCanReplay = isCheckersGame(gameType) ? await canCheckersPlayAgain(supabase, gameId, game.status) : false
   const ayoCanReplay = isAyoGame(gameType) ? await canAyoPlayAgain(supabase, gameId, game.status) : false
@@ -191,6 +196,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     game.status === 'waiting' ||
     game.status === 'finished' ||
     ticTacToeCanReplay ||
+    pingPongCanReplay ||
     chessCanReplay ||
     checkersCanReplay ||
     ayoCanReplay ||

@@ -38,7 +38,7 @@ import { isGameGenderBased } from '@/lib/gender-based'
 import { getCustomSlotCount } from '@/lib/custom-game'
 import { buildHotSeatRoundRows } from '@/lib/hot-seat'
 import { buildPickANumberRoundRows } from '@/lib/pick-a-number'
-import { buildRoundsFromQuotePool, buildRoundsFromAnimePool, wstAutoRoundCount } from '@/lib/who-said-this'
+import { buildRoundsFromDeck, wstAutoRoundCount, WST_DECK_MIN_ENTRIES } from '@/lib/who-said-this'
 import { pickWyrQuestions } from '@/lib/would-you-rather-questions'
 import { pickThisOrThatQuestions, THIS_OR_THAT_QUESTION_COUNT } from '@/lib/this-or-that-questions'
 import { pickMltQuestions } from '@/lib/most-likely-to-questions'
@@ -59,6 +59,7 @@ import {
   pickCustomTriviaQuestions,
   questionPoolCap,
   parseStoredTriviaQuestions,
+  parseStoredWstDeck,
 } from '@/lib/custom-questions'
 import {
   combineLobbyQuestions,
@@ -106,6 +107,7 @@ import { buildNpatInitialRound, NPAT_MIN_PLAYERS, shufflePlayerOrder as npatShuf
 import {
   buildLandmineInitialRound,
   clampLandmineMineCount,
+  gameLandmineMineSource,
   LANDMINE_MIN_PLAYERS,
   shufflePlayerOrder as landmineShufflePlayerOrder,
 } from '@/lib/landmine'
@@ -727,6 +729,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       playerOrder,
       mineCount: clampLandmineMineCount(game.landmine_mine_count),
       now,
+      manual: gameLandmineMineSource(game) === 'manual',
     })
 
     const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRow)
@@ -1409,83 +1412,56 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
 
     const participantIds = (participantsData ?? []).map((p) => p.id)
 
-    let playerRoundRows: ReturnType<typeof buildRoundsFromQuotePool> = []
-    let animeRoundRows: ReturnType<typeof buildRoundsFromAnimePool> = []
+    let playerRoundRows: ReturnType<typeof buildRoundsFromDeck> = []
+    let deckRoundRows: ReturnType<typeof buildRoundsFromDeck> = []
+    const joinedPlayerIds = playersData.filter((p) => p.spectator !== true).map((p) => p.id)
 
-    if (wstQuoteSource === 'player' || wstQuoteSource === 'both') {
-      if (wstQuoteSource === 'player') {
-        if (participantIds.length < 2) {
-          return NextResponse.json({ error: 'Need at least 2 names on the list' }, { status: 400 })
-        }
-        const submitters = playersData.filter((p) => p.participant_id)
-        if (submitters.length < 2) {
-          return NextResponse.json(
-            {
-              error: 'Need at least 2 players who claimed a name from the list',
-            },
-            { status: 400 }
-          )
-        }
+    // Pre-set roster: build choice-rounds from the host deck stored in games.custom_questions
+    // (Platform / Library / uploaded CSV). Players just join and guess the author from choices —
+    // no name list or player submissions needed.
+    if (wstQuoteSource === 'deck') {
+      const deck = parseStoredWstDeck(game.custom_questions)
+      if (deck.length < WST_DECK_MIN_ENTRIES) {
+        return NextResponse.json(
+          { error: `Add at least ${WST_DECK_MIN_ENTRIES} quotes to the deck before starting` },
+          { status: 400 }
+        )
       }
+      deckRoundRows = buildRoundsFromDeck({
+        gameId: code.toUpperCase(),
+        participantIds: joinedPlayerIds,
+        deck: deck.slice(0, wstAutoRoundCount(deck.length)),
+        startIndex: 0,
+        now,
+      })
+    }
 
+    // Players submit: each player-authored question (quote + options + correct) is a round.
+    if (wstQuoteSource === 'player') {
       const { data: poolEntries } = await supabase.from('wst_quote_pool').select('*').eq('game_id', code.toUpperCase())
-
-      const quotes = poolEntries ?? []
-      if (wstQuoteSource === 'player' && quotes.length < 2) {
+      const deck = (poolEntries ?? [])
+        .map((e) => ({
+          quote: typeof e.quote_text === 'string' ? e.quote_text.trim() : '',
+          options: Array.isArray(e.options) ? e.options.map((o: unknown) => String(o).trim()).filter(Boolean) : [],
+          correctIndex: typeof e.correct_index === 'number' ? e.correct_index : -1,
+        }))
+        .filter((q) => q.quote && q.options.length >= 2 && q.correctIndex >= 0 && q.correctIndex < q.options.length)
+      if (deck.length < WST_DECK_MIN_ENTRIES) {
         return NextResponse.json(
-          {
-            error: 'Need at least 2 quotes in the pool before starting — players submit quotes in the lobby',
-          },
+          { error: 'Need at least 2 questions submitted in the lobby before starting' },
           { status: 400 }
         )
       }
-
-      if (quotes.length > 0) {
-        const count = wstAutoRoundCount(quotes.length)
-        playerRoundRows = buildRoundsFromQuotePool({
-          gameId: code.toUpperCase(),
-          participantIds,
-          poolEntries: quotes.slice(0, count),
-          now,
-        })
-      }
+      playerRoundRows = buildRoundsFromDeck({
+        gameId: code.toUpperCase(),
+        participantIds: joinedPlayerIds,
+        deck: deck.slice(0, wstAutoRoundCount(deck.length)),
+        startIndex: 0,
+        now,
+      })
     }
 
-    if (wstQuoteSource === 'anime' || wstQuoteSource === 'both') {
-      const { data: animePool } = await supabase
-        .from('anime_quote_pool')
-        .select('*')
-        .eq('game_id', code.toUpperCase())
-        .eq('removed', false)
-        .order('created_at')
-
-      const animeQuotes = animePool ?? []
-      if (wstQuoteSource === 'anime' && animeQuotes.length < 2) {
-        return NextResponse.json(
-          {
-            error: 'Need at least 2 anime quotes before starting — fetch quotes in the lobby',
-          },
-          { status: 400 }
-        )
-      }
-
-      if (animeQuotes.length > 0) {
-        animeRoundRows = buildRoundsFromAnimePool({
-          gameId: code.toUpperCase(),
-          participantIds,
-          animeQuotes: animeQuotes.map((q) => ({
-            quote_text: q.quote_text,
-            anime_name: q.anime_name,
-            correct_character: q.correct_character,
-            choices: q.choices as string[],
-          })),
-          startIndex: playerRoundRows.length,
-          now,
-        })
-      }
-    }
-
-    const allRoundRows = [...playerRoundRows, ...animeRoundRows]
+    const allRoundRows = [...deckRoundRows, ...playerRoundRows]
     if (allRoundRows.length < 2) {
       return NextResponse.json({ error: 'Need at least 2 total quotes to start' }, { status: 400 })
     }

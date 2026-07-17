@@ -53,6 +53,7 @@ export type GameType =
   | 'word_search'
   | 'word_scramble'
   | 'landmine'
+  | 'ping_pong'
 
 export interface Game {
   id: string
@@ -121,7 +122,10 @@ export interface Game {
   landmine_mode?: LandmineMode | null
   landmine_mine_count?: number | null
   landmine_originality_bonus?: boolean | null
+  landmine_mine_source?: LandmineMineSource | null
   question_source?: string | null
+  /** Who Said This: 'player' (players submit) or 'deck' (host Platform/Library/CSV deck). */
+  wst_quote_source?: string | null
   trivia_category?: TriviaCategory | string | null
   created_at?: string | null
   bingo_call_mode?: 'manual' | 'auto' | string | null
@@ -132,6 +136,7 @@ export interface Game {
   word_search_difficulty?: WordSearchDifficulty | string | null
   word_scramble_theme?: string | null
   word_scramble_difficulty?: WordScrambleDifficulty | string | null
+  ping_pong_points_to_win?: number | null
 }
 
 export interface Player {
@@ -165,6 +170,21 @@ export interface TicTacToeSession {
   is_draw: boolean
   status_message: string | null
   turn_deadline_at: string | null
+}
+
+export interface PingPongSession {
+  id: string
+  game_id: string
+  player_x_id: string
+  player_o_id: string
+  score_x: number
+  score_o: number
+  points_to_win: number
+  status: 'active' | 'finished'
+  winner_player_id: string | null
+  status_message: string | null
+  created_at?: string
+  updated_at?: string
 }
 
 export type CheckersColor = 'r' | 'b'
@@ -334,6 +354,9 @@ export interface Vote {
   target_participant_id: string | null
   anime_choice?: string | null
   picked_number?: number | null
+  /** Who Said This speed scoring: how quickly the answer came in, and the points it earned. */
+  response_ms?: number | null
+  points?: number | null
   created_at: string
 }
 
@@ -826,7 +849,8 @@ export interface NpatMark {
 // Landmine — single-answer variant of I Call On with a secret mine + two scoring modes.
 export type LandminePhase = 'category_pick' | 'writing' | 'marking' | 'reveal'
 export type LandmineMode = 'zero_points' | 'elimination'
-export type LandmineOutcome = 'valid' | 'original' | 'void' | 'mine' | 'empty'
+export type LandmineMineSource = 'system' | 'manual'
+export type LandmineOutcome = 'valid' | 'original' | 'void' | 'mine' | 'empty' | 'setter'
 
 export interface LandmineMetadata {
   phase: LandminePhase
@@ -1133,6 +1157,7 @@ export interface MonopolyPendingDebt {
   reason: string
   debt_type: 'rent' | 'tax' | 'card' | 'jail' | 'other'
   space_index?: number | null
+  next_debts?: MonopolyPendingDebt[]
 }
 
 export interface MonopolyAuctionState {

@@ -5,6 +5,7 @@ import type {
   LandmineAnswer,
   LandmineMark,
   LandmineMetadata,
+  LandmineMineSource,
   LandmineMode,
   LandmineOutcome,
   LandminePhase,
@@ -44,6 +45,24 @@ export function gameLandmineMode(game: Pick<Game, 'landmine_mode'>): LandmineMod
 
 export function landmineModeLabel(mode: LandmineMode | null | undefined): string {
   return parseLandmineMode(mode) === 'elimination' ? 'Elimination' : 'Zero Points'
+}
+
+export function parseLandmineMineSource(raw: unknown): LandmineMineSource {
+  return raw === 'manual' ? 'manual' : 'system'
+}
+
+export function gameLandmineMineSource(game: Pick<Game, 'landmine_mine_source'>): LandmineMineSource {
+  return parseLandmineMineSource(game.landmine_mine_source)
+}
+
+export function landmineMineSourceLabel(source: LandmineMineSource | null | undefined): string {
+  return parseLandmineMineSource(source) === 'manual' ? 'Manual' : 'Auto'
+}
+
+/** The players who answer + peer-mark this round (manual mode excludes the sitting-out setter). */
+export function landmineAnsweringPlayerIds(playerIds: string[], setterId: string | null, manual: boolean): string[] {
+  if (!manual || !setterId) return playerIds
+  return playerIds.filter((id) => id !== setterId)
 }
 
 export function clampLandmineWritingTimer(seconds: number | undefined | null): number {
@@ -224,5 +243,6 @@ export function landmineOutcomeLabel(
   if (outcome === 'mine') return '💥 Mine'
   if (outcome === 'void') return 'Void · 0'
   if (outcome === 'empty') return '— · 0'
+  if (outcome === 'setter') return `Setter · +${points ?? 0}`
   return `+${points ?? 0}${isOriginal ? ' ⭐' : ''}`
 }

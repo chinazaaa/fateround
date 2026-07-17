@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { lobbyMaxPlayersFromGame, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { formatSudokuGameDuration, SUDOKU_GAME_DURATION_OPTIONS } from '@/lib/sudoku'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
-import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
@@ -156,21 +155,7 @@ export function HostSudokuLobbyPanel({
         <HostLobbyOptionChips value={gameDuration} options={durationOptions} onChange={onGameDurationChange} />
       </HostLobbySettingBlock>
 
-      {puzzleSettings ?? (
-        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={onGameUpdate} />
-      )}
-      {gameSupportsViewerSetting(game.game_type) && game.status === 'waiting' && (
-        <HostLobbySettingBlock title="Late joiners">
-          <HostAllowViewersField
-            embedded
-            hideHeader
-            gameCode={gameCode}
-            hostToken={hostToken}
-            game={game}
-            onGameUpdate={onGameUpdate}
-          />
-        </HostLobbySettingBlock>
-      )}
+      {puzzleSettings}
     </HostLobbySettingsSection>
   )
 }

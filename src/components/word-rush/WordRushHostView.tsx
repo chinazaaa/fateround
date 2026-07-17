@@ -6,12 +6,16 @@ import { WordRushFinishedResults } from '@/components/word-rush/WordRushFinished
 import { WordRushCard, WordRushTeamRoster } from '@/components/word-rush/WordRushChrome'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
-import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { gameTypeConfig } from '@/lib/game-types'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
@@ -371,13 +375,10 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
   }
 
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
+  const cfg = gameTypeConfig('word_rush')
   const mode = clampWordRushMode(game.word_rush_mode)
   const promptMode = clampWordRushPromptMode(game.word_rush_prompt_mode)
   const difficulty = clampWordRushDifficulty(game.word_rush_difficulty)
@@ -497,186 +498,193 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
     <div className="glass-card p-6 text-center text-muted text-sm">Start the game to watch the round.</div>
   )
 
+  // Word Rush settings card → the ⚙ Host settings sheet; team roster → the main lobby
+  // screen (children). Separate consts so each lands in the right HostLobby slot.
+  const wordRushSettingsCard = (
+    <WordRushCard className="space-y-4">
+      <p className="font-bold">Word Rush settings</p>
+      <div className="grid grid-cols-2 gap-2">
+        {(['team', 'individual'] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            disabled={savingSettings}
+            onClick={() => void saveSettings({ mode: m })}
+            className={[
+              'rounded-xl border-2 px-3 py-3 text-sm font-bold capitalize',
+              mode === m ? 'border-orange-400 bg-orange-500/15' : 'border-[var(--border-strong)]',
+            ].join(' ')}
+          >
+            {m}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {(['automatic', 'manual'] as const).map((p) => (
+          <button
+            key={p}
+            type="button"
+            disabled={savingSettings}
+            onClick={() => void saveSettings({ promptMode: p })}
+            className={[
+              'rounded-xl border-2 px-3 py-3 text-sm font-bold capitalize',
+              promptMode === p ? 'border-orange-400 bg-orange-500/15' : 'border-[var(--border-strong)]',
+            ].join(' ')}
+          >
+            {p}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {(['standard', 'hard'] as const).map((d) => (
+          <button
+            key={d}
+            type="button"
+            disabled={savingSettings}
+            onClick={() => void saveSettings({ difficulty: d })}
+            className={[
+              'rounded-xl border-2 px-3 py-3 text-sm font-bold capitalize',
+              difficulty === d ? 'border-orange-400 bg-orange-500/15' : 'border-[var(--border-strong)]',
+            ].join(' ')}
+          >
+            {d}
+          </button>
+        ))}
+      </div>
+      {mode === 'team' && (
+        <label className="block text-sm">
+          Teams
+          <select
+            className="input-field w-full mt-1"
+            value={numTeams}
+            disabled={savingSettings}
+            onChange={(e) => void saveSettings({ numTeams: Number(e.target.value) })}
+          >
+            {WORD_RUSH_TEAM_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n} teams
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <label className="block text-sm">
+        {mode === 'team' ? 'Team turn length' : 'Round length'}
+        <select
+          className="input-field w-full mt-1"
+          value={game.timer_seconds ?? 120}
+          disabled={savingSettings}
+          onChange={(e) => void saveSettings({ turnSeconds: Number(e.target.value) })}
+        >
+          {WORD_RUSH_TURN_OPTIONS.map((n) => (
+            <option key={n} value={n}>
+              {formatWordRushTurnTimer(n)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {mode === 'individual' && (
+        <label className="block text-sm">
+          Rounds
+          <select
+            className="input-field w-full mt-1"
+            value={game.rounds_count ?? 5}
+            disabled={savingSettings}
+            onChange={(e) => void saveSettings({ rounds: Number(e.target.value) })}
+          >
+            {WORD_RUSH_ROUND_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n} rounds
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <label className="block text-sm">
+        Max players
+        <select
+          className="input-field w-full mt-1"
+          value={game.max_players ?? 12}
+          disabled={savingSettings}
+          onChange={(e) => void saveSettings({ maxPlayers: Number(e.target.value) })}
+        >
+          {WORD_RUSH_MAX_PLAYER_OPTIONS.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </label>
+    </WordRushCard>
+  )
+
+  const wordRushTeamCard =
+    mode === 'team' ? (
+      <WordRushCard className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-bold">Teams ({numTeams})</p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void balanceTeams()}
+              disabled={balancing || shuffling}
+              className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-orange-500/10 disabled:opacity-50"
+            >
+              {balancing ? 'Balancing…' : 'Auto-balance'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void shuffleTeams()}
+              disabled={balancing || shuffling}
+              className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-orange-500/10 disabled:opacity-50"
+            >
+              {shuffling ? 'Shuffling…' : 'Shuffle'}
+            </button>
+          </div>
+        </div>
+        <WordRushTeamRoster
+          numTeams={numTeams}
+          teamRows={teamPlain}
+          players={players}
+          myPlayerId={hostPlays ? hostPlayerId : null}
+          onPick={hostPlays ? (team) => void pickTeam(team) : undefined}
+          picking={picking}
+          onMoveTeam={(playerId, team) => void moveTeam(playerId, team)}
+          moving={moving}
+        />
+        <p className="text-faint text-[11px] text-center">Tap a colored number to move a player to that team.</p>
+        {!lobbyReady.ok && <p className="text-amber-400 text-xs text-center">{lobbyReady.error}</p>}
+      </WordRushCard>
+    ) : null
+
+  // Lobby mode selector (play card) — reused by the new HostLobby and the tabbed manage.
+  const wordRushModeCard = (
+    <HostModeSelector
+      mode={hostMode}
+      onChange={(m) => void changeHostMode(m)}
+      joinedPlayerId={hostPlayerId}
+      joinedPlayerName={hostPlayerName}
+      joinName={hostJoinName}
+      onJoinNameChange={setHostJoinName}
+      onJoin={() => void hostJoinGame()}
+      joining={hostJoining}
+      onEditName={renameHost}
+      spectatorHint="Watch the game once it starts"
+      playerHint="Play along with everyone"
+      playingNote={
+        <p className="text-sm text-muted">
+          Playing as <strong className="text-body">{hostPlayerName}</strong> — play from the Play tab once you start.
+        </p>
+      }
+    />
+  )
+
   const manage = (
     <div className="space-y-4 sm:space-y-5 animate-stagger">
-      {game.status === 'waiting' && (
-        <HostModeSelector
-          mode={hostMode}
-          onChange={(m) => void changeHostMode(m)}
-          joinedPlayerId={hostPlayerId}
-          joinedPlayerName={hostPlayerName}
-          joinName={hostJoinName}
-          onJoinNameChange={setHostJoinName}
-          onJoin={() => void hostJoinGame()}
-          joining={hostJoining}
-          onEditName={renameHost}
-          spectatorHint="Watch the game from the Watch tab"
-          playingNote={
-            <p className="text-sm text-muted">
-              Playing as <strong className="text-body">{hostPlayerName}</strong> — play from the Play tab once you
-              start.
-            </p>
-          }
-        />
-      )}
+      {game.status === 'waiting' && wordRushModeCard}
       {game.status !== 'finished' && <HostRulesRow gameType="word_rush" />}
-      {game.status === 'waiting' && (
-        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-      )}
-      {game.status === 'waiting' && (
-        <WordRushCard className="space-y-4">
-          <p className="font-bold">Word Rush settings</p>
-          <div className="grid grid-cols-2 gap-2">
-            {(['team', 'individual'] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                disabled={savingSettings}
-                onClick={() => void saveSettings({ mode: m })}
-                className={[
-                  'rounded-xl border-2 px-3 py-3 text-sm font-bold capitalize',
-                  mode === m ? 'border-orange-400 bg-orange-500/15' : 'border-[var(--border-strong)]',
-                ].join(' ')}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {(['automatic', 'manual'] as const).map((p) => (
-              <button
-                key={p}
-                type="button"
-                disabled={savingSettings}
-                onClick={() => void saveSettings({ promptMode: p })}
-                className={[
-                  'rounded-xl border-2 px-3 py-3 text-sm font-bold capitalize',
-                  promptMode === p ? 'border-orange-400 bg-orange-500/15' : 'border-[var(--border-strong)]',
-                ].join(' ')}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {(['standard', 'hard'] as const).map((d) => (
-              <button
-                key={d}
-                type="button"
-                disabled={savingSettings}
-                onClick={() => void saveSettings({ difficulty: d })}
-                className={[
-                  'rounded-xl border-2 px-3 py-3 text-sm font-bold capitalize',
-                  difficulty === d ? 'border-orange-400 bg-orange-500/15' : 'border-[var(--border-strong)]',
-                ].join(' ')}
-              >
-                {d}
-              </button>
-            ))}
-          </div>
-          {mode === 'team' && (
-            <label className="block text-sm">
-              Teams
-              <select
-                className="input-field w-full mt-1"
-                value={numTeams}
-                disabled={savingSettings}
-                onChange={(e) => void saveSettings({ numTeams: Number(e.target.value) })}
-              >
-                {WORD_RUSH_TEAM_OPTIONS.map((n) => (
-                  <option key={n} value={n}>
-                    {n} teams
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <label className="block text-sm">
-            {mode === 'team' ? 'Team turn length' : 'Round length'}
-            <select
-              className="input-field w-full mt-1"
-              value={game.timer_seconds ?? 120}
-              disabled={savingSettings}
-              onChange={(e) => void saveSettings({ turnSeconds: Number(e.target.value) })}
-            >
-              {WORD_RUSH_TURN_OPTIONS.map((n) => (
-                <option key={n} value={n}>
-                  {formatWordRushTurnTimer(n)}
-                </option>
-              ))}
-            </select>
-          </label>
-          {mode === 'individual' && (
-            <label className="block text-sm">
-              Rounds
-              <select
-                className="input-field w-full mt-1"
-                value={game.rounds_count ?? 5}
-                disabled={savingSettings}
-                onChange={(e) => void saveSettings({ rounds: Number(e.target.value) })}
-              >
-                {WORD_RUSH_ROUND_OPTIONS.map((n) => (
-                  <option key={n} value={n}>
-                    {n} rounds
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <label className="block text-sm">
-            Max players
-            <select
-              className="input-field w-full mt-1"
-              value={game.max_players ?? 12}
-              disabled={savingSettings}
-              onChange={(e) => void saveSettings({ maxPlayers: Number(e.target.value) })}
-            >
-              {WORD_RUSH_MAX_PLAYER_OPTIONS.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </label>
-        </WordRushCard>
-      )}
-      {game.status === 'waiting' && mode === 'team' && (
-        <WordRushCard className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-bold">Teams ({numTeams})</p>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void balanceTeams()}
-                disabled={balancing || shuffling}
-                className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-orange-500/10 disabled:opacity-50"
-              >
-                {balancing ? 'Balancing…' : 'Auto-balance'}
-              </button>
-              <button
-                type="button"
-                onClick={() => void shuffleTeams()}
-                disabled={balancing || shuffling}
-                className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-orange-500/10 disabled:opacity-50"
-              >
-                {shuffling ? 'Shuffling…' : 'Shuffle'}
-              </button>
-            </div>
-          </div>
-          <WordRushTeamRoster
-            numTeams={numTeams}
-            teamRows={teamPlain}
-            players={players}
-            myPlayerId={hostPlays ? hostPlayerId : null}
-            onPick={hostPlays ? (team) => void pickTeam(team) : undefined}
-            picking={picking}
-            onMoveTeam={(playerId, team) => void moveTeam(playerId, team)}
-            moving={moving}
-          />
-          <p className="text-faint text-[11px] text-center">Tap a colored number to move a player to that team.</p>
-          {!lobbyReady.ok && <p className="text-amber-400 text-xs text-center">{lobbyReady.error}</p>}
-        </WordRushCard>
-      )}
+      {game.status === 'waiting' && wordRushSettingsCard}
+      {game.status === 'waiting' && wordRushTeamCard}
       {(game.status === 'waiting' || game.status === 'active') && (
         <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
       )}
@@ -808,6 +816,48 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
           Return to lobby instead
         </button>
       </div>
+    )
+  }
+
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={cfg.label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('word_rush', game) ?? game.max_players}
+        resumeToken={hostResumeToken}
+        playCard={wordRushModeCard}
+        settingsChildren={
+          <>
+            {wordRushSettingsCard}
+            <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+          </>
+        }
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : readyPlayers.length < minPlayers
+              ? `Need at least ${minPlayers} players (${readyPlayers.length}/${minPlayers})`
+              : lobbyReady.ok
+                ? null
+                : lobbyReady.error
+        }
+        startLabel="Start game"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      >
+        {wordRushTeamCard}
+      </HostLobby>
     )
   }
 

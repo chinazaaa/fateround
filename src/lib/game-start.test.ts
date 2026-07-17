@@ -27,7 +27,7 @@ describe('startCountError', () => {
 })
 
 describe('GAME_START_SPECS', () => {
-  it('registers exactly the 13 uniform games', () => {
+  it('registers exactly the 14 uniform games', () => {
     expect(Object.keys(GAME_START_SPECS).sort()).toEqual([
       'ayo',
       'checkers',
@@ -37,6 +37,7 @@ describe('GAME_START_SPECS', () => {
       'mafia',
       'mahjong',
       'monopoly',
+      'ping_pong',
       'scrabble',
       'snake_and_ladder',
       'tic_tac_toe',
@@ -50,6 +51,7 @@ describe('GAME_START_SPECS', () => {
     expect(GAME_START_SPECS.chess?.exact).toBe(true)
     expect(GAME_START_SPECS.checkers?.exact).toBe(true)
     expect(GAME_START_SPECS.tic_tac_toe?.exact).toBe(true)
+    expect(GAME_START_SPECS.ping_pong?.exact).toBe(true)
     expect(GAME_START_SPECS.scrabble?.maxPlayers).toBeGreaterThan(GAME_START_SPECS.scrabble!.minPlayers)
     expect(GAME_START_SPECS.whot?.exact).toBeUndefined()
   })

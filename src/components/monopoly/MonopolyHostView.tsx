@@ -12,11 +12,16 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { ExitIcon } from '@/components/host/host-icons'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { gameTypeConfig } from '@/lib/game-types'
 import { formatRentMessageForPlayer } from '@/lib/monopoly-rent-messages'
 import { formatThemedText } from '@/components/monopoly/monopoly-themes'
 import {
@@ -389,11 +394,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
   const showTabs = game.status !== 'finished'
@@ -609,6 +610,79 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
           Return to lobby instead
         </button>
       </div>
+    )
+  }
+
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={gameTypeConfig('monopoly').label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('monopoly', game) ?? game.max_players}
+        resumeToken={hostResumeToken}
+        playCard={
+          <HostModeSelector
+            mode={hostMode}
+            onChange={changeHostMode}
+            joinedPlayerId={hostPlayerId}
+            joinedPlayerName={hostPlayerName}
+            joinName={hostJoinName}
+            onJoinNameChange={setHostJoinName}
+            onJoin={() => void hostJoinGame()}
+            joining={hostJoining}
+            onEditName={renameHost}
+            spectatorHint="Spectate once it starts"
+            playingNote={
+              <p className="text-sm text-muted">
+                Playing as <strong className="text-body">{hostPlayerName}</strong> — switch to Play after you start.
+              </p>
+            }
+            renderJoinForm={
+              <MonopolyJoinForm
+                name={hostJoinName}
+                onNameChange={setHostJoinName}
+                tokenId={hostJoinToken}
+                onTokenChange={setHostJoinToken}
+                players={players}
+                joining={hostJoining}
+                submitLabel="Join as player"
+                onSubmit={() => void hostJoinGame()}
+              />
+            }
+          />
+        }
+        settingsChildren={
+          <>
+            <HostBoardGameLobbyPanel
+              gameCode={gameCode}
+              hostToken={hostToken}
+              game={game}
+              boardGameType="monopoly"
+              playerCount={players.length}
+              onGameUpdate={setGame}
+            />
+            <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+          </>
+        }
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : `Need at least ${MONOPOLY_MIN_PLAYERS} players to start (${players.length}/${MONOPOLY_MIN_PLAYERS})`
+        }
+        startLabel="Start game"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      />
     )
   }
 

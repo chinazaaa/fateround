@@ -86,6 +86,7 @@ export const gameTypeEnum = z.enum([
   'word_search',
   'word_scramble',
   'landmine',
+  'ping_pong',
 ])
 
 export const participantModeEnum = z.enum(['import', 'joiners', 'voters'])
@@ -94,12 +95,22 @@ export const pairVoteModeEnum = z.enum(['any', 'one_each'])
 export const questionSourceEnum = z.enum(['platform', 'custom'])
 export const triviaCategoryEnum = z.enum(['tech', 'general'])
 export const playerQuestionsOrderEnum = z.enum(['players_first', 'uploaded_first', 'mixed'])
-export const wstQuoteSourceEnum = z.enum(['player', 'anime', 'both'])
+export const wstQuoteSourceEnum = z.enum(['player', 'anime', 'both', 'deck'])
 export const wyrChoiceEnum = z.enum(['a', 'b'])
 export const participantGenderEnum = z.enum(['male', 'female'])
 export const playerGenderEnum = z.enum(['male', 'female', 'both'])
 export const pairFlagEnum = z.enum(['kiss', 'kill'])
-export const themeEnum = z.enum(['default', 'neon', 'retro', 'elegant', 'tropical', 'pirate', 'arctic', 'naija'])
+export const themeEnum = z.enum([
+  'default',
+  'neon',
+  'retro',
+  'elegant',
+  'tropical',
+  'pirate',
+  'arctic',
+  'naija',
+  'grass_court',
+])
 export const participantFilterEnum = z.enum(['all', 'joined'])
 export const timerSecondsEnum = z.union([z.literal(10), z.literal(15), z.literal(30), z.literal(60)])
 

@@ -8,9 +8,7 @@ export const FINAL_RESULTS_AUTO_REVEAL_SECONDS = 8
 export const HOT_SEAT_FINAL_RESULTS_AUTO_REVEAL_SECONDS = 30
 
 export function finalResultsAutoRevealSeconds(gameType?: string): number {
-  return gameType === 'hot_seat'
-    ? HOT_SEAT_FINAL_RESULTS_AUTO_REVEAL_SECONDS
-    : FINAL_RESULTS_AUTO_REVEAL_SECONDS
+  return gameType === 'hot_seat' ? HOT_SEAT_FINAL_RESULTS_AUTO_REVEAL_SECONDS : FINAL_RESULTS_AUTO_REVEAL_SECONDS
 }
 
 export function msUntilDeadline(

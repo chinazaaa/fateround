@@ -18,7 +18,9 @@ export function HostAllowViewersField({
   gameCode: string
   hostToken: string
   game: Game
-  onGameUpdate: (game: Game) => void
+  /** Optional — callers that poll/subscribe (e.g. the central HostLobby sheet) pick up the
+   *  updated game on their own; others pass it for instant optimistic feedback. */
+  onGameUpdate?: (game: Game) => void
   className?: string
   embedded?: boolean
   /** Hide title and helper copy when a parent section already provides them. */
@@ -40,7 +42,7 @@ export function HostAllowViewersField({
       allow_late_players: next === 'viewers_and_players',
       ...(game.game_type === 'codewords' ? { codewords_late_join: next === 'viewers_and_players' } : {}),
     }
-    onGameUpdate(optimistic)
+    onGameUpdate?.(optimistic)
     setSaving(true)
     try {
       const res = await fetch(`/api/games/${gameCode}`, {
@@ -50,11 +52,11 @@ export function HostAllowViewersField({
       })
       const data = await res.json()
       if (!res.ok) {
-        onGameUpdate(game)
+        onGameUpdate?.(game)
         toast.error(data.error || 'Failed to update late join setting')
         return
       }
-      if (data.game) onGameUpdate(data.game)
+      if (data.game) onGameUpdate?.(data.game)
     } finally {
       setSaving(false)
     }

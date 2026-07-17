@@ -19,9 +19,25 @@ import {
   isICallOnGame,
   isWordHuntGame,
   isScrabbleGame,
+  isChessGame,
+  isCheckersGame,
+  isTicTacToeGame,
+  isPingPongGame,
+  isLandmineGame,
 } from '@/lib/game-types'
+import {
+  clampLandmineCategoryTimer,
+  clampLandmineMarkingTimer,
+  clampLandmineMineCount,
+  clampLandmineWritingTimer,
+  parseLandmineMineSource,
+  parseLandmineMode,
+} from '@/lib/landmine'
 import { clampNpatGameDuration, clampNpatMarkingTimer, clampNpatTimer } from '@/lib/npat'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
+import { clampChessTimer, clampChessBoardTheme, clampChessPieceSet } from '@/lib/chess'
+import { clampCheckersTimer } from '@/lib/checkers'
+import { clampTicTacToeTimer } from '@/lib/tic-tac-toe'
 import {
   clampScrabbleTimer,
   clampScrabbleGameDuration,
@@ -35,6 +51,7 @@ import { parsePlayerQuestionsEnabled, parsePlayerQuestionsOrder } from '@/lib/pl
 import { supportsPlayerNameSubmissions } from '@/lib/player-participant-pool'
 import { gameSupportsViewerSetting, lateJoinPolicyToFields, gameAllowsLatePlayerJoin } from '@/lib/viewers'
 import { clampPanRounds } from '@/lib/pick-a-number'
+import { clampPingPongPoints } from '@/lib/ping-pong'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = getSupabaseAnon()
@@ -55,8 +72,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     scrabble_dictionary_id: rawScrabbleDictionaryId,
     scrabble_clock_mode: rawScrabbleClockMode,
     scrabble_clock_seconds: rawScrabbleClockSeconds,
+    chess_board_theme: rawChessBoardTheme,
+    chess_piece_set: rawChessPieceSet,
+    wst_quote_source: rawWstQuoteSource,
     codewords_player_picks: rawCwPlayerPicks,
     codewords_randomize_teams: rawCwRandomize,
+    ping_pong_points_to_win: rawPingPongPointsToWin,
     participant_filter,
   } = body
 
@@ -91,6 +112,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   // to a known theme id, matching how create handles it.
   if (rawTheme !== undefined) {
     updatePayload.theme = parseThemeId(rawTheme)
+  }
+
+  // Who Said This quote source (player / anime / both). Consumed at start to pick which
+  // quote pool(s) to draw from; the player + anime pools are stored independently, so
+  // switching just re-selects and never clears either. Gated to waiting/finished by the
+  // assertHostGameSettings path above. Schema already validated it to the enum.
+  if (rawWstQuoteSource !== undefined) {
+    if (gameType !== 'who_said_this') {
+      return NextResponse.json({ error: 'Quote source only applies to Who Said This games' }, { status: 400 })
+    }
+    updatePayload.wst_quote_source = rawWstQuoteSource
   }
 
   // Codewords team-assignment mode (players pick / host assigns / randomize),
@@ -146,7 +178,54 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
         ? clampWordHuntTimer(rawTimerSeconds)
         : isScrabbleGame(gameType)
           ? clampScrabbleTimer(rawTimerSeconds)
-          : parseTimerSeconds(rawTimerSeconds)
+          : isChessGame(gameType)
+            ? clampChessTimer(rawTimerSeconds)
+            : isCheckersGame(gameType)
+              ? clampCheckersTimer(rawTimerSeconds)
+              : isTicTacToeGame(gameType)
+                ? clampTicTacToeTimer(rawTimerSeconds)
+                : parseTimerSeconds(rawTimerSeconds)
+  }
+
+  // Chess host-default appearance (board colours + piece set). Cosmetic — the pre-start
+  // gating from assertHostGameSettings already restricts this PATCH to a waiting/finished
+  // game. Values are validated to known ids server-side (unknown → the default).
+  if (isChessGame(gameType)) {
+    if (rawChessBoardTheme !== undefined) updatePayload.chess_board_theme = clampChessBoardTheme(rawChessBoardTheme)
+    if (rawChessPieceSet !== undefined) updatePayload.chess_piece_set = clampChessPieceSet(rawChessPieceSet)
+  } else if (rawChessBoardTheme !== undefined || rawChessPieceSet !== undefined) {
+    return NextResponse.json({ error: 'Board and piece appearance only apply to Chess games' }, { status: 400 })
+  }
+
+  if (isPingPongGame(gameType)) {
+    if (rawPingPongPointsToWin !== undefined) {
+      updatePayload.ping_pong_points_to_win = clampPingPongPoints(rawPingPongPointsToWin)
+    }
+  } else if (rawPingPongPointsToWin !== undefined) {
+    return NextResponse.json({ error: 'Points to win only applies to Ping Pong games' }, { status: 400 })
+  }
+
+  // Landmine host-lobby settings. Pre-start only (assertHostGameSettings restricts this PATCH to a
+  // waiting/finished game). The landmine timers live on the shared timer columns, so they're
+  // clamped here rather than in the generic timer blocks below.
+  if (isLandmineGame(gameType)) {
+    if (body.landmine_mode !== undefined) updatePayload.landmine_mode = parseLandmineMode(body.landmine_mode)
+    if (body.landmine_mine_source !== undefined) {
+      updatePayload.landmine_mine_source = parseLandmineMineSource(body.landmine_mine_source)
+    }
+    if (body.landmine_mine_count !== undefined) {
+      updatePayload.landmine_mine_count = clampLandmineMineCount(body.landmine_mine_count)
+    }
+    if (body.landmine_originality_bonus !== undefined) {
+      updatePayload.landmine_originality_bonus = body.landmine_originality_bonus !== false
+    }
+    if (rawTimerSeconds !== undefined) updatePayload.timer_seconds = clampLandmineWritingTimer(rawTimerSeconds)
+    if (rawOperativeTimerSeconds !== undefined) {
+      updatePayload.operative_timer_seconds = clampLandmineMarkingTimer(rawOperativeTimerSeconds)
+    }
+    if (rawGameDurationSeconds !== undefined) {
+      updatePayload.game_duration_seconds = clampLandmineCategoryTimer(rawGameDurationSeconds)
+    }
   }
 
   if (rawOperativeTimerSeconds !== undefined) {
@@ -160,6 +239,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
       updatePayload.game_duration_seconds = clampNpatGameDuration(rawGameDurationSeconds)
     } else if (isScrabbleGame(gameType)) {
       updatePayload.game_duration_seconds = clampScrabbleGameDuration(rawGameDurationSeconds)
+    } else if (isPingPongGame(gameType)) {
+      updatePayload.game_duration_seconds = Math.max(0, rawGameDurationSeconds)
     }
   }
 

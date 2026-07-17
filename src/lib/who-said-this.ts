@@ -133,37 +133,58 @@ export function buildRoundsFromQuotePool({ gameId, participantIds, poolEntries, 
   }))
 }
 
-export interface AnimeRoundInput {
+/** Answer options per Who Said This question (trivia-style: A/B/C/D, one correct). */
+export const WST_MIN_OPTIONS = 2
+export const WST_MAX_OPTIONS = 4
+/** A deck game needs at least this many questions to start. */
+export const WST_DECK_MIN_ENTRIES = 2
+
+/**
+ * One Who Said This question: a quote (the prompt) plus the answer options the player picks
+ * from — exactly like a trivia question, with the quote in place of the question text. The
+ * author (a player in the lobby, or the host via Platform/Library/CSV) supplies the options
+ * and marks which one is correct.
+ */
+export interface WstDeckEntry {
+  quote: string
+  options: string[]
+  correctIndex: number
+}
+
+export interface WstDeckRoundInput {
   gameId: string
   participantIds: string[]
-  animeQuotes: Array<{
-    quote_text: string
-    anime_name: string
-    correct_character: string
-    choices: string[]
-  }>
+  deck: WstDeckEntry[]
   startIndex: number
   now: string
 }
 
-export function buildRoundsFromAnimePool({ gameId, participantIds, animeQuotes, startIndex, now }: AnimeRoundInput) {
-  const shuffled = shuffleQuotePool(animeQuotes)
+/**
+ * Build choice-rounds from a set of Who Said This questions (host deck or player-submitted
+ * pool). Each round shows the quote and the author-supplied options; the correct option is the
+ * answer. Reuses the `anime_metadata` choice-round shape (source: 'deck') so the existing
+ * guess/vote/UI plumbing renders it unchanged — options are shown in authored order.
+ */
+export function buildRoundsFromDeck({ gameId, participantIds, deck, startIndex, now }: WstDeckRoundInput) {
+  const shuffled = shuffleQuotePool(deck)
   return shuffled.map((entry, index) => {
     const roundNumber = startIndex + index + 1
     const isFirst = roundNumber === 1
+    const options = entry.options.map((o) => o.trim()).filter(Boolean)
+    const correct = options[entry.correctIndex] ?? options[0]
     return {
       game_id: gameId,
       round_number: roundNumber,
       participant_ids: participantIds,
       submitter_player_id: null,
-      quote_text: entry.quote_text,
+      quote_text: entry.quote,
       quote_author_participant_id: null,
       quote_submitted_at: isFirst ? now : null,
       anime_metadata: {
-        source: 'anime' as const,
-        anime_name: entry.anime_name,
-        correct_character: entry.correct_character,
-        choices: entry.choices,
+        source: 'deck' as const,
+        anime_name: '',
+        correct_character: correct,
+        choices: options,
       },
       status: isFirst ? 'active' : 'pending',
       started_at: isFirst ? now : null,
@@ -284,10 +305,17 @@ export function tallyAnimeWstVotes(votes: Vote[], choices: string[], correctChar
 export interface WstPlayerScore {
   playerId: string
   name: string
+  /** Speed-weighted points (fastest correct wins); 0 for legacy name-list rounds. */
+  points: number
   correctGuesses: number
 }
 
-/** Points for picking the right name each round. */
+/**
+ * Rank players by speed-weighted points ("fastest correct wins"): each correct answer earns
+ * points scaled by how quickly it came in, summed across rounds. Ties break on correct count,
+ * then average response time, then name. Choice rounds (deck + players-submit) carry per-vote
+ * `points`/`response_ms`; legacy name-list rounds fall back to a plain correct-count.
+ */
 export function tallyWstPlayerScores(
   rounds: {
     id: string
@@ -298,9 +326,17 @@ export function tallyWstPlayerScores(
   votes: Vote[],
   players: Player[]
 ): WstPlayerScore[] {
-  const scores = new Map<string, number>()
   const activePlayers = players.filter((p) => p.spectator !== true)
-  for (const p of activePlayers) scores.set(p.id, 0)
+  const points = new Map<string, number>()
+  const correct = new Map<string, number>()
+  const totalMs = new Map<string, number>()
+  const answered = new Map<string, number>()
+  for (const p of activePlayers) {
+    points.set(p.id, 0)
+    correct.set(p.id, 0)
+    totalMs.set(p.id, 0)
+    answered.set(p.id, 0)
+  }
 
   for (const round of rounds) {
     const roundVotes = votes.filter((v) => v.round_id === round.id)
@@ -308,28 +344,44 @@ export function tallyWstPlayerScores(
     if (round.anime_metadata) {
       const correctChar = round.anime_metadata.correct_character
       for (const vote of roundVotes) {
+        if (!points.has(vote.player_id)) continue
+        answered.set(vote.player_id, (answered.get(vote.player_id) ?? 0) + 1)
+        if (typeof vote.response_ms === 'number') {
+          totalMs.set(vote.player_id, (totalMs.get(vote.player_id) ?? 0) + vote.response_ms)
+        }
         if (vote.anime_choice === correctChar) {
-          scores.set(vote.player_id, (scores.get(vote.player_id) ?? 0) + 1)
+          correct.set(vote.player_id, (correct.get(vote.player_id) ?? 0) + 1)
+          // Prefer stored speed points; fall back to a flat point for legacy rows without them.
+          points.set(vote.player_id, (points.get(vote.player_id) ?? 0) + (vote.points ?? 1))
         }
       }
     } else {
       const correctId = wstCorrectParticipantIdFromRound(round, players)
       if (!correctId) continue
       for (const vote of roundVotes) {
+        if (!points.has(vote.player_id)) continue
         if (vote.target_participant_id === correctId) {
-          scores.set(vote.player_id, (scores.get(vote.player_id) ?? 0) + 1)
+          correct.set(vote.player_id, (correct.get(vote.player_id) ?? 0) + 1)
+          points.set(vote.player_id, (points.get(vote.player_id) ?? 0) + 1)
         }
       }
     }
   }
 
-  return [...scores.entries()]
-    .map(([playerId, correctGuesses]) => ({
-      playerId,
-      name: activePlayers.find((p) => p.id === playerId)?.name ?? 'Unknown',
-      correctGuesses,
+  return activePlayers
+    .map((p) => ({
+      playerId: p.id,
+      name: p.name,
+      points: points.get(p.id) ?? 0,
+      correctGuesses: correct.get(p.id) ?? 0,
+      avgMs: (answered.get(p.id) ?? 0) > 0 ? (totalMs.get(p.id) ?? 0) / (answered.get(p.id) ?? 1) : Infinity,
     }))
     .sort(
-      (a, b) => b.correctGuesses - a.correctGuesses || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+      (a, b) =>
+        b.points - a.points ||
+        b.correctGuesses - a.correctGuesses ||
+        a.avgMs - b.avgMs ||
+        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
     )
+    .map(({ playerId, name, points, correctGuesses }) => ({ playerId, name, points, correctGuesses }))
 }

@@ -3,11 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostPageShell, hostPlayLayoutFlags } from '@/components/host/HostPageShell'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
+import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
+import { TransferHostControl } from '@/components/TransferHostControl'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { gameTypeConfig } from '@/lib/game-types'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
@@ -334,11 +340,7 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
   )
 
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading...</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
   const layout = hostPlayLayoutFlags(tab, showPlayTab, game.status)
@@ -368,6 +370,62 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
           Return to lobby instead
         </button>
       </div>
+    )
+  }
+
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={gameTypeConfig('mahjong').label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('mahjong', game) ?? game.max_players}
+        resumeToken={hostResumeToken}
+        playCard={
+          <HostModeSelector
+            mode={hostMode}
+            onChange={changeHostMode}
+            joinedPlayerId={hostPlayerId}
+            joinedPlayerName={hostPlayerName}
+            joinName={hostJoinName}
+            onJoinNameChange={setHostJoinName}
+            onJoin={() => void hostJoinGame()}
+            joining={hostJoining}
+            spectatorHint="Manage the table"
+            playerHint="Take one of the four seats"
+          />
+        }
+        settingsChildren={
+          <>
+            <HostBoardGameLobbyPanel
+              gameCode={gameCode}
+              hostToken={hostToken}
+              game={game}
+              boardGameType="mahjong"
+              playerCount={readyPlayers.length}
+              onGameUpdate={setGame}
+            />
+            <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+          </>
+        }
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : `Need exactly ${MAHJONG_MIN_PLAYERS} ready players (${readyPlayers.length}/${MAHJONG_MIN_PLAYERS})`
+        }
+        startLabel="Start table"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      />
     )
   }
 

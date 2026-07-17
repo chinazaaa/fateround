@@ -3,9 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { gameTypeConfig } from '@/lib/game-types'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
 import { currentTurnPlayerId, isScrabbleResultsPhase } from '@/lib/scrabble-board'
@@ -413,11 +418,7 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
   const tileSet = tileSetForDictionary(game?.scrabble_dictionary_id)
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
   if (!game) {
@@ -491,6 +492,113 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
     <p className="text-muted text-sm text-center">Waiting for the round to begin…</p>
   )
 
+  // Lobby settings card (game mode / clock / dictionary) — reused by the tabbed manage
+  // and the new HostLobby's settings sheet.
+  const scrabbleSettingsCard = (
+    <div className="glass-card-strong p-5 space-y-3">
+      <p className="label-caps">Game settings</p>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block space-y-1.5 col-span-2">
+          <span className="text-sm font-semibold text-[var(--foreground)]">Game mode</span>
+          <select
+            value={parseScrabbleClockMode(game.scrabble_clock_mode)}
+            onChange={(e) =>
+              void savePatch(
+                e.target.value === 'chess'
+                  ? {
+                      scrabble_clock_mode: 'chess',
+                      scrabble_clock_seconds: SCRABBLE_CLOCK_OPTIONS.includes(
+                        (game.scrabble_clock_seconds ?? 0) as (typeof SCRABBLE_CLOCK_OPTIONS)[number]
+                      )
+                        ? game.scrabble_clock_seconds
+                        : SCRABBLE_DEFAULT_CLOCK_SECONDS,
+                    }
+                  : { scrabble_clock_mode: 'standard' }
+              )
+            }
+            className="input-field w-full"
+          >
+            <option value="standard">Normal (per-turn timer)</option>
+            <option value="chess">Chess clock (per-player bank)</option>
+          </select>
+        </label>
+        {parseScrabbleClockMode(game.scrabble_clock_mode) === 'chess' ? (
+          <label className="block space-y-1.5 col-span-2">
+            <span className="text-sm font-semibold text-[var(--foreground)]">Time per player</span>
+            <select
+              value={
+                SCRABBLE_CLOCK_OPTIONS.includes(
+                  (game.scrabble_clock_seconds ?? 0) as (typeof SCRABBLE_CLOCK_OPTIONS)[number]
+                )
+                  ? (game.scrabble_clock_seconds ?? SCRABBLE_DEFAULT_CLOCK_SECONDS)
+                  : SCRABBLE_DEFAULT_CLOCK_SECONDS
+              }
+              onChange={(e) => void savePatch({ scrabble_clock_seconds: Number(e.target.value) })}
+              className="input-field w-full"
+            >
+              {SCRABBLE_CLOCK_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s / 60} minutes
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <>
+            <label className="block space-y-1.5">
+              <span className="text-sm font-semibold text-[var(--foreground)]">Time per turn</span>
+              <select
+                value={[0, 60, 120, 180, 300].includes(game.timer_seconds) ? game.timer_seconds : 0}
+                onChange={(e) => void savePatch({ timer_seconds: Number(e.target.value) })}
+                className="input-field w-full"
+              >
+                <option value={0}>No timer</option>
+                <option value={60}>1 minute</option>
+                <option value={120}>2 minutes</option>
+                <option value={180}>3 minutes</option>
+                <option value={300}>5 minutes</option>
+              </select>
+            </label>
+            <label className="block space-y-1.5">
+              <span className="text-sm font-semibold text-[var(--foreground)]">Whole game</span>
+              <select
+                value={
+                  SCRABBLE_GAME_DURATION_OPTIONS.includes(
+                    (game.game_duration_seconds ?? 0) as (typeof SCRABBLE_GAME_DURATION_OPTIONS)[number]
+                  )
+                    ? (game.game_duration_seconds ?? 0)
+                    : 0
+                }
+                onChange={(e) => void savePatch({ game_duration_seconds: Number(e.target.value) })}
+                className="input-field w-full"
+              >
+                {SCRABBLE_GAME_DURATION_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {formatScrabbleGameDuration(s)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
+        <label className="block space-y-1.5 col-span-2">
+          <span className="text-sm font-semibold text-[var(--foreground)]">Dictionary</span>
+          <select
+            value={parseScrabbleDictionaryId(game.scrabble_dictionary_id)}
+            onChange={(e) => void savePatch({ scrabble_dictionary_id: e.target.value })}
+            className="input-field w-full"
+          >
+            {SCRABBLE_DICTIONARY_OPTIONS.map((id) => (
+              <option key={id} value={id}>
+                {SCRABBLE_DICTIONARY_LABELS[id]}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </div>
+  )
+
   const manage = (
     <HostManageSection
       game={game}
@@ -517,110 +625,7 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
       }
       settings={
         <>
-          {game.status === 'waiting' && (
-            <div className="glass-card-strong p-5 space-y-3">
-              <p className="label-caps">Game settings</p>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block space-y-1.5 col-span-2">
-                  <span className="text-sm font-semibold text-[var(--foreground)]">Game mode</span>
-                  <select
-                    value={parseScrabbleClockMode(game.scrabble_clock_mode)}
-                    onChange={(e) =>
-                      void savePatch(
-                        e.target.value === 'chess'
-                          ? {
-                              scrabble_clock_mode: 'chess',
-                              scrabble_clock_seconds: SCRABBLE_CLOCK_OPTIONS.includes(
-                                (game.scrabble_clock_seconds ?? 0) as (typeof SCRABBLE_CLOCK_OPTIONS)[number]
-                              )
-                                ? game.scrabble_clock_seconds
-                                : SCRABBLE_DEFAULT_CLOCK_SECONDS,
-                            }
-                          : { scrabble_clock_mode: 'standard' }
-                      )
-                    }
-                    className="input-field w-full"
-                  >
-                    <option value="standard">Normal (per-turn timer)</option>
-                    <option value="chess">Chess clock (per-player bank)</option>
-                  </select>
-                </label>
-                {parseScrabbleClockMode(game.scrabble_clock_mode) === 'chess' ? (
-                  <label className="block space-y-1.5 col-span-2">
-                    <span className="text-sm font-semibold text-[var(--foreground)]">Time per player</span>
-                    <select
-                      value={
-                        SCRABBLE_CLOCK_OPTIONS.includes(
-                          (game.scrabble_clock_seconds ?? 0) as (typeof SCRABBLE_CLOCK_OPTIONS)[number]
-                        )
-                          ? (game.scrabble_clock_seconds ?? SCRABBLE_DEFAULT_CLOCK_SECONDS)
-                          : SCRABBLE_DEFAULT_CLOCK_SECONDS
-                      }
-                      onChange={(e) => void savePatch({ scrabble_clock_seconds: Number(e.target.value) })}
-                      className="input-field w-full"
-                    >
-                      {SCRABBLE_CLOCK_OPTIONS.map((s) => (
-                        <option key={s} value={s}>
-                          {s / 60} minutes
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : (
-                  <>
-                    <label className="block space-y-1.5">
-                      <span className="text-sm font-semibold text-[var(--foreground)]">Time per turn</span>
-                      <select
-                        value={[0, 60, 120, 180, 300].includes(game.timer_seconds) ? game.timer_seconds : 0}
-                        onChange={(e) => void savePatch({ timer_seconds: Number(e.target.value) })}
-                        className="input-field w-full"
-                      >
-                        <option value={0}>No timer</option>
-                        <option value={60}>1 minute</option>
-                        <option value={120}>2 minutes</option>
-                        <option value={180}>3 minutes</option>
-                        <option value={300}>5 minutes</option>
-                      </select>
-                    </label>
-                    <label className="block space-y-1.5">
-                      <span className="text-sm font-semibold text-[var(--foreground)]">Whole game</span>
-                      <select
-                        value={
-                          SCRABBLE_GAME_DURATION_OPTIONS.includes(
-                            (game.game_duration_seconds ?? 0) as (typeof SCRABBLE_GAME_DURATION_OPTIONS)[number]
-                          )
-                            ? (game.game_duration_seconds ?? 0)
-                            : 0
-                        }
-                        onChange={(e) => void savePatch({ game_duration_seconds: Number(e.target.value) })}
-                        className="input-field w-full"
-                      >
-                        {SCRABBLE_GAME_DURATION_OPTIONS.map((s) => (
-                          <option key={s} value={s}>
-                            {formatScrabbleGameDuration(s)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </>
-                )}
-                <label className="block space-y-1.5 col-span-2">
-                  <span className="text-sm font-semibold text-[var(--foreground)]">Dictionary</span>
-                  <select
-                    value={parseScrabbleDictionaryId(game.scrabble_dictionary_id)}
-                    onChange={(e) => void savePatch({ scrabble_dictionary_id: e.target.value })}
-                    className="input-field w-full"
-                  >
-                    {SCRABBLE_DICTIONARY_OPTIONS.map((id) => (
-                      <option key={id} value={id}>
-                        {SCRABBLE_DICTIONARY_LABELS[id]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            </div>
-          )}
+          {game.status === 'waiting' && scrabbleSettingsCard}
 
           {game.status !== 'waiting' && !gameFinished && (
             <p className="text-center text-xs text-muted">
@@ -673,6 +678,57 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
       }
     />
   )
+
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={gameTypeConfig('scrabble').label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('scrabble', game) ?? game.max_players}
+        playCard={
+          <HostModeSelector
+            mode={hostMode}
+            onChange={changeHostMode}
+            joinedPlayerId={hostPlayerId}
+            joinedPlayerName={hostPlayerName}
+            joinName={hostJoinName}
+            onJoinNameChange={setHostJoinName}
+            onJoin={() => void hostJoinGame()}
+            joining={hostJoining}
+            onEditName={renameHost}
+            spectatorHint="Spectate once it starts"
+            playerHint="Take a seat and play"
+          />
+        }
+        settingsChildren={
+          <>
+            {scrabbleSettingsCard}
+            <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+          </>
+        }
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : readyPlayers.length < players.length
+              ? `Waiting for players to tap ready (${readyPlayers.length}/${SCRABBLE_MIN_PLAYERS})`
+              : `Need at least ${SCRABBLE_MIN_PLAYERS} players to start (${players.length}/${SCRABBLE_MIN_PLAYERS})`
+        }
+        startLabel="Start game"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      />
+    )
+  }
 
   return (
     <HostGameLayout

@@ -20,7 +20,7 @@ export function usePuzzleThemes(gameType: string | undefined): PuzzleThemeOption
   const [themes, setThemes] = useState<PuzzleThemeOption[]>([])
   useEffect(() => {
     if (!gameType || !PUZZLE_GAME_TYPES.includes(gameType)) {
-      setThemes([])
+      setTimeout(() => setThemes([]), 0)
       return
     }
     let cancelled = false

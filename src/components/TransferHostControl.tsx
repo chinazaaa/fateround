@@ -183,7 +183,9 @@ export function TransferHostControl({ triggerClassName }: { triggerClassName?: s
       {open && typeof document !== 'undefined'
         ? createPortal(
             <div
-              className="fixed inset-0 z-[60] flex items-center justify-center px-4 pointer-events-auto"
+              // z above the shared .modal-backdrop (z-100) so this picker is visible even
+              // when opened from inside another modal (e.g. the host lobby settings sheet).
+              className="fixed inset-0 z-[110] flex items-center justify-center px-4 pointer-events-auto"
               style={{ background: 'rgba(0,0,0,0.55)' }}
               onClick={() => setOpen(false)}
             >

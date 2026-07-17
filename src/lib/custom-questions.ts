@@ -20,9 +20,11 @@ import {
   isCrosswordGame,
   isWordSearchGame,
   isWordScrambleGame,
+  isWhoSaidThis,
   parseGameType,
 } from '@/lib/game-types'
 import { parseCsvRows } from '@/lib/csv-parse'
+import type { WstDeckEntry } from '@/lib/who-said-this'
 import { parseCrosswordEntries } from '@/lib/crossword-puzzles'
 import { parseWordSearchEntries } from '@/lib/word-search-puzzles'
 import { parseWordScrambleEntries } from '@/lib/word-scramble-puzzles'
@@ -440,6 +442,101 @@ export function parseStoredWordSearchEntries(raw: unknown): WordSearchEntry[] {
   return out
 }
 
+// ---------------------------------------------------------------------------
+// Who Said This — trivia-style quote questions (quote + A/B/C/D options + correct)
+// ---------------------------------------------------------------------------
+
+/** Resolve the correct option from a CSV `correct` cell: a letter (A–D), a 1/0-based index,
+ *  or the exact option text. Returns the 0-based index, or null if unresolved. */
+function parseWstCorrectIndex(raw: string, options: string[]): number | null {
+  const v = (raw ?? '').trim()
+  if (!v) return null
+  const letter = v.toUpperCase()
+  const letterIdx = ['A', 'B', 'C', 'D'].indexOf(letter)
+  if (letterIdx >= 0 && letterIdx < options.length) return letterIdx
+  const num = Number.parseInt(v, 10)
+  if (!Number.isNaN(num)) {
+    // Accept 1-based (1–4) or 0-based (0–3) numbering.
+    if (num >= 1 && num <= options.length) return num - 1
+    if (num >= 0 && num < options.length) return num
+  }
+  const match = options.findIndex((o) => o.toLowerCase() === v.toLowerCase())
+  return match >= 0 ? match : null
+}
+
+/** Map CSV/stored rows to {quote, options, correctIndex}. Quote column: quote/question/text;
+ *  options: option_a..d (or a/b/c/d, or option1..4); correct: correct/answer/correct_answer. */
+export function parseWstDeckRows(rows: Record<string, string>[]): WstDeckEntry[] {
+  const out: WstDeckEntry[] = []
+  for (const r of rows) {
+    const quote = (r.quote ?? r.question ?? r.text ?? r.line ?? '').trim()
+    const options = [
+      r.option_a ?? r.a ?? r.option1 ?? r.option_1 ?? '',
+      r.option_b ?? r.b ?? r.option2 ?? r.option_2 ?? '',
+      r.option_c ?? r.c ?? r.option3 ?? r.option_3 ?? '',
+      r.option_d ?? r.d ?? r.option4 ?? r.option_4 ?? '',
+    ]
+      .map((o) => o.trim())
+      .filter(Boolean)
+      .slice(0, 4)
+    const correctIndex = parseWstCorrectIndex(r.correct ?? r.answer ?? r.correct_answer ?? '', options)
+    if (!quote || options.length < 2 || correctIndex == null) continue
+    out.push({ quote, options, correctIndex })
+  }
+  return out
+}
+
+function dedupeWstDeck(entries: WstDeckEntry[]): WstDeckEntry[] {
+  const seen = new Set<string>()
+  const out: WstDeckEntry[] = []
+  for (const e of entries) {
+    const key = `${e.quote.toLowerCase()}|${e.options.map((o) => o.toLowerCase()).join('|')}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(e)
+  }
+  return out
+}
+
+/** Parse a WST deck CSV (quote,option_a,option_b,option_c,option_d,correct) into deduped
+ *  questions + counts. */
+export function parseWstDeckImport(text: string): EntryImportResult<WstDeckEntry> {
+  const rows = parseCsvRows(text)
+  const parsed = parseWstDeckRows(rows)
+  const deduped = dedupeWstDeck(parsed)
+  return {
+    questions: deduped,
+    totalRows: rows.length,
+    skippedRows: rows.length - parsed.length,
+    duplicateRows: parsed.length - deduped.length,
+  }
+}
+
+/** Parse a WST deck from an uploaded .xlsx/.xls workbook. */
+export async function parseExcelWstDeckImport(buffer: ArrayBuffer): Promise<EntryImportResult<WstDeckEntry>> {
+  return parseWstDeckImport(await sheetBufferToText(buffer))
+}
+
+/** Restore a stored WST deck (from games.custom_questions or a library pack). */
+export function parseStoredWstDeck(raw: unknown): WstDeckEntry[] {
+  if (!Array.isArray(raw)) return []
+  // Stored rows keep native arrays for `options` + numeric `correctIndex`; normalise loosely.
+  const normalised: Record<string, string>[] = []
+  const direct: WstDeckEntry[] = []
+  for (const item of raw as unknown[]) {
+    const obj = item as { quote?: unknown; options?: unknown; correctIndex?: unknown }
+    if (typeof obj?.quote === 'string' && Array.isArray(obj.options) && typeof obj.correctIndex === 'number') {
+      const options = obj.options.map((o) => String(o).trim()).filter(Boolean)
+      if (obj.quote.trim() && options.length >= 2 && obj.correctIndex >= 0 && obj.correctIndex < options.length) {
+        direct.push({ quote: obj.quote.trim(), options, correctIndex: obj.correctIndex })
+      }
+      continue
+    }
+    normalised.push(item as Record<string, string>)
+  }
+  return dedupeWstDeck([...direct, ...parseWstDeckRows(normalised)])
+}
+
 /** Shared "N skipped · M duplicates removed" summary for the entry importers above. */
 export function formatEntryImportSummary(result: { skippedRows: number; duplicateRows: number }): string | null {
   const parts: string[] = []
@@ -528,6 +625,9 @@ export function parseQuestionSource(raw: unknown, gameType?: GameType | string):
   // start route just checks custom_questions), so only 'platform'/'custom' persist.
   if (isCrosswordGame(gameType) || isWordSearchGame(gameType) || isWordScrambleGame(gameType))
     return raw === 'custom' ? 'custom' : 'platform'
+  // Who Said This Pre-set roster decks: Library folds into 'custom' (start reads the deck from
+  // custom_questions); 'platform' is a seeded deck. The player-quote mode ignores this.
+  if (isWhoSaidThis(gameType)) return raw === 'custom' || raw === 'library' ? 'custom' : 'platform'
   return 'platform'
 }
 

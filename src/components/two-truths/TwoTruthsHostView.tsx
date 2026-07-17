@@ -6,13 +6,24 @@ import { TwoTruthsHostManagePanel } from '@/components/two-truths/TwoTruthsHostM
 import { TwoTruthsLobbySubmit } from '@/components/two-truths/TwoTruthsLobbySubmit'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
-import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
+import { HostAllowViewersField } from '@/components/HostAllowViewersField'
+import { HostMaxPlayersLobbyPanel } from '@/components/host-lobby/HostMaxPlayersLobbyPanel'
+import { TransferHostControl } from '@/components/TransferHostControl'
 import { EditNameInline } from '@/components/ui/EditNameInline'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { useTwoTruthsAdvance } from '@/hooks/useTwoTruthsAdvance'
-import { getTtlHostMode, setTtlHostMode, type TtlHostMode } from '@/lib/two-truths'
+import {
+  getTtlHostMode,
+  lobbyReadyForTwoTruths,
+  setTtlHostMode,
+  TTL_TIMER_OPTIONS,
+  type TtlHostMode,
+} from '@/lib/two-truths'
 import { supabase } from '@/lib/supabase'
 import {
   GAME_SELECT,
@@ -286,11 +297,7 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
   const cfg = gameTypeConfig('two_truths')
@@ -421,12 +428,96 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
       )}
       {hostStatementSetup}
       {game.status !== 'finished' && <HostRulesRow gameType="two_truths" />}
-      {game.status === 'waiting' && (
-        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-      )}
       <TwoTruthsHostManagePanel {...panelProps} section="manage" />
     </div>
   )
+
+  // Fresh lobby (not the play-again ready-up flow, which keeps the tabbed layout for now).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  const ready = lobbyReadyForTwoTruths(
+    players.map((p) => p.id),
+    statements
+  )
+
+  const lobbyModeCard = (
+    <HostModeSelector
+      mode={hostMode}
+      onChange={changeHostMode}
+      joinedPlayerId={hostPlayerId}
+      joinedPlayerName={hostPlayerName}
+      joinName={hostJoinName}
+      onJoinNameChange={setHostJoinName}
+      onJoin={() => void hostJoinGame()}
+      joining={hostJoining}
+      onEditName={renameHost}
+      spectatorHint="Watch the game once it starts"
+      playerHint="Play along with everyone"
+      playingNote={
+        <p className="text-sm text-muted">
+          Playing as <strong className="text-body">{hostPlayerName}</strong> — submit your statements below before you
+          start.
+        </p>
+      }
+    />
+  )
+
+  const lobbySettings = (
+    <>
+      <HostMaxPlayersLobbyPanel
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        limitType="two_truths"
+        playerCount={players.length}
+        onGameUpdate={setGame}
+      />
+      <div className="rounded-2xl border border-[color-mix(in_srgb,var(--primary)_14%,var(--border))] bg-[var(--card-strong)]/95 p-5 space-y-2">
+        <p className="label-caps">Guess timer (per round)</p>
+        <select
+          value={timerSeconds}
+          onChange={(e) => setTimerSeconds(Number(e.target.value))}
+          className="input-field w-full"
+        >
+          {TTL_TIMER_OPTIONS.map((s) => (
+            <option key={s} value={s}>
+              {s} seconds
+            </option>
+          ))}
+        </select>
+        <button type="button" onClick={saveTimer} disabled={savingTimer} className="btn-secondary w-full">
+          {savingTimer ? 'Saving…' : 'Save timer'}
+        </button>
+      </div>
+      <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+    </>
+  )
+
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={cfg.label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('two_truths', game) ?? game.max_players}
+        resumeToken={hostResumeToken}
+        playCard={lobbyModeCard}
+        settingsChildren={lobbySettings}
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!ready.ok}
+        startDisabledHint={ready.ok ? null : ready.error}
+        startLabel="Start game"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      >
+        {hostStatementSetup}
+      </HostLobby>
+    )
+  }
 
   return (
     <HostGameLayout

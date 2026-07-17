@@ -10,12 +10,17 @@ import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostSudokuLobbyPanel } from '@/components/host-lobby/HostSudokuLobbyPanel'
 import { HostPuzzleSettings } from '@/components/host-lobby/HostPuzzleSettings'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { gameTypeConfig } from '@/lib/game-types'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
 import {
@@ -473,12 +478,10 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
   }, [metadata, found])
 
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
+
+  const cfg = gameTypeConfig('word_search')
 
   const showTabs = game.status !== 'finished'
   const gameStarted = game.status === 'active'
@@ -654,6 +657,78 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
           Return to lobby instead
         </button>
       </div>
+    )
+  }
+
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  const canStart = activePlayers.length >= WORD_SEARCH_MIN_PLAYERS
+
+  const lobbyModeCard = (
+    <HostModeSelector
+      mode={hostMode}
+      onChange={changeHostMode}
+      onEditName={renameHost}
+      joinedPlayerId={hostPlayerId}
+      joinedPlayerName={hostPlayerName}
+      joinName={hostJoinName}
+      onJoinNameChange={setHostJoinName}
+      onJoin={() => void hostJoinGame()}
+      joining={hostJoining}
+      spectatorHint="Watch the puzzle once it starts"
+      playerHint="Find words with everyone"
+    />
+  )
+
+  const lobbySettings = (
+    <>
+      <HostSudokuLobbyPanel
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        playerCount={players.length}
+        onGameUpdate={setGame}
+        durationChoices={WORD_SEARCH_GAME_DURATION_OPTIONS}
+        formatDuration={formatWordSearchGameDuration}
+        puzzleSettings={
+          <HostPuzzleSettings
+            gameCode={gameCode}
+            hostToken={hostToken}
+            game={game}
+            onGameUpdate={setGame}
+            kind="word_search"
+          />
+        }
+      />
+      <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+    </>
+  )
+
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={cfg.label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('word_search', game) ?? game.max_players}
+        playCard={lobbyModeCard}
+        settingsChildren={lobbySettings}
+        onStart={() => void handleStart()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : `Need at least ${WORD_SEARCH_MIN_PLAYERS} player${WORD_SEARCH_MIN_PLAYERS === 1 ? '' : 's'} to start`
+        }
+        startLabel="Start hunt"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      />
     )
   }
 

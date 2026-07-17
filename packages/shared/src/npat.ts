@@ -1,12 +1,4 @@
-import type {
-  Game,
-  NpatAnswer,
-  NpatCategory,
-  NpatMark,
-  NpatMetadata,
-  Player,
-  Round,
-} from './types'
+import type { Game, NpatAnswer, NpatCategory, NpatMark, NpatMetadata, Player, Round } from './types'
 
 function secondsUntilDeadline(sessionStartedAt: string, durationSeconds: number): number {
   return Math.max(0, Math.ceil((new Date(sessionStartedAt).getTime() + durationSeconds * 1000 - Date.now()) / 1000))

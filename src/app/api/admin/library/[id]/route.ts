@@ -29,6 +29,7 @@ const VALID_GAME_TYPES = [
   'quick_draw',
   'codewords',
   'pick_a_number',
+  'who_said_this',
 ]
 const VALID_STATUSES = ['pending', 'approved', 'rejected']
 const VALID_TAGS = ['easy', 'intermediate', 'advanced', 'family-friendly', '18+', 'party', 'spicy']

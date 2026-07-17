@@ -64,6 +64,7 @@ import {
   isLudoGame,
   isSnakeAndLadderGame,
   isTicTacToeGame,
+  isPingPongGame,
   isChessGame,
   isCheckersGame,
   isAyoGame,
@@ -122,11 +123,15 @@ import {
   parseStoredCrosswordEntries,
   parseStoredWordSearchEntries,
   parseStoredWordScrambleEntries,
+  parseWstDeckImport,
+  parseExcelWstDeckImport,
   formatEntryImportSummary,
   type CrosswordEntry,
   type WordSearchEntry,
   type WordScrambleEntry,
 } from '@/lib/custom-questions'
+import { WST_DECK_MIN_ENTRIES, type WstDeckEntry } from '@/lib/who-said-this'
+import { WST_PLATFORM_DECK } from '@/lib/who-said-this-questions'
 import { playerQuestionsOrderOptions, parsePlayerQuestionsOrder } from '@/lib/player-question-pool'
 import { isPeoplePollGame, playerNameSubmissionHint } from '@/lib/player-participant-pool'
 import { CustomSlotBuilder } from '@/components/CustomSlotBuilder'
@@ -355,6 +360,7 @@ function CreateGameInner() {
   const inputRef = useRef<HTMLInputElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const questionsFileRef = useRef<HTMLInputElement>(null)
+  const wstDeckFileRef = useRef<HTMLInputElement>(null)
   const [bulkPaste, setBulkPaste] = useState('')
   const [questionSource, setQuestionSource] = useState<QuestionSource>('platform')
   const [playerQuestionsEnabled, setPlayerQuestionsEnabled] = useState(true)
@@ -369,6 +375,9 @@ function CreateGameInner() {
   const [panRoundsInput, setPanRoundsInput] = useState('5')
   const [questionsBulkPaste, setQuestionsBulkPaste] = useState('')
   const [wstQuoteSource, setWstQuoteSource] = useState<WstQuoteSource>('player')
+  // Pre-set roster deck (quote + who said it) uploaded for Who Said This.
+  const [wstDeck, setWstDeck] = useState<WstDeckEntry[]>([])
+  const [wstDeckError, setWstDeckError] = useState<string | null>(null)
   const [customSlots, setCustomSlots] = useState<CustomSlotsConfig | null>(null)
   const [anonymousMaxPlayers, setAnonymousMaxPlayers] = useState(ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS)
   const [bingoMaxPlayers, setBingoMaxPlayers] = useState(BINGO_DEFAULT_MAX_PLAYERS)
@@ -451,6 +460,7 @@ function CreateGameInner() {
   const [npatGameDuration, setNpatGameDuration] = useState(NPAT_DEFAULT_GAME_DURATION)
   const [npatMarkingTimer, setNpatMarkingTimer] = useState(NPAT_DEFAULT_MARKING_TIMER)
   const [landmineMode, setLandmineMode] = useState<'zero_points' | 'elimination'>('zero_points')
+  const [landmineMineSource, setLandmineMineSource] = useState<'system' | 'manual'>('system')
   const [landmineMineCount, setLandmineMineCount] = useState(1)
   const [landmineOriginality, setLandmineOriginality] = useState(true)
   const [landmineCategoryTimer, setLandmineCategoryTimer] = useState(10)
@@ -666,6 +676,15 @@ function CreateGameInner() {
               rounds_count: 1,
             }
           : {}),
+        ...(isPingPongGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+              ping_pong_points_to_win: 7,
+              game_duration_seconds: 0,
+            }
+          : {}),
         ...(isChessGame(type)
           ? {
               participant_mode: 'joiners' as const,
@@ -828,6 +847,7 @@ function CreateGameInner() {
   const isLudo = isLudoGame(settings.game_type)
   const isSnakeLadder = isSnakeAndLadderGame(settings.game_type)
   const isTicTacToe = isTicTacToeGame(settings.game_type)
+  const isPingPong = isPingPongGame(settings.game_type)
   const isChess = isChessGame(settings.game_type)
   const isCheckers = isCheckersGame(settings.game_type)
   const isAyo = isAyoGame(settings.game_type)
@@ -851,6 +871,18 @@ function CreateGameInner() {
   const isMatchingPairs = isMatchingPairsGame(settings.game_type)
   const showViewerToggle = gameSupportsViewerSetting(settings.game_type)
   const isWst = isWhoSaidThis(settings.game_type)
+  // Who Said This host-provided deck (Platform / Library / uploaded). Players just join and
+  // answer (no name list), so it's a single-step quick-create like trivia.
+  const isWstDeck = isWst && wstQuoteSource === 'deck'
+  // The effective deck for the selected source: built-in Platform pack, a chosen Library pack,
+  // or the uploaded CSV. Fed into custom_questions + the create-button gating.
+  const wstDeckContent: WstDeckEntry[] = !isWstDeck
+    ? []
+    : questionSource === 'platform'
+      ? WST_PLATFORM_DECK
+      : questionSource === 'library'
+        ? (libraryPackQuestions as WstDeckEntry[])
+        : wstDeck
   const isHotSeatGame = isHotSeat(settings.game_type)
   const isPanGame = isPan
   const hotSeatCreateCapUpper = isHotSeatGame ? hotSeatMaxCapUpperBound(0, participants.length) : 20
@@ -927,7 +959,11 @@ function CreateGameInner() {
     (isLobbyQuestions && !isTot && !isPan && customQuestionCount >= settings.rounds_count && customQuestionCount > 0) ||
     (questionSource === 'library' &&
       libraryPackQuestions.length >= settings.rounds_count &&
-      libraryPackQuestions.length > 0)
+      libraryPackQuestions.length > 0) ||
+    // Players-submit mode needs no content at create (players write questions in the lobby);
+    // deck mode needs its source (Platform is always ready; Library/upload need >= 2).
+    (isWst && wstQuoteSource !== 'deck') ||
+    (isWstDeck && wstDeckContent.length >= WST_DECK_MIN_ENTRIES)
   const canCreateQuickLobby = !!settings.title.trim() && hasEnoughCustomQuestions
 
   const customSlotsValid =
@@ -939,6 +975,7 @@ function CreateGameInner() {
   const isCodewords = isCodewordsGame(settings.game_type)
   const isMessageBoard = isAnonymousRoom || isSecretMessage
   const isQuickLobby =
+    isWst ||
     isMessageBoard ||
     isBingo ||
     isCodewords ||
@@ -950,6 +987,7 @@ function CreateGameInner() {
     isLudo ||
     isSnakeLadder ||
     isTicTacToe ||
+    isPingPong ||
     isChess ||
     isScrabble ||
     isDescribeIt ||
@@ -1484,10 +1522,38 @@ function CreateGameInner() {
     if (isTrivia) setCustomTriviaQuestions((prev) => prev.filter((_, i) => i !== index))
   }
 
+  // Who Said This deck upload (quote + A/B/C/D options + correct) — trivia-style CSV/xlsx.
+  const handleWstDeckUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setWstDeckError(null)
+    try {
+      const name = file.name.toLowerCase()
+      const result =
+        name.endsWith('.xlsx') || name.endsWith('.xls')
+          ? await parseExcelWstDeckImport(await file.arrayBuffer())
+          : parseWstDeckImport(await file.text())
+      if (result.questions.length < WST_DECK_MIN_ENTRIES) {
+        setWstDeck([])
+        setWstDeckError(
+          `Need at least ${WST_DECK_MIN_ENTRIES} questions — each row is a quote, its options, and which is correct.`
+        )
+        return
+      }
+      setWstDeck(result.questions)
+      const extra = formatEntryImportSummary(result)
+      if (extra) setWstDeckError(extra)
+    } catch {
+      setWstDeckError('Could not read that file. Use a CSV/Excel with quote, option_a…option_d, correct.')
+    }
+  }
+
   const createGame = async () => {
     if (loading) return
     if (isQuickLobby) {
       if (!settings.title.trim()) return
+      if (isWstDeck && wstDeckContent.length < WST_DECK_MIN_ENTRIES) return
       if (
         isCodewords &&
         (questionSource === 'custom' || questionSource === 'library') &&
@@ -1524,76 +1590,89 @@ function CreateGameInner() {
         body: JSON.stringify({
           ...settings,
           ...(isWordHunt ? { timer_seconds: wordHuntTimer } : {}),
-          rounds_count: isWst ? Math.max(participants.length, 2) : settings.rounds_count,
-          question_source: isCrossword
-            ? (questionSource === 'custom' || questionSource === 'library') && customCrosswordEntries.length >= 4
+          rounds_count: isWst
+            ? isWstDeck
+              ? Math.max(wstDeckContent.length, 2)
+              : Math.max(participants.length, 2)
+            : settings.rounds_count,
+          question_source: isWst
+            ? isWstDeck && wstDeckContent.length >= WST_DECK_MIN_ENTRIES
               ? 'custom'
               : 'platform'
-            : isWordSearch
-              ? (questionSource === 'custom' || questionSource === 'library') && customWordSearchWords.length >= 4
+            : isCrossword
+              ? (questionSource === 'custom' || questionSource === 'library') && customCrosswordEntries.length >= 4
                 ? 'custom'
                 : 'platform'
-              : isWordScramble
-                ? (questionSource === 'custom' || questionSource === 'library') && customWordScrambleWords.length >= 4
+              : isWordSearch
+                ? (questionSource === 'custom' || questionSource === 'library') && customWordSearchWords.length >= 4
                   ? 'custom'
                   : 'platform'
-                : isCodewords
-                  ? questionSource === 'library'
+                : isWordScramble
+                  ? (questionSource === 'custom' || questionSource === 'library') && customWordScrambleWords.length >= 4
                     ? 'custom'
-                    : questionSource
-                  : isDescribeIt
-                    ? (questionSource === 'custom' || questionSource === 'library') &&
-                      parseDescribeItWords(describeItWords).length > 0
+                    : 'platform'
+                  : isCodewords
+                    ? questionSource === 'library'
                       ? 'custom'
-                      : 'platform'
-                    : isQuickDraw
+                      : questionSource
+                    : isDescribeIt
                       ? (questionSource === 'custom' || questionSource === 'library') &&
-                        parseDescribeItWords(quickDrawWords).length > 0
+                        parseDescribeItWords(describeItWords).length > 0
                         ? 'custom'
                         : 'platform'
-                      : isLobbyQuestions
-                        ? questionSource === 'library'
+                      : isQuickDraw
+                        ? (questionSource === 'custom' || questionSource === 'library') &&
+                          parseDescribeItWords(quickDrawWords).length > 0
                           ? 'custom'
-                          : questionSource
-                        : 'platform',
-          custom_questions: isCrossword
-            ? (questionSource === 'custom' || questionSource === 'library') && customCrosswordEntries.length >= 4
-              ? customCrosswordEntries
+                          : 'platform'
+                        : isLobbyQuestions
+                          ? questionSource === 'library'
+                            ? 'custom'
+                            : questionSource
+                          : 'platform',
+          custom_questions: isWst
+            ? isWstDeck && wstDeckContent.length >= WST_DECK_MIN_ENTRIES
+              ? wstDeckContent
               : null
-            : isWordSearch
-              ? (questionSource === 'custom' || questionSource === 'library') && customWordSearchWords.length >= 4
-                ? customWordSearchWords
+            : isCrossword
+              ? (questionSource === 'custom' || questionSource === 'library') && customCrosswordEntries.length >= 4
+                ? customCrosswordEntries
                 : null
-              : isWordScramble
-                ? (questionSource === 'custom' || questionSource === 'library') && customWordScrambleWords.length >= 4
-                  ? customWordScrambleWords
+              : isWordSearch
+                ? (questionSource === 'custom' || questionSource === 'library') && customWordSearchWords.length >= 4
+                  ? customWordSearchWords
                   : null
-                : isCodewords
-                  ? questionSource === 'custom' || questionSource === 'library'
-                    ? customCodewordsWords
+                : isWordScramble
+                  ? (questionSource === 'custom' || questionSource === 'library') && customWordScrambleWords.length >= 4
+                    ? customWordScrambleWords
                     : null
-                  : isDescribeIt
-                    ? (questionSource === 'custom' || questionSource === 'library') &&
-                      parseDescribeItWords(describeItWords).length > 0
-                      ? parseDescribeItWords(describeItWords)
+                  : isCodewords
+                    ? questionSource === 'custom' || questionSource === 'library'
+                      ? customCodewordsWords
                       : null
-                    : isQuickDraw
+                    : isDescribeIt
                       ? (questionSource === 'custom' || questionSource === 'library') &&
-                        parseDescribeItWords(quickDrawWords).length > 0
-                        ? parseDescribeItWords(quickDrawWords)
+                        parseDescribeItWords(describeItWords).length > 0
+                        ? parseDescribeItWords(describeItWords)
                         : null
-                      : isLobbyQuestions && (questionSource === 'custom' || questionSource === 'library')
-                        ? isWyr || isTot
-                          ? customWyrQuestions
-                          : isTrivia
-                            ? customTriviaQuestions
-                            : isQuiplash
-                              ? customMltQuestions
-                              : customMltQuestions
-                        : null,
+                      : isQuickDraw
+                        ? (questionSource === 'custom' || questionSource === 'library') &&
+                          parseDescribeItWords(quickDrawWords).length > 0
+                          ? parseDescribeItWords(quickDrawWords)
+                          : null
+                        : isLobbyQuestions && (questionSource === 'custom' || questionSource === 'library')
+                          ? isWyr || isTot
+                            ? customWyrQuestions
+                            : isTrivia
+                              ? customTriviaQuestions
+                              : isQuiplash
+                                ? customMltQuestions
+                                : customMltQuestions
+                          : null,
           trivia_category: isTrivia ? triviaCategory : undefined,
           describe_it_mode: isDescribeIt ? settings.describe_it_mode : undefined,
           landmine_mode: isLandmine ? landmineMode : undefined,
+          landmine_mine_source: isLandmine ? landmineMineSource : undefined,
           landmine_mine_count: isLandmine ? landmineMineCount : undefined,
           landmine_originality_bonus: isLandmine ? landmineOriginality : undefined,
           quick_draw_variant: isQuickDraw ? settings.quick_draw_variant : undefined,
@@ -1874,20 +1953,35 @@ function CreateGameInner() {
             >
               {(settings.game_type === 'monopoly'
                 ? THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
-                : THEMES.filter((theme) => theme.id !== 'pirate' && theme.id !== 'arctic' && theme.id !== 'naija')
+                : settings.game_type === 'ping_pong'
+                  ? THEMES.filter((theme) => theme.id === 'default' || theme.id === 'grass_court')
+                  : THEMES.filter(
+                      (theme) =>
+                        theme.id !== 'pirate' &&
+                        theme.id !== 'arctic' &&
+                        theme.id !== 'naija' &&
+                        theme.id !== 'grass_court'
+                    )
               ).map((theme) => {
                 const monopolyEdition =
                   settings.game_type === 'monopoly' ? MONOPOLY_EDITIONS.find((e) => e.themeId === theme.id) : null
                 const displayTheme = monopolyEdition
                   ? { ...theme, label: monopolyEdition.editionName, emoji: monopolyEdition.editionEmoji }
-                  : theme
+                  : settings.game_type === 'ping_pong' && theme.id === 'default'
+                    ? {
+                        ...theme,
+                        label: 'Table Tennis',
+                        emoji: '🏓',
+                        preview: { bg: '#064e3b', accent: '#f43f5e', text: '#ecfdf5' },
+                      }
+                    : theme
                 return (
                   <ThemePreviewCard
                     key={theme.id}
                     theme={displayTheme}
                     selected={settings.theme === theme.id}
                     onClick={() => setSettings({ ...settings, theme: theme.id })}
-                    onPreview={() => setPreviewTheme(theme)}
+                    onPreview={() => setPreviewTheme(displayTheme)}
                   />
                 )
               })}
@@ -2754,6 +2848,44 @@ function CreateGameInner() {
                   again. First to land on 100 exactly wins!
                 </p>
               </SettingsGroup>
+            ) : isPingPong ? (
+              <SettingsGroup title="Ping Pong room">
+                <p className="text-faint text-sm">Exactly 2 players — 1v1 match where the host can play or watch.</p>
+                <Field label="Points to win">
+                  <select
+                    value={settings.ping_pong_points_to_win ?? 7}
+                    onChange={(e) => setSettings({ ...settings, ping_pong_points_to_win: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    <option value={3}>First to 3 points (Lightning)</option>
+                    <option value={5}>First to 5 points</option>
+                    <option value={7}>First to 7 points (Quick)</option>
+                    <option value={11}>First to 11 points (Standard)</option>
+                    <option value={15}>First to 15 points</option>
+                    <option value={21}>First to 21 points (Long)</option>
+                  </select>
+                </Field>
+                <Field label="Match Timer">
+                  <select
+                    value={settings.game_duration_seconds ?? 0}
+                    onChange={(e) => setSettings({ ...settings, game_duration_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    <option value={0}>No timer</option>
+                    <option value={60}>1 minute</option>
+                    <option value={120}>2 minutes</option>
+                    <option value={180}>3 minutes</option>
+                    <option value={300}>5 minutes</option>
+                    <option value={600}>10 minutes</option>
+                  </select>
+                </Field>
+                <Field label="Late joiners">
+                  <p className="text-sm font-medium">Viewers only</p>
+                  <p className="text-xs text-faint mt-1">
+                    Once the 2-player match starts, anyone else joining the room will automatically become a viewer.
+                  </p>
+                </Field>
+              </SettingsGroup>
             ) : isTicTacToe ? (
               <SettingsGroup title="Tic-Tac-Toe room">
                 <p className="text-faint text-sm">Exactly 2 players — the host can join as one of them.</p>
@@ -3007,6 +3139,43 @@ function CreateGameInner() {
               </SettingsGroup>
             ) : isLandmine ? (
               <SettingsGroup title="Landmine settings">
+                <Field label="Who plants the mine">
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      aria-pressed={landmineMineSource === 'system'}
+                      onClick={() => setLandmineMineSource('system')}
+                      className={[
+                        'rounded-2xl border-2 px-4 py-4 text-left',
+                        landmineMineSource === 'system'
+                          ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                          : 'border-[var(--border-strong)] text-muted',
+                      ].join(' ')}
+                    >
+                      <span className="font-bold block text-base">Auto</span>
+                      <span className="text-faint text-xs sm:text-sm">
+                        The app secretly plants the mine. Everyone plays every round.
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={landmineMineSource === 'manual'}
+                      onClick={() => setLandmineMineSource('manual')}
+                      className={[
+                        'rounded-2xl border-2 px-4 py-4 text-left',
+                        landmineMineSource === 'manual'
+                          ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                          : 'border-[var(--border-strong)] text-muted',
+                      ].join(' ')}
+                    >
+                      <span className="font-bold block text-base">Manual</span>
+                      <span className="text-faint text-xs sm:text-sm">
+                        Players take turns setting the category + mine, sit out their round, and score what the room
+                        scores.
+                      </span>
+                    </button>
+                  </div>
+                </Field>
                 <Field label="Mode">
                   <div className="grid grid-cols-2 gap-3">
                     <button
@@ -3056,7 +3225,7 @@ function CreateGameInner() {
                     knocked out). More mines = riskier.
                   </p>
                 </Field>
-                {landmineMode === 'zero_points' && (
+                {landmineMode === 'zero_points' && landmineMineSource === 'system' && (
                   <Field label="Number of rounds">
                     <SegmentedControl
                       value={String(settings.rounds_count)}
@@ -3064,6 +3233,11 @@ function CreateGameInner() {
                       options={[3, 5, 8, 10].map((n) => ({ value: String(n), label: String(n) }))}
                     />
                   </Field>
+                )}
+                {landmineMode === 'zero_points' && landmineMineSource === 'manual' && (
+                  <p className="text-faint text-xs">
+                    Manual mode runs one round per player, so everyone gets a turn to set the mine.
+                  </p>
                 )}
                 <Field label="Time to pick a category">
                   <SegmentedControl
@@ -4568,32 +4742,79 @@ function CreateGameInner() {
                   )}
                   {isWst ? (
                     <div className="space-y-4">
-                      <Field label="Quote source">
+                      <Field label="Questions">
                         <SegmentedControl
-                          value={wstQuoteSource}
-                          onChange={(v) => setWstQuoteSource(v)}
+                          value={wstQuoteSource === 'player' ? 'player' : questionSource}
+                          onChange={(v) => {
+                            if (v === 'player') {
+                              setWstQuoteSource('player')
+                            } else {
+                              setWstQuoteSource('deck')
+                              setQuestionSource(v as QuestionSource)
+                            }
+                          }}
                           options={[
                             {
-                              value: 'player' as WstQuoteSource,
-                              label: 'Player Quotes',
-                              hint: 'Players submit quotes in the lobby',
+                              value: 'player',
+                              label: 'Players submit',
+                              hint: 'Everyone writes a quote + 4 options in the lobby',
                             },
+                            { value: 'platform', label: 'Platform', hint: 'Our built-in pack of famous quotes' },
+                            { value: 'library', label: 'Library', hint: 'Pick a community quote pack (e.g. anime)' },
                             {
-                              value: 'anime' as WstQuoteSource,
-                              label: 'Anime Quotes',
-                              hint: 'Quotes from anime characters',
+                              value: 'custom',
+                              label: 'Your own',
+                              hint: 'Upload a CSV of quotes, options, and answers',
                             },
-                            { value: 'both' as WstQuoteSource, label: 'Both', hint: 'Mix player + anime quotes' },
                           ]}
                         />
                       </Field>
-                      <p className="text-faint text-sm leading-relaxed">
-                        {wstQuoteSource === 'anime'
-                          ? 'Anime quotes are fetched in the lobby — no player submissions needed.'
-                          : wstQuoteSource === 'both'
-                            ? 'Players submit quotes and anime quotes are fetched — both are shuffled together.'
-                            : 'Rounds are automatic — one turn per player who joins and claims their name. The count updates in the host lobby as people join.'}
-                      </p>
+                      {wstQuoteSource === 'player' ? (
+                        <p className="text-faint text-sm leading-relaxed">
+                          Players join and each submits a quote with four options (A–D) and marks the answer. When you
+                          start, everyone answers the pooled questions — fastest correct wins.
+                        </p>
+                      ) : questionSource === 'platform' ? (
+                        <p className="text-faint text-sm leading-relaxed">
+                          {WST_PLATFORM_DECK.length} famous quotes are built in — players just join and answer like
+                          trivia, fastest correct wins. No setup needed.
+                        </p>
+                      ) : questionSource === 'library' ? (
+                        <LibraryPackPicker
+                          loading={libraryPacksLoading}
+                          packs={libraryPacks}
+                          search={libraryPackSearch}
+                          onSearchChange={setLibraryPackSearch}
+                          selectedPackId={selectedPackId}
+                          onSelect={selectLibraryPack}
+                        />
+                      ) : (
+                        <div className="space-y-3">
+                          <button
+                            type="button"
+                            onClick={() => wstDeckFileRef.current?.click()}
+                            className="btn-secondary w-full py-2.5 text-sm"
+                          >
+                            {wstDeck.length > 0
+                              ? `Replace deck (${wstDeck.length} questions)`
+                              : 'Upload deck (CSV or Excel)'}
+                          </button>
+                          <input
+                            ref={wstDeckFileRef}
+                            type="file"
+                            accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            className="hidden"
+                            onChange={handleWstDeckUpload}
+                          />
+                          {wstDeckError ? <p className="text-xs text-red-400">{wstDeckError}</p> : null}
+                          <p className="text-faint text-xs leading-relaxed">
+                            Columns:{' '}
+                            <span className="font-mono">quote, option_a, option_b, option_c, option_d, correct</span>.
+                            The <span className="font-mono">correct</span> column is the answer letter (A–D). Players
+                            just join and answer like trivia — fastest correct wins.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   ) : isPanGame ? (
                     <Field label="Rounds">
@@ -5345,6 +5566,7 @@ function CreateGameInner() {
           theme={previewTheme}
           onClose={() => setPreviewTheme(null)}
           onSelect={(themeId) => setSettings({ ...settings, theme: themeId })}
+          gameType={settings.game_type}
         />
       </>
     )

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { PING_PONG_POINTS_OPTIONS } from '@/lib/ping-pong'
 import { LOBBY_LIMIT_GAME_TYPES } from '@/lib/game-limits'
 import { SCRABBLE_DICTIONARY_OPTIONS } from '@/lib/scrabble-dictionary-meta'
 import {
@@ -95,6 +96,7 @@ export const createGameSchema = z.object({
   word_rush_prompt_mode: z.enum(['automatic', 'manual']).optional(),
   word_rush_difficulty: z.enum(['standard', 'hard']).optional(),
   landmine_mode: z.enum(['zero_points', 'elimination']).optional(),
+  landmine_mine_source: z.enum(['system', 'manual']).optional(),
   landmine_mine_count: z.coerce.number().int().min(1).max(3).optional(),
   landmine_originality_bonus: z.boolean().optional(),
   allow_viewers: z.boolean().optional(),
@@ -142,6 +144,11 @@ export const createGameSchema = z.object({
   mafia_doctor_enabled: z.boolean().optional(),
   mafia_detective_enabled: z.boolean().optional(),
   mafia_anonymous_votes: z.boolean().optional(),
+  ping_pong_points_to_win: z.coerce
+    .number()
+    .int()
+    .refine((val: number) => (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(val))
+    .optional(),
   custom_slots: z
     .object({
       slots: z
@@ -180,6 +187,11 @@ export const updateGameSchema = z.object({
   scrabble_dictionary_id: z.enum(SCRABBLE_DICTIONARY_OPTIONS).optional(),
   scrabble_clock_mode: z.enum(['standard', 'chess']).optional(),
   scrabble_clock_seconds: z.coerce.number().optional(),
+  // Chess host-default appearance — editable in the lobby (cosmetic, validated server-side).
+  chess_board_theme: z.string().optional(),
+  chess_piece_set: z.string().optional(),
+  // Who Said This quote source (player / anime / both) — editable from the lobby.
+  wst_quote_source: wstQuoteSourceEnum.optional(),
   participant_filter: participantFilterEnum.optional(),
   gender_based: z.boolean().optional(),
   pair_vote_mode: pairVoteModeEnum.optional(),
@@ -201,6 +213,16 @@ export const updateGameSchema = z.object({
   // assigns / randomize, stored as these two flags.
   codewords_player_picks: z.boolean().optional(),
   codewords_randomize_teams: z.boolean().optional(),
+  // Landmine host-lobby settings (edit before start).
+  landmine_mode: z.enum(['zero_points', 'elimination']).optional(),
+  landmine_mine_source: z.enum(['system', 'manual']).optional(),
+  landmine_mine_count: z.coerce.number().int().optional(),
+  landmine_originality_bonus: z.boolean().optional(),
+  ping_pong_points_to_win: z.coerce
+    .number()
+    .int()
+    .refine((val: number) => (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(val))
+    .optional(),
 })
 
 export type UpdateGameInput = z.infer<typeof updateGameSchema>
@@ -306,6 +328,11 @@ export const boardGameLobbySettingsSchema = z.object({
   // Host-supplied puzzle word pool ("Your own" upload or a Library pack pick). Re-validated and
   // normalised server-side per game type; capped to keep the request payload bounded.
   puzzle_custom_questions: z.array(z.record(z.string(), z.string())).max(500).optional(),
+  ping_pong_points_to_win: z.coerce
+    .number()
+    .int()
+    .refine((val: number) => (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(val))
+    .optional(),
 })
 
 export type BoardGameLobbySettingsInput = z.infer<typeof boardGameLobbySettingsSchema>

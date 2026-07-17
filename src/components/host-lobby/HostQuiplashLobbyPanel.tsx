@@ -10,7 +10,6 @@ import {
   clampQuiplashRounds,
 } from '@/lib/quiplash'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
-import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
@@ -177,20 +176,6 @@ export function HostQuiplashLobbyPanel({ gameCode, hostToken, game, playerCount,
       <HostLobbySettingBlock title="Vote timer (per battle)">
         <HostLobbyOptionChips value={voteTimer} options={voteTimerOptions} onChange={onVoteTimerChange} />
       </HostLobbySettingBlock>
-
-      <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={onGameUpdate} />
-      {gameSupportsViewerSetting(game.game_type) && game.status === 'waiting' && (
-        <HostLobbySettingBlock title="Late joiners">
-          <HostAllowViewersField
-            embedded
-            hideHeader
-            gameCode={gameCode}
-            hostToken={hostToken}
-            game={game}
-            onGameUpdate={onGameUpdate}
-          />
-        </HostLobbySettingBlock>
-      )}
     </HostLobbySettingsSection>
   )
 }

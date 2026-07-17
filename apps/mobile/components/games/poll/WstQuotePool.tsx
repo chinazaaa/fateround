@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
-import type { Participant } from '@fateround/shared'
 import { getSupabase } from '@/lib/supabase'
 import { uniqueTopic } from '@/lib/realtime'
 import { deleteWstQuote, postWstQuote } from '@/components/games/poll/poll-api'
@@ -12,39 +11,41 @@ type Props = {
   gameCode: string
   resumeToken: string
   myPlayerId: string
-  myParticipantId: string | null
-  participants: Participant[]
-  animeMode: boolean
+  /** Deck games (Platform / Library / uploaded CSV): players just wait — no submissions. */
+  deckMode: boolean
+  /** Whether this player can author questions (a joined, non-spectator player). */
+  canSubmit: boolean
 }
 
+const LETTERS = ['A', 'B', 'C', 'D']
+const emptyOptions = (): string[] => ['', '', '', '']
+
 /**
- * Who Said This lobby quote-pool submission. Each player adds their own quotes,
- * tags who said each one, and can edit/delete their submissions. Mirrors web
- * PollGamePlayerExperience WST waiting block.
+ * Who Said This lobby question pool (players-submit mode). Each player writes a quote with up to
+ * four options and taps the correct one; questions become choice rounds. Mirrors web
+ * PollGamePlayerExperience WST waiting block / useWstQuotePool. Deck games show a simple
+ * "you're in" state instead.
  */
-export function WstQuotePool({ gameCode, resumeToken, myPlayerId, myParticipantId, participants, animeMode }: Props) {
+export function WstQuotePool({ gameCode, resumeToken, myPlayerId, deckMode, canSubmit }: Props) {
   const styles = useThemedStyles(makeStyles)
   const theme = useTheme()
   const [pool, setPool] = useState<WstQuotePoolEntry[]>([])
   const [quoteInput, setQuoteInput] = useState('')
-  const [authorId, setAuthorId] = useState<string | null>(null)
+  const [optionInputs, setOptionInputs] = useState<string[]>(emptyOptions)
+  const [correctIndex, setCorrectIndex] = useState<number | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const code = gameCode.toUpperCase()
 
   const fetchPool = useCallback(async () => {
-    const { data } = await getSupabase()
-      .from('wst_quote_pool')
-      .select('*')
-      .eq('game_id', code)
-      .order('created_at')
+    const { data } = await getSupabase().from('wst_quote_pool').select('*').eq('game_id', code).order('created_at')
     setPool((data as WstQuotePoolEntry[]) ?? [])
   }, [code])
 
   useEffect(() => {
+    if (deckMode) return
     void fetchPool()
     const channel = getSupabase()
       .channel(uniqueTopic(`wst-pool-${code}`))
@@ -57,59 +58,54 @@ export function WstQuotePool({ gameCode, resumeToken, myPlayerId, myParticipantI
     return () => {
       void getSupabase().removeChannel(channel)
     }
-  }, [code, fetchPool])
-
-  const targets = useMemo(
-    () =>
-      [...participants]
-        .sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name))
-        .map((p) => ({ id: p.id, name: p.name })),
-    [participants]
-  )
-
-  const filteredTargets = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return targets
-    return targets.filter((t) => t.name.toLowerCase().includes(q))
-  }, [search, targets])
+  }, [code, deckMode, fetchPool])
 
   const myQuotes = useMemo(
-    () =>
-      pool
-        .filter((e) => e.player_id === myPlayerId)
-        .sort((a, b) => a.created_at.localeCompare(b.created_at)),
+    () => pool.filter((e) => e.player_id === myPlayerId).sort((a, b) => a.created_at.localeCompare(b.created_at)),
     [pool, myPlayerId]
   )
 
-  const nameById = useMemo(() => new Map(participants.map((p) => [p.id, p.name])), [participants])
-
-  if (animeMode) {
+  if (deckMode) {
     return (
       <View style={styles.card}>
-        <Text style={styles.animeTitle}>Anime Quote Mode</Text>
-        <Text style={styles.animeSub}>The host is loading anime quotes — sit tight!</Text>
+        <Text style={styles.deckTitle}>You&apos;re in!</Text>
+        <Text style={styles.deckSub}>
+          The host loaded the questions — wait for them to start, then answer as fast as you can.
+        </Text>
       </View>
     )
   }
 
   const resetForm = () => {
     setQuoteInput('')
-    setAuthorId(null)
+    setOptionInputs(emptyOptions())
+    setCorrectIndex(null)
     setEditingId(null)
-    setSearch('')
   }
 
+  const filledOptions = optionInputs.filter((o) => o.trim())
+  const canSubmitQuestion =
+    !!quoteInput.trim() &&
+    filledOptions.length >= 2 &&
+    correctIndex != null &&
+    !!optionInputs[correctIndex]?.trim() &&
+    !busy
+
   const submit = async () => {
-    const text = quoteInput.trim()
-    if (!text || !authorId || busy) return
+    if (!canSubmitQuestion || correctIndex == null) return
+    const options = optionInputs.map((o) => o.trim()).filter(Boolean)
+    // The correct answer must still be a non-empty option after trimming/blank-filtering.
+    const correctText = optionInputs[correctIndex]?.trim()
+    const resolvedCorrect = correctText ? options.indexOf(correctText) : -1
+    if (resolvedCorrect < 0) return
     setBusy(true)
     setError(null)
     try {
-      await postWstQuote(code, resumeToken, text, authorId, editingId ?? undefined)
+      await postWstQuote(code, resumeToken, quoteInput.trim(), options, resolvedCorrect, editingId ?? undefined)
       resetForm()
       await fetchPool()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to submit quote')
+      setError(err instanceof Error ? err.message : 'Failed to submit question')
     } finally {
       setBusy(false)
     }
@@ -124,65 +120,76 @@ export function WstQuotePool({ gameCode, resumeToken, myPlayerId, myParticipantI
       if (editingId === quoteId) resetForm()
       await fetchPool()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove quote')
+      setError(err instanceof Error ? err.message : 'Failed to remove question')
     } finally {
       setBusy(false)
     }
   }
 
-  const canSubmit = !!quoteInput.trim() && !!authorId && !busy
+  const startEditing = (entry: WstQuotePoolEntry) => {
+    setEditingId(entry.id)
+    setQuoteInput(entry.quote_text)
+    const opts = entry.options ?? []
+    setOptionInputs([opts[0] ?? '', opts[1] ?? '', opts[2] ?? '', opts[3] ?? ''])
+    setCorrectIndex(entry.correct_index ?? null)
+  }
+
+  const setOption = (i: number, value: string) => {
+    const next = [...optionInputs]
+    next[i] = value
+    setOptionInputs(next)
+    // Clearing the option that was marked correct drops the mark.
+    if (correctIndex === i && !value.trim()) setCorrectIndex(null)
+  }
 
   return (
     <View style={styles.container}>
       <View style={styles.poolHeader}>
-        <Text style={styles.poolLabel}>Quote pool</Text>
+        <Text style={styles.poolLabel}>Question pool</Text>
         <Text style={styles.poolCount}>{pool.length} submitted</Text>
       </View>
       <Text style={styles.poolHint}>
-        Add as many quotes as you like — each one becomes a round. Pick who said each quote before the host starts.
+        Add as many questions as you like — each is a quote with up to four options and one right answer. Fastest
+        correct answer wins.
       </Text>
 
-      {!myParticipantId ? (
-        <Text style={styles.blocked}>Claim your name when joining to submit a quote.</Text>
+      {!canSubmit ? (
+        <Text style={styles.blocked}>Join the game to submit questions.</Text>
       ) : (
         <View style={styles.card}>
           {myQuotes.length > 0 ? (
             <View style={styles.myQuotes}>
-              <Text style={styles.myQuotesLabel}>Your quotes ({myQuotes.length})</Text>
-              {myQuotes.map((entry) => (
-                <View key={entry.id} style={styles.myQuoteRow}>
-                  <View style={styles.myQuoteText}>
-                    <Text style={styles.quoteBody} numberOfLines={2}>
-                      &ldquo;{entry.quote_text}&rdquo;
-                    </Text>
-                    <Text style={styles.quoteAuthor}>— {nameById.get(entry.author_participant_id) ?? 'Unknown'}</Text>
+              <Text style={styles.myQuotesLabel}>Your questions ({myQuotes.length})</Text>
+              {myQuotes.map((entry) => {
+                const answer = entry.options?.[entry.correct_index ?? -1] ?? '—'
+                return (
+                  <View key={entry.id} style={styles.myQuoteRow}>
+                    <View style={styles.myQuoteText}>
+                      <Text style={styles.quoteBody} numberOfLines={2}>
+                        &ldquo;{entry.quote_text}&rdquo;
+                      </Text>
+                      <Text style={styles.quoteAuthor}>Answer: {answer}</Text>
+                    </View>
+                    <View style={styles.myQuoteActions}>
+                      <Pressable disabled={busy} onPress={() => startEditing(entry)}>
+                        <Text style={styles.editBtn}>Edit</Text>
+                      </Pressable>
+                      <Pressable disabled={busy} onPress={() => void remove(entry.id)}>
+                        <Text style={styles.deleteBtn}>×</Text>
+                      </Pressable>
+                    </View>
                   </View>
-                  <View style={styles.myQuoteActions}>
-                    <Pressable
-                      disabled={busy}
-                      onPress={() => {
-                        setEditingId(entry.id)
-                        setQuoteInput(entry.quote_text)
-                        setAuthorId(entry.author_participant_id)
-                      }}
-                    >
-                      <Text style={styles.editBtn}>Edit</Text>
-                    </Pressable>
-                    <Pressable disabled={busy} onPress={() => void remove(entry.id)}>
-                      <Text style={styles.deleteBtn}>×</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              ))}
+                )
+              })}
             </View>
           ) : null}
 
           <Text style={styles.formTitle}>
-            {editingId ? 'Edit quote' : myQuotes.length > 0 ? 'Add another quote' : 'Add your quote to the pool'}
+            {editingId ? 'Edit question' : myQuotes.length > 0 ? 'Add another question' : 'Add a question'}
           </Text>
           <TextInput
             style={styles.textarea}
-            placeholder="e.g. Roses are red"
+            placeholder="The quote — e.g. “I am your father.”"
             placeholderTextColor={theme.textFaint}
             value={quoteInput}
             onChangeText={setQuoteInput}
@@ -191,37 +198,43 @@ export function WstQuotePool({ gameCode, resumeToken, myPlayerId, myParticipantI
             editable={!busy}
           />
 
-          <Text style={styles.pickerLabel}>Who said this?</Text>
-          <TextInput
-            style={styles.search}
-            placeholder="Search names…"
-            placeholderTextColor={theme.textFaint}
-            value={search}
-            onChangeText={setSearch}
-            autoCapitalize="none"
-            editable={!busy}
-          />
-          <View style={styles.nameList}>
-            {filteredTargets.length === 0 ? (
-              <Text style={styles.emptyNames}>No names match</Text>
-            ) : (
-              filteredTargets.map((t) => (
+          <Text style={styles.pickerLabel}>Options — tap the correct one</Text>
+          {optionInputs.map((opt, i) => {
+            const isCorrect = correctIndex === i
+            const disabledMark = busy || !opt.trim()
+            return (
+              <View key={i} style={styles.optionRow}>
                 <Pressable
-                  key={t.id}
-                  style={[styles.namePill, authorId === t.id && styles.namePillSelected]}
-                  disabled={busy}
-                  onPress={() => setAuthorId(t.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Mark option ${LETTERS[i]} correct`}
+                  accessibilityState={{ selected: isCorrect }}
+                  disabled={disabledMark}
+                  onPress={() => setCorrectIndex(i)}
+                  style={[styles.mark, isCorrect && styles.markOn, disabledMark && !isCorrect && styles.markDisabled]}
                 >
-                  <Text style={[styles.namePillText, authorId === t.id && styles.namePillTextSelected]}>{t.name}</Text>
+                  <Text style={[styles.markText, isCorrect && styles.markTextOn]}>{isCorrect ? '✓' : LETTERS[i]}</Text>
                 </Pressable>
-              ))
-            )}
-          </View>
+                <TextInput
+                  style={styles.optionInput}
+                  placeholder={`Option ${LETTERS[i]}`}
+                  placeholderTextColor={theme.textFaint}
+                  value={opt}
+                  onChangeText={(t) => setOption(i, t)}
+                  maxLength={200}
+                  editable={!busy}
+                />
+              </View>
+            )
+          })}
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
-          <Pressable style={[styles.submit, !canSubmit && styles.submitDisabled]} disabled={!canSubmit} onPress={() => void submit()}>
-            <Text style={styles.submitText}>{busy ? 'Saving…' : editingId ? 'Save changes' : 'Add to Pool →'}</Text>
+          <Pressable
+            style={[styles.submit, !canSubmitQuestion && styles.submitDisabled]}
+            disabled={!canSubmitQuestion}
+            onPress={() => void submit()}
+          >
+            <Text style={styles.submitText}>{busy ? 'Saving…' : editingId ? 'Save changes' : 'Add to pool →'}</Text>
           </Pressable>
           {editingId ? (
             <Pressable style={styles.cancel} disabled={busy} onPress={resetForm}>
@@ -256,8 +269,8 @@ const makeStyles = (theme: Theme) =>
       padding: 16,
       gap: 14,
     },
-    animeTitle: { color: theme.text, fontSize: 18, fontWeight: '700', textAlign: 'center' },
-    animeSub: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
+    deckTitle: { color: theme.text, fontSize: 18, fontWeight: '700', textAlign: 'center' },
+    deckSub: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
     myQuotes: { gap: 8 },
     myQuotesLabel: {
       color: theme.textFaint,
@@ -290,7 +303,7 @@ const makeStyles = (theme: Theme) =>
       padding: 12,
       color: theme.text,
       fontSize: 15,
-      minHeight: 72,
+      minHeight: 60,
       textAlignVertical: 'top',
     },
     pickerLabel: {
@@ -298,9 +311,23 @@ const makeStyles = (theme: Theme) =>
       fontSize: 11,
       textTransform: 'uppercase',
       letterSpacing: 1,
-      textAlign: 'center',
     },
-    search: {
+    optionRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    mark: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      borderWidth: 2,
+      borderColor: theme.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    markOn: { borderColor: theme.primary, backgroundColor: theme.primary },
+    markDisabled: { opacity: 0.4 },
+    markText: { color: theme.textMuted, fontSize: 13, fontWeight: '800' },
+    markTextOn: { color: '#fff' },
+    optionInput: {
+      flex: 1,
       backgroundColor: theme.bg,
       borderRadius: 10,
       borderWidth: 1,
@@ -308,21 +335,8 @@ const makeStyles = (theme: Theme) =>
       paddingHorizontal: 12,
       paddingVertical: 10,
       color: theme.text,
-      fontSize: 14,
+      fontSize: 15,
     },
-    nameList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    emptyNames: { color: theme.textFaint, fontSize: 13 },
-    namePill: {
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: theme.border,
-      backgroundColor: theme.bg,
-    },
-    namePillSelected: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
-    namePillText: { color: theme.text, fontSize: 14 },
-    namePillTextSelected: { color: theme.primaryMuted, fontWeight: '700' },
     error: { color: '#fca5a5', fontSize: 13, textAlign: 'center' },
     submit: {
       backgroundColor: theme.primary,

@@ -18,7 +18,8 @@
       },
       "infoPlist": {
         "UIBackgroundModes": [
-          "remote-notification"
+          "remote-notification",
+          "audio"
         ],
         "NSMicrophoneUsageDescription": "Fate Round uses the microphone for in-game voice chat with other players."
       },

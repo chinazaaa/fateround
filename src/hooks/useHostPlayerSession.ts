@@ -31,7 +31,7 @@ export function useHostPlayerSession(gameCode: string | null) {
   }, [gameCode])
 
   useEffect(() => {
-    void refresh()
+    setTimeout(() => void refresh(), 0)
     const onSession = (event: Event) => {
       const detail = (event as CustomEvent<{ gameCode?: string }>).detail
       if (!detail?.gameCode || detail.gameCode === gameCode?.toUpperCase()) {

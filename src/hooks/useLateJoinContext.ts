@@ -34,10 +34,10 @@ export function useLateJoinContext(
 
   useEffect(() => {
     if (!enabled || !game) {
-      setContext(null)
+      setTimeout(() => setContext(null), 0)
       return
     }
-    void reload()
+    setTimeout(() => void reload(), 0)
   }, [enabled, game, reload, refreshKey])
 
   return { context, loading, reload }

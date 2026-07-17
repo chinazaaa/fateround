@@ -11,7 +11,7 @@ export function useMonopolyFixedTimer(seconds: number, enabled: boolean, onExpir
   useEffect(() => {
     if (!enabled) {
       expiredRef.current = false
-      setLeft(seconds)
+      setTimeout(() => setLeft(seconds), 0)
       return
     }
 
@@ -46,7 +46,7 @@ export function useMonopolyDeadlineTimer(
   useEffect(() => {
     if (!enabled || !deadlineAt) {
       expiredRef.current = false
-      setLeft(0)
+      setTimeout(() => setLeft(0), 0)
       return
     }
 

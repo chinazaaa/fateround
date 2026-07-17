@@ -1,5 +1,5 @@
 import type { GameType } from '@fateround/shared'
-import { parseGameType, isMostLikelyTo, isWhoSaidThis } from '@fateround/shared/poll-games'
+import { parseGameType, isMostLikelyTo } from '@fateround/shared/poll-games'
 import { HOT_SEAT_MIN_PLAYERS } from '@fateround/shared/create-party-games'
 
 export type ParticipantGender = 'male' | 'female'
@@ -16,11 +16,36 @@ export type PeopleSettings = {
 
 /** Ported from web `CustomSlotBuilder` presets. */
 export const CUSTOM_SLOT_EMOJI = [
-  '🔥', '💀', '💍', '💚', '🚩', '⭐', '💼', '🏆', '💩', '👔',
-  '📋', '🚪', '💕', '👋', '🎯', '👑', '🥇', '🥈', '🥉', '✨',
+  '🔥',
+  '💀',
+  '💍',
+  '💚',
+  '🚩',
+  '⭐',
+  '💼',
+  '🏆',
+  '💩',
+  '👔',
+  '📋',
+  '🚪',
+  '💕',
+  '👋',
+  '🎯',
+  '👑',
+  '🥇',
+  '🥈',
+  '🥉',
+  '✨',
 ]
 export const CUSTOM_SLOT_COLORS = [
-  '#ef4444', '#22c55e', '#3b82f6', '#eab308', '#a855f7', '#ec4899', '#64748b', '#b45309',
+  '#ef4444',
+  '#22c55e',
+  '#3b82f6',
+  '#eab308',
+  '#a855f7',
+  '#ec4899',
+  '#64748b',
+  '#b45309',
 ]
 export const CUSTOM_SLOT_MIN = 2
 export const CUSTOM_SLOT_MAX = 5
@@ -78,17 +103,14 @@ export function isHotSeatGame(gameType: GameType): boolean {
 
 /** Games that collect a host name list at create (mirrors web import/voters flows). */
 export function supportsImportMode(gameType: GameType): boolean {
-  return (
-    isWhoSaidThis(gameType) ||
-    isMostLikelyTo(gameType) ||
-    isHotSeatGame(gameType) ||
-    isCustomGame(gameType)
-  )
+  // Who Said This no longer collects a name list — players just join and answer (see
+  // `create-settings/who-said-this.ts`), so it's a single-step joiners game.
+  return isMostLikelyTo(gameType) || isHotSeatGame(gameType) || isCustomGame(gameType)
 }
 
 /** Import-only games — the host can't switch to join-as-you-go. */
 export function isImportOnly(gameType: GameType): boolean {
-  return isWhoSaidThis(gameType) || isCustomGame(gameType)
+  return isCustomGame(gameType)
 }
 
 /** The joiners/import choice offered in Setup, or `null` when the mode is fixed. */
@@ -111,7 +133,6 @@ export function participantModeOptions(
 }
 
 export function defaultParticipantMode(gameType: GameType): ParticipantMode {
-  if (isWhoSaidThis(gameType)) return 'import'
   if (isCustomGame(gameType)) return 'import'
   return 'joiners'
 }
@@ -161,9 +182,7 @@ export function minParticipants(gameType: GameType, people: PeopleSettings): num
 }
 
 export function validParticipants(people: PeopleSettings): ParticipantDraft[] {
-  return people.participants
-    .map((p) => ({ name: p.name.trim(), gender: p.gender }))
-    .filter((p) => p.name.length > 0)
+  return people.participants.map((p) => ({ name: p.name.trim(), gender: p.gender })).filter((p) => p.name.length > 0)
 }
 
 /** `null` when the custom slot config is valid (or unused). */

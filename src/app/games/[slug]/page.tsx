@@ -139,7 +139,6 @@ export default async function GameLandingRoute({ params }: Props) {
               </div>
 
               <p className="text-[12.5px]" style={{ color: 'var(--text-faint)' }}>
-                Free forever · No sign-up · Real-time · Phone &amp; desktop &nbsp;·&nbsp;{' '}
                 <a href="#rules" className="font-semibold no-underline" style={{ color: 'var(--accent)' }}>
                   Read game rules ↓
                 </a>

@@ -6,9 +6,13 @@ import { TriviaHostManagePanel } from '@/components/trivia/TriviaHostManagePanel
 import { TriviaPlayAgainSetup, type TriviaSettingsPayload } from '@/components/trivia/TriviaPlayAgainSetup'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
-import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
+import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
+import { HostMaxPlayersLobbyPanel } from '@/components/host-lobby/HostMaxPlayersLobbyPanel'
+import { TransferHostControl } from '@/components/TransferHostControl'
 import { gameTypeConfig } from '@/lib/game-types'
 import { getTriviaHostMode, setTriviaHostMode, type TriviaHostMode } from '@/lib/trivia'
 import { useTriviaHostRoundAutomation } from '@/hooks/useTriviaHostRoundAutomation'
@@ -306,11 +310,9 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    // Branded lobby skeleton (covers the header + hides the fixed theme toggle) so
+    // reloading straight into the lobby feels instant and never flashes old chrome.
+    return <HostLobbySkeleton />
   }
 
   const showTabs = game.status !== 'finished'
@@ -392,49 +394,117 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
           />
         ))}
       {game.status !== 'finished' && <HostRulesRow gameType="trivia" />}
-      {game.status === 'waiting' && (
-        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-      )}
       <TriviaHostManagePanel {...panelProps} section="manage" />
     </div>
   )
 
+  // Fresh lobby (not the play-again ready-up flow, which keeps the tabbed layout for now).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  const activePlayers = players.filter((p) => !p.spectator)
+  const canStart = activePlayers.length >= 1
+
+  const lobbyModeCard = game.tournament_id ? (
+    <p className="surface-inset rounded-xl px-4 py-3 text-sm text-muted">
+      You&apos;re hosting this tournament game — start it below once players have joined. (The host doesn&apos;t play in
+      tournament games.)
+    </p>
+  ) : (
+    <HostModeSelector
+      mode={hostMode}
+      onChange={changeHostMode}
+      joinedPlayerId={hostPlayerId}
+      joinedPlayerName={hostPlayerName}
+      joinName={hostJoinName}
+      onJoinNameChange={setHostJoinName}
+      onJoin={() => void hostJoinGame()}
+      joining={hostJoining}
+      onEditName={renameHost}
+      spectatorHint="Watch the game once it starts"
+      playerHint="Answer along with everyone"
+      playingNote={
+        <p className="text-sm text-muted">
+          Playing as <strong className="text-body">{hostPlayerName}</strong> — answer once you start.
+        </p>
+      }
+    />
+  )
+
+  const lobbySettings = (
+    <>
+      <HostMaxPlayersLobbyPanel
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        limitType="trivia"
+        playerCount={players.length}
+        onGameUpdate={setGame}
+      />
+      <button type="button" onClick={() => setSettingsModal('lobby')} className="btn-secondary w-full">
+        Edit questions &amp; rounds
+      </button>
+      <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+    </>
+  )
+
   return (
     <>
-      <HostGameLayout
-        gameCode={gameCode}
-        status={game.status}
-        tab={tab}
-        onTabChange={setTab}
-        primaryKind={primaryKind}
-        game={game}
-        players={players}
-        hostPlayerId={hostPlayerId}
-        onHostRejoined={load}
-        showTabs={showTabs}
-        gameStarted={gameStarted}
-        header={<HostGameHeader game={game} />}
-        primary={hostPlays ? interactivePlay : watchRound}
-        manage={manage}
-        finished={
-          game.tournament_id ? (
-            <div className="space-y-4">
-              <div className="glass-card-strong p-5 text-center space-y-2">
-                <p className="font-bold text-body">🏆 Game over</p>
-                <p className="text-muted text-sm">
-                  Head back to your tournament tab to start the next game — you can close this one.
-                </p>
-                <a href={`/tournament/${game.tournament_id}`} className="btn-secondary btn-fit mx-auto text-sm">
-                  ← Back to Tournament
-                </a>
+      {waitingLobby ? (
+        <HostLobby
+          gameCode={gameCode}
+          hostToken={hostToken}
+          game={game}
+          gameTypeLabel={cfg.label}
+          players={players}
+          maxPlayers={game.max_players}
+          resumeToken={hostResumeToken}
+          playCard={lobbyModeCard}
+          settingsChildren={lobbySettings}
+          onStart={() => void startGame()}
+          starting={starting}
+          startDisabled={!canStart}
+          startDisabledHint={!canStart ? 'Waiting for at least one player to join.' : null}
+          startLabel="Start trivia"
+          onRemovePlayer={removePlayer}
+          removingPlayerId={removingPlayerId}
+          highlightPlayerId={hostPlayerId}
+          onEnded={load}
+        />
+      ) : (
+        <HostGameLayout
+          gameCode={gameCode}
+          status={game.status}
+          tab={tab}
+          onTabChange={setTab}
+          primaryKind={primaryKind}
+          game={game}
+          players={players}
+          hostPlayerId={hostPlayerId}
+          onHostRejoined={load}
+          showTabs={showTabs}
+          gameStarted={gameStarted}
+          header={<HostGameHeader game={game} />}
+          primary={hostPlays ? interactivePlay : watchRound}
+          manage={manage}
+          finished={
+            game.tournament_id ? (
+              <div className="space-y-4">
+                <div className="glass-card-strong p-5 text-center space-y-2">
+                  <p className="font-bold text-body">🏆 Game over</p>
+                  <p className="text-muted text-sm">
+                    Head back to your tournament tab to start the next game — you can close this one.
+                  </p>
+                  <a href={`/tournament/${game.tournament_id}`} className="btn-secondary btn-fit mx-auto text-sm">
+                    ← Back to Tournament
+                  </a>
+                </div>
+                <TriviaHostManagePanel {...panelProps} section="finished" />
               </div>
+            ) : (
               <TriviaHostManagePanel {...panelProps} section="finished" />
-            </div>
-          ) : (
-            <TriviaHostManagePanel {...panelProps} section="finished" />
-          )
-        }
-      />
+            )
+          }
+        />
+      )}
 
       <TriviaPlayAgainSetup
         open={settingsModal !== null}

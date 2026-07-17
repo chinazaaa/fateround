@@ -3,14 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
-import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
-import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { gameTypeConfig } from '@/lib/game-types'
 import { supabase } from '@/lib/supabase'
 import {
   GAME_SELECT,
@@ -448,11 +451,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
   }, [gameFinished, game?.status])
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
   if (!game) {
     return (
@@ -462,6 +461,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     )
   }
 
+  const cfg = gameTypeConfig('describe_it')
   const mode = clampDescribeItMode(game.describe_it_mode)
   const isIndividual = mode === 'individual'
   const numTeams = clampDescribeItTeams(game.describe_it_num_teams)
@@ -516,33 +516,32 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     />
   )
 
+  // Lobby mode selector (play card) — reused by the new HostLobby and the tabbed manage.
+  const describeItModeCard = (
+    <HostModeSelector
+      mode={hostMode}
+      onChange={changeHostMode}
+      joinedPlayerId={hostPlayerId}
+      joinedPlayerName={hostPlayerName}
+      joinName={hostJoinName}
+      onJoinNameChange={setHostJoinName}
+      onJoin={() => void hostJoinGame()}
+      joining={hostJoining}
+      onEditName={renameHost}
+      spectatorHint="Watch the game once it starts"
+      playerHint="Play along with everyone"
+      playingNote={
+        <p className="text-sm text-muted">
+          Playing as <strong className="text-body">{hostPlayerName}</strong> — play from the Play tab once you start.
+        </p>
+      }
+    />
+  )
+
   const manage = (
     <div className="space-y-4 sm:space-y-5 animate-stagger">
-      {game.status === 'waiting' && (
-        <HostModeSelector
-          mode={hostMode}
-          onChange={changeHostMode}
-          joinedPlayerId={hostPlayerId}
-          joinedPlayerName={hostPlayerName}
-          joinName={hostJoinName}
-          onJoinNameChange={setHostJoinName}
-          onJoin={() => void hostJoinGame()}
-          joining={hostJoining}
-          onEditName={renameHost}
-          spectatorHint="Watch the game from the Watch tab"
-          playingNote={
-            <p className="text-sm text-muted">
-              Playing as <strong className="text-body">{hostPlayerName}</strong> — play from the Play tab once you
-              start.
-            </p>
-          }
-        />
-      )}
+      {game.status === 'waiting' && describeItModeCard}
       {!gameFinished && <HostRulesRow gameType="describe_it" />}
-
-      {game.status === 'waiting' && (
-        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-      )}
 
       {game.status === 'active' && !gameFinished && (
         <HostLobbyPlayersSection
@@ -590,377 +589,344 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
           />
         </>
       )}
+    </div>
+  )
 
-      {game.status === 'waiting' && (
-        <>
-          <DescribeItCard className="p-4 space-y-3">
-            <p className="text-sm font-bold">Game settings</p>
-            <div className="space-y-1.5">
-              <p className="text-xs font-semibold text-faint">Mode</p>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => void saveSettings({ mode: 'team' })}
-                  className={[
-                    'rounded-xl border-2 px-3 py-2.5 text-left',
-                    !isIndividual
-                      ? 'border-[var(--primary)]/60 bg-[var(--primary)]/10'
-                      : 'border-[var(--border-strong)] text-muted',
-                  ].join(' ')}
-                >
-                  <span className="font-bold block text-sm">Teams</span>
-                  <span className="text-faint text-[11px]">Teams race for words</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void saveSettings({ mode: 'individual' })}
-                  className={[
-                    'rounded-xl border-2 px-3 py-2.5 text-left',
-                    isIndividual
-                      ? 'border-[var(--primary)]/60 bg-[var(--primary)]/10'
-                      : 'border-[var(--border-strong)] text-muted',
-                  ].join(' ')}
-                >
-                  <span className="font-bold block text-sm">Individual</span>
-                  <span className="text-faint text-[11px]">Solo — fastest guess wins</span>
-                </button>
-              </div>
-              {isIndividual && (
-                <div className="text-faint text-[11px] space-y-1">
-                  <p>
-                    Everyone takes turns describing one word; guessers score by speed and the describer earns the same
-                    points their guessers do — so describing and guessing are worth the same.
-                  </p>
-                  <p
-                    className={readyPlayers.length * currentRounds > 40 ? 'text-amber-400 font-semibold' : 'text-faint'}
-                  >
-                    Every player describes once per round, so {readyPlayers.length}{' '}
-                    {readyPlayers.length === 1 ? 'player' : 'players'} × {currentRounds}{' '}
-                    {currentRounds === 1 ? 'round' : 'rounds'} = {readyPlayers.length * currentRounds} turns.
-                    {readyPlayers.length * currentRounds > 40 ? ' That’s a long game — try fewer rounds.' : ''}
-                  </p>
-                </div>
-              )}
-            </div>
-            {!isIndividual && biggestTeamSize > currentRounds && (
-              <p className="text-amber-400 text-xs">
-                A new teammate describes each round. Your biggest team has {biggestTeamSize} players — pick{' '}
-                {biggestTeamSize}+ rounds so everyone gets a turn to describe.
+  // Game settings card → the ⚙ Host settings sheet; team/solo roster → the main lobby
+  // screen (children). Kept as separate consts so each lands in the right HostLobby slot.
+  const describeItSettingsCard = (
+    <DescribeItCard className="p-4 space-y-3">
+      <p className="text-sm font-bold">Game settings</p>
+      <div className="space-y-1.5">
+        <p className="text-xs font-semibold text-faint">Mode</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => void saveSettings({ mode: 'team' })}
+            className={[
+              'rounded-xl border-2 px-3 py-2.5 text-left',
+              !isIndividual
+                ? 'border-[var(--primary)]/60 bg-[var(--primary)]/10'
+                : 'border-[var(--border-strong)] text-muted',
+            ].join(' ')}
+          >
+            <span className="font-bold block text-sm">Teams</span>
+            <span className="text-faint text-[11px]">Teams race for words</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => void saveSettings({ mode: 'individual' })}
+            className={[
+              'rounded-xl border-2 px-3 py-2.5 text-left',
+              isIndividual
+                ? 'border-[var(--primary)]/60 bg-[var(--primary)]/10'
+                : 'border-[var(--border-strong)] text-muted',
+            ].join(' ')}
+          >
+            <span className="font-bold block text-sm">Individual</span>
+            <span className="text-faint text-[11px]">Solo — fastest guess wins</span>
+          </button>
+        </div>
+        {isIndividual && (
+          <div className="text-faint text-[11px] space-y-1">
+            <p>
+              Everyone takes turns describing one word; guessers score by speed and the describer earns the same points
+              their guessers do — so describing and guessing are worth the same.
+            </p>
+            <p className={readyPlayers.length * currentRounds > 40 ? 'text-amber-400 font-semibold' : 'text-faint'}>
+              Every player describes once per round, so {readyPlayers.length}{' '}
+              {readyPlayers.length === 1 ? 'player' : 'players'} × {currentRounds}{' '}
+              {currentRounds === 1 ? 'round' : 'rounds'} = {readyPlayers.length * currentRounds} turns.
+              {readyPlayers.length * currentRounds > 40 ? ' That’s a long game — try fewer rounds.' : ''}
+            </p>
+          </div>
+        )}
+      </div>
+      {!isIndividual && biggestTeamSize > currentRounds && (
+        <p className="text-amber-400 text-xs">
+          A new teammate describes each round. Your biggest team has {biggestTeamSize} players — pick {biggestTeamSize}+
+          rounds so everyone gets a turn to describe.
+        </p>
+      )}
+      <div className={`grid gap-2 ${isIndividual ? 'grid-cols-2' : 'grid-cols-3'}`}>
+        {!isIndividual && (
+          <label className="text-xs font-semibold text-faint space-y-1">
+            <span>Teams</span>
+            <select
+              value={numTeams}
+              onChange={(e) => void saveSettings({ numTeams: Number(e.target.value) })}
+              className="input-field w-full text-sm"
+            >
+              {DESCRIBE_IT_TEAM_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label className="text-xs font-semibold text-faint space-y-1">
+          <span>Rounds</span>
+          <select
+            value={clampDescribeItRounds(game.rounds_count)}
+            onChange={(e) => void saveSettings({ rounds: Number(e.target.value) })}
+            className="input-field w-full text-sm"
+          >
+            {DESCRIBE_IT_ROUND_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-xs font-semibold text-faint space-y-1">
+          <span>Turn</span>
+          <select
+            value={game.timer_seconds}
+            onChange={(e) => void saveSettings({ turnSeconds: Number(e.target.value) })}
+            className="input-field w-full text-sm"
+          >
+            {DESCRIBE_IT_TURN_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n === 60 ? '1m' : n === 120 ? '2m' : `${n}s`}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <label className="text-xs font-semibold text-faint space-y-1 block">
+        <span>Max players</span>
+        <select
+          value={clampDescribeItMaxPlayers(game.max_players ?? DESCRIBE_IT_DEFAULT_MAX_PLAYERS)}
+          onChange={(e) => void saveSettings({ maxPlayers: Number(e.target.value) })}
+          className="input-field w-full text-sm"
+        >
+          {DESCRIBE_IT_MAX_PLAYER_OPTIONS.map((n) => (
+            <option key={n} value={n}>
+              {n} players
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-faint">Words</p>
+        <SegmentedControl
+          value={wordSource}
+          onChange={(v) => {
+            const next = v as 'platform' | 'library' | 'custom'
+            setWordSource(next)
+            setWordsUploadError(null)
+            if (next === 'platform') {
+              setWordsDraft('')
+              void saveSettings({ words: '' })
+            }
+          }}
+          options={[
+            { value: 'platform', label: 'Platform', hint: 'Use our built-in word bank.' },
+            { value: 'library', label: 'Library', hint: 'Pick a community word pack.' },
+            { value: 'custom', label: 'Your own', hint: 'Add your own words or upload a file.' },
+          ]}
+        />
+
+        <p className="text-faint text-[11px]">
+          Words that haven&apos;t been used yet are picked first — Play Again avoids repeats until the list runs out.
+        </p>
+
+        {wordSource === 'platform' && (
+          <p className="text-faint text-[11px]">Using our built-in word bank — no upload needed.</p>
+        )}
+
+        {wordSource === 'library' && (
+          <div className="surface-inset border border-theme rounded-xl p-3 space-y-2">
+            <LibraryPackBrowser
+              gameType="describe_it"
+              noun="words"
+              onPick={async (questions) => {
+                setWordsUploadError(null)
+                const incoming = parseStoredDescribeItWords(questions)
+                if (incoming.length === 0) return
+                const saved = await saveSettings({ words: incoming.join('\n') })
+                if (saved) {
+                  setWordsDraft(incoming.join('\n'))
+                  setWordSource('custom')
+                } else {
+                  setWordsUploadError('Could not save the imported words. Please try again.')
+                }
+              }}
+            />
+            <p className="text-faint text-[11px]">Picking a pack replaces your word list.</p>
+          </div>
+        )}
+
+        {wordSource === 'custom' && (
+          <div className="space-y-2">
+            <p className="label-caps">Your words</p>
+            {parseDescribeItWords(wordsDraft).length > 0 && (
+              <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                ✓ {parseDescribeItWords(wordsDraft).length} words already loaded — kept (unused first) unless you
+                replace them below.
               </p>
             )}
-            <div className={`grid gap-2 ${isIndividual ? 'grid-cols-2' : 'grid-cols-3'}`}>
-              {!isIndividual && (
-                <label className="text-xs font-semibold text-faint space-y-1">
-                  <span>Teams</span>
-                  <select
-                    value={numTeams}
-                    onChange={(e) => void saveSettings({ numTeams: Number(e.target.value) })}
-                    className="input-field w-full text-sm"
-                  >
-                    {DESCRIBE_IT_TEAM_OPTIONS.map((n) => (
-                      <option key={n} value={n}>
-                        {n}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              <label className="text-xs font-semibold text-faint space-y-1">
-                <span>Rounds</span>
-                <select
-                  value={clampDescribeItRounds(game.rounds_count)}
-                  onChange={(e) => void saveSettings({ rounds: Number(e.target.value) })}
-                  className="input-field w-full text-sm"
-                >
-                  {DESCRIBE_IT_ROUND_OPTIONS.map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-xs font-semibold text-faint space-y-1">
-                <span>Turn</span>
-                <select
-                  value={game.timer_seconds}
-                  onChange={(e) => void saveSettings({ turnSeconds: Number(e.target.value) })}
-                  className="input-field w-full text-sm"
-                >
-                  {DESCRIBE_IT_TURN_OPTIONS.map((n) => (
-                    <option key={n} value={n}>
-                      {n === 60 ? '1m' : n === 120 ? '2m' : `${n}s`}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <label className="text-xs font-semibold text-faint space-y-1 block">
-              <span>Max players</span>
-              <select
-                value={clampDescribeItMaxPlayers(game.max_players ?? DESCRIBE_IT_DEFAULT_MAX_PLAYERS)}
-                onChange={(e) => void saveSettings({ maxPlayers: Number(e.target.value) })}
-                className="input-field w-full text-sm"
-              >
-                {DESCRIBE_IT_MAX_PLAYER_OPTIONS.map((n) => (
-                  <option key={n} value={n}>
-                    {n} players
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-faint">Words</p>
-              <SegmentedControl
-                value={wordSource}
-                onChange={(v) => {
-                  const next = v as 'platform' | 'library' | 'custom'
-                  setWordSource(next)
-                  setWordsUploadError(null)
-                  if (next === 'platform') {
-                    setWordsDraft('')
-                    void saveSettings({ words: '' })
-                  }
-                }}
-                options={[
-                  { value: 'platform', label: 'Platform', hint: 'Use our built-in word bank.' },
-                  { value: 'library', label: 'Library', hint: 'Pick a community word pack.' },
-                  { value: 'custom', label: 'Your own', hint: 'Add your own words or upload a file.' },
-                ]}
-              />
+            <p className="text-faint text-[11px]">{questionUploadHint('describe_it')}</p>
+            <a
+              href={questionSampleFile('describe_it').href}
+              download={questionSampleFile('describe_it').download}
+              className="inline-block text-sm text-[var(--primary)] underline"
+            >
+              Download sample CSV
+            </a>
 
-              <p className="text-faint text-[11px]">
-                Words that haven&apos;t been used yet are picked first — Play Again avoids repeats until the list runs
-                out.
-              </p>
+            <SegmentedControl
+              value={wordTab}
+              onChange={(v) => setWordTab(v as 'upload' | 'paste')}
+              options={[
+                { value: 'upload', label: 'Upload file' },
+                { value: 'paste', label: 'Paste' },
+              ]}
+            />
 
-              {wordSource === 'platform' && (
-                <p className="text-faint text-[11px]">Using our built-in word bank — no upload needed.</p>
-              )}
-
-              {wordSource === 'library' && (
-                <div className="surface-inset border border-theme rounded-xl p-3 space-y-2">
-                  <LibraryPackBrowser
-                    gameType="describe_it"
-                    noun="words"
-                    onPick={async (questions) => {
-                      setWordsUploadError(null)
-                      const incoming = parseStoredDescribeItWords(questions)
-                      if (incoming.length === 0) return
-                      const saved = await saveSettings({ words: incoming.join('\n') })
-                      if (saved) {
-                        setWordsDraft(incoming.join('\n'))
-                        setWordSource('custom')
-                      } else {
-                        setWordsUploadError('Could not save the imported words. Please try again.')
-                      }
-                    }}
-                  />
-                  <p className="text-faint text-[11px]">Picking a pack replaces your word list.</p>
-                </div>
-              )}
-
-              {wordSource === 'custom' && (
-                <div className="space-y-2">
-                  <p className="label-caps">Your words</p>
-                  {parseDescribeItWords(wordsDraft).length > 0 && (
-                    <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                      ✓ {parseDescribeItWords(wordsDraft).length} words already loaded — kept (unused first) unless you
-                      replace them below.
-                    </p>
-                  )}
-                  <p className="text-faint text-[11px]">{questionUploadHint('describe_it')}</p>
-                  <a
-                    href={questionSampleFile('describe_it').href}
-                    download={questionSampleFile('describe_it').download}
-                    className="inline-block text-sm text-[var(--primary)] underline"
-                  >
-                    Download sample CSV
-                  </a>
-
-                  <SegmentedControl
-                    value={wordTab}
-                    onChange={(v) => setWordTab(v as 'upload' | 'paste')}
-                    options={[
-                      { value: 'upload', label: 'Upload file' },
-                      { value: 'paste', label: 'Paste' },
-                    ]}
-                  />
-
-                  {wordTab === 'upload' ? (
-                    <div className="space-y-2">
-                      <button
-                        type="button"
-                        onClick={() => wordsFileRef.current?.click()}
-                        className="btn-secondary w-full py-3 text-sm"
-                      >
-                        Choose CSV or Excel file
-                      </button>
-                      <p className="text-faint text-[11px]">Uploading a file replaces the current list.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <textarea
-                        value={wordsDraft}
-                        onChange={(e) => setWordsDraft(e.target.value)}
-                        placeholder="pizza&#10;rainbow&#10;astronaut"
-                        rows={3}
-                        className="input-field w-full resize-y text-sm"
-                      />
-                      <button
-                        type="button"
-                        onClick={saveWords}
-                        disabled={savingWords}
-                        className="btn-secondary w-full py-2.5 text-sm"
-                      >
-                        {savingWords ? 'Saving…' : 'Save words'}
-                      </button>
-                    </div>
-                  )}
-
-                  <input
-                    ref={wordsFileRef}
-                    type="file"
-                    accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    className="hidden"
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0]
-                      e.target.value = ''
-                      if (!file) return
-                      setWordsUploadError(null)
-                      const ext = file.name.split('.').pop()?.toLowerCase()
-                      try {
-                        const rows =
-                          ext === 'csv'
-                            ? parseDescribeItWords(await file.text())
-                            : ext === 'xlsx' || ext === 'xls'
-                              ? await parseExcelDescribeItWords(await file.arrayBuffer())
-                              : []
-                        if (rows.length === 0) {
-                          setWordsUploadError('No words found. Use one word per row.')
-                          return
-                        }
-                        const next = rows
-                        // Only commit the preview once the words actually persist, so the
-                        // loaded list never implies a pool the backend didn't save.
-                        const saved = await saveSettings({ words: next.join('\n') })
-                        if (saved) setWordsDraft(next.join('\n'))
-                        else setWordsUploadError('Could not save the imported words. Please try again.')
-                      } catch {
-                        setWordsUploadError('Could not read that file. Try a .csv or .xlsx.')
-                      }
-                    }}
-                  />
-                  {wordsUploadError && <p className="text-rose-400 text-xs">{wordsUploadError}</p>}
-                  {parseDescribeItWords(wordsDraft).length > 0 && (
-                    <div className="surface-inset border border-theme rounded-xl p-3 space-y-2 max-h-48 overflow-y-auto">
-                      <p className="text-muted text-xs uppercase tracking-wider">
-                        Loaded ({parseDescribeItWords(wordsDraft).length})
-                      </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {parseDescribeItWords(wordsDraft).map((w, i) => (
-                          <span
-                            key={`${w}-${i}`}
-                            className="inline-flex items-center gap-1 rounded-md border border-theme bg-[var(--surface-inset-bg)] px-2 py-1 text-xs"
-                          >
-                            {w}
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setWordsDraft(
-                                  parseDescribeItWords(wordsDraft)
-                                    .filter((_, idx) => idx !== i)
-                                    .join('\n')
-                                )
-                              }
-                              className="text-faint hover:text-red-300"
-                              aria-label={`Remove ${w}`}
-                            >
-                              ×
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="pt-1 border-t border-[var(--border)]">
-              <HostAllowViewersField gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-            </div>
-          </DescribeItCard>
-
-          {isIndividual ? (
-            <DescribeItCard className="p-4 space-y-2 text-center">
-              <p className="text-sm font-bold">Everyone plays solo 🏆</p>
-              <p className="text-faint text-xs">
-                No teams — players take turns describing and race to guess. Need at least{' '}
-                {DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL} players. See the full list below.
-              </p>
-              <p>
-                <GameRulesLink gameType="describe_it" variant="subtle" />
-              </p>
-            </DescribeItCard>
-          ) : (
-            <DescribeItCard className="p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-bold">Teams ({numTeams})</p>
+            {wordTab === 'upload' ? (
+              <div className="space-y-2">
                 <button
                   type="button"
-                  onClick={balanceTeams}
-                  disabled={balancing}
-                  className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-[var(--primary)]/10"
+                  onClick={() => wordsFileRef.current?.click()}
+                  className="btn-secondary w-full py-3 text-sm"
                 >
-                  {balancing ? 'Balancing…' : 'Auto-balance'}
+                  Choose CSV or Excel file
+                </button>
+                <p className="text-faint text-[11px]">Uploading a file replaces the current list.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <textarea
+                  value={wordsDraft}
+                  onChange={(e) => setWordsDraft(e.target.value)}
+                  placeholder="pizza&#10;rainbow&#10;astronaut"
+                  rows={3}
+                  className="input-field w-full resize-y text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={saveWords}
+                  disabled={savingWords}
+                  className="btn-secondary w-full py-2.5 text-sm"
+                >
+                  {savingWords ? 'Saving…' : 'Save words'}
                 </button>
               </div>
-              <DescribeItTeamRoster
-                numTeams={numTeams}
-                teamRows={teamPlain}
-                players={players}
-                myPlayerId={hostPlays ? hostPlayerId : null}
-                onPick={hostPlays ? pickTeam : undefined}
-                picking={picking}
-                onMoveTeam={moveTeam}
-                moving={moving}
-              />
-              <p className="text-faint text-[11px] text-center">Tap a colored number to move a player to that team.</p>
-              {!ready.ok && <p className="text-amber-400 text-xs text-center">{ready.error}</p>}
-              <p className="text-center">
-                <GameRulesLink gameType="describe_it" variant="subtle" />
-              </p>
-            </DescribeItCard>
-          )}
+            )}
 
-          <HostLobbyPlayersSection
-            players={players}
-            removingPlayerId={removingPlayerId}
-            onRemovePlayer={removePlayer}
-            highlightPlayerId={hostPlayerId}
-            alwaysShowReady
-          />
+            <input
+              ref={wordsFileRef}
+              type="file"
+              accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0]
+                e.target.value = ''
+                if (!file) return
+                setWordsUploadError(null)
+                const ext = file.name.split('.').pop()?.toLowerCase()
+                try {
+                  const rows =
+                    ext === 'csv'
+                      ? parseDescribeItWords(await file.text())
+                      : ext === 'xlsx' || ext === 'xls'
+                        ? await parseExcelDescribeItWords(await file.arrayBuffer())
+                        : []
+                  if (rows.length === 0) {
+                    setWordsUploadError('No words found. Use one word per row.')
+                    return
+                  }
+                  const next = rows
+                  // Only commit the preview once the words actually persist, so the
+                  // loaded list never implies a pool the backend didn't save.
+                  const saved = await saveSettings({ words: next.join('\n') })
+                  if (saved) setWordsDraft(next.join('\n'))
+                  else setWordsUploadError('Could not save the imported words. Please try again.')
+                } catch {
+                  setWordsUploadError('Could not read that file. Try a .csv or .xlsx.')
+                }
+              }}
+            />
+            {wordsUploadError && <p className="text-rose-400 text-xs">{wordsUploadError}</p>}
+            {parseDescribeItWords(wordsDraft).length > 0 && (
+              <div className="surface-inset border border-theme rounded-xl p-3 space-y-2 max-h-48 overflow-y-auto">
+                <p className="text-muted text-xs uppercase tracking-wider">
+                  Loaded ({parseDescribeItWords(wordsDraft).length})
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {parseDescribeItWords(wordsDraft).map((w, i) => (
+                    <span
+                      key={`${w}-${i}`}
+                      className="inline-flex items-center gap-1 rounded-md border border-theme bg-[var(--surface-inset-bg)] px-2 py-1 text-xs"
+                    >
+                      {w}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setWordsDraft(
+                            parseDescribeItWords(wordsDraft)
+                              .filter((_, idx) => idx !== i)
+                              .join('\n')
+                          )
+                        }
+                        className="text-faint hover:text-red-300"
+                        aria-label={`Remove ${w}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </DescribeItCard>
+  )
 
-          <HostLobbyWaitingFooter
-            gameCode={gameCode}
-            hostToken={hostToken}
-            game={game ?? undefined}
-            onGameUpdate={setGame}
-            onStart={startGame}
-            onEnded={load}
-            canStart={canStart}
-            starting={starting}
-            startDisabledHint={
-              canStart
-                ? null
-                : readyPlayers.length < DESCRIBE_IT_MIN_PLAYERS
-                  ? `Need at least ${DESCRIBE_IT_MIN_PLAYERS} players (${readyPlayers.length})`
-                  : (ready.error ?? 'Every team needs at least 2 players')
-            }
-            className="space-y-3"
-          />
-        </>
-      )}
-    </div>
+  const describeItTeamCard = isIndividual ? (
+    <DescribeItCard className="p-4 space-y-2 text-center">
+      <p className="text-sm font-bold">Everyone plays solo 🏆</p>
+      <p className="text-faint text-xs">
+        No teams — players take turns describing and race to guess. Need at least {DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL}{' '}
+        players. See the full list below.
+      </p>
+      <p>
+        <GameRulesLink gameType="describe_it" variant="subtle" />
+      </p>
+    </DescribeItCard>
+  ) : (
+    <DescribeItCard className="p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-bold">Teams ({numTeams})</p>
+        <button
+          type="button"
+          onClick={balanceTeams}
+          disabled={balancing}
+          className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-[var(--primary)]/10"
+        >
+          {balancing ? 'Balancing…' : 'Auto-balance'}
+        </button>
+      </div>
+      <DescribeItTeamRoster
+        numTeams={numTeams}
+        teamRows={teamPlain}
+        players={players}
+        myPlayerId={hostPlays ? hostPlayerId : null}
+        onPick={hostPlays ? pickTeam : undefined}
+        picking={picking}
+        onMoveTeam={moveTeam}
+        moving={moving}
+      />
+      <p className="text-faint text-[11px] text-center">Tap a colored number to move a player to that team.</p>
+      {!ready.ok && <p className="text-amber-400 text-xs text-center">{ready.error}</p>}
+      <p className="text-center">
+        <GameRulesLink gameType="describe_it" variant="subtle" />
+      </p>
+    </DescribeItCard>
   )
 
   const finished = gameFinished && (
@@ -1033,6 +999,45 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
           Return to lobby instead
         </button>
       </div>
+    )
+  }
+
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={cfg.label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('describe_it', game) ?? game.max_players}
+        playCard={describeItModeCard}
+        settingsChildren={
+          <>
+            {describeItSettingsCard}
+            <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+          </>
+        }
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : readyPlayers.length < DESCRIBE_IT_MIN_PLAYERS
+              ? `Need at least ${DESCRIBE_IT_MIN_PLAYERS} players (${readyPlayers.length})`
+              : (ready.error ?? 'Every team needs at least 2 players')
+        }
+        startLabel="Start game"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      >
+        {describeItTeamCard}
+      </HostLobby>
     )
   }
 

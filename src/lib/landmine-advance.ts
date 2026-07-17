@@ -4,17 +4,22 @@ import { isLandmineGame, parseGameType } from '@/lib/game-types'
 import {
   buildLandmineNextRound,
   clampLandmineMarkingTimer,
+  clampLandmineMineCount,
   clampLandmineWritingTimer,
   computeRoundResults,
   ensureBlankAnswers,
   ensureDefaultMarks,
   finalizeUnsubmittedAnswers,
+  gameLandmineMineSource,
   gameLandmineMode,
   gameLandmineCategoryTimer,
+  landmineAnsweringPlayerIds,
+  LANDMINE_MAX_ANSWER_LENGTH,
   LANDMINE_REVEAL_SECONDS,
   normalizeAnswer,
   parseLandmineMetadata,
   pickMines,
+  roundCallerPlayerId,
 } from '@/lib/landmine'
 import { mergeUsageRecords, parsePoolUsage } from '@/lib/pool-usage'
 import type { Game, LandmineMetadata, Round } from '@/types'
@@ -81,7 +86,12 @@ function phaseExpired(metadata: LandmineMetadata, game: Game): boolean {
   if (!metadata.phase_started_at) return false
   const start = new Date(metadata.phase_started_at).getTime()
   const now = Date.now()
-  if (metadata.phase === 'category_pick') return now >= start + gameLandmineCategoryTimer(game) * 1000
+  if (metadata.phase === 'category_pick') {
+    // Manual setters type a category AND the mine word(s), so they get the (longer) answer timer
+    // for setup rather than the short auto-mode category-pick timer.
+    const setupSecs = gameLandmineMineSource(game) === 'manual' ? writingTimer(game) : gameLandmineCategoryTimer(game)
+    return now >= start + setupSecs * 1000
+  }
   if (metadata.phase === 'writing') return now >= start + writingTimer(game) * 1000
   if (metadata.phase === 'marking') return now >= start + markingTimer(game) * 1000
   return false
@@ -201,6 +211,67 @@ async function autoPickCategory(
   return applyCategoryPick(supabase, gameId, round, category, playerIds)
 }
 
+/**
+ * MANUAL mode: the setter typed the category AND the mine word(s). We store their mines in the
+ * RLS-protected landmine_round_mines, set the (public) category on the metadata, seed blank
+ * answers for the ANSWERING players (the setter sits out), and open the writing phase. No pool
+ * draw and no pool_usage bump — the mine is human-chosen, not from an admin category.
+ * Conditioned on category_pick so a stale poll can't reopen setup mid-round.
+ */
+export async function applyManualSetup(
+  supabase: SupabaseClient,
+  gameId: string,
+  round: Round,
+  categoryName: string,
+  mineWords: string[],
+  answeringIds: string[]
+): Promise<boolean> {
+  const metadata = parseLandmineMetadata(round.landmine_metadata)
+  if (!metadata || metadata.phase !== 'category_pick') return false
+
+  const category = categoryName.trim().slice(0, 80)
+  if (!category) return false
+
+  // Dedupe + clamp the mines to the room's configured mine_count.
+  const seen = new Set<string>()
+  const mines: string[] = []
+  for (const raw of mineWords) {
+    const word = (raw ?? '').trim().slice(0, LANDMINE_MAX_ANSWER_LENGTH)
+    const key = normalizeAnswer(word)
+    if (!word || !key || seen.has(key)) continue
+    seen.add(key)
+    mines.push(word)
+    if (mines.length >= clampLandmineMineCount(metadata.mine_count)) break
+  }
+  if (mines.length === 0) return false
+
+  const now = new Date().toISOString()
+  const { data: updated, error } = await supabase
+    .from('rounds')
+    .update({
+      landmine_metadata: {
+        ...metadata,
+        category,
+        phase: 'writing',
+        phase_started_at: now,
+      } satisfies LandmineMetadata,
+    })
+    .eq('id', round.id)
+    .eq('landmine_metadata->>phase', 'category_pick')
+    .select('id')
+    .maybeSingle()
+
+  if (error) {
+    console.error('Failed to apply Landmine manual setup:', error.message)
+    return false
+  }
+  if (!updated) return false
+
+  await supabase.from('landmine_round_mines').upsert({ round_id: round.id, words: mines }, { onConflict: 'round_id' })
+  await ensureBlankAnswers(supabase, gameId, round.id, answeringIds)
+  return true
+}
+
 async function startMarkingPhase(
   supabase: SupabaseClient,
   gameId: string,
@@ -257,6 +328,30 @@ async function computeAndFinishRound(supabase: SupabaseClient, game: Game, round
   }
 
   const now = new Date().toISOString()
+
+  // Manual mode: pay the sitting-out setter the mirror of the round — the sum of every point the
+  // answering players scored (Describe It's individual-mode payout). Recorded as a synthetic
+  // answer row so tallyLandmineScores rolls it into their running total with no special-casing.
+  if (gameLandmineMineSource(game) === 'manual') {
+    const setterId = roundCallerPlayerId(round, metadata)
+    if (setterId) {
+      const mirror = results.reduce((sum, r) => sum + r.points, 0)
+      await supabase.from('landmine_answers').upsert(
+        {
+          game_id: game.id,
+          round_id: round.id,
+          player_id: setterId,
+          answer: '',
+          submitted_at: now,
+          points: mirror,
+          outcome: 'setter',
+          mine_hit: false,
+          is_original: false,
+        },
+        { onConflict: 'player_id,round_id' }
+      )
+    }
+  }
   await updateRoundMetadata(supabase, round.id, {
     ...metadata,
     phase: 'reveal',
@@ -341,27 +436,34 @@ async function advanceActiveRoundPhase(
   const metadata = parseLandmineMetadata(round.landmine_metadata)
   if (!metadata) return 'round_active'
 
+  // Manual mode: the rotating setter sits out, so the answering ring excludes them.
+  const manual = gameLandmineMineSource(game) === 'manual'
+  const setterId = manual ? roundCallerPlayerId(round, metadata) : null
+  const answeringIds = landmineAnsweringPlayerIds(playerIds, setterId, manual)
+
   if (metadata.phase === 'category_pick') {
+    // System mode auto-picks on timeout; manual mode falls back to a system-drawn mine so a setter
+    // who never submits can't stall the room (the setter still sits out that round).
     if (metadata.category == null && phaseExpired(metadata, game)) {
-      const ok = await autoPickCategory(supabase, game.id, round, playerIds)
+      const ok = await autoPickCategory(supabase, game.id, round, answeringIds)
       return ok ? 'phase_advanced' : 'round_active'
     }
     return 'round_active'
   }
 
   if (metadata.phase === 'writing') {
-    const submitted = await countRoundAnswers(supabase, round.id, playerIds)
-    const allIn = playerIds.length > 0 && submitted >= playerIds.length
+    const submitted = await countRoundAnswers(supabase, round.id, answeringIds)
+    const allIn = answeringIds.length > 0 && submitted >= answeringIds.length
     if (allIn || phaseExpired(metadata, game)) {
-      const ok = await startMarkingPhase(supabase, game.id, round, playerIds)
+      const ok = await startMarkingPhase(supabase, game.id, round, answeringIds)
       return ok ? 'phase_advanced' : 'round_active'
     }
     return 'round_active'
   }
 
   if (metadata.phase === 'marking') {
-    const marked = await countRoundMarks(supabase, round.id, playerIds)
-    const allMarked = playerIds.length > 0 && marked >= playerIds.length
+    const marked = await countRoundMarks(supabase, round.id, answeringIds)
+    const allMarked = answeringIds.length > 0 && marked >= answeringIds.length
     if (allMarked || phaseExpired(metadata, game)) {
       const ok = await computeAndFinishRound(supabase, game, round)
       return ok ? 'phase_advanced' : 'round_active'
@@ -380,10 +482,16 @@ async function shouldFinishSession(
   activePlayerIds: string[]
 ): Promise<boolean> {
   if (gameLandmineMode(game) === 'elimination') {
-    // Last player standing (or nobody left).
+    // Last player standing (or nobody left). Elimination governs length even in manual mode.
     return activePlayerIds.length <= 1
   }
-  // Zero Points: fixed round count.
+  // Manual (zero-points): one round per player, so everyone sets exactly once.
+  if (gameLandmineMineSource(game) === 'manual') {
+    const meta = parseLandmineMetadata(finishedRound.landmine_metadata)
+    const setters = meta?.caller_order.length ?? activePlayerIds.length
+    return finishedRound.round_number >= Math.max(1, setters)
+  }
+  // Zero Points (system): fixed round count.
   return finishedRound.round_number >= (game.rounds_count ?? 1)
 }
 
@@ -416,6 +524,7 @@ async function startNextRound(
     playerIds: activePlayerIds,
     mineCount: metadata.mine_count,
     now: new Date().toISOString(),
+    manual: gameLandmineMineSource(liveGame) === 'manual',
   })
   if (!nextRow) {
     const { error: finishError } = await markGameFinished(supabase, code)

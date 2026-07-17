@@ -14,7 +14,9 @@ export function useHostAutoReady(
   onReload?: () => void | Promise<unknown>
 ): void {
   const onReloadRef = useRef(onReload)
-  onReloadRef.current = onReload
+  useEffect(() => {
+    onReloadRef.current = onReload
+  }, [onReload])
 
   useEffect(() => {
     if (gameStatus !== 'waiting' || !hostPlayerId) return
