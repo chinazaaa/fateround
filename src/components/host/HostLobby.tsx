@@ -36,6 +36,7 @@ export function HostLobby({
   hostToken,
   game,
   gameTypeLabel,
+  titleMeta,
   players,
   maxPlayers,
   resumeToken,
@@ -59,6 +60,8 @@ export function HostLobby({
   game: Game
   /** Display name for the game-type pill (e.g. gameTypeConfig(type).label). */
   gameTypeLabel: string
+  /** Optional extra pill(s) shown beside the game-type pill (e.g. "3 rounds · 30s each"). */
+  titleMeta?: React.ReactNode
   players: Player[]
   /** Lobby capacity — shown as "N / max" on the players count. */
   maxPlayers?: number | null
@@ -146,12 +149,13 @@ export function HostLobby({
       </header>
       <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="mx-auto w-full max-w-xl px-4 pt-2 pb-6 sm:px-6 space-y-4">
-          {/* Hosting eyebrow + game-type pill */}
-          <div className="flex items-center gap-2 min-w-0">
+          {/* Hosting eyebrow + game-type pill + optional meta pill (e.g. rounds · timer) */}
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
             <span className="label-caps !text-[var(--primary)]">Hosting</span>
             <span className="rounded-full border border-[var(--chip-active-border)] bg-[var(--chip-active-bg)] px-2.5 py-0.5 text-[0.7rem] font-extrabold uppercase tracking-wide text-[var(--primary)]">
               {gameTypeLabel}
             </span>
+            {titleMeta}
           </div>
 
           <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2 mt-1">

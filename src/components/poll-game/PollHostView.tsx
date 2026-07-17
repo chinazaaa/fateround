@@ -1599,6 +1599,15 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
                                         : `Need ${minPool}+ names joined`
       : null
 
+    // Rounds · timer summary pill shown beside the game-type pill in the HostLobby header.
+    const roundsPill = (
+      <span className="rounded-full border border-[var(--border-strong)] bg-[var(--card-strong)] px-2.5 py-0.5 text-[0.7rem] font-semibold text-muted">
+        {hotSeatLobby && hotSeatEffective > 0
+          ? `${hotSeatEffective} rounds · ${game.timer_seconds}s each`
+          : `${game.rounds_count} rounds · ${game.timer_seconds}s each`}
+      </span>
+    )
+
     // ── Mobile-parity HostLobby (name-only-join poll subtypes) ─────────────────
     // Would You Rather / This or That / Never Have I Ever / Pick a Number / Most Likely To
     // (non-import) are player-only, name-only-join lobbies with no host-managed roster,
@@ -1794,6 +1803,7 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             hostToken={hostToken}
             game={game}
             gameTypeLabel={gameTypeLabel(gameType) ?? 'Poll'}
+            titleMeta={roundsPill}
             players={players}
             maxPlayers={game.max_players}
             resumeToken={hostResumeToken}
@@ -1831,15 +1841,205 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     // drops the chrome HostLobby already provides (header, theme, visibility,
     // start/end); `renderPollLobby(false)` keeps it for the legacy replay-lobby
     // fallback below (play-again ready-up stays on the old shell).
+    // Rounds + timer card. Shown in the ⚙ settings sheet when inside HostLobby, or inline
+    // in the body for the legacy replay lobby.
+    const pollRoundsCard = (
+      <div className="glass-card p-4 space-y-3">
+        <p className="text-muted text-xs uppercase tracking-wider">Rounds</p>
+        {isWst ? (
+          <>
+            <p className="font-bold text-body text-2xl">{game.rounds_count}</p>
+            <p className="text-faint text-xs">{roundsHint}</p>
+          </>
+        ) : isPan ? (
+          <>
+            {roundsHint && <p className="text-faint text-xs">{roundsHint}</p>}
+            <p className="text-faint text-xs">{panRoundsHint(game.rounds_count, players.length)}</p>
+            <div className="space-y-2">
+              <p className="text-muted text-[10px] uppercase tracking-wider">Rounds</p>
+              <input
+                type="number"
+                min={1}
+                max={PAN_MAX_ROUNDS}
+                step={1}
+                defaultValue={game.rounds_count}
+                key={`${game.rounds_count}-pan`}
+                disabled={updatingRounds}
+                onBlur={(e) => {
+                  const n = clampPanRounds(e.target.value)
+                  e.target.value = String(n)
+                  if (n !== game.rounds_count) hostUpdateRounds(n)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                }}
+                className="input-field w-28 py-2 text-sm disabled:opacity-50"
+              />
+            </div>
+            {roundOptions.length > 0 && (
+              <div className="flex gap-2 flex-wrap">
+                {roundOptions.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    disabled={updatingRounds}
+                    onClick={() => hostUpdateRounds(n)}
+                    className={`min-w-[2.5rem] px-3 py-2 rounded-xl border text-sm font-semibold disabled:opacity-40 ${
+                      game.rounds_count === n ? 'chip-active' : 'chip'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        ) : hotSeatLobby ? (
+          <>
+            <p className="font-bold text-body text-2xl">{hotSeatEffective > 0 ? hotSeatEffective : '—'}</p>
+            <p className="text-faint text-xs">
+              {hotSeatLobbyRoundsHint(hotSeatJoinedCount, game.rounds_count, game.participant_mode)}
+            </p>
+            <div className="space-y-2 pt-2">
+              <p className="text-muted text-[10px] uppercase tracking-wider">Max rounds (cap)</p>
+              <input
+                type="number"
+                min={HOT_SEAT_MIN_PLAYERS}
+                max={hotSeatCapUpper}
+                step={1}
+                defaultValue={game.rounds_count}
+                key={`${game.rounds_count}-${hotSeatCapUpper}`}
+                disabled={updatingRounds}
+                onBlur={(e) => {
+                  const n = clampHotSeatMaxCap(e.target.value, hotSeatCapUpper)
+                  e.target.value = String(n)
+                  if (n !== game.rounds_count) hostUpdateRounds(n)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                }}
+                className="input-field w-28 py-2 text-sm disabled:opacity-50"
+              />
+            </div>
+          </>
+        ) : isBinaryLobby || isMlt || isNhie ? (
+          <>
+            {roundsHint && <p className="text-faint text-xs">{roundsHint}</p>}
+            <div className="space-y-2">
+              <p className="text-muted text-[10px] uppercase tracking-wider">Rounds</p>
+              <input
+                type="number"
+                min={1}
+                max={Math.max(lobbyQuestionMax, 1)}
+                step={1}
+                defaultValue={game.rounds_count}
+                key={`${game.rounds_count}-${lobbyQuestionMax}`}
+                disabled={updatingRounds || lobbyQuestionMax < 1}
+                onBlur={(e) => {
+                  const n = clampLobbyQuestionRounds(e.target.value, lobbyQuestionMax)
+                  e.target.value = String(n)
+                  if (n !== game.rounds_count) hostUpdateRounds(n)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                }}
+                className="input-field w-28 py-2 text-sm disabled:opacity-50"
+              />
+            </div>
+            {roundOptions.length > 0 && (
+              <div className="flex gap-2 flex-wrap">
+                {roundOptions.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    disabled={n > maxRounds || updatingRounds}
+                    onClick={() => hostUpdateRounds(n)}
+                    className={`min-w-[2.5rem] px-3 py-2 rounded-xl border text-sm font-semibold disabled:opacity-40 ${
+                      game.rounds_count === n ? 'chip-active' : 'chip'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            )}
+            {roundsTooHigh && (
+              <p className="callout-warning">
+                {game.rounds_count} rounds is too many — pick {maxRounds} or fewer
+              </p>
+            )}
+          </>
+        ) : (
+            isJoinersMode
+              ? participants.length >= minPool && hasEnoughForRounds(participantInputs, gameType, participantOpts)
+              : roundParticipants.length >= minPool && hasEnoughForRounds(participantInputs, gameType, participantOpts)
+          ) ? (
+          <>
+            {roundsHint && <p className="text-faint text-xs">{roundsHint}</p>}
+            <div className="flex gap-2 flex-wrap">
+              {(roundOptions.length > 0 ? roundOptions : [1, 2, 3]).map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  disabled={n > maxRounds}
+                  onClick={() => hostUpdateRounds(n)}
+                  className={`min-w-[2.5rem] px-3 py-2 rounded-xl border text-sm font-semibold disabled:opacity-40 ${
+                    game.rounds_count === n ? 'chip-active' : 'chip'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            {roundsTooHigh && (
+              <p className="callout-warning">
+                {game.rounds_count} rounds is too many for{' '}
+                {hotSeatLobby
+                  ? hotSeatLegacyJoiners
+                    ? players.length
+                    : roundParticipants.length
+                  : roundParticipants.length}{' '}
+                in the game — pick {maxRounds} or fewer
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="text-faint text-xs">
+            {isBinaryLobby || isMlt
+              ? 'Set how many questions to play'
+              : hotSeatLobby
+                ? hotSeatLegacyJoiners
+                  ? 'Need at least 3 players before you can set rounds'
+                  : participants.length >= 3
+                    ? 'Need at least 3 players to claim a name before you can set rounds'
+                    : 'Need at least 3 names on the list before you can set rounds'
+                : isJoinersMode
+                  ? gameGenderBased
+                    ? `Need at least ${minPool} joined people of one gender before you can set rounds`
+                    : `Need at least ${minPool} people to join before you can set rounds`
+                  : supportsGender && !gameGenderBased
+                    ? `Need at least ${minPool} names on the list before you can set rounds`
+                    : supportsGender && gameGenderBased
+                      ? `Need at least ${minPool} joined people of one gender before you can set rounds`
+                      : `Need at least ${minPool} joined people of one gender before you can set rounds`}
+          </p>
+        )}
+        <div className="pt-3 border-t border-theme">{timerControl}</div>
+      </div>
+    )
+
     const renderPollLobby = (inHostLobby: boolean) => (
       <>
         {!inHostLobby && <HostGameHeader game={game} />}
         <div className="text-center space-y-2 -mt-2">
-          <p className="text-muted text-sm">
-            {hotSeatLobby && hotSeatEffective > 0
-              ? `${hotSeatEffective} rounds · ${game.timer_seconds}s each`
-              : `${game.rounds_count} rounds · ${game.timer_seconds}s each`}
-          </p>
+          {/* Rounds · timer moves to the header pill inside HostLobby; keep it inline for legacy. */}
+          {!inHostLobby && (
+            <p className="text-muted text-sm">
+              {hotSeatLobby && hotSeatEffective > 0
+                ? `${hotSeatEffective} rounds · ${game.timer_seconds}s each`
+                : `${game.rounds_count} rounds · ${game.timer_seconds}s each`}
+            </p>
+          )}
           {(isBinaryLobby || isMlt || isNhie || isPan) &&
             ((parseQuestionSource(game.question_source, gameType) === 'custom' && customQuestionCount(game) > 0) ||
               (isTot && playerQuestionCount > 0)) && (
@@ -1876,189 +2076,8 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
           <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
         )}
 
-        <div className="glass-card p-4 space-y-3">
-          <p className="text-muted text-xs uppercase tracking-wider">Rounds</p>
-          {isWst ? (
-            <>
-              <p className="font-bold text-body text-2xl">{game.rounds_count}</p>
-              <p className="text-faint text-xs">{roundsHint}</p>
-            </>
-          ) : isPan ? (
-            <>
-              {roundsHint && <p className="text-faint text-xs">{roundsHint}</p>}
-              <p className="text-faint text-xs">{panRoundsHint(game.rounds_count, players.length)}</p>
-              <div className="space-y-2">
-                <p className="text-muted text-[10px] uppercase tracking-wider">Rounds</p>
-                <input
-                  type="number"
-                  min={1}
-                  max={PAN_MAX_ROUNDS}
-                  step={1}
-                  defaultValue={game.rounds_count}
-                  key={`${game.rounds_count}-pan`}
-                  disabled={updatingRounds}
-                  onBlur={(e) => {
-                    const n = clampPanRounds(e.target.value)
-                    e.target.value = String(n)
-                    if (n !== game.rounds_count) hostUpdateRounds(n)
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-                  }}
-                  className="input-field w-28 py-2 text-sm disabled:opacity-50"
-                />
-              </div>
-              {roundOptions.length > 0 && (
-                <div className="flex gap-2 flex-wrap">
-                  {roundOptions.map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      disabled={updatingRounds}
-                      onClick={() => hostUpdateRounds(n)}
-                      className={`min-w-[2.5rem] px-3 py-2 rounded-xl border text-sm font-semibold disabled:opacity-40 ${
-                        game.rounds_count === n ? 'chip-active' : 'chip'
-                      }`}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : hotSeatLobby ? (
-            <>
-              <p className="font-bold text-body text-2xl">{hotSeatEffective > 0 ? hotSeatEffective : '—'}</p>
-              <p className="text-faint text-xs">
-                {hotSeatLobbyRoundsHint(hotSeatJoinedCount, game.rounds_count, game.participant_mode)}
-              </p>
-              <div className="space-y-2 pt-2">
-                <p className="text-muted text-[10px] uppercase tracking-wider">Max rounds (cap)</p>
-                <input
-                  type="number"
-                  min={HOT_SEAT_MIN_PLAYERS}
-                  max={hotSeatCapUpper}
-                  step={1}
-                  defaultValue={game.rounds_count}
-                  key={`${game.rounds_count}-${hotSeatCapUpper}`}
-                  disabled={updatingRounds}
-                  onBlur={(e) => {
-                    const n = clampHotSeatMaxCap(e.target.value, hotSeatCapUpper)
-                    e.target.value = String(n)
-                    if (n !== game.rounds_count) hostUpdateRounds(n)
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-                  }}
-                  className="input-field w-28 py-2 text-sm disabled:opacity-50"
-                />
-              </div>
-            </>
-          ) : isBinaryLobby || isMlt || isNhie ? (
-            <>
-              {roundsHint && <p className="text-faint text-xs">{roundsHint}</p>}
-              <div className="space-y-2">
-                <p className="text-muted text-[10px] uppercase tracking-wider">Rounds</p>
-                <input
-                  type="number"
-                  min={1}
-                  max={Math.max(lobbyQuestionMax, 1)}
-                  step={1}
-                  defaultValue={game.rounds_count}
-                  key={`${game.rounds_count}-${lobbyQuestionMax}`}
-                  disabled={updatingRounds || lobbyQuestionMax < 1}
-                  onBlur={(e) => {
-                    const n = clampLobbyQuestionRounds(e.target.value, lobbyQuestionMax)
-                    e.target.value = String(n)
-                    if (n !== game.rounds_count) hostUpdateRounds(n)
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-                  }}
-                  className="input-field w-28 py-2 text-sm disabled:opacity-50"
-                />
-              </div>
-              {roundOptions.length > 0 && (
-                <div className="flex gap-2 flex-wrap">
-                  {roundOptions.map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      disabled={n > maxRounds || updatingRounds}
-                      onClick={() => hostUpdateRounds(n)}
-                      className={`min-w-[2.5rem] px-3 py-2 rounded-xl border text-sm font-semibold disabled:opacity-40 ${
-                        game.rounds_count === n ? 'chip-active' : 'chip'
-                      }`}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {roundsTooHigh && (
-                <p className="callout-warning">
-                  {game.rounds_count} rounds is too many — pick {maxRounds} or fewer
-                </p>
-              )}
-            </>
-          ) : (
-              isJoinersMode
-                ? participants.length >= minPool && hasEnoughForRounds(participantInputs, gameType, participantOpts)
-                : roundParticipants.length >= minPool &&
-                  hasEnoughForRounds(participantInputs, gameType, participantOpts)
-            ) ? (
-            <>
-              {roundsHint && <p className="text-faint text-xs">{roundsHint}</p>}
-              <div className="flex gap-2 flex-wrap">
-                {(roundOptions.length > 0 ? roundOptions : [1, 2, 3]).map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    disabled={n > maxRounds}
-                    onClick={() => hostUpdateRounds(n)}
-                    className={`min-w-[2.5rem] px-3 py-2 rounded-xl border text-sm font-semibold disabled:opacity-40 ${
-                      game.rounds_count === n ? 'chip-active' : 'chip'
-                    }`}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-              {roundsTooHigh && (
-                <p className="callout-warning">
-                  {game.rounds_count} rounds is too many for{' '}
-                  {hotSeatLobby
-                    ? hotSeatLegacyJoiners
-                      ? players.length
-                      : roundParticipants.length
-                    : roundParticipants.length}{' '}
-                  in the game — pick {maxRounds} or fewer
-                </p>
-              )}
-            </>
-          ) : (
-            <p className="text-faint text-xs">
-              {isBinaryLobby || isMlt
-                ? 'Set how many questions to play'
-                : hotSeatLobby
-                  ? hotSeatLegacyJoiners
-                    ? 'Need at least 3 players before you can set rounds'
-                    : participants.length >= 3
-                      ? 'Need at least 3 players to claim a name before you can set rounds'
-                      : 'Need at least 3 names on the list before you can set rounds'
-                  : isJoinersMode
-                    ? gameGenderBased
-                      ? `Need at least ${minPool} joined people of one gender before you can set rounds`
-                      : `Need at least ${minPool} people to join before you can set rounds`
-                    : supportsGender && !gameGenderBased
-                      ? `Need at least ${minPool} names on the list before you can set rounds`
-                      : supportsGender && gameGenderBased
-                        ? `Need at least ${minPool} joined people of one gender before you can set rounds`
-                        : `Need at least ${minPool} joined people of one gender before you can set rounds`}
-            </p>
-          )}
-          <div className="pt-3 border-t border-theme">{timerControl}</div>
-        </div>
+        {/* Rounds + timer live in the ⚙ sheet inside HostLobby; inline for the legacy lobby. */}
+        {!inHostLobby && pollRoundsCard}
 
         {!inHostLobby && gameSupportsViewerSetting(gameType) && (
           <div className="glass-card p-4 space-y-3">
@@ -2787,10 +2806,12 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             hostToken={hostToken}
             game={game}
             gameTypeLabel={gameTypeLabel(gameType) ?? 'Poll'}
+            titleMeta={roundsPill}
             players={players}
             maxPlayers={game.max_players}
             resumeToken={hostResumeToken}
             playCard={lobbyModeCard}
+            settingsChildren={pollRoundsCard}
             onStart={() => void handleStart()}
             starting={starting}
             startDisabled={!canStart || savingPairVoteMode || savingPlayerQuestions}
