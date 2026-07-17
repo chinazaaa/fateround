@@ -38,12 +38,7 @@ import { isGameGenderBased } from '@/lib/gender-based'
 import { getCustomSlotCount } from '@/lib/custom-game'
 import { buildHotSeatRoundRows } from '@/lib/hot-seat'
 import { buildPickANumberRoundRows } from '@/lib/pick-a-number'
-import {
-  buildRoundsFromAnimePool,
-  buildRoundsFromDeck,
-  wstAutoRoundCount,
-  WST_DECK_MIN_ENTRIES,
-} from '@/lib/who-said-this'
+import { buildRoundsFromDeck, wstAutoRoundCount, WST_DECK_MIN_ENTRIES } from '@/lib/who-said-this'
 import { pickWyrQuestions } from '@/lib/would-you-rather-questions'
 import { pickThisOrThatQuestions, THIS_OR_THAT_QUESTION_COUNT } from '@/lib/this-or-that-questions'
 import { pickMltQuestions } from '@/lib/most-likely-to-questions'
@@ -1416,7 +1411,6 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     const participantIds = (participantsData ?? []).map((p) => p.id)
 
     let playerRoundRows: ReturnType<typeof buildRoundsFromDeck> = []
-    let animeRoundRows: ReturnType<typeof buildRoundsFromAnimePool> = []
     let deckRoundRows: ReturnType<typeof buildRoundsFromDeck> = []
     const joinedPlayerIds = playersData.filter((p) => p.spectator !== true).map((p) => p.id)
 
@@ -1465,41 +1459,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       })
     }
 
-    if (wstQuoteSource === 'anime' || wstQuoteSource === 'both') {
-      const { data: animePool } = await supabase
-        .from('anime_quote_pool')
-        .select('*')
-        .eq('game_id', code.toUpperCase())
-        .eq('removed', false)
-        .order('created_at')
-
-      const animeQuotes = animePool ?? []
-      if (wstQuoteSource === 'anime' && animeQuotes.length < 2) {
-        return NextResponse.json(
-          {
-            error: 'Need at least 2 anime quotes before starting — fetch quotes in the lobby',
-          },
-          { status: 400 }
-        )
-      }
-
-      if (animeQuotes.length > 0) {
-        animeRoundRows = buildRoundsFromAnimePool({
-          gameId: code.toUpperCase(),
-          participantIds,
-          animeQuotes: animeQuotes.map((q) => ({
-            quote_text: q.quote_text,
-            anime_name: q.anime_name,
-            correct_character: q.correct_character,
-            choices: q.choices as string[],
-          })),
-          startIndex: playerRoundRows.length,
-          now,
-        })
-      }
-    }
-
-    const allRoundRows = [...deckRoundRows, ...playerRoundRows, ...animeRoundRows]
+    const allRoundRows = [...deckRoundRows, ...playerRoundRows]
     if (allRoundRows.length < 2) {
       return NextResponse.json({ error: 'Need at least 2 total quotes to start' }, { status: 400 })
     }

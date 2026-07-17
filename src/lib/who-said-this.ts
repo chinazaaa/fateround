@@ -133,45 +133,6 @@ export function buildRoundsFromQuotePool({ gameId, participantIds, poolEntries, 
   }))
 }
 
-export interface AnimeRoundInput {
-  gameId: string
-  participantIds: string[]
-  animeQuotes: Array<{
-    quote_text: string
-    anime_name: string
-    correct_character: string
-    choices: string[]
-  }>
-  startIndex: number
-  now: string
-}
-
-export function buildRoundsFromAnimePool({ gameId, participantIds, animeQuotes, startIndex, now }: AnimeRoundInput) {
-  const shuffled = shuffleQuotePool(animeQuotes)
-  return shuffled.map((entry, index) => {
-    const roundNumber = startIndex + index + 1
-    const isFirst = roundNumber === 1
-    return {
-      game_id: gameId,
-      round_number: roundNumber,
-      participant_ids: participantIds,
-      submitter_player_id: null,
-      quote_text: entry.quote_text,
-      quote_author_participant_id: null,
-      quote_submitted_at: isFirst ? now : null,
-      anime_metadata: {
-        source: 'anime' as const,
-        anime_name: entry.anime_name,
-        correct_character: entry.correct_character,
-        choices: entry.choices,
-      },
-      status: isFirst ? 'active' : 'pending',
-      started_at: isFirst ? now : null,
-      ended_at: null,
-    }
-  })
-}
-
 /** Answer options per Who Said This question (trivia-style: A/B/C/D, one correct). */
 export const WST_MIN_OPTIONS = 2
 export const WST_MAX_OPTIONS = 4

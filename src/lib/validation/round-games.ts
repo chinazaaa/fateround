@@ -472,30 +472,6 @@ export const createQuoteSchema = z.object({
 export type CreateQuoteInput = z.infer<typeof createQuoteSchema>
 
 // ---------------------------------------------------------------------------
-// Anime quotes (POST /api/anime-quotes)
-// ---------------------------------------------------------------------------
-
-export const fetchAnimeQuotesSchema = z.object({
-  count: z.coerce.number().int().min(1).max(30),
-  gameId: gameCodeString(),
-  hostToken: hostTokenString(),
-})
-
-export type FetchAnimeQuotesInput = z.infer<typeof fetchAnimeQuotesSchema>
-
-// ---------------------------------------------------------------------------
-// Anime quote reroll (POST /api/anime-quotes/reroll)
-// ---------------------------------------------------------------------------
-
-export const rerollAnimeQuoteSchema = z.object({
-  gameId: gameCodeString(),
-  quoteId: uuidString('quoteId'),
-  hostToken: hostTokenString(),
-})
-
-export type RerollAnimeQuoteInput = z.infer<typeof rerollAnimeQuoteSchema>
-
-// ---------------------------------------------------------------------------
 // Hot Seat submissions (POST /api/hot-seat)
 // ---------------------------------------------------------------------------
 

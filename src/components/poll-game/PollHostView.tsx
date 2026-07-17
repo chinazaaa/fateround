@@ -92,7 +92,6 @@ import {
   wstCorrectNameFromRound,
   wstCorrectParticipantIdFromRound,
   wstSubmitterName,
-  wstEligibleSubmitters,
   wstAutoRoundCount,
   tallyWstVotes,
   tallyWstPlayerScores,
@@ -100,7 +99,6 @@ import {
   wstQuotePoolStatus,
   dedupeWstPool,
   mergeWstPoolEntry,
-  wstHostPoolEntries,
   isAnimeRound,
   tallyAnimeWstVotes,
 } from '@/lib/who-said-this'
@@ -173,20 +171,9 @@ import { useTimerTickSound } from '@/hooks/useTimerTickSound'
 import { useRoundTimer } from '@/hooks/useRoundTimer'
 import { useGameChannel } from '@/hooks/useGameChannel'
 import { finalResultsAutoRevealSeconds, msUntilDeadline, ROUND_RESULTS_AUTO_ADVANCE_SECONDS } from '@/lib/round-timing'
-import type {
-  Game,
-  Participant,
-  Player,
-  Round,
-  Vote,
-  Confession,
-  WstQuotePoolEntry,
-  AnimeQuotePoolEntry,
-  WstQuoteSource,
-} from '@/types'
+import type { Game, Participant, Player, Round, Vote, Confession, WstQuotePoolEntry } from '@/types'
 import { parseThemeId } from '@/lib/themes'
 import { SegmentedControl } from '@/components/ui/CreateWizard'
-import { NameSearchPicker } from '@/components/NameSearchPicker'
 import { ROUND_TIMER_OPTIONS } from '@/lib/validation'
 
 export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
@@ -238,19 +225,11 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const [updatingRounds, setUpdatingRounds] = useState(false)
   const [updatingTimer, setUpdatingTimer] = useState(false)
   const [updatingViewers, setUpdatingViewers] = useState(false)
-  const [updatingWstSource, setUpdatingWstSource] = useState(false)
   const [listSearch, setListSearch] = useState('')
   const [playersSearch, setPlayersSearch] = useState('')
   const [playerQuestionCount, setPlayerQuestionCount] = useState(0)
   const [playerNameSubmissionCount, setPlayerNameSubmissionCount] = useState(0)
   const [wstPool, setWstPool] = useState<WstQuotePoolEntry[]>([])
-  const [hostQuoteInput, setHostQuoteInput] = useState('')
-  const [hostQuoteAuthorId, setHostQuoteAuthorId] = useState<string | null>(null)
-  const [hostEditingQuoteId, setHostEditingQuoteId] = useState<string | null>(null)
-  const [hostQuoteSubmitting, setHostQuoteSubmitting] = useState(false)
-  const [animePool, setAnimePool] = useState<AnimeQuotePoolEntry[]>([])
-  const [animeFetching, setAnimeFetching] = useState(false)
-  const [animeError, setAnimeError] = useState<string | null>(null)
   const [hotSeatSubmissions, setHotSeatSubmissions] = useState<{ id: string; text: string; submission_type: string }[]>(
     []
   )
@@ -401,24 +380,13 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             }
 
             if (isWhoSaidThis(parseGameType(gameData.game_type))) {
-              const [poolRes, aPoolRes] = await Promise.all([
-                supabase
-                  .from('wst_quote_pool')
-                  .select(WST_QUOTE_POOL_SELECT)
-                  .eq('game_id', gameCode)
-                  .order('created_at'),
-                supabase
-                  .from('anime_quote_pool')
-                  .select('*')
-                  .eq('game_id', gameCode)
-                  .eq('removed', false)
-                  .order('created_at'),
-              ])
-              if (!supabasePollOk(poolRes, aPoolRes)) throw new Error('unavailable')
-              if (!cancelled) {
-                setWstPool(dedupeWstPool(poolRes.data || []))
-                setAnimePool(aPoolRes.data ?? [])
-              }
+              const poolRes = await supabase
+                .from('wst_quote_pool')
+                .select(WST_QUOTE_POOL_SELECT)
+                .eq('game_id', gameCode)
+                .order('created_at')
+              if (!supabasePollOk(poolRes)) throw new Error('unavailable')
+              if (!cancelled) setWstPool(dedupeWstPool(poolRes.data || []))
             }
 
             if (gameData.status === 'active') {
@@ -1020,123 +988,6 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     if (pool) setWstPool(dedupeWstPool(pool))
   }
 
-  const handleSubmitHostQuote = async () => {
-    if (hostQuoteSubmitting || !hostToken) return
-    const text = hostQuoteInput.trim()
-    if (!text || !hostQuoteAuthorId) return
-    setHostQuoteSubmitting(true)
-    try {
-      const res = await fetch('/api/wst-quotes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          hostToken,
-          gameId: gameCode,
-          quoteText: text,
-          authorParticipantId: hostQuoteAuthorId,
-          ...(hostEditingQuoteId ? { quoteId: hostEditingQuoteId } : {}),
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast.error(typeof data.error === 'string' ? data.error : 'Failed to add quote')
-        return
-      }
-      if (data.entry) {
-        setWstPool((prev) => mergeWstPoolEntry(prev, data.entry as WstQuotePoolEntry))
-      }
-      setHostQuoteInput('')
-      setHostQuoteAuthorId(null)
-      setHostEditingQuoteId(null)
-    } catch {
-      toast.error('Could not add quote — try again')
-    } finally {
-      setHostQuoteSubmitting(false)
-    }
-  }
-
-  const handleDeleteHostQuote = async (quoteId: string) => {
-    if (hostQuoteSubmitting || !hostToken) return
-    setHostQuoteSubmitting(true)
-    try {
-      const res = await fetch('/api/wst-quotes', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostToken, gameId: gameCode, quoteId }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast.error(typeof data.error === 'string' ? data.error : 'Failed to remove quote')
-        return
-      }
-      setWstPool((prev) => prev.filter((e) => e.id !== quoteId))
-      if (hostEditingQuoteId === quoteId) {
-        setHostQuoteInput('')
-        setHostQuoteAuthorId(null)
-        setHostEditingQuoteId(null)
-      }
-    } catch {
-      toast.error('Could not remove quote — try again')
-    } finally {
-      setHostQuoteSubmitting(false)
-    }
-  }
-
-  const fetchAnimeQuotes = async (count: number) => {
-    if (!game || animeFetching) return
-    setAnimeFetching(true)
-    setAnimeError(null)
-    try {
-      const res = await fetch('/api/anime-quotes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count, gameId: game.id, hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setAnimeError(data.error || 'Failed to fetch quotes')
-        return
-      }
-      setAnimePool(data.quotes)
-    } catch {
-      setAnimeError('Network error — try again')
-    } finally {
-      setAnimeFetching(false)
-    }
-  }
-
-  const rerollAnimeQuote = async (quoteId: string) => {
-    if (!game) return
-    try {
-      const res = await fetch('/api/anime-quotes/reroll', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: game.id, quoteId, hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        toast.error(data.error || 'Failed to reroll')
-        return
-      }
-      setAnimePool(data.quotes)
-    } catch {
-      toast.error('Network error — try again')
-    }
-  }
-
-  const removeAnimeQuote = async (quoteId: string) => {
-    if (!game) return
-    // anime_quote_pool is RLS-locked to anon writes — remove via the host-authorized route.
-    const res = await fetch('/api/anime-quotes', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gameId: gameCode, hostToken, quoteId }),
-    })
-    if (res.ok) {
-      setAnimePool((prev) => prev.filter((q) => q.id !== quoteId))
-    }
-  }
-
   async function hostUpdatePlayerQuestions(patch: {
     player_questions_enabled?: boolean
     player_questions_order?: PlayerQuestionsOrder
@@ -1209,33 +1060,6 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       if (data.game) setGame(data.game)
     } finally {
       setUpdatingTimer(false)
-    }
-  }
-
-  // Switch the Who Said This quote source (player / anime / both) from the lobby. The player
-  // and anime quote pools are stored independently, so switching just changes which one the
-  // game draws from at start — no pool is cleared, and the matching pool editor below reacts
-  // to the new `game.wst_quote_source`.
-  async function hostUpdateWstSource(next: WstQuoteSource) {
-    if (updatingWstSource || !game || (game.wst_quote_source ?? 'player') === next) return
-    const previous = game.wst_quote_source ?? 'player'
-    setGame((g) => (g ? { ...g, wst_quote_source: next } : g))
-    setUpdatingWstSource(true)
-    try {
-      const res = await fetch(`/api/games/${gameCode}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostToken, wst_quote_source: next }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setGame((g) => (g ? { ...g, wst_quote_source: previous } : g))
-        toast.error(data.error || 'Failed to update quote source')
-        return
-      }
-      if (data.game) setGame(data.game)
-    } finally {
-      setUpdatingWstSource(false)
     }
   }
 
@@ -1512,10 +1336,7 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     const isJoinersMode = (game.participant_mode ?? 'import') === 'joiners'
     const hotSeatLegacyJoiners = isHotSeatGame && isJoinersMode
     const panLegacyJoiners = isPan && isJoinersMode
-    const wstSubmitters = wstEligibleSubmitters(players)
     const wstPoolStatus = isWst ? wstQuotePoolStatus(players, wstPool) : null
-    const hostPoolQuotes = isWst ? wstHostPoolEntries(wstPool) : []
-    const wstTargets = isWst ? wstVoteTargets(participants) : []
     const roundParticipants = isPeoplePoll
       ? buildPeoplePollParticipantPool(game, participants, players)
       : isHotSeatGame && !hotSeatLegacyJoiners
@@ -1543,7 +1364,7 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       isBinaryLobby || isMlt || isNhie || isPan
         ? questionPoolCap(game, playerQuestionCount)
         : isWst
-          ? wstAutoRoundCount(wstPool.length || wstSubmitters.length)
+          ? wstAutoRoundCount(Math.max(wstPool.length, 2))
           : isHotSeatGame
             ? hotSeatCapUpper
             : maxRecommendedRounds(participantInputs, gameType, gameGenderBased, participantOpts)
@@ -1557,13 +1378,7 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             ? hotSeatCapUpper
             : maxRecommendedRounds(participantInputs, gameType, gameGenderBased, participantOpts)
     const roundsHint = isWst
-      ? wstPool.length >= 2
-        ? `${wstPool.length} quotes in the pool → ${wstAutoRoundCount(wstPool.length)} rounds`
-        : wstPool.length === 1
-          ? '1 quote in the pool — need at least 2 to start'
-          : wstSubmitters.length >= 1
-            ? `${wstSubmitters.length} players joined — waiting for quotes in the lobby`
-            : 'Players claim a name and submit a quote before start'
+      ? null
       : isBinaryLobby || isMlt || isPan
         ? (() => {
             const uploaded = customQuestionCount(game)
