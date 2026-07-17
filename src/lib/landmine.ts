@@ -50,8 +50,9 @@ export const LANDMINE_REVEAL_SECONDS = 10
 
 export const LANDMINE_WRITING_TIMER_OPTIONS = [30, 45, 60, 90] as const
 export const LANDMINE_MARKING_TIMER_OPTIONS = [20, 30, 45, 60] as const
-// The caller picks fast — the room is waiting on them. Capped at 10s.
-export const LANDMINE_CATEGORY_TIMER_OPTIONS = [5, 10] as const
+// Auto mode: the caller just clicks a category (short is fine). Manual mode reuses this as the
+// setup timer, where the setter types a category + mine(s) — so the longer 15/30s options matter.
+export const LANDMINE_CATEGORY_TIMER_OPTIONS = [5, 10, 15, 30] as const
 
 export const LANDMINE_VALID_POINTS = 10
 export const LANDMINE_ORIGINALITY_BONUS = 5
@@ -63,6 +64,13 @@ export const LANDMINE_DEFAULT_MINE_COUNT = 1
 export const LANDMINE_MINE_COUNT_OPTIONS = [1, 2, 3] as const
 export const LANDMINE_DEFAULT_ROUND_COUNT = 5
 export const LANDMINE_ROUND_COUNT_OPTIONS = [3, 5, 8, 10] as const
+// Manual mode counts "rounds" as full cycles — one round = every player sets once. Kept small
+// since each cycle is already N setter-turns.
+export const LANDMINE_DEFAULT_MANUAL_CYCLES = 1
+export const LANDMINE_MANUAL_CYCLE_OPTIONS = [1, 2, 3, 5] as const
+// Union of both option sets, so the shared rounds_count clamp accepts an auto round count OR a
+// manual cycle count (the UI restricts what's offered per mode).
+const LANDMINE_ROUND_COUNT_ALLOWED = [1, 2, 3, 5, 8, 10] as const
 
 export function clampLandmineMaxPlayers(n: number): number {
   return Math.min(Math.max(Math.floor(n), LANDMINE_MIN_PLAYERS), LANDMINE_MAX_PLAYERS)
@@ -95,7 +103,7 @@ export function clampLandmineMineCount(n: number | undefined | null): number {
 
 export function clampLandmineRoundCount(n: number | undefined | null): number {
   const v = Number(n)
-  return (LANDMINE_ROUND_COUNT_OPTIONS as readonly number[]).includes(v) ? v : LANDMINE_DEFAULT_ROUND_COUNT
+  return (LANDMINE_ROUND_COUNT_ALLOWED as readonly number[]).includes(v) ? v : LANDMINE_DEFAULT_ROUND_COUNT
 }
 
 export function parseLandmineMode(raw: unknown): LandmineMode {

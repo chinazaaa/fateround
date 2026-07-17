@@ -7,6 +7,7 @@ import {
   buildLandmineInitialRound,
   landmineAnsweringPlayerIds,
   parseLandmineMineSource,
+  clampLandmineRoundCount,
 } from './landmine'
 import type { LandmineAnswer, LandmineMark, LandmineMetadata, Player } from '@/types'
 
@@ -173,5 +174,16 @@ describe('landmine manual mode', () => {
     const row = buildLandmineInitialRound({ gameId: 'G', playerOrder: order, mineCount: 1, now: 'now' })
     const meta = row.landmine_metadata as LandmineMetadata
     expect(Object.keys(meta.reviewer_assignments).sort()).toEqual(['a', 'b', 'c'])
+  })
+
+  it('clampLandmineRoundCount accepts manual cycle counts (1, 2) and auto counts, rejects junk', () => {
+    // Manual "rounds" (cycles) can be as low as 1 — must survive the shared clamp.
+    expect(clampLandmineRoundCount(1)).toBe(1)
+    expect(clampLandmineRoundCount(2)).toBe(2)
+    // Auto round counts still pass through.
+    expect(clampLandmineRoundCount(8)).toBe(8)
+    // Out-of-set values fall back to the default.
+    expect(clampLandmineRoundCount(7)).toBe(5)
+    expect(clampLandmineRoundCount(undefined)).toBe(5)
   })
 })

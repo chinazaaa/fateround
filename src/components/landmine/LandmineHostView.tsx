@@ -35,6 +35,7 @@ import {
   clampLandmineCategoryTimer,
   LANDMINE_MINE_COUNT_OPTIONS,
   LANDMINE_ROUND_COUNT_OPTIONS,
+  LANDMINE_MANUAL_CYCLE_OPTIONS,
   type LandmineHostMode,
 } from '@/lib/landmine'
 import { supabase } from '@/lib/supabase'
@@ -490,7 +491,13 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
               <span className="text-sm font-semibold">Who plants the mine</span>
               <select
                 value={mineSourceSetting}
-                onChange={(e) => setMineSourceSetting(e.target.value as LandmineMineSource)}
+                onChange={(e) => {
+                  const next = e.target.value as LandmineMineSource
+                  setMineSourceSetting(next)
+                  // Manual setup needs more time to type; default to a single cycle. Auto restores.
+                  setCategoryTimer(next === 'manual' ? 30 : 10)
+                  setRoundCount(next === 'manual' ? 1 : 5)
+                }}
                 className="input-field w-full"
               >
                 <option value="system">Auto — the app plants it, everyone plays</option>
@@ -519,6 +526,22 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
                   {LANDMINE_ROUND_COUNT_OPTIONS.map((n) => (
                     <option key={n} value={n}>
                       {n} rounds
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {modeSetting === 'zero_points' && mineSourceSetting === 'manual' && (
+              <label className="block space-y-1">
+                <span className="text-sm font-semibold">Rounds (each = everyone sets once)</span>
+                <select
+                  value={roundCount}
+                  onChange={(e) => setRoundCount(Number(e.target.value))}
+                  className="input-field w-full"
+                >
+                  {LANDMINE_MANUAL_CYCLE_OPTIONS.map((n) => (
+                    <option key={n} value={n}>
+                      {n} round{n > 1 ? 's' : ''}
                     </option>
                   ))}
                 </select>
@@ -672,7 +695,13 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
           <span className="text-sm font-semibold">Who plants the mine</span>
           <select
             value={mineSourceSetting}
-            onChange={(e) => setMineSourceSetting(e.target.value as LandmineMineSource)}
+            onChange={(e) => {
+              const next = e.target.value as LandmineMineSource
+              setMineSourceSetting(next)
+              // Manual setup needs more time to type; default to a single cycle. Auto restores.
+              setCategoryTimer(next === 'manual' ? 30 : 10)
+              setRoundCount(next === 'manual' ? 1 : 5)
+            }}
             className="input-field w-full"
           >
             <option value="system">Auto — the app plants it, everyone plays</option>
@@ -701,6 +730,22 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
               {LANDMINE_ROUND_COUNT_OPTIONS.map((n) => (
                 <option key={n} value={n}>
                   {n} rounds
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {modeSetting === 'zero_points' && mineSourceSetting === 'manual' && (
+          <label className="block space-y-1">
+            <span className="text-sm font-semibold">Rounds (each = everyone sets once)</span>
+            <select
+              value={roundCount}
+              onChange={(e) => setRoundCount(Number(e.target.value))}
+              className="input-field w-full"
+            >
+              {LANDMINE_MANUAL_CYCLE_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n} round{n > 1 ? 's' : ''}
                 </option>
               ))}
             </select>
