@@ -2028,6 +2028,206 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       </div>
     )
 
+    // Poll-specific settings that also belong in the ⚙ sheet (matching /create). Rendered
+    // bare inside the roster card for the legacy replay lobby, or wrapped in a gear card for
+    // HostLobby (see pollExtraSettingsCard). Each block self-gates by subtype.
+    const showParticipantFilterSetting = !isJoinersMode && !isVoterOnly && !isWyr && !isNhie && !isMlt && !isWst
+    const showPlayerSubmissionSetting = isBinaryLobby || isMlt || isNhie || isPan || isPeoplePollVoters
+    const showExtraSettings =
+      showParticipantFilterSetting || supportsGender || showPairVoting || showPlayerSubmissionSetting
+    const pollExtraSettings = (
+      <>
+        {showParticipantFilterSetting && (
+          <div className="space-y-1">
+            <p className="text-muted text-xs uppercase tracking-wider">Rounds include:</p>
+            <SegmentedControl
+              value={game.participant_filter ?? 'all'}
+              onChange={async (v) => {
+                const nextFilter = v as 'all' | 'joined'
+                setSavingParticipantFilter(true)
+                setGame((prev) => (prev ? { ...prev, participant_filter: nextFilter } : prev))
+                try {
+                  const res = await fetch(`/api/games/${game.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hostToken, participant_filter: nextFilter }),
+                  })
+                  const data = await res.json()
+                  if (!res.ok) {
+                    toast.error(data.error || 'Failed to save rounds setting')
+                    const { data: gameData } = await supabase.from('games').select('*').eq('id', gameCode).maybeSingle()
+                    if (gameData) setGame(gameData)
+                    return
+                  }
+                  if (data.game) setGame(data.game)
+                } finally {
+                  setSavingParticipantFilter(false)
+                }
+              }}
+              options={[
+                { value: 'all', label: 'Everyone' },
+                { value: 'joined', label: 'Joined only' },
+              ]}
+            />
+            {savingParticipantFilter && <p className="text-faint text-xs px-0.5">Saving…</p>}
+            <p className="text-faint text-xs">
+              {game.participant_filter === 'all'
+                ? `All ${participants.length} names will appear in rounds`
+                : `${roundParticipants.length} of ${participants.length} on the list have joined — only joined names appear in rounds`}
+            </p>
+          </div>
+        )}
+        {supportsGender && (
+          <div className="space-y-1">
+            <p className="text-muted text-xs uppercase tracking-wider">Who&apos;s in each round?</p>
+            <p className="text-body text-sm font-semibold">{gameGenderBased ? 'Gender-based' : 'Names only'}</p>
+            <p className="text-faint text-xs">
+              {gameGenderBased
+                ? 'Same-gender groups each round — set when you created the game.'
+                : 'Anyone can appear in any round — set when you created the game.'}
+            </p>
+          </div>
+        )}
+        {showPairVoting && (
+          <div className="space-y-1">
+            <p className="text-muted text-xs uppercase tracking-wider">Pair voting</p>
+            <SegmentedControl
+              value={pairVoteMode}
+              onChange={async (v) => {
+                const nextMode = v as PairVoteMode
+                setSavingPairVoteMode(true)
+                setGame((prev) => (prev ? { ...prev, pair_vote_mode: nextMode } : prev))
+                try {
+                  const res = await fetch(`/api/games/${game.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hostToken, pair_vote_mode: nextMode }),
+                  })
+                  const data = await res.json()
+                  if (!res.ok) {
+                    toast.error(data.error || 'Failed to save pair voting')
+                    const { data: gameData } = await supabase.from('games').select('*').eq('id', gameCode).maybeSingle()
+                    if (gameData) setGame(gameData)
+                    return
+                  }
+                  if (data.game) setGame(data.game)
+                } finally {
+                  setSavingPairVoteMode(false)
+                }
+              }}
+              options={
+                isCustomTwoSlot ? customPairVoteModeOptions(getCustomSlots(game)) : pairVoteModeOptions(gameType)
+              }
+            />
+            {savingPairVoteMode && <p className="text-faint text-xs px-0.5">Saving…</p>}
+          </div>
+        )}
+        {showPlayerSubmissionSetting && (
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <p className="text-muted text-xs uppercase tracking-wider">Player submissions</p>
+              <SegmentedControl
+                value={
+                  (isPeoplePollVoters ? lobbyAllowsPlayerNameSubmissions(game) : lobbyAllowsPlayerQuestions(game))
+                    ? 'on'
+                    : 'off'
+                }
+                onChange={(v) => {
+                  hostUpdatePlayerQuestions({ player_questions_enabled: v === 'on' })
+                }}
+                options={[
+                  { value: 'on', label: 'Allowed' },
+                  { value: 'off', label: 'Disabled' },
+                ]}
+              />
+              <p className="text-faint text-xs">
+                {isPeoplePollVoters
+                  ? lobbyAllowsPlayerNameSubmissions(game)
+                    ? playerNameSubmissionHint()
+                    : 'Only names from your list will appear in rounds.'
+                  : lobbyAllowsPlayerQuestions(game)
+                    ? 'Players can submit their own questions in the lobby before start.'
+                    : 'Only your uploaded or platform questions will be used.'}
+              </p>
+            </div>
+            {(isPeoplePollVoters ? lobbyAllowsPlayerNameSubmissions(game) : lobbyAllowsPlayerQuestions(game)) && (
+              <div className="space-y-1">
+                <p className="text-muted text-xs uppercase tracking-wider">
+                  {isPeoplePollVoters ? 'Name mix' : 'Question mix'}
+                </p>
+                <SegmentedControl
+                  value={parsePlayerQuestionsOrder(game.player_questions_order)}
+                  onChange={(v) => {
+                    hostUpdatePlayerQuestions({ player_questions_order: v as PlayerQuestionsOrder })
+                  }}
+                  options={playerQuestionsOrderOptions(game).map((opt) => ({
+                    value: opt.value,
+                    label: opt.label,
+                  }))}
+                />
+                <p className="text-faint text-xs">
+                  {
+                    playerQuestionsOrderOptions(game).find(
+                      (opt) => opt.value === parsePlayerQuestionsOrder(game.player_questions_order)
+                    )?.hint
+                  }
+                </p>
+              </div>
+            )}
+            {savingPlayerQuestions && <p className="text-faint text-xs px-0.5">Saving…</p>}
+          </div>
+        )}
+      </>
+    )
+    // Same settings wrapped in a card for the ⚙ sheet.
+    const pollExtraSettingsCard = showExtraSettings ? (
+      <div className="glass-card p-4 space-y-4">{pollExtraSettings}</div>
+    ) : null
+
+    // Question source / library / custom-question (or name-list) editing — the host can
+    // switch Platform / Library / Your own via the pool-setup modal. Shown in the ⚙ sheet
+    // inside HostLobby; inline in the body for the legacy lobby.
+    const pollPoolSetupCard = playAgainNeedsSetup(game)
+      ? (() => {
+          const poolLabels = hostPoolSetupLabels(game)
+          const hostListCount = participants.filter((p) => !p.submitted_by_player_id).length
+          return (
+            <div className="glass-card p-4 space-y-3">
+              <p className="text-muted text-xs uppercase tracking-wider">{poolLabels.title}</p>
+              <p className="text-faint text-xs">
+                {poolLabels.hasQuestions && poolLabels.hasParticipants
+                  ? 'Keep your current lists or upload a new CSV before you start.'
+                  : poolLabels.hasQuestions
+                    ? 'Keep your loaded questions or upload a new CSV before you start.'
+                    : 'Keep your current name list or upload a new CSV before you start.'}
+              </p>
+              {poolLabels.hasQuestions && (
+                <p className="text-body text-sm">
+                  {customQuestionCount(game)} question{customQuestionCount(game) === 1 ? '' : 's'} loaded
+                </p>
+              )}
+              {poolLabels.hasParticipants && (
+                <p className="text-body text-sm">
+                  {hostListCount} name{hostListCount === 1 ? '' : 's'} on your list
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => openPoolSetup('lobby')}
+                disabled={savingLobbyPool}
+                className="btn-secondary w-full py-3"
+              >
+                {poolLabels.hasQuestions && poolLabels.hasParticipants
+                  ? 'Change list or upload CSV'
+                  : poolLabels.hasQuestions
+                    ? 'Change questions or upload CSV'
+                    : 'Change names or upload CSV'}
+              </button>
+            </div>
+          )
+        })()
+      : null
+
     const renderPollLobby = (inHostLobby: boolean) => (
       <>
         {!inHostLobby && <HostGameHeader game={game} />}
@@ -2091,45 +2291,8 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
           </div>
         )}
 
-        {playAgainNeedsSetup(game) &&
-          (() => {
-            const poolLabels = hostPoolSetupLabels(game)
-            const hostListCount = participants.filter((p) => !p.submitted_by_player_id).length
-            return (
-              <div className="glass-card p-4 space-y-3">
-                <p className="text-muted text-xs uppercase tracking-wider">{poolLabels.title}</p>
-                <p className="text-faint text-xs">
-                  {poolLabels.hasQuestions && poolLabels.hasParticipants
-                    ? 'Keep your current lists or upload a new CSV before you start.'
-                    : poolLabels.hasQuestions
-                      ? 'Keep your loaded questions or upload a new CSV before you start.'
-                      : 'Keep your current name list or upload a new CSV before you start.'}
-                </p>
-                {poolLabels.hasQuestions && (
-                  <p className="text-body text-sm">
-                    {customQuestionCount(game)} question{customQuestionCount(game) === 1 ? '' : 's'} loaded
-                  </p>
-                )}
-                {poolLabels.hasParticipants && (
-                  <p className="text-body text-sm">
-                    {hostListCount} name{hostListCount === 1 ? '' : 's'} on your list
-                  </p>
-                )}
-                <button
-                  type="button"
-                  onClick={() => openPoolSetup('lobby')}
-                  disabled={savingLobbyPool}
-                  className="btn-secondary w-full py-3"
-                >
-                  {poolLabels.hasQuestions && poolLabels.hasParticipants
-                    ? 'Change list or upload CSV'
-                    : poolLabels.hasQuestions
-                      ? 'Change questions or upload CSV'
-                      : 'Change names or upload CSV'}
-                </button>
-              </div>
-            )
-          })()}
+        {/* Question/name pool editing lives in the ⚙ sheet inside HostLobby; inline for legacy. */}
+        {!inHostLobby && pollPoolSetupCard}
 
         {isWst &&
           (isWstDeck ? (
@@ -2176,154 +2339,9 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
               </span>
             </div>
           </div>
-          {!isJoinersMode && !isVoterOnly && !isWyr && !isNhie && !isMlt && !isWst && (
-            <div className="space-y-1">
-              <p className="text-muted text-xs uppercase tracking-wider">Rounds include:</p>
-              <SegmentedControl
-                value={game.participant_filter ?? 'all'}
-                onChange={async (v) => {
-                  const nextFilter = v as 'all' | 'joined'
-                  setSavingParticipantFilter(true)
-                  setGame((prev) => (prev ? { ...prev, participant_filter: nextFilter } : prev))
-                  try {
-                    const res = await fetch(`/api/games/${game.id}`, {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ hostToken, participant_filter: nextFilter }),
-                    })
-                    const data = await res.json()
-                    if (!res.ok) {
-                      toast.error(data.error || 'Failed to save rounds setting')
-                      const { data: gameData } = await supabase
-                        .from('games')
-                        .select('*')
-                        .eq('id', gameCode)
-                        .maybeSingle()
-                      if (gameData) setGame(gameData)
-                      return
-                    }
-                    if (data.game) setGame(data.game)
-                  } finally {
-                    setSavingParticipantFilter(false)
-                  }
-                }}
-                options={[
-                  { value: 'all', label: 'Everyone' },
-                  { value: 'joined', label: 'Joined only' },
-                ]}
-              />
-              {savingParticipantFilter && <p className="text-faint text-xs px-0.5">Saving…</p>}
-              <p className="text-faint text-xs">
-                {game.participant_filter === 'all'
-                  ? `All ${participants.length} names will appear in rounds`
-                  : `${roundParticipants.length} of ${participants.length} on the list have joined — only joined names appear in rounds`}
-              </p>
-            </div>
-          )}
-          {supportsGender && (
-            <div className="space-y-1">
-              <p className="text-muted text-xs uppercase tracking-wider">Who&apos;s in each round?</p>
-              <p className="text-body text-sm font-semibold">{gameGenderBased ? 'Gender-based' : 'Names only'}</p>
-              <p className="text-faint text-xs">
-                {gameGenderBased
-                  ? 'Same-gender groups each round — set when you created the game.'
-                  : 'Anyone can appear in any round — set when you created the game.'}
-              </p>
-            </div>
-          )}
-          {showPairVoting && (
-            <div className="space-y-1">
-              <p className="text-muted text-xs uppercase tracking-wider">Pair voting</p>
-              <SegmentedControl
-                value={pairVoteMode}
-                onChange={async (v) => {
-                  const nextMode = v as PairVoteMode
-                  setSavingPairVoteMode(true)
-                  setGame((prev) => (prev ? { ...prev, pair_vote_mode: nextMode } : prev))
-                  try {
-                    const res = await fetch(`/api/games/${game.id}`, {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ hostToken, pair_vote_mode: nextMode }),
-                    })
-                    const data = await res.json()
-                    if (!res.ok) {
-                      toast.error(data.error || 'Failed to save pair voting')
-                      const { data: gameData } = await supabase
-                        .from('games')
-                        .select('*')
-                        .eq('id', gameCode)
-                        .maybeSingle()
-                      if (gameData) setGame(gameData)
-                      return
-                    }
-                    if (data.game) setGame(data.game)
-                  } finally {
-                    setSavingPairVoteMode(false)
-                  }
-                }}
-                options={
-                  isCustomTwoSlot ? customPairVoteModeOptions(getCustomSlots(game)) : pairVoteModeOptions(gameType)
-                }
-              />
-              {savingPairVoteMode && <p className="text-faint text-xs px-0.5">Saving…</p>}
-            </div>
-          )}
-          {(isBinaryLobby || isMlt || isNhie || isPan || isPeoplePollVoters) && (
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <p className="text-muted text-xs uppercase tracking-wider">Player submissions</p>
-                <SegmentedControl
-                  value={
-                    (isPeoplePollVoters ? lobbyAllowsPlayerNameSubmissions(game) : lobbyAllowsPlayerQuestions(game))
-                      ? 'on'
-                      : 'off'
-                  }
-                  onChange={(v) => {
-                    hostUpdatePlayerQuestions({ player_questions_enabled: v === 'on' })
-                  }}
-                  options={[
-                    { value: 'on', label: 'Allowed' },
-                    { value: 'off', label: 'Disabled' },
-                  ]}
-                />
-                <p className="text-faint text-xs">
-                  {isPeoplePollVoters
-                    ? lobbyAllowsPlayerNameSubmissions(game)
-                      ? playerNameSubmissionHint()
-                      : 'Only names from your list will appear in rounds.'
-                    : lobbyAllowsPlayerQuestions(game)
-                      ? 'Players can submit their own questions in the lobby before start.'
-                      : 'Only your uploaded or platform questions will be used.'}
-                </p>
-              </div>
-              {(isPeoplePollVoters ? lobbyAllowsPlayerNameSubmissions(game) : lobbyAllowsPlayerQuestions(game)) && (
-                <div className="space-y-1">
-                  <p className="text-muted text-xs uppercase tracking-wider">
-                    {isPeoplePollVoters ? 'Name mix' : 'Question mix'}
-                  </p>
-                  <SegmentedControl
-                    value={parsePlayerQuestionsOrder(game.player_questions_order)}
-                    onChange={(v) => {
-                      hostUpdatePlayerQuestions({ player_questions_order: v as PlayerQuestionsOrder })
-                    }}
-                    options={playerQuestionsOrderOptions(game).map((opt) => ({
-                      value: opt.value,
-                      label: opt.label,
-                    }))}
-                  />
-                  <p className="text-faint text-xs">
-                    {
-                      playerQuestionsOrderOptions(game).find(
-                        (opt) => opt.value === parsePlayerQuestionsOrder(game.player_questions_order)
-                      )?.hint
-                    }
-                  </p>
-                </div>
-              )}
-              {savingPlayerQuestions && <p className="text-faint text-xs px-0.5">Saving…</p>}
-            </div>
-          )}
+          {/* Settings (rounds-include / gender / pair-vote / player-submissions) live in the
+              ⚙ sheet inside HostLobby (pollExtraSettingsCard); inline here for the legacy lobby. */}
+          {!inHostLobby && pollExtraSettings}
           {!isJoinersMode && !hotSeatLobby && isVoterOnly && (
             <p className="text-faint text-xs">
               {players.length} voter{players.length === 1 ? '' : 's'} joined — all {participants.length} names on the
@@ -2811,7 +2829,13 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             maxPlayers={game.max_players}
             resumeToken={hostResumeToken}
             playCard={lobbyModeCard}
-            settingsChildren={pollRoundsCard}
+            settingsChildren={
+              <>
+                {pollRoundsCard}
+                {pollExtraSettingsCard}
+                {pollPoolSetupCard}
+              </>
+            }
             onStart={() => void handleStart()}
             starting={starting}
             startDisabled={!canStart || savingPairVoteMode || savingPlayerQuestions}
