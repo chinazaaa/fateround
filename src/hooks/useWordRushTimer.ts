@@ -16,8 +16,10 @@ export function useWordRushTimer(gameCode: string, session: WordRushSession | nu
 
   useEffect(() => {
     if (status === 'finished') {
-      setSecondsLeft(0)
-      setIntermissionLeft(0)
+      setTimeout(() => {
+        setSecondsLeft(0)
+        setIntermissionLeft(0)
+      }, 0)
       return
     }
 

@@ -26,10 +26,10 @@ export function useHostToken(code: string | null): { hostToken: string; resolved
       rememberHostToken(code, urlToken)
       url.searchParams.delete('token')
       window.history.replaceState(null, '', url.pathname + url.search + url.hash)
-      setState({ token: urlToken, resolved: true })
+      setTimeout(() => setState({ token: urlToken, resolved: true }), 0)
       return
     }
-    setState({ token: readHostToken(code) ?? '', resolved: true })
+    setTimeout(() => setState({ token: readHostToken(code) ?? '', resolved: true }), 0)
   }, [code])
 
   return { hostToken: state.token, resolved: state.resolved }

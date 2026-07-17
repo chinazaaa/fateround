@@ -123,7 +123,8 @@ export function useSpotifyPlayer(identity: string | null, enabled: boolean) {
 
     // Probe connection + product up front so the UI can show "Connect" vs "Premium required"
     // without waiting for the (heavier) SDK to boot.
-    void fetchToken().then((token) => {
+    setTimeout(() => {
+      void fetchToken().then((token) => {
       if (cancelled || !token) return
       loadSdk()
         .then(() => {
@@ -175,7 +176,8 @@ export function useSpotifyPlayer(identity: string | null, enabled: boolean) {
         .catch(() => {
           if (!cancelled) setState((s) => ({ ...s, error: 'Failed to load Spotify' }))
         })
-    })
+      })
+    }, 0)
 
     return () => {
       cancelled = true

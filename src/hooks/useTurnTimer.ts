@@ -53,7 +53,7 @@ export function useTurnTimer({
 
   useEffect(() => {
     if (!active || !deadlineAt) {
-      setSecondsLeft(0)
+      setTimeout(() => setSecondsLeft(0), 0)
       return
     }
 

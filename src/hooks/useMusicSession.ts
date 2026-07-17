@@ -29,7 +29,7 @@ export function useMusicSession(gameCode: string) {
   }, [gameCode])
 
   useEffect(() => {
-    void load()
+    setTimeout(() => void load(), 0)
   }, [load])
 
   useGameTableSync(

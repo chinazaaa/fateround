@@ -207,6 +207,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
       updatePayload.game_duration_seconds = clampNpatGameDuration(rawGameDurationSeconds)
     } else if (isScrabbleGame(gameType)) {
       updatePayload.game_duration_seconds = clampScrabbleGameDuration(rawGameDurationSeconds)
+    } else if (isPingPongGame(gameType)) {
+      updatePayload.game_duration_seconds = Math.max(0, rawGameDurationSeconds)
     }
   }
 
