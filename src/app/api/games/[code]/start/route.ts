@@ -38,7 +38,13 @@ import { isGameGenderBased } from '@/lib/gender-based'
 import { getCustomSlotCount } from '@/lib/custom-game'
 import { buildHotSeatRoundRows } from '@/lib/hot-seat'
 import { buildPickANumberRoundRows } from '@/lib/pick-a-number'
-import { buildRoundsFromQuotePool, buildRoundsFromAnimePool, wstAutoRoundCount } from '@/lib/who-said-this'
+import {
+  buildRoundsFromQuotePool,
+  buildRoundsFromAnimePool,
+  buildRoundsFromDeck,
+  wstAutoRoundCount,
+  WST_DECK_MIN_ENTRIES,
+} from '@/lib/who-said-this'
 import { pickWyrQuestions } from '@/lib/would-you-rather-questions'
 import { pickThisOrThatQuestions, THIS_OR_THAT_QUESTION_COUNT } from '@/lib/this-or-that-questions'
 import { pickMltQuestions } from '@/lib/most-likely-to-questions'
@@ -59,6 +65,7 @@ import {
   pickCustomTriviaQuestions,
   questionPoolCap,
   parseStoredTriviaQuestions,
+  parseStoredWstDeck,
 } from '@/lib/custom-questions'
 import {
   combineLobbyQuestions,
@@ -1411,6 +1418,28 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
 
     let playerRoundRows: ReturnType<typeof buildRoundsFromQuotePool> = []
     let animeRoundRows: ReturnType<typeof buildRoundsFromAnimePool> = []
+    let deckRoundRows: ReturnType<typeof buildRoundsFromDeck> = []
+
+    // Pre-set roster: build choice-rounds from the host deck stored in games.custom_questions
+    // (Platform / Library / uploaded CSV). Players just join and guess the author from choices —
+    // no name list or player submissions needed.
+    if (wstQuoteSource === 'deck') {
+      const deck = parseStoredWstDeck(game.custom_questions)
+      if (deck.length < WST_DECK_MIN_ENTRIES) {
+        return NextResponse.json(
+          { error: `Add at least ${WST_DECK_MIN_ENTRIES} quotes to the deck before starting` },
+          { status: 400 }
+        )
+      }
+      const joinedPlayerIds = playersData.filter((p) => p.spectator !== true).map((p) => p.id)
+      deckRoundRows = buildRoundsFromDeck({
+        gameId: code.toUpperCase(),
+        participantIds: joinedPlayerIds,
+        deck: deck.slice(0, wstAutoRoundCount(deck.length)),
+        startIndex: 0,
+        now,
+      })
+    }
 
     if (wstQuoteSource === 'player' || wstQuoteSource === 'both') {
       if (wstQuoteSource === 'player') {
@@ -1485,7 +1514,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       }
     }
 
-    const allRoundRows = [...playerRoundRows, ...animeRoundRows]
+    const allRoundRows = [...deckRoundRows, ...playerRoundRows, ...animeRoundRows]
     if (allRoundRows.length < 2) {
       return NextResponse.json({ error: 'Need at least 2 total quotes to start' }, { status: 400 })
     }

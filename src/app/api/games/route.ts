@@ -84,7 +84,9 @@ import {
   parseStoredCrosswordEntries,
   parseStoredWordSearchEntries,
   parseStoredWordScrambleEntries,
+  parseStoredWstDeck,
 } from '@/lib/custom-questions'
+import { WST_DECK_MIN_ENTRIES } from '@/lib/who-said-this'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
 import type { ParticipantMode, QuestionSource, TriviaQuestion } from '@/types'
 import { createGameSchema, stripHtml } from '@/lib/validation'
@@ -488,6 +490,22 @@ export async function POST(req: NextRequest) {
     custom_questions = cqParsed
   }
 
+  // Who Said This — Pre-set roster deck (quote + who said it). The host uploads/picks a deck
+  // (question_source 'custom'); it's stored on custom_questions like other content games, and
+  // the start route builds choice-rounds from it. Players just join to guess — no name list.
+  const wstQuoteSource = parsed.data.wst_quote_source ?? 'player'
+  const isWstDeck = isWhoSaidThis(game_type) && wstQuoteSource === 'deck'
+  if (isWstDeck && question_source === 'custom') {
+    const deck = parseStoredWstDeck(rawCustomQuestions)
+    if (deck.length < WST_DECK_MIN_ENTRIES) {
+      return NextResponse.json(
+        { error: `Upload at least ${WST_DECK_MIN_ENTRIES} quotes (with who said each one)` },
+        { status: 400 }
+      )
+    }
+    custom_questions = deck
+  }
+
   const participant_mode: ParticipantMode =
     isLobbyGame(game_type) ||
     isTriviaGame(game_type) ||
@@ -518,7 +536,9 @@ export async function POST(req: NextRequest) {
     isLandmineGame(game_type)
       ? 'joiners'
       : isWhoSaidThis(game_type)
-        ? 'import'
+        ? isWstDeck
+          ? 'joiners'
+          : 'import'
         : parseParticipantMode(rawMode)
 
   let participants: ParticipantInput[] = []
@@ -1002,6 +1022,7 @@ export async function POST(req: NextRequest) {
       isQuickDrawGame(game_type) ||
       isCodewordsGame(game_type) ||
       isDescribeItGame(game_type) ||
+      isWhoSaidThis(game_type) ||
       isPuzzlePool
         ? question_source
         : 'platform',

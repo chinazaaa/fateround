@@ -20,9 +20,11 @@ import {
   isCrosswordGame,
   isWordSearchGame,
   isWordScrambleGame,
+  isWhoSaidThis,
   parseGameType,
 } from '@/lib/game-types'
 import { parseCsvRows } from '@/lib/csv-parse'
+import type { WstDeckEntry } from '@/lib/who-said-this'
 import { parseCrosswordEntries } from '@/lib/crossword-puzzles'
 import { parseWordSearchEntries } from '@/lib/word-search-puzzles'
 import { parseWordScrambleEntries } from '@/lib/word-scramble-puzzles'
@@ -440,6 +442,58 @@ export function parseStoredWordSearchEntries(raw: unknown): WordSearchEntry[] {
   return out
 }
 
+// ---------------------------------------------------------------------------
+// Who Said This — Pre-set roster decks (quote + who said it, optional category)
+// ---------------------------------------------------------------------------
+
+/** Map CSV/stored rows to {quote, answer, category?}, tolerating common column aliases. */
+export function parseWstDeckRows(rows: Record<string, string>[]): WstDeckEntry[] {
+  return rows
+    .map((r) => ({
+      quote: (r.quote ?? r.text ?? r.line ?? '').trim(),
+      answer: (r.answer ?? r.character ?? r.author ?? r.name ?? r.who ?? r.said ?? '').trim(),
+      category: (r.category ?? r.series ?? r.source ?? r.show ?? r.group ?? '').trim() || undefined,
+    }))
+    .filter((e) => e.quote.length > 0 && e.answer.length > 0)
+}
+
+function dedupeWstDeck(entries: WstDeckEntry[]): EntryImportResult<WstDeckEntry> {
+  const seen = new Set<string>()
+  const questions: WstDeckEntry[] = []
+  let duplicateRows = 0
+  for (const e of entries) {
+    const key = `${e.quote.toLowerCase()}|${e.answer.toLowerCase()}`
+    if (seen.has(key)) {
+      duplicateRows++
+      continue
+    }
+    seen.add(key)
+    questions.push(
+      e.category ? { quote: e.quote, answer: e.answer, category: e.category } : { quote: e.quote, answer: e.answer }
+    )
+  }
+  return { questions, totalRows: 0, skippedRows: 0, duplicateRows }
+}
+
+/** Parse a WST deck CSV (quote,answer[,category] header) into deduped entries + counts. */
+export function parseWstDeckImport(text: string): EntryImportResult<WstDeckEntry> {
+  const rows = parseCsvRows(text)
+  const parsed = parseWstDeckRows(rows)
+  const deduped = dedupeWstDeck(parsed)
+  return { ...deduped, totalRows: rows.length, skippedRows: rows.length - parsed.length }
+}
+
+/** Parse a WST deck from an uploaded .xlsx/.xls workbook. */
+export async function parseExcelWstDeckImport(buffer: ArrayBuffer): Promise<EntryImportResult<WstDeckEntry>> {
+  return parseWstDeckImport(await sheetBufferToText(buffer))
+}
+
+/** Restore a stored WST deck (from games.custom_questions or a library pack). */
+export function parseStoredWstDeck(raw: unknown): WstDeckEntry[] {
+  if (!Array.isArray(raw)) return []
+  return dedupeWstDeck(parseWstDeckRows(raw as Record<string, string>[])).questions
+}
+
 /** Shared "N skipped · M duplicates removed" summary for the entry importers above. */
 export function formatEntryImportSummary(result: { skippedRows: number; duplicateRows: number }): string | null {
   const parts: string[] = []
@@ -528,6 +582,9 @@ export function parseQuestionSource(raw: unknown, gameType?: GameType | string):
   // start route just checks custom_questions), so only 'platform'/'custom' persist.
   if (isCrosswordGame(gameType) || isWordSearchGame(gameType) || isWordScrambleGame(gameType))
     return raw === 'custom' ? 'custom' : 'platform'
+  // Who Said This Pre-set roster decks: Library folds into 'custom' (start reads the deck from
+  // custom_questions); 'platform' is a seeded deck. The player-quote mode ignores this.
+  if (isWhoSaidThis(gameType)) return raw === 'custom' || raw === 'library' ? 'custom' : 'platform'
   return 'platform'
 }
 

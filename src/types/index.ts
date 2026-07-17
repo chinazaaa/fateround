@@ -1568,8 +1568,16 @@ export interface WstQuotePoolEntry {
   updated_at: string
 }
 
+/**
+ * Choice-round metadata for Who Said This: a quote whose author is guessed from a fixed
+ * set of string `choices` (rather than from the players in the room). `source: 'anime'` is
+ * the legacy auto-fetched pool; `source: 'deck'` is a host-provided Pre-set roster deck
+ * (Platform / Library / uploaded CSV). `anime_name` doubles as the deck's optional category
+ * label (e.g. "Harry Potter"). A round with this metadata present is a choice round
+ * (see `isAnimeRound`), regardless of source.
+ */
 export interface AnimeMetadata {
-  source: 'anime'
+  source: 'anime' | 'deck'
   anime_name: string
   correct_character: string
   choices: string[]
@@ -1586,7 +1594,11 @@ export interface AnimeQuotePoolEntry {
   created_at: string
 }
 
-export type WstQuoteSource = 'player' | 'anime' | 'both'
+// 'player' = Join & play (players submit quotes about themselves; guess who in the room).
+// 'deck' = Pre-set roster (host-provided quote+answer deck; guess the character from choices).
+// 'anime'/'both' are the legacy auto-fetch sources, retained for back-compat while that path
+// is migrated into Library decks.
+export type WstQuoteSource = 'player' | 'anime' | 'both' | 'deck'
 
 export interface BingoCard {
   id: string
