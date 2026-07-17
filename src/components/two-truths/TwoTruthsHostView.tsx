@@ -11,6 +11,7 @@ import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
+import { HostMaxPlayersLobbyPanel } from '@/components/host-lobby/HostMaxPlayersLobbyPanel'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
@@ -462,6 +463,14 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
 
   const lobbySettings = (
     <>
+      <HostMaxPlayersLobbyPanel
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        limitType="two_truths"
+        playerCount={players.length}
+        onGameUpdate={setGame}
+      />
       <div className="rounded-2xl border border-[color-mix(in_srgb,var(--primary)_14%,var(--border))] bg-[var(--card-strong)]/95 p-5 space-y-2">
         <p className="label-caps">Guess timer (per round)</p>
         <select

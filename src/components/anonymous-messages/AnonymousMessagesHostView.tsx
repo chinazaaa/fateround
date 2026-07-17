@@ -10,6 +10,7 @@ import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { ExitIcon } from '@/components/host/host-icons'
 import { HostLobbyStartButton } from '@/components/host-lobby/HostLobbyStartButton'
 import { HostVisibilityToggle } from '@/components/host-lobby/HostVisibilityToggle'
+import { HostMaxPlayersLobbyPanel } from '@/components/host-lobby/HostMaxPlayersLobbyPanel'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { ResultsPagination, usePagination } from '@/components/ui/ResultsPagination'
@@ -453,7 +454,17 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
           </p>
         }
         settingsChildren={
-          <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+          <>
+            <HostMaxPlayersLobbyPanel
+              gameCode={gameCode}
+              hostToken={hostToken}
+              game={game}
+              limitType="anonymous_messages"
+              playerCount={players.length}
+              onGameUpdate={setGame}
+            />
+            <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+          </>
         }
         onStart={() => void startSession()}
         starting={starting}

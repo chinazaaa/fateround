@@ -16,6 +16,7 @@ import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
+import { HostMaxPlayersLobbyPanel } from '@/components/host-lobby/HostMaxPlayersLobbyPanel'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -600,6 +601,14 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
 
   const lobbySettings = (
     <>
+      <HostMaxPlayersLobbyPanel
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        limitType="i_call_on"
+        playerCount={players.length}
+        onGameUpdate={setGame}
+      />
       <div className="rounded-2xl border border-[color-mix(in_srgb,var(--primary)_14%,var(--border))] bg-[var(--card-strong)]/95 p-5 space-y-3">
         <p className="label-caps">Game settings</p>
         <label className="block space-y-1">
