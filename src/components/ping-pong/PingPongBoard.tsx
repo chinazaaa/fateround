@@ -685,7 +685,12 @@ export function PingPongBoard({
               // Broadcast immediate sync on paddle hit
               lastBallSyncRef.current = performance.now()
               broadcastSeqRef.current += 1
-              sendGameEvent('ball_sync', { ...ball, rally: rallyRef.current, seq: broadcastSeqRef.current, side: mySide })
+              sendGameEvent('ball_sync', {
+                ...ball,
+                rally: rallyRef.current,
+                seq: broadcastSeqRef.current,
+                side: mySide,
+              })
             }
           }
 
@@ -709,7 +714,12 @@ export function PingPongBoard({
               // Broadcast immediate sync on paddle hit
               lastBallSyncRef.current = performance.now()
               broadcastSeqRef.current += 1
-              sendGameEvent('ball_sync', { ...ball, rally: rallyRef.current, seq: broadcastSeqRef.current, side: mySide })
+              sendGameEvent('ball_sync', {
+                ...ball,
+                rally: rallyRef.current,
+                seq: broadcastSeqRef.current,
+                side: mySide,
+              })
             }
           }
 
@@ -731,7 +741,12 @@ export function PingPongBoard({
         if (ballRef.current.inPlay && now - lastBallSyncRef.current > 50) {
           lastBallSyncRef.current = now
           broadcastSeqRef.current += 1
-          sendGameEvent('ball_sync', { ...ballRef.current, rally: rallyRef.current, seq: broadcastSeqRef.current, side: mySide })
+          sendGameEvent('ball_sync', {
+            ...ballRef.current,
+            rally: rallyRef.current,
+            seq: broadcastSeqRef.current,
+            side: mySide,
+          })
         }
       } else if (!isAuthority && ballRef.current.inPlay && session.status === 'active') {
         // Non-authority client prediction: advance the ball.
