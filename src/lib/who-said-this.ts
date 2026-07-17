@@ -172,30 +172,22 @@ export function buildRoundsFromAnimePool({ gameId, participantIds, animeQuotes, 
   })
 }
 
-/** Number of answer options shown per Pre-set-roster deck round (correct + distractors). */
-export const WST_DECK_CHOICE_COUNT = 4
-/** A deck game needs enough rounds + distinct answers to make guessing meaningful. */
+/** Answer options per Who Said This question (trivia-style: A/B/C/D, one correct). */
+export const WST_MIN_OPTIONS = 2
+export const WST_MAX_OPTIONS = 4
+/** A deck game needs at least this many questions to start. */
 export const WST_DECK_MIN_ENTRIES = 2
 
-/** One row of a host-provided Who Said This deck: a quote and who said it, plus an
- *  optional category/series label used purely for display. */
+/**
+ * One Who Said This question: a quote (the prompt) plus the answer options the player picks
+ * from — exactly like a trivia question, with the quote in place of the question text. The
+ * author (a player in the lobby, or the host via Platform/Library/CSV) supplies the options
+ * and marks which one is correct.
+ */
 export interface WstDeckEntry {
   quote: string
-  answer: string
-  category?: string | null
-}
-
-/** Distinct answers across the deck, preserving first-seen order (case-insensitive dedupe). */
-export function wstDeckAnswers(deck: WstDeckEntry[]): string[] {
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const e of deck) {
-    const key = e.answer.trim().toLowerCase()
-    if (!key || seen.has(key)) continue
-    seen.add(key)
-    out.push(e.answer.trim())
-  }
-  return out
+  options: string[]
+  correctIndex: number
 }
 
 export interface WstDeckRoundInput {
@@ -204,36 +196,21 @@ export interface WstDeckRoundInput {
   deck: WstDeckEntry[]
   startIndex: number
   now: string
-  choiceCount?: number
 }
 
 /**
- * Build choice-based rounds from a host deck (Pre-set roster). Each round guesses the quote's
- * author from `choiceCount` string options: the correct answer plus distractors sampled from
- * the deck's other answers. Reuses the `anime_metadata` choice-round shape (source: 'deck'),
- * so the existing guess/vote/tally/UI plumbing renders it unchanged. If the deck has fewer
- * distinct answers than `choiceCount`, rounds simply show every available answer.
+ * Build choice-rounds from a set of Who Said This questions (host deck or player-submitted
+ * pool). Each round shows the quote and the author-supplied options; the correct option is the
+ * answer. Reuses the `anime_metadata` choice-round shape (source: 'deck') so the existing
+ * guess/vote/UI plumbing renders it unchanged — options are shown in authored order.
  */
-export function buildRoundsFromDeck({
-  gameId,
-  participantIds,
-  deck,
-  startIndex,
-  now,
-  choiceCount = WST_DECK_CHOICE_COUNT,
-}: WstDeckRoundInput) {
-  const allAnswers = wstDeckAnswers(deck)
+export function buildRoundsFromDeck({ gameId, participantIds, deck, startIndex, now }: WstDeckRoundInput) {
   const shuffled = shuffleQuotePool(deck)
   return shuffled.map((entry, index) => {
     const roundNumber = startIndex + index + 1
     const isFirst = roundNumber === 1
-    const answer = entry.answer.trim()
-    // Distractors: other distinct answers, shuffled, capped to fill the choice slots.
-    const distractors = shuffleQuotePool(allAnswers.filter((a) => a.toLowerCase() !== answer.toLowerCase())).slice(
-      0,
-      Math.max(0, choiceCount - 1)
-    )
-    const choices = shuffleQuotePool([answer, ...distractors])
+    const options = entry.options.map((o) => o.trim()).filter(Boolean)
+    const correct = options[entry.correctIndex] ?? options[0]
     return {
       game_id: gameId,
       round_number: roundNumber,
@@ -244,9 +221,9 @@ export function buildRoundsFromDeck({
       quote_submitted_at: isFirst ? now : null,
       anime_metadata: {
         source: 'deck' as const,
-        anime_name: entry.category?.trim() || '',
-        correct_character: answer,
-        choices,
+        anime_name: '',
+        correct_character: correct,
+        choices: options,
       },
       status: isFirst ? 'active' : 'pending',
       started_at: isFirst ? now : null,

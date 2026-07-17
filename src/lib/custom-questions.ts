@@ -443,44 +443,73 @@ export function parseStoredWordSearchEntries(raw: unknown): WordSearchEntry[] {
 }
 
 // ---------------------------------------------------------------------------
-// Who Said This — Pre-set roster decks (quote + who said it, optional category)
+// Who Said This — trivia-style quote questions (quote + A/B/C/D options + correct)
 // ---------------------------------------------------------------------------
 
-/** Map CSV/stored rows to {quote, answer, category?}, tolerating common column aliases. */
-export function parseWstDeckRows(rows: Record<string, string>[]): WstDeckEntry[] {
-  return rows
-    .map((r) => ({
-      quote: (r.quote ?? r.text ?? r.line ?? '').trim(),
-      answer: (r.answer ?? r.character ?? r.author ?? r.name ?? r.who ?? r.said ?? '').trim(),
-      category: (r.category ?? r.series ?? r.source ?? r.show ?? r.group ?? '').trim() || undefined,
-    }))
-    .filter((e) => e.quote.length > 0 && e.answer.length > 0)
-}
-
-function dedupeWstDeck(entries: WstDeckEntry[]): EntryImportResult<WstDeckEntry> {
-  const seen = new Set<string>()
-  const questions: WstDeckEntry[] = []
-  let duplicateRows = 0
-  for (const e of entries) {
-    const key = `${e.quote.toLowerCase()}|${e.answer.toLowerCase()}`
-    if (seen.has(key)) {
-      duplicateRows++
-      continue
-    }
-    seen.add(key)
-    questions.push(
-      e.category ? { quote: e.quote, answer: e.answer, category: e.category } : { quote: e.quote, answer: e.answer }
-    )
+/** Resolve the correct option from a CSV `correct` cell: a letter (A–D), a 1/0-based index,
+ *  or the exact option text. Returns the 0-based index, or null if unresolved. */
+function parseWstCorrectIndex(raw: string, options: string[]): number | null {
+  const v = (raw ?? '').trim()
+  if (!v) return null
+  const letter = v.toUpperCase()
+  const letterIdx = ['A', 'B', 'C', 'D'].indexOf(letter)
+  if (letterIdx >= 0 && letterIdx < options.length) return letterIdx
+  const num = Number.parseInt(v, 10)
+  if (!Number.isNaN(num)) {
+    // Accept 1-based (1–4) or 0-based (0–3) numbering.
+    if (num >= 1 && num <= options.length) return num - 1
+    if (num >= 0 && num < options.length) return num
   }
-  return { questions, totalRows: 0, skippedRows: 0, duplicateRows }
+  const match = options.findIndex((o) => o.toLowerCase() === v.toLowerCase())
+  return match >= 0 ? match : null
 }
 
-/** Parse a WST deck CSV (quote,answer[,category] header) into deduped entries + counts. */
+/** Map CSV/stored rows to {quote, options, correctIndex}. Quote column: quote/question/text;
+ *  options: option_a..d (or a/b/c/d, or option1..4); correct: correct/answer/correct_answer. */
+export function parseWstDeckRows(rows: Record<string, string>[]): WstDeckEntry[] {
+  const out: WstDeckEntry[] = []
+  for (const r of rows) {
+    const quote = (r.quote ?? r.question ?? r.text ?? r.line ?? '').trim()
+    const options = [
+      r.option_a ?? r.a ?? r.option1 ?? r.option_1 ?? '',
+      r.option_b ?? r.b ?? r.option2 ?? r.option_2 ?? '',
+      r.option_c ?? r.c ?? r.option3 ?? r.option_3 ?? '',
+      r.option_d ?? r.d ?? r.option4 ?? r.option_4 ?? '',
+    ]
+      .map((o) => o.trim())
+      .filter(Boolean)
+      .slice(0, 4)
+    const correctIndex = parseWstCorrectIndex(r.correct ?? r.answer ?? r.correct_answer ?? '', options)
+    if (!quote || options.length < 2 || correctIndex == null) continue
+    out.push({ quote, options, correctIndex })
+  }
+  return out
+}
+
+function dedupeWstDeck(entries: WstDeckEntry[]): WstDeckEntry[] {
+  const seen = new Set<string>()
+  const out: WstDeckEntry[] = []
+  for (const e of entries) {
+    const key = `${e.quote.toLowerCase()}|${e.options.map((o) => o.toLowerCase()).join('|')}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(e)
+  }
+  return out
+}
+
+/** Parse a WST deck CSV (quote,option_a,option_b,option_c,option_d,correct) into deduped
+ *  questions + counts. */
 export function parseWstDeckImport(text: string): EntryImportResult<WstDeckEntry> {
   const rows = parseCsvRows(text)
   const parsed = parseWstDeckRows(rows)
   const deduped = dedupeWstDeck(parsed)
-  return { ...deduped, totalRows: rows.length, skippedRows: rows.length - parsed.length }
+  return {
+    questions: deduped,
+    totalRows: rows.length,
+    skippedRows: rows.length - parsed.length,
+    duplicateRows: parsed.length - deduped.length,
+  }
 }
 
 /** Parse a WST deck from an uploaded .xlsx/.xls workbook. */
@@ -491,7 +520,21 @@ export async function parseExcelWstDeckImport(buffer: ArrayBuffer): Promise<Entr
 /** Restore a stored WST deck (from games.custom_questions or a library pack). */
 export function parseStoredWstDeck(raw: unknown): WstDeckEntry[] {
   if (!Array.isArray(raw)) return []
-  return dedupeWstDeck(parseWstDeckRows(raw as Record<string, string>[])).questions
+  // Stored rows keep native arrays for `options` + numeric `correctIndex`; normalise loosely.
+  const normalised: Record<string, string>[] = []
+  const direct: WstDeckEntry[] = []
+  for (const item of raw as unknown[]) {
+    const obj = item as { quote?: unknown; options?: unknown; correctIndex?: unknown }
+    if (typeof obj?.quote === 'string' && Array.isArray(obj.options) && typeof obj.correctIndex === 'number') {
+      const options = obj.options.map((o) => String(o).trim()).filter(Boolean)
+      if (obj.quote.trim() && options.length >= 2 && obj.correctIndex >= 0 && obj.correctIndex < options.length) {
+        direct.push({ quote: obj.quote.trim(), options, correctIndex: obj.correctIndex })
+      }
+      continue
+    }
+    normalised.push(item as Record<string, string>)
+  }
+  return dedupeWstDeck([...direct, ...parseWstDeckRows(normalised)])
 }
 
 /** Shared "N skipped · M duplicates removed" summary for the entry importers above. */
