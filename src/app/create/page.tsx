@@ -682,6 +682,7 @@ function CreateGameInner() {
               anonymous: true,
               rounds_count: 1,
               ping_pong_points_to_win: 7,
+              game_duration_seconds: 0,
             }
           : {}),
         ...(isChessGame(type)
@@ -2862,6 +2863,20 @@ function CreateGameInner() {
                     <option value={11}>First to 11 points (Standard)</option>
                     <option value={15}>First to 15 points</option>
                     <option value={21}>First to 21 points (Long)</option>
+                  </select>
+                </Field>
+                <Field label="Match Timer">
+                  <select
+                    value={settings.game_duration_seconds ?? 0}
+                    onChange={(e) => setSettings({ ...settings, game_duration_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    <option value={0}>No timer</option>
+                    <option value={60}>1 minute</option>
+                    <option value={120}>2 minutes</option>
+                    <option value={180}>3 minutes</option>
+                    <option value={300}>5 minutes</option>
+                    <option value={600}>10 minutes</option>
                   </select>
                 </Field>
                 <Field label="Late joiners">

@@ -5,7 +5,7 @@ import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySetti
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
 import { useToast } from '@/components/ui/Toast'
-import { PING_PONG_POINTS_OPTIONS } from '@/lib/ping-pong'
+import { PING_PONG_POINTS_OPTIONS, PING_PONG_GAME_DURATION_OPTIONS, formatPingPongDuration } from '@/lib/ping-pong'
 import type { Game } from '@/types'
 
 type Props = {
@@ -20,12 +20,14 @@ type SaveState = 'idle' | 'saving' | 'saved'
 export function HostPingPongLobbyPanel({ gameCode, hostToken, game, onGameUpdate }: Props) {
   const { error: toastError } = useToast()
   const [pointsToWin, setPointsToWin] = useState(game.ping_pong_points_to_win ?? 7)
+  const [gameDuration, setGameDuration] = useState(game.game_duration_seconds ?? 0)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     setPointsToWin(game.ping_pong_points_to_win ?? 7)
-  }, [game.ping_pong_points_to_win])
+    setGameDuration(game.game_duration_seconds ?? 0)
+  }, [game.ping_pong_points_to_win, game.game_duration_seconds])
 
   useEffect(() => {
     return () => {
@@ -71,16 +73,33 @@ export function HostPingPongLobbyPanel({ gameCode, hostToken, game, onGameUpdate
     })
   }
 
-  const options = useMemo(() => PING_PONG_POINTS_OPTIONS.map((pts) => ({ value: pts, label: `${pts} pts` })), [])
+  const onTimeChange = (next: number) => {
+    if (saveState === 'saving' || next === gameDuration) return
+    const previous = gameDuration
+    setGameDuration(next)
+    void patchSettings({ game_duration_seconds: next }).then((ok) => {
+      if (!ok) setGameDuration(previous)
+    })
+  }
 
-  const summary = `${pointsToWin} points to win`
+  const pointsOptions = useMemo(() => PING_PONG_POINTS_OPTIONS.map((pts) => ({ value: pts, label: `${pts} pts` })), [])
+  const timeOptions = useMemo(
+    () => PING_PONG_GAME_DURATION_OPTIONS.map((sec) => ({ value: sec, label: formatPingPongDuration(sec) })),
+    []
+  )
+
+  const summary = `${pointsToWin} points to win${gameDuration > 0 ? `, ${formatPingPongDuration(gameDuration)} timer` : ''}`
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 
   return (
     <HostLobbySettingsSection status={statusLabel} summary={summary}>
       <div className="space-y-4">
         <HostLobbySettingBlock title="Points to win">
-          <HostLobbyOptionChips value={pointsToWin} options={options} onChange={onPointsChange} />
+          <HostLobbyOptionChips value={pointsToWin} options={pointsOptions} onChange={onPointsChange} />
+        </HostLobbySettingBlock>
+
+        <HostLobbySettingBlock title="Match Timer">
+          <HostLobbyOptionChips value={gameDuration} options={timeOptions} onChange={onTimeChange} />
         </HostLobbySettingBlock>
       </div>
     </HostLobbySettingsSection>
