@@ -86,12 +86,9 @@ function phaseExpired(metadata: LandmineMetadata, game: Game): boolean {
   if (!metadata.phase_started_at) return false
   const start = new Date(metadata.phase_started_at).getTime()
   const now = Date.now()
-  if (metadata.phase === 'category_pick') {
-    // Manual setters type a category AND the mine word(s), so they get the (longer) answer timer
-    // for setup rather than the short auto-mode category-pick timer.
-    const setupSecs = gameLandmineMineSource(game) === 'manual' ? writingTimer(game) : gameLandmineCategoryTimer(game)
-    return now >= start + setupSecs * 1000
-  }
+  // The category-pick timer doubles as the manual-mode setup timer (the setter types a category +
+  // mine there); its options run up to 30s so setup has enough time.
+  if (metadata.phase === 'category_pick') return now >= start + gameLandmineCategoryTimer(game) * 1000
   if (metadata.phase === 'writing') return now >= start + writingTimer(game) * 1000
   if (metadata.phase === 'marking') return now >= start + markingTimer(game) * 1000
   return false
@@ -485,11 +482,13 @@ async function shouldFinishSession(
     // Last player standing (or nobody left). Elimination governs length even in manual mode.
     return activePlayerIds.length <= 1
   }
-  // Manual (zero-points): one round per player, so everyone sets exactly once.
+  // Manual (zero-points): "rounds" are full cycles — one round = every player sets once. A game of
+  // R rounds with N players runs R×N setter-turns (each setter-turn is one internal round).
   if (gameLandmineMineSource(game) === 'manual') {
     const meta = parseLandmineMetadata(finishedRound.landmine_metadata)
-    const setters = meta?.caller_order.length ?? activePlayerIds.length
-    return finishedRound.round_number >= Math.max(1, setters)
+    const setters = Math.max(1, meta?.caller_order.length ?? activePlayerIds.length)
+    const cycles = Math.max(1, game.rounds_count ?? 1)
+    return finishedRound.round_number >= cycles * setters
   }
   // Zero Points (system): fixed round count.
   return finishedRound.round_number >= (game.rounds_count ?? 1)
