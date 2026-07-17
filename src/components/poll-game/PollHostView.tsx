@@ -1599,12 +1599,17 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
                                         : `Need ${minPool}+ names joined`
       : null
 
-    // ── Mobile-parity HostLobby (Would You Rather pilot) ───────────────────────
-    // WYR is a player-only, joiners, no-gender, always-anonymous lobby, so it maps
-    // cleanly onto the shared HostLobby: the players list, code/share card, visibility,
-    // theme, and late-join are all handled by the shell. Every other poll subtype falls
-    // through to the legacy inline waiting-room below (Phase 1 isolation).
-    if (isWyr && !game.replay_pending) {
+    // ── Mobile-parity HostLobby (name-only-join poll subtypes) ─────────────────
+    // Would You Rather / This or That / Never Have I Ever / Pick a Number / Most Likely To
+    // (non-import) are player-only, name-only-join lobbies with no host-managed roster,
+    // gender, pair voting, or quote pool. They map cleanly onto the shared HostLobby: the
+    // players list, code/share card, visibility, theme, and late-join are handled by the
+    // shell; rounds/timer/player-submissions go in the ⚙ sheet. The remaining poll subtypes
+    // (people-poll / pair / gender / Who Said This / Hot Seat) still fall through to the
+    // legacy inline waiting-room below until they get their own HostLobby wiring.
+    const simpleNameJoinLobby =
+      playerOnlyLobby && !gameGenderBased && !isVoterOnly && !showPairVoting && !isWst && !isPeoplePoll && !hotSeatLobby
+    if (simpleNameJoinLobby && !game.replay_pending) {
       const lobbyModeCard = (
         <HostModeSelector
           mode={hostMode}
@@ -1617,10 +1622,11 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
           joining={hostJoining}
           onEditName={renameHost}
           spectatorHint="Watch the game once it starts"
-          playerHint="Vote along with everyone"
+          playerHint={isPan ? 'Take a turn each round' : 'Vote along with everyone'}
           playingNote={
             <p className="text-sm text-muted">
-              Playing as <strong className="text-body">{hostPlayerName}</strong> — vote once the game starts.
+              Playing as <strong className="text-body">{hostPlayerName}</strong> — {isPan ? 'take your turn' : 'vote'}{' '}
+              once the game starts.
             </p>
           }
         />
@@ -1630,49 +1636,96 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
         <>
           <div className="glass-card p-4 space-y-3">
             <p className="text-muted text-xs uppercase tracking-wider">Rounds</p>
-            {roundsHint && <p className="text-faint text-xs">{roundsHint}</p>}
-            <div className="space-y-2">
-              <p className="text-muted text-[10px] uppercase tracking-wider">Rounds</p>
-              <input
-                type="number"
-                min={1}
-                max={Math.max(lobbyQuestionMax, 1)}
-                step={1}
-                defaultValue={game.rounds_count}
-                key={`${game.rounds_count}-${lobbyQuestionMax}`}
-                disabled={updatingRounds || lobbyQuestionMax < 1}
-                onBlur={(e) => {
-                  const n = clampLobbyQuestionRounds(e.target.value, lobbyQuestionMax)
-                  e.target.value = String(n)
-                  if (n !== game.rounds_count) hostUpdateRounds(n)
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-                }}
-                className="input-field w-28 py-2 text-sm disabled:opacity-50"
-              />
-            </div>
-            {roundOptions.length > 0 && (
-              <div className="flex gap-2 flex-wrap">
-                {roundOptions.map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    disabled={n > maxRounds || updatingRounds}
-                    onClick={() => hostUpdateRounds(n)}
-                    className={`min-w-[2.5rem] px-3 py-2 rounded-xl border text-sm font-semibold disabled:opacity-40 ${
-                      game.rounds_count === n ? 'chip-active' : 'chip'
-                    }`}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-            )}
-            {roundsTooHigh && (
-              <p className="callout-warning">
-                {game.rounds_count} rounds is too many — pick {maxRounds} or fewer
-              </p>
+            {isPan ? (
+              <>
+                {roundsHint && <p className="text-faint text-xs">{roundsHint}</p>}
+                <p className="text-faint text-xs">{panRoundsHint(game.rounds_count, players.length)}</p>
+                <div className="space-y-2">
+                  <p className="text-muted text-[10px] uppercase tracking-wider">Rounds</p>
+                  <input
+                    type="number"
+                    min={1}
+                    max={PAN_MAX_ROUNDS}
+                    step={1}
+                    defaultValue={game.rounds_count}
+                    key={`${game.rounds_count}-pan`}
+                    disabled={updatingRounds}
+                    onBlur={(e) => {
+                      const n = clampPanRounds(e.target.value)
+                      e.target.value = String(n)
+                      if (n !== game.rounds_count) hostUpdateRounds(n)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                    }}
+                    className="input-field w-28 py-2 text-sm disabled:opacity-50"
+                  />
+                </div>
+                {roundOptions.length > 0 && (
+                  <div className="flex gap-2 flex-wrap">
+                    {roundOptions.map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        disabled={updatingRounds}
+                        onClick={() => hostUpdateRounds(n)}
+                        className={`min-w-[2.5rem] px-3 py-2 rounded-xl border text-sm font-semibold disabled:opacity-40 ${
+                          game.rounds_count === n ? 'chip-active' : 'chip'
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                {roundsHint && <p className="text-faint text-xs">{roundsHint}</p>}
+                <div className="space-y-2">
+                  <p className="text-muted text-[10px] uppercase tracking-wider">Rounds</p>
+                  <input
+                    type="number"
+                    min={1}
+                    max={Math.max(lobbyQuestionMax, 1)}
+                    step={1}
+                    defaultValue={game.rounds_count}
+                    key={`${game.rounds_count}-${lobbyQuestionMax}`}
+                    disabled={updatingRounds || lobbyQuestionMax < 1}
+                    onBlur={(e) => {
+                      const n = clampLobbyQuestionRounds(e.target.value, lobbyQuestionMax)
+                      e.target.value = String(n)
+                      if (n !== game.rounds_count) hostUpdateRounds(n)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                    }}
+                    className="input-field w-28 py-2 text-sm disabled:opacity-50"
+                  />
+                </div>
+                {roundOptions.length > 0 && (
+                  <div className="flex gap-2 flex-wrap">
+                    {roundOptions.map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        disabled={n > maxRounds || updatingRounds}
+                        onClick={() => hostUpdateRounds(n)}
+                        className={`min-w-[2.5rem] px-3 py-2 rounded-xl border text-sm font-semibold disabled:opacity-40 ${
+                          game.rounds_count === n ? 'chip-active' : 'chip'
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {roundsTooHigh && (
+                  <p className="callout-warning">
+                    {game.rounds_count} rounds is too many — pick {maxRounds} or fewer
+                  </p>
+                )}
+              </>
             )}
             <div className="pt-3 border-t border-theme">{timerControl}</div>
           </div>
@@ -1740,7 +1793,7 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             gameCode={gameCode}
             hostToken={hostToken}
             game={game}
-            gameTypeLabel={gameTypeLabel(gameType) ?? 'Would You Rather'}
+            gameTypeLabel={gameTypeLabel(gameType) ?? 'Poll'}
             players={players}
             maxPlayers={game.max_players}
             resumeToken={hostResumeToken}
@@ -1750,7 +1803,7 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             starting={starting}
             startDisabled={!canStart}
             startDisabledHint={startDisabledHint}
-            startLabel="Start Would You Rather"
+            startLabel={`Start ${gameTypeLabel(gameType) ?? 'game'}`}
             onRemovePlayer={hostRemovePlayer}
             removingPlayerId={adminBusy}
             highlightPlayerId={hostPlayerId}

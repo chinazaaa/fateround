@@ -51,6 +51,7 @@ export function HostLobby({
   onRemovePlayer,
   removingPlayerId,
   highlightPlayerId,
+  hidePlayersSection = false,
   onEnded,
 }: {
   gameCode: string
@@ -78,6 +79,12 @@ export function HostLobby({
   onRemovePlayer?: (playerId: string, playerName: string) => void
   removingPlayerId?: string | null
   highlightPlayerId?: string | null
+  /**
+   * Suppress the built-in players list. For games (e.g. the poll family's gender / people-poll
+   * subtypes) that render their own richer roster — with per-player gender/identity chips or
+   * participant-claim rows — through `children` instead.
+   */
+  hidePlayersSection?: boolean
   /** Called after the host ends the lobby (finish-game). */
   onEnded?: () => void | Promise<unknown>
 }) {
@@ -183,14 +190,16 @@ export function HostLobby({
           {playCard}
           {children}
 
-          <HostLobbyPlayersSection
-            players={players}
-            capacity={maxPlayers ?? undefined}
-            onRemovePlayer={onRemovePlayer}
-            removingPlayerId={removingPlayerId}
-            highlightPlayerId={highlightPlayerId}
-            emptyMessage="Waiting for players to join…"
-          />
+          {!hidePlayersSection && (
+            <HostLobbyPlayersSection
+              players={players}
+              capacity={maxPlayers ?? undefined}
+              onRemovePlayer={onRemovePlayer}
+              removingPlayerId={removingPlayerId}
+              highlightPlayerId={highlightPlayerId}
+              emptyMessage="Waiting for players to join…"
+            />
+          )}
         </div>
       </div>
 
