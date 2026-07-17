@@ -475,6 +475,16 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     if (activeClue) for (const [r, c] of crosswordWordCells(activeClue)) set.add(cellKey(r, c))
     return set
   }, [activeClue])
+  // Both clues that intersect the selected cell, so the bar can show Across AND Down at once
+  // (no scrolling to the lists or re-tapping to flip direction just to read the other clue).
+  const cellAcrossClue = useMemo(
+    () => (metadata && selectedCell ? findClueAt(metadata, selectedCell[0], selectedCell[1], 'across') : null),
+    [metadata, selectedCell]
+  )
+  const cellDownClue = useMemo(
+    () => (metadata && selectedCell ? findClueAt(metadata, selectedCell[0], selectedCell[1], 'down') : null),
+    [metadata, selectedCell]
+  )
 
   // Viewer watching one player's personal board.
   const effectiveWatchedId =
@@ -1095,15 +1105,36 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
 
               {/* Active clue + hint */}
               <div className="flex items-center gap-2">
-                <div className="flex-1 min-w-0 glass-card px-3 py-2">
-                  {activeClue ? (
-                    <p className="text-sm text-slate-800 dark:text-slate-100">
-                      <span className="font-bold">
-                        {activeClue.number} {activeClue.direction === 'across' ? 'Across' : 'Down'}
-                      </span>
-                      <span className="mx-1.5 text-slate-400">·</span>
-                      {activeClue.clue}
-                    </p>
+                <div className="flex-1 min-w-0 glass-card px-3 py-2 space-y-0.5">
+                  {cellAcrossClue || cellDownClue ? (
+                    <>
+                      {cellAcrossClue && (
+                        <p
+                          className={`text-sm ${
+                            direction === 'across'
+                              ? 'text-slate-800 dark:text-slate-100'
+                              : 'text-slate-500 dark:text-slate-400'
+                          }`}
+                        >
+                          <span className="font-bold">{cellAcrossClue.number} Across</span>
+                          <span className="mx-1.5 text-slate-400">·</span>
+                          {cellAcrossClue.clue}
+                        </p>
+                      )}
+                      {cellDownClue && (
+                        <p
+                          className={`text-sm ${
+                            direction === 'down'
+                              ? 'text-slate-800 dark:text-slate-100'
+                              : 'text-slate-500 dark:text-slate-400'
+                          }`}
+                        >
+                          <span className="font-bold">{cellDownClue.number} Down</span>
+                          <span className="mx-1.5 text-slate-400">·</span>
+                          {cellDownClue.clue}
+                        </p>
+                      )}
+                    </>
                   ) : (
                     <p className="text-sm text-muted">Tap a cell to start filling the grid.</p>
                   )}
