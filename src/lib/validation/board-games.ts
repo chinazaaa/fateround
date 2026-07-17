@@ -357,6 +357,7 @@ export const pingPongPointSchema = z.object({
   gameId: gameCodeString(),
   resumeToken: z.string().min(4),
   scorer: z.enum(['X', 'O']),
+  rally: z.number().int().nonnegative().optional(),
 })
 
 export type PingPongPointInput = z.infer<typeof pingPongPointSchema>

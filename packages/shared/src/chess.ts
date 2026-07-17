@@ -56,11 +56,7 @@ export function formatChessClock(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
-export function liveChessClockMs(
-  session: ChessSession,
-  color: ChessColor,
-  now = Date.now()
-): number {
+export function liveChessClockMs(session: ChessSession, color: ChessColor, now = Date.now()): number {
   const base = (color === 'w' ? session.white_time_ms : session.black_time_ms) ?? 0
   const active = session.status === 'active' && session.current_turn === color
   const startedAt = session.turn_started_at ? Date.parse(session.turn_started_at) : null

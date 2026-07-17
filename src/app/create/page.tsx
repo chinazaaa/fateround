@@ -2789,9 +2789,11 @@ function CreateGameInner() {
                     onChange={(e) => setSettings({ ...settings, ping_pong_points_to_win: Number(e.target.value) })}
                     className="input-field w-full"
                   >
+                    <option value={3}>First to 3 points (Lightning)</option>
                     <option value={5}>First to 5 points</option>
                     <option value={7}>First to 7 points (Quick)</option>
                     <option value={11}>First to 11 points (Standard)</option>
+                    <option value={15}>First to 15 points</option>
                     <option value={21}>First to 21 points (Long)</option>
                   </select>
                 </Field>

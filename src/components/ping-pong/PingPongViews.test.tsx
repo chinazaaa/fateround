@@ -56,13 +56,15 @@ describe('PingPongViews lifecycle unit tests', () => {
             eq: () => ({
               maybeSingle: async () => ({
                 data: {
-                  game_id: 'G1',
-                  status: 'lobby',
-                  game_type: 'ping_pong',
-                  p1_score: 0,
-                  p2_score: 0,
+                  game_id: 'PONG1',
+                  player_x_id: 'player-1',
+                  player_o_id: 'player-2',
+                  score_x: 0,
+                  score_o: 0,
                   points_to_win: 11,
-                  current_server: 1,
+                  status: 'active',
+                  winner_player_id: null,
+                  status_message: 'First to 11 points wins (win by 2)!',
                   created_at: '2026-07-17T12:00:00.000Z',
                   updated_at: '2026-07-17T12:00:00.000Z',
                 },
@@ -78,10 +80,10 @@ describe('PingPongViews lifecycle unit tests', () => {
             eq: () => ({
               maybeSingle: async () => ({
                 data: {
-                  id: 'G1',
+                  id: 'PONG1',
                   code: 'PONG1',
                   game_type: 'ping_pong',
-                  status: 'lobby',
+                  status: 'waiting',
                   host_token: 'T1',
                   settings: { ping_pong_points_to_win: 11 },
                   created_at: '2026-07-17T12:00:00.000Z',
@@ -108,17 +110,18 @@ describe('PingPongViews lifecycle unit tests', () => {
     })
   })
 
-  it('renders PingPongPlayerView loading and transitions to join screen in lobby status', async () => {
+  it('renders PingPongPlayerView loading and transitions to join screen in waiting status', async () => {
     render(<PingPongPlayerView gameCode="PONG1" />)
     await waitFor(() => {
       expect(screen.getByText(/Join Game/i)).toBeTruthy()
     })
   })
 
-  it('renders PingPongHostView lobby screen correctly when game is in lobby status', async () => {
+  it('renders PingPongHostView waiting lobby screen correctly when game is in waiting status', async () => {
     render(<PingPongHostView gameCode="PONG1" hostToken="T1" />)
     await waitFor(() => {
-      expect(screen.getByText(/Host panel/i)).toBeTruthy()
+      expect(screen.getByText(/Ping Pong/i)).toBeTruthy()
+      expect(screen.getByText(/Start game/i)).toBeTruthy()
     })
   })
 })

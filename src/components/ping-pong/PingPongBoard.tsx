@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Player, PingPongSession } from '@/types'
 import { supabase } from '@/lib/supabase'
+import { pingPongServingSide } from '@/lib/ping-pong'
 
 type Props = {
   gameCode: string
@@ -77,18 +78,22 @@ export function PingPongBoard({
   })
   const rallyRef = useRef<number>(0)
   const [rallyCount, setRallyCount] = useState<number>(0)
-  const [servingSide, setServingSide] = useState<'X' | 'O'>((session.score_x + session.score_o) % 4 < 2 ? 'X' : 'O')
+  const [servingSide, setServingSide] = useState<'X' | 'O'>(
+    pingPongServingSide(session.score_x, session.score_o, session.points_to_win)
+  )
   const [serveTick, setServeTick] = useState(0)
   const [lastPointScorer, setLastPointScorer] = useState<'X' | 'O' | null>(null)
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const lastBroadcastRef = useRef<number>(0)
   const scoringRef = useRef<boolean>(false)
+  const broadcastSeqRef = useRef<number>(0)
+  const ballSyncSeqRef = useRef<number>(0)
+  const serveSeqRef = useRef<number>(0)
 
   const triggerPoint = useCallback(
     async (scorer: 'X' | 'O') => {
       if (scoringRef.current || !myPlayerId || !myResumeToken) return
       scoringRef.current = true
-      setLastPointScorer(scorer)
       ballRef.current.inPlay = false
 
       try {
@@ -99,11 +104,22 @@ export function PingPongBoard({
             gameId: gameCode,
             resumeToken: myResumeToken,
             scorer,
+            rally: session.score_x + session.score_o,
           }),
         })
         if (res.ok) {
+          setLastPointScorer(scorer)
+          if (channelRef.current) {
+            void channelRef.current.send({ type: 'broadcast', event: 'point_scored', payload: { scorer } })
+          }
+          onPointScored?.()
+        } else {
+          setLastPointScorer(null)
           onPointScored?.()
         }
+      } catch {
+        setLastPointScorer(null)
+        onPointScored?.()
       } finally {
         setTimeout(() => {
           scoringRef.current = false
@@ -137,10 +153,11 @@ export function PingPongBoard({
       setServeTick((t) => t + 1)
 
       if (channelRef.current) {
+        broadcastSeqRef.current += 1
         void channelRef.current.send({
           type: 'broadcast',
           event: 'serve',
-          payload: { ...ballRef.current },
+          payload: { ...ballRef.current, seq: broadcastSeqRef.current },
         })
       }
     } else {
@@ -173,31 +190,66 @@ export function PingPongBoard({
       })
       .on('broadcast', { event: 'paddle_move' }, (payload) => {
         const { side, x } = payload.payload as { side: 'X' | 'O'; x: number }
-        if (side === 'X') paddleXRef.current = x
-        else if (side === 'O') paddleORef.current = x
+        if (typeof side !== 'string' || (side !== 'X' && side !== 'O') || !Number.isFinite(x)) return
+        const clamped = Math.max(-PADDLE_WIDTH, Math.min(TABLE_WIDTH + PADDLE_WIDTH, x))
+        if (side === 'X') paddleXRef.current = clamped
+        else if (side === 'O') paddleORef.current = clamped
       })
       .on('broadcast', { event: 'ball_sync' }, (payload) => {
-        const { x, y, vx, vy, inPlay, rally } = payload.payload as {
+        const { x, y, vx, vy, inPlay, rally, seq } = payload.payload as {
           x: number
           y: number
           vx: number
           vy: number
           inPlay: boolean
           rally: number
+          seq?: number
+        }
+        if (typeof seq === 'number') {
+          if (seq <= ballSyncSeqRef.current) return
+          ballSyncSeqRef.current = seq
+        }
+        if (
+          !Number.isFinite(x) ||
+          !Number.isFinite(y) ||
+          !Number.isFinite(vx) ||
+          !Number.isFinite(vy) ||
+          typeof inPlay !== 'boolean' ||
+          x < -TABLE_WIDTH ||
+          x > TABLE_WIDTH * 2 ||
+          y < -TABLE_HEIGHT ||
+          y > TABLE_HEIGHT * 2 ||
+          Math.hypot(vx, vy) > MAX_BALL_SPEED * 3
+        ) {
+          return
         }
         ballRef.current = { x, y, vx, vy, inPlay }
-        if (rally !== undefined && rally !== rallyRef.current) {
+        if (typeof rally === 'number' && Number.isFinite(rally) && rally !== rallyRef.current) {
           rallyRef.current = rally
           setRallyCount(rally)
         }
       })
       .on('broadcast', { event: 'serve' }, (payload) => {
-        const { x, y, vx, vy, inPlay } = payload.payload as {
+        const { x, y, vx, vy, inPlay, seq } = payload.payload as {
           x: number
           y: number
           vx: number
           vy: number
           inPlay: boolean
+          seq?: number
+        }
+        if (typeof seq === 'number') {
+          if (seq <= serveSeqRef.current) return
+          serveSeqRef.current = seq
+        }
+        if (
+          !Number.isFinite(x) ||
+          !Number.isFinite(y) ||
+          !Number.isFinite(vx) ||
+          !Number.isFinite(vy) ||
+          typeof inPlay !== 'boolean'
+        ) {
+          return
         }
         ballRef.current = { x, y, vx, vy, inPlay }
         rallyRef.current = 0
@@ -206,12 +258,13 @@ export function PingPongBoard({
         setServeTick((t) => t + 1)
       })
       .on('broadcast', { event: 'request_serve' }, () => {
-        if (mySide === servingSide && !ballRef.current.inPlay && !lastPointScorerRef.current) {
+        if (mySide === servingSide && !ballRef.current.inPlay && !lastPointScorerRef.current && !isViewer) {
           serveBallRef.current()
         }
       })
       .on('broadcast', { event: 'point_scored' }, (payload) => {
         const { scorer } = payload.payload as { scorer: 'X' | 'O' }
+        if (scorer !== 'X' && scorer !== 'O') return
         ballRef.current.inPlay = false
         setLastPointScorer(scorer)
       })
@@ -221,7 +274,7 @@ export function PingPongBoard({
     return () => {
       void supabase.removeChannel(ch)
     }
-  }, [gameCode, mySide, servingSide])
+  }, [gameCode, mySide, servingSide, isViewer])
 
   // Update serving side after points
   useEffect(() => {
@@ -229,11 +282,11 @@ export function PingPongBoard({
       ballRef.current.inPlay = false
       return
     }
-    const nextServe = (session.score_x + session.score_o) % 4 < 2 ? 'X' : 'O'
+    const nextServe = pingPongServingSide(session.score_x, session.score_o, session.points_to_win)
     setServingSide(nextServe)
     setLastPointScorer(null)
     ballRef.current.inPlay = false
-  }, [session.status, session.score_x, session.score_o])
+  }, [session.status, session.score_x, session.score_o, session.points_to_win])
 
   // Handle local paddle movement from mouse / touch
   const handlePointerMove = useCallback(
@@ -256,10 +309,11 @@ export function PingPongBoard({
       const now = performance.now()
       if (channelRef.current && now - lastBroadcastRef.current > 30) {
         lastBroadcastRef.current = now
+        broadcastSeqRef.current += 1
         void channelRef.current.send({
           type: 'broadcast',
           event: 'paddle_move',
-          payload: { side: mySide, x: clamped },
+          payload: { side: mySide, x: clamped, seq: broadcastSeqRef.current },
         })
       }
     },
@@ -296,104 +350,109 @@ export function PingPongBoard({
 
       // --- 2. Physics update ---
       if (isAuthority && ballRef.current.inPlay && session.status === 'active') {
-        const ball = ballRef.current
-        ball.x += ball.vx * dtRatio
-        ball.y += ball.vy * dtRatio
+        let remainingRatio = dtRatio
+        while (remainingRatio > 0 && ballRef.current.inPlay) {
+          const step = Math.min(remainingRatio, 1)
+          remainingRatio -= step
 
-        // Wall collisions (left/right)
-        if (ball.x - BALL_RADIUS < 0) {
-          ball.x = BALL_RADIUS
-          ball.vx = -ball.vx
-        } else if (ball.x + BALL_RADIUS > TABLE_WIDTH) {
-          ball.x = TABLE_WIDTH - BALL_RADIUS
-          ball.vx = -ball.vx
-        }
+          const ball = ballRef.current
+          ball.x += ball.vx * step
+          ball.y += ball.vy * step
 
-        // Paddle O collision (top: y near PADDLE_HEIGHT)
-        if (ball.vy < 0 && ball.y - BALL_RADIUS <= PADDLE_HEIGHT + 10 && ball.y - BALL_RADIUS >= 5) {
-          const pO = paddleORef.current
-          if (Math.abs(ball.x - pO) <= PADDLE_WIDTH / 2 + BALL_RADIUS) {
-            ball.y = PADDLE_HEIGHT + 10 + BALL_RADIUS
-            const hitOffset = (ball.x - pO) / (PADDLE_WIDTH / 2)
-            const speed = Math.min(MAX_BALL_SPEED, Math.hypot(ball.vx, ball.vy) * 1.05)
-            const angle = hitOffset * (Math.PI / 3) // max 60 deg bounce angle
-            ball.vx = speed * Math.sin(angle)
-            ball.vy = Math.abs(speed * Math.cos(angle))
-            rallyRef.current += 1
-            setRallyCount(rallyRef.current)
+          // Wall collisions (left/right)
+          if (ball.x - BALL_RADIUS < 0) {
+            ball.x = BALL_RADIUS
+            ball.vx = -ball.vx
+          } else if (ball.x + BALL_RADIUS > TABLE_WIDTH) {
+            ball.x = TABLE_WIDTH - BALL_RADIUS
+            ball.vx = -ball.vx
+          }
 
-            // Broadcast immediate sync on paddle hit
-            if (channelRef.current) {
-              lastBroadcastRef.current = performance.now()
-              void channelRef.current.send({
-                type: 'broadcast',
-                event: 'ball_sync',
-                payload: { ...ball, rally: rallyRef.current },
-              })
+          // Paddle O collision (top: y near PADDLE_HEIGHT)
+          if (ball.vy < 0 && ball.y - BALL_RADIUS <= PADDLE_HEIGHT + 10 && ball.y - BALL_RADIUS >= 5) {
+            const pO = paddleORef.current
+            if (Math.abs(ball.x - pO) <= PADDLE_WIDTH / 2 + BALL_RADIUS) {
+              ball.y = PADDLE_HEIGHT + 10 + BALL_RADIUS
+              const hitOffset = (ball.x - pO) / (PADDLE_WIDTH / 2)
+              const speed = Math.min(MAX_BALL_SPEED, Math.hypot(ball.vx, ball.vy) * 1.05)
+              const angle = hitOffset * (Math.PI / 3) // max 60 deg bounce angle
+              ball.vx = speed * Math.sin(angle)
+              ball.vy = Math.abs(speed * Math.cos(angle))
+              rallyRef.current += 1
+              setRallyCount(rallyRef.current)
+
+              // Broadcast immediate sync on paddle hit
+              if (channelRef.current) {
+                lastBroadcastRef.current = performance.now()
+                broadcastSeqRef.current += 1
+                void channelRef.current.send({
+                  type: 'broadcast',
+                  event: 'ball_sync',
+                  payload: { ...ball, rally: rallyRef.current, seq: broadcastSeqRef.current },
+                })
+              }
             }
           }
-        }
 
-        // Paddle X collision (bottom: y near TABLE_HEIGHT - PADDLE_HEIGHT)
-        if (
-          ball.vy > 0 &&
-          ball.y + BALL_RADIUS >= TABLE_HEIGHT - (PADDLE_HEIGHT + 10) &&
-          ball.y + BALL_RADIUS <= TABLE_HEIGHT - 5
-        ) {
-          const pX = paddleXRef.current
-          if (Math.abs(ball.x - pX) <= PADDLE_WIDTH / 2 + BALL_RADIUS) {
-            ball.y = TABLE_HEIGHT - (PADDLE_HEIGHT + 10 + BALL_RADIUS)
-            const hitOffset = (ball.x - pX) / (PADDLE_WIDTH / 2)
-            const speed = Math.min(MAX_BALL_SPEED, Math.hypot(ball.vx, ball.vy) * 1.05)
-            const angle = hitOffset * (Math.PI / 3)
-            ball.vx = speed * Math.sin(angle)
-            ball.vy = -Math.abs(speed * Math.cos(angle))
-            rallyRef.current += 1
-            setRallyCount(rallyRef.current)
+          // Paddle X collision (bottom: y near TABLE_HEIGHT - PADDLE_HEIGHT)
+          if (
+            ball.vy > 0 &&
+            ball.y + BALL_RADIUS >= TABLE_HEIGHT - (PADDLE_HEIGHT + 10) &&
+            ball.y + BALL_RADIUS <= TABLE_HEIGHT - 5
+          ) {
+            const pX = paddleXRef.current
+            if (Math.abs(ball.x - pX) <= PADDLE_WIDTH / 2 + BALL_RADIUS) {
+              ball.y = TABLE_HEIGHT - (PADDLE_HEIGHT + 10 + BALL_RADIUS)
+              const hitOffset = (ball.x - pX) / (PADDLE_WIDTH / 2)
+              const speed = Math.min(MAX_BALL_SPEED, Math.hypot(ball.vx, ball.vy) * 1.05)
+              const angle = hitOffset * (Math.PI / 3)
+              ball.vx = speed * Math.sin(angle)
+              ball.vy = -Math.abs(speed * Math.cos(angle))
+              rallyRef.current += 1
+              setRallyCount(rallyRef.current)
 
-            // Broadcast immediate sync on paddle hit
-            if (channelRef.current) {
-              lastBroadcastRef.current = performance.now()
-              void channelRef.current.send({
-                type: 'broadcast',
-                event: 'ball_sync',
-                payload: { ...ball, rally: rallyRef.current },
-              })
+              // Broadcast immediate sync on paddle hit
+              if (channelRef.current) {
+                lastBroadcastRef.current = performance.now()
+                broadcastSeqRef.current += 1
+                void channelRef.current.send({
+                  type: 'broadcast',
+                  event: 'ball_sync',
+                  payload: { ...ball, rally: rallyRef.current, seq: broadcastSeqRef.current },
+                })
+              }
             }
           }
-        }
 
-        // Out of bounds checks (score points)
-        if (ball.y < -BALL_RADIUS * 2) {
-          // Ball went out top => Player X scored!
-          ball.inPlay = false
-          void triggerPoint('X')
-          setLastPointScorer('X')
-          if (channelRef.current) {
-            void channelRef.current.send({ type: 'broadcast', event: 'point_scored', payload: { scorer: 'X' } })
-          }
-        } else if (ball.y > TABLE_HEIGHT + BALL_RADIUS * 2) {
-          // Ball went out bottom => Player O scored!
-          ball.inPlay = false
-          void triggerPoint('O')
-          setLastPointScorer('O')
-          if (channelRef.current) {
-            void channelRef.current.send({ type: 'broadcast', event: 'point_scored', payload: { scorer: 'O' } })
+          // Out of bounds checks (score points)
+          if (ball.y < -BALL_RADIUS * 2) {
+            // Ball went out top => Player X scored!
+            ball.inPlay = false
+            void triggerPoint('X')
+          } else if (ball.y > TABLE_HEIGHT + BALL_RADIUS * 2) {
+            // Ball went out bottom => Player O scored!
+            ball.inPlay = false
+            void triggerPoint('O')
           }
         }
       } else if (!isAuthority && ballRef.current.inPlay && session.status === 'active') {
-        // Client interpolation of ball position
-        const ball = ballRef.current
-        ball.x += ball.vx * dtRatio
-        ball.y += ball.vy * dtRatio
+        // Client interpolation of ball position using substeps
+        let remainingRatio = dtRatio
+        while (remainingRatio > 0 && ballRef.current.inPlay) {
+          const step = Math.min(remainingRatio, 1)
+          remainingRatio -= step
+          const ball = ballRef.current
+          ball.x += ball.vx * step
+          ball.y += ball.vy * step
 
-        // Apply basic wall collisions so client prediction doesn't visually fly out of bounds
-        if (ball.x - BALL_RADIUS < 0) {
-          ball.x = BALL_RADIUS
-          ball.vx = -ball.vx
-        } else if (ball.x + BALL_RADIUS > TABLE_WIDTH) {
-          ball.x = TABLE_WIDTH - BALL_RADIUS
-          ball.vx = -ball.vx
+          // Apply basic wall collisions so client prediction doesn't visually fly out of bounds
+          if (ball.x - BALL_RADIUS < 0) {
+            ball.x = BALL_RADIUS
+            ball.vx = -ball.vx
+          } else if (ball.x + BALL_RADIUS > TABLE_WIDTH) {
+            ball.x = TABLE_WIDTH - BALL_RADIUS
+            ball.vx = -ball.vx
+          }
         }
       } else if (!ballRef.current.inPlay && session.status === 'active' && !lastPointScorerRef.current) {
         // Tie ball to serving paddle before serve (only if not displaying point scored message)

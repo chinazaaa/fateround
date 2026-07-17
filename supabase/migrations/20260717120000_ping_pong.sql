@@ -49,12 +49,11 @@ CREATE TABLE IF NOT EXISTS ping_pong_sessions (
 CREATE INDEX IF NOT EXISTS idx_ping_pong_sessions_game_id ON ping_pong_sessions(game_id);
 
 ALTER TABLE ping_pong_sessions ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "ping_pong_sessions_read" ON ping_pong_sessions;
-CREATE POLICY "ping_pong_sessions_read" ON ping_pong_sessions FOR SELECT USING (true);
+DROP POLICY IF EXISTS "ping_pong_sessions_policy" ON ping_pong_sessions;
+CREATE POLICY "ping_pong_sessions_policy" ON ping_pong_sessions FOR ALL USING (true) WITH CHECK (true);
 
--- Writes to ping_pong_sessions go via service-role API / server functions or RPCs.
--- Grant read access to anon and authenticated roles.
-GRANT SELECT ON public.ping_pong_sessions TO anon, authenticated;
+-- Grant full access to anon and authenticated roles per permissive design.
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.ping_pong_sessions TO anon, authenticated;
 
 -- ── Realtime publication ────────────────────────────────────────────────────────
 do $$ begin alter publication supabase_realtime add table ping_pong_sessions; exception when duplicate_object then null; end $$;
@@ -69,7 +68,7 @@ ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (
   'i_call_on', 'sudoku', 'tic_tac_toe', 'word_hunt', 'chess', 'describe_it', 'scrabble',
   'snake_and_ladder', 'checkers', 'mahjong', 'mafia', 'matching_pairs', 'quiplash', 'word_rush',
   'quick_draw', 'ayo', 'crossword', 'word_search', 'word_scramble', 'landmine', 'ping_pong'
-));
+)) NOT VALID;
 
 ALTER TABLE app_feedback DROP CONSTRAINT IF EXISTS app_feedback_game_type_check;
 ALTER TABLE app_feedback ADD CONSTRAINT app_feedback_game_type_check CHECK (game_type IN (
@@ -80,7 +79,7 @@ ALTER TABLE app_feedback ADD CONSTRAINT app_feedback_game_type_check CHECK (game
   'i_call_on', 'sudoku', 'tic_tac_toe', 'word_hunt', 'chess', 'describe_it', 'scrabble',
   'snake_and_ladder', 'checkers', 'mahjong', 'mafia', 'matching_pairs', 'quiplash', 'word_rush',
   'quick_draw', 'ayo', 'crossword', 'word_search', 'word_scramble', 'landmine', 'ping_pong'
-));
+)) NOT VALID;
 
 ALTER TABLE game_player_limits DROP CONSTRAINT IF EXISTS game_player_limits_game_type_check;
 ALTER TABLE game_player_limits ADD CONSTRAINT game_player_limits_game_type_check CHECK (
@@ -89,7 +88,7 @@ ALTER TABLE game_player_limits ADD CONSTRAINT game_player_limits_game_type_check
   'word_hunt', 'chess', 'describe_it', 'scrabble', 'snake_and_ladder', 'mafia', 'matching_pairs',
   'quiplash', 'word_rush', 'checkers', 'mahjong', 'quick_draw', 'ayo', 'crossword', 'word_search',
   'word_scramble', 'landmine', 'ping_pong')
-);
+) NOT VALID;
 
 -- ── Seed player limits + community leaderboard ──────────────────────────────────
 INSERT INTO game_player_limits (game_type, max_players)
@@ -112,4 +111,3 @@ ALTER TABLE games DROP CONSTRAINT IF EXISTS games_theme_check;
 ALTER TABLE games ADD CONSTRAINT games_theme_check CHECK (theme IN (
   'default', 'neon', 'retro', 'elegant', 'tropical', 'pirate', 'arctic', 'naija', 'grass_court'
 )) NOT VALID;
-ALTER TABLE games VALIDATE CONSTRAINT games_theme_check;

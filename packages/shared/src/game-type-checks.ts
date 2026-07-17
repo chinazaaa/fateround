@@ -127,4 +127,3 @@ export function isQuickDrawGame(gameType: GameType | string | undefined): boolea
 export function isPingPongGame(gameType: GameType | string | undefined): boolean {
   return eq(gameType, 'ping_pong')
 }
-

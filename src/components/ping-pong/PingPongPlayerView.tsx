@@ -61,11 +61,11 @@ export function PingPongPlayerView({ gameCode }: { gameCode: string }) {
       .select(PING_PONG_SESSION_SELECT)
       .eq('game_id', gameCode)
       .maybeSingle()
-    const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as PingPongSession | null) : null
-    if (sessionData) {
-      setSession(sessionData)
-    }
-    return { state: sessionData, ok: supabasePollOk(sessionRes) }
+    const ok = supabasePollOk(sessionRes)
+    if (!ok) return { state: sessionRef.current ?? null, ok: false }
+    const sessionData = (sessionRes.data as PingPongSession | null) ?? null
+    setSession(sessionData)
+    return { state: sessionData, ok: true }
   }, [gameCode])
 
   const computeScreen = useCallback(
@@ -77,7 +77,7 @@ export function PingPongPlayerView({ gameCode }: { gameCode: string }) {
         return 'join'
       }
       if (gameData.status === 'waiting') return 'waiting'
-      if (gameData.status === 'active' && sessionData?.status !== 'finished') return 'active'
+      if (gameData.status === 'active' && sessionData && sessionData.status !== 'finished') return 'active'
       if (isPingPongResultsPhase(gameData.status, sessionData)) return 'finished'
       return 'waiting'
     },

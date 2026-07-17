@@ -7,6 +7,20 @@ export const PING_PONG_MIN_PLAYERS = 2
 export const PING_PONG_MAX_PLAYERS = 2
 export const PING_PONG_DEFAULT_MAX_PLAYERS = 2
 
+export const PING_PONG_POINTS_OPTIONS = [3, 5, 7, 11, 15, 21] as const
+export const PING_PONG_DEFAULT_POINTS = 7
+
+export function clampPingPongPoints(value: unknown): number {
+  const n = Number(value)
+  return (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(n) ? n : PING_PONG_DEFAULT_POINTS
+}
+
+export function pingPongServingSide(scoreX: number, scoreO: number, pointsToWin: number): 'X' | 'O' {
+  const total = scoreX + scoreO
+  const deuce = scoreX >= pointsToWin - 1 && scoreO >= pointsToWin - 1
+  return deuce ? (total % 2 === 0 ? 'X' : 'O') : total % 4 < 2 ? 'X' : 'O'
+}
+
 function shuffle<T>(items: T[]): T[] {
   const next = [...items]
   for (let i = next.length - 1; i > 0; i -= 1) {
@@ -99,7 +113,9 @@ export async function initializePingPongGame(
   }
 
   if (existing) {
-    await persistSession(supabase, gameId, sessionRow, existing.updated_at)
+    const { updated, error } = await persistSession(supabase, gameId, sessionRow, existing.updated_at)
+    if (error) return { error }
+    if (!updated) return { error: 'Failed to reset existing game session' }
     return {}
   }
 
@@ -122,7 +138,7 @@ async function persistSession(
   gameId: string,
   patch: Partial<PingPongSession>,
   expectedUpdatedAt?: string
-): Promise<boolean> {
+): Promise<{ updated: boolean; error?: string }> {
   let query = supabase
     .from('ping_pong_sessions')
     .update({ ...patch, updated_at: new Date().toISOString() })
@@ -130,15 +146,19 @@ async function persistSession(
   if (expectedUpdatedAt) {
     query = query.eq('updated_at', expectedUpdatedAt)
   }
-  const { data } = await query.select('game_id')
-  return (data?.length ?? 0) > 0
+  const { data, error } = await query.select('game_id')
+  if (error) {
+    return { updated: false, error: internalErrorMessage('ping-pong', error) }
+  }
+  return { updated: (data?.length ?? 0) > 0 }
 }
 
 export async function processPingPongPoint(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
-  scorer: 'X' | 'O'
+  scorer: 'X' | 'O',
+  expectedRally?: number
 ): Promise<{ error?: string }> {
   const { session, error: loadError } = await loadSession(supabase, gameId)
   if (loadError) return { error: loadError }
@@ -147,6 +167,11 @@ export async function processPingPongPoint(
 
   if (session.player_x_id !== playerId && session.player_o_id !== playerId) {
     return { error: 'You are not in this game' }
+  }
+
+  const currentRally = session.score_x + session.score_o
+  if (expectedRally !== undefined && expectedRally !== currentRally) {
+    return { error: 'Point event already processed or out of sequence' }
   }
 
   const newScoreX = scorer === 'X' ? session.score_x + 1 : session.score_x
@@ -174,7 +199,7 @@ export async function processPingPongPoint(
     statusMessage = `Deuce! (${newScoreX} - ${newScoreO}) — win by 2`
   }
 
-  const won = await persistSession(
+  const { updated: won, error: persistError } = await persistSession(
     supabase,
     gameId,
     {
@@ -186,7 +211,8 @@ export async function processPingPongPoint(
     },
     session.updated_at
   )
-  if (!won) return {}
+  if (persistError) return { error: persistError }
+  if (!won) return { error: 'Concurrent update conflict, please retry' }
 
   if (finished) {
     await markGameFinished(supabase, gameId)
@@ -213,7 +239,14 @@ export async function removePingPongPlayer(
   playerId: string,
   playerName?: string
 ): Promise<{ error: string | null }> {
-  const { data: sessionRaw } = await supabase.from('ping_pong_sessions').select('*').eq('game_id', gameId).maybeSingle()
+  const { data: sessionRaw, error: sessionLoadError } = await supabase
+    .from('ping_pong_sessions')
+    .select('*')
+    .eq('game_id', gameId)
+    .maybeSingle()
+  if (sessionLoadError) {
+    return { error: internalErrorMessage('ping-pong', sessionLoadError) }
+  }
   const session = sessionRaw as PingPongSession | null
 
   if (
@@ -228,7 +261,7 @@ export async function removePingPongPlayer(
     const loserName = playerName ?? names.get(playerId) ?? (session.player_x_id === playerId ? 'X' : 'O')
     const winnerName = names.get(otherId) ?? 'Opponent'
 
-    const { error: sessionError } = await supabase
+    const { data: updatedRows, error: sessionError } = await supabase
       .from('ping_pong_sessions')
       .update({
         status: 'finished',
@@ -237,9 +270,24 @@ export async function removePingPongPlayer(
         updated_at: new Date().toISOString(),
       })
       .eq('game_id', gameId)
+      .eq('status', 'active')
+      .eq('updated_at', session.updated_at)
+      .select('game_id')
     if (sessionError) return { error: internalErrorMessage('ping-pong', sessionError) }
 
-    await markGameFinished(supabase, gameId)
+    if (!updatedRows?.length) {
+      const { data: reloaded } = await supabase
+        .from('ping_pong_sessions')
+        .select('status')
+        .eq('game_id', gameId)
+        .maybeSingle()
+      if (reloaded?.status !== 'finished') {
+        return { error: 'Concurrent update conflict during forfeit, please retry' }
+      }
+    } else {
+      await markGameFinished(supabase, gameId)
+    }
+
     const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
     return { error: error?.message ?? null }
   }

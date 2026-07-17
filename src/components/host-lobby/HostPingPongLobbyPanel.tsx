@@ -5,6 +5,7 @@ import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySetti
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
 import { useToast } from '@/components/ui/Toast'
+import { PING_PONG_POINTS_OPTIONS } from '@/lib/ping-pong'
 import type { Game } from '@/types'
 
 type Props = {
@@ -15,8 +16,6 @@ type Props = {
 }
 
 type SaveState = 'idle' | 'saving' | 'saved'
-
-const POINTS_OPTIONS = [5, 7, 11, 21] as const
 
 export function HostPingPongLobbyPanel({ gameCode, hostToken, game, onGameUpdate }: Props) {
   const { error: toastError } = useToast()
@@ -72,7 +71,7 @@ export function HostPingPongLobbyPanel({ gameCode, hostToken, game, onGameUpdate
     })
   }
 
-  const options = useMemo(() => POINTS_OPTIONS.map((pts) => ({ value: pts, label: `${pts} pts` })), [])
+  const options = useMemo(() => PING_PONG_POINTS_OPTIONS.map((pts) => ({ value: pts, label: `${pts} pts` })), [])
 
   const summary = `${pointsToWin} points to win`
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null

@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, pingPongPointSchema)
   if (bodyError) return bodyError
 
-  const { gameId, resumeToken, scorer } = body
+  const { gameId, resumeToken, scorer, rally } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
   const auth = await assertPlayer(supabase, code, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
-  const { error } = await processPingPongPoint(supabase, code, auth.player.id, scorer)
+  const { error } = await processPingPongPoint(supabase, code, auth.player.id, scorer, rally)
   if (error) return NextResponse.json({ error }, { status: 400 })
 
   scheduleTurnNotification(code)

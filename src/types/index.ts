@@ -409,7 +409,7 @@ export interface Game {
   landmine_mine_count?: number | null
   /** Landmine — award +5 when nobody else gave your answer. */
   landmine_originality_bonus?: boolean | null
-  /** Ping Pong — points required to win the match (3, 5, 7, or 11). */
+  /** Ping Pong — points required to win the match (3, 5, 7, 11, 15, or 21). */
   ping_pong_points_to_win?: number | null
 }
 

@@ -42,6 +42,7 @@ import { parsePlayerQuestionsEnabled, parsePlayerQuestionsOrder } from '@/lib/pl
 import { supportsPlayerNameSubmissions } from '@/lib/player-participant-pool'
 import { gameSupportsViewerSetting, lateJoinPolicyToFields, gameAllowsLatePlayerJoin } from '@/lib/viewers'
 import { clampPanRounds } from '@/lib/pick-a-number'
+import { clampPingPongPoints } from '@/lib/ping-pong'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = getSupabaseAnon()
@@ -189,8 +190,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
 
   if (isPingPongGame(gameType)) {
     if (rawPingPongPointsToWin !== undefined) {
-      const allowed = [5, 7, 11, 21]
-      updatePayload.ping_pong_points_to_win = allowed.includes(rawPingPongPointsToWin) ? rawPingPongPointsToWin : 7
+      updatePayload.ping_pong_points_to_win = clampPingPongPoints(rawPingPongPointsToWin)
     }
   } else if (rawPingPongPointsToWin !== undefined) {
     return NextResponse.json({ error: 'Points to win only applies to Ping Pong games' }, { status: 400 })

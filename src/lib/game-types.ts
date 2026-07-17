@@ -2175,7 +2175,7 @@ export function gameHowItWorks(
     case 'landmine':
       return "Players join with their name. Each round someone picks a category and the system secretly plants a “mine” — one of the obvious answers. Everyone types a blind answer, then marks the next player's for validity before the mine is revealed. A valid answer scores 10 (plus 5 if nobody else said it); hit the mine and you score 0 — or get knocked out in Elimination mode."
     case 'ping_pong':
-      return 'Two players join with their name. A fast-paced 1v1 paddle duel where players move their paddles in realtime to bounce the ball past their opponent. First to reach the target score (3, 5, 7, or 11 points) wins!'
+      return 'Two players join with their name. A fast-paced 1v1 paddle duel where players move their paddles in realtime to bounce the ball past their opponent. First to reach the target score (3, 5, 7, 11, 15, or 21 points) wins!'
     case 'most_likely_to':
       return joiners
         ? 'Players add their name to the poll when joining. Each round shows a "most likely to…" prompt — vote for who fits best. Votes stay anonymous.'

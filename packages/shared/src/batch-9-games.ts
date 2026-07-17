@@ -1,6 +1,13 @@
 import type { GameType } from './types'
 
-export const BATCH_9_GAMES: GameType[] = ['secret_message', 'hot_seat', 'custom', 'anonymous_messages', 'landmine', 'ping_pong']
+export const BATCH_9_GAMES: GameType[] = [
+  'secret_message',
+  'hot_seat',
+  'custom',
+  'anonymous_messages',
+  'landmine',
+  'ping_pong',
+]
 
 export function batch9GameLabel(gameType: GameType | string): string {
   const labels: Partial<Record<GameType, string>> = {

@@ -15,7 +15,11 @@ import { MONOPOLY_DEFAULT_MAX_PLAYERS, MONOPOLY_MAX_PLAYERS, MONOPOLY_MIN_PLAYER
 import { NPAT_DEFAULT_MAX_PLAYERS, NPAT_MAX_PLAYERS, NPAT_MIN_PLAYERS } from './npat'
 import { QUICK_DRAW_MIN_PLAYERS } from './quick-draw-lie'
 import { QUIPLASH_DEFAULT_MAX_PLAYERS, QUIPLASH_MAX_PLAYERS, QUIPLASH_MIN_PLAYERS } from './quiplash'
-import { SNAKE_LADDER_DEFAULT_MAX_PLAYERS, SNAKE_LADDER_MAX_PLAYERS, SNAKE_LADDER_MIN_PLAYERS } from './snake-and-ladder'
+import {
+  SNAKE_LADDER_DEFAULT_MAX_PLAYERS,
+  SNAKE_LADDER_MAX_PLAYERS,
+  SNAKE_LADDER_MIN_PLAYERS,
+} from './snake-and-ladder'
 import { TTL_DEFAULT_MAX_PLAYERS, TTL_MAX_PLAYERS, TTL_MIN_PLAYERS } from './two-truths'
 import { WHOT_DEFAULT_MAX_PLAYERS, WHOT_MAX_PLAYERS, WHOT_MIN_PLAYERS } from './whot'
 import { WORD_HUNT_DEFAULT_MAX_PLAYERS, WORD_HUNT_MAX_PLAYERS, WORD_HUNT_MIN_PLAYERS } from './word-hunt'
@@ -187,11 +191,7 @@ export function playerCountOptions(min: number, max: number): number[] {
   return Array.from({ length: max - min + 1 }, (_, index) => index + min)
 }
 
-export function clampLobbyMaxPlayers(
-  gameType: LobbyLimitGameType,
-  value: number,
-  limits: GamePlayerLimitsMap
-): number {
+export function clampLobbyMaxPlayers(gameType: LobbyLimitGameType, value: number, limits: GamePlayerLimitsMap): number {
   const cfg = limits[gameType]
   return Math.min(cfg.max, Math.max(cfg.min, Math.floor(value)))
 }

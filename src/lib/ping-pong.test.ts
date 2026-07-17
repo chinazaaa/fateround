@@ -5,6 +5,7 @@ import {
   removePingPongPlayer,
   canPingPongPlayAgain,
   isPingPongResultsPhase,
+  pingPongServingSide,
   PING_PONG_MIN_PLAYERS,
 } from './ping-pong'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -258,6 +259,24 @@ describe('Ping Pong functional requirements', () => {
       expect(isPingPongResultsPhase('active', { status: 'finished', winner_player_id: null })).toBe(true)
       expect(isPingPongResultsPhase('active', { status: 'active', winner_player_id: 'p1' })).toBe(true)
       expect(isPingPongResultsPhase('active', { status: 'active', winner_player_id: null })).toBe(false)
+    })
+  })
+
+  describe('pingPongServingSide', () => {
+    it('uses 2-point rotation before deuce', () => {
+      expect(pingPongServingSide(0, 0, 11)).toBe('X')
+      expect(pingPongServingSide(1, 0, 11)).toBe('X')
+      expect(pingPongServingSide(1, 1, 11)).toBe('O')
+      expect(pingPongServingSide(2, 1, 11)).toBe('O')
+      expect(pingPongServingSide(2, 2, 11)).toBe('X')
+    })
+
+    it('alternates every single point once deuce is reached', () => {
+      // For 11 points to win, deuce is reached at 10-10
+      expect(pingPongServingSide(10, 10, 11)).toBe('X')
+      expect(pingPongServingSide(11, 10, 11)).toBe('O')
+      expect(pingPongServingSide(11, 11, 11)).toBe('X')
+      expect(pingPongServingSide(12, 11, 11)).toBe('O')
     })
   })
 })

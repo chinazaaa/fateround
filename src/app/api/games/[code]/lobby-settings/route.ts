@@ -58,6 +58,7 @@ import {
   isLobbyLimitGameType,
   type LobbyLimitGameType,
 } from '@/lib/game-limits'
+import { clampPingPongPoints } from '@/lib/ping-pong'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = getSupabaseAnon()
@@ -526,8 +527,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   if (pingPongLobby) {
     if (ping_pong_points_to_win !== undefined) {
-      const allowed = [5, 7, 11, 21]
-      gameUpdate.ping_pong_points_to_win = allowed.includes(ping_pong_points_to_win) ? ping_pong_points_to_win : 7
+      gameUpdate.ping_pong_points_to_win = clampPingPongPoints(ping_pong_points_to_win)
     }
   } else if (ping_pong_points_to_win !== undefined) {
     return NextResponse.json({ error: 'Points to win only applies to Ping Pong games' }, { status: 400 })
