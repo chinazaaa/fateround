@@ -5706,6 +5706,7 @@ function CreateGameInner() {
               >
                 Add all from paste
               </button>
+              {uploadError && <p className="text-red-400 text-sm">{uploadError}</p>}
             </div>
           )}
 
