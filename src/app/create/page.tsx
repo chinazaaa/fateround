@@ -130,6 +130,7 @@ import {
   type WordScrambleEntry,
 } from '@/lib/custom-questions'
 import { WST_DECK_MIN_ENTRIES, type WstDeckEntry } from '@/lib/who-said-this'
+import { WST_PLATFORM_DECK } from '@/lib/who-said-this-questions'
 import { playerQuestionsOrderOptions, parsePlayerQuestionsOrder } from '@/lib/player-question-pool'
 import { isPeoplePollGame, playerNameSubmissionHint } from '@/lib/player-participant-pool'
 import { CustomSlotBuilder } from '@/components/CustomSlotBuilder'
@@ -858,9 +859,18 @@ function CreateGameInner() {
   const isMatchingPairs = isMatchingPairsGame(settings.game_type)
   const showViewerToggle = gameSupportsViewerSetting(settings.game_type)
   const isWst = isWhoSaidThis(settings.game_type)
-  // Who Said This "Your own" deck: host uploads trivia-style quote questions. Players just join
-  // and answer (no name list), so it's a single-step quick-create like trivia.
+  // Who Said This host-provided deck (Platform / Library / uploaded). Players just join and
+  // answer (no name list), so it's a single-step quick-create like trivia.
   const isWstDeck = isWst && wstQuoteSource === 'deck'
+  // The effective deck for the selected source: built-in Platform pack, a chosen Library pack,
+  // or the uploaded CSV. Fed into custom_questions + the create-button gating.
+  const wstDeckContent: WstDeckEntry[] = !isWstDeck
+    ? []
+    : questionSource === 'platform'
+      ? WST_PLATFORM_DECK
+      : questionSource === 'library'
+        ? (libraryPackQuestions as WstDeckEntry[])
+        : wstDeck
   const isHotSeatGame = isHotSeat(settings.game_type)
   const isPanGame = isPan
   const hotSeatCreateCapUpper = isHotSeatGame ? hotSeatMaxCapUpperBound(0, participants.length) : 20
@@ -939,9 +949,9 @@ function CreateGameInner() {
       libraryPackQuestions.length >= settings.rounds_count &&
       libraryPackQuestions.length > 0) ||
     // Players-submit mode needs no content at create (players write questions in the lobby);
-    // the deck mode needs the uploaded deck.
+    // deck mode needs its source (Platform is always ready; Library/upload need >= 2).
     (isWst && wstQuoteSource !== 'deck') ||
-    (isWstDeck && wstDeck.length >= WST_DECK_MIN_ENTRIES)
+    (isWstDeck && wstDeckContent.length >= WST_DECK_MIN_ENTRIES)
   const canCreateQuickLobby = !!settings.title.trim() && hasEnoughCustomQuestions
 
   const customSlotsValid =
@@ -1530,7 +1540,7 @@ function CreateGameInner() {
     if (loading) return
     if (isQuickLobby) {
       if (!settings.title.trim()) return
-      if (isWstDeck && wstDeck.length < WST_DECK_MIN_ENTRIES) return
+      if (isWstDeck && wstDeckContent.length < WST_DECK_MIN_ENTRIES) return
       if (
         isCodewords &&
         (questionSource === 'custom' || questionSource === 'library') &&
@@ -1568,12 +1578,12 @@ function CreateGameInner() {
           ...settings,
           ...(isWordHunt ? { timer_seconds: wordHuntTimer } : {}),
           rounds_count: isWst
-            ? wstQuoteSource === 'deck'
-              ? Math.max(wstDeck.length, 2)
+            ? isWstDeck
+              ? Math.max(wstDeckContent.length, 2)
               : Math.max(participants.length, 2)
             : settings.rounds_count,
           question_source: isWst
-            ? wstQuoteSource === 'deck' && wstDeck.length >= WST_DECK_MIN_ENTRIES
+            ? isWstDeck && wstDeckContent.length >= WST_DECK_MIN_ENTRIES
               ? 'custom'
               : 'platform'
             : isCrossword
@@ -1608,8 +1618,8 @@ function CreateGameInner() {
                             : questionSource
                           : 'platform',
           custom_questions: isWst
-            ? wstQuoteSource === 'deck' && wstDeck.length >= WST_DECK_MIN_ENTRIES
-              ? wstDeck
+            ? isWstDeck && wstDeckContent.length >= WST_DECK_MIN_ENTRIES
+              ? wstDeckContent
               : null
             : isCrossword
               ? (questionSource === 'custom' || questionSource === 'library') && customCrosswordEntries.length >= 4
@@ -4625,23 +4635,51 @@ function CreateGameInner() {
                     <div className="space-y-4">
                       <Field label="Questions">
                         <SegmentedControl
-                          value={wstQuoteSource === 'deck' ? 'deck' : 'player'}
-                          onChange={(v) => setWstQuoteSource(v as WstQuoteSource)}
+                          value={wstQuoteSource === 'player' ? 'player' : questionSource}
+                          onChange={(v) => {
+                            if (v === 'player') {
+                              setWstQuoteSource('player')
+                            } else {
+                              setWstQuoteSource('deck')
+                              setQuestionSource(v as QuestionSource)
+                            }
+                          }}
                           options={[
                             {
                               value: 'player',
                               label: 'Players submit',
                               hint: 'Everyone writes a quote + 4 options in the lobby',
                             },
+                            { value: 'platform', label: 'Platform', hint: 'Our built-in pack of famous quotes' },
+                            { value: 'library', label: 'Library', hint: 'Pick a community quote pack (e.g. anime)' },
                             {
-                              value: 'deck',
+                              value: 'custom',
                               label: 'Your own',
                               hint: 'Upload a CSV of quotes, options, and answers',
                             },
                           ]}
                         />
                       </Field>
-                      {wstQuoteSource === 'deck' ? (
+                      {wstQuoteSource === 'player' ? (
+                        <p className="text-faint text-sm leading-relaxed">
+                          Players join and each submits a quote with four options (A–D) and marks the answer. When you
+                          start, everyone answers the pooled questions — fastest correct wins.
+                        </p>
+                      ) : questionSource === 'platform' ? (
+                        <p className="text-faint text-sm leading-relaxed">
+                          {WST_PLATFORM_DECK.length} famous quotes are built in — players just join and answer like
+                          trivia, fastest correct wins. No setup needed.
+                        </p>
+                      ) : questionSource === 'library' ? (
+                        <LibraryPackPicker
+                          loading={libraryPacksLoading}
+                          packs={libraryPacks}
+                          search={libraryPackSearch}
+                          onSearchChange={setLibraryPackSearch}
+                          selectedPackId={selectedPackId}
+                          onSelect={selectLibraryPack}
+                        />
+                      ) : (
                         <div className="space-y-3">
                           <button
                             type="button"
@@ -4667,11 +4705,6 @@ function CreateGameInner() {
                             just join and answer like trivia — fastest correct wins.
                           </p>
                         </div>
-                      ) : (
-                        <p className="text-faint text-sm leading-relaxed">
-                          Players join and each submits a quote with four options (A–D) and marks the answer. When you
-                          start, everyone answers the pooled questions — fastest correct wins.
-                        </p>
                       )}
                     </div>
                   ) : isPanGame ? (
