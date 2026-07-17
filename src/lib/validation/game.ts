@@ -180,6 +180,8 @@ export const updateGameSchema = z.object({
   scrabble_dictionary_id: z.enum(SCRABBLE_DICTIONARY_OPTIONS).optional(),
   scrabble_clock_mode: z.enum(['standard', 'chess']).optional(),
   scrabble_clock_seconds: z.coerce.number().optional(),
+  // Who Said This quote source (player / anime / both) — editable from the lobby.
+  wst_quote_source: wstQuoteSourceEnum.optional(),
   participant_filter: participantFilterEnum.optional(),
   gender_based: z.boolean().optional(),
   pair_vote_mode: pairVoteModeEnum.optional(),
