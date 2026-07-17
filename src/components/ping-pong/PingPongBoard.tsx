@@ -88,8 +88,8 @@ export function PingPongBoard({
   const broadcastSeqRef = useRef<number>(0)
   const paddleXSeqRef = useRef<number>(0)
   const paddleOSeqRef = useRef<number>(0)
-  const ballSyncSeqRef = useRef<number>(0)
-  const lastBallSyncSideRef = useRef<string | null>(null)
+  const ballSyncSeqXRef = useRef<number>(0)
+  const ballSyncSeqORef = useRef<number>(0)
   const serveSeqRef = useRef<number>(0)
   const lastBallSyncRef = useRef<number>(0)
 
@@ -161,10 +161,17 @@ export function PingPongBoard({
           seq?: number
           side?: string
         }
-        if (typeof seq === 'number') {
-          if (side === lastBallSyncSideRef.current && seq <= ballSyncSeqRef.current) return
-          if (side) lastBallSyncSideRef.current = side
-          ballSyncSeqRef.current = seq
+        if (typeof rally === 'number' && Number.isFinite(rally)) {
+          if (rally < rallyRef.current) return
+        }
+        if (typeof seq === 'number' && side) {
+          if (side === 'X') {
+            if (seq <= ballSyncSeqXRef.current) return
+            ballSyncSeqXRef.current = seq
+          } else if (side === 'O') {
+            if (seq <= ballSyncSeqORef.current) return
+            ballSyncSeqORef.current = seq
+          }
         }
         if (
           !Number.isFinite(x) ||
@@ -235,10 +242,17 @@ export function PingPongBoard({
         }
       } else if (event === 'full_sync') {
         const { ball, rally, paddleX, paddleO, lastScorer, seq, side } = payload as any
-        if (typeof seq === 'number') {
-          if (side === lastBallSyncSideRef.current && seq <= ballSyncSeqRef.current) return
-          if (side) lastBallSyncSideRef.current = side
-          ballSyncSeqRef.current = seq
+        if (typeof rally === 'number' && Number.isFinite(rally)) {
+          if (rally < rallyRef.current) return
+        }
+        if (typeof seq === 'number' && side) {
+          if (side === 'X') {
+            if (seq <= ballSyncSeqXRef.current) return
+            ballSyncSeqXRef.current = seq
+          } else if (side === 'O') {
+            if (seq <= ballSyncSeqORef.current) return
+            ballSyncSeqORef.current = seq
+          }
         }
         if (ball) ballRef.current = { ...ball }
         if (typeof rally === 'number') {
@@ -480,7 +494,8 @@ export function PingPongBoard({
         if (mySide && side !== mySide && !isViewer && session.status === 'active') {
           paddleXSeqRef.current = 0
           paddleOSeqRef.current = 0
-          ballSyncSeqRef.current = 0
+          ballSyncSeqXRef.current = 0
+          ballSyncSeqORef.current = 0
           serveSeqRef.current = 0
           createWebRTC()
           if (mySide === 'O') {
@@ -493,7 +508,8 @@ export function PingPongBoard({
         if (mySide === 'X' && side === 'O' && pcRef.current && !isViewer && session.status === 'active') {
           paddleXSeqRef.current = 0
           paddleOSeqRef.current = 0
-          ballSyncSeqRef.current = 0
+          ballSyncSeqXRef.current = 0
+          ballSyncSeqORef.current = 0
           serveSeqRef.current = 0
           try {
             const offer = await pcRef.current.createOffer()
