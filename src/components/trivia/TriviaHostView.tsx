@@ -10,7 +10,6 @@ import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
-import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -394,9 +393,6 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
           />
         ))}
       {game.status !== 'finished' && <HostRulesRow gameType="trivia" />}
-      {game.status === 'waiting' && (
-        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-      )}
       <TriviaHostManagePanel {...panelProps} section="manage" />
     </div>
   )
@@ -434,11 +430,9 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
 
   const lobbySettings = (
     <>
-      <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
       <button type="button" onClick={() => setSettingsModal('lobby')} className="btn-secondary w-full">
         Edit questions &amp; rounds
       </button>
-      <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
       <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
     </>
   )
@@ -455,7 +449,6 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
           maxPlayers={game.max_players}
           resumeToken={hostResumeToken}
           playCard={lobbyModeCard}
-          howToPlay={<HostRulesRow gameType="trivia" />}
           settingsChildren={lobbySettings}
           onStart={() => void startGame()}
           starting={starting}

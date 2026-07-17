@@ -7,7 +7,6 @@ import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
-import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
@@ -508,9 +507,10 @@ export function CheckersHostView({ gameCode, hostToken }: { gameCode: string; ho
             playerHint="Take a seat and play"
           />
         }
-        howToPlay={<HostRulesRow gameType="checkers" />}
         settingsChildren={
-          <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+          <>
+            <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+          </>
         }
         onStart={() => void startGame()}
         starting={starting}

@@ -579,7 +579,6 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
         maxPlayers={lobbyMaxPlayersFromGameClient('quick_draw', game) ?? game.max_players}
         resumeToken={hostResumeToken}
         playCard={lobbyModeCard}
-        howToPlay={<HostRulesRow gameType="quick_draw" />}
         settingsChildren={lobbySettings}
         onStart={() => void startGame()}
         starting={starting}

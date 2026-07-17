@@ -17,7 +17,6 @@ import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
-import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostMahjongLobbySettings } from '@/components/host-lobby/HostMahjongLobbySettings'
 import { Chip, Toggle } from '@/components/ui/PageShell'
 import { useToast } from '@/components/ui/Toast'
@@ -155,11 +154,6 @@ export function HostBoardGameLobbyPanel({
     [gameCode, hostToken, markSaved, onGameUpdate, toastError]
   )
 
-  const onVisibilityChange = (next: boolean) => {
-    setIsPublic(next)
-    void patchSettings({ is_public: next })
-  }
-
   const onMaxPlayersChange = (next: number) => {
     if (next < playerCount) {
       toastError(`Already have ${playerCount} players — remove someone first`)
@@ -279,15 +273,6 @@ export function HostBoardGameLobbyPanel({
       }
     >
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
-        <HostLobbySettingBlock title="Visibility" className="sm:col-span-2">
-          <Toggle
-            label="Public game"
-            description="List in Browse so anyone can find and join. Off keeps it invite-only via the share link."
-            value={isPublic}
-            onChange={onVisibilityChange}
-          />
-        </HostLobbySettingBlock>
-        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={onGameUpdate} />
         <HostLobbySettingBlock title="Turn timer">
           <HostLobbyOptionChips value={turnTimer} options={turnTimerOptions} onChange={onTurnTimerChange} />
         </HostLobbySettingBlock>
@@ -428,19 +413,6 @@ export function HostBoardGameLobbyPanel({
         )}
 
         {boardGameType === 'mahjong' && <HostMahjongLobbySettings game={game} onPatchSettings={patchSettings} />}
-
-        {gameSupportsViewerSetting(game.game_type) && game.status === 'waiting' && (
-          <HostLobbySettingBlock title="Late joiners" className="sm:col-span-2">
-            <HostAllowViewersField
-              embedded
-              hideHeader
-              gameCode={gameCode}
-              hostToken={hostToken}
-              game={game}
-              onGameUpdate={onGameUpdate}
-            />
-          </HostLobbySettingBlock>
-        )}
       </div>
     </HostLobbySettingsSection>
   )

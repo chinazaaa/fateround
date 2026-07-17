@@ -14,7 +14,6 @@ import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
-import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostSudokuLobbyPanel } from '@/components/host-lobby/HostSudokuLobbyPanel'
 import { HostPuzzleSettings } from '@/components/host-lobby/HostPuzzleSettings'
@@ -715,7 +714,6 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('word_search', game) ?? game.max_players}
         playCard={lobbyModeCard}
-        howToPlay={<HostRulesRow gameType="word_search" />}
         settingsChildren={lobbySettings}
         onStart={() => void handleStart()}
         starting={starting}

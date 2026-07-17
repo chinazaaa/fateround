@@ -13,7 +13,6 @@ import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
-import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { TransferHostControl } from '@/components/TransferHostControl'
@@ -476,9 +475,6 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
         />
       )}
       {game.status !== 'finished' && <HostRulesRow gameType="landmine" />}
-      {game.status === 'waiting' && (
-        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-      )}
 
       {game.status === 'waiting' && (
         <>
@@ -655,7 +651,6 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
 
   const lobbySettings = (
     <>
-      <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
       <div className="rounded-2xl border border-[color-mix(in_srgb,var(--primary)_14%,var(--border))] bg-[var(--card-strong)]/95 p-5 space-y-3">
         <p className="label-caps">Game settings</p>
         <label className="block space-y-1">
@@ -764,7 +759,6 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
         maxPlayers={lobbyMaxPlayersFromGameClient('landmine', game) ?? game.max_players}
         resumeToken={hostResumeToken}
         playCard={lobbyModeCard}
-        howToPlay={<HostRulesRow gameType="landmine" />}
         settingsChildren={lobbySettings}
         onStart={() => void startGame()}
         starting={starting}

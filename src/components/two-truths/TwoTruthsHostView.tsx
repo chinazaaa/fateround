@@ -10,9 +10,7 @@ import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
-import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
-import { HostVisibilityToggle } from '@/components/host-lobby/HostVisibilityToggle'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
@@ -429,9 +427,6 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
       )}
       {hostStatementSetup}
       {game.status !== 'finished' && <HostRulesRow gameType="two_truths" />}
-      {game.status === 'waiting' && (
-        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-      )}
       <TwoTruthsHostManagePanel {...panelProps} section="manage" />
     </div>
   )
@@ -467,7 +462,6 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
 
   const lobbySettings = (
     <>
-      <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
       <div className="rounded-2xl border border-[color-mix(in_srgb,var(--primary)_14%,var(--border))] bg-[var(--card-strong)]/95 p-5 space-y-2">
         <p className="label-caps">Guess timer (per round)</p>
         <select
@@ -485,10 +479,6 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
           {savingTimer ? 'Saving…' : 'Save timer'}
         </button>
       </div>
-      <HostAllowViewersField embedded gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-3">
-        <HostVisibilityToggle gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-      </div>
       <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
     </>
   )
@@ -504,7 +494,6 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
         maxPlayers={lobbyMaxPlayersFromGameClient('two_truths', game) ?? game.max_players}
         resumeToken={hostResumeToken}
         playCard={lobbyModeCard}
-        howToPlay={<HostRulesRow gameType="two_truths" />}
         settingsChildren={lobbySettings}
         onStart={() => void startGame()}
         starting={starting}

@@ -7,7 +7,6 @@ import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
-import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostAyoLobbyPanel } from '@/components/host-lobby/HostAyoLobbyPanel'
 import { TransferHostControl } from '@/components/TransferHostControl'
@@ -517,7 +516,6 @@ export function AyoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             playerHint="Take a seat and play"
           />
         }
-        howToPlay={<HostRulesRow gameType="ayo" />}
         settingsChildren={
           <>
             <HostAyoLobbyPanel gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />

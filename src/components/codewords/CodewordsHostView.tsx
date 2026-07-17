@@ -10,7 +10,6 @@ import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
-import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { TransferHostControl } from '@/components/TransferHostControl'
@@ -716,9 +715,6 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
       {game.status === 'waiting' && codewordsModeCard}
 
       <HostRulesRow gameType="codewords" />
-      {game.status === 'waiting' && (
-        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-      )}
 
       <CodewordsHostManagePanel {...codewordsPanelProps} />
 
@@ -746,10 +742,9 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
           maxPlayers={lobbyMaxPlayersFromGameClient('codewords', game) ?? game.max_players}
           resumeToken={hostResumeToken}
           playCard={codewordsModeCard}
-          howToPlay={<HostRulesRow gameType="codewords" />}
           settingsChildren={
             <>
-              <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+              <CodewordsHostManagePanel {...codewordsPanelProps} embeddedInLobby slot="lobby-settings" />
               <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
             </>
           }
@@ -769,7 +764,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
           highlightPlayerId={hostPlayerId}
           onEnded={load}
         >
-          <CodewordsHostManagePanel {...codewordsPanelProps} embeddedInLobby />
+          <CodewordsHostManagePanel {...codewordsPanelProps} embeddedInLobby slot="lobby-teams" />
         </HostLobby>
       ) : (
         <HostGameLayout

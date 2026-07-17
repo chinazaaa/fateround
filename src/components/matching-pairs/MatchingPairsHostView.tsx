@@ -16,7 +16,6 @@ import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
-import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostMatchingPairsLobbyPanel } from '@/components/host-lobby/HostMatchingPairsLobbyPanel'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
@@ -802,7 +801,6 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('matching_pairs', game) ?? game.max_players}
         playCard={lobbyModeCard}
-        howToPlay={<HostRulesRow gameType="matching_pairs" />}
         settingsChildren={lobbySettings}
         onStart={() => void handleStartGame()}
         starting={starting}

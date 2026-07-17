@@ -16,7 +16,6 @@ import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
-import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { ExitIcon } from '@/components/host/host-icons'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
@@ -657,7 +656,6 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
             }
           />
         }
-        howToPlay={<HostRulesRow gameType="monopoly" />}
         settingsChildren={
           <>
             <HostBoardGameLobbyPanel

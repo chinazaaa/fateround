@@ -75,6 +75,7 @@ export function CodewordsHostManagePanel({
   hostPlayerId = null,
   hostPlays = false,
   embeddedInLobby = false,
+  slot = 'all',
 }: {
   game: Game
   gameCode: string
@@ -123,6 +124,10 @@ export function CodewordsHostManagePanel({
   /** When embedded inside the mobile-parity HostLobby, hide this panel's own players
    *  list + Start/End footer (HostLobby renders those); keep teams + settings. */
   embeddedInLobby?: boolean
+  /** Which slice to render inside HostLobby: 'lobby-teams' = the team roster only (main
+   *  screen); 'lobby-settings' = "Before you start" + Public game only (the ⚙ sheet).
+   *  'all' (default) renders everything for the tabbed manage. */
+  slot?: 'all' | 'lobby-teams' | 'lobby-settings'
 }) {
   const { error: toastError } = useToast()
   const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
@@ -216,6 +221,11 @@ export function CodewordsHostManagePanel({
         ? ready.error
         : null
 
+  // HostLobby slots: teams roster on the main screen, settings ("Before you start" +
+  // Public game) in the ⚙ sheet. 'all' (tabbed manage) shows both.
+  const showTeams = slot !== 'lobby-settings'
+  const showSettings = slot !== 'lobby-teams'
+
   const sessionEnded = game.status === 'finished'
   const roundWon = Boolean(board?.winner)
   const showWinnerResults = Boolean(board && roundWon && (sessionEnded || game.status === 'active'))
@@ -288,7 +298,7 @@ export function CodewordsHostManagePanel({
       )}
 
       {/* Teams + Unassigned roster — the lineup, kept up top */}
-      {(inLobby || game.status === 'active' || game.status === 'finished') && (
+      {showTeams && (inLobby || game.status === 'active' || game.status === 'finished') && (
         <div className="glass-card p-5 space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
@@ -366,7 +376,7 @@ export function CodewordsHostManagePanel({
       )}
 
       {/* Before you start — every other setup option lives here, collapsed by default */}
-      {inLobby && (
+      {showSettings && inLobby && (
         <HostLobbySettingsSection
           title="Before you start"
           summary={settingsSummary}
@@ -484,9 +494,9 @@ export function CodewordsHostManagePanel({
         </HostLobbySettingsSection>
       )}
 
-      {/* Start + close — actions. When embedded in HostLobby, it owns the Start/End footer;
-          keep only the visibility toggle here. */}
-      {inLobby && (
+      {/* Start + close — actions. Hidden inside HostLobby (it owns the Start/End footer and
+          the central Public-game toggle); shown only in the tabbed manage. */}
+      {showSettings && inLobby && !embeddedInLobby && (
         <div className="space-y-3">
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-3">
             <HostVisibilityToggle gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={onGameUpdate} />

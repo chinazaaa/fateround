@@ -15,7 +15,7 @@ export function HostLateJoinSettingsCard({
   gameCode: string
   hostToken: string
   game: Game
-  onGameUpdate: (game: Game) => void
+  onGameUpdate?: (game: Game) => void
   className?: string
   bare?: boolean
 }) {

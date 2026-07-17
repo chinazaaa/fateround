@@ -13,7 +13,6 @@ import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
-import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { TransferHostControl } from '@/components/TransferHostControl'
@@ -588,7 +587,6 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
             playerHint="Take a seat and play"
           />
         }
-        howToPlay={<HostRulesRow gameType="yahtzee" />}
         settingsChildren={
           <>
             <HostBoardGameLobbyPanel
