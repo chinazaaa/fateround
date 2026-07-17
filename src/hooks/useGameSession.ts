@@ -105,7 +105,6 @@ export interface GameSessionDeps {
   setAssignment: React.Dispatch<React.SetStateAction<VoteAssignment>>
   setSubmitted: React.Dispatch<React.SetStateAction<boolean>>
   setQuoteInput: React.Dispatch<React.SetStateAction<string>>
-  setQuoteAuthorParticipantId: React.Dispatch<React.SetStateAction<string | null>>
   // Auto submit
   autoSubmitRefs: AutoSubmitRefs
   triggerAutoSubmit: () => Promise<AutoSubmitResult>
@@ -136,7 +135,6 @@ export function useGameSession(deps: GameSessionDeps) {
     setAssignment,
     setSubmitted,
     setQuoteInput,
-    setQuoteAuthorParticipantId,
     autoSubmitRefs,
     triggerAutoSubmit,
   } = deps
@@ -185,7 +183,6 @@ export function useGameSession(deps: GameSessionDeps) {
   function resetRoundPlayerState() {
     resetVoteStateRef.current()
     setQuoteInput('')
-    setQuoteAuthorParticipantId(null)
     resetHotSeatStateRef.current()
   }
 

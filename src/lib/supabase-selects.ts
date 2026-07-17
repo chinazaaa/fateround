@@ -202,7 +202,8 @@ export const LANDMINE_ANSWER_SELECT =
 
 export const LANDMINE_MARK_SELECT = 'id,game_id,round_id,marker_player_id,target_player_id,valid,marked_at'
 
-export const WST_QUOTE_POOL_SELECT = 'id,game_id,player_id,quote_text,author_participant_id,created_at,updated_at'
+export const WST_QUOTE_POOL_SELECT =
+  'id,game_id,player_id,quote_text,options,correct_index,author_participant_id,created_at,updated_at'
 
 export const PLAYER_QUESTION_SELECT = 'id,player_id,question_type,option_a,option_b,question_text'
 
