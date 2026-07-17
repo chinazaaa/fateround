@@ -143,8 +143,7 @@ export const createGameSchema = z.object({
   mafia_doctor_enabled: z.boolean().optional(),
   mafia_detective_enabled: z.boolean().optional(),
   mafia_anonymous_votes: z.boolean().optional(),
-  ping_pong_points_to_win: z
-    .coerce
+  ping_pong_points_to_win: z.coerce
     .number()
     .int()
     .refine((val: number) => (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(val))
@@ -213,8 +212,7 @@ export const updateGameSchema = z.object({
   // assigns / randomize, stored as these two flags.
   codewords_player_picks: z.boolean().optional(),
   codewords_randomize_teams: z.boolean().optional(),
-  ping_pong_points_to_win: z
-    .coerce
+  ping_pong_points_to_win: z.coerce
     .number()
     .int()
     .refine((val: number) => (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(val))
@@ -324,8 +322,7 @@ export const boardGameLobbySettingsSchema = z.object({
   // Host-supplied puzzle word pool ("Your own" upload or a Library pack pick). Re-validated and
   // normalised server-side per game type; capped to keep the request payload bounded.
   puzzle_custom_questions: z.array(z.record(z.string(), z.string())).max(500).optional(),
-  ping_pong_points_to_win: z
-    .coerce
+  ping_pong_points_to_win: z.coerce
     .number()
     .int()
     .refine((val: number) => (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(val))
