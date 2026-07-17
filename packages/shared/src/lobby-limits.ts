@@ -51,6 +51,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'ayo',
   'crossword',
   'word_search',
+  'ping_pong',
 ] as const
 
 export type LobbyLimitGameType = (typeof LOBBY_LIMIT_GAME_TYPES)[number]
@@ -86,6 +87,10 @@ const SUDOKU_MAX_PLAYERS = 30
 const TIC_TAC_TOE_MIN_PLAYERS = 2
 const TIC_TAC_TOE_MAX_PLAYERS = 2
 const TIC_TAC_TOE_DEFAULT_MAX_PLAYERS = 2
+
+const PING_PONG_MIN_PLAYERS = 2
+const PING_PONG_MAX_PLAYERS = 2
+const PING_PONG_DEFAULT_MAX_PLAYERS = 2
 
 const CHESS_MIN_PLAYERS = 2
 const CHESS_MAX_PLAYERS = 2
@@ -161,6 +166,11 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
   },
   crossword: { min: CROSSWORD_MIN_PLAYERS, max: CROSSWORD_MAX_PLAYERS, default: CROSSWORD_DEFAULT_MAX_PLAYERS },
   word_search: { min: WORD_SEARCH_MIN_PLAYERS, max: WORD_SEARCH_MAX_PLAYERS, default: WORD_SEARCH_DEFAULT_MAX_PLAYERS },
+  ping_pong: {
+    min: PING_PONG_MIN_PLAYERS,
+    max: PING_PONG_MAX_PLAYERS,
+    default: PING_PONG_DEFAULT_MAX_PLAYERS,
+  },
 }
 
 export function isLobbyLimitGameType(value: string): value is LobbyLimitGameType {

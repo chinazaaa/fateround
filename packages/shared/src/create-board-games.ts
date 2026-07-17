@@ -134,3 +134,12 @@ export function parseScrabbleClockMode(value: unknown): ScrabbleClockMode {
 export function formatScrabbleClockMinutes(seconds: number): string {
   return `${seconds / 60} min each`
 }
+
+export const PING_PONG_POINTS_OPTIONS = [3, 5, 7, 11] as const
+export const PING_PONG_DEFAULT_POINTS = 7
+
+export function clampPingPongPoints(value: unknown): number {
+  const n = Number(value)
+  return (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(n) ? n : PING_PONG_DEFAULT_POINTS
+}
+

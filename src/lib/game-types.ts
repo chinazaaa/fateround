@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   Game,
   GameType,
   VoteAssignment,
@@ -1882,6 +1882,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  ping_pong: {
+    id: 'ping_pong',
+    label: 'Ping Pong',
+    tagline: '1v1 fast-paced paddle duel',
+    headerEmoji: '🏓⚡',
+    card: {
+      accent: '#3b82f6',
+      accentSoft: 'rgba(59, 130, 246, 0.15)',
+      emoji: '🏓',
+      players: '2 players',
+      vibe: 'Realtime duel',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🏓',
+        label: 'Win',
+        color: '#3b82f6',
+        leaderboardLabel: 'Matches Won',
+        activeClass: 'bg-blue-500/20 text-blue-100 border-blue-400',
+        borderClass: 'border-blue-500/50 bg-blue-500/10',
+        textColor: '#93c5fd',
+      },
+      marry: {
+        emoji: '⚡',
+        label: 'Points',
+        color: '#eab308',
+        leaderboardLabel: 'Points Scored',
+        activeClass: 'bg-yellow-500/20 text-yellow-100 border-yellow-400',
+        borderClass: 'border-yellow-500/50 bg-yellow-500/10',
+        textColor: '#fde047',
+      },
+      kill: {
+        emoji: '💔',
+        label: 'Loss',
+        color: '#ef4444',
+        leaderboardLabel: 'Matches Lost',
+        activeClass: 'bg-red-500/20 text-red-100 border-red-400',
+        borderClass: 'border-red-500/50 bg-red-500/10',
+        textColor: '#fca5a5',
+      },
+    },
+  },
 }
 
 /** Home page “Popular games” grid — order is display order. */
@@ -1940,6 +1983,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'word_search',
   'word_scramble',
   'landmine',
+  'ping_pong',
 ]
 
 // Games pinned to the top of the picker / games list, in this exact order.
@@ -1963,6 +2007,7 @@ const PINNED_GAME_TYPES: GameType[] = [
   'word_rush',
   'i_call_on',
   'landmine',
+  'ping_pong',
   'smash_marry_kill',
   'bingo',
   'this_or_that',
@@ -2022,6 +2067,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'word_search' || raw === 'word-search' || raw === 'wordsearch') return 'word_search'
   if (raw === 'word_scramble' || raw === 'word-scramble' || raw === 'wordscramble') return 'word_scramble'
   if (raw === 'landmine' || raw === 'land-mine') return 'landmine'
+  if (raw === 'ping_pong' || raw === 'ping-pong') return 'ping_pong'
   return 'smash_marry_kill'
 }
 
@@ -2128,6 +2174,8 @@ export function gameHowItWorks(
       return "Players join with their name. Set a game timer (or play all 26 letters). Each letter cycle someone calls A–Z, everyone fills Name, Animal, Place, Thing, and Food, then marks the next player's sheet. Duplicates score 5 automatically; unique valid answers score 10. Everyone sees all marks live."
     case 'landmine':
       return "Players join with their name. Each round someone picks a category and the system secretly plants a “mine” — one of the obvious answers. Everyone types a blind answer, then marks the next player's for validity before the mine is revealed. A valid answer scores 10 (plus 5 if nobody else said it); hit the mine and you score 0 — or get knocked out in Elimination mode."
+    case 'ping_pong':
+      return 'Two players join with their name. A fast-paced 1v1 paddle duel where players move their paddles in realtime to bounce the ball past their opponent. First to reach the target score (3, 5, 7, or 11 points) wins!'
     case 'most_likely_to':
       return joiners
         ? 'Players add their name to the poll when joining. Each round shows a "most likely to…" prompt — vote for who fits best. Votes stay anonymous.'
@@ -2397,6 +2445,7 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   word_search: true,
   word_scramble: true,
   landmine: true,
+  ping_pong: true,
   mafia: false,
 }
 
@@ -2443,6 +2492,7 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   word_search: false,
   word_scramble: false,
   landmine: false,
+  ping_pong: false,
   mafia: false,
 }
 
@@ -2598,6 +2648,10 @@ export function isMatchingPairsGame(gameType: GameType | string | undefined): bo
 
 export function isQuiplashGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'quiplash'
+}
+
+export function isPingPongGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'ping_pong'
 }
 
 export function isQuickDrawGame(gameType: GameType | string | undefined): boolean {

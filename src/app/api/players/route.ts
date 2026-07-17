@@ -17,6 +17,7 @@ import { removeChessPlayer } from '@/lib/chess'
 import { removeCheckersPlayer } from '@/lib/checkers'
 import { removeAyoPlayer } from '@/lib/ayo'
 import { removeTicTacToePlayer } from '@/lib/tic-tac-toe'
+import { removePingPongPlayer } from '@/lib/ping-pong'
 import { isMonopolyTokenId } from '@/lib/monopoly-tokens'
 import { generateAnonymousDisplayName } from '@/lib/anonymous-names'
 import { anonymousPlayerCanChat } from '@/lib/anonymous-messages'
@@ -60,6 +61,7 @@ import {
   isQuickDrawGame,
   isSudokuGame,
   isTwoTruthsGame,
+  isPingPongGame,
 } from '@/lib/game-types'
 import { fetchGamePlayerLimits, isLobbyLimitGameType, lobbyMaxPlayersFromGame } from '@/lib/game-limits'
 import { isGenderFreeImportJoin, isGenderFreeJoinersJoin, isGenderFreeVotersJoin } from '@/lib/gender-based'
@@ -678,7 +680,8 @@ export async function POST(req: NextRequest) {
     isChessGame(rowGameType) ||
     isCheckersGame(rowGameType) ||
     isAyoGame(rowGameType) ||
-    isScrabbleGame(rowGameType)
+    isScrabbleGame(rowGameType) ||
+    isPingPongGame(rowGameType)
   ) {
     const joinCheck = canJoinGame(gameRow as Game)
     if (!joinCheck.ok) {
@@ -697,7 +700,9 @@ export async function POST(req: NextRequest) {
           ? 'ayo'
           : isScrabbleGame(rowGameType)
             ? 'scrabble'
-            : 'tic_tac_toe'
+            : isPingPongGame(rowGameType)
+              ? 'ping_pong'
+              : 'tic_tac_toe'
     const maxPlayers = lobbyMaxPlayersFromGame(limitKey, gameRow, lobbyLimits)
     const { count: playerCount } = await supabase
       .from('players')
@@ -1705,6 +1710,12 @@ export async function DELETE(req: NextRequest) {
     // Tic-Tac-Toe tables are RLS-locked to anon writes — remove via service role.
     // (Caller authority — host, or the player removing themselves — is enforced above.)
     const { error } = await removeTicTacToePlayer(getSupabaseAdmin(), id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isPingPongGame(gameType)) {
+    const { error } = await removePingPongPlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }

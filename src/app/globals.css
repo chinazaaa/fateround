@@ -1819,3 +1819,55 @@ body {
 :root[data-host-lobby='active'] .voice-fab {
   bottom: calc(var(--lobby-footer-h, 5rem) + 1rem);
 }
+
+/* ── Ping Pong theme (tied to game type) ───────────────────────── */
+:root[data-game-type='ping_pong']:not([data-theme='dark']),
+[data-game-type='ping_pong']:not([data-theme='dark']) {
+  --background: #064e3b;
+  --background-soft: #047857;
+  --foreground: #ecfdf5;
+  --muted: #a7f3d0;
+  --faint: #6ee7b7;
+
+  --card: rgba(6, 95, 70, 0.72);
+  --card-strong: rgba(6, 95, 70, 0.92);
+  --card-hover: rgba(6, 95, 70, 0.85);
+  --surface-inset-bg: rgba(4, 120, 87, 0.5);
+
+  --border: rgba(16, 185, 129, 0.2);
+  --border-strong: rgba(16, 185, 129, 0.4);
+
+  --primary: #f43f5e;
+  --primary-strong: #e11d48;
+  --primary-glow: rgba(244, 63, 94, 0.35);
+
+  --bg-gradient:
+    radial-gradient(ellipse 90% 60% at 50% -20%, rgba(244, 63, 94, 0.15) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 80%, rgba(16, 185, 129, 0.1) 0%, transparent 50%);
+}
+
+[data-theme='dark'][data-game-type='ping_pong']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-type='ping_pong']:not([data-theme='light']),
+[data-theme='dark'] [data-game-type='ping_pong']:not([data-theme='light']) {
+  --background: #022c22;
+  --background-soft: #064e3b;
+  --foreground: #ecfdf5;
+  --muted: #6ee7b7;
+  --faint: #34d399;
+
+  --card: rgba(6, 78, 59, 0.75);
+  --card-strong: rgba(4, 120, 87, 0.92);
+  --card-hover: rgba(6, 95, 70, 0.85);
+  --surface-inset-bg: rgba(255, 255, 255, 0.04);
+
+  --border: rgba(16, 185, 129, 0.15);
+  --border-strong: rgba(16, 185, 129, 0.3);
+
+  --primary: #fb7185;
+  --primary-strong: #f43f5e;
+  --primary-glow: rgba(244, 63, 94, 0.25);
+
+  --bg-gradient:
+    radial-gradient(ellipse 90% 55% at 50% -10%, rgba(244, 63, 94, 0.2) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 35% at 85% 90%, rgba(16, 185, 129, 0.15) 0%, transparent 50%);
+}

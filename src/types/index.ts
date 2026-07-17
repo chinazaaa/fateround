@@ -52,6 +52,7 @@ export type GameType =
   | 'word_search'
   | 'word_scramble'
   | 'landmine'
+  | 'ping_pong'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'
@@ -232,7 +233,16 @@ export interface CodewordsMessage {
   created_at: string
   player_name?: string
 }
-export type ThemeId = 'default' | 'neon' | 'retro' | 'elegant' | 'tropical' | 'pirate' | 'arctic' | 'naija'
+export type ThemeId =
+  | 'default'
+  | 'neon'
+  | 'retro'
+  | 'elegant'
+  | 'tropical'
+  | 'pirate'
+  | 'arctic'
+  | 'naija'
+  | 'grass_court'
 export type WyrChoice = 'a' | 'b'
 
 export type ParticipantGender = 'male' | 'female'
@@ -399,6 +409,8 @@ export interface Game {
   landmine_mine_count?: number | null
   /** Landmine — award +5 when nobody else gave your answer. */
   landmine_originality_bonus?: boolean | null
+  /** Ping Pong — points required to win the match (3, 5, 7, or 11). */
+  ping_pong_points_to_win?: number | null
 }
 
 export type MonopolyPhase = 'roll' | 'buy' | 'jail' | 'pay_rent' | 'auction' | 'raise_funds' | 'finished'
@@ -894,6 +906,21 @@ export interface TicTacToeSession {
   is_draw: boolean
   status_message: string | null
   turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PingPongSession {
+  id: string
+  game_id: string
+  player_x_id: string
+  player_o_id: string
+  score_x: number
+  score_o: number
+  points_to_win: number
+  status: 'active' | 'finished'
+  winner_player_id: string | null
+  status_message: string | null
   created_at: string
   updated_at: string
 }

@@ -53,6 +53,7 @@ export type GameType =
   | 'word_search'
   | 'word_scramble'
   | 'landmine'
+  | 'ping_pong'
 
 export interface Game {
   id: string
@@ -132,6 +133,7 @@ export interface Game {
   word_search_difficulty?: WordSearchDifficulty | string | null
   word_scramble_theme?: string | null
   word_scramble_difficulty?: WordScrambleDifficulty | string | null
+  ping_pong_points_to_win?: number | null
 }
 
 export interface Player {
@@ -165,6 +167,21 @@ export interface TicTacToeSession {
   is_draw: boolean
   status_message: string | null
   turn_deadline_at: string | null
+}
+
+export interface PingPongSession {
+  id: string
+  game_id: string
+  player_x_id: string
+  player_o_id: string
+  score_x: number
+  score_o: number
+  points_to_win: number
+  status: 'active' | 'finished'
+  winner_player_id: string | null
+  status_message: string | null
+  created_at?: string
+  updated_at?: string
 }
 
 export type CheckersColor = 'r' | 'b'

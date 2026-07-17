@@ -1,4 +1,4 @@
-export type ThemeId = 'default' | 'neon' | 'retro' | 'elegant' | 'tropical' | 'pirate' | 'arctic' | 'naija'
+export type ThemeId = 'default' | 'neon' | 'retro' | 'elegant' | 'tropical' | 'pirate' | 'arctic' | 'naija' | 'grass_court'
 
 export type CreateThemeOption = {
   id: ThemeId

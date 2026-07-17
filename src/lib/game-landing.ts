@@ -55,6 +55,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   i_call_on: 'i-call-on',
   sudoku: 'sudoku',
   tic_tac_toe: 'tic-tac-toe',
+  ping_pong: 'ping-pong',
   word_hunt: 'word-hunt',
   chess: 'chess',
   checkers: 'checkers',
@@ -2010,6 +2011,58 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Regular tic-tac-toe is easily drawn once you know it. Ultimate adds a layer — because each move sends your opponent to a specific board, you have to think several moves ahead about where you’re sending them. Far deeper, and much harder to force a draw.',
       },
     ],
+  }),
+
+  ping_pong: landing('ping_pong', {
+    seoTitle: 'Ping Pong Online — Play Real-Time 2-Player Table Tennis',
+    seoDescription:
+      'Play fast-paced Ping Pong online with a friend. Real-time 60fps paddle and ball physics, custom win targets, and win-by-2 rules.',
+    keywords: [
+      'ping pong online',
+      'table tennis online',
+      'ping pong 2 player online',
+      'play ping pong with friends',
+      'table tennis game online',
+      'real time ping pong online',
+      'ping pong online free',
+      'table tennis 2 player game',
+    ],
+    heroSubtitle: 'Classic 2-player Ping Pong. Hit the ball back and forth, and try not to miss.',
+    bodyParagraph:
+      "Grab a friend and settle who has the better reflexes. No table required — just share a link and you're in. You get a paddle, drag to hit the ball, and score when the other person misses. You can set the game to end anywhere from a quick 3 points up to a 21-point marathon, but you always have to win by two.",
+    highlights: ['2 players', '60fps real-time physics', 'Win-by-2 rules'],
+    features: [
+      {
+        title: 'Real-time 60fps physics',
+        description: 'Ultra-smooth paddle movement and dynamic ball bounces synced instantly.',
+        emoji: '🏓',
+      },
+      {
+        title: 'Custom win targets',
+        description: 'Set points to win from 3 up to 21 in the lobby settings before starting.',
+        emoji: '🎯',
+      },
+      {
+        title: 'Win by 2 rules',
+        description: 'Authentic table tennis scoring requires a clear 2-point lead at match point to take the crown.',
+        emoji: '🏆',
+      },
+      SHARED_FEATURES.mobile,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Join a room', description: 'Exactly two players take seats at the table to battle heads-up.' },
+      {
+        title: 'Rally and score',
+        description:
+          'Move your paddle to return the ball across the net. Miss a return and your opponent gets the point.',
+      },
+      {
+        title: 'Win by 2',
+        description: 'First to reach the target points with at least a 2-point margin wins the match.',
+      },
+    ],
+    perfectFor: ['Quick competitive duels', 'Friend challenges', 'Reflex testing'],
   }),
 
   chess: landing('chess', {

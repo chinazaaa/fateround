@@ -64,6 +64,7 @@ import {
   isLudoGame,
   isSnakeAndLadderGame,
   isTicTacToeGame,
+  isPingPongGame,
   isChessGame,
   isCheckersGame,
   isAyoGame,
@@ -666,6 +667,14 @@ function CreateGameInner() {
               rounds_count: 1,
             }
           : {}),
+        ...(isPingPongGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+              ping_pong_points_to_win: 7,
+            }
+          : {}),
         ...(isChessGame(type)
           ? {
               participant_mode: 'joiners' as const,
@@ -828,6 +837,7 @@ function CreateGameInner() {
   const isLudo = isLudoGame(settings.game_type)
   const isSnakeLadder = isSnakeAndLadderGame(settings.game_type)
   const isTicTacToe = isTicTacToeGame(settings.game_type)
+  const isPingPong = isPingPongGame(settings.game_type)
   const isChess = isChessGame(settings.game_type)
   const isCheckers = isCheckersGame(settings.game_type)
   const isAyo = isAyoGame(settings.game_type)
@@ -950,6 +960,7 @@ function CreateGameInner() {
     isLudo ||
     isSnakeLadder ||
     isTicTacToe ||
+    isPingPong ||
     isChess ||
     isScrabble ||
     isDescribeIt ||
@@ -1874,20 +1885,35 @@ function CreateGameInner() {
             >
               {(settings.game_type === 'monopoly'
                 ? THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
-                : THEMES.filter((theme) => theme.id !== 'pirate' && theme.id !== 'arctic' && theme.id !== 'naija')
+                : settings.game_type === 'ping_pong'
+                  ? THEMES.filter((theme) => theme.id === 'default' || theme.id === 'grass_court')
+                  : THEMES.filter(
+                      (theme) =>
+                        theme.id !== 'pirate' &&
+                        theme.id !== 'arctic' &&
+                        theme.id !== 'naija' &&
+                        theme.id !== 'grass_court'
+                    )
               ).map((theme) => {
                 const monopolyEdition =
                   settings.game_type === 'monopoly' ? MONOPOLY_EDITIONS.find((e) => e.themeId === theme.id) : null
                 const displayTheme = monopolyEdition
                   ? { ...theme, label: monopolyEdition.editionName, emoji: monopolyEdition.editionEmoji }
-                  : theme
+                  : settings.game_type === 'ping_pong' && theme.id === 'default'
+                    ? {
+                        ...theme,
+                        label: 'Table Tennis',
+                        emoji: '🏓',
+                        preview: { bg: '#064e3b', accent: '#f43f5e', text: '#ecfdf5' },
+                      }
+                    : theme
                 return (
                   <ThemePreviewCard
                     key={theme.id}
                     theme={displayTheme}
                     selected={settings.theme === theme.id}
                     onClick={() => setSettings({ ...settings, theme: theme.id })}
-                    onPreview={() => setPreviewTheme(theme)}
+                    onPreview={() => setPreviewTheme(displayTheme)}
                   />
                 )
               })}
@@ -2753,6 +2779,28 @@ function CreateGameInner() {
                   Classic Snakes &amp; Ladders — roll one die, climb the ladders, dodge the snakes. Roll a 6 to go
                   again. First to land on 100 exactly wins!
                 </p>
+              </SettingsGroup>
+            ) : isPingPong ? (
+              <SettingsGroup title="Ping Pong room">
+                <p className="text-faint text-sm">Exactly 2 players — 1v1 match where the host can play or watch.</p>
+                <Field label="Points to win">
+                  <select
+                    value={settings.ping_pong_points_to_win ?? 7}
+                    onChange={(e) => setSettings({ ...settings, ping_pong_points_to_win: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    <option value={5}>First to 5 points</option>
+                    <option value={7}>First to 7 points (Quick)</option>
+                    <option value={11}>First to 11 points (Standard)</option>
+                    <option value={21}>First to 21 points (Long)</option>
+                  </select>
+                </Field>
+                <Field label="Late joiners">
+                  <p className="text-sm font-medium">Viewers only</p>
+                  <p className="text-xs text-faint mt-1">
+                    Once the 2-player match starts, anyone else joining the room will automatically become a viewer.
+                  </p>
+                </Field>
               </SettingsGroup>
             ) : isTicTacToe ? (
               <SettingsGroup title="Tic-Tac-Toe room">
@@ -5345,6 +5393,7 @@ function CreateGameInner() {
           theme={previewTheme}
           onClose={() => setPreviewTheme(null)}
           onSelect={(themeId) => setSettings({ ...settings, theme: themeId })}
+          gameType={settings.game_type}
         />
       </>
     )

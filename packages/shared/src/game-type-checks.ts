@@ -123,3 +123,8 @@ export function isQuiplashGame(gameType: GameType | string | undefined): boolean
 export function isQuickDrawGame(gameType: GameType | string | undefined): boolean {
   return eq(gameType, 'quick_draw')
 }
+
+export function isPingPongGame(gameType: GameType | string | undefined): boolean {
+  return eq(gameType, 'ping_pong')
+}
+
