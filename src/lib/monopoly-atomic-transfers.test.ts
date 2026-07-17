@@ -231,4 +231,51 @@ describe('processMonopolyForfeit — atomic bankruptcy transfer', () => {
     expect((params.p_board_patch as Record<string, unknown>).pending_debt).toBeNull()
     expect(m.updates.filter((u) => u.table === 'monopoly_player_state')).toHaveLength(0)
   })
+
+  it('advances the debt queue to the next player when the current debtor forfeits', async () => {
+    const nextDebt = {
+      player_id: 'third',
+      creditor_player_id: null,
+      amount: 100,
+      reason: 'Owe £100 for something',
+      debt_type: 'card',
+    }
+    const m = makeMockSupabase({
+      board: baseBoard({
+        phase: 'raise_funds',
+        current_turn_index: 0,
+        property_owners: { '3': 'owner' },
+        pending_space: 3,
+        pending_debt: {
+          player_id: 'payer',
+          creditor_player_id: 'owner',
+          amount: 4,
+          reason: 'Owe £4 rent on Whitechapel Road',
+          debt_type: 'rent',
+          space_index: 3,
+          next_debts: [nextDebt],
+        },
+      }),
+      states: [
+        playerState('payer', 3, 0, { get_out_of_jail_free: 1 }),
+        playerState('owner', 800, 1),
+        playerState('third', 300, 2),
+      ],
+    })
+    const result = await processMonopolyForfeit(m.supabase, 'GAME1', 'payer')
+
+    expect(result.error).toBeUndefined()
+    expect(m.rpcCalls).toHaveLength(1)
+
+    const boardPatch = m.rpcCalls[0]!.params.p_board_patch as Record<string, unknown>
+    // Functionality assertions:
+    // 1. Game remains in raise_funds phase to handle the next player's debt
+    expect(boardPatch.phase).toBe('raise_funds')
+    // 2. The turn does not advance because the current player's action isn't over yet
+    expect(boardPatch.current_turn_index).toBe(0)
+    // 3. The status message instructs the next debtor
+    expect(boardPatch.status_message).toContain('Owe £100 for something — mortgage or sell buildings')
+    // 4. The pending debt state is replaced with the next debt in the queue
+    expect(boardPatch.pending_debt).toEqual(nextDebt)
+  })
 })
