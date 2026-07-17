@@ -39,7 +39,6 @@ import { getCustomSlotCount } from '@/lib/custom-game'
 import { buildHotSeatRoundRows } from '@/lib/hot-seat'
 import { buildPickANumberRoundRows } from '@/lib/pick-a-number'
 import {
-  buildRoundsFromQuotePool,
   buildRoundsFromAnimePool,
   buildRoundsFromDeck,
   wstAutoRoundCount,
@@ -1416,9 +1415,10 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
 
     const participantIds = (participantsData ?? []).map((p) => p.id)
 
-    let playerRoundRows: ReturnType<typeof buildRoundsFromQuotePool> = []
+    let playerRoundRows: ReturnType<typeof buildRoundsFromDeck> = []
     let animeRoundRows: ReturnType<typeof buildRoundsFromAnimePool> = []
     let deckRoundRows: ReturnType<typeof buildRoundsFromDeck> = []
+    const joinedPlayerIds = playersData.filter((p) => p.spectator !== true).map((p) => p.id)
 
     // Pre-set roster: build choice-rounds from the host deck stored in games.custom_questions
     // (Platform / Library / uploaded CSV). Players just join and guess the author from choices —
@@ -1431,7 +1431,6 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
           { status: 400 }
         )
       }
-      const joinedPlayerIds = playersData.filter((p) => p.spectator !== true).map((p) => p.id)
       deckRoundRows = buildRoundsFromDeck({
         gameId: code.toUpperCase(),
         participantIds: joinedPlayerIds,
@@ -1441,43 +1440,29 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       })
     }
 
-    if (wstQuoteSource === 'player' || wstQuoteSource === 'both') {
-      if (wstQuoteSource === 'player') {
-        if (participantIds.length < 2) {
-          return NextResponse.json({ error: 'Need at least 2 names on the list' }, { status: 400 })
-        }
-        const submitters = playersData.filter((p) => p.participant_id)
-        if (submitters.length < 2) {
-          return NextResponse.json(
-            {
-              error: 'Need at least 2 players who claimed a name from the list',
-            },
-            { status: 400 }
-          )
-        }
-      }
-
+    // Players submit: each player-authored question (quote + options + correct) is a round.
+    if (wstQuoteSource === 'player') {
       const { data: poolEntries } = await supabase.from('wst_quote_pool').select('*').eq('game_id', code.toUpperCase())
-
-      const quotes = poolEntries ?? []
-      if (wstQuoteSource === 'player' && quotes.length < 2) {
+      const deck = (poolEntries ?? [])
+        .map((e) => ({
+          quote: typeof e.quote_text === 'string' ? e.quote_text.trim() : '',
+          options: Array.isArray(e.options) ? e.options.map((o: unknown) => String(o).trim()).filter(Boolean) : [],
+          correctIndex: typeof e.correct_index === 'number' ? e.correct_index : -1,
+        }))
+        .filter((q) => q.quote && q.options.length >= 2 && q.correctIndex >= 0 && q.correctIndex < q.options.length)
+      if (deck.length < WST_DECK_MIN_ENTRIES) {
         return NextResponse.json(
-          {
-            error: 'Need at least 2 quotes in the pool before starting — players submit quotes in the lobby',
-          },
+          { error: 'Need at least 2 questions submitted in the lobby before starting' },
           { status: 400 }
         )
       }
-
-      if (quotes.length > 0) {
-        const count = wstAutoRoundCount(quotes.length)
-        playerRoundRows = buildRoundsFromQuotePool({
-          gameId: code.toUpperCase(),
-          participantIds,
-          poolEntries: quotes.slice(0, count),
-          now,
-        })
-      }
+      playerRoundRows = buildRoundsFromDeck({
+        gameId: code.toUpperCase(),
+        participantIds: joinedPlayerIds,
+        deck: deck.slice(0, wstAutoRoundCount(deck.length)),
+        startIndex: 0,
+        now,
+      })
     }
 
     if (wstQuoteSource === 'anime' || wstQuoteSource === 'both') {
