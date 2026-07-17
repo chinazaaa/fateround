@@ -131,7 +131,7 @@ export function HostLobby({
         <button
           type="button"
           onClick={() => setSettingsOpen(true)}
-          className="mr-14 flex shrink-0 items-center gap-2 rounded-full border border-[var(--border-strong)] bg-[var(--card-strong)] px-3.5 py-2 text-sm font-semibold text-muted transition-colors hover:text-[var(--foreground)] sm:mr-28"
+          className="mr-14 flex shrink-0 sm:hidden items-center gap-2 rounded-full border border-[var(--border-strong)] bg-[var(--card-strong)] px-3.5 py-2 text-sm font-semibold text-muted transition-colors hover:text-[var(--foreground)]"
         >
           <SlidersIcon size={16} />
           Host settings
@@ -147,16 +147,26 @@ export function HostLobby({
             </span>
           </div>
 
-          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+          <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2 mt-1">
             <h1 className="text-2xl sm:text-3xl font-black text-body">{game.title || 'Game'}</h1>
-            <Link
-              href={gameRulesHref(parseGameType(game.game_type))}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="shrink-0 text-sm font-semibold text-[var(--primary)] transition-opacity hover:opacity-80"
-            >
-              How to play →
-            </Link>
+            <div className="flex flex-col items-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(true)}
+                className="hidden sm:flex shrink-0 items-center gap-2 rounded-full border border-[var(--border-strong)] bg-[var(--card-strong)] px-3 py-1.5 text-xs font-semibold text-muted transition-colors hover:text-[var(--foreground)]"
+              >
+                <SlidersIcon size={14} />
+                Host settings
+              </button>
+              <Link
+                href={gameRulesHref(parseGameType(game.game_type))}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 text-sm font-semibold text-[var(--primary)] transition-opacity hover:opacity-80"
+              >
+                How to play →
+              </Link>
+            </div>
           </div>
 
           {/* Room-code / share card — the hero of the lobby (this is what gets people in).

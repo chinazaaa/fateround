@@ -14,34 +14,133 @@
    from fate-round-rooms.css / fate-round-ds.css.
    ══════════════════════════════════════════════════════════════════ */
 
-@keyframes fr-ring { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(2.6); opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .fr-room [style*="fr-ring"] { animation: none !important; } }
+@keyframes fr-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fr-room [style*='fr-ring'] {
+    animation: none !important;
+  }
+}
 
 /* ── playing card face (the only per-game difference) ─────────────── */
-.fr-room .pc { width: 54px; height: 78px; border-radius: 9px; background: #fff; border: 1px solid #d8d2d8; box-shadow: 0 1px 3px rgba(20, 18, 26, 0.16); position: relative; color: #1a1720; flex-shrink: 0; overflow: hidden; }
-.fr-room .pc .c { position: absolute; font: 800 12px var(--font-display); line-height: 1; display: flex; flex-direction: column; align-items: center; }
-.fr-room .pc .c small { font-size: 11px; }
-.fr-room .pc .c svg { width: 11px; height: 11px; }
-.fr-room .pc.lg .c svg { width: 13px; height: 13px; }
-.fr-room .pc .c.tl { top: 5px; left: 6px; }
-.fr-room .pc .c.br { bottom: 5px; right: 6px; transform: rotate(180deg); }
-.fr-room .pc .mid { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 26px; }
+.fr-room .pc {
+  width: 54px;
+  height: 78px;
+  border-radius: 9px;
+  background: #fff;
+  border: 1px solid #d8d2d8;
+  box-shadow: 0 1px 3px rgba(20, 18, 26, 0.16);
+  position: relative;
+  color: #1a1720;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.fr-room .pc .c {
+  position: absolute;
+  font: 800 12px var(--font-display);
+  line-height: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.fr-room .pc .c small {
+  font-size: 11px;
+}
+.fr-room .pc .c svg {
+  width: 11px;
+  height: 11px;
+}
+.fr-room .pc.lg .c svg {
+  width: 13px;
+  height: 13px;
+}
+.fr-room .pc .c.tl {
+  top: 5px;
+  left: 6px;
+}
+.fr-room .pc .c.br {
+  bottom: 5px;
+  right: 6px;
+  transform: rotate(180deg);
+}
+.fr-room .pc .mid {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+}
 /* Whot shape glyphs are the app's canonical SVG (WhotShapeIcon). Scale them
    up to fill the card face the way the design's emoji did (26px mid / 34px on
    the large discard + picker cards). */
-.fr-room .pc .mid svg { width: 26px; height: 26px; }
-.fr-room .pc.lg .mid svg { width: 34px; height: 34px; }
-.fr-room .pc.red { color: #dc2626; }
-.fr-room .pc.whot { background: var(--rose-50); border-color: var(--rose-300); color: var(--rose-700); }
-.fr-room .pc.whot .mid { font-size: 15px; font-weight: 800; letter-spacing: 0.04em; }
-.fr-room .pc.whot.lg .mid { font-size: 19px; letter-spacing: 0; }
-.fr-room .pc.wild { box-shadow: 0 0 0 2px var(--primary), 0 1px 3px rgba(20, 18, 26, 0.16); }
-.fr-room .pc.lg { width: 70px; height: 100px; border-radius: 11px; }
-.fr-room .pc.lg .mid { font-size: 34px; }
-.fr-room .pc.lg .c { font-size: 14px; }
-.fr-room .pc.back { background: var(--accent, #059669); border-color: transparent; color: #fff; }
-.fr-room .pc.back::after { content: "✺"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 24px; opacity: 0.9; }
-.fr-room .pc.back.thin::after { font-size: 20px; }
+.fr-room .pc .mid svg {
+  width: 26px;
+  height: 26px;
+}
+.fr-room .pc.lg .mid svg {
+  width: 34px;
+  height: 34px;
+}
+.fr-room .pc.red {
+  color: #dc2626;
+}
+.fr-room .pc.whot {
+  background: var(--rose-50);
+  border-color: var(--rose-300);
+  color: var(--rose-700);
+}
+.fr-room .pc.whot .mid {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.fr-room .pc.whot.lg .mid {
+  font-size: 19px;
+  letter-spacing: 0;
+}
+.fr-room .pc.wild {
+  box-shadow:
+    0 0 0 2px var(--primary),
+    0 1px 3px rgba(20, 18, 26, 0.16);
+}
+.fr-room .pc.lg {
+  width: 70px;
+  height: 100px;
+  border-radius: 11px;
+}
+.fr-room .pc.lg .mid {
+  font-size: 34px;
+}
+.fr-room .pc.lg .c {
+  font-size: 14px;
+}
+.fr-room .pc.back {
+  background: var(--accent, #059669);
+  border-color: transparent;
+  color: #fff;
+}
+.fr-room .pc.back::after {
+  content: '✺';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  opacity: 0.9;
+}
+.fr-room .pc.back.thin::after {
+  font-size: 20px;
+}
 
 /* ── play surface column ──────────────────────────────────────────
    The card-table play surface mounts inside the room shell's `.pr-stage`
@@ -64,102 +163,386 @@
    pushed DOWN by that padding and overflows the viewport, dropping the hand
    below the fold. `calc(100dvh - 3.75rem)` makes the room fill exactly the space
    under the header. */
-.fr-room-poll:has(.ct-surface) { height: calc(100dvh - 3.75rem); min-height: 0; overflow: hidden; }
-.fr-room .ct-surface { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.fr-room .ct-surface > .pr-prog { flex: 0 0 auto; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
-.fr-room .ct-surface > .turnrail { flex: 0 0 auto; }
-.fr-room .ct-surface > .table { min-height: 0; overflow-y: auto; }
-.fr-room .ct-surface > .hand-wrap { flex: 0 0 auto; }
+.fr-room-poll:has(.ct-surface) {
+  height: calc(100dvh - 3.75rem);
+  min-height: 0;
+  overflow: hidden;
+}
+.fr-room .ct-surface {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.fr-room .ct-surface > .pr-prog {
+  flex: 0 0 auto;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.fr-room .ct-surface > .turnrail {
+  flex: 0 0 auto;
+}
+.fr-room .ct-surface > .table {
+  min-height: 0;
+  overflow-y: auto;
+}
+.fr-room .ct-surface > .hand-wrap {
+  flex: 0 0 auto;
+}
 /* Spectator (watch-only): invert the pinning. For a player the felt scrolls and
    the hand is pinned; for a spectator there is no hand, and a long player roster
    (flex:0 0 auto) squished the felt down to nothing — clipping the draw/discard
    piles off the top of the felt. Give the felt its natural height and make the
    roster the scroll region instead. */
-.fr-room .ct-surface:has(> .hand-wrap.spec) > .table { flex: 0 0 auto; overflow: visible; }
-.fr-room .ct-surface > .hand-wrap.spec { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin-bottom: 0; }
+.fr-room .ct-surface:has(> .hand-wrap.spec) > .table {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+.fr-room .ct-surface > .hand-wrap.spec {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin-bottom: 0;
+}
 
 /* ── turn rail (seats along the top) ──────────────────────────────── */
-.fr-room .turnrail { display: flex; gap: 10px; padding: 12px 14px 2px; overflow-x: auto; }
-.fr-room .seat { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 52px; }
-.fr-room .seat .sav { position: relative; width: 40px; height: 40px; border-radius: 50%; background: var(--primary-soft); color: var(--primary-strong); display: flex; align-items: center; justify-content: center; font: 800 15px var(--font-display); border: 2px solid transparent; }
-.fr-room .seat.turn .sav { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-ring); }
-.fr-room .seat .cc { position: absolute; bottom: -4px; right: -6px; background: var(--text); color: var(--bg); font: 800 9px var(--font-mono); border-radius: 9999px; padding: 2px 5px; border: 2px solid var(--surface); }
-.fr-room .seat .nm { font-size: 11px; font-weight: 600; color: var(--text); max-width: 74px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fr-room .seat.turn .nm { color: var(--primary-strong); }
+.fr-room .turnrail {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px 2px;
+  overflow-x: auto;
+}
+.fr-room .seat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 52px;
+}
+.fr-room .seat .sav {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 800 15px var(--font-display);
+  border: 2px solid transparent;
+}
+.fr-room .seat.turn .sav {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-ring);
+}
+.fr-room .seat .cc {
+  position: absolute;
+  bottom: -4px;
+  right: -6px;
+  background: var(--text);
+  color: var(--bg);
+  font: 800 9px var(--font-mono);
+  border-radius: 9999px;
+  padding: 2px 5px;
+  border: 2px solid var(--surface);
+}
+.fr-room .seat .nm {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  max-width: 74px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fr-room .seat.turn .nm {
+  color: var(--primary-strong);
+}
 /* Per-turn countdown chip on the active seat (mono digits, red when low). */
-.fr-room .seat-timer { font: 800 10.5px var(--font-mono); color: var(--primary-strong); background: var(--primary-soft); border-radius: 9999px; padding: 1px 7px; line-height: 1.5; }
-.fr-room .seat-timer.low { color: var(--danger); background: var(--danger-soft); }
+.fr-room .seat-timer {
+  font: 800 10.5px var(--font-mono);
+  color: var(--primary-strong);
+  background: var(--primary-soft);
+  border-radius: 9999px;
+  padding: 1px 7px;
+  line-height: 1.5;
+}
+.fr-room .seat-timer.low {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
 
 /* ── table (the felt: piles + status) ─────────────────────────────── */
 /* `safe center` centres the felt vertically but falls back to top-alignment when
    the content is taller than the (short) felt — otherwise plain `center` clips
    the top row (the "DISCARD" label) under the felt's `overflow-y:auto`, most
    visible on the host where the rail is taller. */
-.fr-room .table { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: safe center; gap: 16px; padding: 14px 16px; }
-.fr-room .piles { display: flex; align-items: center; gap: 26px; }
-.fr-room .pile { display: flex; flex-direction: column; align-items: center; gap: 7px; }
-.fr-room .pile .lab { font: 700 9px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-faint); }
-.fr-room .drawpile { position: relative; }
-.fr-room .drawpile .b2 { position: absolute; top: -3px; left: 3px; z-index: -1; opacity: 0.7; }
-.fr-room .drawpile .cnt { position: absolute; top: -7px; right: -7px; background: var(--text); color: var(--bg); font: 800 10px var(--font-mono); border-radius: 9999px; padding: 2px 6px; }
-.fr-room .turn-status { text-align: center; font-size: 14.5px; font-weight: 600; color: var(--text); }
-.fr-room .turn-status .g { color: var(--text-faint); font-weight: 500; }
+.fr-room .table {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: safe center;
+  gap: 16px;
+  padding: 14px 16px;
+}
+.fr-room .piles {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+}
+.fr-room .pile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+}
+.fr-room .pile .lab {
+  font: 700 9px var(--font-sans);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.fr-room .drawpile {
+  position: relative;
+}
+.fr-room .drawpile .b2 {
+  position: absolute;
+  top: -3px;
+  left: 3px;
+  z-index: -1;
+  opacity: 0.7;
+}
+.fr-room .drawpile .cnt {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  background: var(--text);
+  color: var(--bg);
+  font: 800 10px var(--font-mono);
+  border-radius: 9999px;
+  padding: 2px 6px;
+}
+.fr-room .turn-status {
+  text-align: center;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.fr-room .turn-status .g {
+  color: var(--text-faint);
+  font-weight: 500;
+}
 
 /* ── action toast (pick 2 stack, last card, wild call, etc.) ──────── */
-.fr-room .act-toast { display: inline-flex; align-items: center; gap: 8px; padding: 9px 15px; border-radius: 9999px; font-size: 13px; font-weight: 700; }
-.fr-room .act-toast.warn { background: var(--warning-soft); color: var(--warning); }
-.fr-room .act-toast.hot { background: var(--danger-soft); color: var(--danger); }
-.fr-room .act-toast.ok { background: var(--success-soft); color: var(--success); }
+.fr-room .act-toast {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 15px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.fr-room .act-toast.warn {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.fr-room .act-toast.hot {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.fr-room .act-toast.ok {
+  background: var(--success-soft);
+  color: var(--success);
+}
 
 /* ── WHOT demand badge (persistent called shape/number) ───────────────
    Stays visible for the whole WHOT call, independent of the transient
    status toast — so it survives a player drawing from the market. */
-.fr-room .whot-demand { display: inline-flex; align-items: center; gap: 8px; padding: 6px 13px; border-radius: 9999px; background: var(--primary-soft); border: 1px solid var(--primary-ring); }
-.fr-room .whot-demand__lbl { font: 700 9px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--primary-strong); }
-.fr-room .whot-demand__val { display: inline-flex; align-items: center; gap: 5px; font-size: 13.5px; font-weight: 800; color: var(--text); text-transform: capitalize; }
+.fr-room .whot-demand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 13px;
+  border-radius: 9999px;
+  background: var(--primary-soft);
+  border: 1px solid var(--primary-ring);
+}
+.fr-room .whot-demand__lbl {
+  font: 700 9px var(--font-sans);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--primary-strong);
+}
+.fr-room .whot-demand__val {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--text);
+  text-transform: capitalize;
+}
 
 /* ── your fanned hand ─────────────────────────────────────────────── */
-.fr-room .hand-wrap { border-top: 1px solid var(--border); background: var(--surface); padding: 14px 12px calc(26px + env(safe-area-inset-bottom, 0px)); }
-.fr-room .hand-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 0 4px; }
-.fr-room .hand-head .hl { font: 700 10px var(--font-sans); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); }
-.fr-room .hand-head .cnt { font-size: 12px; font-weight: 700; color: var(--text-muted); }
-.fr-room .hand-head-right { display: flex; align-items: center; gap: 10px; }
+.fr-room .hand-wrap {
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding: 14px 12px calc(26px + env(safe-area-inset-bottom, 0px));
+}
+.fr-room .hand-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding: 0 4px;
+}
+.fr-room .hand-head .hl {
+  font: 700 10px var(--font-sans);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.fr-room .hand-head .cnt {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.fr-room .hand-head-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 /* Stack / Separate layout toggle — a personal view preference for your hand. */
-.fr-room .hand-layout { display: inline-flex; background: var(--surface-sunken, var(--bg)); border: 1px solid var(--border); border-radius: 9999px; padding: 2px; }
-.fr-room .hand-layout .hlt { font: 700 10px var(--font-sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); background: none; border: 0; border-radius: 9999px; padding: 3px 10px; cursor: pointer; transition: color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out); }
-.fr-room .hand-layout .hlt.on { color: var(--primary-strong); background: var(--primary-soft); }
-.fr-room .hand { display: flex; justify-content: center; padding-top: 14px; min-height: 92px; }
+.fr-room .hand-layout {
+  display: inline-flex;
+  background: var(--surface-sunken, var(--bg));
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  padding: 2px;
+}
+.fr-room .hand-layout .hlt {
+  font: 700 10px var(--font-sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: none;
+  border: 0;
+  border-radius: 9999px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+.fr-room .hand-layout .hlt.on {
+  color: var(--primary-strong);
+  background: var(--primary-soft);
+}
+.fr-room .hand {
+  display: flex;
+  justify-content: center;
+  padding-top: 14px;
+  min-height: 92px;
+}
 /* many-cards: let a big hand scroll horizontally instead of overflowing */
 /* `touch-action: pan-x` is required for the swipe to scroll on TOUCH devices —
    without it the browser leaves the gesture ambiguous (cards have tap handlers +
    the room owns vertical layout) and the horizontal swipe never engages, so the
    hand scrolls with a mouse/trackpad but not by finger. `-webkit-overflow-scrolling`
    gives iOS momentum; `overscroll-behavior-x` keeps the swipe from bubbling out. */
-.fr-room .hand.scroll { justify-content: flex-start; overflow-x: auto; overflow-y: hidden; padding: 14px 6px 6px; scroll-snap-type: x proximity; touch-action: pan-x; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
-.fr-room .hand.scroll::-webkit-scrollbar { height: 6px; }
-.fr-room .hand.scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 9999px; }
-.fr-room .hand.scroll .pc { scroll-snap-align: center; }
-.fr-room .hand.tight .pc { margin-left: -26px; }
+.fr-room .hand.scroll {
+  justify-content: flex-start;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 14px 6px 6px;
+  scroll-snap-type: x proximity;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+.fr-room .hand.scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.fr-room .hand.scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 9999px;
+}
+.fr-room .hand.scroll .pc {
+  scroll-snap-align: center;
+}
+.fr-room .hand.tight .pc {
+  margin-left: -26px;
+}
 /* Separate layout: real gaps so every card is fully visible; scrolls when the
    hand is wide, but stays centred while it still fits (`safe center`). */
-.fr-room .hand.separate { justify-content: safe center; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; touch-action: pan-x; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
-.fr-room .hand.separate::-webkit-scrollbar { height: 6px; }
-.fr-room .hand.separate::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 9999px; }
-.fr-room .hand.separate .pc { margin-left: 6px; scroll-snap-align: center; }
-.fr-room .hand.separate .pc:first-child { margin-left: 0; }
-.fr-room .hand .pc { margin-left: -15px; cursor: pointer; transition: transform var(--dur-fast) var(--ease-out); }
-.fr-room .hand .pc:first-child { margin-left: 0; }
-.fr-room .hand .pc.sel { transform: translateY(-14px); }
+.fr-room .hand.separate {
+  justify-content: safe center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+.fr-room .hand.separate::-webkit-scrollbar {
+  height: 6px;
+}
+.fr-room .hand.separate::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 9999px;
+}
+.fr-room .hand.separate .pc {
+  margin-left: 6px;
+  scroll-snap-align: center;
+}
+.fr-room .hand.separate .pc:first-child {
+  margin-left: 0;
+}
+.fr-room .hand .pc {
+  margin-left: -15px;
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.fr-room .hand .pc:first-child {
+  margin-left: 0;
+}
+.fr-room .hand .pc.sel {
+  transform: translateY(-14px);
+}
 /* Lift on hover only for real pointers — on touch, :hover sticks to the
    last-tapped card and leaves one card raised out of the fan after a draw. */
 @media (hover: hover) and (pointer: fine) {
-  .fr-room .hand .pc:hover { transform: translateY(-14px); }
+  .fr-room .hand .pc:hover {
+    transform: translateY(-14px);
+  }
 }
-.fr-room .hand .pc.dim { opacity: 1; filter: grayscale(0.4) brightness(0.94); cursor: not-allowed; }
-.fr-room .hand .pc.playable { box-shadow: 0 0 0 2px var(--success), 0 1px 3px rgba(20, 18, 26, 0.16); }
-.fr-room .hand-hint { text-align: center; font-size: 12px; color: var(--text-faint); margin: 10px 0 0; }
-.fr-room .hand-actions { display: flex; gap: 9px; margin-top: 12px; }
-.fr-room .hand-actions > * { flex: 1; }
+.fr-room .hand .pc.dim {
+  opacity: 1;
+  filter: grayscale(0.4) brightness(0.94);
+  cursor: not-allowed;
+}
+.fr-room .hand .pc.playable {
+  box-shadow:
+    0 0 0 2px var(--success),
+    0 1px 3px rgba(20, 18, 26, 0.16);
+}
+.fr-room .hand-hint {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-faint);
+  margin: 10px 0 0;
+}
+.fr-room .hand-actions {
+  display: flex;
+  gap: 9px;
+  margin-top: 12px;
+}
+.fr-room .hand-actions > * {
+  flex: 1;
+}
 /* Float the hand panel UP off the bottom edge on mobile — it's the primary
    control ("the main part of the game") and read as sitting too low / under the
    browser toolbar. A bottom MARGIN lifts the whole panel (the felt above shrinks
@@ -171,9 +554,13 @@
   /* 8dvh is the sweet spot: enough to lift the hand clear of the bottom edge, but
      small enough that the felt keeps room for the draw/discard piles even on a
      ~700px mobile viewport (a bigger lift squeezes the felt and clips the piles). */
-  .fr-room .ct-surface > .hand-wrap { margin-bottom: calc(8dvh + env(safe-area-inset-bottom, 0px)); }
+  .fr-room .ct-surface > .hand-wrap {
+    margin-bottom: calc(8dvh + env(safe-area-inset-bottom, 0px));
+  }
   /* The host sits their hand a little lower than the player's (smaller lift). */
-  .fr-room-poll[data-host-room] .ct-surface > .hand-wrap { margin-bottom: calc(4dvh + env(safe-area-inset-bottom, 0px)); }
+  .fr-room-poll[data-host-room] .ct-surface > .hand-wrap {
+    margin-bottom: calc(4dvh + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 /* ── shape / suit / number picker overlay ─────────────────────────── */
@@ -182,18 +569,95 @@
    It caps its height and scrolls internally so the full picker is reachable even
    on short viewports. The backdrop pads the edges so the card never touches the
    screen sides on a phone. */
-.fr-room .picker-back { position: fixed; inset: 0; background: rgba(20, 18, 26, 0.5); display: flex; align-items: center; justify-content: center; z-index: 70; padding: 16px; }
-.fr-room .picker { width: 100%; max-width: 440px; max-height: 85dvh; overflow-y: auto; background: var(--surface); border-radius: 20px; padding: 20px 20px 26px; }
-.fr-room .picker h3 { font-family: var(--font-display); font-weight: 800; font-size: 18px; text-align: center; margin: 0 0 4px; color: var(--text); }
-.fr-room .picker p { text-align: center; font-size: 13px; color: var(--text-muted); margin: 0 0 16px; }
-.fr-room .picker-tabs { display: flex; gap: 5px; padding: 4px; border-radius: 9999px; background: var(--surface-sunken); margin: 0 auto 16px; max-width: 220px; }
-.fr-room .picker-tabs button { flex: 1; border: none; background: transparent; padding: 8px; border-radius: 9999px; font: 700 12.5px var(--font-sans); color: var(--text-muted); cursor: pointer; }
-.fr-room .picker-tabs button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
-.fr-room .picker-grid { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-.fr-room .picker-grid button { width: 64px; height: 64px; border-radius: var(--radius-lg); border: 1.5px solid var(--border-strong); background: var(--surface); font-size: 30px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text); }
-.fr-room .picker-grid button:hover { border-color: var(--primary); transform: translateY(-2px); }
-.fr-room .picker-grid button.red { color: #dc2626; }
-.fr-room .picker-grid.nums button { width: 52px; height: 52px; font: 800 20px var(--font-display); color: var(--text); }
+.fr-room .picker-back {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 18, 26, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 70;
+  padding: 16px;
+}
+.fr-room .picker {
+  width: 100%;
+  max-width: 440px;
+  max-height: 85dvh;
+  overflow-y: auto;
+  background: var(--surface);
+  border-radius: 20px;
+  padding: 20px 20px 26px;
+}
+.fr-room .picker h3 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 18px;
+  text-align: center;
+  margin: 0 0 4px;
+  color: var(--text);
+}
+.fr-room .picker p {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0 0 16px;
+}
+.fr-room .picker-tabs {
+  display: flex;
+  gap: 5px;
+  padding: 4px;
+  border-radius: 9999px;
+  background: var(--surface-sunken);
+  margin: 0 auto 16px;
+  max-width: 220px;
+}
+.fr-room .picker-tabs button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 8px;
+  border-radius: 9999px;
+  font: 700 12.5px var(--font-sans);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.fr-room .picker-tabs button.on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+.fr-room .picker-grid {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.fr-room .picker-grid button {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-lg);
+  border: 1.5px solid var(--border-strong);
+  background: var(--surface);
+  font-size: 30px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+}
+.fr-room .picker-grid button:hover {
+  border-color: var(--primary);
+  transform: translateY(-2px);
+}
+.fr-room .picker-grid button.red {
+  color: #dc2626;
+}
+.fr-room .picker-grid.nums button {
+  width: 52px;
+  height: 52px;
+  font: 800 20px var(--font-display);
+  color: var(--text);
+}
 
 /* ── desktop overrides (≥1024px) ──────────────────────────────────────
    The card table mounts inside `.fr-room-poll`, whose desktop stage-head
@@ -205,42 +669,163 @@
 @media (min-width: 1024px) {
   /* Game-time bar: keep the label · countdown row and the progress bar
      (the poll stage-head hides both at this width). */
-  .fr-room .ct-surface > .pr-prog { text-align: left; }
-  .fr-room .ct-surface > .pr-prog .pr-prow { justify-content: space-between; }
-  .fr-room .ct-surface > .pr-prog .pr-prow .tm { display: inline; }
-  .fr-room .ct-surface > .pr-prog .pr-bar { display: block; }
+  .fr-room .ct-surface > .pr-prog {
+    text-align: left;
+  }
+  .fr-room .ct-surface > .pr-prog .pr-prow {
+    justify-content: space-between;
+  }
+  .fr-room .ct-surface > .pr-prog .pr-prow .tm {
+    display: inline;
+  }
+  .fr-room .ct-surface > .pr-prog .pr-bar {
+    display: block;
+  }
 }
 
 /* ── host action in the voice-rail ⋯ menu (Transfer host) ─────────────
    The TransferHostControl trigger styled to match RoomVoiceBar's inline
    menu items (block row · icon + label · hover fill). Settings / Share /
    End game live in the rail directly; Transfer rides the ⋯ menu. */
-.fr-room .ct-voice-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: none; background: transparent; font: 600 13px var(--font-sans); color: var(--text); padding: 9px 10px; border-radius: 9px; cursor: pointer; }
-.fr-room .ct-voice-menu-item:hover { background: var(--surface-sunken); }
-.fr-room .ct-voice-menu-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+.fr-room .ct-voice-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  font: 600 13px var(--font-sans);
+  color: var(--text);
+  padding: 9px 10px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.fr-room .ct-voice-menu-item:hover {
+  background: var(--surface-sunken);
+}
+.fr-room .ct-voice-menu-item svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
 
 /* ── win / session summary ────────────────────────────────────────── */
-.fr-room .cards-finish { text-align: center; padding: 10px 0; }
-.fr-room .cards-finish .cup { font-size: 48px; line-height: 1; }
-.fr-room .cards-finish .hl { font-family: var(--font-display); font-weight: 800; font-size: 27px; letter-spacing: -0.02em; color: var(--text); margin: 6px 0 2px; }
-.fr-room .cards-finish .hl .win { color: var(--primary-strong); }
-.fr-room .cards-finish .gl { font: 700 10.5px var(--font-sans); letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-faint); margin: 0 0 16px; }
-.fr-room .standings { display: flex; flex-direction: column; gap: 8px; text-align: left; }
-.fr-room .st-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: var(--radius-md); background: var(--surface); border: 1px solid var(--border); }
-.fr-room .st-row.first { border-color: var(--primary); background: var(--primary-soft); }
-.fr-room .st-row .rk { width: 22px; font: 800 15px var(--font-display); color: var(--text-faint); text-align: center; }
-.fr-room .st-row.first .rk { color: var(--primary-strong); }
-.fr-room .st-row .nm { font-weight: 700; font-size: 14.5px; color: var(--text); }
-.fr-room .st-row .cards { margin-left: auto; font: 700 12.5px var(--font-mono); color: var(--text-muted); }
+.fr-room .cards-finish {
+  text-align: center;
+  padding: 10px 0;
+}
+.fr-room .cards-finish .cup {
+  font-size: 48px;
+  line-height: 1;
+}
+.fr-room .cards-finish .hl {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 27px;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  margin: 6px 0 2px;
+}
+.fr-room .cards-finish .hl .win {
+  color: var(--primary-strong);
+}
+.fr-room .cards-finish .gl {
+  font: 700 10.5px var(--font-sans);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin: 0 0 16px;
+}
+.fr-room .standings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+.fr-room .st-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.fr-room .st-row.first {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.fr-room .st-row .rk {
+  width: 22px;
+  font: 800 15px var(--font-display);
+  color: var(--text-faint);
+  text-align: center;
+}
+.fr-room .st-row.first .rk {
+  color: var(--primary-strong);
+}
+.fr-room .st-row .nm {
+  font-weight: 700;
+  font-size: 14.5px;
+  color: var(--text);
+}
+.fr-room .st-row .cards {
+  margin-left: auto;
+  font: 700 12.5px var(--font-mono);
+  color: var(--text-muted);
+}
 
 /* ── spectator seat list (watch-only) ─────────────────────────────── */
-.fr-room .spec-seats { display: flex; flex-direction: column; gap: 7px; }
-.fr-room .spec-row { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); }
-.fr-room .spec-row.turn { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-ring); }
-.fr-room .spec-row .sav { width: 34px; height: 34px; border-radius: 50%; background: var(--primary-soft); color: var(--primary-strong); display: flex; align-items: center; justify-content: center; font: 800 14px var(--font-sans); flex-shrink: 0; }
-.fr-room .spec-row .nm { font-size: 13.5px; font-weight: 600; color: var(--text); }
-.fr-room .spec-row .tag { font: 700 10px var(--font-sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--primary-strong); background: var(--primary-soft); border-radius: 9999px; padding: 3px 8px; }
-.fr-room .spec-row .cc { margin-left: auto; font: 700 12px var(--font-mono); color: var(--text-muted); }
+.fr-room .spec-seats {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.fr-room .spec-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.fr-room .spec-row.turn {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-ring);
+}
+.fr-room .spec-row .sav {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 800 14px var(--font-sans);
+  flex-shrink: 0;
+}
+.fr-room .spec-row .nm {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.fr-room .spec-row .tag {
+  font: 700 10px var(--font-sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--primary-strong);
+  background: var(--primary-soft);
+  border-radius: 9999px;
+  padding: 3px 8px;
+}
+.fr-room .spec-row .cc {
+  margin-left: auto;
+  font: 700 12px var(--font-mono);
+  color: var(--text-muted);
+}
 
 /* ── Whot · roomy / desktop board ─────────────────────────────────────
    The card table is a mobile-faithful phone column. On a wide or tall
@@ -250,26 +835,63 @@
    contain the board to a centred, framed block and scale the cards up so the
    gameplay fills the space and reads big. Mobile (< 560px) is untouched. */
 @media (min-width: 560px) {
-  .fr-room-poll:has(.ct-surface.whot) .pr-stage { justify-content: safe center; align-items: center; padding: 24px; }
-  .fr-room .ct-surface.whot {
-    flex: 0 1 auto; width: 100%; max-width: 600px; max-height: 100%; min-height: 0;
-    border: 1px solid var(--border); border-radius: var(--radius-lg);
-    background: var(--surface-sunken); overflow: hidden;
+  .fr-room-poll:has(.ct-surface.whot) .pr-stage {
+    justify-content: safe center;
+    align-items: center;
+    padding: 24px;
   }
-  .fr-room .ct-surface.whot > .pr-prog { padding: 14px 18px 10px; }
-  .fr-room .ct-surface.whot > .turnrail { padding: 12px 16px 4px; justify-content: safe center; }
-  .fr-room .ct-surface.whot > .table { flex: 0 1 auto; padding: 22px 18px; gap: 18px; }
-  .fr-room .ct-surface.whot > .hand-wrap { margin-bottom: 0; }
-  .fr-room .ct-surface.whot .pc { width: 62px; height: 90px; border-radius: 10px; }
-  .fr-room .ct-surface.whot .pc.lg { width: 92px; height: 132px; border-radius: 13px; }
-  .fr-room .ct-surface.whot .pc .mid svg { width: 30px; height: 30px; }
-  .fr-room .ct-surface.whot .pc.lg .mid svg { width: 40px; height: 40px; }
+  .fr-room .ct-surface.whot {
+    flex: 0 1 auto;
+    width: 100%;
+    max-width: 600px;
+    max-height: 100%;
+    min-height: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-sunken);
+    overflow: hidden;
+  }
+  .fr-room .ct-surface.whot > .pr-prog {
+    padding: 14px 18px 10px;
+  }
+  .fr-room .ct-surface.whot > .turnrail {
+    padding: 12px 16px 4px;
+    justify-content: safe center;
+  }
+  .fr-room .ct-surface.whot > .table {
+    flex: 0 1 auto;
+    padding: 22px 18px;
+    gap: 18px;
+  }
+  .fr-room .ct-surface.whot > .hand-wrap {
+    margin-bottom: 0;
+  }
+  .fr-room .ct-surface.whot .pc {
+    width: 62px;
+    height: 90px;
+    border-radius: 10px;
+  }
+  .fr-room .ct-surface.whot .pc.lg {
+    width: 92px;
+    height: 132px;
+    border-radius: 13px;
+  }
+  .fr-room .ct-surface.whot .pc .mid svg {
+    width: 30px;
+    height: 30px;
+  }
+  .fr-room .ct-surface.whot .pc.lg .mid svg {
+    width: 40px;
+    height: 40px;
+  }
 }
 /* Below the desktop two-pane breakpoint, widen the phone frame so the bigger
    board has room to breathe. The >= 1024px grid keeps its own full-width shell
    + side rail, so leave that range alone. */
 @media (min-width: 560px) and (max-width: 1023px) {
-  .fr-room-poll:has(.ct-surface.whot) { max-width: 660px; }
+  .fr-room-poll:has(.ct-surface.whot) {
+    max-width: 660px;
+  }
 }
 
 /* ── Whot · short-screen felt fit ─────────────────────────────────────
@@ -280,15 +902,36 @@
    space so it all fits without scrolling; on very short screens also shrink
    the piles a touch. Whot-scoped. */
 @media (max-height: 820px) {
-  .fr-room .ct-surface.whot > .table { gap: 10px; padding: 8px 16px; }
-  .fr-room .ct-surface.whot .pile { gap: 5px; }
-  .fr-room .ct-surface.whot .whot-demand { padding: 5px 11px; }
-  .fr-room .ct-surface.whot .act-toast { padding: 8px 14px; }
-  .fr-room .ct-surface.whot > .hand-wrap { margin-bottom: calc(2.5dvh + env(safe-area-inset-bottom, 0px)); }
+  .fr-room .ct-surface.whot > .table {
+    gap: 10px;
+    padding: 8px 16px;
+  }
+  .fr-room .ct-surface.whot .pile {
+    gap: 5px;
+  }
+  .fr-room .ct-surface.whot .whot-demand {
+    padding: 5px 11px;
+  }
+  .fr-room .ct-surface.whot .act-toast {
+    padding: 8px 14px;
+  }
+  .fr-room .ct-surface.whot > .hand-wrap {
+    margin-bottom: calc(2.5dvh + env(safe-area-inset-bottom, 0px));
+  }
 }
 @media (max-height: 700px) {
-  .fr-room .ct-surface.whot .table .pc { width: 50px; height: 72px; }
-  .fr-room .ct-surface.whot .table .pc.lg { width: 64px; height: 92px; }
-  .fr-room .ct-surface.whot .table .pc.lg .mid { font-size: 28px; }
-  .fr-room .ct-surface.whot .table .pc.whot.lg .mid { font-size: 15px; }
+  .fr-room .ct-surface.whot .table .pc {
+    width: 50px;
+    height: 72px;
+  }
+  .fr-room .ct-surface.whot .table .pc.lg {
+    width: 64px;
+    height: 92px;
+  }
+  .fr-room .ct-surface.whot .table .pc.lg .mid {
+    font-size: 28px;
+  }
+  .fr-room .ct-surface.whot .table .pc.whot.lg .mid {
+    font-size: 15px;
+  }
 }

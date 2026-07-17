@@ -3,10 +3,7 @@ import type { MahjongRuleOptions, MahjongRuleset } from './types'
 export const MAHJONG_RULESETS: MahjongRuleset[] = ['fate_round', 'hong_kong', 'riichi', 'mcr']
 export const DEFAULT_MAHJONG_RULESET: MahjongRuleset = 'fate_round'
 
-export const MAHJONG_RULESET_LABELS: Record<
-  MahjongRuleset,
-  { label: string; description: string }
-> = {
+export const MAHJONG_RULESET_LABELS: Record<MahjongRuleset, { label: string; description: string }> = {
   fate_round: {
     label: 'Simple Mahjong',
     description: 'Beginner-friendly — draw, discard, calls, simple scoring.',

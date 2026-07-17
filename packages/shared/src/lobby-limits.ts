@@ -15,7 +15,11 @@ import { MONOPOLY_DEFAULT_MAX_PLAYERS, MONOPOLY_MAX_PLAYERS, MONOPOLY_MIN_PLAYER
 import { NPAT_DEFAULT_MAX_PLAYERS, NPAT_MAX_PLAYERS, NPAT_MIN_PLAYERS } from './npat'
 import { QUICK_DRAW_MIN_PLAYERS } from './quick-draw-lie'
 import { QUIPLASH_DEFAULT_MAX_PLAYERS, QUIPLASH_MAX_PLAYERS, QUIPLASH_MIN_PLAYERS } from './quiplash'
-import { SNAKE_LADDER_DEFAULT_MAX_PLAYERS, SNAKE_LADDER_MAX_PLAYERS, SNAKE_LADDER_MIN_PLAYERS } from './snake-and-ladder'
+import {
+  SNAKE_LADDER_DEFAULT_MAX_PLAYERS,
+  SNAKE_LADDER_MAX_PLAYERS,
+  SNAKE_LADDER_MIN_PLAYERS,
+} from './snake-and-ladder'
 import { TTL_DEFAULT_MAX_PLAYERS, TTL_MAX_PLAYERS, TTL_MIN_PLAYERS } from './two-truths'
 import { WHOT_DEFAULT_MAX_PLAYERS, WHOT_MAX_PLAYERS, WHOT_MIN_PLAYERS } from './whot'
 import { WORD_HUNT_DEFAULT_MAX_PLAYERS, WORD_HUNT_MAX_PLAYERS, WORD_HUNT_MIN_PLAYERS } from './word-hunt'
@@ -51,6 +55,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'ayo',
   'crossword',
   'word_search',
+  'ping_pong',
 ] as const
 
 export type LobbyLimitGameType = (typeof LOBBY_LIMIT_GAME_TYPES)[number]
@@ -86,6 +91,10 @@ const SUDOKU_MAX_PLAYERS = 30
 const TIC_TAC_TOE_MIN_PLAYERS = 2
 const TIC_TAC_TOE_MAX_PLAYERS = 2
 const TIC_TAC_TOE_DEFAULT_MAX_PLAYERS = 2
+
+const PING_PONG_MIN_PLAYERS = 2
+const PING_PONG_MAX_PLAYERS = 2
+const PING_PONG_DEFAULT_MAX_PLAYERS = 2
 
 const CHESS_MIN_PLAYERS = 2
 const CHESS_MAX_PLAYERS = 2
@@ -161,6 +170,11 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
   },
   crossword: { min: CROSSWORD_MIN_PLAYERS, max: CROSSWORD_MAX_PLAYERS, default: CROSSWORD_DEFAULT_MAX_PLAYERS },
   word_search: { min: WORD_SEARCH_MIN_PLAYERS, max: WORD_SEARCH_MAX_PLAYERS, default: WORD_SEARCH_DEFAULT_MAX_PLAYERS },
+  ping_pong: {
+    min: PING_PONG_MIN_PLAYERS,
+    max: PING_PONG_MAX_PLAYERS,
+    default: PING_PONG_DEFAULT_MAX_PLAYERS,
+  },
 }
 
 export function isLobbyLimitGameType(value: string): value is LobbyLimitGameType {
@@ -177,11 +191,7 @@ export function playerCountOptions(min: number, max: number): number[] {
   return Array.from({ length: max - min + 1 }, (_, index) => index + min)
 }
 
-export function clampLobbyMaxPlayers(
-  gameType: LobbyLimitGameType,
-  value: number,
-  limits: GamePlayerLimitsMap
-): number {
+export function clampLobbyMaxPlayers(gameType: LobbyLimitGameType, value: number, limits: GamePlayerLimitsMap): number {
   const cfg = limits[gameType]
   return Math.min(cfg.max, Math.max(cfg.min, Math.floor(value)))
 }
