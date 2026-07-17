@@ -8,6 +8,7 @@ import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
+import { HostDuelLobbyPanel } from '@/components/host-lobby/HostDuelLobbyPanel'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
@@ -509,6 +510,13 @@ export function CheckersHostView({ gameCode, hostToken }: { gameCode: string; ho
         }
         settingsChildren={
           <>
+            <HostDuelLobbyPanel
+              gameCode={gameCode}
+              hostToken={hostToken}
+              game={game}
+              duelType="checkers"
+              onGameUpdate={setGame}
+            />
             <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
           </>
         }

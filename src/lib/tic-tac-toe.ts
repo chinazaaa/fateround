@@ -7,6 +7,15 @@ export const TIC_TAC_TOE_MIN_PLAYERS = 2
 export const TIC_TAC_TOE_MAX_PLAYERS = 2
 export const TIC_TAC_TOE_DEFAULT_MAX_PLAYERS = 2
 
+/** Per-turn timer options, in seconds (0 = no timer). Ultimate TTT turns are quick. */
+export const TIC_TAC_TOE_TIME_OPTIONS = [0, 15, 30, 60] as const
+export const TIC_TAC_TOE_DEFAULT_TIME_SECONDS = 0
+
+export function clampTicTacToeTimer(value: unknown): number {
+  const n = Number(value)
+  return (TIC_TAC_TOE_TIME_OPTIONS as readonly number[]).includes(n) ? n : TIC_TAC_TOE_DEFAULT_TIME_SECONDS
+}
+
 /** Ultimate Tic-Tac-Toe: nine 3x3 sub-boards (81 cells total). */
 export const TIC_TAC_TOE_SUB_BOARDS = 9
 export const TIC_TAC_TOE_CELLS = 81
