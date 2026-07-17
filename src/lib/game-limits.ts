@@ -1,4 +1,4 @@
-﻿import type { SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS,
   ANONYMOUS_ROOM_MAX_PLAYERS,
@@ -49,6 +49,7 @@ import {
   WORD_SCRAMBLE_DEFAULT_MAX_PLAYERS,
 } from '@/lib/word-scramble'
 import { LANDMINE_MIN_PLAYERS, LANDMINE_MAX_PLAYERS, LANDMINE_DEFAULT_MAX_PLAYERS } from '@/lib/landmine'
+import { PING_PONG_MIN_PLAYERS, PING_PONG_MAX_PLAYERS, PING_PONG_DEFAULT_MAX_PLAYERS } from '@/lib/ping-pong'
 
 export const LOBBY_LIMIT_GAME_TYPES = [
   'anonymous_messages',
@@ -81,6 +82,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'word_search',
   'word_scramble',
   'landmine',
+  'ping_pong',
 ] as const
 
 export type LobbyLimitGameType = (typeof LOBBY_LIMIT_GAME_TYPES)[number]
@@ -249,6 +251,11 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     max: LANDMINE_MAX_PLAYERS,
     default: LANDMINE_DEFAULT_MAX_PLAYERS,
   },
+  ping_pong: {
+    min: PING_PONG_MIN_PLAYERS,
+    max: PING_PONG_MAX_PLAYERS,
+    default: PING_PONG_DEFAULT_MAX_PLAYERS,
+  },
 }
 
 export function isLobbyLimitGameType(value: string): value is LobbyLimitGameType {
@@ -287,6 +294,7 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
     word_search: { ...GAME_LIMIT_CODE_DEFAULTS.word_search },
     word_scramble: { ...GAME_LIMIT_CODE_DEFAULTS.word_scramble },
     landmine: { ...GAME_LIMIT_CODE_DEFAULTS.landmine },
+    ping_pong: { ...GAME_LIMIT_CODE_DEFAULTS.ping_pong },
   }
 }
 

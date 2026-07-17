@@ -22,6 +22,7 @@ import {
   isChessGame,
   isCheckersGame,
   isTicTacToeGame,
+  isPingPongGame,
 } from '@/lib/game-types'
 import { clampNpatGameDuration, clampNpatMarkingTimer, clampNpatTimer } from '@/lib/npat'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
@@ -41,6 +42,7 @@ import { parsePlayerQuestionsEnabled, parsePlayerQuestionsOrder } from '@/lib/pl
 import { supportsPlayerNameSubmissions } from '@/lib/player-participant-pool'
 import { gameSupportsViewerSetting, lateJoinPolicyToFields, gameAllowsLatePlayerJoin } from '@/lib/viewers'
 import { clampPanRounds } from '@/lib/pick-a-number'
+import { clampPingPongPoints } from '@/lib/ping-pong'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = getSupabaseAnon()
@@ -66,6 +68,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     wst_quote_source: rawWstQuoteSource,
     codewords_player_picks: rawCwPlayerPicks,
     codewords_randomize_teams: rawCwRandomize,
+    ping_pong_points_to_win: rawPingPongPointsToWin,
     participant_filter,
   } = body
 
@@ -183,6 +186,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     if (rawChessPieceSet !== undefined) updatePayload.chess_piece_set = clampChessPieceSet(rawChessPieceSet)
   } else if (rawChessBoardTheme !== undefined || rawChessPieceSet !== undefined) {
     return NextResponse.json({ error: 'Board and piece appearance only apply to Chess games' }, { status: 400 })
+  }
+
+  if (isPingPongGame(gameType)) {
+    if (rawPingPongPointsToWin !== undefined) {
+      updatePayload.ping_pong_points_to_win = clampPingPongPoints(rawPingPongPointsToWin)
+    }
+  } else if (rawPingPongPointsToWin !== undefined) {
+    return NextResponse.json({ error: 'Points to win only applies to Ping Pong games' }, { status: 400 })
   }
 
   if (rawOperativeTimerSeconds !== undefined) {

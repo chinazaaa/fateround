@@ -52,18 +52,20 @@ export function tallyTriviaPlayerScores(
     if (a.is_correct) row.correct += 1
   }
 
-  return activePlayers
-    .map((p) => {
-      const row = totals.get(p.id) ?? { score: 0, correct: 0, totalMs: 0, answerCount: 0 }
-      return {
-        id: p.id,
-        name: p.name,
-        score: row.score,
-        correctCount: row.correct,
-        avgResponseMs: row.answerCount > 0 ? Math.round(row.totalMs / row.answerCount) : 0,
-      }
-    })
-    // Score first, then speed (lower average response wins), name only as the final
-    // fallback — mirrors web src/lib/trivia.ts so both platforms pick the same winner.
-    .sort((a, b) => b.score - a.score || a.avgResponseMs - b.avgResponseMs || a.name.localeCompare(b.name))
+  return (
+    activePlayers
+      .map((p) => {
+        const row = totals.get(p.id) ?? { score: 0, correct: 0, totalMs: 0, answerCount: 0 }
+        return {
+          id: p.id,
+          name: p.name,
+          score: row.score,
+          correctCount: row.correct,
+          avgResponseMs: row.answerCount > 0 ? Math.round(row.totalMs / row.answerCount) : 0,
+        }
+      })
+      // Score first, then speed (lower average response wins), name only as the final
+      // fallback — mirrors web src/lib/trivia.ts so both platforms pick the same winner.
+      .sort((a, b) => b.score - a.score || a.avgResponseMs - b.avgResponseMs || a.name.localeCompare(b.name))
+  )
 }

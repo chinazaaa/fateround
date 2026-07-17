@@ -1,4 +1,13 @@
-export type ThemeId = 'default' | 'neon' | 'retro' | 'elegant' | 'tropical' | 'pirate' | 'arctic' | 'naija'
+export type ThemeId =
+  | 'default'
+  | 'neon'
+  | 'retro'
+  | 'elegant'
+  | 'tropical'
+  | 'pirate'
+  | 'arctic'
+  | 'naija'
+  | 'grass_court'
 
 export interface ThemeConfig {
   id: ThemeId
@@ -67,6 +76,13 @@ export const THEMES: ThemeConfig[] = [
     label: 'Naija',
     emoji: '🇳🇬',
     preview: { bg: '#008751', accent: '#EDE3D3', text: '#008751' },
+    cssVars: {},
+  },
+  {
+    id: 'grass_court',
+    label: 'Grass Court',
+    emoji: '🎾',
+    preview: { bg: '#16a34a', accent: '#eab308', text: '#ffffff' },
     cssVars: {},
   },
 ]

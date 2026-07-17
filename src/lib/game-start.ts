@@ -17,6 +17,7 @@ import { initializeCheckersGame, CHECKERS_MIN_PLAYERS } from '@/lib/checkers'
 import { initializeAyoGame, AYO_MIN_PLAYERS } from '@/lib/ayo'
 import { initializeScrabbleGame, SCRABBLE_MIN_PLAYERS, SCRABBLE_MAX_PLAYERS } from '@/lib/scrabble'
 import { initializeMafiaGame, MAFIA_MIN_PLAYERS, MAFIA_MAX_PLAYERS } from '@/lib/mafia'
+import { initializePingPongGame, PING_PONG_MIN_PLAYERS } from '@/lib/ping-pong'
 
 /** The slice of the game row a start initializer may need. */
 type StartGame = { timer_seconds?: number | null }
@@ -108,6 +109,11 @@ export const GAME_START_SPECS: Partial<Record<GameType, StartSpec>> = {
     minPlayers: MAFIA_MIN_PLAYERS,
     maxPlayers: MAFIA_MAX_PLAYERS,
     initialize: (admin, code, ids) => initializeMafiaGame(admin, code, ids),
+  },
+  ping_pong: {
+    minPlayers: PING_PONG_MIN_PLAYERS,
+    exact: true,
+    initialize: (admin, code, ids) => initializePingPongGame(admin, code, ids),
   },
 }
 

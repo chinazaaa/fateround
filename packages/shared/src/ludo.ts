@@ -1,12 +1,4 @@
-import type {
-  LudoColor,
-  LudoDiceRoll,
-  LudoPiece,
-  LudoPlayerState,
-  LudoSession,
-  LudoVariant,
-  Player,
-} from './types'
+import type { LudoColor, LudoDiceRoll, LudoPiece, LudoPlayerState, LudoSession, LudoVariant, Player } from './types'
 
 export const LUDO_MIN_PLAYERS = 2
 export const LUDO_MAX_PLAYERS = 4

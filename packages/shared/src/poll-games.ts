@@ -102,10 +102,7 @@ export function isAssignmentComplete(assignment: VoteAssignment, gameType?: Game
   return voteSlots(gameType).every((slot) => assignment[slot])
 }
 
-export function isPairAssignmentComplete(
-  pairAssignment: PairAssignmentMap,
-  participantIds: string[]
-): boolean {
+export function isPairAssignmentComplete(pairAssignment: PairAssignmentMap, participantIds: string[]): boolean {
   return participantIds.every((id) => pairAssignment[id] === 'kiss' || pairAssignment[id] === 'kill')
 }
 
