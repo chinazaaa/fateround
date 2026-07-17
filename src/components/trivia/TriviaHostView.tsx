@@ -11,6 +11,7 @@ import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
+import { HostMaxPlayersLobbyPanel } from '@/components/host-lobby/HostMaxPlayersLobbyPanel'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { gameTypeConfig } from '@/lib/game-types'
 import { getTriviaHostMode, setTriviaHostMode, type TriviaHostMode } from '@/lib/trivia'
@@ -430,6 +431,14 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
 
   const lobbySettings = (
     <>
+      <HostMaxPlayersLobbyPanel
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        limitType="trivia"
+        playerCount={players.length}
+        onGameUpdate={setGame}
+      />
       <button type="button" onClick={() => setSettingsModal('lobby')} className="btn-secondary w-full">
         Edit questions &amp; rounds
       </button>
