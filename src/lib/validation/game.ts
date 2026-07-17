@@ -96,6 +96,7 @@ export const createGameSchema = z.object({
   word_rush_prompt_mode: z.enum(['automatic', 'manual']).optional(),
   word_rush_difficulty: z.enum(['standard', 'hard']).optional(),
   landmine_mode: z.enum(['zero_points', 'elimination']).optional(),
+  landmine_mine_source: z.enum(['system', 'manual']).optional(),
   landmine_mine_count: z.coerce.number().int().min(1).max(3).optional(),
   landmine_originality_bonus: z.boolean().optional(),
   allow_viewers: z.boolean().optional(),
@@ -212,6 +213,11 @@ export const updateGameSchema = z.object({
   // assigns / randomize, stored as these two flags.
   codewords_player_picks: z.boolean().optional(),
   codewords_randomize_teams: z.boolean().optional(),
+  // Landmine host-lobby settings (edit before start).
+  landmine_mode: z.enum(['zero_points', 'elimination']).optional(),
+  landmine_mine_source: z.enum(['system', 'manual']).optional(),
+  landmine_mine_count: z.coerce.number().int().optional(),
+  landmine_originality_bonus: z.boolean().optional(),
   ping_pong_points_to_win: z.coerce
     .number()
     .int()

@@ -107,6 +107,7 @@ import { buildNpatInitialRound, NPAT_MIN_PLAYERS, shufflePlayerOrder as npatShuf
 import {
   buildLandmineInitialRound,
   clampLandmineMineCount,
+  gameLandmineMineSource,
   LANDMINE_MIN_PLAYERS,
   shufflePlayerOrder as landmineShufflePlayerOrder,
 } from '@/lib/landmine'
@@ -728,6 +729,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       playerOrder,
       mineCount: clampLandmineMineCount(game.landmine_mine_count),
       now,
+      manual: gameLandmineMineSource(game) === 'manual',
     })
 
     const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRow)

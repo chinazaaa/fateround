@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { computeRoundResults, tallyLandmineScores, pickMines, buildReviewerAssignments } from './landmine'
-import type { LandmineAnswer, LandmineMark, Player } from '@/types'
+import {
+  computeRoundResults,
+  tallyLandmineScores,
+  pickMines,
+  buildReviewerAssignments,
+  buildLandmineInitialRound,
+  landmineAnsweringPlayerIds,
+  parseLandmineMineSource,
+} from './landmine'
+import type { LandmineAnswer, LandmineMark, LandmineMetadata, Player } from '@/types'
 
 function answer(player_id: string, text: string): LandmineAnswer {
   return {
@@ -129,5 +137,41 @@ describe('landmine helpers', () => {
     const ids = ['a', 'b', 'c', 'd']
     const map = buildReviewerAssignments(ids, 1)
     for (const id of ids) expect(map[id]).not.toBe(id)
+  })
+})
+
+describe('landmine manual mode', () => {
+  it('parseLandmineMineSource defaults to system, accepts manual', () => {
+    expect(parseLandmineMineSource(undefined)).toBe('system')
+    expect(parseLandmineMineSource('anything')).toBe('system')
+    expect(parseLandmineMineSource('manual')).toBe('manual')
+  })
+
+  it('landmineAnsweringPlayerIds drops the setter only in manual mode', () => {
+    const ids = ['a', 'b', 'c']
+    // System mode: everyone answers (setter arg ignored).
+    expect(landmineAnsweringPlayerIds(ids, 'a', false)).toEqual(['a', 'b', 'c'])
+    // Manual mode: the setter sits out.
+    expect(landmineAnsweringPlayerIds(ids, 'a', true)).toEqual(['b', 'c'])
+    // Manual mode with no setter id: nobody dropped.
+    expect(landmineAnsweringPlayerIds(ids, null, true)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('manual initial round keeps the first setter out of the marking ring', () => {
+    const order = ['a', 'b', 'c']
+    const row = buildLandmineInitialRound({ gameId: 'G', playerOrder: order, mineCount: 1, now: 'now', manual: true })
+    const meta = row.landmine_metadata as LandmineMetadata
+    // 'a' is the setter → they neither mark nor are marked.
+    expect(meta.reviewer_assignments.a).toBeUndefined()
+    expect(Object.values(meta.reviewer_assignments)).not.toContain('a')
+    // The remaining two mark each other.
+    expect(Object.keys(meta.reviewer_assignments).sort()).toEqual(['b', 'c'])
+  })
+
+  it('system initial round includes the caller in the marking ring', () => {
+    const order = ['a', 'b', 'c']
+    const row = buildLandmineInitialRound({ gameId: 'G', playerOrder: order, mineCount: 1, now: 'now' })
+    const meta = row.landmine_metadata as LandmineMetadata
+    expect(Object.keys(meta.reviewer_assignments).sort()).toEqual(['a', 'b', 'c'])
   })
 })
