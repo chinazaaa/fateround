@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { GameType } from '@fateround/shared'
 import { isCrosswordGame, isWordSearchGame, isWordScrambleGame } from '@fateround/shared/game-type-checks'
+import { isWhoSaidThis } from '@fateround/shared/poll-games'
 import { GameTypePickerField } from '@/components/create/GameTypePickerField'
 import { ParticipantListEditor } from '@/components/create/ParticipantListEditor'
 import { StepIndicator } from '@/components/create/StepIndicator'
@@ -13,6 +14,7 @@ import { PartyRoomSettingsPanel } from '@/components/create/PartyRoomSettingsPan
 import { CustomContentPanel } from '@/components/create/CustomContentPanel'
 import { CustomSlotBuilderPanel } from '@/components/create/CustomSlotBuilderPanel'
 import { PlayerModePanel } from '@/components/create/PlayerModePanel'
+import { WhoSaidThisCreatePanel } from '@/components/create/WhoSaidThisCreatePanel'
 import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
 import { FormField } from '@/components/ui/FormField'
@@ -176,42 +178,53 @@ export function CreateWizardShell() {
               onChange={(roomPatch) => patchState({ room: { ...state.room, ...roomPatch } })}
             />
 
+            {/* Who Said This is a single-step quick create: players just join and answer, so it
+                shows only its Questions source picker (no rounds/name-list/content panels). */}
+            {isWhoSaidThis(state.gameType) ? (
+              <WhoSaidThisCreatePanel
+                wst={state.wst}
+                onChange={(wstPatch) => patchState({ wst: { ...state.wst, ...wstPatch } })}
+              />
+            ) : null}
+
             {/* Puzzle games (crossword/word_search/word_scramble) show the content SOURCE first —
                 players pick Platform/Library/Your own, then the theme + difficulty (which depend on
                 that choice) appear below. Other games keep source last. */}
-            {(() => {
-              const isPuzzle =
-                isCrosswordGame(state.gameType) ||
-                isWordSearchGame(state.gameType) ||
-                isWordScrambleGame(state.gameType)
-              const party = (
-                <PartyRoomSettingsPanel
-                  gameType={state.gameType}
-                  party={state.party}
-                  contentSource={state.custom.source}
-                  onChange={(partyPatch) => patchState({ party: { ...state.party, ...partyPatch } })}
-                />
-              )
-              const content = (
-                <CustomContentPanel
-                  gameType={state.gameType}
-                  custom={state.custom}
-                  roundsCount={state.party.roundsCount}
-                  onChange={(customPatch) => patchState({ custom: { ...state.custom, ...customPatch } })}
-                />
-              )
-              return isPuzzle ? (
-                <>
-                  {content}
-                  {party}
-                </>
-              ) : (
-                <>
-                  {party}
-                  {content}
-                </>
-              )
-            })()}
+            {isWhoSaidThis(state.gameType)
+              ? null
+              : (() => {
+                  const isPuzzle =
+                    isCrosswordGame(state.gameType) ||
+                    isWordSearchGame(state.gameType) ||
+                    isWordScrambleGame(state.gameType)
+                  const party = (
+                    <PartyRoomSettingsPanel
+                      gameType={state.gameType}
+                      party={state.party}
+                      contentSource={state.custom.source}
+                      onChange={(partyPatch) => patchState({ party: { ...state.party, ...partyPatch } })}
+                    />
+                  )
+                  const content = (
+                    <CustomContentPanel
+                      gameType={state.gameType}
+                      custom={state.custom}
+                      roundsCount={state.party.roundsCount}
+                      onChange={(customPatch) => patchState({ custom: { ...state.custom, ...customPatch } })}
+                    />
+                  )
+                  return isPuzzle ? (
+                    <>
+                      {content}
+                      {party}
+                    </>
+                  ) : (
+                    <>
+                      {party}
+                      {content}
+                    </>
+                  )
+                })()}
 
             <CustomSlotBuilderPanel
               gameType={state.gameType}

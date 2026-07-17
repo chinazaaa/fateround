@@ -380,6 +380,11 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        hint={
+          isWhoSaidThis(bootstrap.game.game_type)
+            ? 'Enter your name to join — answer the quotes, fastest correct wins.'
+            : undefined
+        }
       />
     )
   }
@@ -434,9 +439,8 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
                 gameCode={bootstrap.code}
                 resumeToken={bootstrap.myResumeToken!}
                 myPlayerId={bootstrap.myPlayerId!}
-                myParticipantId={me?.participant_id ?? null}
-                participants={pollState.participants}
-                animeMode={(bootstrap.game as { wst_quote_source?: string }).wst_quote_source === 'anime'}
+                deckMode={bootstrap.game?.wst_quote_source === 'deck'}
+                canSubmit={!!me && me.spectator !== true}
               />
             ) : null}
           </>
@@ -457,12 +461,12 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
     if (isWhoSaidThis(gameType)) {
       const scores = tallyWstScores(pollState.rounds, pollState.votes, bootstrap.players)
       const top = scores[0]
-      const winnerId = top && top.correctGuesses > 0 ? top.playerId : null
+      const winnerId = top && top.points > 0 ? top.playerId : null
       panel = (
         <GameFinishPanel
           bootstrap={bootstrap}
           title={winnerId ? `${top!.name} wins!` : 'Game over'}
-          subtitle="Best guessers"
+          subtitle="Leaderboard"
           leaderboard={wstLeaderboard(scores, bootstrap.myPlayerId)}
           winnerPlayerId={winnerId}
         />

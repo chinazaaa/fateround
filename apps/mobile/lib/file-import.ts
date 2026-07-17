@@ -10,6 +10,7 @@ import {
   type WyrPairDraft,
 } from '@/lib/create-settings/custom-content'
 import type { ParticipantDraft, ParticipantGender } from '@/lib/create-settings/people'
+import { WST_MAX_OPTIONS, WST_MIN_OPTIONS, type WstDeckEntry } from '@/lib/who-said-this-deck'
 
 /**
  * Picks a CSV/TSV/text file and returns its text. Returns null if cancelled.
@@ -175,6 +176,48 @@ export function parseTriviaCsv(text: string): TriviaDraft[] {
     rows.push({ question, choices, correctIndex, category: 'general' })
   }
   return rows
+}
+
+/**
+ * Who Said This deck rows: quote, option_a–option_d, correct (A–D or 1–4). Uses the quote-aware
+ * splitter so a quote/option containing a comma survives. Dedupes by quote + options. Mirrors web
+ * `parseWstDeckImport` (`src/lib/custom-questions.ts`).
+ */
+export function parseWstDeckCsv(text: string): WstDeckEntry[] {
+  const out: WstDeckEntry[] = []
+  const seen = new Set<string>()
+  const correctIndex = (raw: string, options: string[]): number => {
+    const key = (raw ?? '').trim().toLowerCase()
+    const byLetter = { a: 0, b: 1, c: 2, d: 3 }[key]
+    if (byLetter !== undefined && byLetter < options.length) return byLetter
+    const n = parseInt(key, 10)
+    if (!Number.isNaN(n)) {
+      if (n >= 1 && n <= options.length) return n - 1
+      if (n >= 0 && n < options.length) return n
+    }
+    const match = options.findIndex((o) => o.toLowerCase() === key)
+    return match
+  }
+  const lines = toLines(text)
+  for (let i = 0; i < lines.length; i++) {
+    const cols = splitCsvFields(lines[i])
+    if (cols.length < 3) continue
+    if (i === 0 && ['quote', 'question', 'text', 'line'].includes(cols[0].toLowerCase())) continue
+    const quote = cols[0].trim()
+    const options = cols
+      .slice(1, 1 + WST_MAX_OPTIONS)
+      .map((c) => c.trim())
+      .filter(Boolean)
+    // The `correct` cell is whatever follows the options — up to the 4 option columns.
+    const correctRaw = cols[cols.length > 1 + WST_MAX_OPTIONS ? 1 + WST_MAX_OPTIONS : cols.length - 1] ?? ''
+    const idx = correctIndex(correctRaw, options)
+    if (!quote || options.length < WST_MIN_OPTIONS || idx < 0 || idx >= options.length) continue
+    const key = `${quote.toLowerCase()}|${options.map((o) => o.toLowerCase()).join('|')}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ quote, options, correctIndex: idx })
+  }
+  return out
 }
 
 /** name, gender columns (gender optional). */
