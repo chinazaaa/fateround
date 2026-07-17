@@ -992,6 +992,7 @@ export type LobbySettingsPatch = {
   codewords_player_picks?: boolean
   codewords_randomize_teams?: boolean
   pair_vote_mode?: 'one_each' | 'any'
+  participant_filter?: 'all' | 'joined'
   player_questions_enabled?: boolean
   player_questions_order?: 'players_first' | 'uploaded_first' | 'mixed'
   ai_questions_enabled?: boolean
