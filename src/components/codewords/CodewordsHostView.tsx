@@ -6,19 +6,25 @@ import { CodewordsHostManagePanel } from '@/components/codewords/CodewordsHostMa
 import { CodewordsSpectatorBoard } from '@/components/codewords/CodewordsSpectatorBoard'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   CODEWORDS_DEFAULT_OPERATIVE_TIMER,
   CODEWORDS_DEFAULT_SPYMASTER_TIMER,
+  CODEWORDS_MIN_PLAYERS,
   codewordsInLobby,
   codewordsPlayerPicks,
   codewordsRandomizeTeams,
   getCodewordsHostMode,
+  lobbyReadyForGame,
   mergeCodewordsGuesses,
   setCodewordsHostMode,
   teamLabel,
@@ -585,11 +591,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
   }, [inActivePlay])
 
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
   const showTabs = game.status !== 'finished'
@@ -618,102 +620,107 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     )
   ) : null
 
+  // Lobby mode selector (play card) — reused by the new HostLobby and the tabbed manage.
+  const codewordsModeCard = (
+    <HostModeSelector
+      mode={hostMode}
+      onChange={changeHostMode}
+      joinedPlayerId={hostPlayerId}
+      joinedPlayerName={hostPlayerName}
+      joinName={hostJoinName}
+      onJoinNameChange={setHostJoinName}
+      onJoin={() => void hostJoinGame()}
+      joining={hostJoining}
+      onEditName={renameHost}
+      spectatorHint="Watch once the round starts"
+      playerHint="Join a team below · Play tab opens once the round starts"
+      playingNote={
+        <p className="text-xs text-muted">
+          Playing as <strong>{hostPlayerName}</strong> —{' '}
+          {randomizeTeams
+            ? 'pick spymasters in Teams below, then shuffle or start.'
+            : playersPickTeams
+              ? 'pick your team in Teams below, or assign yourself there.'
+              : 'assign yourself in Teams below.'}
+        </p>
+      }
+    />
+  )
+
+  // Shared props for CodewordsHostManagePanel (teams + settings). Rendered in the tabbed
+  // manage and — with embeddedInLobby — as the new HostLobby's main-screen children.
+  const codewordsPanelProps = {
+    game,
+    gameCode,
+    hostToken,
+    playerLink,
+    players,
+    roles,
+    board,
+    guesses,
+    hostPlayerId,
+    hostPlays,
+    spymasterTimer,
+    operativeTimer,
+    savingTimers,
+    savingRoleFor,
+    starting,
+    playingAgain,
+    ending,
+    onSpymasterTimerChange: setSpymasterTimer,
+    onOperativeTimerChange: setOperativeTimer,
+    onSaveTimers: saveTimers,
+    onSetSpymaster: setSpymaster,
+    onMoveTeam: moveTeam,
+    firstTeam,
+    onFirstTeamChange: setFirstTeam,
+    teamAssignment: (randomizeTeams ? 'randomize' : playersPickTeams ? 'players' : 'host') as
+      | 'players'
+      | 'host'
+      | 'randomize',
+    onTeamAssignmentChange: changeTeamAssignment,
+    onStartGame: startGame,
+    onRandomizeTeams: shuffleTeams,
+    randomizingTeams,
+    onPlayAgain: playAgain,
+    onEndSession: endSession,
+    onReload: load,
+    onGameUpdate: setGame,
+    onBenchPlayer: benchPlayer,
+    onRemovePlayer: removePlayer,
+    benchingPlayerId,
+    removingPlayerId,
+    customWordCount:
+      game && parseQuestionSource(game.question_source, parseGameType(game.game_type)) === 'custom'
+        ? customQuestionCount(game)
+        : 0,
+    onEditWordPool: game ? () => setLobbyPoolOpen(true) : undefined,
+    savingWordPool: savingLobbyPool,
+    settingsBottom:
+      game.status === 'waiting' ? (
+        <HostLobbySettingBlock title="Late joiners">
+          <HostAllowViewersField
+            embedded
+            hideHeader
+            gameCode={gameCode}
+            hostToken={hostToken}
+            game={game}
+            onGameUpdate={setGame}
+          />
+        </HostLobbySettingBlock>
+      ) : undefined,
+  }
+
   const manage = (
     <div className="space-y-4 sm:space-y-5 animate-stagger">
-      {game.status === 'waiting' && (
-        <HostModeSelector
-          mode={hostMode}
-          onChange={changeHostMode}
-          joinedPlayerId={hostPlayerId}
-          joinedPlayerName={hostPlayerName}
-          joinName={hostJoinName}
-          onJoinNameChange={setHostJoinName}
-          onJoin={() => void hostJoinGame()}
-          joining={hostJoining}
-          onEditName={renameHost}
-          spectatorHint="Watch from the Watch tab"
-          playerHint="Join a team below · Play tab opens once the round starts"
-          playingNote={
-            <p className="text-xs text-muted">
-              Playing as <strong>{hostPlayerName}</strong> —{' '}
-              {randomizeTeams
-                ? 'pick spymasters in Teams below, then shuffle or start.'
-                : playersPickTeams
-                  ? 'pick your team in Teams below, or assign yourself there.'
-                  : 'assign yourself in Teams below.'}
-            </p>
-          }
-        />
-      )}
+      {game.status === 'waiting' && codewordsModeCard}
 
       <HostRulesRow gameType="codewords" />
       {game.status === 'waiting' && (
         <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
       )}
 
-      <CodewordsHostManagePanel
-        game={game}
-        gameCode={gameCode}
-        hostToken={hostToken}
-        playerLink={playerLink}
-        players={players}
-        roles={roles}
-        board={board}
-        guesses={guesses}
-        hostPlayerId={hostPlayerId}
-        hostPlays={hostPlays}
-        spymasterTimer={spymasterTimer}
-        operativeTimer={operativeTimer}
-        savingTimers={savingTimers}
-        savingRoleFor={savingRoleFor}
-        starting={starting}
-        playingAgain={playingAgain}
-        ending={ending}
-        onSpymasterTimerChange={setSpymasterTimer}
-        onOperativeTimerChange={setOperativeTimer}
-        onSaveTimers={saveTimers}
-        onSetSpymaster={setSpymaster}
-        onMoveTeam={moveTeam}
-        firstTeam={firstTeam}
-        onFirstTeamChange={setFirstTeam}
-        teamAssignment={randomizeTeams ? 'randomize' : playersPickTeams ? 'players' : 'host'}
-        onTeamAssignmentChange={changeTeamAssignment}
-        onStartGame={startGame}
-        onRandomizeTeams={shuffleTeams}
-        randomizingTeams={randomizingTeams}
-        onPlayAgain={playAgain}
-        onEndSession={endSession}
-        onReload={load}
-        onGameUpdate={setGame}
-        onBenchPlayer={benchPlayer}
-        onRemovePlayer={removePlayer}
-        benchingPlayerId={benchingPlayerId}
-        removingPlayerId={removingPlayerId}
-        customWordCount={
-          game && parseQuestionSource(game.question_source, parseGameType(game.game_type)) === 'custom'
-            ? customQuestionCount(game)
-            : 0
-        }
-        onEditWordPool={
-          // Available regardless of source — host can switch Platform / Library / Your own.
-          game ? () => setLobbyPoolOpen(true) : undefined
-        }
-        savingWordPool={savingLobbyPool}
-        settingsBottom={
-          game.status === 'waiting' ? (
-            <HostLobbySettingBlock title="Late joiners">
-              <HostAllowViewersField
-                embedded
-                hideHeader
-                gameCode={gameCode}
-                hostToken={hostToken}
-                game={game}
-                onGameUpdate={setGame}
-              />
-            </HostLobbySettingBlock>
-          ) : undefined
-        }
-      />
+      <CodewordsHostManagePanel {...codewordsPanelProps} />
 
       {game.status === 'active' && (
         <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
@@ -721,24 +728,67 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     </div>
   )
 
+  // Fresh lobby (not the play-again ready-up flow, which keeps the tabbed layout for now).
+  const waitingLobby = inLobby && !game.replay_pending
+  const playerIds = players.map((p) => p.id)
+  const lobbyReady = lobbyReadyForGame(roles, playerIds, randomizeTeams)
+  const canStart = players.length >= CODEWORDS_MIN_PLAYERS && lobbyReady.ok
+
   return (
     <>
-      <HostGameLayout
-        gameCode={gameCode}
-        status={game.status}
-        tab={tab}
-        onTabChange={setTab}
-        primaryKind={primaryKind}
-        game={game}
-        players={players}
-        hostPlayerId={hostPlayerId}
-        onHostRejoined={load}
-        showTabs={showTabs}
-        gameStarted={gameStarted}
-        header={<HostGameHeader game={game} />}
-        primary={primary}
-        manage={manage}
-      />
+      {waitingLobby ? (
+        <HostLobby
+          gameCode={gameCode}
+          hostToken={hostToken}
+          game={game}
+          gameTypeLabel={cfg.label}
+          players={players}
+          maxPlayers={lobbyMaxPlayersFromGameClient('codewords', game) ?? game.max_players}
+          resumeToken={hostResumeToken}
+          playCard={codewordsModeCard}
+          howToPlay={<HostRulesRow gameType="codewords" />}
+          settingsChildren={
+            <>
+              <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+              <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+            </>
+          }
+          onStart={() => void startGame()}
+          starting={starting}
+          startDisabled={!canStart}
+          startDisabledHint={
+            players.length < CODEWORDS_MIN_PLAYERS
+              ? `Need at least ${CODEWORDS_MIN_PLAYERS} players to start (${players.length}/${CODEWORDS_MIN_PLAYERS})`
+              : lobbyReady.ok
+                ? null
+                : lobbyReady.error
+          }
+          startLabel="Start codewords"
+          onRemovePlayer={removePlayer}
+          removingPlayerId={removingPlayerId}
+          highlightPlayerId={hostPlayerId}
+          onEnded={load}
+        >
+          <CodewordsHostManagePanel {...codewordsPanelProps} embeddedInLobby />
+        </HostLobby>
+      ) : (
+        <HostGameLayout
+          gameCode={gameCode}
+          status={game.status}
+          tab={tab}
+          onTabChange={setTab}
+          primaryKind={primaryKind}
+          game={game}
+          players={players}
+          hostPlayerId={hostPlayerId}
+          onHostRejoined={load}
+          showTabs={showTabs}
+          gameStarted={gameStarted}
+          header={<HostGameHeader game={game} />}
+          primary={primary}
+          manage={manage}
+        />
+      )}
 
       {game && (
         <PlayAgainSetup

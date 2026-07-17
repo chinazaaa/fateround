@@ -9,9 +9,13 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { ExitIcon } from '@/components/host/host-icons'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
@@ -480,11 +484,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
   const showTabs = game.status !== 'finished'
@@ -783,6 +783,139 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
           Return to lobby instead
         </button>
       </div>
+    )
+  }
+
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  const canStart = players.length >= BINGO_MIN_PLAYERS
+
+  const lobbyModeCard = (
+    <HostModeSelector
+      mode={hostMode}
+      onChange={changeHostMode}
+      joinedPlayerId={hostPlayerId}
+      joinedPlayerName={hostPlayerName}
+      onEditName={renameHost}
+      joinName={hostJoinName}
+      onJoinNameChange={setHostJoinName}
+      onJoin={() => void hostJoinGame()}
+      joining={hostJoining}
+      spectatorHint="Watch the game once it starts"
+      playerHint="Get a card and play along"
+      playingNote={
+        <p className="text-sm text-muted">
+          Playing as <strong className="text-body">{hostPlayerName}</strong> — you&apos;ll get a card when the game
+          starts.
+        </p>
+      }
+    />
+  )
+
+  const lobbySettings = (
+    <>
+      <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+      <div className="rounded-2xl border border-[color-mix(in_srgb,var(--primary)_14%,var(--border))] bg-[var(--card-strong)]/95 p-5 space-y-3">
+        <p className="label-caps">Game settings</p>
+        <label className="block text-sm text-muted">
+          Max players
+          <select
+            value={lobbyMaxPlayers}
+            onChange={(e) => setLobbyMaxPlayers(Number(e.target.value))}
+            className="input-field w-full mt-1"
+          >
+            {Array.from({ length: 30 - BINGO_MIN_PLAYERS + 1 }, (_, i) => i + BINGO_MIN_PLAYERS).map((n) => (
+              <option key={n} value={n}>
+                {n} players
+              </option>
+            ))}
+          </select>
+        </label>
+        <HostAllowViewersField embedded gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => setLobbyCallMode('manual')}
+            className={[
+              'rounded-2xl border-2 px-4 py-3 text-left',
+              lobbyCallMode === 'manual'
+                ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                : 'border-[var(--border-strong)] text-muted',
+            ].join(' ')}
+          >
+            <span className="font-bold block text-sm">Manual</span>
+            <span className="text-faint text-xs">You call numbers</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setLobbyCallMode('auto')}
+            className={[
+              'rounded-2xl border-2 px-4 py-3 text-left',
+              lobbyCallMode === 'auto'
+                ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                : 'border-[var(--border-strong)] text-muted',
+            ].join(' ')}
+          >
+            <span className="font-bold block text-sm">Automatic</span>
+            <span className="text-faint text-xs">Computer calls</span>
+          </button>
+        </div>
+        {lobbyCallMode === 'auto' && (
+          <label className="block text-sm text-muted">
+            Seconds between calls
+            <select
+              value={lobbyCallInterval}
+              onChange={(e) => setLobbyCallInterval(Number(e.target.value))}
+              className="input-field w-full mt-1"
+            >
+              {BINGO_CALL_INTERVAL_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s} seconds
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <button
+          type="button"
+          onClick={saveLobbySettings}
+          disabled={savingSettings}
+          className="btn-secondary w-full py-3"
+        >
+          {savingSettings ? 'Saving…' : 'Save settings'}
+        </button>
+      </div>
+      <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+    </>
+  )
+
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={cfg.label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('bingo', game) ?? game.max_players}
+        resumeToken={hostResumeToken}
+        playCard={lobbyModeCard}
+        howToPlay={<HostRulesRow gameType="bingo" />}
+        settingsChildren={lobbySettings}
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : `Need at least ${BINGO_MIN_PLAYERS} players to start (${players.length}/${BINGO_MIN_PLAYERS})`
+        }
+        startLabel="Start bingo"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      />
     )
   }
 

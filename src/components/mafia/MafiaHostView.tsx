@@ -12,8 +12,14 @@ import { MAFIA_MIN_PLAYERS } from '@/lib/mafia'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout, type HostTab } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
+import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostMafiaLobbyPanel } from '@/components/host-lobby/HostMafiaLobbyPanel'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { gameTypeConfig } from '@/lib/game-types'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
@@ -219,14 +225,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
   }
 
   if (!mafiaState) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-slate-950 text-purple-200">
-        <div className="flex flex-col items-center space-y-4">
-          <div className="h-12 w-12 animate-spin rounded-full border-4 border-purple-500 border-t-transparent" />
-          <p className="text-lg font-medium">Loading Narrator Dashboard...</p>
-        </div>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
   const gameStatus = (mafiaState.status as GameStatus) ?? 'waiting'
@@ -569,6 +568,53 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
       </div>
     </div>
   )
+
+  // Fresh lobby (not the play-again ready-up flow, which keeps the tabbed ReplayReadyRing).
+  const waitingLobby = isWaiting && !mafiaState.replayPending
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={gameObj}
+        gameTypeLabel={gameTypeConfig('mafia').label}
+        players={playersList}
+        maxPlayers={lobbyMaxPlayersFromGameClient('mafia', gameObj) ?? gameObj.max_players}
+        howToPlay={<HostRulesRow gameType="mafia" />}
+        playCard={
+          <p className="surface-inset rounded-xl px-4 py-3 text-sm text-muted">
+            You&apos;re the Narrator for this Mafia game — share the invite link with players, then start the game below
+            once at least {`${MAFIA_MIN_PLAYERS} players`} have joined. (The Narrator runs the game and doesn&apos;t
+            play.)
+          </p>
+        }
+        settingsChildren={
+          <>
+            <HostMafiaLobbyPanel
+              gameCode={gameCode}
+              hostToken={hostToken}
+              game={gameObj}
+              playerCount={playersList.length}
+              onGameUpdate={() => void load()}
+            />
+            <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+          </>
+        }
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : `Need at least ${MAFIA_MIN_PLAYERS} players to start (${mafiaState.players.length}/${MAFIA_MIN_PLAYERS})`
+        }
+        startLabel="Start Mafia game"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        onEnded={() => void load()}
+      />
+    )
+  }
 
   return (
     <HostGameLayout

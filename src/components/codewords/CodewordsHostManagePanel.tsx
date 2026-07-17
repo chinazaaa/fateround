@@ -74,6 +74,7 @@ export function CodewordsHostManagePanel({
   settingsBottom,
   hostPlayerId = null,
   hostPlays = false,
+  embeddedInLobby = false,
 }: {
   game: Game
   gameCode: string
@@ -119,6 +120,9 @@ export function CodewordsHostManagePanel({
    *  host's role achievement to the community leaderboard when they win one. */
   hostPlayerId?: string | null
   hostPlays?: boolean
+  /** When embedded inside the mobile-parity HostLobby, hide this panel's own players
+   *  list + Start/End footer (HostLobby renders those); keep teams + settings. */
+  embeddedInLobby?: boolean
 }) {
   const { error: toastError } = useToast()
   const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
@@ -357,7 +361,7 @@ export function CodewordsHostManagePanel({
         </div>
       )}
 
-      {inLobby && players.length > 0 && (
+      {inLobby && players.length > 0 && !embeddedInLobby && (
         <HostLobbyPlayersSection players={players} highlightPlayerId={null} alwaysShowReady />
       )}
 
@@ -480,28 +484,33 @@ export function CodewordsHostManagePanel({
         </HostLobbySettingsSection>
       )}
 
-      {/* Start + close — actions */}
+      {/* Start + close — actions. When embedded in HostLobby, it owns the Start/End footer;
+          keep only the visibility toggle here. */}
       {inLobby && (
         <div className="space-y-3">
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-3">
             <HostVisibilityToggle gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={onGameUpdate} />
           </div>
-          <HostLobbyStartButton
-            onClick={onStartGame}
-            disabled={startDisabled}
-            starting={starting}
-            disabledHint={startDisabledHint}
-          />
-          <HostEndGameButton
-            gameCode={gameCode}
-            hostToken={hostToken}
-            onEnded={onReload}
-            label="End lobby"
-            icon={<ExitIcon size={16} />}
-            confirmTitle="Close this lobby?"
-            confirmMessage="Players will be disconnected. You can start a new game from Play again afterward."
-            className="btn-danger-soft"
-          />
+          {!embeddedInLobby && (
+            <>
+              <HostLobbyStartButton
+                onClick={onStartGame}
+                disabled={startDisabled}
+                starting={starting}
+                disabledHint={startDisabledHint}
+              />
+              <HostEndGameButton
+                gameCode={gameCode}
+                hostToken={hostToken}
+                onEnded={onReload}
+                label="End lobby"
+                icon={<ExitIcon size={16} />}
+                confirmTitle="Close this lobby?"
+                confirmMessage="Players will be disconnected. You can start a new game from Play again afterward."
+                className="btn-danger-soft"
+              />
+            </>
+          )}
         </div>
       )}
 

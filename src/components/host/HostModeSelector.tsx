@@ -51,9 +51,9 @@ export function HostModeSelector({
 }) {
   const Wrapper = bare ? 'section' : 'div'
   return (
-    <Wrapper className={bare ? 'space-y-3' : 'glass-card-strong p-5 space-y-3'}>
+    <Wrapper className={bare ? 'space-y-2.5' : 'glass-card-strong p-4 space-y-2.5'}>
       {!bare && <p className="label-caps">Host mode</p>}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         <HostModeOption
           active={mode === 'spectator'}
           disabled={disabled}
@@ -223,20 +223,15 @@ function HostModeOption({
       onClick={onClick}
       aria-pressed={active}
       className={[
-        'relative rounded-2xl border-2 p-4 text-left transition-all duration-200 disabled:opacity-60',
+        'relative flex items-center gap-2.5 rounded-2xl border-2 px-3 py-2.5 text-left transition-all duration-200 disabled:opacity-60',
         active
           ? 'border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_7%,var(--card-strong))] shadow-[var(--card-shadow-glow)]'
           : 'border-[var(--border-strong)] hover:bg-[var(--card-hover)]',
       ].join(' ')}
     >
-      {active && (
-        <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--primary)] text-white shadow-[0_2px_8px_var(--primary-glow)]">
-          <CheckIcon size={12} />
-        </span>
-      )}
       <span
         className={[
-          'mb-2.5 flex h-9 w-9 items-center justify-center rounded-xl transition-colors',
+          'flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-colors',
           active
             ? 'bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-[var(--primary)]'
             : 'bg-[var(--surface-inset-bg)] text-faint',
@@ -244,8 +239,15 @@ function HostModeOption({
       >
         {icon}
       </span>
-      <span className={`block text-base font-bold ${active ? 'text-body' : ''}`}>{label}</span>
-      <span className="text-faint text-xs">{hint}</span>
+      <span className="min-w-0 flex-1">
+        <span className={`block text-sm font-bold leading-tight ${active ? 'text-body' : ''}`}>{label}</span>
+        <span className="text-faint text-xs leading-tight">{hint}</span>
+      </span>
+      {active && (
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-white shadow-[0_2px_8px_var(--primary-glow)]">
+          <CheckIcon size={10} />
+        </span>
+      )}
     </button>
   )
 }
