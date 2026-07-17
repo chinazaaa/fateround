@@ -13,4 +13,5 @@ export const LIBRARY_GAME_TYPE_MAP: Record<string, string> = {
   crossword: 'crossword',
   word_search: 'word_search',
   word_scramble: 'word_scramble',
+  who_said_this: 'who_said_this',
 }
