@@ -22,6 +22,7 @@ import { useLandmineAdvance } from '@/hooks/useLandmineAdvance'
 import {
   getLandmineHostMode,
   gameLandmineMode,
+  gameLandmineMineSource,
   landmineModeLabel,
   parseLandmineMetadata,
   resolveActiveLandmineRound,
@@ -48,7 +49,7 @@ import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/ut
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
-import type { Game, LandmineAnswer, LandmineMark, LandmineMode, Player, Round } from '@/types'
+import type { Game, LandmineAnswer, LandmineMark, LandmineMineSource, LandmineMode, Player, Round } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
@@ -71,6 +72,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [playingAgain, setPlayingAgain] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
   const [modeSetting, setModeSetting] = useState<LandmineMode>('zero_points')
+  const [mineSourceSetting, setMineSourceSetting] = useState<LandmineMineSource>('system')
   const [mineCount, setMineCount] = useState(1)
   const [originalityBonus, setOriginalityBonus] = useState(true)
   const [roundCount, setRoundCount] = useState(5)
@@ -121,6 +123,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
       if (!settingsHydratedRef.current) {
         settingsHydratedRef.current = true
         setModeSetting(gameLandmineMode(gameRes.data))
+        setMineSourceSetting(gameLandmineMineSource(gameRes.data))
         setMineCount(gameRes.data.landmine_mine_count ?? 1)
         setOriginalityBonus(gameRes.data.landmine_originality_bonus !== false)
         setRoundCount(gameRes.data.rounds_count ?? 5)
@@ -264,6 +267,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
   const settingsPayload = () => ({
     hostToken,
     landmine_mode: modeSetting,
+    landmine_mine_source: mineSourceSetting,
     landmine_mine_count: mineCount,
     landmine_originality_bonus: originalityBonus,
     rounds_count: roundCount,
@@ -483,6 +487,17 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
           <div className="rounded-2xl border border-[color-mix(in_srgb,var(--primary)_14%,var(--border))] bg-[var(--card-strong)]/95 p-5 space-y-3">
             <p className="label-caps">Game settings</p>
             <label className="block space-y-1">
+              <span className="text-sm font-semibold">Who plants the mine</span>
+              <select
+                value={mineSourceSetting}
+                onChange={(e) => setMineSourceSetting(e.target.value as LandmineMineSource)}
+                className="input-field w-full"
+              >
+                <option value="system">Auto — the app plants it, everyone plays</option>
+                <option value="manual">Manual — players take turns setting it</option>
+              </select>
+            </label>
+            <label className="block space-y-1">
               <span className="text-sm font-semibold">Mode</span>
               <select
                 value={modeSetting}
@@ -493,7 +508,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
                 <option value="elimination">Elimination — mine knocks you out</option>
               </select>
             </label>
-            {modeSetting === 'zero_points' && (
+            {modeSetting === 'zero_points' && mineSourceSetting === 'system' && (
               <label className="block space-y-1">
                 <span className="text-sm font-semibold">Rounds</span>
                 <select
@@ -654,6 +669,17 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
       <div className="rounded-2xl border border-[color-mix(in_srgb,var(--primary)_14%,var(--border))] bg-[var(--card-strong)]/95 p-5 space-y-3">
         <p className="label-caps">Game settings</p>
         <label className="block space-y-1">
+          <span className="text-sm font-semibold">Who plants the mine</span>
+          <select
+            value={mineSourceSetting}
+            onChange={(e) => setMineSourceSetting(e.target.value as LandmineMineSource)}
+            className="input-field w-full"
+          >
+            <option value="system">Auto — the app plants it, everyone plays</option>
+            <option value="manual">Manual — players take turns setting it</option>
+          </select>
+        </label>
+        <label className="block space-y-1">
           <span className="text-sm font-semibold">Mode</span>
           <select
             value={modeSetting}
@@ -664,7 +690,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
             <option value="elimination">Elimination — mine knocks you out</option>
           </select>
         </label>
-        {modeSetting === 'zero_points' && (
+        {modeSetting === 'zero_points' && mineSourceSetting === 'system' && (
           <label className="block space-y-1">
             <span className="text-sm font-semibold">Rounds</span>
             <select

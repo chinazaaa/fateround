@@ -119,6 +119,8 @@ export interface NpatMark {
 // ---------------------------------------------------------------------------
 export type LandminePhase = 'category_pick' | 'writing' | 'marking' | 'reveal'
 export type LandmineMode = 'zero_points' | 'elimination'
+/** Who plants the mine: 'system' (server draws it) or 'manual' (a rotating player sets it). */
+export type LandmineMineSource = 'system' | 'manual'
 
 export interface LandmineMetadata {
   phase: LandminePhase
@@ -136,7 +138,8 @@ export interface LandmineMetadata {
   scores_computed?: boolean
 }
 
-export type LandmineOutcome = 'valid' | 'original' | 'void' | 'mine' | 'empty'
+/** 'setter' marks the manual-mode setter's mirror-payout row (blank answer, points = round total). */
+export type LandmineOutcome = 'valid' | 'original' | 'void' | 'mine' | 'empty' | 'setter'
 
 export interface LandmineAnswer {
   id: string
@@ -409,6 +412,8 @@ export interface Game {
   landmine_mine_count?: number | null
   /** Landmine — award +5 when nobody else gave your answer. */
   landmine_originality_bonus?: boolean | null
+  /** Landmine — 'system' (server draws the mine) or 'manual' (a rotating player sets it). */
+  landmine_mine_source?: LandmineMineSource | null
   /** Ping Pong — points required to win the match (3, 5, 7, 11, 15, or 21). */
   ping_pong_points_to_win?: number | null
 }

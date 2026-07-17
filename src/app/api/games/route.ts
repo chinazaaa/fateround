@@ -135,6 +135,7 @@ import {
   clampLandmineMineCount,
   clampLandmineRoundCount,
   parseLandmineMode,
+  parseLandmineMineSource,
   LANDMINE_DEFAULT_MARKING_TIMER,
   LANDMINE_DEFAULT_CATEGORY_TIMER,
   LANDMINE_DEFAULT_ROUND_COUNT,
@@ -412,6 +413,7 @@ export async function POST(req: NextRequest) {
     landmine_mode: rawLandmineMode,
     landmine_mine_count: rawLandmineMineCount,
     landmine_originality_bonus: rawLandmineOriginalityBonus,
+    landmine_mine_source: rawLandmineMineSource,
     allow_viewers: rawAllowViewers,
     allow_late_players: rawAllowLatePlayers,
     late_join_policy: rawLateJoinPolicy,
@@ -952,6 +954,7 @@ export async function POST(req: NextRequest) {
           landmine_mode: parseLandmineMode(rawLandmineMode),
           landmine_mine_count: clampLandmineMineCount(rawLandmineMineCount),
           landmine_originality_bonus: rawLandmineOriginalityBonus !== false,
+          landmine_mine_source: parseLandmineMineSource(rawLandmineMineSource),
         }
       : {}),
     ...(isQuickDrawGame(game_type)

@@ -460,6 +460,7 @@ function CreateGameInner() {
   const [npatGameDuration, setNpatGameDuration] = useState(NPAT_DEFAULT_GAME_DURATION)
   const [npatMarkingTimer, setNpatMarkingTimer] = useState(NPAT_DEFAULT_MARKING_TIMER)
   const [landmineMode, setLandmineMode] = useState<'zero_points' | 'elimination'>('zero_points')
+  const [landmineMineSource, setLandmineMineSource] = useState<'system' | 'manual'>('system')
   const [landmineMineCount, setLandmineMineCount] = useState(1)
   const [landmineOriginality, setLandmineOriginality] = useState(true)
   const [landmineCategoryTimer, setLandmineCategoryTimer] = useState(10)
@@ -1670,6 +1671,7 @@ function CreateGameInner() {
           trivia_category: isTrivia ? triviaCategory : undefined,
           describe_it_mode: isDescribeIt ? settings.describe_it_mode : undefined,
           landmine_mode: isLandmine ? landmineMode : undefined,
+          landmine_mine_source: isLandmine ? landmineMineSource : undefined,
           landmine_mine_count: isLandmine ? landmineMineCount : undefined,
           landmine_originality_bonus: isLandmine ? landmineOriginality : undefined,
           quick_draw_variant: isQuickDraw ? settings.quick_draw_variant : undefined,
@@ -3122,6 +3124,43 @@ function CreateGameInner() {
               </SettingsGroup>
             ) : isLandmine ? (
               <SettingsGroup title="Landmine settings">
+                <Field label="Who plants the mine">
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      aria-pressed={landmineMineSource === 'system'}
+                      onClick={() => setLandmineMineSource('system')}
+                      className={[
+                        'rounded-2xl border-2 px-4 py-4 text-left',
+                        landmineMineSource === 'system'
+                          ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                          : 'border-[var(--border-strong)] text-muted',
+                      ].join(' ')}
+                    >
+                      <span className="font-bold block text-base">Auto</span>
+                      <span className="text-faint text-xs sm:text-sm">
+                        The app secretly plants the mine. Everyone plays every round.
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={landmineMineSource === 'manual'}
+                      onClick={() => setLandmineMineSource('manual')}
+                      className={[
+                        'rounded-2xl border-2 px-4 py-4 text-left',
+                        landmineMineSource === 'manual'
+                          ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                          : 'border-[var(--border-strong)] text-muted',
+                      ].join(' ')}
+                    >
+                      <span className="font-bold block text-base">Manual</span>
+                      <span className="text-faint text-xs sm:text-sm">
+                        Players take turns setting the category + mine, sit out their round, and score what the room
+                        scores.
+                      </span>
+                    </button>
+                  </div>
+                </Field>
                 <Field label="Mode">
                   <div className="grid grid-cols-2 gap-3">
                     <button
@@ -3171,7 +3210,7 @@ function CreateGameInner() {
                     knocked out). More mines = riskier.
                   </p>
                 </Field>
-                {landmineMode === 'zero_points' && (
+                {landmineMode === 'zero_points' && landmineMineSource === 'system' && (
                   <Field label="Number of rounds">
                     <SegmentedControl
                       value={String(settings.rounds_count)}
@@ -3179,6 +3218,11 @@ function CreateGameInner() {
                       options={[3, 5, 8, 10].map((n) => ({ value: String(n), label: String(n) }))}
                     />
                   </Field>
+                )}
+                {landmineMode === 'zero_points' && landmineMineSource === 'manual' && (
+                  <p className="text-faint text-xs">
+                    Manual mode runs one round per player, so everyone gets a turn to set the mine.
+                  </p>
                 )}
                 <Field label="Time to pick a category">
                   <SegmentedControl
