@@ -89,6 +89,7 @@ export function PingPongBoard({
   const paddleXSeqRef = useRef<number>(0)
   const paddleOSeqRef = useRef<number>(0)
   const ballSyncSeqRef = useRef<number>(0)
+  const lastBallSyncSideRef = useRef<string | null>(null)
   const serveSeqRef = useRef<number>(0)
   const lastBallSyncRef = useRef<number>(0)
 
@@ -101,12 +102,26 @@ export function PingPongBoard({
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const dcRef = useRef<RTCDataChannel | null>(null)
 
+  const lastSupabasePaddleSendRef = useRef<number>(0)
+
   const sendGameEvent = useCallback((event: string, payload: any) => {
     if (dcRef.current?.readyState === 'open') {
       try {
         dcRef.current.send(JSON.stringify({ event, payload }))
       } catch (e) {
         if (channelRef.current) void channelRef.current.send({ type: 'broadcast', event, payload })
+      }
+      // Also broadcast to Supabase channel so viewers and non-WebRTC observers receive live updates
+      if (channelRef.current) {
+        if (event === 'paddle_move') {
+          const now = performance.now()
+          if (now - lastSupabasePaddleSendRef.current > 33) {
+            lastSupabasePaddleSendRef.current = now
+            void channelRef.current.send({ type: 'broadcast', event, payload })
+          }
+        } else {
+          void channelRef.current.send({ type: 'broadcast', event, payload })
+        }
       }
     } else if (channelRef.current) {
       void channelRef.current.send({ type: 'broadcast', event, payload })
@@ -136,7 +151,7 @@ export function PingPongBoard({
           paddleORef.current = clamped
         }
       } else if (event === 'ball_sync') {
-        const { x, y, vx, vy, inPlay, rally, seq } = payload as {
+        const { x, y, vx, vy, inPlay, rally, seq, side } = payload as {
           x: number
           y: number
           vx: number
@@ -144,9 +159,11 @@ export function PingPongBoard({
           inPlay: boolean
           rally: number
           seq?: number
+          side?: string
         }
         if (typeof seq === 'number') {
-          if (seq <= ballSyncSeqRef.current) return
+          if (side === lastBallSyncSideRef.current && seq <= ballSyncSeqRef.current) return
+          if (side) lastBallSyncSideRef.current = side
           ballSyncSeqRef.current = seq
         }
         if (
@@ -203,10 +220,11 @@ export function PingPongBoard({
         ballRef.current.inPlay = false
         setLastPointScorer(scorer)
       } else if (event === 'request_sync') {
-        const { side } = payload as { side: 'X' | 'O' }
+        const { side } = payload as { side: 'X' | 'O' | 'viewer' }
         if (mySide && mySide !== side && !isViewer && sessionRef.current.status === 'active') {
           broadcastSeqRef.current += 1
           sendGameEvent('full_sync', {
+            side: mySide,
             ball: ballRef.current,
             rally: rallyRef.current,
             paddleX: paddleXRef.current,
@@ -216,9 +234,10 @@ export function PingPongBoard({
           })
         }
       } else if (event === 'full_sync') {
-        const { ball, rally, paddleX, paddleO, lastScorer, seq } = payload as any
+        const { ball, rally, paddleX, paddleO, lastScorer, seq, side } = payload as any
         if (typeof seq === 'number') {
-          if (seq <= ballSyncSeqRef.current) return
+          if (side === lastBallSyncSideRef.current && seq <= ballSyncSeqRef.current) return
+          if (side) lastBallSyncSideRef.current = side
           ballSyncSeqRef.current = seq
         }
         if (ball) ballRef.current = { ...ball }
@@ -519,11 +538,15 @@ export function PingPongBoard({
         }
       })
       .subscribe((status) => {
-        if (status === 'SUBSCRIBED' && mySide && !isViewer && session.status === 'active') {
-          createWebRTC()
-          void ch.send({ type: 'broadcast', event: 'webrtc_reset', payload: { side: mySide } })
-          if (mySide === 'O') {
-            void ch.send({ type: 'broadcast', event: 'webrtc_ready', payload: { side: mySide } })
+        if (status === 'SUBSCRIBED' && session.status === 'active') {
+          if (mySide && !isViewer) {
+            createWebRTC()
+            void ch.send({ type: 'broadcast', event: 'webrtc_reset', payload: { side: mySide } })
+            if (mySide === 'O') {
+              void ch.send({ type: 'broadcast', event: 'webrtc_ready', payload: { side: mySide } })
+            }
+          } else if (isViewer) {
+            void ch.send({ type: 'broadcast', event: 'request_sync', payload: { side: 'viewer' } })
           }
         }
       })
@@ -537,8 +560,12 @@ export function PingPongBoard({
   // Sync state if user returns from a background tab
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && session.status === 'active' && !isViewer && mySide) {
-        sendGameEvent('request_sync', { side: mySide })
+      if (document.visibilityState === 'visible' && session.status === 'active') {
+        if (!isViewer && mySide) {
+          sendGameEvent('request_sync', { side: mySide })
+        } else if (isViewer) {
+          sendGameEvent('request_sync', { side: 'viewer' })
+        }
       }
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -658,7 +685,7 @@ export function PingPongBoard({
               // Broadcast immediate sync on paddle hit
               lastBallSyncRef.current = performance.now()
               broadcastSeqRef.current += 1
-              sendGameEvent('ball_sync', { ...ball, rally: rallyRef.current, seq: broadcastSeqRef.current })
+              sendGameEvent('ball_sync', { ...ball, rally: rallyRef.current, seq: broadcastSeqRef.current, side: mySide })
             }
           }
 
@@ -682,7 +709,7 @@ export function PingPongBoard({
               // Broadcast immediate sync on paddle hit
               lastBallSyncRef.current = performance.now()
               broadcastSeqRef.current += 1
-              sendGameEvent('ball_sync', { ...ball, rally: rallyRef.current, seq: broadcastSeqRef.current })
+              sendGameEvent('ball_sync', { ...ball, rally: rallyRef.current, seq: broadcastSeqRef.current, side: mySide })
             }
           }
 
@@ -704,7 +731,7 @@ export function PingPongBoard({
         if (ballRef.current.inPlay && now - lastBallSyncRef.current > 50) {
           lastBallSyncRef.current = now
           broadcastSeqRef.current += 1
-          sendGameEvent('ball_sync', { ...ballRef.current, rally: rallyRef.current, seq: broadcastSeqRef.current })
+          sendGameEvent('ball_sync', { ...ballRef.current, rally: rallyRef.current, seq: broadcastSeqRef.current, side: mySide })
         }
       } else if (!isAuthority && ballRef.current.inPlay && session.status === 'active') {
         // Non-authority client prediction: advance the ball.
