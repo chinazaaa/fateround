@@ -48,6 +48,7 @@ interface MafiaHostStateResponse {
   anonymousVotes: boolean
   replayPending: boolean
   theme?: ThemeId
+  isPublic?: boolean
   winningTeam: MafiaTeam | null
   players: HostPlayer[]
   lastNightKillPlayerId: string | null
@@ -245,6 +246,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     mafia_anonymous_votes: mafiaState.anonymousVotes ?? false,
     replay_pending: mafiaState.replayPending,
     theme: mafiaState.theme,
+    is_public: mafiaState.isPublic === true,
     created_at: new Date().toISOString(),
   } as unknown as Game
 

@@ -384,3 +384,12 @@ All resolved with **recommended defaults** (2026-07-17) — reversible, override
   Referenced only where a feature creates a future purchase surface (frames, crests, extra freezes,
   podium art). Build the free/earned layer first; monetize around it later, never on trophies/streaks.
 - **Tournaments** — already shipped; trophies/leaderboards reference them but don't rebuild them.
+- **Schools / education (B2B)** — a separate, parked GTM track, thesis in
+  [`schools-education-market.md`](./schools-education-market.md). Wedge = **individual play on the
+  school's own devices** (computer lab / tablets) — which the product already does — for Trivia +
+  word/puzzle games; whole-class no-device mode is a *later* add-on, not the opener. Rides on Clubs +
+  Tournaments + anonymous identity, so it comes *after* this base exists. Recommended pricing: a flat
+  **banded whole-school license** (never per-student, never per-game), per-teacher entry, one-off
+  competition fees. Two cheap "insurance" decisions to make now: (1) make content **curatable /
+  scopable** (a `school_safe`-style audience tag), and (2) put monetization prompts behind a
+  suppressible **"managed mode"** flag — so a school edition is later a config, not a rebuild.
