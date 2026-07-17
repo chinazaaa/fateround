@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AYO_TIME_OPTIONS, parseAyoVariant } from '@/lib/ayo'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
-import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
@@ -91,15 +90,6 @@ export function HostAyoLobbyPanel({ gameCode, hostToken, game, onGameUpdate }: P
     [gameCode, hostToken, markSaved, onGameUpdate, toastError]
   )
 
-  const onVisibilityChange = (next: boolean) => {
-    if (saveState === 'saving') return
-    const previous = isPublic
-    setIsPublic(next)
-    void patchSettings({ is_public: next }).then((ok) => {
-      if (!ok) setIsPublic(previous)
-    })
-  }
-
   const onVariantChange = (next: AyoVariant) => {
     if (next === variant || saveState === 'saving') return
     const previous = variant
@@ -133,15 +123,6 @@ export function HostAyoLobbyPanel({ gameCode, hostToken, game, onGameUpdate }: P
   return (
     <HostLobbySettingsSection status={statusLabel} summary={summary}>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
-        <HostLobbySettingBlock title="Visibility" className="sm:col-span-2">
-          <Toggle
-            label="Public game"
-            description="List in Browse so anyone can find and join. Off keeps it invite-only via the share link."
-            value={isPublic}
-            onChange={onVisibilityChange}
-          />
-        </HostLobbySettingBlock>
-
         <HostLobbySettingBlock title="Rules" className="sm:col-span-2">
           <div className="flex flex-wrap gap-1.5">
             <Chip
@@ -169,20 +150,6 @@ export function HostAyoLobbyPanel({ gameCode, hostToken, game, onGameUpdate }: P
         <HostLobbySettingBlock title="Time per player" className="sm:col-span-2">
           <HostLobbyOptionChips value={turnTimer} options={timerOptions} onChange={onTurnTimerChange} />
         </HostLobbySettingBlock>
-
-        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={onGameUpdate} />
-        {gameSupportsViewerSetting(game.game_type) && game.status === 'waiting' && (
-          <HostLobbySettingBlock title="Late joiners" className="sm:col-span-2">
-            <HostAllowViewersField
-              embedded
-              hideHeader
-              gameCode={gameCode}
-              hostToken={hostToken}
-              game={game}
-              onGameUpdate={onGameUpdate}
-            />
-          </HostLobbySettingBlock>
-        )}
       </div>
     </HostLobbySettingsSection>
   )

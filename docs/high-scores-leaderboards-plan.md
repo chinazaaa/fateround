@@ -51,17 +51,26 @@ Everything below hangs off this.
 All four are **per game**. Word Hunt has its own set of four boards; Sudoku has its own;
 and so on. Here's what each board is, why it exists, and an example.
 
-### 1. Personal Best — *"beat your own high score"*
+### 1. Personal Best — *"beat your own high score (and your best time)"*
 
-**What it is:** your own best score, kept per game. We show two numbers:
-- **Today's score** — what you got on today's Daily.
-- **Your best ever** — the highest Daily score you've ever hit in that game.
+**What it is:** your own best result, kept per game, on **two axes**:
+- **Best score** — Today's score vs your highest Daily score ever (higher is better).
+- **Best time** ⏱️ — Today's time vs your fastest completion ever (lower is better),
+  shown as `m:ss`, e.g. *"Sudoku — best time 1:23."*
 
-**Why:** this is the core loop the whole feature is about. When today's score beats your
-best-ever, we throw a little **"New personal best!"** celebration. It feels good even if
-literally no one else is playing — so it's the first thing that works.
+**Why:** this is the core loop the whole feature is about. When today's result beats your
+best-ever *on either axis*, we throw a little **"New personal best!"** celebration (score) or
+**"New record time!"** (time). It feels good even if literally no one else is playing — so
+it's the first thing that works.
 
-**Example:** *"Word Hunt — Today: 3,200 · Your best: 4,100."* Tomorrow you try to top 4,100.
+**Which axis matters per game:** some games are naturally **score-first** (you accumulate
+points in a fixed time — Word Hunt), others are **time-first** (you complete a fixed puzzle,
+fastest wins — Sudoku). Each game declares a **primary metric**; we still track *both* where
+they're meaningful, because "my best time" is intuitive even on score games. See Part 3.
+
+**Example (score-first):** *"Word Hunt — Today: 3,200 · Your best: 4,100."*
+**Example (time-first):** *"Sudoku — Today: 1:41 · Your best: 1:23."* Tomorrow you try to go
+faster than 1:23.
 
 ### 2. Daily Global Board — *"beat everyone else, today"*
 
@@ -115,20 +124,28 @@ long-term grinder, and the casual who plays a few times a week.
 
 ## Part 3 — Which games
 
-### The launch games (the puzzle games this is really for)
+### The launch games (the whole puzzle family — decided)
 
-These four already give each player their own score on a puzzle, so they slot straight into
-the Daily Challenge + leaderboards. **All four get all four boards.**
+These five already give each player their own score on a puzzle *and* keep their answer key
+server-side, so they slot straight into the Daily Challenge + leaderboards. **All five get all
+four boards.**
 
-| Game | What the score is | Notes |
-|---|---|---|
-| **Word Hunt** | points for the words you find (longer word = more points) + a bonus for finishing fast | already point-based; easiest to start with |
-| **Sudoku** | how much you solved + speed − a penalty for wrong cells | on the Daily we score it solo-style (not the "race to each cell" scoring the multiplayer room uses) |
-| **Crossword** | how many cells you got right + speed − a penalty for using hints | hint penalty already exists in the game |
-| **Word Search** | how many words you found + speed − a penalty for using hints | hint penalty already exists in the game |
+| Game | What the score is | Primary metric | Notes |
+|---|---|---|---|
+| **Sudoku** | how much you solved + speed − a penalty for wrong cells | **Time** ⏱️ (score = secondary) | you complete a fixed grid — fastest correct solve wins; this is the `1:23` case |
+| **Word Hunt** | points for the words you find (longer word = more points) + a bonus for finishing fast | **Score** (time = secondary) | fixed time limit, so "fastest" doesn't apply the same way; still show best time as flavour |
+| **Word Search** | how many words you found + speed − a penalty for using hints | **Time** ⏱️ (score = secondary) | fastest to find all words wins; hint penalty already exists |
+| **Crossword** | how many cells you got right + speed − a penalty for using hints | **Time** ⏱️ (score = secondary) | fastest full correct fill wins; hint penalty already exists |
+| **Word Scramble** | how many words you unscramble + speed − a penalty for using hints | **Time** ⏱️ (score = secondary) | answer key already server-side via `/api/word-scramble/solution`; fastest correct solve wins |
 
-**Suggested order:** start with **Word Hunt + Sudoku** (they're the most ready), then add
-**Crossword + Word Search**. But the plan is the same for all four.
+The **primary metric** decides which axis the Daily Global / All-Time / Weekly boards *rank*
+by for that game (time-first games rank fastest-first; score-first games rank highest-first).
+The secondary metric is still stored and shown on the Personal Best card — only the ranking
+axis differs.
+
+**Suggested order within the family:** start with **Sudoku + Word Hunt** (most ready, one
+time-first + one score-first so both ranking paths get exercised early), then fold in **Word
+Search, Crossword, Word Scramble**. Same plan for all five.
 
 ### Games that can join later
 
@@ -245,21 +262,34 @@ create table daily_scores (
 create index idx_daily_scores_board on daily_scores(challenge_id, score desc, time_ms asc);
 
 -- Cached personal best per player per game (rebuildable from daily_scores).
+-- Tracks BOTH axes: best score (higher wins) and best time (lower wins).
 create table personal_bests (
-  profile_id  uuid not null references profiles(id) on delete cascade,
-  game_type   text not null,
-  best_score  integer not null,
-  best_date   date   not null,
-  updated_at  timestamptz not null default now(),
+  profile_id      uuid not null references profiles(id) on delete cascade,
+  game_type       text not null,
+  best_score      integer,                         -- null until a scored attempt
+  best_score_date date,
+  best_time_ms    integer,                         -- fastest completion; null if never completed
+  best_time_date  date,
+  updated_at      timestamptz not null default now(),
   primary key (profile_id, game_type)
 );
+-- best_time_ms only counts a FULL/valid completion (completeness = 1), so a fast
+-- partial solve can't fake a record time. A game's primary metric (see Part 3) decides
+-- which of best_score / best_time_ms the boards rank by.
 ```
 
-Which board is which query:
-- **Personal Best** → read `personal_bests` (best ever) + today's row in `daily_scores`.
-- **Daily Global** → `daily_scores` for today's `challenge_id`, ordered by score.
-- **All-Time** → top scores in `daily_scores` for a `game_type`, all dates.
-- **Weekly** → `daily_scores` aggregated over the last 7 `challenge_date`s.
+Which board is which query (**order direction depends on the game's primary metric** — a
+time-first game orders `time_ms asc`, a score-first game orders `score desc`):
+- **Personal Best** → read `personal_bests` (best score *and* best time) + today's row in
+  `daily_scores`.
+- **Daily Global** → `daily_scores` for today's `challenge_id`, ordered by the primary metric.
+- **All-Time** → best rows in `daily_scores` for a `game_type`, all dates, by primary metric.
+- **Weekly** → `daily_scores` over the last 7 `challenge_date`s: **best-of** (fastest / highest)
+  for time-first games rather than a sum, since times don't add up.
+
+The existing `idx_daily_scores_board(challenge_id, score desc, time_ms asc)` already serves
+score-first ranking with a time tie-break; add a mirror index
+`(challenge_id, time_ms asc, score desc)` for time-first games so their boards read cheaply.
 
 ### Security / anti-cheat
 - **All writes go through the server** using the admin client (`getSupabaseAdmin()`), never a
@@ -287,12 +317,14 @@ Which board is which query:
 `profiles` table. Build once.
 
 **Then:**
-1. Daily Challenge for **Word Hunt + Sudoku** (seed, server-side scoring, one attempt/day).
-2. **Personal Best** + the "new personal best" celebration. *(Board #1)*
+1. Daily Challenge for **Sudoku + Word Hunt** (seed, server-side scoring, one attempt/day) —
+   one time-first + one score-first so both ranking paths are exercised from day one.
+2. **Personal Best** (best score *and* best time) + the "new personal best / new record time"
+   celebration. *(Board #1)*
 3. **Daily Global board** + **All-Time board**. *(Boards #2 and #3)*
-4. Add **Crossword + Word Search** dailies.
+4. Fold in the rest of the puzzle family: **Word Search, Crossword, Word Scramble** dailies.
 5. **Weekly board.** *(Board #4)*
-6. Extend to Tier-2 games (Yahtzee solo, Trivia, Word Rush…).
+6. Extend to later games (Word Rush, Yahtzee solo, Trivia…).
 
 ---
 
@@ -312,12 +344,14 @@ streak alive** — one feature feeds two systems.
 
 ---
 
-## Part 9 — Small decisions to make when you start
+## Part 9 — Small decisions — RESOLVED with recommended defaults (2026-07-17)
 
-1. **One attempt per day** (recommended, keeps boards honest) vs best-of-several.
-2. **Score formula weights** per game — the shape is set in Part 5; the exact numbers need a
-   first tuning pass.
-3. **Do guests appear on the global board?** Recommended: yes, with an auto-generated handle,
-   nudged to claim it — same moment-of-value logic as the trophies doc.
-4. **Which two games launch first** — proposed Word Hunt + Sudoku; confirm against real play
-   data.
+Reversible; override anytime.
+
+1. ✅ **One scored attempt per day** (keeps boards honest). Practising after doesn't count.
+2. ✅ **Score formula weights** — start at **completion 70% / speed 20% / −penalty 10% on a
+   0–1000 scale**, then tune per game from real play data. The shape is set in Part 5.
+3. ✅ **Guests appear on the global board** — yes, with an auto-generated handle, nudged to claim
+   it after a good result (moment-of-value; keeps boards populated).
+4. ✅ **Launch set** — the whole puzzle family (Sudoku, Word Hunt, Word Search, Crossword, Word
+   Scramble), phased in starting with Sudoku + Word Hunt (Part 7).

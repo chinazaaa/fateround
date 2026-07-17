@@ -1810,9 +1810,9 @@ body {
 
 /* Host lobby (waiting state) owns its own chrome. While the mobile-parity HostLobby
    overlay is mounted it sets data-host-lobby="active" on <html>; hide the app's marketing
-   host header (the lobby keeps the global fixed theme toggle as its single light/dark
-   control), and lift the floating voice control above the lobby's pinned footer (height
-   measured into --lobby-footer-h) so it never overlaps the Start button. */
+   host header (the global fixed theme toggle stays as the single light/dark control — the
+   lobby's pinned header leaves room for it), and lift the floating voice control above the
+   lobby's pinned footer (height measured into --lobby-footer-h) so it never overlaps Start. */
 :root[data-host-lobby='active'] .game-host-chrome {
   display: none !important;
 }

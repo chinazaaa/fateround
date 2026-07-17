@@ -6,7 +6,6 @@ import { HostPageShell, hostPlayLayoutFlags } from '@/components/host/HostPageSh
 import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
-import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
@@ -400,7 +399,6 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
             playerHint="Take one of the four seats"
           />
         }
-        howToPlay={<HostRulesRow gameType="mahjong" />}
         settingsChildren={
           <>
             <HostBoardGameLobbyPanel

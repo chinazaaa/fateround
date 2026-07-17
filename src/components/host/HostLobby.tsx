@@ -4,8 +4,13 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
+import { gameRulesHref } from '@/lib/game-landing'
+import { parseGameType } from '@/lib/game-types'
 import { ShareGameModal } from '@/components/host/ShareGameModal'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
+import { HostVisibilityToggle } from '@/components/host-lobby/HostVisibilityToggle'
+import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
+import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostLobbySettingsSheet } from '@/components/host/HostLobbySettingsSheet'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { SlidersIcon } from '@/components/host/host-icons'
@@ -13,13 +18,13 @@ import type { Game, Player } from '@/types'
 
 /**
  * Mobile-parity host lobby (the `waiting` state). A clean, single-column, full-screen
- * screen that mirrors apps/mobile's HostLobbyScreen: a slim top bar (home logo +
- * ⚙ Host settings), the room-code/share card, the "play as yourself" card, the
+ * screen that mirrors apps/mobile's HostLobbyScreen: a pinned top bar (home logo far-left
+ * + ⚙ Host settings right), the room-code/share card, the "play as yourself" card, the
  * players list, and a pinned Start / End footer.
  *
  * While mounted it sets `data-host-lobby="active"` on <html>, which (via globals.css)
  * hides the app's marketing host header — the global fixed theme toggle stays as the
- * lobby's single light/dark control — and docks the floating voice control above the pinned footer (whose
+ * single light/dark control, and the header leaves room for it — and docks the floating voice control above the pinned footer (whose
  * height it measures into `--lobby-footer-h`). Once the game starts, the view unmounts this
  * and the tabbed in-game layout (with the normal header) returns.
  *
@@ -35,7 +40,6 @@ export function HostLobby({
   maxPlayers,
   resumeToken,
   playCard,
-  howToPlay,
   children,
   settingsChildren,
   settingsTitle,
@@ -61,8 +65,6 @@ export function HostLobby({
   resumeToken?: string | null
   /** The "play as yourself" card — typically <HostModeSelector /> or a team panel. */
   playCard?: React.ReactNode
-  /** "How to play" affordance rendered just below the room title. */
-  howToPlay?: React.ReactNode
   /** Optional lobby panels rendered between the play card and the players list. */
   children?: React.ReactNode
   /** Game-specific settings rendered inside the ⚙ sheet, below appearance + sound. */
@@ -119,25 +121,24 @@ export function HostLobby({
 
   return createPortal(
     <div className="fixed inset-0 z-40 flex flex-col bg-[var(--background)]">
+      {/* Pinned top bar: home logo (far left) + Host settings (right). Stays put while the
+          lobby body scrolls. The right side keeps clear of the app's global fixed theme
+          toggle (top-right, z-50) — the lobby's single light/dark control. */}
+      <header className="shrink-0 flex items-center justify-between gap-3 bg-[var(--background)] px-4 py-3 sm:px-6">
+        <Link href="/" aria-label="Fate Round home" className="min-w-0 shrink">
+          <FateRoundLogo className="h-8 w-auto max-w-[7.5rem] sm:max-w-[9rem]" />
+        </Link>
+        <button
+          type="button"
+          onClick={() => setSettingsOpen(true)}
+          className="mr-14 flex shrink-0 items-center gap-2 rounded-full border border-[var(--border-strong)] bg-[var(--card-strong)] px-3.5 py-2 text-sm font-semibold text-muted transition-colors hover:text-[var(--foreground)] sm:mr-28"
+        >
+          <SlidersIcon size={16} />
+          Host settings
+        </button>
+      </header>
       <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="mx-auto w-full max-w-xl px-4 pt-6 pb-6 sm:px-6 space-y-5">
-          {/* Top bar: home logo (left) + theme toggle & Host settings (right) */}
-          <div className="flex items-center justify-between gap-3">
-            <Link href="/" aria-label="Fate Round home" className="min-w-0 shrink">
-              <FateRoundLogo className="h-8 w-auto max-w-[7.5rem] sm:max-w-[9rem]" />
-            </Link>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => setSettingsOpen(true)}
-                className="flex items-center gap-2 rounded-full border border-[var(--border-strong)] bg-[var(--card-strong)] px-3.5 py-2 text-sm font-semibold text-muted transition-colors hover:text-[var(--foreground)]"
-              >
-                <SlidersIcon size={16} />
-                Host settings
-              </button>
-            </div>
-          </div>
-
+        <div className="mx-auto w-full max-w-xl px-4 pt-2 pb-6 sm:px-6 space-y-4">
           {/* Hosting eyebrow + game-type pill */}
           <div className="flex items-center gap-2 min-w-0">
             <span className="label-caps !text-[var(--primary)]">Hosting</span>
@@ -146,19 +147,27 @@ export function HostLobby({
             </span>
           </div>
 
-          <h1 className="text-2xl sm:text-3xl font-black text-body">{game.title || 'Game'}</h1>
-
-          {howToPlay}
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+            <h1 className="text-2xl sm:text-3xl font-black text-body">{game.title || 'Game'}</h1>
+            <Link
+              href={gameRulesHref(parseGameType(game.game_type))}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 text-sm font-semibold text-[var(--primary)] transition-opacity hover:opacity-80"
+            >
+              How to play →
+            </Link>
+          </div>
 
           {/* Room-code / share card — the hero of the lobby (this is what gets people in).
               Tapping opens the share sheet (mobile parity). */}
           <button
             type="button"
             onClick={() => setShareOpen(true)}
-            className="group block w-full rounded-2xl border-2 border-[var(--chip-active-border)] bg-[color-mix(in_srgb,var(--primary)_6%,var(--card-strong))] p-5 text-center shadow-[var(--card-shadow-glow)] transition-colors hover:border-[var(--primary)]"
+            className="group block w-full rounded-2xl border-2 border-[var(--chip-active-border)] bg-[color-mix(in_srgb,var(--primary)_6%,var(--card-strong))] px-5 py-3.5 text-center shadow-[var(--card-shadow-glow)] transition-colors hover:border-[var(--primary)]"
           >
             <p className="text-xs font-semibold text-muted">Game code — tap to share (QR &amp; links)</p>
-            <p className="mt-1 text-4xl font-black tracking-[0.35em] text-body">{gameCode}</p>
+            <p className="mt-0.5 text-3xl font-black tracking-[0.3em] text-body">{gameCode}</p>
           </button>
 
           {playCard}
@@ -200,6 +209,14 @@ export function HostLobby({
       </div>
 
       <HostLobbySettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} title={settingsTitle}>
+        {/* Universal host controls — shown for every game so they're consistent and always
+            visible (not buried in a per-game panel): public/private, theme, late joiners.
+            Game-specific settings follow via settingsChildren. */}
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-3">
+          <HostVisibilityToggle gameCode={gameCode} hostToken={hostToken} game={game} />
+        </div>
+        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} />
+        <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} />
         {settingsChildren}
       </HostLobbySettingsSheet>
 

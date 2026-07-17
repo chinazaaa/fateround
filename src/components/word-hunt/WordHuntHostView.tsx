@@ -670,7 +670,6 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('word_hunt', game) ?? game.max_players}
         playCard={lobbyModeCard}
-        howToPlay={<HostRulesRow gameType="word_hunt" />}
         settingsChildren={lobbySettings}
         onStart={() => void startGame()}
         starting={starting}

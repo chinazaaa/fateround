@@ -14,7 +14,6 @@ import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
-import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostSudokuLobbyPanel } from '@/components/host-lobby/HostSudokuLobbyPanel'
 import { HostPuzzleSettings } from '@/components/host-lobby/HostPuzzleSettings'
@@ -724,7 +723,6 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('crossword', game) ?? game.max_players}
         playCard={lobbyModeCard}
-        howToPlay={<HostRulesRow gameType="crossword" />}
         settingsChildren={lobbySettings}
         onStart={() => void handleStart()}
         starting={starting}

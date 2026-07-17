@@ -14,7 +14,6 @@ import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout, type HostTab } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
-import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostMafiaLobbyPanel } from '@/components/host-lobby/HostMafiaLobbyPanel'
 import { TransferHostControl } from '@/components/TransferHostControl'
@@ -580,7 +579,6 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
         gameTypeLabel={gameTypeConfig('mafia').label}
         players={playersList}
         maxPlayers={lobbyMaxPlayersFromGameClient('mafia', gameObj) ?? gameObj.max_players}
-        howToPlay={<HostRulesRow gameType="mafia" />}
         playCard={
           <p className="surface-inset rounded-xl px-4 py-3 text-sm text-muted">
             You&apos;re the Narrator for this Mafia game — share the invite link with players, then start the game below

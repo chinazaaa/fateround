@@ -518,7 +518,6 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
         maxPlayers={lobbyMaxPlayersFromGameClient('quiplash', game) ?? game.max_players}
         resumeToken={hostResumeToken}
         playCard={lobbyModeCard}
-        howToPlay={<HostRulesRow gameType="quiplash" />}
         settingsChildren={lobbySettings}
         onStart={() => void startGame()}
         starting={starting}

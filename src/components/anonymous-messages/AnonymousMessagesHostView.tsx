@@ -7,7 +7,6 @@ import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
-import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { ExitIcon } from '@/components/host/host-icons'
 import { HostLobbyStartButton } from '@/components/host-lobby/HostLobbyStartButton'
 import { HostVisibilityToggle } from '@/components/host-lobby/HostVisibilityToggle'
@@ -447,7 +446,6 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
         gameTypeLabel={cfg.label}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('anonymous_messages', game) ?? roomCapacity}
-        howToPlay={<HostRulesRow gameType="anonymous_messages" />}
         playCard={
           <p className="surface-inset rounded-xl px-4 py-3 text-sm text-muted">
             You&apos;re hosting this anonymous room — players post under auto-assigned names once you open it. Open it
@@ -455,13 +453,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
           </p>
         }
         settingsChildren={
-          <>
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-3">
-              <HostVisibilityToggle gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-            </div>
-            <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-            <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
-          </>
+          <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
         }
         onStart={() => void startSession()}
         starting={starting}

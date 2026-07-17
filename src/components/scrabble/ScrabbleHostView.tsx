@@ -7,7 +7,6 @@ import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
-import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
@@ -706,7 +705,6 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
             playerHint="Take a seat and play"
           />
         }
-        howToPlay={<HostRulesRow gameType="scrabble" />}
         settingsChildren={
           <>
             {scrabbleSettingsCard}

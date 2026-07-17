@@ -12,7 +12,9 @@ type Props = {
   gameCode: string
   hostToken: string
   game: Game
-  onGameUpdate: (game: Game) => void
+  /** Optional — callers that don't poll/subscribe can sync immediately; others (e.g. the
+   *  central HostLobby sheet) pick up `game.theme` on their own. */
+  onGameUpdate?: (game: Game) => void
 }
 
 /**
@@ -47,7 +49,7 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Failed to update theme')
-      if (data.game) onGameUpdate(data.game)
+      if (data.game) onGameUpdate?.(data.game)
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to update theme')
     } finally {
