@@ -328,6 +328,16 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     if (activeClue) for (const [r, c] of crosswordWordCells(activeClue)) set.add(cellKey(r, c))
     return set
   }, [activeClue])
+  // Both clues that intersect the selected cell, so the bar can show Across AND Down at once
+  // (no scrolling to the lists or re-tapping to flip direction just to read the other clue).
+  const cellAcrossClue = useMemo(
+    () => (metadata && selectedCell ? findClueAt(metadata, selectedCell[0], selectedCell[1], 'across') : null),
+    [metadata, selectedCell]
+  )
+  const cellDownClue = useMemo(
+    () => (metadata && selectedCell ? findClueAt(metadata, selectedCell[0], selectedCell[1], 'down') : null),
+    [metadata, selectedCell]
+  )
 
   // Viewer watches one active player's personal board (their solved cells filled).
   const effectiveWatchedId =
@@ -759,16 +769,32 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
                         if (selectedCell) focusInput()
                       }}
                     >
-                      {activeClue ? (
-                        // No line cap — the active clue is the main thing you're reading, so let a
-                        // long clue wrap fully instead of truncating with an ellipsis.
-                        <Text style={styles.clueBarLine}>
-                          <Text style={styles.clueBarNum}>
-                            {activeClue.number} {activeClue.direction === 'across' ? 'Across' : 'Down'}
-                          </Text>
-                          {'  '}
-                          {activeClue.clue}
-                        </Text>
+                      {cellAcrossClue || cellDownClue ? (
+                        // No line cap — the clue is the main thing you're reading, so let a long
+                        // clue wrap fully. Both intersecting clues show at once; the active
+                        // direction is bright, the other is dimmed.
+                        <>
+                          {cellAcrossClue && (
+                            <Text
+                              style={[
+                                styles.clueBarLine,
+                                direction !== 'across' && styles.clueBarLineDim,
+                                cellDownClue ? styles.clueBarLineSpaced : null,
+                              ]}
+                            >
+                              <Text style={styles.clueBarNum}>{cellAcrossClue.number} Across</Text>
+                              {'  '}
+                              {cellAcrossClue.clue}
+                            </Text>
+                          )}
+                          {cellDownClue && (
+                            <Text style={[styles.clueBarLine, direction !== 'down' && styles.clueBarLineDim]}>
+                              <Text style={styles.clueBarNum}>{cellDownClue.number} Down</Text>
+                              {'  '}
+                              {cellDownClue.clue}
+                            </Text>
+                          )}
+                        </>
                       ) : (
                         <Text style={styles.clueBarHint}>Tap a cell to start filling the grid.</Text>
                       )}
@@ -1009,6 +1035,8 @@ const makeStyles = (theme: Theme) =>
       paddingVertical: 10,
     },
     clueBarLine: { color: theme.text, fontSize: 14 },
+    clueBarLineDim: { color: theme.textMuted },
+    clueBarLineSpaced: { marginBottom: 2 },
     clueBarNum: { fontWeight: '800' },
     clueBarHint: { color: theme.textMuted, fontSize: 14 },
     revealBtn: {
