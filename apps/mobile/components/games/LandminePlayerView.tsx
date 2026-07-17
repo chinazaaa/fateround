@@ -6,6 +6,7 @@ import {
   clampLandmineMarkingTimer,
   clampLandmineWritingTimer,
   gameLandmineMode,
+  gameLandmineMineSource,
   landmineModeLabel,
   landmineOutcomeLabel,
   normalizeAnswer,
@@ -35,6 +36,7 @@ import {
   postLandmineCategory,
   postLandmineDraft,
   postLandmineMark,
+  postLandmineSetup,
   postLandmineSubmit,
 } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
@@ -65,6 +67,9 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   const [marks, setMarks] = useState<LandmineMark[]>([])
   const [answerText, setAnswerText] = useState('')
   const [categories, setCategories] = useState<CategoryOption[]>([])
+  // Manual mode: the setter types the category + mine word(s) themselves.
+  const [setupCategory, setSetupCategory] = useState('')
+  const [setupMines, setSetupMines] = useState<string[]>([''])
   const [acting, setActing] = useState(false)
   const [tick, setTick] = useState(0)
   // Optimistic lock-in — flip to the locked view the instant the POST succeeds instead of
@@ -148,7 +153,9 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   const callerId = currentRound ? roundCallerPlayerId(currentRound, metadata) : null
   const isCaller = callerId === bootstrap.myPlayerId
   const myAnswer = currentRound
-    ? answers.find((a) => a.player_id === bootstrap.myPlayerId && a.round_id === currentRound.id)
+    ? answers.find(
+        (a) => a.player_id === bootstrap.myPlayerId && a.round_id === currentRound.id && a.outcome !== 'setter'
+      )
     : undefined
   const reviewTargetId = metadata && bootstrap.myPlayerId ? reviewTargetForMarker(metadata, bootstrap.myPlayerId) : null
   const reviewTargetAnswer = reviewTargetId
@@ -165,11 +172,18 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   const isViewer = !!(bootstrap.game && me && playerIsViewer(me, bootstrap.game))
   const callerName = playerDisplayName(callerId, bootstrap.players)
   const mode = bootstrap.game ? gameLandmineMode(bootstrap.game) : 'zero_points'
+  const manual = bootstrap.game ? gameLandmineMineSource(bootstrap.game) === 'manual' : false
+  // In manual mode the caller is the "setter": they plant the mine and sit out the round.
+  const isSetter = manual && isCaller && !isViewer
+  const mineCount = Math.min(3, Math.max(1, metadata?.mine_count ?? 1))
 
   const roundAnswers = useMemo(
     () => (currentRound ? answers.filter((a) => a.round_id === currentRound.id) : []),
     [answers, currentRound]
   )
+  // The setter's mirror-payout row (outcome 'setter') isn't a real answer — keep it out of the
+  // answer boards (it still counts in the leaderboard, which reads all `answers`).
+  const playerAnswers = useMemo(() => roundAnswers.filter((a) => a.outcome !== 'setter'), [roundAnswers])
 
   const writingTimer = clampLandmineWritingTimer(bootstrap.game?.timer_seconds)
   const markingTimer = clampLandmineMarkingTimer(bootstrap.game?.operative_timer_seconds)
@@ -198,6 +212,8 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
 
   useEffect(() => {
     setAnswerText('')
+    setSetupCategory('')
+    setSetupMines([''])
     setLockedAnswerRound(null)
     setLockedAnswerText('')
     setLockedMarkRound(null)
@@ -222,7 +238,8 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   const [categoryError, setCategoryError] = useState(false)
   const [categoryLoad, setCategoryLoad] = useState(0)
   useEffect(() => {
-    if (bootstrap.game?.status !== 'active' || isViewer) return
+    // Manual mode doesn't use the admin category list — the setter types their own.
+    if (bootstrap.game?.status !== 'active' || isViewer || manual) return
     let cancelled = false
     setCategoryError(false)
     void fetchLandmineCategories()
@@ -235,7 +252,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     return () => {
       cancelled = true
     }
-  }, [bootstrap.game?.status, isViewer, categoryLoad])
+  }, [bootstrap.game?.status, isViewer, categoryLoad, manual])
 
   const act = useCallback(async (fn: () => Promise<unknown>) => {
     if (submittingRef.current) return
@@ -323,9 +340,9 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  // Auto-submit at the writing deadline.
+  // Auto-submit at the writing deadline. The setter sits out, so they never auto-submit.
   useEffect(() => {
-    if (!currentRound || isViewer || metadata?.phase !== 'writing' || myAnswer?.submitted_at) return
+    if (!currentRound || isViewer || isSetter || metadata?.phase !== 'writing' || myAnswer?.submitted_at) return
     if (!metadata.phase_started_at) return
     const deadline = new Date(metadata.phase_started_at).getTime() + writingTimer * 1000
     const msLeft = Math.max(0, deadline - Date.now())
@@ -338,7 +355,23 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     }, msLeft)
     return () => clearTimeout(handle)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentRound?.id, metadata?.phase, metadata?.phase_started_at, writingTimer, myAnswer?.submitted_at, isViewer])
+  }, [
+    currentRound?.id,
+    metadata?.phase,
+    metadata?.phase_started_at,
+    writingTimer,
+    myAnswer?.submitted_at,
+    isViewer,
+    isSetter,
+  ])
+
+  const submitSetup = () => {
+    if (!token || !roundId) return
+    const category = setupCategory.trim()
+    const mines = setupMines.map((m) => m.trim()).filter(Boolean)
+    if (!category || mines.length === 0) return
+    void act(() => postLandmineSetup(gameCode, token, roundId, category, mines))
+  }
 
   // ── Lifecycle screens ─────────────────────────────────────────────────────────
   if (bootstrap.screen === 'loading') return <GameLoading />
@@ -421,12 +454,66 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   const timer = secondsLeft != null && metadata.phase !== 'reveal' ? `${secondsLeft}s` : undefined
   const subtitle = metadata.category ? `Category: ${metadata.category}` : landmineModeLabel(mode)
 
-  // ── Category pick ───────────────────────────────────────────────────────────
+  // ── Category pick / manual setup ───────────────────────────────────────────────
   if (metadata.phase === 'category_pick') {
+    // Manual mode: the setter types the category + mine word(s) themselves.
+    if (manual && isSetter) {
+      return (
+        <GameShell
+          bootstrap={bootstrap}
+          title="Landmine"
+          subtitle={timer ? `Set up · ${timer}` : landmineModeLabel(mode)}
+        >
+          <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
+            <Text style={styles.section}>You’re the setter — plant the mine</Text>
+            <Text style={styles.meta}>
+              Pick a category, then set the secret mine{mineCount > 1 ? 's' : ''}. You sit this round out and score
+              whatever the room scores.
+            </Text>
+            <TextInput
+              style={styles.input}
+              value={setupCategory}
+              onChangeText={setSetupCategory}
+              placeholder="Category (e.g. Countries in North America)"
+              placeholderTextColor={theme.textFaint}
+              maxLength={80}
+            />
+            {Array.from({ length: mineCount }).map((_, i) => (
+              <TextInput
+                key={i}
+                style={styles.input}
+                value={setupMines[i] ?? ''}
+                onChangeText={(t) =>
+                  setSetupMines((prev) => {
+                    const next = [...prev]
+                    while (next.length < mineCount) next.push('')
+                    next[i] = t
+                    return next
+                  })
+                }
+                placeholder={mineCount > 1 ? `Mine ${i + 1}` : 'The mine word'}
+                placeholderTextColor={theme.textFaint}
+                maxLength={LANDMINE_MAX_ANSWER_LENGTH}
+              />
+            ))}
+            <Text style={styles.meta}>
+              Anyone who types {mineCount > 1 ? 'one of these' : 'this'} scores 0. Keep it tempting but dodgeable.
+            </Text>
+            <Pressable
+              style={styles.primaryBtn}
+              disabled={acting || !setupCategory.trim() || setupMines.every((m) => !m.trim())}
+              onPress={submitSetup}
+            >
+              <Text style={styles.primaryText}>Start the round</Text>
+            </Pressable>
+          </KeyboardAwareGameScroll>
+        </GameShell>
+      )
+    }
     return (
       <GameShell bootstrap={bootstrap} title="Landmine" subtitle={landmineModeLabel(mode)}>
         <View style={styles.form}>
-          {isCaller && !isViewer ? (
+          {!manual && isCaller && !isViewer ? (
             <>
               <Text style={styles.section}>Pick a category</Text>
               <Text style={styles.meta}>A mine will be planted secretly.</Text>
@@ -447,7 +534,9 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
           ) : (
             <View style={styles.waitCard}>
               <Text style={styles.waitEmoji}>🎯</Text>
-              <Text style={styles.waitTitle}>{callerName} is picking a category…</Text>
+              <Text style={styles.waitTitle}>
+                {callerName} is {manual ? 'setting the category & mine' : 'picking a category'}…
+              </Text>
             </View>
           )}
         </View>
@@ -462,7 +551,13 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
       <GameShell bootstrap={bootstrap} title="Landmine" subtitle={timer ? `${subtitle} · ${timer}` : subtitle}>
         <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
           <Text style={styles.section}>{metadata.category}</Text>
-          {locked || isViewer ? (
+          {isSetter ? (
+            <View style={styles.waitCard}>
+              <Text style={styles.waitEmoji}>🕵️</Text>
+              <Text style={styles.waitTitle}>You set this round — sit back</Text>
+              <Text style={styles.meta}>You’ll score the total everyone else earns.</Text>
+            </View>
+          ) : locked || isViewer ? (
             <View style={styles.waitCard}>
               <Text style={styles.waitEmoji}>🔒</Text>
               <Text style={styles.waitTitle}>{isViewer ? 'Watching' : 'Answer locked in'}</Text>
@@ -492,7 +587,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
               </Pressable>
             </>
           )}
-          <Text style={styles.meta}>{roundAnswers.filter((a) => a.submitted_at).length} locked in</Text>
+          <Text style={styles.meta}>{playerAnswers.filter((a) => a.submitted_at).length} locked in</Text>
         </KeyboardAwareGameScroll>
       </GameShell>
     )
@@ -507,7 +602,13 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     return (
       <GameShell bootstrap={bootstrap} title="Landmine" subtitle={timer ? `Marking · ${timer}` : 'Marking'}>
         <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
-          {marked || isViewer ? (
+          {isSetter ? (
+            <View style={styles.waitCard}>
+              <Text style={styles.waitEmoji}>🕵️</Text>
+              <Text style={styles.waitTitle}>You set this round — watching</Text>
+              <Text style={styles.meta}>Category: {metadata.category}</Text>
+            </View>
+          ) : marked || isViewer ? (
             <View style={styles.waitCard}>
               <Text style={styles.waitEmoji}>✅</Text>
               <Text style={styles.waitTitle}>{isViewer ? 'Marking in progress' : 'Your mark is in'}</Text>
@@ -538,7 +639,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
           )}
           {/* Everyone sees every answer + its live verdict (mine stays hidden until reveal). */}
           <Text style={[styles.meta, { textAlign: 'left', marginTop: 8, fontWeight: '700' }]}>Everyone’s answers</Text>
-          {roundAnswers.map((a) => {
+          {playerAnswers.map((a) => {
             const hasAns = !!normalizeAnswer(a.answer)
             const m = marks.find((mk) => mk.round_id === currentRound.id && mk.target_player_id === a.player_id)
             const verdict = !hasAns ? '—' : m?.marked_at ? (m.valid ? '✓ Valid' : '✕ Void') : '· marking'
@@ -580,7 +681,19 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
           <Text style={styles.waitTitle}>The mine{mines.length > 1 ? 's were' : ' was'}:</Text>
           <Text style={styles.mineText}>{mines.join(', ') || '—'}</Text>
         </View>
-        {roundAnswers.map((a) => (
+        {(() => {
+          const setterRow = manual ? roundAnswers.find((a) => a.outcome === 'setter') : undefined
+          return setterRow ? (
+            <View style={[styles.resultRow, styles.setterRow]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.resultName}>{playerDisplayName(setterRow.player_id, bootstrap.players)}</Text>
+                <Text style={styles.meta}>🧨 Set this round’s mine</Text>
+              </View>
+              <Text style={[styles.resultBadge, styles.setterBadge]}>+{setterRow.points ?? 0}</Text>
+            </View>
+          ) : null
+        })()}
+        {playerAnswers.map((a) => (
           <View key={a.player_id} style={styles.resultRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.resultName}>{playerDisplayName(a.player_id, bootstrap.players)}</Text>
@@ -648,4 +761,6 @@ const makeStyles = (theme: Theme) =>
     },
     resultName: { color: theme.text, fontSize: 15, fontWeight: '600' },
     resultBadge: { color: theme.text, fontSize: 14, fontWeight: '700' },
+    setterRow: { borderColor: '#f59e0b' },
+    setterBadge: { color: '#f59e0b' },
   })
