@@ -83,7 +83,10 @@ export function HostPingPongLobbyPanel({ gameCode, hostToken, game, onGameUpdate
   }
 
   const pointsOptions = useMemo(() => PING_PONG_POINTS_OPTIONS.map((pts) => ({ value: pts, label: `${pts} pts` })), [])
-  const timeOptions = useMemo(() => PING_PONG_GAME_DURATION_OPTIONS.map((sec) => ({ value: sec, label: formatPingPongDuration(sec) })), [])
+  const timeOptions = useMemo(
+    () => PING_PONG_GAME_DURATION_OPTIONS.map((sec) => ({ value: sec, label: formatPingPongDuration(sec) })),
+    []
+  )
 
   const summary = `${pointsToWin} points to win${gameDuration > 0 ? `, ${formatPingPongDuration(gameDuration)} timer` : ''}`
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null

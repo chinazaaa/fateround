@@ -125,57 +125,57 @@ export function useSpotifyPlayer(identity: string | null, enabled: boolean) {
     // without waiting for the (heavier) SDK to boot.
     setTimeout(() => {
       void fetchToken().then((token) => {
-      if (cancelled || !token) return
-      loadSdk()
-        .then(() => {
-          if (cancelled || !window.Spotify) return
-          const player = new window.Spotify.Player({
-            name: 'FateRound',
-            volume: 0.5,
-            getOAuthToken: (cb) => {
-              // The SDK asks for a token on connect and whenever it needs to refresh.
-              void fetchToken().then((t) => cb(t ?? ''))
-            },
-          })
-          playerRef.current = player
-          player.addListener('ready', ({ device_id }) => {
-            if (cancelled || !device_id) return
-            deviceIdRef.current = device_id
-            setState((s) => ({ ...s, deviceId: device_id, isReady: true, error: null }))
-          })
-          player.addListener('not_ready', () => {
-            if (cancelled) return
-            setState((s) => ({ ...s, isReady: false }))
-          })
-          const onErr = ({ message }: { message?: string }) => {
-            if (cancelled) return
-            setState((s) => ({ ...s, error: message ?? 'Spotify player error' }))
-          }
-          player.addListener('initialization_error', onErr)
-          player.addListener('authentication_error', onErr)
-          player.addListener('account_error', onErr)
-          player.addListener('playback_error', onErr)
-          void player.connect()
+        if (cancelled || !token) return
+        loadSdk()
+          .then(() => {
+            if (cancelled || !window.Spotify) return
+            const player = new window.Spotify.Player({
+              name: 'FateRound',
+              volume: 0.5,
+              getOAuthToken: (cb) => {
+                // The SDK asks for a token on connect and whenever it needs to refresh.
+                void fetchToken().then((t) => cb(t ?? ''))
+              },
+            })
+            playerRef.current = player
+            player.addListener('ready', ({ device_id }) => {
+              if (cancelled || !device_id) return
+              deviceIdRef.current = device_id
+              setState((s) => ({ ...s, deviceId: device_id, isReady: true, error: null }))
+            })
+            player.addListener('not_ready', () => {
+              if (cancelled) return
+              setState((s) => ({ ...s, isReady: false }))
+            })
+            const onErr = ({ message }: { message?: string }) => {
+              if (cancelled) return
+              setState((s) => ({ ...s, error: message ?? 'Spotify player error' }))
+            }
+            player.addListener('initialization_error', onErr)
+            player.addListener('authentication_error', onErr)
+            player.addListener('account_error', onErr)
+            player.addListener('playback_error', onErr)
+            void player.connect()
 
-          // Playback is started reactively by useSpotifySync, never from a click — so the
-          // SDK's <audio> element is never unlocked by a user gesture, and browsers (mobile
-          // especially) keep it silent even though this is the active device. Unlock it on
-          // the first tap/keypress anywhere; once is enough for the page's lifetime.
-          const unlock = () => {
-            void player.activateElement?.().catch(() => {})
-            removeGestureUnlock?.()
-          }
-          removeGestureUnlock = () => {
-            window.removeEventListener('pointerdown', unlock)
-            window.removeEventListener('keydown', unlock)
-            removeGestureUnlock = null
-          }
-          window.addEventListener('pointerdown', unlock)
-          window.addEventListener('keydown', unlock)
-        })
-        .catch(() => {
-          if (!cancelled) setState((s) => ({ ...s, error: 'Failed to load Spotify' }))
-        })
+            // Playback is started reactively by useSpotifySync, never from a click — so the
+            // SDK's <audio> element is never unlocked by a user gesture, and browsers (mobile
+            // especially) keep it silent even though this is the active device. Unlock it on
+            // the first tap/keypress anywhere; once is enough for the page's lifetime.
+            const unlock = () => {
+              void player.activateElement?.().catch(() => {})
+              removeGestureUnlock?.()
+            }
+            removeGestureUnlock = () => {
+              window.removeEventListener('pointerdown', unlock)
+              window.removeEventListener('keydown', unlock)
+              removeGestureUnlock = null
+            }
+            window.addEventListener('pointerdown', unlock)
+            window.addEventListener('keydown', unlock)
+          })
+          .catch(() => {
+            if (!cancelled) setState((s) => ({ ...s, error: 'Failed to load Spotify' }))
+          })
       })
     }, 0)
 
