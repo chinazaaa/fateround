@@ -45,7 +45,7 @@ import {
 } from '@/components/crazy-eights/CrazyEightsBoard'
 import { CrazyEightsPlaySurface } from '@/components/crazy-eights/CrazyEightsPlaySurface'
 import { HostRoomShell } from '@/components/host/HostRoomShell'
-import { useRosterBase, useRosterManage } from '@/components/roster/RosterDrawerContext'
+import { useGamePlacements, useRosterBase, useRosterManage } from '@/components/roster/RosterDrawerContext'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
@@ -317,12 +317,26 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
   // while the game is active — the host sees the same who's-here list as players,
   // with a per-row Remove. The active card-table room renders via HostRoomShell
   // (below) instead of HostGameLayout, so — like Whot — register the roster here.
-  useRosterBase(game?.status === 'active' ? players : undefined, game, hostPlayerId)
+  useRosterBase(game?.status === 'active' || game?.status === 'finished' ? players : undefined, game, hostPlayerId)
   const rosterRemove = useMemo(
     () => (row: { id: string; name: string }) => removePlayer(row.id, row.name),
     [removePlayer]
   )
   useRosterManage(game?.status === 'active' ? { hostPlayerId: hostPlayerId ?? null, onRemove: rosterRemove } : null)
+
+  // Winner/runner-up medal pills on the roster drawer. finish_order lists players
+  // in the order they emptied their hands (first out = winner); make sure the
+  // declared winner is 1st even if they aren't in finish_order yet.
+  const placements = useMemo(() => {
+    const map: Record<string, number> = {}
+    ;(session?.finish_order ?? []).forEach((id, i) => {
+      map[id] = i + 1
+    })
+    const winnerId = session?.winner_player_id
+    if (winnerId && !(winnerId in map)) map[winnerId] = 1
+    return Object.keys(map).length ? map : null
+  }, [session?.finish_order, session?.winner_player_id])
+  useGamePlacements(placements)
 
   // Host game settings for the active room live behind the main chrome's ⚙ gear
   // (top header, beside Share). Register the body (late-join rules · How to play ·

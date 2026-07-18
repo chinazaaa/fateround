@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import type { GameType } from '@fateround/shared'
 import { EditNameInline } from '@/components/session/EditNameInline'
 import { LeaveGameButton } from '@/components/session/LeaveGameButton'
@@ -69,55 +69,59 @@ export function PlayerSessionMenu({ gameCode, gameType, playerId, playerName, on
         }}
       >
         <Pressable style={styles.backdrop} onPress={close}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.sheetTitle}>{gameCode.toUpperCase()}</Text>
-            {gameType ? <Text style={styles.sheetMeta}>{gameLabel(gameType as GameType)}</Text> : null}
+          {/* Lift the bottom sheet above the keyboard so the name field stays
+              visible while typing (autoFocus opens the keyboard immediately). */}
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+            <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+              <Text style={styles.sheetTitle}>{gameCode.toUpperCase()}</Text>
+              {gameType ? <Text style={styles.sheetMeta}>{gameLabel(gameType as GameType)}</Text> : null}
 
-            {editingName ? (
-              <View style={styles.editBlock}>
-                <EditNameInline
-                  gameCode={gameCode}
-                  playerId={playerId}
-                  currentName={playerName}
-                  startEditing
-                  onRenamed={(name) => {
-                    onRenamed(name)
-                    setEditingName(false)
-                    close()
-                  }}
-                />
-                <Pressable style={styles.cancelEdit} onPress={() => setEditingName(false)}>
-                  <Text style={styles.cancelEditText}>Cancel</Text>
-                </Pressable>
-              </View>
-            ) : (
-              <>
-                <Pressable style={styles.row} onPress={() => setEditingName(true)}>
-                  <Text style={styles.rowText}>✏️ Edit your name</Text>
-                </Pressable>
-
-                {gameType ? (
-                  <View style={styles.row}>
-                    <GameRulesLink gameType={gameType} />
-                  </View>
-                ) : null}
-
-                <PushMuteToggle gameCode={gameCode} />
-
-                <RotatePlayerCodeRow gameCode={gameCode} style={styles.row} textStyle={styles.rowText} />
-
-                <View style={styles.leaveRow}>
-                  <LeaveGameButton gameCode={gameCode} playerId={playerId} onLeft={requestLeave} quiet={false} />
+              {editingName ? (
+                <View style={styles.editBlock}>
+                  <EditNameInline
+                    gameCode={gameCode}
+                    playerId={playerId}
+                    currentName={playerName}
+                    startEditing
+                    onRenamed={(name) => {
+                      onRenamed(name)
+                      setEditingName(false)
+                      close()
+                    }}
+                  />
+                  <Pressable style={styles.cancelEdit} onPress={() => setEditingName(false)}>
+                    <Text style={styles.cancelEditText}>Cancel</Text>
+                  </Pressable>
                 </View>
-              </>
-            )}
+              ) : (
+                <>
+                  <Pressable style={styles.row} onPress={() => setEditingName(true)}>
+                    <Text style={styles.rowText}>✏️ Edit your name</Text>
+                  </Pressable>
 
-            {!editingName ? (
-              <Pressable style={styles.dismiss} onPress={close}>
-                <Text style={styles.dismissText}>Close</Text>
-              </Pressable>
-            ) : null}
-          </Pressable>
+                  {gameType ? (
+                    <View style={styles.row}>
+                      <GameRulesLink gameType={gameType} />
+                    </View>
+                  ) : null}
+
+                  <PushMuteToggle gameCode={gameCode} />
+
+                  <RotatePlayerCodeRow gameCode={gameCode} style={styles.row} textStyle={styles.rowText} />
+
+                  <View style={styles.leaveRow}>
+                    <LeaveGameButton gameCode={gameCode} playerId={playerId} onLeft={requestLeave} quiet={false} />
+                  </View>
+                </>
+              )}
+
+              {!editingName ? (
+                <Pressable style={styles.dismiss} onPress={close}>
+                  <Text style={styles.dismissText}>Close</Text>
+                </Pressable>
+              ) : null}
+            </Pressable>
+          </KeyboardAvoidingView>
         </Pressable>
       </Modal>
     </>

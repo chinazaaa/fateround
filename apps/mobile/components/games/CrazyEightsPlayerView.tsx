@@ -46,6 +46,7 @@ import {
 import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
 import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { useGamePlacements } from '@/components/session/RosterDrawerContext'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import {
@@ -215,14 +216,31 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     return counts
   }, [hands])
 
+  // Feed winner/runner-up medal pills into the roster drawer. finish_order lists
+  // players in the order they emptied their hands (first out = winner); ensure the
+  // declared winner is 1st even if they aren't in finish_order yet.
+  const placements = useMemo(() => {
+    const map: Record<string, number> = {}
+    ;(session?.finish_order ?? []).forEach((id, i) => {
+      map[id] = i + 1
+    })
+    const winnerId = session?.winner_player_id
+    if (winnerId && !(winnerId in map)) map[winnerId] = 1
+    return Object.keys(map).length ? map : null
+  }, [session?.finish_order, session?.winner_player_id])
+  useGamePlacements(placements)
+
   const act = async (fn: () => Promise<unknown>) => {
     if (!bootstrap.myResumeToken || acting) return
     setActing(true)
     try {
       await fn()
-      await bootstrap.load()
     } finally {
+      // Unblock input as soon as the action lands — don't hold the hand frozen
+      // through a second round-trip. The refresh runs in the background (and the
+      // realtime subscription reloads on the server write anyway; load() de-dupes).
       setActing(false)
+      void bootstrap.load()
     }
   }
 

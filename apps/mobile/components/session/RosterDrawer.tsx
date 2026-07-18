@@ -95,6 +95,15 @@ export function RosterDrawer() {
   )
 }
 
+/** 1 = 🥇 Winner, 2 = 🥈 Runner-up, 3 = 🥉 3rd, else Nth. Null for unplaced. */
+function placementLabel(place: number | undefined): string | null {
+  if (place == null) return null
+  if (place === 1) return '🥇 Winner'
+  if (place === 2) return '🥈 Runner-up'
+  if (place === 3) return '🥉 3rd'
+  return `${place}th`
+}
+
 function RosterRowView({
   row,
   styles,
@@ -113,16 +122,30 @@ function RosterRowView({
         ? `${row.score}${row.scoreSuffix ?? ''}`
         : row.score
   const statusText = row.eliminated ? 'Out' : row.viewer ? 'Watching' : (row.status ?? null)
+  const placeLabel = placementLabel(row.placement)
 
   return (
     <View style={[styles.row, row.isMe && styles.rowMe]}>
       <Text style={styles.seat}>{row.seat}</Text>
       <View style={styles.nameCol}>
-        <Text style={styles.name} numberOfLines={1}>
-          {row.name}
-          {isHost ? <Text style={styles.hostTag}> HOST</Text> : null}
-          {row.isMe ? <Text style={styles.youTag}> · you</Text> : null}
-        </Text>
+        <View style={styles.nameLine}>
+          <Text style={styles.name} numberOfLines={1}>
+            {row.name}
+            {row.isMe ? <Text style={styles.youTag}> · you</Text> : null}
+          </Text>
+          {isHost ? (
+            <View style={styles.hostPill}>
+              <Text style={styles.hostPillText}>HOST</Text>
+            </View>
+          ) : null}
+          {placeLabel ? (
+            <View style={[styles.placePill, row.placement === 1 && styles.placePillWinner]}>
+              <Text style={[styles.placePillText, row.placement === 1 && styles.placePillTextWinner]}>
+                {placeLabel}
+              </Text>
+            </View>
+          ) : null}
+        </View>
         {statusText ? <Text style={styles.status}>{statusText}</Text> : null}
       </View>
       {scoreText != null ? (
@@ -177,10 +200,34 @@ const makeStyles = (t: Theme) =>
     },
     rowMe: { backgroundColor: t.primarySoft },
     seat: { color: t.textFaint, fontWeight: '700', width: 22, fontSize: 13, textAlign: 'center' },
-    nameCol: { flex: 1, gap: 1 },
-    name: { color: t.text, fontSize: 15, fontWeight: '600' },
+    nameCol: { flex: 1, gap: 3 },
+    nameLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    name: { color: t.text, fontSize: 15, fontWeight: '600', flexShrink: 1 },
     youTag: { color: t.textFaint, fontSize: 12, fontWeight: '700' },
-    hostTag: { color: t.primary, fontSize: 10, fontWeight: '800' },
+    hostPill: {
+      backgroundColor: t.primarySoft,
+      borderRadius: t.radius.pill,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      flexShrink: 0,
+    },
+    hostPillText: {
+      color: t.primary,
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
+    },
+    placePill: {
+      backgroundColor: t.surfaceHover,
+      borderRadius: t.radius.pill,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      flexShrink: 0,
+    },
+    placePillWinner: { backgroundColor: t.primarySoft },
+    placePillText: { color: t.textSecondary, fontSize: 11, fontWeight: '800' },
+    placePillTextWinner: { color: t.primary },
     status: { color: t.textFaint, fontSize: 11, fontWeight: '600' },
     score: { color: t.primaryMuted, fontWeight: '700', fontSize: 14, flexShrink: 0 },
     remove: { color: t.error, fontSize: 13, fontWeight: '700', flexShrink: 0 },

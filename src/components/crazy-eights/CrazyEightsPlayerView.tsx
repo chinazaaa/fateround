@@ -46,6 +46,7 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useCrazyEightsTurnTimer } from '@/hooks/useCrazyEightsTurnTimer'
 import { useCrazyEightsGameTimer } from '@/hooks/useCrazyEightsGameTimer'
 import { useCrazyEightsNotifications, playCrazyEightsActionSound } from '@/hooks/useCrazyEightsNotifications'
+import { useGamePlacements } from '@/components/roster/RosterDrawerContext'
 
 const CRAZY8_SESSION_SELECT =
   'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at,created_at,updated_at'
@@ -250,6 +251,18 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     }
     return counts
   }, [hands])
+
+  // Winner/runner-up medal pills on the roster drawer (mirrors the host view).
+  const placements = useMemo(() => {
+    const map: Record<string, number> = {}
+    ;(session?.finish_order ?? []).forEach((id, i) => {
+      map[id] = i + 1
+    })
+    const winnerId = session?.winner_player_id
+    if (winnerId && !(winnerId in map)) map[winnerId] = 1
+    return Object.keys(map).length ? map : null
+  }, [session?.finish_order, session?.winner_player_id])
+  useGamePlacements(placements)
 
   const cfg = gameTypeConfig('crazy_eights')
   const winner = players.find((p) => p.id === session?.winner_player_id)

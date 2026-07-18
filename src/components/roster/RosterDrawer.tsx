@@ -124,6 +124,15 @@ export function RosterDrawer() {
   )
 }
 
+/** 1 = 🥇 Winner, 2 = 🥈 Runner-up, 3 = 🥉 3rd, else Nth. Null for unplaced. */
+function placementLabel(place: number | undefined): string | null {
+  if (place == null) return null
+  if (place === 1) return '🥇 Winner'
+  if (place === 2) return '🥈 Runner-up'
+  if (place === 3) return '🥉 3rd'
+  return `${place}th`
+}
+
 function RosterRowView({
   row,
   number,
@@ -142,6 +151,7 @@ function RosterRowView({
         ? `${row.score}${row.scoreSuffix ?? ''}`
         : row.score
   const statusText = row.eliminated ? 'Out' : row.viewer ? 'Watching' : (row.status ?? null)
+  const placeLabel = placementLabel(row.placement)
 
   return (
     <div
@@ -156,6 +166,17 @@ function RosterRowView({
           {isHost ? (
             <span className="shrink-0 rounded-full bg-[color-mix(in_srgb,var(--primary)_16%,transparent)] px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-[var(--primary)]">
               Host
+            </span>
+          ) : null}
+          {placeLabel ? (
+            <span
+              className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-extrabold ${
+                row.placement === 1
+                  ? 'bg-[color-mix(in_srgb,var(--primary)_16%,transparent)] text-[var(--primary)]'
+                  : 'bg-[color-mix(in_srgb,var(--foreground)_10%,transparent)] text-muted'
+              }`}
+            >
+              {placeLabel}
             </span>
           ) : null}
           {row.isMe ? <span className="shrink-0 text-xs font-bold text-faint">· you</span> : null}

@@ -358,7 +358,9 @@ export function PollGamePlayerExperience({
   // Self-contained views with their own bootstrap (Whot) can OVERRIDE these rows
   // (via useRosterRowsOverride) so the spectator's own row is marked "· you" — this
   // dispatcher's session id can lag theirs. Override wins over this base, so no fight.
-  useRosterBase(game?.status === 'active' ? players : undefined, game, myPlayerId)
+  // Keep the roster through 'finished' too, so end-of-game winner/runner-up medal
+  // pills (useGamePlacements) stay visible — matching mobile.
+  useRosterBase(game?.status === 'active' || game?.status === 'finished' ? players : undefined, game, myPlayerId)
 
   const {
     assignment,

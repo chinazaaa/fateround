@@ -79,12 +79,13 @@ export function HostGameLayout({
   const layout = hostPlayLayoutFlags(tab, showTabs, status)
   const primaryLabel = primaryKind === 'play' ? 'Play' : 'Watch'
 
-  // Feed the shared roster drawer (opened from the header) — only while the game
-  // is actually being played. In the lobby/waiting (and once finished) the roster
-  // lives in the lobby/results UI, so the header button stays hidden. The host's
-  // own row is marked "you" via hostPlayerId; scores are layered on by each game
-  // view via useGameScores. Remove is enabled only when the view wires onRemovePlayer.
-  useRosterBase(status === 'active' ? players : undefined, game, hostPlayerId)
+  // Feed the shared roster drawer (opened from the header) while the game is being
+  // played AND once it's finished — the finished roster carries winner/runner-up
+  // medal pills (useGamePlacements), matching mobile. In the lobby/waiting the
+  // roster lives in the lobby UI, so the header button stays hidden there. The
+  // host's own row is marked "you" via hostPlayerId; scores are layered on by each
+  // game view via useGameScores. Remove is enabled only when the view wires it.
+  useRosterBase(status === 'active' || status === 'finished' ? players : undefined, game, hostPlayerId)
   const manageRemove = useMemo(
     () => (onRemovePlayer ? (row: { id: string; name: string }) => onRemovePlayer(row.id, row.name) : undefined),
     [onRemovePlayer]
