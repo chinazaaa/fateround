@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation'
 import { WhotCard, WhotLoadingScreen, WhotSecondaryButton, WhotShell } from '@/components/whot/WhotChrome'
 import { WhotPlaySurface } from '@/components/whot/WhotPlaySurface'
 import { PlayerRoomShell } from '@/components/rooms/PlayerRoomShell'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { deriveBaseRows, sortRows, useRosterRowsOverride } from '@/components/roster/RosterDrawerContext'
 import { WhotFinalResultsShareBlock } from '@/components/whot/WhotFinalResultsShareBlock'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -270,6 +274,46 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const whotCallActive = session ? hasActiveWhotCall(session) : false
   const pickPenalty = session ? getActivePickPenalty(session) : { type: null, count: 0 }
 
+  // Feed the roster side-drawer from THIS view's bootstrap (authoritative players +
+  // myPlayerId) via the OVERRIDE slot — the dispatcher (PollGamePlayerExperience)
+  // still registers a base copy, but its useGameSession myPlayerId can lag ours, so
+  // a spectator's own row would miss the "· you" highlight. Override always wins over
+  // that base (single writer, no fight — using base here would flicker the header
+  // roster button as the two registrations clobber each other).
+  const rosterRows = useMemo(
+    () => (game?.status === 'active' ? sortRows(deriveBaseRows(players, game, myPlayerId)) : null),
+    [game, players, myPlayerId]
+  )
+  useRosterRowsOverride(rosterRows)
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header) — the in-room bar that used to hold them is gone. Registered
+  // while the game is active; `GameChromeSettings` renders it inside the one sheet.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId || game?.status !== 'active') return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={activePlayer?.name ?? roomDisplayName ?? ''}
+          onRenamed={() => void load()}
+          spectating={isWatching}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, activePlayer?.name, roomDisplayName, isWatching, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
   if (screen === 'loading') return <WhotLoadingScreen />
 
   if (screen === 'not_found') {
@@ -414,24 +458,10 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
 
   if (!session) return <WhotLoadingScreen />
 
-  // The active play surface mounts inside the design-system room shell, which
-  // supplies the `.fr-room-poll` → `.pr-main` → `.pr-stage` frame the `.ct-surface`
-  // needs, with the top voice rail as the room chrome.
-  const roomShell = (children: React.ReactNode) => (
-    <PlayerRoomShell
-      gameCode={gameCode}
-      gameName={game?.title ?? cfg.label}
-      playerName={activePlayer?.name ?? roomDisplayName}
-      playerId={myPlayerId}
-      resumeToken={myResumeToken}
-      onLeave={() => {
-        clearPlayerSession(gameCode)
-        router.push('/')
-      }}
-    >
-      {children}
-    </PlayerRoomShell>
-  )
+  // The active play surface mounts inside the design-system room frame, which
+  // supplies the `.fr-room-poll` → `.pr-main` → `.pr-stage` layout the `.ct-surface`
+  // needs. The room chrome is the app's fixed top header + the floating Join-voice pill.
+  const roomShell = (children: React.ReactNode) => <PlayerRoomShell>{children}</PlayerRoomShell>
 
   if (isWatching) {
     return roomShell(

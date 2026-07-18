@@ -4,8 +4,6 @@ import { useState } from 'react'
 import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton, leaveButtonQuietClassName } from '@/components/ui/LeaveGameButton'
-import { PlayerResumeCard } from '@/components/PlayerResumeCard'
-import { WhatsAppChannelLink } from '@/components/WhatsAppChannelLink'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import type { Game, Player } from '@/types'
@@ -70,6 +68,9 @@ export function GameLobbyWaitingPanel({
 
   return (
     <div className="space-y-5">
+      {/* Rules up top — near the game title, not buried in the footer. */}
+      {rulesLink ? <div className="text-center">{rulesLink}</div> : null}
+
       <div className="rounded-xl border border-[color-mix(in_srgb,var(--primary)_18%,var(--border))] bg-[color-mix(in_srgb,var(--primary)_6%,transparent)] px-4 py-4 text-center space-y-1">
         {isSpectator ? (
           <>
@@ -101,9 +102,6 @@ export function GameLobbyWaitingPanel({
           </p>
         )}
         {game ? <GameInfoChips game={game} className="pt-1" /> : null}
-        <div className="flex justify-center pt-2">
-          <WhatsAppChannelLink />
-        </div>
       </div>
 
       {activityFirst ? activity : null}
@@ -113,20 +111,12 @@ export function GameLobbyWaitingPanel({
 
       {activityFirst ? null : activity}
 
-      {/* Compact footer: your identity, rules and the quieter continue / leave actions
-          live down here so they don't crowd the lobby. */}
+      {/* Compact footer: your identity + leave. The "continue on another device"
+          code now lives in the header Share popup ("Your player link"), so it's
+          not repeated here. */}
       {myPlayerId ? (
-        <div className="space-y-2.5 border-t border-[var(--border)] pt-4">
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-            <EditNameInline
-              gameCode={gameCode}
-              playerId={myPlayerId}
-              currentName={myPlayerName}
-              onRenamed={onRenamed}
-            />
-            {rulesLink ? <div className="shrink-0">{rulesLink}</div> : null}
-          </div>
-          <PlayerResumeCard gameCode={gameCode} />
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-[var(--border)] pt-4">
+          <EditNameInline gameCode={gameCode} playerId={myPlayerId} currentName={myPlayerName} onRenamed={onRenamed} />
           <LeaveGameButton
             gameCode={gameCode}
             playerId={myPlayerId}
@@ -136,8 +126,6 @@ export function GameLobbyWaitingPanel({
             className={leaveButtonQuietClassName}
           />
         </div>
-      ) : rulesLink ? (
-        <div className="text-center">{rulesLink}</div>
       ) : null}
     </div>
   )

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } fro
 import { supabase } from '@/lib/supabase'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import {
   MatchingPairsStatDetails,
   MatchingPairsFinalBreakdown,
@@ -693,6 +694,13 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     roundStartedAtMap,
     game?.timer_seconds
   )
+
+  // Live scores feed the shared roster drawer (opened from the header).
+  const rosterScores = useMemo(
+    () => Object.fromEntries(leaderboard.map((row) => [row.playerId, row.finalScore])),
+    [leaderboard]
+  )
+  useGameScores(rosterScores, { suffix: ' pts' })
 
   // Per-round leaderboard for the round_results screen — uses tallyMatchingPairsScore
   // directly (not the cumulative builder) so per-round stats (streak, penalty, placement

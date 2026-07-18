@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { resumePlayerSession } from '@/lib/player-resume'
-import { normalizeResumeToken } from '@/lib/utils'
+import { getPlayerSession, normalizeResumeToken } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
 
 export function PlayerResumeEntry({
@@ -18,6 +18,19 @@ export function PlayerResumeEntry({
   const [open, setOpen] = useState(false)
   const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // Only useful before you're in — it's how you reclaim a seat you joined on
+  // another device. Once this browser holds a session (e.g. the waiting screen,
+  // which some games render inside the same join shell), hide it. Polls because
+  // the session appears the moment you join without remounting this component.
+  const [hasSession, setHasSession] = useState(false)
+  useEffect(() => {
+    const check = () => setHasSession(!!getPlayerSession(gameCode)?.playerId)
+    check()
+    const id = window.setInterval(check, 1000)
+    return () => window.clearInterval(id)
+  }, [gameCode])
+  if (hasSession) return null
 
   const submit = async () => {
     const token = normalizeResumeToken(code)

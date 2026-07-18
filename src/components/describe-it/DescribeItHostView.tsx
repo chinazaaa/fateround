@@ -968,6 +968,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
 
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={gameFinished ? 'finished' : game.status}
       tab={tab}

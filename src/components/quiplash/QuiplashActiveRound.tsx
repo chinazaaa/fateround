@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
-import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
+import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import { QuiplashFinishedResults } from '@/components/quiplash/QuiplashFinishedResults'
 import {
   answerAuthorName,
@@ -131,6 +130,10 @@ export function QuiplashActiveRound({
     () => tallyQuiplashScores(battles, answers, players, votes),
     [battles, answers, players, votes]
   )
+
+  // Live scores feed the shared roster drawer (opened from the header).
+  const rosterScores = useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard])
+  useGameScores(rosterScores, { suffix: ' pts' })
 
   const canSubmitAnswer = !cannotParticipate
 
@@ -280,16 +283,7 @@ export function QuiplashActiveRound({
   })
 
   return (
-    <LiveLeaderboardLayout
-      sidebar={
-        <PaginatedLeaderboard
-          title="Leaderboard"
-          rows={leaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
-          highlightId={myPlayerId}
-          scoreLabel={(score) => `${score} pts`}
-        />
-      }
-    >
+    <div className="mx-auto w-full max-w-2xl">
       <div className="glass-card p-5 text-center space-y-3">
         <p className="label-caps text-xs">
           Round {currentRound.round_number} of {game.rounds_count}
@@ -463,6 +457,6 @@ export function QuiplashActiveRound({
           })}
         </div>
       )}
-    </LiveLeaderboardLayout>
+    </div>
   )
 }

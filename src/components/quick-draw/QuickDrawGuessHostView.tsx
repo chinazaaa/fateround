@@ -572,6 +572,7 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
 
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={game.status}
       tab={tab}

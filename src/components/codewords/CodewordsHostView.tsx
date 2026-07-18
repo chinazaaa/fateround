@@ -683,6 +683,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
         </HostLobby>
       ) : (
         <HostGameLayout
+          onRemovePlayer={removePlayer}
           gameCode={gameCode}
           status={game.status}
           tab={tab}

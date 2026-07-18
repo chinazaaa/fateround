@@ -146,6 +146,7 @@ import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { useRosterBase } from '@/components/roster/RosterDrawerContext'
 import { PlayerSessionBar } from '@/components/ui/PlayerSessionBar'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
@@ -347,6 +348,17 @@ export function PollGamePlayerExperience({
 
   const myPlayer = useMemo(() => players.find((p) => p.id === myPlayerId) ?? null, [players, myPlayerId])
   const isViewer = !!(game && myPlayer && playerIsViewer(myPlayer, game))
+
+  // Feed the shared roster drawer (opened from the player header) — only while the
+  // game is actively being played (not the lobby/join/waiting screen, not once it
+  // has finished). This dispatcher stays mounted with a live roster subscription
+  // even after a dedicated game view takes over, so every game gets the roster for
+  // free. Dedicated views layer per-player scores on top via useGameScores.
+  //
+  // Self-contained views with their own bootstrap (Whot) can OVERRIDE these rows
+  // (via useRosterRowsOverride) so the spectator's own row is marked "· you" — this
+  // dispatcher's session id can lag theirs. Override wins over this base, so no fight.
+  useRosterBase(game?.status === 'active' ? players : undefined, game, myPlayerId)
 
   const {
     assignment,

@@ -397,6 +397,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
         />
       ) : (
         <HostGameLayout
+          onRemovePlayer={removePlayer}
           gameCode={gameCode}
           status={game.status}
           tab={tab}

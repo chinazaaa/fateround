@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
-import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
+import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import { QuickDrawFinishedResults } from '@/components/quick-draw/QuickDrawFinishedResults'
 import { DrawingCanvas, DrawingPreview } from '@/components/quick-draw/DrawingCanvas'
 import {
@@ -155,6 +154,10 @@ export function QuickDrawActiveRound({
     () => tallyQuickDrawScores(titles, votes, drawings, players),
     [titles, votes, drawings, players]
   )
+
+  // Live scores feed the shared roster drawer (opened from the header).
+  const rosterScores = useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard])
+  useGameScores(rosterScores, { suffix: ' pts' })
 
   const screen: PlayScreen = useMemo(() => {
     if (game.status === 'finished' || session?.phase === 'finished') return 'finished'
@@ -348,16 +351,7 @@ export function QuickDrawActiveRound({
   const artistName = activeDrawing ? playerDisplayName(activeDrawing.player_id, players) : 'Someone'
 
   return (
-    <LiveLeaderboardLayout
-      sidebar={
-        <PaginatedLeaderboard
-          title="Leaderboard"
-          rows={leaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
-          highlightId={myPlayerId}
-          scoreLabel={(score) => `${score} pts`}
-        />
-      }
-    >
+    <div className="mx-auto w-full max-w-2xl">
       <div className="glass-card p-5 text-center space-y-3">
         <p className="label-caps text-xs">
           Round {currentRound.round_number} of {game.rounds_count}
@@ -528,6 +522,6 @@ export function QuickDrawActiveRound({
           <p className="text-center text-xs text-faint">Reveal lasts {QUICK_DRAW_REVEAL_SECONDS}s</p>
         </div>
       )}
-    </LiveLeaderboardLayout>
+    </div>
   )
 }

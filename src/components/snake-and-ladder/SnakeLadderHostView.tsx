@@ -527,6 +527,7 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
 
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={game.status}
       tab={tab}

@@ -2087,9 +2087,12 @@ export function gameTypeConfig(gameType: GameType | string | undefined): GameTyp
  * Games that render the design-system voice rail inline in their own room chrome
  * (the top header). These already have a Join-voice control, so the shared
  * floating `AudioChat` pill must NOT be mounted for them (it would double up).
- * Every other game still relies on the floating pill until the header rolls out.
+ * Every other game relies on the floating pill.
+ *
+ * Empty for now: Whot dropped its in-room voice rail in favour of the shared
+ * green floating Join-voice pill (host + player), so no game suppresses the pill.
  */
-const HEADER_VOICE_GAME_TYPES = new Set<GameType>(['whot'])
+const HEADER_VOICE_GAME_TYPES = new Set<GameType>([])
 
 export function gameHasHeaderVoice(gameType: GameType | string | undefined): boolean {
   return HEADER_VOICE_GAME_TYPES.has(parseGameType(gameType))

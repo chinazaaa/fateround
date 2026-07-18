@@ -26,12 +26,10 @@ import {
   PickerOverlay,
   PickerTabs,
   Piles,
-  SpecSeats,
   Table,
   TurnRail,
   TurnStatus,
   WhotCardFace,
-  type SpecSeat,
   type TurnSeat,
 } from '@/components/rooms/card-table/primitives'
 import { WhotShapeIcon } from '@/components/whot/WhotShapeIcon'
@@ -146,8 +144,6 @@ export function WhotPlaySurface({
         ? `Draw ${pickPenalty.count} (Pick 3)`
         : 'Draw a card'
 
-  const specSeats: SpecSeat[] = seats.map((s) => ({ name: s.name, cards: s.cards, turn: s.turn, winner: s.winner }))
-
   const gamePct =
     gameTimer && gameTimer.durationSeconds > 0
       ? Math.max(0, Math.min(100, (gameTimer.secondsLeft / gameTimer.durationSeconds) * 100))
@@ -182,7 +178,7 @@ export function WhotPlaySurface({
 
         {watching ? (
           <TurnStatus muted>
-            Spectating — {turnName}&apos;s turn · <span className="g">you can chat</span>
+            Spectating — {turnName}&apos;s turn · <span className="g">you can join the voice room</span>
           </TurnStatus>
         ) : session.status_message ? (
           <ActionToast tone="ok">{session.status_message}</ActionToast>
@@ -205,15 +201,10 @@ export function WhotPlaySurface({
         )}
       </Table>
 
-      {watching ? (
-        <div className="hand-wrap spec">
-          <div className="hand-head">
-            <span className="hl">Players · {specSeats.length}</span>
-            <span className="cnt">watch-only</span>
-          </div>
-          <SpecSeats seats={specSeats} />
-        </div>
-      ) : (
+      {/* Spectators see who's playing (names + card counts + whose turn) on the table
+          above the draw/discard piles, so no separate standings list here. Who's-here
+          + remove lives in the roster side-drawer (header people button). */}
+      {watching ? null : (
         <Hand
           count={myHand.length}
           many={many}

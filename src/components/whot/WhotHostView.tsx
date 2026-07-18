@@ -44,7 +44,10 @@ import { WhotPlaySurface } from '@/components/whot/WhotPlaySurface'
 import { HostRoomShell } from '@/components/host/HostRoomShell'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { playerIsViewer } from '@/lib/viewers'
-import { CardTableSettingsSheet } from '@/components/rooms/card-table/CardTableSettingsSheet'
+import { WhotHostSettings } from '@/components/whot/WhotHostSettings'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { useRosterBase, useRosterManage } from '@/components/roster/RosterDrawerContext'
+import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { WhotFinalResultsShareBlock } from '@/components/whot/WhotFinalResultsShareBlock'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
@@ -63,9 +66,6 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const sessionRef = useRef<WhotSession | null>(null)
   sessionRef.current = session
   const [hands, setHands] = useState<WhotPlayerHand[]>([])
-  // Host game-settings sheet — opened from the ⚙ icon in the voice rail (the
-  // old inline host-controls bar is gone; its actions live in the rail now).
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [hostActing, setHostActing] = useState(false)
@@ -304,6 +304,43 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
+  // Feed the shared roster side-drawer (opened from the header's people button)
+  // while the game is active — the host sees the same who's-here list as players,
+  // with a per-row Remove. This replaces the player list that used to live in the
+  // host settings sheet. Mirrors HostGameLayout (used for the non-active paths).
+  useRosterBase(game?.status === 'active' ? players : undefined, game, hostPlayerId)
+  const rosterRemove = useMemo(
+    () => (row: { id: string; name: string }) => removePlayer(row.id, row.name),
+    [removePlayer]
+  )
+  useRosterManage(game?.status === 'active' ? { hostPlayerId: hostPlayerId ?? null, onRemove: rosterRemove } : null)
+
+  // Host game settings for the active room live behind the main chrome's ⚙ gear
+  // (top header, beside Share) — not a separate in-room bar. Register the body
+  // (edit name · late-join rules · How to play · End game) while the game is
+  // active; `GameChromeSettings` renders it inside the one sheet. Players are
+  // managed from the roster side-drawer, so there's no player list here.
+  const hostSettingsNode = useMemo(() => {
+    if (game?.status !== 'active') return null
+    return (
+      <WhotHostSettings hostName={hostPlayerName} onEditName={renameHost}>
+        <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        <HostRulesRow gameType="whot" />
+        <HostEndGameButton
+          gameCode={gameCode}
+          hostToken={hostToken}
+          onEnded={load}
+          label="End game"
+          icon={<ExitIcon size={16} />}
+          confirmTitle="End this game?"
+          confirmMessage="Everyone sees the final results. You can start a new game from the room afterward."
+          className="btn-danger-soft w-full"
+        />
+      </WhotHostSettings>
+    )
+  }, [game, hostPlayerName, renameHost, gameCode, hostToken, setGame, load])
+  useRegisterGameSettings(hostSettingsNode)
+
   if (!game) {
     return <HostLobbySkeleton />
   }
@@ -451,42 +488,15 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     />
   )
 
-  // Active game → design-system room shell + the same play surface players see.
-  // The marketing header + floating voice are gated out for card-table games
-  // while active (see `useHostRoomChromeMode`), so the DS voice rail is the only
-  // chrome — and it also owns the host actions: ⚙ Settings (icon), Transfer host
-  // + End game (⋯ menu), Share (icon). No separate host-controls bar.
+  // Active game → design-system room frame + the same play surface players see.
+  // The room chrome is the app's fixed top header (logo · roster · Share · ⚙) plus
+  // the shared green floating Join-voice pill (mounted by the host page once Whot
+  // no longer suppresses it). The host runs the room from the header's ⚙ gear —
+  // its settings sheet holds Play-as-yourself, edit name, late-join rules, the
+  // roster and End game (registered above via GameSettingsContext). No in-room bar.
   if (game.status === 'active') {
-    // End the game from the voice rail's ⋯ menu (RoomVoiceBar shows the confirm
-    // sheet). Same endpoint the old inline "End game" button used.
-    const endGame = async () => {
-      try {
-        const res = await fetch(`/api/games/${gameCode}/finish-game`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ hostToken }),
-        })
-        const data = await res.json().catch(() => ({}))
-        if (!res.ok) {
-          toastError(data.error ?? 'Failed to end game')
-          return
-        }
-        await load()
-      } catch {
-        toastError('Failed to end game')
-      }
-    }
     return (
-      <HostRoomShell
-        gameCode={gameCode}
-        hostToken={hostToken}
-        resumeToken={hostResumeToken ?? undefined}
-        gameName={cfg.label}
-        onEndGame={endGame}
-        onSettings={() => setSettingsOpen(true)}
-        hostMenuExtra={<TransferHostControl triggerClassName="ct-voice-menu-item" />}
-        onEditName={renameHost}
-      >
+      <HostRoomShell>
         {/* Whot's active state renders here instead of HostGameLayout, so mirror
             its host-rejoin banner: a host flipped to spectator mid-game (e.g. a
             play-again reset re-seats everyone) can promote back to a player. */}
@@ -504,45 +514,29 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
           ) : null
         })()}
         {session ? (
-          <>
-            {/* Host game settings (host+play toggle · Whot rules) — opened from
-                the rail's ⚙ icon; a fixed sheet, so it can mount anywhere. */}
-            <CardTableSettingsSheet
-              open={settingsOpen}
-              onClose={() => setSettingsOpen(false)}
-              hostPlays={hostPlays}
-              onModeChange={changeHostMode}
-              // Seat is fixed once the game is active — this sheet only renders
-              // mid-game, so the Play-as-yourself toggle is always locked here
-              // (you can only take/drop a spot in the lobby).
-              modeLocked
-            >
-              {manage}
-            </CardTableSettingsSheet>
-            <WhotPlaySurface
-              session={session}
-              players={players}
-              myPlayerId={hostPlayerId}
-              myHand={myHand}
-              handCounts={handCounts}
-              rules={whotRules}
-              turnPlayerId={turnPlayerId}
-              isMyTurn={hostPlays && isHostTurn}
-              watching={!hostPlays}
-              acting={hostActing}
-              drawCount={session.draw_pile?.length ?? 0}
-              drawDepleted={drawDepleted}
-              myCanPlay={hostCanPlay}
-              whotCallActive={hasActiveWhotCall(session)}
-              pickPenalty={pickPenalty}
-              turnTimer={{ secondsLeft, hasTimer, urgent }}
-              gameTimer={gameTimer}
-              onPlay={(cardId) => void postHostAction('/api/whot/play', { cardId })}
-              onDraw={() => void postHostAction('/api/whot/draw')}
-              onChooseShape={(shape) => void postHostAction('/api/whot/choose', { shape })}
-              onChooseNumber={(number) => void postHostAction('/api/whot/choose', { number })}
-            />
-          </>
+          <WhotPlaySurface
+            session={session}
+            players={players}
+            myPlayerId={hostPlayerId}
+            myHand={myHand}
+            handCounts={handCounts}
+            rules={whotRules}
+            turnPlayerId={turnPlayerId}
+            isMyTurn={hostPlays && isHostTurn}
+            watching={!hostPlays}
+            acting={hostActing}
+            drawCount={session.draw_pile?.length ?? 0}
+            drawDepleted={drawDepleted}
+            myCanPlay={hostCanPlay}
+            whotCallActive={hasActiveWhotCall(session)}
+            pickPenalty={pickPenalty}
+            turnTimer={{ secondsLeft, hasTimer, urgent }}
+            gameTimer={gameTimer}
+            onPlay={(cardId) => void postHostAction('/api/whot/play', { cardId })}
+            onDraw={() => void postHostAction('/api/whot/draw')}
+            onChooseShape={(shape) => void postHostAction('/api/whot/choose', { shape })}
+            onChooseNumber={(number) => void postHostAction('/api/whot/choose', { number })}
+          />
         ) : (
           <p className="turn-status g" style={{ textAlign: 'center', padding: 24 }}>
             Waiting for the round to begin…
