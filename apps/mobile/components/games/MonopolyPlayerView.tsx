@@ -314,6 +314,9 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const debt = board?.pending_debt
   const isMyDebt = debt?.player_id === bootstrap.myPlayerId
   const isMyAuctionTurn = auction?.current_bidder_id === bootstrap.myPlayerId
+  const auctionBidderName = auction
+    ? (bootstrap.players.find((p) => p.id === auction.current_bidder_id)?.name ?? null)
+    : null
 
   const showRoll = !!(isMyTurn && board?.phase === 'roll' && !myState?.in_jail)
   const showBuy = !!(isMyTurn && board?.phase === 'buy' && pendingSpace)
@@ -708,14 +711,18 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               disabled={acting || (myState?.cash ?? 0) < (pendingSpace.price ?? 0)}
               onPress={() => void act(() => postMonopolyBuy(bootstrap.code, bootstrap.myResumeToken!, 'buy'))}
             >
-              <Text style={styles.centerPrimaryText}>Buy</Text>
+              <Text style={styles.centerPrimaryText} numberOfLines={1}>
+                Buy
+              </Text>
             </Pressable>
             <Pressable
               style={[styles.centerSecondary, styles.centerFlex, acting && styles.btnDisabled]}
               disabled={acting}
               onPress={() => void act(() => postMonopolyBuy(bootstrap.code, bootstrap.myResumeToken!, 'auction'))}
             >
-              <Text style={styles.centerSecondaryText}>Auction</Text>
+              <Text style={styles.centerSecondaryText} numberOfLines={1}>
+                Auction
+              </Text>
             </Pressable>
             {bootstrap.game?.monopoly_forced_auctions === true ? null : (
               <Pressable
@@ -723,7 +730,9 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
                 disabled={acting}
                 onPress={() => void act(() => postMonopolyBuy(bootstrap.code, bootstrap.myResumeToken!, 'pass'))}
               >
-                <Text style={styles.centerSecondaryText}>Pass</Text>
+                <Text style={styles.centerSecondaryText} numberOfLines={1}>
+                  Pass
+                </Text>
               </Pressable>
             )}
           </View>
@@ -838,7 +847,21 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         </View>
       ) : null}
 
-      {!isMyTurn && !showAuction && !showRaiseFunds ? (
+      {board.phase === 'auction' && auction && auctionSpace && !showAuction ? (
+        <View style={styles.centerPanel}>
+          <Text style={styles.centerTitle} numberOfLines={1}>
+            Auction · {themedSpaceName(auctionSpace.name, auction.space_index, themeId)}
+          </Text>
+          <Text style={styles.centerSub}>
+            High: {auction.high_bid > 0 ? formatThemedMoney(auction.high_bid, themeId) : 'None'}
+          </Text>
+          <Text style={styles.centerWaiting}>
+            {auctionBidderName ? `${auctionBidderName} is bidding…` : 'Waiting for the next bid…'}
+          </Text>
+        </View>
+      ) : null}
+
+      {!isMyTurn && !showAuction && !showRaiseFunds && board.phase !== 'auction' ? (
         <Text style={styles.centerWaiting} numberOfLines={1}>
           {turnName}&apos;s turn
         </Text>
@@ -1258,7 +1281,7 @@ const makeStyles = (theme: Theme) =>
       backgroundColor: '#f59e0b',
       borderRadius: 8,
       paddingVertical: 8,
-      paddingHorizontal: 12,
+      paddingHorizontal: 8,
       alignItems: 'center',
       marginTop: 4,
     },
@@ -1267,7 +1290,7 @@ const makeStyles = (theme: Theme) =>
       backgroundColor: 'rgba(255,255,255,0.16)',
       borderRadius: 8,
       paddingVertical: 8,
-      paddingHorizontal: 10,
+      paddingHorizontal: 8,
       alignItems: 'center',
       marginTop: 4,
     },
