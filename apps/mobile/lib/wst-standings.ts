@@ -82,10 +82,11 @@ export function tallyWstScores(rounds: Round[], votes: Vote[], players: Player[]
 }
 
 export function wstLeaderboard(scores: WstScore[], myPlayerId?: string | null): FinishedLeaderboardRow[] {
+  // Speed-weighted points are shown as a bare number (not "N correct" / "N pts") to match web.
   return scores.map((s, index) => ({
     name: s.name,
     score: s.points,
-    scoreSuffix: 'pts',
+    scoreSuffix: '',
     you: !!myPlayerId && s.playerId === myPlayerId,
     highlight: index === 0 && s.points > 0,
   }))
