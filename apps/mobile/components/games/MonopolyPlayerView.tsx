@@ -314,6 +314,9 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const debt = board?.pending_debt
   const isMyDebt = debt?.player_id === bootstrap.myPlayerId
   const isMyAuctionTurn = auction?.current_bidder_id === bootstrap.myPlayerId
+  const auctionBidderName = auction
+    ? (bootstrap.players.find((p) => p.id === auction.current_bidder_id)?.name ?? null)
+    : null
 
   const showRoll = !!(isMyTurn && board?.phase === 'roll' && !myState?.in_jail)
   const showBuy = !!(isMyTurn && board?.phase === 'buy' && pendingSpace)
@@ -838,7 +841,21 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         </View>
       ) : null}
 
-      {!isMyTurn && !showAuction && !showRaiseFunds ? (
+      {board.phase === 'auction' && auction && auctionSpace && !showAuction ? (
+        <View style={styles.centerPanel}>
+          <Text style={styles.centerTitle} numberOfLines={1}>
+            Auction · {themedSpaceName(auctionSpace.name, auction.space_index, themeId)}
+          </Text>
+          <Text style={styles.centerSub}>
+            High: {auction.high_bid > 0 ? formatThemedMoney(auction.high_bid, themeId) : 'None'}
+          </Text>
+          <Text style={styles.centerWaiting}>
+            {auctionBidderName ? `${auctionBidderName} is bidding…` : 'Waiting for the next bid…'}
+          </Text>
+        </View>
+      ) : null}
+
+      {!isMyTurn && !showAuction && !showRaiseFunds && board.phase !== 'auction' ? (
         <Text style={styles.centerWaiting} numberOfLines={1}>
           {turnName}&apos;s turn
         </Text>

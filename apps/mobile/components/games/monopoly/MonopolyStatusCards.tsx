@@ -45,9 +45,7 @@ export function MonopolyStatusCards({
         <View style={styles.card}>
           <Text style={styles.cardLabel}>Current turn</Text>
           <View style={styles.turnRow}>
-            <Text style={styles.turnValue} numberOfLines={1}>
-              {isMyTurn ? 'Your turn' : `${turnName}'s turn`}
-            </Text>
+            <Text style={styles.turnValue}>{isMyTurn ? 'Your turn' : `${turnName}'s turn`}</Text>
             {secondsLeft > 0 ? (
               <View style={styles.timerPill}>
                 <Text style={styles.timerPillText}>{secondsLeft}s</Text>
@@ -108,7 +106,7 @@ const makeStyles = (theme: Theme) =>
       textTransform: 'uppercase',
     },
     turnRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-    turnValue: { color: theme.text, fontSize: 16, fontWeight: '900', flexShrink: 1 },
+    turnValue: { color: theme.text, fontSize: 16, fontWeight: '900', flex: 1 },
     timerPill: {
       backgroundColor: theme.bg,
       borderRadius: 999,
