@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { GearIcon } from '@/components/rooms/icons'
 import { HostLobbySettingsSheet } from '@/components/host/HostLobbySettingsSheet'
-import { NotificationToggle } from '@/components/NotificationToggle'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { WhatsAppChannelLink } from '@/components/WhatsAppChannelLink'
 import { useGameSettingsContent } from '@/components/GameSettingsContext'
@@ -43,20 +42,17 @@ export function GameChromeSettings({
         <GearIcon size={17} />
       </button>
 
-      <HostLobbySettingsSheet open={open} onClose={() => setOpen(false)} title="Settings">
-        {/* Game-specific settings first (host game rules, edit name, end game …). */}
+      {/* Appearance · Sound · Game alerts render inside the sheet (built-in rows, both
+          roles); game-specific settings + host controls follow as children. */}
+      <HostLobbySettingsSheet
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Settings"
+        gameCode={gameCode}
+        resumeToken={resumeToken}
+      >
         {gameSettings}
-        {role === 'host' ? (
-          <TransferHostControl triggerClassName={rowClass} />
-        ) : (
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-body">Game alerts</p>
-              <p className="text-xs text-muted">Get notified when the game starts, restarts, or ends</p>
-            </div>
-            <NotificationToggle gameCode={gameCode} resumeToken={resumeToken} />
-          </div>
-        )}
+        {role === 'host' ? <TransferHostControl triggerClassName={rowClass} /> : null}
         <WhatsAppChannelLink className="w-full justify-center" />
       </HostLobbySettingsSheet>
     </>

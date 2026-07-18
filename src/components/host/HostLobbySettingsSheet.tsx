@@ -3,24 +3,30 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { useTheme } from '@/components/ThemeProvider'
+import { useGameAlertsToggle } from '@/components/NotificationToggle'
 import { isSoundMuted, setSoundMuted, subscribeSoundMuted } from '@/lib/sounds'
 
 /**
  * The shared in-game ⚙ settings sheet — used by the lobby AND the in-game chrome
- * (via GameChromeSettings). Holds the app-level controls (light/dark, sound), then
- * any caller-supplied settings as `children` (theme picker, transfer host, edit
- * questions, …). Light/dark lives here (not a floating toggle) so the in-game
- * chrome stays clean and nothing overlaps the top bar.
+ * (via GameChromeSettings). Holds the app-level controls (light/dark, sound, game
+ * alerts), then any caller-supplied settings as `children` (theme picker, transfer
+ * host, edit questions, …). Light/dark lives here (not a floating toggle) so the
+ * in-game chrome stays clean and nothing overlaps the top bar.
  */
 export function HostLobbySettingsSheet({
   open,
   onClose,
   title = 'Settings',
+  gameCode,
+  resumeToken,
   children,
 }: {
   open: boolean
   onClose: () => void
   title?: string
+  /** Enables the "Game alerts" push row (needs a game code + the viewer's resume token). */
+  gameCode?: string | null
+  resumeToken?: string | null
   children?: React.ReactNode
 }) {
   return (
@@ -28,9 +34,33 @@ export function HostLobbySettingsSheet({
       <div className="space-y-6">
         <ThemeRow />
         <SoundRow />
+        {gameCode ? <GameAlertsRow gameCode={gameCode} resumeToken={resumeToken ?? null} /> : null}
         {children ? <div className="space-y-4 border-t border-[var(--border)] pt-6">{children}</div> : null}
       </div>
     </Modal>
+  )
+}
+
+function GameAlertsRow({ gameCode, resumeToken }: { gameCode: string; resumeToken: string | null }) {
+  const { available, on, busy, toggle } = useGameAlertsToggle(gameCode, resumeToken)
+
+  // Push can't be delivered here (un-installed iOS, denied permission, no resume
+  // token / VAPID key) — hide the row rather than promise alerts we can't send.
+  if (!available) return null
+
+  return (
+    <section className="flex items-center justify-between gap-4">
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]">
+          <BellIcon />
+        </span>
+        <div>
+          <p className="text-sm font-semibold text-body">Game alerts</p>
+          <p className="text-xs text-muted">Get notified when the game starts, restarts, or ends</p>
+        </div>
+      </div>
+      <Switch on={on} onToggle={() => void toggle()} disabled={busy} label="Game alerts" />
+    </section>
   )
 }
 
@@ -79,7 +109,17 @@ function SoundRow() {
   )
 }
 
-function Switch({ on, onToggle, label }: { on: boolean; onToggle: () => void; label: string }) {
+function Switch({
+  on,
+  onToggle,
+  label,
+  disabled = false,
+}: {
+  on: boolean
+  onToggle: () => void
+  label: string
+  disabled?: boolean
+}) {
   return (
     <button
       type="button"
@@ -87,8 +127,9 @@ function Switch({ on, onToggle, label }: { on: boolean; onToggle: () => void; la
       aria-checked={on}
       aria-label={label}
       onClick={onToggle}
+      disabled={disabled}
       className={[
-        'flex h-7 w-[3.25rem] shrink-0 items-center rounded-full p-0.5 transition-colors duration-200',
+        'flex h-7 w-[3.25rem] shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 disabled:opacity-50',
         on ? 'bg-[var(--primary)]' : 'bg-[var(--surface-inset-bg)] border border-[var(--border-strong)]',
       ].join(' ')}
     >
@@ -162,6 +203,25 @@ function SpeakerIcon() {
       <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
       <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
       <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+    </svg>
+  )
+}
+
+function BellIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
     </svg>
   )
 }

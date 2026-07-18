@@ -231,7 +231,13 @@ export function HostLobby({
         </div>
       </div>
 
-      <HostLobbySettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} title={settingsTitle}>
+      <HostLobbySettingsSheet
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        title={settingsTitle}
+        gameCode={gameCode}
+        resumeToken={resumeToken ?? null}
+      >
         {/* Universal host controls — shown for every game so they're consistent and always
             visible (not buried in a per-game panel): public/private, theme, late joiners.
             Game-specific settings follow via settingsChildren. */}

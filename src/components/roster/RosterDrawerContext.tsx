@@ -83,7 +83,7 @@ export function deriveBaseRows(
   }))
 }
 
-export function sortRows(rows: RosterRow[]): RosterRow[] {
+function sortRows(rows: RosterRow[]): RosterRow[] {
   const hasNumericScore = rows.some((r) => typeof r.score === 'number')
   return [...rows].sort((a, b) => {
     // Watchers (spectators) always sink below active players, so the drawer reads
