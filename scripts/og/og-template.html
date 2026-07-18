@@ -1,0 +1,360 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1200px; height:630px; overflow:hidden; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color:#fff; position:relative;
+    -webkit-font-smoothing:antialiased;
+  }
+  #stage { width:1200px; height:630px; position:relative; }
+
+  /* LEFT COLUMN */
+  .left { position:absolute; left:60px; top:56px; width:560px; }
+  .brand { display:flex; align-items:center; gap:14px; }
+  .logo {
+    width:44px; height:44px; border-radius:12px;
+    background:linear-gradient(150deg,#fb5a7e,#f43f5e);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 6px 18px rgba(244,63,94,.35);
+  }
+  .logo svg { width:24px; height:24px; }
+  .brand .name { font-size:27px; font-weight:800; letter-spacing:-.5px; }
+  .brand .name .r { color:#f6547e; }
+
+  .eyebrow {
+    display:inline-block; margin-top:66px;
+    padding:9px 18px; border-radius:999px;
+    font-size:15px; font-weight:700; letter-spacing:2.5px; text-transform:uppercase;
+  }
+  .title { margin-top:22px; font-weight:800; line-height:.98; letter-spacing:-2.5px; color:#fdfdff; }
+  .desc { margin-top:24px; font-size:25px; line-height:1.36; color:#9aa1ad; max-width:480px; }
+  .pills { margin-top:32px; display:flex; gap:12px; flex-wrap:wrap; max-width:520px; }
+  .pill {
+    padding:11px 19px; border-radius:999px; font-size:17px; font-weight:600;
+  }
+  .url { position:absolute; left:60px; bottom:46px; font-size:30px; font-weight:800; letter-spacing:-.5px; }
+
+  /* RIGHT COLUMN CARD */
+  .right {
+    position:absolute; right:44px; top:80px; width:522px; height:470px;
+    border-radius:22px; overflow:hidden;
+    background:rgba(16,17,22,.72);
+    border:1px solid rgba(255,255,255,.09);
+    box-shadow:0 30px 80px rgba(0,0,0,.5);
+    backdrop-filter:blur(2px);
+  }
+  .rhead {
+    height:58px; display:flex; align-items:center; justify-content:space-between;
+    padding:0 20px; font-size:15px;
+    border-bottom:1px solid rgba(255,255,255,.07);
+  }
+  .rhead .mid { color:#8b93a1; }
+  .tag { padding:6px 12px; border-radius:9px; font-weight:700; font-size:13.5px; }
+  .rbody { padding:20px; }
+  .muted { color:#8b93a1; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+const TRI = '<svg viewBox="0 0 24 24" fill="none"><path d="M12 3 L21.5 20 H2.5 Z" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/></svg>';
+
+const GAMES = {
+'mahjong': {
+  accent:'#14b8a6', soft:'rgba(20,184,166,.14)', eyebrow:'Tile Table Classic',
+  title:'Mahjong', titleSize:106,
+  desc:'A live 4-player table — draw, discard, call melds, and complete a winning hand before the wall runs out.',
+  pills:['4 players','Chow · Pung · Kong','No sign-up'],
+  panel:`
+    <div class="rhead" style="background:rgba(20,184,166,.10)">
+      <span class="tag" style="background:rgba(20,184,166,.18);color:#5eead4">EAST · Naza</span>
+      <span class="mid">Your turn</span>
+      <span class="mid" style="color:#c9cfd8">Wall 47</span>
+    </div>
+    <div class="rbody">
+      <div class="muted" style="font-size:13px;letter-spacing:1.5px;font-weight:600;margin-bottom:10px">YOUR HAND</div>
+      <div style="display:flex;gap:7px">${mjTiles()}</div>
+      <div style="margin-top:18px;display:flex;align-items:center;gap:12px">
+        <span class="muted" style="font-size:15px">Naza discarded</span>
+        ${mjTile('9','萬','#1f2937')}
+      </div>
+      <div style="margin-top:20px;display:flex;gap:10px">
+        ${mjBtn('CHOW')}${mjBtn('PUNG')}${mjBtn('KONG')}
+        <div style="flex:1;background:linear-gradient(180deg,#14b8a6,#0d9488);color:#04201c;font-weight:800;border-radius:12px;padding:13px 0;text-align:center;font-size:16px;box-shadow:0 6px 16px rgba(20,184,166,.4)">MAHJONG!</div>
+      </div>
+    </div>`
+},
+'checkers': {
+  accent:'#ef4444', soft:'rgba(239,68,68,.14)', eyebrow:'Head-to-Head Duel',
+  title:'Checkers', titleSize:100,
+  desc:'Classic checkers, head-to-head — forced jumps, multi-jump chains, and crown your kings to win.',
+  pills:['2 players','Forced jumps','No sign-up'],
+  panel:`
+    <div class="rhead">
+      <span class="tag" style="background:rgba(239,68,68,.18);color:#fca5a5">RED · Naza</span>
+      <span class="mid">Black to move</span>
+      <span class="tag" style="background:rgba(148,163,184,.16);color:#cbd5e1">BLACK · Tommy</span>
+    </div>
+    <div class="rbody" style="display:flex;justify-content:center">
+      ${checkersBoard()}
+    </div>`
+},
+'ayo': {
+  accent:'#d97706', soft:'rgba(217,119,6,.14)', eyebrow:'Yoruba Classic',
+  title:'Ayo', titleSize:112,
+  desc:'Sow seeds anti-clockwise, capture 2s and 3s, and crown Ọta — the Yoruba classic, head-to-head.',
+  pills:['2 players','Classic capture','Ọta & Ọpẹ'],
+  panel:`
+    <div class="rhead" style="background:rgba(217,119,6,.10)">
+      <span class="tag" style="background:rgba(217,119,6,.20);color:#fbbf24">You · 14 seeds</span>
+      <span class="mid">Your turn</span>
+      <span class="tag" style="background:rgba(16,185,129,.16);color:#6ee7b7">+3 captured</span>
+    </div>
+    <div class="rbody" style="display:flex;align-items:center;justify-content:center;height:412px">
+      ${ayoBoard()}
+    </div>`
+},
+'word-rush': {
+  accent:'#f97316', soft:'rgba(249,115,22,.14)', eyebrow:'Fast Word Blitz',
+  title:'Word Rush', titleSize:88,
+  desc:'Starts with M, ends with Y — how fast can you name a valid word? Team rush or solo rounds.',
+  pills:['2–20 players','Team or solo','Dictionary checked'],
+  panel:`
+    <div class="rhead" style="background:rgba(249,115,22,.10)">
+      <span class="tag" style="background:rgba(249,115,22,.18);color:#fdba74">TEAM RUSH</span>
+      <span class="mid">Red team · to answer</span>
+      <span class="mid" style="color:#fdba74;font-weight:700">0:24</span>
+    </div>
+    <div class="rbody">
+      <div style="text-align:center;margin-top:6px">
+        <div class="muted" style="font-size:14px;letter-spacing:1px;font-weight:600">STARTS WITH · ENDS WITH</div>
+        <div style="display:flex;gap:10px;justify-content:center;margin-top:14px">
+          ${wrTile('M',true)}${wrTile('·')}${wrTile('·')}${wrTile('·')}${wrTile('·')}${wrTile('Y',true)}
+        </div>
+      </div>
+      <div style="margin-top:22px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);border-radius:14px;padding:16px 20px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:28px;font-weight:800;letter-spacing:.5px">MONKEY</span>
+        <span style="color:#4ade80;font-size:22px;font-weight:800">+120 ✓</span>
+      </div>
+      <div style="margin-top:18px;display:flex;flex-direction:column;gap:9px">
+        ${wrRow('Naza','6 words','#f97316')}
+        ${wrRow('Tommy','4 words','#64748b')}
+      </div>
+    </div>`
+},
+'matching-pairs': {
+  accent:'#f59e0b', soft:'rgba(245,158,11,.14)', eyebrow:'Memory Showdown',
+  title:'Matching Pairs', titleSize:70,
+  desc:'Same icons, different layouts. Flip two cards a turn, match the pair, build streaks and finish first.',
+  pills:['Streak bonuses','Placement rewards','No sign-up'],
+  panel:`
+    <div class="rhead" style="background:rgba(245,158,11,.10)">
+      <span class="tag" style="background:rgba(245,158,11,.18);color:#fcd34d">Naza · 4,500 pts</span>
+      <span class="mid">Your board</span>
+      <span class="tag" style="background:rgba(249,115,22,.18);color:#fdba74">🔥 STREAK ×3</span>
+    </div>
+    <div class="rbody" style="display:flex;justify-content:center">
+      ${matchGrid()}
+    </div>`
+},
+'quiplash': {
+  accent:'#ec4899', soft:'rgba(236,72,153,.14)', eyebrow:'Wit Battle',
+  title:'Quiplash', titleSize:96,
+  desc:'Everyone gets the same prompt — write the funniest answer. Answers battle head-to-head, the group votes.',
+  pills:['3–6 players','Head-to-head','No sign-up'],
+  panel:`
+    <div class="rhead" style="background:rgba(236,72,153,.10)">
+      <span class="tag" style="background:rgba(236,72,153,.18);color:#f9a8d4">BATTLE 2 OF 6</span>
+      <span class="mid">Vote now</span>
+      <span class="mid" style="color:#f9a8d4;font-weight:700">0:08</span>
+    </div>
+    <div class="rbody">
+      <div style="background:rgba(236,72,153,.10);border:1px solid rgba(236,72,153,.28);border-radius:14px;padding:14px 18px;font-size:19px;font-weight:600;line-height:1.3">
+        The worst thing to say on a first date…
+      </div>
+      <div style="margin-top:16px;display:flex;flex-direction:column;gap:12px">
+        ${qlAnswer('“You look just like my ex.”','#ec4899',72,true)}
+        ${qlAnswer('“I forgot my wallet, again.”','#64748b',28,false)}
+      </div>
+    </div>`
+},
+'quick-draw': {
+  accent:'#8b5cf6', soft:'rgba(139,92,246,.14)', eyebrow:'Draw & Guess',
+  title:'Quick Draw', titleSize:86,
+  desc:'Draw on your phone — fool everyone with fake titles, or race to guess what the drawer is sketching.',
+  pills:['3–10 players','Lie or guess','No sign-up'],
+  panel:`
+    <div class="rhead" style="background:rgba(139,92,246,.10)">
+      <span class="tag" style="background:rgba(139,92,246,.20);color:#c4b5fd">GUESS MODE</span>
+      <span class="mid">Tommy is drawing…</span>
+      <span class="mid" style="color:#c4b5fd;font-weight:700">0:12</span>
+    </div>
+    <div class="rbody">
+      <div style="background:#f8fafc;border-radius:14px;height:196px;display:flex;align-items:center;justify-content:center;overflow:hidden">
+        ${catSketch()}
+      </div>
+      <div style="margin-top:16px;display:flex;flex-direction:column;gap:9px">
+        ${qdGuess('Naza','a cat',true)}
+        ${qdGuess('Grace','a fox',false)}
+      </div>
+    </div>`
+}
+};
+
+/* ---------- mockup helpers ---------- */
+function mjTile(num,suit,color){
+  return `<div style="width:40px;height:56px;background:linear-gradient(180deg,#fbf7e9,#efe7ce);border:1px solid #d8cfae;border-radius:7px;box-shadow:0 3px 6px rgba(0,0,0,.25);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1">
+    <span style="font-size:17px;font-weight:800;color:${color}">${num}</span>
+    <span style="font-size:13px;color:${color};opacity:.8">${suit}</span></div>`;
+}
+function mjBamboo(n){
+  return `<div style="width:40px;height:56px;background:linear-gradient(180deg,#fbf7e9,#efe7ce);border:1px solid #d8cfae;border-radius:7px;box-shadow:0 3px 6px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;gap:2px">
+    ${'<span style="display:inline-block;width:4px;height:26px;background:#15803d;border-radius:2px"></span>'.repeat(n)}</div>`;
+}
+function mjDot(n){
+  const dots = '<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#1d4ed8;border:1px solid #1e3a8a"></span>';
+  return `<div style="width:40px;height:56px;background:linear-gradient(180deg,#fbf7e9,#efe7ce);border:1px solid #d8cfae;border-radius:7px;box-shadow:0 3px 6px rgba(0,0,0,.25);display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px;padding:8px">
+    ${dots.repeat(n)}</div>`;
+}
+function mjTiles(){
+  return mjDot(2)+mjDot(3)+mjBamboo(2)+mjBamboo(3)+mjTile('7','萬','#111')+mjTile('8','萬','#111')+mjTile('東','wind','#0d9488')+mjTile('中','','#dc2626');
+}
+function mjBtn(t){ return `<div style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#aab2bf;font-weight:700;border-radius:12px;padding:13px 0;text-align:center;font-size:15px">${t}</div>`; }
+
+function checkersBoard(){
+  const size=8, cell=44;
+  let cells='';
+  for(let r=0;r<size;r++){
+    for(let c=0;c<size;c++){
+      const dark=(r+c)%2===1;
+      const bg=dark?'#8a5a3c':'#e8cfa8';
+      let piece='';
+      const hl=(r===4&&c===3);
+      if(dark){
+        if(r<3){ piece=pieceHtml('#ef4444','#b91c1c', r===2&&c===5); }
+        else if(r>4){ piece=pieceHtml('#2b2b33','#111', r===5&&c===2); }
+      }
+      if(r===4&&c===3){ piece=pieceHtml('#2b2b33','#111',false); }
+      cells+=`<div style="width:${cell}px;height:${cell}px;background:${bg};display:flex;align-items:center;justify-content:center;box-shadow:${hl?'inset 0 0 0 3px rgba(239,68,68,.9)':'none'}">${piece}</div>`;
+    }
+  }
+  return `<div style="display:grid;grid-template-columns:repeat(8,${cell}px);border-radius:10px;overflow:hidden;border:3px solid #5a3620;box-shadow:0 12px 30px rgba(0,0,0,.4)">${cells}</div>`;
+}
+function pieceHtml(a,b,king){
+  return `<div style="width:30px;height:30px;border-radius:50%;background:radial-gradient(circle at 35% 30%,${a},${b});box-shadow:0 2px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;color:#ffd76a;font-size:15px">${king?'♛':''}</div>`;
+}
+
+function ayoBoard(){
+  const counts=[[4,0,4,5,1,4],[3,4,2,3,4,0]];
+  function pit(n,cap){
+    return `<div style="width:64px;height:64px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#7c4a1e,#4a2a10);box-shadow:inset 0 3px 8px rgba(0,0,0,.55),${cap?'0 0 0 3px #34d399':'0 2px 3px rgba(0,0,0,.3)'};display:flex;align-items:center;justify-content:center;position:relative">
+      ${seeds(n)}
+      <span style="position:absolute;bottom:-2px;right:-2px;background:#1b120a;color:#fbbf24;font-size:12px;font-weight:800;border-radius:999px;padding:1px 6px;border:1px solid #7c4a1e">${n}</span></div>`;
+  }
+  function seeds(n){
+    let s='';const m=Math.min(n,6);
+    for(let i=0;i<m;i++){ s+=`<span style="position:absolute;width:11px;height:11px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fde68a,#b45309);top:${18+Math.floor(i/3)*20}px;left:${16+(i%3)*13}px"></span>`; }
+    return s;
+  }
+  const rowTop=counts[0].map((n,i)=>pit(n,false)).join('');
+  const rowBot=counts[1].map((n,i)=>pit(n,i===2)).join('');
+  return `<div style="background:linear-gradient(180deg,#8a5522,#5a3315);border-radius:26px;padding:22px;display:flex;flex-direction:column;gap:18px;box-shadow:0 16px 40px rgba(0,0,0,.5),inset 0 2px 6px rgba(255,255,255,.12)">
+    <div style="display:flex;gap:14px">${rowTop}</div>
+    <div style="display:flex;gap:14px">${rowBot}</div></div>`;
+}
+
+function wrTile(l,filled){
+  const on = filled;
+  return `<div style="width:56px;height:64px;border-radius:12px;background:${on?'linear-gradient(180deg,#fb923c,#f97316)':'rgba(255,255,255,.05)'};border:1px solid ${on?'#fb923c':'rgba(255,255,255,.14)'};display:flex;align-items:center;justify-content:center;font-size:${l==='·'?'26px':'30px'};font-weight:800;color:${on?'#fff':'#5b6472'}">${l}</div>`;
+}
+function wrRow(name,val,c){
+  return `<div style="display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,.04);border-radius:11px;padding:11px 15px">
+    <span style="font-weight:600;font-size:16px">${name}</span>
+    <span style="color:${c};font-weight:700;font-size:15px">${val}</span></div>`;
+}
+
+function matchGrid(){
+  const cfg=[
+    [{i:'🍕',s:2},{i:'',s:0},{i:'🎈',s:1},{i:'🍕',s:2}],
+    [{i:'',s:0},{i:'🌟',s:2},{i:'',s:0},{i:'🎈',s:1}],
+    [{i:'🌟',s:2},{i:'',s:0},{i:'🚀',s:0},{i:'',s:0}],
+    [{i:'',s:0},{i:'🎧',s:0},{i:'',s:0},{i:'🍄',s:0}],
+  ];
+  let cells='';
+  cfg.forEach(row=>row.forEach(c=>{
+    if(c.s===2){
+      cells+=`<div style="width:82px;height:82px;border-radius:14px;background:rgba(34,197,94,.16);border:2px solid rgba(34,197,94,.55);display:flex;align-items:center;justify-content:center;font-size:38px">${c.i}</div>`;
+    } else if(c.s===1){
+      cells+=`<div style="width:82px;height:82px;border-radius:14px;background:rgba(245,158,11,.16);border:2px solid rgba(245,158,11,.6);display:flex;align-items:center;justify-content:center;font-size:38px">${c.i}</div>`;
+    } else {
+      cells+=`<div style="width:82px;height:82px;border-radius:14px;background:linear-gradient(150deg,#26272f,#1a1b22);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;color:rgba(245,158,11,.5);font-size:26px">✦</div>`;
+    }
+  }));
+  return `<div style="display:grid;grid-template-columns:repeat(4,82px);gap:10px;margin-top:2px">${cells}</div>`;
+}
+
+function qlAnswer(text,c,pct,win){
+  return `<div style="position:relative;background:rgba(255,255,255,.04);border:1px solid ${win?'rgba(236,72,153,.5)':'rgba(255,255,255,.1)'};border-radius:14px;padding:16px 18px;overflow:hidden">
+    <div style="position:absolute;left:0;top:0;bottom:0;width:${pct}%;background:${win?'rgba(236,72,153,.16)':'rgba(100,116,139,.14)'}"></div>
+    <div style="position:relative;display:flex;align-items:center;justify-content:space-between">
+      <span style="font-size:18px;font-weight:600">${text}</span>
+      <span style="font-size:16px;font-weight:800;color:${c}">${pct}%</span>
+    </div></div>`;
+}
+
+function qdGuess(name,text,correct){
+  return `<div style="display:flex;align-items:center;gap:12px;background:${correct?'rgba(34,197,94,.12)':'rgba(255,255,255,.04)'};border:1px solid ${correct?'rgba(34,197,94,.4)':'rgba(255,255,255,.08)'};border-radius:11px;padding:11px 15px">
+    <span style="width:26px;height:26px;border-radius:50%;background:rgba(139,92,246,.25);color:#c4b5fd;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700">${name[0]}</span>
+    <span style="font-weight:600;font-size:16px">${name}</span>
+    <span class="muted" style="font-size:16px">${text}</span>
+    ${correct?'<span style="margin-left:auto;color:#4ade80;font-weight:800;font-size:16px">✓ +100</span>':'<span style="margin-left:auto;color:#5b6472;font-size:16px">…</span>'}</div>`;
+}
+function catSketch(){
+  return `<svg width="260" height="170" viewBox="0 0 260 170" fill="none" stroke="#111827" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="130" cy="95" r="52"/>
+    <path d="M92 55 L80 20 L118 46"/>
+    <path d="M168 55 L180 20 L142 46"/>
+    <circle cx="112" cy="88" r="5" fill="#111827"/>
+    <circle cx="148" cy="88" r="5" fill="#111827"/>
+    <path d="M130 100 L124 108 L136 108 Z" fill="#111827" stroke="none"/>
+    <path d="M130 108 Q120 120 108 114 M130 108 Q140 120 152 114"/>
+    <path d="M78 96 L44 88 M78 104 L44 108 M182 96 L216 88 M182 104 L216 108"/>
+  </svg>`;
+}
+
+/* ---------- render ---------- */
+const slug = new URLSearchParams(location.search).get('game') || 'mahjong';
+const g = GAMES[slug];
+document.getElementById('stage').innerHTML = `
+  <div class="left">
+    <div class="brand">
+      <div class="logo">${TRI}</div>
+      <div class="name">Fate<span class="r">Round</span></div>
+    </div>
+    <div class="eyebrow" style="color:${g.accent};background:${g.soft};border:1px solid ${hexA(g.accent,.35)}">${g.eyebrow}</div>
+    <div class="title" style="font-size:${g.titleSize}px">${g.title}</div>
+    <div class="desc">${g.desc}</div>
+    <div class="pills">${g.pills.map(p=>`<span class="pill" style="color:${g.accent};background:${g.soft};border:1px solid ${hexA(g.accent,.3)}">${p}</span>`).join('')}</div>
+  </div>
+  <div class="url" style="color:${g.accent}">fateround.com/games/${slug}</div>
+  <div class="right">${g.panel}</div>`;
+
+// background tint
+document.body.style.background =
+  `radial-gradient(1200px 720px at 100% -5%, ${hexA(g.accent,.16)}, transparent 55%),`+
+  `radial-gradient(900px 620px at 105% 105%, ${hexA(g.accent,.12)}, transparent 52%),`+
+  `linear-gradient(160deg,#0a0a0e,#0c0b10 60%,#08080b)`;
+
+function hexA(hex,a){
+  const h=hex.replace('#','');
+  const r=parseInt(h.substring(0,2),16),gg=parseInt(h.substring(2,4),16),b=parseInt(h.substring(4,6),16);
+  return `rgba(${r},${gg},${b},${a})`;
+}
+document.title='ready';
+</script>
+</body>
+</html>
