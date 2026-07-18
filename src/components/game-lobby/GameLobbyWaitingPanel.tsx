@@ -2,8 +2,6 @@
 
 import { useState } from 'react'
 import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
-import { EditNameInline } from '@/components/ui/EditNameInline'
-import { LeaveGameButton, leaveButtonQuietClassName } from '@/components/ui/LeaveGameButton'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import type { Game, Player } from '@/types'
@@ -110,23 +108,6 @@ export function GameLobbyWaitingPanel({
       <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label={playerListLabel} />
 
       {activityFirst ? null : activity}
-
-      {/* Compact footer: your identity + leave. The "continue on another device"
-          code now lives in the header Share popup ("Your player link"), so it's
-          not repeated here. */}
-      {myPlayerId ? (
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-[var(--border)] pt-4">
-          <EditNameInline gameCode={gameCode} playerId={myPlayerId} currentName={myPlayerName} onRenamed={onRenamed} />
-          <LeaveGameButton
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            onLeft={onLeft}
-            confirmTitle="Leave this lobby?"
-            confirmMessage="You can rejoin with your player code if there is room."
-            className={leaveButtonQuietClassName}
-          />
-        </div>
-      ) : null}
     </div>
   )
 }

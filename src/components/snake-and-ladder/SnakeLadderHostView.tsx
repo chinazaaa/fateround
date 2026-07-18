@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
@@ -30,6 +30,8 @@ import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
 import {
   useSnakeLadderNotifications,
@@ -315,6 +317,28 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
     }
   }, [game?.status, session?.winner_player_id])
 
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer): late-join rules + How-to-play
+  // + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings
+          gameCode={gameCode}
+          hostToken={hostToken}
+          gameType="snake_and_ladder"
+          onEnded={load}
+          endGameLabel="End game early"
+          endGameConfirmTitle="End this game early?"
+          endGameConfirmMessage="The current game will end and players will see the results screen."
+        >
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load, setGame]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (notFound) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-3 text-center px-6">
@@ -542,6 +566,7 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
       header={<HostGameHeader game={game} />}
       primary={<div className="max-w-lg mx-auto w-full">{hostPlays ? interactivePlay : watchBoard}</div>}
       manage={manage}
+      noManageTab
       finished={
         holdWin && session ? (
           <>

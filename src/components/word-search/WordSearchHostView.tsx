@@ -22,6 +22,8 @@ import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
 import {
   parseWordSearchMetadata,
@@ -398,6 +400,26 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
     return Math.round((foundWords.size / metadata.words.length) * 100)
   }, [metadata, found])
 
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer): late-join rules + How-to-play
+  // + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings
+          gameCode={gameCode}
+          hostToken={hostToken}
+          gameType="word_search"
+          onEnded={load}
+          endGameConfirmMessage="Players will see the final results."
+        >
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load, setGame]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (!game) {
     return <HostLobbySkeleton />
   }
@@ -670,6 +692,7 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
       header={<HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : watchBoard}
       manage={manage}
+      noManageTab
       finished={
         <>
           <FinalResultsShareBlock

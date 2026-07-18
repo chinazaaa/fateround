@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
@@ -12,6 +12,8 @@ import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
 import { currentTurnPlayerId, isScrabbleResultsPhase } from '@/lib/scrabble-board'
 import { supabase } from '@/lib/supabase'
@@ -334,6 +336,36 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
   const gameFinished = isScrabbleResultsPhase(game?.status, session)
   const isHostTurn = turnPlayerId === hostPlayerId
   const tileSet = tileSetForDictionary(game?.scrabble_dictionary_id)
+
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer): dictionary note + time
+  // extension + How-to-play + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' && !gameFinished ? (
+        <HostActiveSettings
+          gameCode={gameCode}
+          hostToken={hostToken}
+          gameType="scrabble"
+          onEnded={load}
+          endGameLabel="End game early"
+          endGameConfirmTitle="End this game early?"
+          endGameConfirmMessage="The current game will end and players will see the results screen."
+        >
+          <p className="text-center text-xs text-muted">
+            Dictionary: {SCRABBLE_DICTIONARY_LABELS[parseScrabbleDictionaryId(game.scrabble_dictionary_id)]}
+          </p>
+          <ScrabbleHostTimeExtension
+            gameCode={gameCode}
+            game={game}
+            hostToken={hostToken}
+            onExtended={() => void load()}
+          />
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load, gameFinished]
+  )
+  useRegisterGameSettings(hostSettingsNode)
 
   if (loading) {
     return <HostLobbySkeleton />
@@ -665,6 +697,7 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
       header={gameFinished ? undefined : <HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : watchBoard}
       manage={manage}
+      noManageTab
       finished={
         <>
           <ScrabbleFinalResultsShareBlock
