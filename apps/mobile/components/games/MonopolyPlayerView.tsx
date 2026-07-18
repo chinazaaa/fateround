@@ -711,14 +711,18 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               disabled={acting || (myState?.cash ?? 0) < (pendingSpace.price ?? 0)}
               onPress={() => void act(() => postMonopolyBuy(bootstrap.code, bootstrap.myResumeToken!, 'buy'))}
             >
-              <Text style={styles.centerPrimaryText}>Buy</Text>
+              <Text style={styles.centerPrimaryText} numberOfLines={1}>
+                Buy
+              </Text>
             </Pressable>
             <Pressable
               style={[styles.centerSecondary, styles.centerFlex, acting && styles.btnDisabled]}
               disabled={acting}
               onPress={() => void act(() => postMonopolyBuy(bootstrap.code, bootstrap.myResumeToken!, 'auction'))}
             >
-              <Text style={styles.centerSecondaryText}>Auction</Text>
+              <Text style={styles.centerSecondaryText} numberOfLines={1}>
+                Auction
+              </Text>
             </Pressable>
             {bootstrap.game?.monopoly_forced_auctions === true ? null : (
               <Pressable
@@ -726,7 +730,9 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
                 disabled={acting}
                 onPress={() => void act(() => postMonopolyBuy(bootstrap.code, bootstrap.myResumeToken!, 'pass'))}
               >
-                <Text style={styles.centerSecondaryText}>Pass</Text>
+                <Text style={styles.centerSecondaryText} numberOfLines={1}>
+                  Pass
+                </Text>
               </Pressable>
             )}
           </View>
@@ -1275,7 +1281,7 @@ const makeStyles = (theme: Theme) =>
       backgroundColor: '#f59e0b',
       borderRadius: 8,
       paddingVertical: 8,
-      paddingHorizontal: 12,
+      paddingHorizontal: 8,
       alignItems: 'center',
       marginTop: 4,
     },
@@ -1284,7 +1290,7 @@ const makeStyles = (theme: Theme) =>
       backgroundColor: 'rgba(255,255,255,0.16)',
       borderRadius: 8,
       paddingVertical: 8,
-      paddingHorizontal: 10,
+      paddingHorizontal: 8,
       alignItems: 'center',
       marginTop: 4,
     },
