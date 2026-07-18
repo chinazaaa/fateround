@@ -155,6 +155,11 @@ export function clampLandmineCategoryTimer(seconds: number | undefined | null): 
   return (LANDMINE_CATEGORY_TIMER_OPTIONS as readonly number[]).includes(n) ? n : LANDMINE_DEFAULT_CATEGORY_TIMER
 }
 
+export function clampLandmineReviewTimer(seconds: number | undefined | null): number {
+  const n = Number(seconds)
+  return (LANDMINE_REVIEW_TIMER_OPTIONS as readonly number[]).includes(n) ? n : LANDMINE_REVIEW_SECONDS
+}
+
 /** The caller's category-pick timer is stored in the shared game_duration_seconds column. */
 export function gameLandmineCategoryTimer(game: Pick<Game, 'game_duration_seconds'>): number {
   return clampLandmineCategoryTimer(game.game_duration_seconds)

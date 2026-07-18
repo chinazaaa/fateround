@@ -137,6 +137,11 @@ export function gameLandmineCategoryTimer(game: Pick<Game, 'game_duration_second
   return clampLandmineCategoryTimer(game.game_duration_seconds)
 }
 
+export function clampLandmineReviewTimer(seconds: number | undefined | null): number {
+  const n = Number(seconds)
+  return (LANDMINE_REVIEW_TIMER_OPTIONS as readonly number[]).includes(n) ? n : LANDMINE_REVIEW_SECONDS
+}
+
 export function normalizeAnswer(text: string | null | undefined): string {
   return (text ?? '').trim().toLowerCase()
 }
