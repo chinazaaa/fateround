@@ -235,6 +235,15 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
           })
           if (!res.ok) {
             const data = await res.json().catch(() => ({}))
+            // Taking a seat but the lobby is full: keep the host on "Host only" (they stay a
+            // watcher) and tell them plainly rather than a generic failure.
+            if (mode === 'player' && data.full) {
+              applyMode(prev)
+              toastRef.current.error(
+                'Game is full — staying on Host only. Remove a player to free a seat, then Host + play.'
+              )
+              return
+            }
             throw new Error(data.error ?? 'Failed to change seat')
           }
           await onReloadRef.current()

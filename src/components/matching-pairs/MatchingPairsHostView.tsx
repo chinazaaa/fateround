@@ -253,6 +253,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   const {
     hostMode: hostModeState,
     hostPlayerId,
+    hostResumeToken,
     hostPlayerName,
     hostJoinName,
     setHostJoinName,
@@ -741,6 +742,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         hostToken={hostToken}
         game={game}
         gameTypeLabel={cfg.label}
+        resumeToken={hostResumeToken}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('matching_pairs', game) ?? game.max_players}
         playCard={lobbyModeCard}

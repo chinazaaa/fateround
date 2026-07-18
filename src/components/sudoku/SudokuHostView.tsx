@@ -130,6 +130,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
   const {
     hostMode,
     hostPlayerId,
+    hostResumeToken,
     hostPlayerName,
     hostJoinName,
     setHostJoinName,
@@ -545,6 +546,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
         hostToken={hostToken}
         game={game}
         gameTypeLabel={cfg.label}
+        resumeToken={hostResumeToken}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('sudoku', game) ?? game.max_players}
         playCard={lobbyModeCard}

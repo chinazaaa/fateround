@@ -370,6 +370,7 @@ export function PingPongHostView({ gameCode, hostToken }: { gameCode: string; ho
         hostToken={hostToken}
         game={game}
         gameTypeLabel={gameTypeConfig('ping_pong').label}
+        resumeToken={hostResumeToken}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('ping_pong', game) ?? game.max_players}
         playCard={

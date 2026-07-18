@@ -1,8 +1,9 @@
+// @vitest-environment jsdom
 import { renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 
-const markPlayerReady = vi.fn(async () => {})
+const markPlayerReady = vi.fn(async (..._a: unknown[]) => {})
 vi.mock('@/lib/player-ready', () => ({ markPlayerReady: (...a: unknown[]) => markPlayerReady(...a) }))
 vi.mock('@/lib/utils', async (orig) => ({
   ...(await orig<typeof import('@/lib/utils')>()),

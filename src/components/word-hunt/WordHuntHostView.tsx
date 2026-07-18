@@ -119,6 +119,7 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
   const {
     hostMode,
     hostPlayerId,
+    hostResumeToken,
     hostPlayerName,
     hostJoinName,
     setHostJoinName,
@@ -586,6 +587,7 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
         hostToken={hostToken}
         game={game}
         gameTypeLabel={cfg.label}
+        resumeToken={hostResumeToken}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('word_hunt', game) ?? game.max_players}
         playCard={lobbyModeCard}

@@ -2,6 +2,7 @@
 
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { playerIsViewer } from '@/lib/viewers'
 import type { Game, GameType, Player } from '@/types'
 
@@ -48,6 +49,9 @@ export function HostManageSection({
   const splitViewers = game.status === 'active'
   const participants = splitViewers ? players.filter((p) => !playerIsViewer(p, game)) : players
   const viewers = splitViewers ? players.filter((p) => playerIsViewer(p, game)) : []
+  // Pass the seat cap so the lobby roster reads "Watching" (not "Not ready") for a
+  // sitting-out spectator once seats are full — matching the main host lobby.
+  const capacity = lobbyMaxPlayersFromGameClient(game.game_type, game) ?? undefined
 
   return (
     <div className="space-y-4 sm:space-y-5 animate-stagger">
@@ -59,6 +63,7 @@ export function HostManageSection({
         onRemovePlayer={onRemovePlayer}
         highlightPlayerId={highlightPlayerId}
         label={playersLabel}
+        capacity={capacity}
         alwaysShowReady={game.status === 'waiting'}
       />
 

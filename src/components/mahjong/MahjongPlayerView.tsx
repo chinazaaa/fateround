@@ -291,7 +291,7 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
 
   // Edit name · Leave game for players/spectators, in the main-header ⚙ during play.
   const playerSettingsNode = useMemo(() => {
-    if (!myPlayerId || game?.status !== 'active') return null
+    if (!myPlayerId) return null
     return (
       <div className="space-y-3">
         <EditNameInline

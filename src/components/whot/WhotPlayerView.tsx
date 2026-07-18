@@ -283,7 +283,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   // gear (top header) — the in-room bar that used to hold them is gone. Registered
   // while the game is active; `GameChromeSettings` renders it inside the one sheet.
   const playerSettingsNode = useMemo(() => {
-    if (!myPlayerId || game?.status !== 'active') return null
+    if (!myPlayerId) return null
     return (
       <div className="space-y-3">
         <EditNameInline

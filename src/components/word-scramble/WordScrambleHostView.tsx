@@ -142,6 +142,7 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
   const {
     hostMode,
     hostPlayerId,
+    hostResumeToken,
     hostPlayerName,
     hostJoinName,
     setHostJoinName,
@@ -556,6 +557,7 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
         hostToken={hostToken}
         game={game}
         gameTypeLabel={cfg.label}
+        resumeToken={hostResumeToken}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('word_scramble', game) ?? game.max_players}
         playCard={lobbyModeCard}

@@ -169,6 +169,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
   const {
     hostMode,
     hostPlayerId,
+    hostResumeToken,
     hostPlayerName,
     hostJoinName,
     setHostJoinName,
@@ -665,6 +666,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
         hostToken={hostToken}
         game={game}
         gameTypeLabel={cfg.label}
+        resumeToken={hostResumeToken}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('crossword', game) ?? game.max_players}
         playCard={lobbyModeCard}

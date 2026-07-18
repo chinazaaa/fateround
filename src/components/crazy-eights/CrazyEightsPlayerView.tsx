@@ -288,7 +288,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   // renders it. Purely additive — the in-page PlayerSessionControls stays as-is.
   // Card game: "spectating" folds in the played-out watcher state (isWatching), like Whot.
   const playerSettingsNode = useMemo(() => {
-    if (!myPlayerId || game?.status !== 'active') return null
+    if (!myPlayerId) return null
     return (
       <div className="space-y-3">
         <EditNameInline

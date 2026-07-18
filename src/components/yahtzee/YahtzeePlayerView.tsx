@@ -319,7 +319,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   const meRow = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const meSpectating = !!(game && meRow && playerIsViewer(meRow, game))
   const playerSettingsNode = useMemo(() => {
-    if (!myPlayerId || game?.status !== 'active') return null
+    if (!myPlayerId) return null
     return (
       <div className="space-y-3">
         <EditNameInline

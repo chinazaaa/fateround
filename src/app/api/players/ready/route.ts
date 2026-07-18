@@ -50,7 +50,9 @@ export async function POST(req: NextRequest) {
   if (wantsSeat) {
     const seat = await assertLobbyPlayerSeatAvailable(supabase, game, auth.player.id)
     if (!seat.ok) {
-      return NextResponse.json({ error: seat.error }, { status: 400 })
+      // `full` lets the caller (e.g. the host seat toggle) show a tailored "keep watching"
+      // message and stay on the spectator seat rather than a generic failure.
+      return NextResponse.json({ error: seat.error, full: true }, { status: 400 })
     }
   }
 
