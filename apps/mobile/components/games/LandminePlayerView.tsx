@@ -20,6 +20,7 @@ import {
   roundCallerPlayerId,
   tallyLandmineScores,
   LANDMINE_MAX_ANSWER_LENGTH,
+  LANDMINE_REVIEW_SECONDS,
 } from '@fateround/shared/landmine'
 import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
@@ -209,7 +210,13 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   // stays visible while the answer/marking board scrolls. Each phase anchors to its own start +
   // per-phase length; reveal has no countdown. Falls back to the subtitle timer when not pinned.
   const phaseDelay =
-    metadata?.phase === 'writing' ? writingTimer : metadata?.phase === 'marking' ? markingTimer : categoryTimer
+    metadata?.phase === 'writing'
+      ? writingTimer
+      : metadata?.phase === 'marking'
+        ? markingTimer
+        : metadata?.phase === 'review'
+          ? LANDMINE_REVIEW_SECONDS
+          : categoryTimer
   const timerActive = !!metadata && metadata.phase !== 'reveal' && bootstrap.game?.status === 'active'
   const stickyTimerNode = timerActive ? (
     <CountdownTimerBadge anchorTime={metadata?.phase_started_at} delaySeconds={phaseDelay} active={timerActive} />
@@ -651,107 +658,19 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   // ── Marking ─────────────────────────────────────────────────────────────────
   if (metadata.phase === 'marking') {
     const marked = !!myMark?.marked_at || lockedMarkRound === currentRound.id
-
-    // Manual mode: the setter judges every answer; answering players & spectators wait it out.
-    if (manual) {
-      if (isSetter) {
-        const approved = lockedSetterRound === currentRound.id
-        const verdictFor = (id: string) =>
-          setterVerdicts[id] ??
-          marks.find((mk) => mk.round_id === currentRound.id && mk.target_player_id === id)?.valid ??
-          true
-        return (
-          <GameShell bootstrap={bootstrap} title="Landmine" subtitle={timer ? `Judge · ${timer}` : 'Judge'}>
-            <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
-              <Text style={styles.section}>Judge the answers</Text>
-              <Text style={styles.meta}>Category: {metadata.category}. Mark each Valid or Void, then reveal.</Text>
-              {playerAnswers.map((a) => {
-                const hasText = !!normalizeAnswer(a.answer)
-                const valid = hasText ? verdictFor(a.player_id) : false
-                return (
-                  <View key={a.player_id} style={styles.reviewRow}>
-                    <Text style={styles.resultName}>{playerDisplayName(a.player_id, bootstrap.players)}</Text>
-                    <Text style={styles.meta}>{a.answer || '(no answer)'}</Text>
-                    {hasText ? (
-                      <View style={styles.markRow}>
-                        <Pressable
-                          style={[styles.markBtn, valid ? styles.markValidOn : styles.markOff]}
-                          disabled={approved}
-                          onPress={() => setSetterVerdicts((p) => ({ ...p, [a.player_id]: true }))}
-                        >
-                          <Text style={styles.markText}>✓ Valid</Text>
-                        </Pressable>
-                        <Pressable
-                          style={[styles.markBtn, !valid ? styles.markVoidOn : styles.markOff]}
-                          disabled={approved}
-                          onPress={() => setSetterVerdicts((p) => ({ ...p, [a.player_id]: false }))}
-                        >
-                          <Text style={styles.markText}>✕ Void</Text>
-                        </Pressable>
-                      </View>
-                    ) : (
-                      <Text style={styles.meta}>Empty — scores 0 automatically.</Text>
-                    )}
-                  </View>
-                )
-              })}
-              <Pressable
-                style={styles.primaryBtn}
-                disabled={acting || approved}
-                onPress={() =>
-                  submitSetterMarks(
-                    playerAnswers.map((a) => ({
-                      playerId: a.player_id,
-                      valid: !!normalizeAnswer(a.answer) && verdictFor(a.player_id),
-                    }))
-                  )
-                }
-              >
-                <Text style={styles.primaryText}>{approved ? 'Revealing…' : 'Approve & reveal scores'}</Text>
-              </Pressable>
-              <Text style={styles.meta}>The mine is still hidden — judge only whether each answer fits.</Text>
-            </KeyboardAwareGameScroll>
-          </GameShell>
-        )
-      }
-      return (
-        <GameShell bootstrap={bootstrap} title="Landmine" subtitle={timer ? `Marking · ${timer}` : 'Marking'}>
-          <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
-            <View style={styles.waitCard}>
-              <Text style={styles.waitEmoji}>⚖️</Text>
-              <Text style={styles.waitTitle}>{callerName} is judging the answers…</Text>
-              <Text style={styles.meta}>They’ll mark each Valid or Void, then scores reveal.</Text>
-            </View>
-            {playerAnswers.map((a) => {
-              const hasAns = !!normalizeAnswer(a.answer)
-              const m = marks.find((mk) => mk.round_id === currentRound.id && mk.target_player_id === a.player_id)
-              const verdict = !hasAns ? '—' : m?.marked_at ? (m.valid ? '✓ Valid' : '✕ Void') : '· judging'
-              return (
-                <View key={a.player_id} style={styles.resultRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.resultName}>
-                      {playerDisplayName(a.player_id, bootstrap.players)}
-                      {a.player_id === bootstrap.myPlayerId ? ' (you)' : ''}
-                    </Text>
-                    <Text style={styles.meta}>{a.answer || '(no answer)'}</Text>
-                  </View>
-                  <Text style={styles.resultBadge}>{verdict}</Text>
-                </View>
-              )
-            })}
-          </KeyboardAwareGameScroll>
-        </GameShell>
-      )
-    }
-
-    // ── System mode: peer marking ──
     const targetName = playerDisplayName(reviewTargetId, bootstrap.players)
     const targetText = reviewTargetAnswer?.answer ?? ''
     const hasText = !!normalizeAnswer(targetText)
     return (
       <GameShell bootstrap={bootstrap} title="Landmine" subtitle={timer ? `Marking · ${timer}` : 'Marking'}>
         <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
-          {marked || spectatingRound ? (
+          {isSetter ? (
+            <View style={styles.waitCard}>
+              <Text style={styles.waitEmoji}>🕵️</Text>
+              <Text style={styles.waitTitle}>You set this round — players are marking</Text>
+              <Text style={styles.meta}>You’ll review their verdicts next.</Text>
+            </View>
+          ) : marked || spectatingRound ? (
             <View style={styles.waitCard}>
               <Text style={styles.waitEmoji}>{marked ? '✅' : '👀'}</Text>
               <Text style={styles.waitTitle}>
@@ -785,6 +704,101 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
           )}
           {/* Everyone sees every answer + its live verdict (mine stays hidden until reveal). */}
           <Text style={[styles.meta, { textAlign: 'left', marginTop: 8, fontWeight: '700' }]}>Everyone’s answers</Text>
+          {playerAnswers.map((a) => {
+            const hasAns = !!normalizeAnswer(a.answer)
+            const m = marks.find((mk) => mk.round_id === currentRound.id && mk.target_player_id === a.player_id)
+            const verdict = !hasAns ? '—' : m?.marked_at ? (m.valid ? '✓ Valid' : '✕ Void') : '· marking'
+            return (
+              <View key={a.player_id} style={styles.resultRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.resultName}>
+                    {playerDisplayName(a.player_id, bootstrap.players)}
+                    {a.player_id === bootstrap.myPlayerId ? ' (you)' : ''}
+                  </Text>
+                  <Text style={styles.meta}>{a.answer || '(no answer)'}</Text>
+                </View>
+                <Text style={styles.resultBadge}>{verdict}</Text>
+              </View>
+            )
+          })}
+        </KeyboardAwareGameScroll>
+      </GameShell>
+    )
+  }
+
+  // ── Manual review — the setter checks/overrides the peer verdicts, then reveals ─────────
+  if (metadata.phase === 'review') {
+    if (isSetter) {
+      const approved = lockedSetterRound === currentRound.id
+      // Default each toggle to the peer verdict already on the mark row.
+      const verdictFor = (id: string) =>
+        setterVerdicts[id] ??
+        marks.find((mk) => mk.round_id === currentRound.id && mk.target_player_id === id)?.valid ??
+        true
+      return (
+        <GameShell bootstrap={bootstrap} title="Landmine" subtitle={timer ? `Review · ${timer}` : 'Review'}>
+          <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
+            <Text style={styles.section}>Review the marks</Text>
+            <Text style={styles.meta}>
+              Category: {metadata.category}. Players marked each answer — adjust anything, then reveal.
+            </Text>
+            {playerAnswers.map((a) => {
+              const hasText = !!normalizeAnswer(a.answer)
+              const valid = hasText ? verdictFor(a.player_id) : false
+              return (
+                <View key={a.player_id} style={styles.reviewRow}>
+                  <Text style={styles.resultName}>{playerDisplayName(a.player_id, bootstrap.players)}</Text>
+                  <Text style={styles.meta}>{a.answer || '(no answer)'}</Text>
+                  {hasText ? (
+                    <View style={styles.markRow}>
+                      <Pressable
+                        style={[styles.markBtn, valid ? styles.markValidOn : styles.markOff]}
+                        disabled={approved}
+                        onPress={() => setSetterVerdicts((p) => ({ ...p, [a.player_id]: true }))}
+                      >
+                        <Text style={styles.markText}>✓ Valid</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.markBtn, !valid ? styles.markVoidOn : styles.markOff]}
+                        disabled={approved}
+                        onPress={() => setSetterVerdicts((p) => ({ ...p, [a.player_id]: false }))}
+                      >
+                        <Text style={styles.markText}>✕ Void</Text>
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <Text style={styles.meta}>Empty — scores 0 automatically.</Text>
+                  )}
+                </View>
+              )
+            })}
+            <Pressable
+              style={styles.primaryBtn}
+              disabled={acting || approved}
+              onPress={() =>
+                submitSetterMarks(
+                  playerAnswers.map((a) => ({
+                    playerId: a.player_id,
+                    valid: !!normalizeAnswer(a.answer) && verdictFor(a.player_id),
+                  }))
+                )
+              }
+            >
+              <Text style={styles.primaryText}>{approved ? 'Revealing…' : 'Approve & reveal scores'}</Text>
+            </Pressable>
+            <Text style={styles.meta}>The mine is still hidden — judge only whether each answer fits.</Text>
+          </KeyboardAwareGameScroll>
+        </GameShell>
+      )
+    }
+    return (
+      <GameShell bootstrap={bootstrap} title="Landmine" subtitle={timer ? `Review · ${timer}` : 'Review'}>
+        <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
+          <View style={styles.waitCard}>
+            <Text style={styles.waitEmoji}>⚖️</Text>
+            <Text style={styles.waitTitle}>{callerName} is reviewing the marks…</Text>
+            <Text style={styles.meta}>They’ll confirm each verdict, then scores reveal.</Text>
+          </View>
           {playerAnswers.map((a) => {
             const hasAns = !!normalizeAnswer(a.answer)
             const m = marks.find((mk) => mk.round_id === currentRound.id && mk.target_player_id === a.player_id)

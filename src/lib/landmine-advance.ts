@@ -18,6 +18,7 @@ import {
   LANDMINE_ELIM_MAX_CYCLES,
   LANDMINE_MAX_ANSWER_LENGTH,
   LANDMINE_REVEAL_SECONDS,
+  LANDMINE_REVIEW_SECONDS,
   normalizeAnswer,
   parseLandmineMetadata,
   pickMines,
@@ -93,6 +94,7 @@ function phaseExpired(metadata: LandmineMetadata, game: Game): boolean {
   if (metadata.phase === 'category_pick') return now >= start + gameLandmineCategoryTimer(game) * 1000
   if (metadata.phase === 'writing') return now >= start + writingTimer(game) * 1000
   if (metadata.phase === 'marking') return now >= start + markingTimer(game) * 1000
+  if (metadata.phase === 'review') return now >= start + LANDMINE_REVIEW_SECONDS * 1000
   return false
 }
 

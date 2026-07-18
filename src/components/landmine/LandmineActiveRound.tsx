@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
+import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
+import { ShareResults } from '@/components/ShareResults'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import {
   gameLandmineMode,
@@ -39,7 +41,7 @@ type PlayScreen =
   | 'category_wait'
   | 'setter_watch'
   | 'setter_review'
-  | 'marking_wait'
+  | 'review_wait'
   | 'round_watch'
   | 'writing'
   | 'writing_locked'
@@ -101,6 +103,7 @@ export function LandmineActiveRound({
   const autoSubmittedRoundRef = useRef<string | null>(null)
   const hydratedRoundRef = useRef<string | null>(null)
   const submittingRef = useRef(false)
+  const finishedCaptureRef = useRef<HTMLDivElement>(null)
 
   const currentRound = useMemo(
     () => resolveActiveLandmineRound(rounds, game.current_round_number),
@@ -413,17 +416,17 @@ export function LandmineActiveRound({
       if (manual) return isSetter ? 'setup' : 'category_wait'
       return isCaller ? 'category_pick' : 'category_wait'
     }
-    // Manual mode: the setter planted the mine and sits out the writing, then judges every
-    // answer during marking (I Call On's caller). System mode has no setter.
-    if (isSetter && phase === 'writing') return 'setter_watch'
-    if (isSetter && phase === 'marking') return 'setter_review'
+    // Manual mode: the setter planted the mine and sits out writing + peer marking, then reviews
+    // every verdict during the review phase (I Call On's caller). System mode has no setter/review.
+    if (isSetter && (phase === 'writing' || phase === 'marking')) return 'setter_watch'
+    if (isSetter && phase === 'review') return 'setter_review'
     // A spectator, or a player who joined after this round began, isn't in the round's
-    // answer/mark ring. Show them a watch view instead of a writing/marking UI they can't act
-    // on — the empty "mark this" screen that looked frozen when you jumped in mid-round.
+    // answer/mark ring. Show them a watch view instead of a phase UI they can't act on —
+    // the empty "mark this" screen that looked frozen when you jumped in mid-round.
     const spectatingRound = readOnly || !isLandmineRoundParticipant(metadata, myPlayerId)
-    if (spectatingRound && (phase === 'writing' || phase === 'marking')) return 'round_watch'
-    // Manual mode: only the setter marks — the answering players wait it out.
-    if (manual && phase === 'marking') return 'marking_wait'
+    if (spectatingRound && (phase === 'writing' || phase === 'marking' || phase === 'review')) return 'round_watch'
+    // Manual review phase: the answering players wait for the setter to check the marks.
+    if (phase === 'review') return 'review_wait'
     if (phase === 'writing') {
       const locked = !!myAnswer?.submitted_at || lockedAnswerRound === currentRound.id
       return locked ? 'writing_locked' : 'writing'
@@ -454,19 +457,36 @@ export function LandmineActiveRound({
     const winner = leaderboard.find((r) => !r.eliminated) ?? leaderboard[0]
     const iWon = !!myRow && winner != null && myRow.id === winner.id && (mode === 'elimination' || myRow.score > 0)
     return (
-      <div className="space-y-6">
-        <FinishedWinnerHero
-          winnerName={winner?.name}
-          game={game}
-          subtitle={`Landmine · ${landmineModeLabel(mode)}`}
-          emoji="🧨"
-        />
-        <PaginatedLeaderboard
-          title="Final standings"
-          rows={leaderboard.map((r) => ({ id: r.id, name: r.eliminated ? `${r.name} 💥` : r.name, score: r.score }))}
-          highlightId={myPlayerId}
-          scoreLabel={(n) => `${n} pts`}
-          emphasizeLeader
+      <div className="mx-auto w-full max-w-lg space-y-4">
+        <div ref={finishedCaptureRef} className="space-y-6">
+          <FinishedWinnerHero
+            winnerName={winner?.name}
+            game={game}
+            subtitle={`Landmine · ${landmineModeLabel(mode)}`}
+            emoji="🧨"
+          />
+          <PaginatedLeaderboard
+            title="Final standings"
+            rows={leaderboard.map((r) => ({ id: r.id, name: r.eliminated ? `${r.name} 💥` : r.name, score: r.score }))}
+            highlightId={myPlayerId}
+            scoreLabel={(n) => `${n} pts`}
+            emphasizeLeader
+          />
+        </div>
+        <HostGameFinishedActions
+          variant="winner"
+          gameCode={game.id}
+          shareButton={
+            <ShareResults
+              captureRef={finishedCaptureRef}
+              game={game}
+              participants={[]}
+              votes={[]}
+              rounds={[]}
+              players={players}
+              primary
+            />
+          }
         />
         {iWon && (
           <PostWinToCommunity
@@ -693,13 +713,19 @@ export function LandmineActiveRound({
 
   // ── Round watch — spectators & mid-round joiners follow along until next round ──
   if (screen === 'round_watch') {
-    const marking = metadata.phase === 'marking'
+    const showBoard = metadata.phase === 'marking' || metadata.phase === 'review'
+    const heading =
+      metadata.phase === 'review'
+        ? 'The setter is reviewing the marks'
+        : metadata.phase === 'marking'
+          ? 'Players are marking answers'
+          : 'Round in progress'
     return (
       <div className="glass-card p-6 space-y-4">
         {roundHeader}
         <div className="text-center space-y-1">
           <p className="text-3xl">👀</p>
-          <p className="font-bold text-lg">{marking ? 'Players are marking answers' : 'Round in progress'}</p>
+          <p className="font-bold text-lg">{heading}</p>
           {metadata.category && (
             <p className="text-sm text-muted">
               Category: <span className="font-semibold">{metadata.category}</span>
@@ -711,7 +737,7 @@ export function LandmineActiveRound({
               : 'You joined mid-round — you’ll be dealt in from the next round.'}
           </p>
         </div>
-        {marking ? (
+        {showBoard ? (
           answerBoard
         ) : (
           <p className="text-xs text-muted text-center">
@@ -722,9 +748,11 @@ export function LandmineActiveRound({
     )
   }
 
-  // ── Manual setter judging — the setter marks every answer valid/void, then reveals ──────
+  // ── Manual setter review — the setter checks/overrides the peer verdicts, then reveals ──────
   if (screen === 'setter_review') {
     const approved = lockedSetterRound === currentRound.id
+    // Default each toggle to the peer verdict already on the mark row, so the setter only changes
+    // what they disagree with.
     const verdictFor = (id: string) =>
       setterVerdicts[id] ?? roundMarks.find((m) => m.target_player_id === id)?.valid ?? true
     return (
@@ -732,9 +760,10 @@ export function LandmineActiveRound({
         {roundHeader}
         <div className="text-center space-y-1">
           <p className="text-3xl">⚖️</p>
-          <p className="font-bold text-lg">You set this round — judge the answers</p>
+          <p className="font-bold text-lg">You set this round — review the marks</p>
           <p className="text-sm text-muted">
-            Category: <span className="font-semibold">{metadata.category}</span>. Mark each Valid or Void, then reveal.
+            Category: <span className="font-semibold">{metadata.category}</span>. Players marked each answer — adjust
+            anything, then reveal.
           </p>
         </div>
         <div className="space-y-2">
@@ -800,15 +829,15 @@ export function LandmineActiveRound({
     )
   }
 
-  // ── Manual mode: answering players wait for the setter to judge ─────────────────────────
-  if (screen === 'marking_wait') {
+  // ── Manual mode: answering players wait while the setter reviews the marks ───────────────
+  if (screen === 'review_wait') {
     return (
       <div className="glass-card p-6 space-y-4">
         {roundHeader}
         <div className="text-center space-y-1">
           <p className="text-3xl">⚖️</p>
-          <p className="font-bold">{callerName} is judging the answers…</p>
-          <p className="text-sm text-muted">They’ll mark each Valid or Void, then scores reveal.</p>
+          <p className="font-bold">{callerName} is reviewing the marks…</p>
+          <p className="text-sm text-muted">They’ll confirm each verdict, then scores reveal.</p>
         </div>
         {answerBoard}
       </div>

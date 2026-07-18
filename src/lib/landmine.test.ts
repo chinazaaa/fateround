@@ -223,13 +223,14 @@ describe('landmine manual mode', () => {
     expect(Object.keys(meta.reviewer_assignments).sort()).toEqual(['a', 'b', 'c'])
   })
 
-  it('setter self-marks (marker = target) score exactly like peer marks', () => {
-    // Manual mode seeds one self-mark per answering player; the setter approves valid/void on it.
-    // Scoring keys marks by target, so a self-mark must resolve to the right verdict.
+  it('verdicts are scored by target, so a setter override lands on the right answer', () => {
+    // Manual review: the setter overrides each answer's peer verdict on the target's mark row.
+    // Scoring keys marks by target_player_id, so the overridden verdict must resolve correctly
+    // regardless of which marker produced the row.
     const answers = [answer('b', 'Canada'), answer('c', 'Kenya')]
     const marks = [
-      mark('b', 'b', true), // setter judged b Valid
-      mark('c', 'c', false), // setter judged c Void
+      mark('a', 'b', true), // b's verdict → Valid
+      mark('a', 'c', false), // c's verdict → Void (setter overrode)
     ]
     const results = computeRoundResults(answers, marks, ['mexico'], { originalityBonus: true })
     const byPlayer = Object.fromEntries(results.map((r) => [r.player_id, r]))
