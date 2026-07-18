@@ -257,6 +257,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     hostJoining,
     changeHostMode,
     hostJoinGame: handleJoinAsPlayer,
+    renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
     gameCode,
@@ -613,6 +614,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
             onJoinNameChange={setHostJoinName}
             onJoin={() => void handleJoinAsPlayer()}
             joining={hostJoining}
+            onEditName={renameHost}
           />
         ) : undefined
       }
@@ -696,6 +698,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       onJoinNameChange={setHostJoinName}
       onJoin={() => void handleJoinAsPlayer()}
       joining={hostJoining}
+      onEditName={renameHost}
       spectatorHint="Watch the game once it starts"
       playerHint="Play the memory match with everyone"
     />

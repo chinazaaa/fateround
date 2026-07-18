@@ -96,6 +96,7 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
     gameCode,
@@ -313,11 +314,12 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
           onJoinNameChange={setHostJoinName}
           onJoin={() => void hostJoinGame()}
           joining={hostJoining}
+          onEditName={renameHost}
           spectatorHint="Watch battles from the Watch tab"
           playingNote={
             <p className="text-sm text-muted">
-              Playing as <strong className="text-body">{hostPlayerName}</strong> — write answers and vote from the Play
-              tab once you start.
+              Playing as <strong className="text-body">{hostPlayerName}</strong> — write answers and vote once you
+              start.
             </p>
           }
         />
@@ -452,12 +454,12 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
       onJoinNameChange={setHostJoinName}
       onJoin={() => void hostJoinGame()}
       joining={hostJoining}
+      onEditName={renameHost}
       spectatorHint="Watch battles once it starts"
       playerHint="Write answers and vote with everyone"
       playingNote={
         <p className="text-sm text-muted">
-          Playing as <strong className="text-body">{hostPlayerName}</strong> — write answers and vote from the Play tab
-          once you start.
+          Playing as <strong className="text-body">{hostPlayerName}</strong> — write answers and vote once you start.
         </p>
       }
     />

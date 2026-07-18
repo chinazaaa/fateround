@@ -116,6 +116,7 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
     gameCode,
@@ -348,12 +349,12 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
           onJoinNameChange={setHostJoinName}
           onJoin={() => void hostJoinGame()}
           joining={hostJoining}
+          onEditName={renameHost}
           spectatorHint="Watch drawings from the Watch tab"
           playingNote={
             hostPlayerName ? (
               <p className="text-sm text-muted">
-                Playing as <strong className="text-body">{hostPlayerName}</strong> — draw and guess from the Play tab
-                once you start.
+                Playing as <strong className="text-body">{hostPlayerName}</strong> — draw and guess once you start.
               </p>
             ) : undefined
           }
@@ -499,13 +500,13 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
       onJoinNameChange={setHostJoinName}
       onJoin={() => void hostJoinGame()}
       joining={hostJoining}
+      onEditName={renameHost}
       spectatorHint="Watch drawings once it starts"
       playerHint="Draw and guess with everyone"
       playingNote={
         hostPlayerName ? (
           <p className="text-sm text-muted">
-            Playing as <strong className="text-body">{hostPlayerName}</strong> — draw and guess from the Play tab once
-            you start.
+            Playing as <strong className="text-body">{hostPlayerName}</strong> — draw and guess once you start.
           </p>
         ) : undefined
       }

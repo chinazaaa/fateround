@@ -145,6 +145,7 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
     gameCode,
@@ -360,11 +361,11 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
           onJoinNameChange={setHostJoinName}
           onJoin={() => void hostJoinGame()}
           joining={hostJoining}
+          onEditName={renameHost}
           spectatorHint="Watch drawings from the Watch tab"
           playingNote={
             <p className="text-sm text-muted">
-              Playing as <strong className="text-body">{hostPlayerName}</strong> — draw and vote from the Play tab once
-              you start.
+              Playing as <strong className="text-body">{hostPlayerName}</strong> — draw and vote once you start.
             </p>
           }
         />
@@ -499,12 +500,12 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
       onJoinNameChange={setHostJoinName}
       onJoin={() => void hostJoinGame()}
       joining={hostJoining}
+      onEditName={renameHost}
       spectatorHint="Watch drawings once it starts"
       playerHint="Draw and vote with everyone"
       playingNote={
         <p className="text-sm text-muted">
-          Playing as <strong className="text-body">{hostPlayerName}</strong> — draw and vote from the Play tab once you
-          start.
+          Playing as <strong className="text-body">{hostPlayerName}</strong> — draw and vote once you start.
         </p>
       }
     />

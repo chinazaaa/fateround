@@ -457,7 +457,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
       playerHint="Play along with everyone"
       playingNote={
         <p className="text-sm text-muted">
-          Playing as <strong className="text-body">{hostPlayerName}</strong> — play from the Play tab once you start.
+          Playing as <strong className="text-body">{hostPlayerName}</strong> — play once you start.
         </p>
       }
     />

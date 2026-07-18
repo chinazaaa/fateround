@@ -2015,6 +2015,36 @@ function CreateGameInner() {
             </div>
           </div>
 
+          {/* You — host seat choice, carried into the lobby via host-play intent */}
+          {hostPlaySupported && (
+            <div className="glass-card p-5 space-y-3">
+              <p className="label-caps">You</p>
+              <SegmentedControl
+                value={hostWillPlay ? 'play' : 'host'}
+                onChange={(v) => setHostWillPlay(v === 'play')}
+                options={[
+                  { label: 'Host + play', value: 'play' },
+                  { label: 'Host only', value: 'host' },
+                ]}
+              />
+              {hostWillPlay && (
+                <div className="pt-1">
+                  <input
+                    type="text"
+                    value={hostName}
+                    onChange={(e) => setHostName(e.target.value)}
+                    placeholder="Your name (optional)"
+                    maxLength={24}
+                    className="input-field w-full"
+                  />
+                  <p className="text-faint text-xs mt-1.5 leading-relaxed">
+                    Enter your name to be seated automatically. Leave it blank to add yourself from the lobby.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Rules */}
           <div className="glass-card p-5 space-y-5">
             {isSecretMessage ? (
@@ -5558,34 +5588,6 @@ function CreateGameInner() {
                     </div>
                   )}
                 </div>
-              </SettingsGroup>
-            )}
-
-            {hostPlaySupported && (
-              <SettingsGroup title="You">
-                <SegmentedControl
-                  value={hostWillPlay ? 'play' : 'host'}
-                  onChange={(v) => setHostWillPlay(v === 'play')}
-                  options={[
-                    { label: 'Host + play', value: 'play' },
-                    { label: 'Host only', value: 'host' },
-                  ]}
-                />
-                {hostWillPlay && (
-                  <div className="pt-2">
-                    <input
-                      type="text"
-                      value={hostName}
-                      onChange={(e) => setHostName(e.target.value)}
-                      placeholder="Your name (optional)"
-                      maxLength={24}
-                      className="input-field w-full"
-                    />
-                    <p className="text-faint text-xs mt-1.5 leading-relaxed">
-                      Enter your name to be seated automatically. Leave it blank to add yourself from the lobby.
-                    </p>
-                  </div>
-                )}
               </SettingsGroup>
             )}
 

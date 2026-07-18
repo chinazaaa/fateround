@@ -314,8 +314,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
             spectatorHint="Watch the game from the Watch tab"
             playingNote={
               <p className="text-sm text-muted">
-                Playing as <strong className="text-body">{hostPlayerName}</strong> — answer from the Play tab once you
-                start.
+                Playing as <strong className="text-body">{hostPlayerName}</strong> — answer once you start.
               </p>
             }
           />

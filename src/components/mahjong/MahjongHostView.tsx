@@ -134,6 +134,7 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
     gameCode,
@@ -351,6 +352,7 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
             onJoinNameChange={setHostJoinName}
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
+            onEditName={renameHost}
             spectatorHint="Manage the table"
             playerHint="Take one of the four seats"
           />
