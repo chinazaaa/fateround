@@ -7,6 +7,7 @@ import {
   clampLandmineWritingTimer,
   gameLandmineMode,
   gameLandmineMineSource,
+  isLandmineRoundParticipant,
   landmineCycleInfo,
   landmineModeLabel,
   landmineOutcomeLabel,
@@ -179,6 +180,10 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   // In manual mode the caller is the "setter": they plant the mine and sit out the round.
   const isSetter = manual && isCaller && !isViewer
   const mineCount = Math.min(3, Math.max(1, metadata?.mine_count ?? 1))
+  // A viewer, or a player who joined after this round began, isn't in the round's answer/mark
+  // ring — no answer to write, nobody assigned to mark. Show them a watch card instead of a
+  // writing/marking UI they can't act on (the empty "mark this" that looked frozen mid-round).
+  const spectatingRound = isViewer || !isLandmineRoundParticipant(metadata, bootstrap.myPlayerId)
 
   const roundAnswers = useMemo(
     () => (currentRound ? answers.filter((a) => a.round_id === currentRound.id) : []),
@@ -361,7 +366,8 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
 
   // Auto-submit at the writing deadline. The setter sits out, so they never auto-submit.
   useEffect(() => {
-    if (!currentRound || isViewer || isSetter || metadata?.phase !== 'writing' || myAnswer?.submitted_at) return
+    // spectatingRound covers viewers AND mid-round joiners — neither is in this round's ring.
+    if (!currentRound || spectatingRound || isSetter || metadata?.phase !== 'writing' || myAnswer?.submitted_at) return
     if (!metadata.phase_started_at) return
     const deadline = new Date(metadata.phase_started_at).getTime() + writingTimer * 1000
     const msLeft = Math.max(0, deadline - Date.now())
@@ -380,7 +386,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     metadata?.phase_started_at,
     writingTimer,
     myAnswer?.submitted_at,
-    isViewer,
+    spectatingRound,
     isSetter,
   ])
 
@@ -583,11 +589,17 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
               <Text style={styles.waitTitle}>You set this round — sit back</Text>
               <Text style={styles.meta}>You’ll score the total everyone else earns.</Text>
             </View>
-          ) : locked || isViewer ? (
+          ) : locked || spectatingRound ? (
             <View style={styles.waitCard}>
-              <Text style={styles.waitEmoji}>🔒</Text>
-              <Text style={styles.waitTitle}>{isViewer ? 'Watching' : 'Answer locked in'}</Text>
-              {!isViewer ? <Text style={styles.meta}>“{myAnswer?.answer || lockedAnswerText}”</Text> : null}
+              <Text style={styles.waitEmoji}>{locked ? '🔒' : '👀'}</Text>
+              <Text style={styles.waitTitle}>
+                {locked ? 'Answer locked in' : isViewer ? 'Watching' : 'You joined mid-round'}
+              </Text>
+              {locked ? (
+                <Text style={styles.meta}>“{myAnswer?.answer || lockedAnswerText}”</Text>
+              ) : !isViewer ? (
+                <Text style={styles.meta}>You’ll play from the next round.</Text>
+              ) : null}
             </View>
           ) : (
             <>
@@ -634,10 +646,13 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
               <Text style={styles.waitTitle}>You set this round — watching</Text>
               <Text style={styles.meta}>Category: {metadata.category}</Text>
             </View>
-          ) : marked || isViewer ? (
+          ) : marked || spectatingRound ? (
             <View style={styles.waitCard}>
-              <Text style={styles.waitEmoji}>✅</Text>
-              <Text style={styles.waitTitle}>{isViewer ? 'Marking in progress' : 'Your mark is in'}</Text>
+              <Text style={styles.waitEmoji}>{marked ? '✅' : '👀'}</Text>
+              <Text style={styles.waitTitle}>
+                {marked ? 'Your mark is in' : isViewer ? 'Marking in progress' : 'You joined mid-round'}
+              </Text>
+              {!marked && !isViewer ? <Text style={styles.meta}>You’ll play from the next round.</Text> : null}
             </View>
           ) : (
             <>

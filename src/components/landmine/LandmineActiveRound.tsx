@@ -657,6 +657,37 @@ export function LandmineActiveRound({
     )
   }
 
+  // ── Round watch — spectators & mid-round joiners follow along until next round ──
+  if (screen === 'round_watch') {
+    const marking = metadata.phase === 'marking'
+    return (
+      <div className="glass-card p-6 space-y-4">
+        {roundHeader}
+        <div className="text-center space-y-1">
+          <p className="text-3xl">👀</p>
+          <p className="font-bold text-lg">{marking ? 'Players are marking answers' : 'Round in progress'}</p>
+          {metadata.category && (
+            <p className="text-sm text-muted">
+              Category: <span className="font-semibold">{metadata.category}</span>
+            </p>
+          )}
+          <p className="text-sm text-muted">
+            {readOnly
+              ? 'You’re watching — follow along, no need to do anything.'
+              : 'You joined mid-round — you’ll be dealt in from the next round.'}
+          </p>
+        </div>
+        {marking ? (
+          answerBoard
+        ) : (
+          <p className="text-xs text-muted text-center">
+            {playerAnswers.filter((a) => a.submitted_at).length} locked in
+          </p>
+        )}
+      </div>
+    )
+  }
+
   // ── Writing ───────────────────────────────────────────────────────────────────
   if (screen === 'writing') {
     return (
