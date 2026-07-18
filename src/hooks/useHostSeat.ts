@@ -101,6 +101,13 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
   const autoJoinNameRef = useRef('')
   const autoJoinFiredRef = useRef(false)
 
+  // Mirror of hostPlayerId so handlePlayerRemoved can read the current seat without
+  // a stale closure — and WITHOUT doing the read inside a setState updater (calling
+  // clearPlayerSession there dispatches a session event mid-render → "update a
+  // component while rendering" warnings in the host chrome).
+  const hostPlayerIdRef = useRef(hostPlayerId)
+  hostPlayerIdRef.current = hostPlayerId
+
   const applyMode = useCallback(
     (mode: HostSeatMode) => {
       setHostMode(mode)
@@ -112,15 +119,11 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
-      setHostPlayerId((current) => {
-        if (current === playerId) {
-          setHostResumeToken(null)
-          setHostPlayerName('')
-          clearPlayerSession(gameCode)
-          return null
-        }
-        return current
-      })
+      if (hostPlayerIdRef.current !== playerId) return
+      setHostPlayerId(null)
+      setHostResumeToken(null)
+      setHostPlayerName('')
+      clearPlayerSession(gameCode)
     },
     [gameCode]
   )
