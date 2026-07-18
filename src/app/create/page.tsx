@@ -465,6 +465,7 @@ function CreateGameInner() {
   const [landmineOriginality, setLandmineOriginality] = useState(true)
   const [landmineCategoryTimer, setLandmineCategoryTimer] = useState(10)
   const [landmineMarkingTimer, setLandmineMarkingTimer] = useState(45)
+  const [landmineElimSeconds, setLandmineElimSeconds] = useState(300)
   const [eliminationEnabled, setEliminationEnabled] = useState(false)
   const [eliminationMode, setEliminationMode] = useState<'per-round' | 'lives'>('per-round')
   const [eliminationRule, setEliminationRule] = useState<'bottom-n' | 'score-threshold'>('bottom-n')
@@ -1673,6 +1674,7 @@ function CreateGameInner() {
           describe_it_mode: isDescribeIt ? settings.describe_it_mode : undefined,
           landmine_mode: isLandmine ? landmineMode : undefined,
           landmine_mine_source: isLandmine ? landmineMineSource : undefined,
+          landmine_elim_seconds: isLandmine ? landmineElimSeconds : undefined,
           landmine_mine_count: isLandmine ? landmineMineCount : undefined,
           landmine_originality_bonus: isLandmine ? landmineOriginality : undefined,
           quick_draw_variant: isQuickDraw ? settings.quick_draw_variant : undefined,
@@ -3233,6 +3235,19 @@ function CreateGameInner() {
                     knocked out). More mines = riskier.
                   </p>
                 </Field>
+                {landmineMode === 'elimination' && (
+                  <Field label="Time limit">
+                    <SegmentedControl
+                      value={String(landmineElimSeconds)}
+                      onChange={(v) => setLandmineElimSeconds(Number(v))}
+                      options={[180, 300, 600, 900].map((s) => ({ value: String(s), label: `${s / 60} min` }))}
+                    />
+                    <p className="text-faint text-xs mt-1">
+                      Elimination plays until one player is left — but if nobody hits a mine it would run forever, so
+                      the game ends when the clock runs out and ranks survivors by score.
+                    </p>
+                  </Field>
+                )}
                 {landmineMode === 'zero_points' && landmineMineSource === 'system' && (
                   <Field label="Number of rounds">
                     <SegmentedControl

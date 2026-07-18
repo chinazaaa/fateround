@@ -33,6 +33,8 @@ import {
   LANDMINE_MARKING_TIMER_OPTIONS,
   LANDMINE_CATEGORY_TIMER_OPTIONS,
   clampLandmineCategoryTimer,
+  clampLandmineElimSeconds,
+  LANDMINE_ELIM_SECONDS_OPTIONS,
   LANDMINE_MINE_COUNT_OPTIONS,
   LANDMINE_ROUND_COUNT_OPTIONS,
   LANDMINE_MANUAL_CYCLE_OPTIONS,
@@ -80,6 +82,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [writingTimer, setWritingTimer] = useState(45)
   const [markingTimer, setMarkingTimer] = useState(45)
   const [categoryTimer, setCategoryTimer] = useState(10)
+  const [elimSeconds, setElimSeconds] = useState(300)
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
@@ -131,6 +134,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
         setWritingTimer(gameRes.data.timer_seconds ?? 45)
         setMarkingTimer(gameRes.data.operative_timer_seconds ?? 45)
         setCategoryTimer(clampLandmineCategoryTimer(gameRes.data.game_duration_seconds))
+        setElimSeconds(clampLandmineElimSeconds(gameRes.data.landmine_elim_seconds))
       }
     }
     setPlayers(plrsRes.data ?? [])
@@ -271,6 +275,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
     landmine_mine_source: mineSourceSetting,
     landmine_mine_count: mineCount,
     landmine_originality_bonus: originalityBonus,
+    landmine_elim_seconds: elimSeconds,
     rounds_count: roundCount,
     timer_seconds: writingTimer,
     operative_timer_seconds: markingTimer,
@@ -515,6 +520,22 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
                 <option value="elimination">Elimination — mine knocks you out</option>
               </select>
             </label>
+            {modeSetting === 'elimination' && (
+              <label className="block space-y-1">
+                <span className="text-sm font-semibold">Time limit</span>
+                <select
+                  value={elimSeconds}
+                  onChange={(e) => setElimSeconds(Number(e.target.value))}
+                  className="input-field w-full"
+                >
+                  {LANDMINE_ELIM_SECONDS_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s / 60} min
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {modeSetting === 'zero_points' && mineSourceSetting === 'system' && (
               <label className="block space-y-1">
                 <span className="text-sm font-semibold">Rounds</span>
