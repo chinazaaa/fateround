@@ -34,6 +34,9 @@ export const LANDMINE_DEFAULT_MINE_COUNT = 1
 export const LANDMINE_MINE_COUNT_OPTIONS = [1, 2, 3] as const
 export const LANDMINE_DEFAULT_ROUND_COUNT = 5
 export const LANDMINE_ROUND_COUNT_OPTIONS = [3, 5, 8, 10] as const
+// Manual mode counts a "round" as one full cycle (every player sets once).
+export const LANDMINE_DEFAULT_MANUAL_CYCLES = 1
+export const LANDMINE_MANUAL_CYCLE_OPTIONS = [1, 2, 3, 5] as const
 
 export function parseLandmineMode(raw: unknown): LandmineMode {
   return raw === 'elimination' ? 'elimination' : 'zero_points'
