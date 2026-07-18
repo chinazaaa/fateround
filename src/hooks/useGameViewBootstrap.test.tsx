@@ -109,6 +109,51 @@ describe('useGameViewBootstrap', () => {
     vi.unstubAllGlobals()
   })
 
+  it('sets lobbyFull when a join is refused for a full lobby', async () => {
+    h.gameRow = { id: 'ABCD', status: 'waiting' }
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      json: async () => ({ error: 'This game is full', full: true }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = setup()
+    await waitFor(() => expect(result.current.screen).toBe('waiting'))
+    expect(result.current.lobbyFull).toBe(false)
+    await act(async () => {
+      await result.current.join({ name: 'Zed' })
+    })
+    expect(result.current.lobbyFull).toBe(true)
+    vi.unstubAllGlobals()
+  })
+
+  it('forwards an explicit joinAsViewer even on a waiting game (watch instead)', async () => {
+    h.gameRow = { id: 'ABCD', status: 'waiting' }
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ playerId: 'p9', playerName: 'Zed' }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = setup()
+    await waitFor(() => expect(result.current.screen).toBe('waiting'))
+    await act(async () => {
+      await result.current.join({ name: 'Zed', joinAsViewer: true })
+    })
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }]
+    expect(JSON.parse(init.body).joinAsViewer).toBe(true)
+    vi.unstubAllGlobals()
+  })
+
+  it('omits joinAsViewer on an ordinary waiting-game join', async () => {
+    h.gameRow = { id: 'ABCD', status: 'waiting' }
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ playerId: 'p9', playerName: 'Zed' }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = setup()
+    await waitFor(() => expect(result.current.screen).toBe('waiting'))
+    await act(async () => {
+      await result.current.join({ name: 'Zed' })
+    })
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }]
+    expect('joinAsViewer' in JSON.parse(init.body)).toBe(false)
+    vi.unstubAllGlobals()
+  })
+
   it('sends the stored resume token on join so the server reclaims an existing seat', async () => {
     // A device that already holds a seat (reconnect / refresh) must reclaim it rather than
     // create a new row — on an active game a new row defaults to spectator, demoting a player.

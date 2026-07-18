@@ -30,7 +30,6 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
@@ -102,6 +101,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, void>({
     gameCode,
@@ -273,7 +273,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
   // gear (top header). Registered while the game is active; the shared settings sheet
   // renders it. Purely additive — the in-page PlayerSessionControls stays as-is.
   const playerSettingsNode = useMemo(() => {
-    if (!myPlayerId || game?.status !== 'active') return null
+    if (!myPlayerId) return null
     return (
       <div className="space-y-3">
         <EditNameInline
@@ -336,6 +336,8 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="ludo"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
@@ -368,6 +370,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={LUDO_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -382,6 +385,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myName}
@@ -430,17 +434,6 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
         {iWon && game && (
           <PostWinToCommunity gameType="ludo" gameCode={gameCode} winnerName={myName ?? ''} roundKey={session?.id} />
         )}
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby
-            spectating={isViewer}
-          />
-        )}
       </LudoShell>
     )
   }
@@ -468,16 +461,6 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
           rolling={rolling}
           displayDice={displayDice}
           variant={parseLudoVariant(game?.ludo_variant)}
-        />
-      )}
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isViewer}
         />
       )}
     </LudoShell>

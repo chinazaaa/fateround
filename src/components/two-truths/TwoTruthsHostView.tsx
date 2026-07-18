@@ -1,9 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TwoTruthsActiveRound } from '@/components/two-truths/TwoTruthsActiveRound'
 import { TwoTruthsHostManagePanel } from '@/components/two-truths/TwoTruthsHostManagePanel'
 import { TwoTruthsLobbySubmit } from '@/components/two-truths/TwoTruthsLobbySubmit'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
@@ -217,6 +220,19 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
   const hostPlays = hostMode === 'player' && !!hostPlayerId
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
+
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer): late-join rules + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="two_truths" onEnded={load}>
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load]
+  )
+  useRegisterGameSettings(hostSettingsNode)
 
   if (!game) {
     return <HostLobbySkeleton />
@@ -452,6 +468,7 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
       header={<HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : watchRound}
       manage={manage}
+      noManageTab={game?.status === 'active'}
       finished={<TwoTruthsHostManagePanel {...panelProps} section="finished" />}
     />
   )

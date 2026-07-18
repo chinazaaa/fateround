@@ -74,6 +74,8 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   const [myPlayerName, setMyPlayerName] = useState('')
   const [joinName, setJoinName] = useState('')
   const [joining, setJoining] = useState(false)
+  // Set when a join is refused for a full lobby — cue to offer "watch instead".
+  const [lobbyFull, setLobbyFull] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   const [myRole, setMyRole] = useState<CodewordsPlayerRole | null>(null)
@@ -328,11 +330,16 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
             gameCode,
             playerName: name,
             ...joinExtras,
-            ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer } : {}),
+            // An explicit choice (e.g. "watch instead" on a full lobby) wins in any state.
+            ...(opts?.joinAsViewer !== undefined ? { joinAsViewer: opts.joinAsViewer } : {}),
           }),
         })
         const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? 'Failed to join')
+        if (!res.ok) {
+          setLobbyFull(data?.full === true)
+          throw new Error(data.error ?? 'Failed to join')
+        }
+        setLobbyFull(false)
         setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
         setMyPlayerId(data.playerId)
         setMyResumeToken(data.resumeToken ?? null)
@@ -412,7 +419,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   // gear (top header). Registered while the game is active; the shared settings sheet
   // renders it. Purely additive — the in-page leave button stays as-is.
   const playerSettingsNode = useMemo(() => {
-    if (!myPlayerId || game?.status !== 'active') return null
+    if (!myPlayerId) return null
     return (
       <div className="space-y-3">
         <EditNameInline
@@ -520,6 +527,8 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
           onChange={setJoinName}
           onSubmit={() => void joinGame()}
           joining={joining}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void joinGame({ joinAsViewer: true })}
           gameType={['codewords_spymaster', 'codewords_operative']}
           hint={
             game?.status === 'active'

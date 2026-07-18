@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CodewordsActiveRound } from '@/components/codewords/CodewordsActiveRound'
 import { CodewordsHostManagePanel } from '@/components/codewords/CodewordsHostManagePanel'
 import { CodewordsSpectatorBoard } from '@/components/codewords/CodewordsSpectatorBoard'
@@ -44,6 +44,8 @@ import type {
 } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { PlayAgainSetup, playAgainNeedsSetup, type PlayAgainPayload } from '@/components/PlayAgainSetup'
@@ -504,6 +506,20 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     if (inActivePlay) setTab('play')
   }, [inActivePlay])
 
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, teams monitor + roster stay in the panel/drawer): the active
+  // late-join card + How-to-play + End game (finish-game, i.e. Close session).
+  const hostSettingsNode = useMemo(
+    () =>
+      game && game.status === 'active' ? (
+        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="codewords" onEnded={load}>
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (!game) {
     return <HostLobbySkeleton />
   }
@@ -698,6 +714,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
           header={<HostGameHeader game={game} />}
           primary={primary}
           manage={manage}
+          noManageTab={game.status === 'active'}
         />
       )}
 

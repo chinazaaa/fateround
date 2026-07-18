@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { WordRushPlayPanel } from '@/components/word-rush/WordRushPlay'
 import { WordRushFinishedResults } from '@/components/word-rush/WordRushFinishedResults'
 import { WordRushCard, WordRushTeamRoster } from '@/components/word-rush/WordRushChrome'
@@ -17,6 +17,8 @@ import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -146,6 +148,21 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
     runImmediately: false,
   })
   const { secondsLeft, intermissionLeft, urgent } = useWordRushTimer(gameCode, session, true)
+
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer): late-join rules + How-to-play +
+  // End game. The manage tab's duplicate "End round early" drops with the tab (round-driving
+  // already lives in the primary WordRushPlayPanel).
+  const hostSettingsNode = useMemo(
+    () =>
+      game && game.status === 'active' ? (
+        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="word_rush" onEnded={load}>
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load]
+  )
+  useRegisterGameSettings(hostSettingsNode)
 
   const saveSettings = async (patch: Record<string, unknown>) => {
     setSavingSettings(true)
@@ -713,6 +730,7 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={minPlayers}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}
@@ -794,6 +812,7 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
       header={<HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : watchRound}
       manage={manage}
+      noManageTab={game.status === 'active'}
       finished={finished}
     />
   )

@@ -8,6 +8,7 @@ import { LOAD_TIMEOUT_MS, POLL_INTERVALS, supabasePollOk, usePolling } from '@/h
 import { useScrollHostViewToTop, scrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
+import { useRosterBase, useRosterManage } from '@/components/roster/RosterDrawerContext'
 import {
   CONFESSION_SELECT,
   HOST_GAME_SELECT,
@@ -699,6 +700,15 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   }, [gameCode])
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, reloadHostPlayers)
+
+  // Feed the shared roster side-drawer (header people button) while active — poll hosts
+  // get the same who's-here + Remove as every game. `hostRemovePlayer` is hoisted; a ref
+  // keeps the manage config stable so the drawer doesn't re-register each render.
+  const hostRemoveRef = useRef<(playerId: string, name: string) => void>(() => {})
+  hostRemoveRef.current = hostRemovePlayer
+  const rosterRemove = useMemo(() => (row: { id: string; name: string }) => hostRemoveRef.current(row.id, row.name), [])
+  useRosterBase(game?.status === 'active' ? players : undefined, game, hostPlayerId)
+  useRosterManage(game?.status === 'active' ? { hostPlayerId, onRemove: rosterRemove } : null)
 
   // Poll during active game — slow fallback when realtime misses updates
   usePolling(() => syncGameState(), [gameCode, currentRound?.id, lastFinishedRound?.id], {

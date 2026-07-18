@@ -1,8 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { QuickDrawActiveRound } from '@/components/quick-draw/QuickDrawActiveRound'
 import { QuickDrawFinishedResults } from '@/components/quick-draw/QuickDrawFinishedResults'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
@@ -281,6 +283,19 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
     if (ok) void resetGame(false)
   }
 
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer): late-join rules + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="quick_draw" onEnded={load}>
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (!game) {
     return <HostLobbySkeleton />
   }
@@ -471,6 +486,7 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={QUICK_DRAW_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}
@@ -568,6 +584,7 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
       header={<HostGameHeader game={game} />}
       primary={<div className="max-w-4xl mx-auto w-full">{hostPlays ? interactivePlay : watchRound}</div>}
       manage={manage}
+      noManageTab={game?.status === 'active'}
       finished={finished}
       game={game}
       players={players}

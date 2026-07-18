@@ -20,6 +20,7 @@ type Register = (node: ReactNode | null) => void
 
 const RegisterContext = createContext<Register | null>(null)
 const ContentContext = createContext<ReactNode | null>(null)
+const CloseContext = createContext<(() => void) | null>(null)
 
 export function GameSettingsProvider({ children }: { children: ReactNode }) {
   const [content, setContent] = useState<ReactNode | null>(null)
@@ -35,6 +36,20 @@ export function GameSettingsProvider({ children }: { children: ReactNode }) {
 /** Read the registered settings node — the chrome's ⚙ sheet consumes this. */
 export function useGameSettingsContent(): ReactNode | null {
   return useContext(ContentContext)
+}
+
+/**
+ * Provides a "close the ⚙ settings sheet" callback to whatever the sheet renders
+ * (the registered node included). The chrome ({@link GameChromeSettings}) wraps the
+ * sheet contents in this so an action inside — e.g. End game — can dismiss the sheet
+ * after it runs.
+ */
+export const GameSettingsCloseProvider = CloseContext.Provider
+
+/** Close the enclosing ⚙ settings sheet. No-op outside the sheet. */
+export function useCloseGameSettings(): () => void {
+  const close = useContext(CloseContext)
+  return close ?? (() => {})
 }
 
 /**

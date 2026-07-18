@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import type { GameType } from '@/types'
 
@@ -98,21 +97,6 @@ export function GameWaitingRoom({
 
       {/* Who's already here. */}
       <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label="In lobby" minPlayers={minPlayers} />
-
-      {/* Identity + leave, shown ONCE. The "continue on another device" code now
-          lives in the header Share popup ("Your player link"), so it's hidden here. */}
-      <div className="border-t border-[var(--border)] pt-4">
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myPlayerName}
-          onRenamed={onRenamed}
-          onLeft={onLeft}
-          inLobby
-          spectating={spectating}
-          hideResume
-        />
-      </div>
     </div>
   )
 }

@@ -40,7 +40,6 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
@@ -144,6 +143,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, DescribeItSession | null>({
     gameCode,
@@ -282,7 +282,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   // Change name · Leave game for players/spectators live behind the main chrome's ⚙ gear
   // (top header). Registered while the game is active; GameChromeSettings renders it in the sheet.
   const playerSettingsNode = useMemo(() => {
-    if (!myPlayerId || game?.status !== 'active') return null
+    if (!myPlayerId) return null
     return (
       <div className="space-y-3">
         <EditNameInline
@@ -338,6 +338,8 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType={['describe_it_describer', 'describe_it_guesser']}
           footer={
@@ -384,6 +386,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={isIndividual ? DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL : DESCRIBE_IT_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -398,6 +401,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myName}
@@ -469,17 +473,6 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
             roundKey={session?.id}
           />
         )}
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby
-            spectating={isViewer}
-          />
-        )}
       </DescribeItShell>
     )
   }
@@ -502,16 +495,6 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
           onGuess={isViewer ? undefined : (text) => void sendAction('guess', { text })}
           onSkip={isViewer ? undefined : () => void sendAction('skip', {})}
           acting={acting}
-        />
-      )}
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isViewer}
         />
       )}
     </DescribeItShell>

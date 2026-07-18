@@ -21,6 +21,8 @@ import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
 import {
   parseWordScrambleMetadata,
@@ -140,6 +142,7 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
   const {
     hostMode,
     hostPlayerId,
+    hostResumeToken,
     hostPlayerName,
     hostJoinName,
     setHostJoinName,
@@ -326,6 +329,26 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
     leaderboard[0].points > 0
   const hostPlays = hostMode === 'player' && !!hostPlayerId
 
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer): late-join rules + How-to-play
+  // + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings
+          gameCode={gameCode}
+          hostToken={hostToken}
+          gameType="word_scramble"
+          onEnded={load}
+          endGameConfirmMessage="Players will see the final results."
+        >
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load, setGame]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (!game) {
     return <HostLobbySkeleton />
   }
@@ -466,6 +489,7 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={WORD_SCRAMBLE_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void handleStart()}
           starting={starting}
@@ -533,6 +557,7 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
         hostToken={hostToken}
         game={game}
         gameTypeLabel={cfg.label}
+        resumeToken={hostResumeToken}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('word_scramble', game) ?? game.max_players}
         playCard={lobbyModeCard}
@@ -571,6 +596,7 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
       header={<HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : watchBoard}
       manage={manage}
+      noManageTab
       finished={
         <>
           <FinalResultsShareBlock

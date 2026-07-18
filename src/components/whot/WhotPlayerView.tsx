@@ -100,6 +100,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, WhotSession | null>({
     gameCode,
@@ -282,7 +283,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   // gear (top header) — the in-room bar that used to hold them is gone. Registered
   // while the game is active; `GameChromeSettings` renders it inside the one sheet.
   const playerSettingsNode = useMemo(() => {
-    if (!myPlayerId || game?.status !== 'active') return null
+    if (!myPlayerId) return null
     return (
       <div className="space-y-3">
         <EditNameInline
@@ -357,6 +358,8 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="whot"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
@@ -382,6 +385,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={WHOT_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -396,6 +400,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={me?.name ?? ''}

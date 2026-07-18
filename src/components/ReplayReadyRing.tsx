@@ -3,7 +3,8 @@
 import { TrashIcon } from '@/components/host/host-icons'
 import { LeaveGameButton, leaveButtonQuietClassName } from '@/components/ui/LeaveGameButton'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
-import type { Player } from '@/types'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import type { Game, Player } from '@/types'
 
 /**
  * "Play again · same settings" ready-up ring — game-agnostic, reusable across games.
@@ -26,6 +27,7 @@ export function ReplayReadyRing({
   starting = false,
   gameCode,
   hostToken,
+  capacityGame,
   onLeft,
 }: {
   /** Everyone in the room — seated players show as ready, spectators as "not ready yet". */
@@ -34,6 +36,10 @@ export function ReplayReadyRing({
   /** Host sees "Start game" instead of a ready toggle. */
   isHost: boolean
   minPlayers: number
+  /** Game row for the seat cap (game_type + max_players). When the seats are full, a
+   *  spectator sees a "watching" state instead of a dead "tap to get ready" button; the
+   *  button returns automatically once a seat frees up. Omitted → no cap (button always shown). */
+  capacityGame?: Pick<Game, 'game_type' | 'max_players'> | null
   /** Player toggles their own seat (ready = true → take a seat, false → sit out). */
   onToggleReady: (ready: boolean) => void
   /** Host starts the next game. */
@@ -53,6 +59,11 @@ export function ReplayReadyRing({
   const canStart = readyCount >= minPlayers
   const me = meId ? players.find((p) => p.id === meId) : undefined
   const meReady = !!me && me.spectator !== true
+  // Seats are full when the ready (seated) count has hit the cap. A spectator then can't
+  // ready up — show a "watching" state; seatsFull is derived from the live player list, so
+  // the ready button returns the moment a seat frees. No cap known → never "full".
+  const maxPlayers = capacityGame ? lobbyMaxPlayersFromGameClient(capacityGame.game_type, capacityGame) : null
+  const seatsFull = maxPlayers != null && readyCount >= maxPlayers
 
   const R = 60
   const C = 2 * Math.PI * R
@@ -127,7 +138,7 @@ export function ReplayReadyRing({
                 {on ? (
                   <span className="text-xs font-bold text-[var(--primary)]">✅ Ready</span>
                 ) : (
-                  <span className="text-xs font-semibold text-faint">not ready</span>
+                  <span className="text-xs font-semibold text-faint">{seatsFull ? 'watching' : 'not ready'}</span>
                 )}
                 {canRemovePlayers && p.id !== meId ? (
                   <button
@@ -172,6 +183,11 @@ export function ReplayReadyRing({
           >
             ✅ You’re ready — tap to cancel
           </button>
+        ) : seatsFull ? (
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-center">
+            <p className="text-sm font-semibold text-body">Game full — you’re watching this round</p>
+            <p className="mt-0.5 text-xs text-muted">A seat opens up if someone sits out — you can grab it then.</p>
+          </div>
         ) : (
           <button
             type="button"

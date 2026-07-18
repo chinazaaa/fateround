@@ -20,6 +20,8 @@ export type RosterRow = {
   isMe?: boolean
   viewer?: boolean
   eliminated?: boolean
+  /** This row is the game's host — drives the "HOST" pill. */
+  host?: boolean
   /** Free-form badge, e.g. "Team Red". */
   status?: string
   /** Reserved for a future presence feed — renders nothing while undefined. */
@@ -62,6 +64,7 @@ export function deriveBaseRows(
   myPlayerId: string | null | undefined
 ): RosterRow[] {
   if (!players?.length) return []
+  const hostId = game?.host_player_id ?? null
   return players.map((p, index) => ({
     id: p.id,
     name: p.name,
@@ -69,6 +72,9 @@ export function deriveBaseRows(
     isMe: !!myPlayerId && p.id === myPlayerId,
     viewer: game ? playerIsViewer(p, game) : !!p.spectator,
     eliminated: !!p.is_eliminated,
+    // Cross-client host badge (parity with web) — set once game.host_player_id is
+    // populated + read (in GAME_SELECT). Harmless while undefined.
+    host: !!hostId && p.id === hostId,
   }))
 }
 

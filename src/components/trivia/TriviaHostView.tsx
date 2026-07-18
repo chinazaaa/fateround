@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TriviaActiveRound } from '@/components/trivia/TriviaActiveRound'
 import { TriviaHostManagePanel } from '@/components/trivia/TriviaHostManagePanel'
 import { TriviaPlayAgainSetup, type TriviaSettingsPayload } from '@/components/trivia/TriviaPlayAgainSetup'
@@ -11,6 +11,8 @@ import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { HostMaxPlayersLobbyPanel } from '@/components/host-lobby/HostMaxPlayersLobbyPanel'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -236,6 +238,30 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
+  // Host controls for the active game live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body). Late-join rules + the rare "End round early" driver + How-to-play
+  // + End game. Players + live scores are seen in the roster drawer / watch view.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="trivia" onEnded={load}>
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          {roundAutomation.activeRound && (
+            <button
+              type="button"
+              onClick={() => void endRound()}
+              disabled={advancing}
+              className="btn-secondary w-full py-3 text-base"
+            >
+              {advancing ? 'Ending…' : 'End round early'}
+            </button>
+          )}
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load, setGame, endRound, advancing, roundAutomation.activeRound]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (!game) {
     // Branded lobby skeleton (covers the header + hides the fixed theme toggle) so
     // reloading straight into the lobby feels instant and never flashes old chrome.
@@ -412,6 +438,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
           header={<HostGameHeader game={game} />}
           primary={hostPlays ? interactivePlay : watchRound}
           manage={manage}
+          noManageTab={game.status === 'active'}
           finished={
             game.tournament_id ? (
               <div className="space-y-4">

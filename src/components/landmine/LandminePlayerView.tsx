@@ -93,6 +93,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, null>({
     gameCode,
@@ -148,7 +149,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   // gear (top header). Registered while the game is active; the shared settings sheet
   // renders it. Purely additive.
   const playerSettingsNode = useMemo(() => {
-    if (!myPlayerId || game?.status !== 'active') return null
+    if (!myPlayerId) return null
     return (
       <div className="space-y-3">
         <EditNameInline
@@ -276,6 +277,8 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="landmine"
         />
@@ -292,6 +295,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={LANDMINE_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -306,6 +310,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myPlayerName}

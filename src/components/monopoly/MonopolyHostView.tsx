@@ -1,11 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MonopolyClassicBoard, MonopolyDiceRoll, MonopolyPlayerList } from '@/components/monopoly/MonopolyBoard'
 import { MonopolyActiveLayout } from '@/components/monopoly/MonopolyActiveLayout'
 import { MonopolyHostTimeExtension } from '@/components/monopoly/MonopolyHostTimeExtension'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { MonopolyFinalResultsShareBlock } from '@/components/monopoly/MonopolyFinalResultsShareBlock'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -311,6 +313,27 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
+  // Host controls for the active game live in the main-header ⚙ gear (no Manage tab —
+  // the board is the body, roster + Remove in the drawer): late-join + How-to-play + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings
+          gameCode={gameCode}
+          hostToken={hostToken}
+          gameType="monopoly"
+          onEnded={load}
+          endGameLabel="End game early"
+          endGameConfirmTitle="End this game early?"
+          endGameConfirmMessage="The current game will end and players will see the results screen."
+        >
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load, setGame]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (!game) {
     return <HostLobbySkeleton />
   }
@@ -515,6 +538,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={MONOPOLY_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}
@@ -620,6 +644,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
       header={<HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : watchBoard}
       manage={manage}
+      noManageTab
       finished={
         <>
           <MonopolyFinalResultsShareBlock

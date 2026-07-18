@@ -33,7 +33,6 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
@@ -140,6 +139,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, YahtzeeSession | null>({
     gameCode,
@@ -319,7 +319,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   const meRow = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const meSpectating = !!(game && meRow && playerIsViewer(meRow, game))
   const playerSettingsNode = useMemo(() => {
-    if (!myPlayerId || game?.status !== 'active') return null
+    if (!myPlayerId) return null
     return (
       <div className="space-y-3">
         <EditNameInline
@@ -391,6 +391,8 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="yahtzee"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
@@ -411,6 +413,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={YAHTZEE_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -425,6 +428,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={me?.name ?? ''}
@@ -497,16 +501,6 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     return (
       <YahtzeeShell title={game?.title} wide compact>
         <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={myPlayer} />
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            spectating={isViewer}
-          />
-        )}
         <div className="space-y-2">
           <YahtzeeScorecard
             players={players}
@@ -533,16 +527,6 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <YahtzeeShell title={game?.title} wide compact>
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isViewer}
-        />
-      )}
       <div className="space-y-2">
         <YahtzeeScorecard
           players={players}

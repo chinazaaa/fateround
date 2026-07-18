@@ -19,6 +19,8 @@ import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostMatchingPairsLobbyPanel } from '@/components/host-lobby/HostMatchingPairsLobbyPanel'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -251,6 +253,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   const {
     hostMode: hostModeState,
     hostPlayerId,
+    hostResumeToken,
     hostPlayerName,
     hostJoinName,
     setHostJoinName,
@@ -422,6 +425,20 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   const winnerId = cumulativeLeaderboard[0]?.playerId
   const isHostWinner = !!winnerId && winnerId === hostPlayerId
   const winnerName = isHostWinner ? hostPlayerName : winnerId ? (playerMap.get(winnerId) ?? winnerId) : 'Someone'
+
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer): late-join rules + How-to-play
+  // + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="matching_pairs" onEnded={load}>
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load, setGame]
+  )
+  useRegisterGameSettings(hostSettingsNode)
 
   if (!game) {
     return <HostLobbySkeleton />
@@ -668,6 +685,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={MATCHING_PAIRS_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void handleStartGame()}
           starting={starting}
@@ -724,6 +742,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         hostToken={hostToken}
         game={game}
         gameTypeLabel={cfg.label}
+        resumeToken={hostResumeToken}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('matching_pairs', game) ?? game.max_players}
         playCard={lobbyModeCard}
@@ -758,6 +777,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       header={<HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : roundEnded ? roundResultsUI : watchBoard}
       manage={manage}
+      noManageTab
       finished={
         <>
           <FinishedWinnerHero

@@ -279,6 +279,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
                 meId={null}
                 isHost
                 minPlayers={MAFIA_MIN_PLAYERS}
+                capacityGame={gameObj}
                 onToggleReady={() => {}}
                 onStart={() => void startGame()}
                 starting={starting}

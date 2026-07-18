@@ -75,6 +75,8 @@ export interface UseGameViewBootstrapResult<Screen extends string> {
   joinName: string
   setJoinName: React.Dispatch<React.SetStateAction<string>>
   joining: boolean
+  /** True after a join was refused for a full lobby — cue to offer "watch instead". */
+  lobbyFull: boolean
   /** Re-fetch everything and recompute the screen. Returns false if a read failed. */
   load: () => Promise<boolean>
   /** Join the game with `name` (defaults to `joinName`); on active games joins as a viewer
@@ -104,6 +106,9 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
   const [joinName, setJoinName] = useState('')
   const [joining, setJoining] = useState(false)
+  // Set when a join is turned away because the lobby has no open seats. Lets the join
+  // screen offer "watch instead" (a spectator join) rather than a dead end.
+  const [lobbyFull, setLobbyFull] = useState(false)
   // Tournament rooms are opened via a ?tournament= link; the player's secret token
   // (saved at tournament join) rides along so the server seats/reclaims only them.
   const tournamentToken = currentTournamentPlayerToken()
@@ -224,14 +229,22 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
             ...joinExtras,
             ...(tournamentToken ? { tournamentToken } : {}),
             ...(existingToken ? { resumeToken: existingToken } : {}),
-            ...(game?.status === 'active' ? { joinAsViewer: joinOpts?.joinAsViewer ?? true } : {}),
+            // An explicit choice (e.g. "watch instead" on a full lobby) wins in any state;
+            // otherwise active games still default a fresh join to viewer.
+            ...(joinOpts?.joinAsViewer !== undefined
+              ? { joinAsViewer: joinOpts.joinAsViewer }
+              : game?.status === 'active'
+                ? { joinAsViewer: true }
+                : {}),
           }),
         })
         const data = await res.json()
         if (!res.ok) {
+          setLobbyFull(data?.full === true)
           onJoinError?.(data.error ?? 'Failed to join')
           return
         }
+        setLobbyFull(false)
         setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
         setMyPlayerId(data.playerId)
         setMyResumeToken(data.resumeToken ?? null)
@@ -270,6 +283,7 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
     joinName,
     setJoinName,
     joining,
+    lobbyFull,
     load,
     join,
   }

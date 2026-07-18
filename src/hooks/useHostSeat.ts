@@ -44,6 +44,13 @@ function readPersistedMode(gameCode: string): HostSeatMode {
   return localStorage.getItem(hostModeKey(gameCode)) === 'spectator' ? 'spectator' : 'player'
 }
 
+/** The host's chosen seat mode ('player' = Host + play, 'spectator' = Host only), read
+ *  from the same persisted store `useHostSeat` writes. Lets other host hooks respect a
+ *  deliberate "Host only" choice (e.g. so auto-ready doesn't fight it). */
+export function getPersistedHostMode(gameCode: string): HostSeatMode {
+  return readPersistedMode(gameCode)
+}
+
 function writePersistedMode(gameCode: string, mode: HostSeatMode) {
   if (typeof window === 'undefined') return
   try {
@@ -228,6 +235,15 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
           })
           if (!res.ok) {
             const data = await res.json().catch(() => ({}))
+            // Taking a seat but the lobby is full: keep the host on "Host only" (they stay a
+            // watcher) and tell them plainly rather than a generic failure.
+            if (mode === 'player' && data.full) {
+              applyMode(prev)
+              toastRef.current.error(
+                'Game is full — staying on Host only. Remove a player to free a seat, then Host + play.'
+              )
+              return
+            }
             throw new Error(data.error ?? 'Failed to change seat')
           }
           await onReloadRef.current()

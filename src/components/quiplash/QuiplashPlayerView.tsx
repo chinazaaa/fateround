@@ -34,7 +34,6 @@ import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } fr
 import { playerIsViewer, preJoinScreen, allowLatePlayers } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { QUIPLASH_MIN_PLAYERS } from '@/lib/quiplash'
 
@@ -99,6 +98,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, null>({
     gameCode,
@@ -155,7 +155,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
   // gear (top header). Registered while the game is active; the shared settings sheet
   // renders it. Purely additive — the in-page PlayerSessionControls stays as-is.
   const playerSettingsNode = useMemo(() => {
-    if (!myPlayerId || game?.status !== 'active') return null
+    if (!myPlayerId) return null
     return (
       <div className="space-y-3">
         <EditNameInline
@@ -303,6 +303,8 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="quiplash"
         />
@@ -320,6 +322,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
           meId={myPlayerId}
           isHost={false}
           minPlayers={QUIPLASH_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={(ready) => void toggleReplayReady(ready)}
           onStart={() => {}}
           pending={replayReadyPending}
@@ -336,6 +339,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myPlayerName}
@@ -391,17 +395,6 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
             player={me}
             players={players}
             onPromoted={load}
-          />
-        )}
-        {!isFinished && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myPlayerName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby={false}
-            spectating={isViewer}
           />
         )}
         <QuiplashActiveRound

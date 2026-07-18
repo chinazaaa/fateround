@@ -314,6 +314,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, MatchingPairsGameState>({
     gameCode,
@@ -634,7 +635,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   // gear (top header). Registered while the game is active; the shared settings sheet
   // renders it. Purely additive.
   const playerSettingsNode = useMemo(() => {
-    if (!myPlayerId || game?.status !== 'active') return null
+    if (!myPlayerId) return null
     return (
       <div className="space-y-3">
         <EditNameInline
@@ -789,6 +790,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="matching_pairs"
           submitLabel="Join game"
@@ -835,6 +838,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={MATCHING_PAIRS_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -849,6 +853,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={me?.name ?? ''}

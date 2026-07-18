@@ -18,6 +18,11 @@ type Props = {
   // community leaderboard (only if the game type is actually tracked there). May be
   // several entries for role-based games that feed more than one leaderboard row.
   gameType?: string | string[]
+  // When the lobby is full, `onJoinAsViewer` (paired with `lobbyFull`) surfaces a
+  // secondary "watch instead" action so the player isn't left at a dead end.
+  lobbyFull?: boolean
+  onJoinAsViewer?: () => void
+  watchLabel?: string
 }
 
 export function NameJoinForm({
@@ -33,6 +38,9 @@ export function NameJoinForm({
   footer,
   disabled = false,
   gameType,
+  lobbyFull = false,
+  onJoinAsViewer,
+  watchLabel = 'Watch instead',
 }: Props) {
   return (
     <div className="space-y-4">
@@ -59,6 +67,21 @@ export function NameJoinForm({
       >
         {joining ? joiningLabel : submitLabel}
       </button>
+      {lobbyFull && onJoinAsViewer ? (
+        <div className="space-y-2">
+          <p className="text-faint text-xs text-center">
+            This game is full — all seats are taken. You can still watch.
+          </p>
+          <button
+            type="button"
+            onClick={onJoinAsViewer}
+            disabled={disabled || joining || !value.trim()}
+            className="btn-secondary w-full"
+          >
+            {watchLabel}
+          </button>
+        </div>
+      ) : null}
       {footer}
     </div>
   )

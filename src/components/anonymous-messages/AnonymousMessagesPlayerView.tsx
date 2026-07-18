@@ -275,7 +275,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
 
   // Edit name · Leave, in the main-header ⚙ while the room is active.
   const playerSettingsNode = useMemo(() => {
-    if (!myPlayerId || screen !== 'active') return null
+    if (!myPlayerId) return null
     return (
       <div className="space-y-3">
         <EditNameInline
