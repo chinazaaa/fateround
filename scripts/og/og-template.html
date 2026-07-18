@@ -202,6 +202,112 @@ const GAMES = {
         ${qdGuess('Grace','a fox',false)}
       </div>
     </div>`
+},
+'crossword': {
+  accent:'#0ea5e9', soft:'rgba(14,165,233,.14)', eyebrow:'Grid Race',
+  title:'Crossword', titleSize:96,
+  desc:'Everyone races the same grid — read the clues, type answers, first to solve wins.',
+  pills:['1–20 players','Same grid','Themed puzzles'],
+  panel:`
+    <div class="rhead" style="background:rgba(14,165,233,.10)">
+      <span class="tag" style="background:rgba(14,165,233,.18);color:#7dd3fc">Naza · 2,140 pts</span>
+      <span class="mid">Your grid</span>
+      <span class="mid" style="color:#c9cfd8">7 / 12 words</span>
+    </div>
+    <div class="rbody">
+      <div style="display:flex;justify-content:center">${xwGrid()}</div>
+      <div style="margin-top:18px;background:rgba(14,165,233,.10);border:1px solid rgba(14,165,233,.3);border-radius:12px;padding:13px 16px;display:flex;align-items:center;gap:13px">
+        <span style="background:#0ea5e9;color:#042430;font-weight:800;border-radius:8px;padding:5px 11px;font-size:14px">1 ACROSS</span>
+        <span style="font-size:17px;font-weight:600">Have fun with a game</span>
+        <span style="margin-left:auto;color:#7dd3fc;font-weight:800;font-size:16px">+40 ✓</span>
+      </div>
+    </div>`
+},
+'word-search': {
+  accent:'#8b5cf6', soft:'rgba(139,92,246,.14)', eyebrow:'Hidden Word Hunt',
+  title:'Word Search', titleSize:82,
+  desc:'Same grid, same word list — drag to grab hidden words. Find them all to win.',
+  pills:['1–20 players','Same grid','Themed puzzles'],
+  panel:`
+    <div class="rhead" style="background:rgba(139,92,246,.10)">
+      <span class="tag" style="background:rgba(139,92,246,.20);color:#c4b5fd">Naza · 1,860 pts</span>
+      <span class="mid">Your grid</span>
+      <span class="mid" style="color:#c9cfd8">4 / 8 found</span>
+    </div>
+    <div class="rbody">
+      <div style="display:flex;justify-content:center">${wsGrid()}</div>
+      <div style="margin-top:16px;display:flex;gap:9px;flex-wrap:wrap;justify-content:center">
+        ${wsWord('PARTY',true)}${wsWord('GAME',true)}${wsWord('PLAY',false)}${wsWord('WIN',false)}
+      </div>
+    </div>`
+},
+'word-scramble': {
+  accent:'#f59e0b', soft:'rgba(245,158,11,.14)', eyebrow:'Unscramble Sprint',
+  title:'Word Scramble', titleSize:74,
+  desc:'Same jumbled words for everyone. Type the answer fastest for a speed bonus — highest score wins.',
+  pills:['1–20 players','Speed bonuses','Quick-fire rounds'],
+  panel:`
+    <div class="rhead" style="background:rgba(245,158,11,.10)">
+      <span class="tag" style="background:rgba(245,158,11,.18);color:#fcd34d">ROUND 3 OF 8</span>
+      <span class="mid">Type fastest</span>
+      <span class="mid" style="color:#fcd34d;font-weight:700">0:07</span>
+    </div>
+    <div class="rbody">
+      <div style="text-align:center;margin-top:4px">
+        <div class="muted" style="font-size:13px;letter-spacing:2.5px;font-weight:600">SCRAMBLE</div>
+        <div style="display:flex;gap:9px;justify-content:center;margin-top:14px">
+          ${['T','A','E','R','S'].map(l=>scTile(l,'scramble')).join('')}
+        </div>
+        <div style="color:#f59e0b;font-size:24px;margin:14px 0 8px">↓</div>
+        <div style="display:flex;gap:9px;justify-content:center">
+          ${scTile('S','filled')}${scTile('T','filled')}${scTile('A','filled')}${scTile('R','filled')}${scTile('','empty')}
+        </div>
+      </div>
+      <div style="margin-top:22px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:14px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:17px;font-weight:600">Solve first for a bonus</span>
+        <span style="color:#fcd34d;font-size:20px;font-weight:800">+80 ⚡</span>
+      </div>
+    </div>`
+},
+'landmine': {
+  accent:'#ef4444', soft:'rgba(239,68,68,.14)', eyebrow:'Risky Word Bluff',
+  title:'Landmine', titleSize:104,
+  desc:'Type a blind answer to a category — one obvious answer is the hidden mine.',
+  pills:['3–20 players','Hidden mine / round','Peer-marked'],
+  panel:`
+    <div class="rhead" style="background:rgba(239,68,68,.10)">
+      <span class="tag" style="background:rgba(239,68,68,.18);color:#fca5a5">CATEGORY</span>
+      <span class="mid">Name a fruit 🍎</span>
+      <span class="mid" style="color:#fca5a5;font-weight:700">💣 1 mine</span>
+    </div>
+    <div class="rbody">
+      <div style="display:flex;flex-direction:column;gap:11px">
+        ${lmRow('Naza','Mango','safe')}
+        ${lmRow('Tommy','Apple','mine')}
+        ${lmRow('You','Guava','typing')}
+      </div>
+      <div style="margin-top:16px;text-align:center;color:#8b93a1;font-size:15px">The obvious answer might be the mine…</div>
+    </div>`
+},
+'ping-pong': {
+  accent:'#3b82f6', soft:'rgba(59,130,246,.14)', eyebrow:'Real-Time Duel',
+  title:'Ping Pong', titleSize:96,
+  desc:'Classic 2-player table tennis with real-time 60fps physics. Rally back and forth — don’t miss.',
+  pills:['2 players','60fps physics','Win-by-2 rules'],
+  panel:`
+    <div class="rhead" style="background:rgba(59,130,246,.10)">
+      <span class="tag" style="background:rgba(59,130,246,.18);color:#93c5fd">FIRST TO 11</span>
+      <span class="mid">Win by 2</span>
+      <span class="mid" style="color:#93c5fd;font-weight:700">Rally 14</span>
+    </div>
+    <div class="rbody">
+      <div style="display:flex;align-items:center;justify-content:center;gap:28px;margin:6px 0 2px">
+        <div style="text-align:center"><div style="color:#93c5fd;font-size:15px;font-weight:600">Naza</div><div style="font-size:50px;font-weight:800;line-height:1">7</div></div>
+        <div style="color:#5b6472;font-size:28px;font-weight:800">–</div>
+        <div style="text-align:center"><div style="color:#cbd5e1;font-size:15px;font-weight:600">Tommy</div><div style="font-size:50px;font-weight:800;line-height:1">5</div></div>
+      </div>
+      <div style="display:flex;justify-content:center;margin-top:10px">${pongCourt()}</div>
+    </div>`
 }
 };
 
@@ -323,6 +429,98 @@ function catSketch(){
     <path d="M130 100 L124 108 L136 108 Z" fill="#111827" stroke="none"/>
     <path d="M130 108 Q120 120 108 114 M130 108 Q140 120 152 114"/>
     <path d="M78 96 L44 88 M78 104 L44 108 M182 96 L216 88 M182 104 L216 108"/>
+  </svg>`;
+}
+
+function xwGrid(){
+  const cell=56;
+  const g=[
+    ['P','L','A','Y','#'],
+    ['','#','#','','#'],
+    ['G','R','I','D','#'],
+    ['','#','#','','#'],
+    ['#','W','I','N','S'],
+  ];
+  const nums={'0,0':1,'0,3':2,'2,0':3,'4,1':4};
+  let cells='';
+  for(let r=0;r<5;r++)for(let c=0;c<5;c++){
+    const v=g[r][c];
+    if(v==='#'){ cells+=`<div style="width:${cell}px;height:${cell}px;background:#0b0c11"></div>`; continue; }
+    const filled=v!=='';
+    const cur=(r===0); // highlight the current across word
+    const n=nums[r+','+c];
+    const bg=cur?'rgba(14,165,233,.24)':(filled?'#f4f7fa':'#dfe6ee');
+    const border=cur?'2px solid #0ea5e9':'1px solid #b9c4d1';
+    cells+=`<div style="position:relative;width:${cell}px;height:${cell}px;background:${bg};border:${border};display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#0f172a">
+      ${n?`<span style="position:absolute;top:2px;left:4px;font-size:11px;font-weight:700;color:#475569">${n}</span>`:''}${filled?v:''}</div>`;
+  }
+  return `<div style="display:grid;grid-template-columns:repeat(5,${cell}px);gap:3px;background:#8595a8;padding:3px;border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,.4)">${cells}</div>`;
+}
+
+function wsGrid(){
+  const cell=52;
+  const g=[
+    ['P','A','R','T','Y','K'],
+    ['Z','G','B','M','F','Q'],
+    ['W','A','X','C','O','R'],
+    ['N','M','D','H','J','U'],
+    ['V','E','L','T','S','I'],
+    ['B','O','Y','P','W','N'],
+  ];
+  const violet={}, green={};
+  ['0,0','0,1','0,2','0,3','0,4'].forEach(k=>violet[k]=1); // PARTY across
+  ['1,1','2,1','3,1','4,1'].forEach(k=>green[k]=1);        // GAME down
+  let cells='';
+  for(let r=0;r<6;r++)for(let c=0;c<6;c++){
+    const k=r+','+c, v=g[r][c];
+    let bg='transparent',col='#c7cdd6',rad='0';
+    if(violet[k]){bg='rgba(139,92,246,.4)';col='#fff';rad='11px';}
+    if(green[k]){bg='rgba(34,197,94,.34)';col='#fff';rad='11px';}
+    cells+=`<div style="width:${cell}px;height:${cell}px;display:flex;align-items:center;justify-content:center;font-size:23px;font-weight:700;color:${col};background:${bg};border-radius:${rad}">${v}</div>`;
+  }
+  return `<div style="display:grid;grid-template-columns:repeat(6,${cell}px);background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:7px">${cells}</div>`;
+}
+function wsWord(w,found){
+  return `<span style="padding:9px 15px;border-radius:999px;font-size:16px;font-weight:700;
+    ${found?'color:#c4b5fd;background:rgba(139,92,246,.16);border:1px solid rgba(139,92,246,.4);text-decoration:line-through':'color:#8b93a1;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1)'}">${w}</span>`;
+}
+
+function scTile(l,state){
+  const on=state==='scramble', filled=state==='filled';
+  return `<div style="width:56px;height:64px;border-radius:12px;
+    background:${on?'linear-gradient(180deg,#fbbf24,#f59e0b)':filled?'rgba(245,158,11,.16)':'rgba(255,255,255,.04)'};
+    border:1px solid ${on?'#fbbf24':filled?'rgba(245,158,11,.5)':'rgba(255,255,255,.14)'};
+    display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800;
+    color:${on?'#3a2600':filled?'#fcd34d':'#5b6472'}">${l}</div>`;
+}
+
+function lmRow(name,word,state){
+  const map={
+    safe:{bg:'rgba(34,197,94,.12)',bd:'rgba(34,197,94,.4)',right:'<span style="margin-left:auto;color:#4ade80;font-weight:800;font-size:16px">✓ Safe · +100</span>'},
+    mine:{bg:'rgba(239,68,68,.15)',bd:'rgba(239,68,68,.5)',right:'<span style="margin-left:auto;color:#fca5a5;font-weight:800;font-size:16px">💥 MINE</span>'},
+    typing:{bg:'rgba(255,255,255,.04)',bd:'rgba(255,255,255,.1)',right:'<span style="margin-left:auto;color:#5b6472;font-size:16px">marking…</span>'},
+  };
+  const s=map[state];
+  const cursor=state==='typing'?'<span style="display:inline-block;width:2px;height:20px;background:#ef4444;margin-left:3px;vertical-align:middle"></span>':'';
+  return `<div style="display:flex;align-items:center;gap:13px;background:${s.bg};border:1px solid ${s.bd};border-radius:13px;padding:15px 17px">
+    <span style="width:30px;height:30px;border-radius:50%;background:rgba(239,68,68,.2);color:#fca5a5;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700">${name[0]}</span>
+    <span style="font-weight:600;font-size:17px;min-width:52px">${name}</span>
+    <span style="font-size:19px;font-weight:700;color:#fff">${word}${cursor}</span>
+    ${s.right}</div>`;
+}
+
+function pongCourt(){
+  return `<svg width="440" height="238" viewBox="0 0 440 238">
+    <defs><linearGradient id="tbl" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e40af"/><stop offset="1" stop-color="#172d6e"/></linearGradient></defs>
+    <rect x="10" y="14" width="420" height="210" rx="10" fill="url(#tbl)" stroke="#3b82f6" stroke-width="3"/>
+    <line x1="220" y1="14" x2="220" y2="224" stroke="rgba(255,255,255,.5)" stroke-width="2" stroke-dasharray="9 9"/>
+    <rect x="10" y="112" width="420" height="13" fill="rgba(255,255,255,.09)"/>
+    <g transform="translate(72,150)"><ellipse cx="0" cy="0" rx="26" ry="31" fill="#ef4444"/><rect x="-6" y="27" width="12" height="26" rx="4" fill="#b45309"/></g>
+    <g transform="translate(368,92)"><ellipse cx="0" cy="0" rx="26" ry="31" fill="#111827" stroke="#374151" stroke-width="2"/><rect x="-6" y="27" width="12" height="26" rx="4" fill="#b45309"/></g>
+    <circle cx="176" cy="122" r="4" fill="rgba(255,255,255,.22)"/>
+    <circle cx="208" cy="112" r="5.5" fill="rgba(255,255,255,.42)"/>
+    <circle cx="245" cy="101" r="9" fill="#fff"/>
   </svg>`;
 }
 
