@@ -40,7 +40,6 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
@@ -1251,17 +1250,6 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
             )
           })}
         </div>
-
-        {myPlayerId && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={me?.name ?? ''}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            leaveOnly={isViewer}
-          />
-        )}
       </main>
     </div>
   )
