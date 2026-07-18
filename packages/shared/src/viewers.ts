@@ -8,6 +8,7 @@ import {
   isCrazyEightsGame,
   isDescribeItGame,
   isICallOnGame,
+  isLandmineGame,
   isLudoGame,
   isMahjongGame,
   isMonopolyGame,
@@ -107,6 +108,7 @@ export function gameOffersLateJoinChoice(gameType: GameType): boolean {
     isMostLikelyTo(gameType) ||
     isTwoTruthsGame(gameType) ||
     isICallOnGame(gameType) ||
+    isLandmineGame(gameType) ||
     isSudokuGame(gameType) ||
     isQuiplashGame(gameType) ||
     isQuickDrawGame(gameType)

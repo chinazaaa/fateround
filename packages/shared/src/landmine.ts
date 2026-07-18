@@ -21,6 +21,11 @@ export const LANDMINE_DEFAULT_WRITING_TIMER = 45
 export const LANDMINE_DEFAULT_MARKING_TIMER = 45
 export const LANDMINE_DEFAULT_CATEGORY_TIMER = 10
 export const LANDMINE_REVEAL_SECONDS = 10
+// After peer marking, the reviewer gets a fixed window to check/override every verdict before
+// scores reveal (mirrors I Call On's caller review). Manual mode's setter planted the mine and is
+// engaged, so they get the longer window; the auto-mode host is just spot-checking, so it's short.
+export const LANDMINE_REVIEW_SECONDS = 45
+export const LANDMINE_AUTO_REVIEW_SECONDS = 20
 
 export const LANDMINE_WRITING_TIMER_OPTIONS = [30, 45, 60, 90] as const
 export const LANDMINE_MARKING_TIMER_OPTIONS = [20, 30, 45, 60] as const
@@ -60,6 +65,16 @@ export function gameLandmineMineSource(game: Pick<Game, 'landmine_mine_source'>)
 
 export function landmineMineSourceLabel(source: LandmineMineSource | null | undefined): string {
   return parseLandmineMineSource(source) === 'manual' ? 'Manual' : 'Auto'
+}
+
+/** Whether the review-before-reveal phase runs. Off (false) scores straight from peer marking. */
+export function landmineReviewEnabled(game: Pick<Game, 'landmine_review'>): boolean {
+  return game.landmine_review !== false
+}
+
+/** The review window length — longer for the engaged manual setter, short for the auto-mode host. */
+export function landmineReviewSeconds(game: Pick<Game, 'landmine_mine_source'>): number {
+  return gameLandmineMineSource(game) === 'manual' ? LANDMINE_REVIEW_SECONDS : LANDMINE_AUTO_REVIEW_SECONDS
 }
 
 export const LANDMINE_DEFAULT_ELIM_SECONDS = 300
@@ -127,7 +142,13 @@ export function parseLandmineMetadata(raw: unknown): LandmineMetadata | null {
   if (!raw || typeof raw !== 'object') return null
   const m = raw as Record<string, unknown>
   const phase = m.phase
-  if (phase !== 'category_pick' && phase !== 'writing' && phase !== 'marking' && phase !== 'reveal') {
+  if (
+    phase !== 'category_pick' &&
+    phase !== 'writing' &&
+    phase !== 'marking' &&
+    phase !== 'review' &&
+    phase !== 'reveal'
+  ) {
     return null
   }
   const reviewer_assignments: Record<string, string> = {}
@@ -173,6 +194,25 @@ export function reviewTargetForMarker(metadata: LandmineMetadata | null, markerP
   return metadata.reviewer_assignments[markerPlayerId] ?? null
 }
 
+/**
+ * Whether this player is part of the CURRENT round's answer/mark ring. The ring
+ * (`caller_order` + `reviewer_assignments`) is frozen when the round is built, so a player who
+ * joins mid-round — as a late player or a viewer — isn't in it. Such a player has no answer to
+ * write and nobody assigned to mark, so dropping them onto the writing/marking UI reads as a
+ * frozen "mark this" screen they can't complete. Use this to route them to a watch/wait view
+ * until the next round folds them in.
+ */
+export function isLandmineRoundParticipant(
+  metadata: LandmineMetadata | null,
+  playerId: string | null | undefined
+): boolean {
+  if (!metadata || !playerId) return false
+  return (
+    metadata.caller_order.includes(playerId) ||
+    Object.prototype.hasOwnProperty.call(metadata.reviewer_assignments, playerId)
+  )
+}
+
 export function resolveActiveLandmineRound(rounds: Round[], currentRoundNumber: number): Round | null {
   const active = rounds.find((r) => r.status === 'active') ?? null
   if (active) {
@@ -192,13 +232,15 @@ export function phaseDeadlineMs(
   metadata: LandmineMetadata,
   writingTimerSeconds: number,
   markingTimerSeconds: number,
-  categoryTimerSeconds: number = LANDMINE_DEFAULT_CATEGORY_TIMER
+  categoryTimerSeconds: number = LANDMINE_DEFAULT_CATEGORY_TIMER,
+  reviewTimerSeconds: number = LANDMINE_REVIEW_SECONDS
 ): number | null {
   if (!metadata.phase_started_at) return null
   const start = new Date(metadata.phase_started_at).getTime()
   if (metadata.phase === 'category_pick') return start + categoryTimerSeconds * 1000
   if (metadata.phase === 'writing') return start + writingTimerSeconds * 1000
   if (metadata.phase === 'marking') return start + markingTimerSeconds * 1000
+  if (metadata.phase === 'review') return start + reviewTimerSeconds * 1000
   return null
 }
 
@@ -206,9 +248,16 @@ export function phaseSecondsLeft(
   metadata: LandmineMetadata,
   writingTimerSeconds: number,
   markingTimerSeconds: number,
-  categoryTimerSeconds: number = LANDMINE_DEFAULT_CATEGORY_TIMER
+  categoryTimerSeconds: number = LANDMINE_DEFAULT_CATEGORY_TIMER,
+  reviewTimerSeconds: number = LANDMINE_REVIEW_SECONDS
 ): number | null {
-  const deadline = phaseDeadlineMs(metadata, writingTimerSeconds, markingTimerSeconds, categoryTimerSeconds)
+  const deadline = phaseDeadlineMs(
+    metadata,
+    writingTimerSeconds,
+    markingTimerSeconds,
+    categoryTimerSeconds,
+    reviewTimerSeconds
+  )
   if (deadline == null) return null
   return Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
 }

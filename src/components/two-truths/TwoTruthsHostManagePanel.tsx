@@ -298,22 +298,29 @@ export function TwoTruthsHostManagePanel({
       {showWatch && game.status === 'active' && !showActiveRoundPanel && !showRevealPanel && liveLeaderboard}
 
       {showFinished && game.status === 'finished' && (
-        <div className="space-y-4">
-          <TwoTruthsShareBlock game={game}>
-            <div className="glass-card p-6 text-center space-y-2">
-              <p className="text-4xl">🏆</p>
-              <p className="text-xl font-black">Game finished</p>
-            </div>
-            <PaginatedLeaderboard
-              title="Final leaderboard"
-              rows={leaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
-              scoreLabel={(score) => `${score} pts`}
-            />
-          </TwoTruthsShareBlock>
-          <button type="button" onClick={onPlayAgain} disabled={playingAgain} className="btn-secondary w-full">
-            {playingAgain ? 'Resetting…' : 'Return to lobby'}
-          </button>
-        </div>
+        <TwoTruthsShareBlock
+          game={game}
+          returnToLobbyButton={
+            <button
+              type="button"
+              onClick={onPlayAgain}
+              disabled={playingAgain}
+              className="btn-secondary w-full py-3 text-sm disabled:opacity-60"
+            >
+              {playingAgain ? 'Resetting…' : 'Return to lobby'}
+            </button>
+          }
+        >
+          <div className="glass-card p-6 text-center space-y-2">
+            <p className="text-4xl">🏆</p>
+            <p className="text-xl font-black">Game finished</p>
+          </div>
+          <PaginatedLeaderboard
+            title="Final leaderboard"
+            rows={leaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
+            scoreLabel={(score) => `${score} pts`}
+          />
+        </TwoTruthsShareBlock>
       )}
 
       {showManage && game.status === 'active' && (

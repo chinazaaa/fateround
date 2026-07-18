@@ -10,6 +10,9 @@ import {
   clampLandmineRoundCount,
   clampLandmineElimSeconds,
   landmineCycleInfo,
+  isLandmineRoundParticipant,
+  landmineReviewEnabled,
+  landmineReviewSeconds,
 } from './landmine'
 import type { LandmineAnswer, LandmineMark, LandmineMetadata, Player } from '@/types'
 
@@ -165,6 +168,26 @@ describe('landmine helpers', () => {
     const map = buildReviewerAssignments(ids, 1)
     for (const id of ids) expect(map[id]).not.toBe(id)
   })
+
+  it('isLandmineRoundParticipant only counts players in the round ring', () => {
+    const metadata: LandmineMetadata = {
+      phase: 'marking',
+      phase_started_at: '2026-07-16T00:00:00Z',
+      category: 'Fruit',
+      caller_order: ['a', 'b', 'c'],
+      caller_index: 0,
+      reviewer_assignments: { a: 'b', b: 'c', c: 'a' },
+      mine_count: 1,
+      scores_computed: false,
+    }
+    // Everyone present when the round was built is a participant.
+    expect(isLandmineRoundParticipant(metadata, 'a')).toBe(true)
+    expect(isLandmineRoundParticipant(metadata, 'c')).toBe(true)
+    // A player who joined mid-round is in neither the caller order nor the reviewer ring.
+    expect(isLandmineRoundParticipant(metadata, 'latecomer')).toBe(false)
+    expect(isLandmineRoundParticipant(metadata, null)).toBe(false)
+    expect(isLandmineRoundParticipant(null, 'a')).toBe(false)
+  })
 })
 
 describe('landmine manual mode', () => {
@@ -200,6 +223,35 @@ describe('landmine manual mode', () => {
     const row = buildLandmineInitialRound({ gameId: 'G', playerOrder: order, mineCount: 1, now: 'now' })
     const meta = row.landmine_metadata as LandmineMetadata
     expect(Object.keys(meta.reviewer_assignments).sort()).toEqual(['a', 'b', 'c'])
+  })
+
+  it('verdicts are scored by target, so a setter override lands on the right answer', () => {
+    // Manual review: the setter overrides each answer's peer verdict on the target's mark row.
+    // Scoring keys marks by target_player_id, so the overridden verdict must resolve correctly
+    // regardless of which marker produced the row.
+    const answers = [answer('b', 'Canada'), answer('c', 'Kenya')]
+    const marks = [
+      mark('a', 'b', true), // b's verdict → Valid
+      mark('a', 'c', false), // c's verdict → Void (setter overrode)
+    ]
+    const results = computeRoundResults(answers, marks, ['mexico'], { originalityBonus: true })
+    const byPlayer = Object.fromEntries(results.map((r) => [r.player_id, r]))
+    expect(byPlayer.b.outcome).toBe('original')
+    expect(byPlayer.b.points).toBeGreaterThan(0)
+    expect(byPlayer.c.outcome).toBe('void')
+    expect(byPlayer.c.points).toBe(0)
+  })
+
+  it('landmineReviewEnabled defaults on, off only when explicitly false', () => {
+    expect(landmineReviewEnabled({ landmine_review: undefined })).toBe(true)
+    expect(landmineReviewEnabled({ landmine_review: null })).toBe(true)
+    expect(landmineReviewEnabled({ landmine_review: true })).toBe(true)
+    expect(landmineReviewEnabled({ landmine_review: false })).toBe(false)
+  })
+
+  it('landmineReviewSeconds is longer for the manual setter than the auto host', () => {
+    expect(landmineReviewSeconds({ landmine_mine_source: 'manual' })).toBe(45)
+    expect(landmineReviewSeconds({ landmine_mine_source: 'system' })).toBe(20)
   })
 
   it('clampLandmineElimSeconds accepts the option set, defaults otherwise', () => {

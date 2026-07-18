@@ -417,6 +417,7 @@ export async function POST(req: NextRequest) {
     landmine_originality_bonus: rawLandmineOriginalityBonus,
     landmine_mine_source: rawLandmineMineSource,
     landmine_elim_seconds: rawLandmineElimSeconds,
+    landmine_review: rawLandmineReview,
     allow_viewers: rawAllowViewers,
     allow_late_players: rawAllowLatePlayers,
     late_join_policy: rawLateJoinPolicy,
@@ -964,6 +965,12 @@ export async function POST(req: NextRequest) {
           landmine_originality_bonus: rawLandmineOriginalityBonus !== false,
           landmine_mine_source: parseLandmineMineSource(rawLandmineMineSource),
           landmine_elim_seconds: clampLandmineElimSeconds(rawLandmineElimSeconds),
+          // Default the review phase per mode when the client omits it: manual (setter judges) on,
+          // auto (host spot-check) off, so auto stays hands-off unless the host opts in.
+          landmine_review:
+            rawLandmineReview === undefined
+              ? parseLandmineMineSource(rawLandmineMineSource) === 'manual'
+              : rawLandmineReview !== false,
         }
       : {}),
     ...(isQuickDrawGame(game_type)

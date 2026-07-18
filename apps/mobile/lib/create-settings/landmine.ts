@@ -24,6 +24,8 @@ export type LandmineCreateState = {
   mode: LandmineModeOpt
   mineCount: number
   originalityBonus: boolean
+  /** Review-before-reveal: reviewer (setter/host) checks verdicts. Manual on, auto off by default. */
+  review: boolean
   /** System: fixed rounds (3/5/8/10). Manual: cycles (1/2/3/5) — one cycle = everyone sets once. */
   roundsCount: number
   /** Elimination time limit, seconds. */
@@ -42,6 +44,7 @@ export function defaultLandmineCreateState(): LandmineCreateState {
     mode: 'zero_points',
     mineCount: LANDMINE_DEFAULT_MINE_COUNT,
     originalityBonus: true,
+    review: false,
     roundsCount: LANDMINE_DEFAULT_ROUND_COUNT,
     elimSeconds: LANDMINE_DEFAULT_ELIM_SECONDS,
     writingTimer: LANDMINE_DEFAULT_WRITING_TIMER,
@@ -53,11 +56,12 @@ export function defaultLandmineCreateState(): LandmineCreateState {
 /** Sensible re-defaults when the host flips the mine source (mirrors the web toggle). */
 export function landmineMineSourceDefaults(source: LandmineMineSourceOpt): Partial<LandmineCreateState> {
   return source === 'manual'
-    ? { mineSource: 'manual', categoryTimer: 30, roundsCount: LANDMINE_DEFAULT_MANUAL_CYCLES }
+    ? { mineSource: 'manual', categoryTimer: 30, roundsCount: LANDMINE_DEFAULT_MANUAL_CYCLES, review: true }
     : {
         mineSource: 'system',
         categoryTimer: LANDMINE_DEFAULT_CATEGORY_TIMER,
         roundsCount: LANDMINE_DEFAULT_ROUND_COUNT,
+        review: false,
       }
 }
 
@@ -68,6 +72,7 @@ export function landmineCreatePayload(s: LandmineCreateState): Record<string, un
     landmine_mine_source: s.mineSource,
     landmine_mine_count: s.mineCount,
     landmine_originality_bonus: s.originalityBonus,
+    landmine_review: s.review,
     landmine_elim_seconds: clampLandmineElimSeconds(s.elimSeconds),
     rounds_count: s.roundsCount,
     timer_seconds: s.writingTimer,

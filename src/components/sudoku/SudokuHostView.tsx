@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { SudokuBoard } from '@/components/sudoku/SudokuBoard'
 import { SudokuGameTimerBar } from '@/components/sudoku/SudokuGameTimerBar'
@@ -46,6 +46,8 @@ import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
+import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
+import { ShareResults } from '@/components/ShareResults'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 
 type HostTab = 'manage' | 'play'
@@ -53,6 +55,7 @@ type HostTab = 'manage' | 'play'
 export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError, success } = useToast()
   const { confirm } = useConfirm()
+  const finishedCaptureRef = useRef<HTMLDivElement>(null)
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [roundId, setRoundId] = useState<string | null>(null)
@@ -583,50 +586,67 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
       manage={manage}
       noManageTab
       finished={
-        <>
-          <FinishedWinnerHero winnerName={leaderboard[0]?.name} game={game} />
-          <PaginatedLeaderboard
-            title="Final leaderboard"
-            rows={leaderboard.map((row, i) => {
-              const pct = puzzle ? playerCompletionPercent(puzzle, submissions, row.player_id) : 0
-              const timeSecs = getPlayerTimeSpent(
-                game,
-                submissions,
-                row.player_id,
-                pct,
-                nowMs,
-                players.find((p) => p.id === row.player_id)?.joined_at
-              )
-              return {
-                id: row.player_id,
-                name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,
-                score: row.points,
-                rank: i + 1,
-              }
-            })}
-            scoreLabel={(n) => `${n} pts`}
-            emphasizeLeader
+        <div className="space-y-4">
+          <div ref={finishedCaptureRef} className="space-y-4">
+            <FinishedWinnerHero winnerName={leaderboard[0]?.name} game={game} />
+            <PaginatedLeaderboard
+              title="Final leaderboard"
+              rows={leaderboard.map((row, i) => {
+                const pct = puzzle ? playerCompletionPercent(puzzle, submissions, row.player_id) : 0
+                const timeSecs = getPlayerTimeSpent(
+                  game,
+                  submissions,
+                  row.player_id,
+                  pct,
+                  nowMs,
+                  players.find((p) => p.id === row.player_id)?.joined_at
+                )
+                return {
+                  id: row.player_id,
+                  name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,
+                  score: row.points,
+                  rank: i + 1,
+                }
+              })}
+              scoreLabel={(n) => `${n} pts`}
+              emphasizeLeader
+            />
+          </div>
+          <HostGameFinishedActions
+            variant="winner"
+            gameCode={game.id}
+            playAgainButton={
+              <button
+                type="button"
+                onClick={() => void confirmPlayAgain()}
+                disabled={playingAgain}
+                className="btn-secondary w-full py-3 text-sm disabled:opacity-60"
+              >
+                {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
+              </button>
+            }
+            returnToLobbyButton={
+              <button
+                type="button"
+                onClick={() => void confirmReturnToLobby()}
+                disabled={playingAgain}
+                className="btn-secondary w-full py-3 text-sm disabled:opacity-60"
+              >
+                Return to lobby · different settings
+              </button>
+            }
+            shareButton={
+              <ShareResults
+                captureRef={finishedCaptureRef}
+                game={game}
+                participants={[]}
+                votes={[]}
+                rounds={[]}
+                players={players}
+                primary
+              />
+            }
           />
-          <button
-            type="button"
-            onClick={() => void confirmPlayAgain()}
-            disabled={playingAgain}
-            className="btn-secondary w-full py-3 text-base font-bold disabled:opacity-60"
-          >
-            {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
-          </button>
-          <button
-            type="button"
-            onClick={() => void confirmReturnToLobby()}
-            disabled={playingAgain}
-            className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
-          >
-            Return to lobby
-          </button>
-          <p className="text-center text-xs text-faint leading-relaxed px-2">
-            Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak
-            settings first.
-          </p>
           {hostWonSudoku && (
             <PostWinToCommunity
               gameType="sudoku"
@@ -635,7 +655,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
               roundKey={game?.session_started_at ?? undefined}
             />
           )}
-        </>
+        </div>
       }
     />
   )

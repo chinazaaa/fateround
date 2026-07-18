@@ -607,6 +607,16 @@ export function postLandmineMark(gameId: string, resumeToken: string, roundId: s
   return postJson<{ success: boolean }>('/api/landmine/mark', { gameId, resumeToken, roundId, valid })
 }
 
+// MANUAL mode: the round's setter judges every answer at once.
+export function postLandmineSetterMark(
+  gameId: string,
+  resumeToken: string,
+  roundId: string,
+  verdicts: { playerId: string; valid: boolean }[]
+) {
+  return postJson<{ success: boolean }>('/api/landmine/setter-mark', { gameId, resumeToken, roundId, verdicts })
+}
+
 export function postChessMove(
   gameId: string,
   resumeToken: string,

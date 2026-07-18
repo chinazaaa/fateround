@@ -8,6 +8,8 @@ import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
+import { ShareResults } from '@/components/ShareResults'
 import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import {
   MatchingPairsStatDetails,
@@ -131,6 +133,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
   // Flash feedback
   const [lastFlashType, setLastFlashType] = useState<'match' | 'miss' | 'streak' | null>(null)
+  const finishedCaptureRef = useRef<HTMLDivElement>(null)
   const flashRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const flipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -873,43 +876,62 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     const iWon = leaderboard.length > 1 && leaderboard[0]?.playerId === myPlayerId && leaderboard[0]?.finalScore > 0
     return (
       <MatchingPairsPlayShell>
-        <div className="glass-card-strong p-8 text-center space-y-2">
-          <p className="text-4xl">🏆</p>
-          <p className="text-2xl font-black">Puzzle complete!</p>
-          {leaderboard[0] && (
-            <p className="text-muted text-base">
-              {iWon
-                ? 'You won! 🎉'
-                : `${leaderboard[0].name} wins with ${leaderboard[0].finalScore.toLocaleString()} pts`}
-            </p>
-          )}
+        <div ref={finishedCaptureRef} className="space-y-4">
+          <div className="glass-card-strong p-8 text-center space-y-2">
+            <p className="text-4xl">🏆</p>
+            <p className="text-2xl font-black">Puzzle complete!</p>
+            {leaderboard[0] && (
+              <p className="text-muted text-base">
+                {iWon
+                  ? 'You won! 🎉'
+                  : `${leaderboard[0].name} wins with ${leaderboard[0].finalScore.toLocaleString()} pts`}
+              </p>
+            )}
+          </div>
+          <PaginatedLeaderboard
+            title="Final leaderboard"
+            rows={leaderboard.map((row, i) => ({
+              id: row.playerId,
+              rank: i + 1,
+              name: row.name,
+              score: row.finalScore,
+              correctCount: row.pairsMatched,
+              expandDetails: (
+                <MatchingPairsFinalBreakdown
+                  playerId={row.playerId}
+                  allSubmissions={allSubmissions}
+                  allProgress={allProgress}
+                  gridSizePairs={meta?.gridSizePairs ?? 8}
+                  sessionStartedAt={game?.session_started_at ?? null}
+                  roundStartedAtMap={roundStartedAtMap}
+                  totalRounds={game?.rounds_count ?? 1}
+                  timerSeconds={game?.timer_seconds ?? null}
+                />
+              ),
+            }))}
+            totalQuestions={meta ? meta.gridSizePairs * (game?.rounds_count ?? 1) : undefined}
+            highlightId={myPlayerId ?? undefined}
+            scoreLabel={(n) => `${n} pts`}
+            emphasizeLeader
+          />
         </div>
-        <PaginatedLeaderboard
-          title="Final leaderboard"
-          rows={leaderboard.map((row, i) => ({
-            id: row.playerId,
-            rank: i + 1,
-            name: row.name,
-            score: row.finalScore,
-            correctCount: row.pairsMatched,
-            expandDetails: (
-              <MatchingPairsFinalBreakdown
-                playerId={row.playerId}
-                allSubmissions={allSubmissions}
-                allProgress={allProgress}
-                gridSizePairs={meta?.gridSizePairs ?? 8}
-                sessionStartedAt={game?.session_started_at ?? null}
-                roundStartedAtMap={roundStartedAtMap}
-                totalRounds={game?.rounds_count ?? 1}
-                timerSeconds={game?.timer_seconds ?? null}
+        {game && (
+          <HostGameFinishedActions
+            variant="winner"
+            gameCode={game.id}
+            shareButton={
+              <ShareResults
+                captureRef={finishedCaptureRef}
+                game={game}
+                participants={[]}
+                votes={[]}
+                rounds={[]}
+                players={players}
+                primary
               />
-            ),
-          }))}
-          totalQuestions={meta ? meta.gridSizePairs * (game?.rounds_count ?? 1) : undefined}
-          highlightId={myPlayerId ?? undefined}
-          scoreLabel={(n) => `${n} pts`}
-          emphasizeLeader
-        />
+            }
+          />
+        )}
         {iWon && (
           <PostWinToCommunity
             gameType="matching_pairs"

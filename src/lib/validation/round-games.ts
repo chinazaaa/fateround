@@ -299,6 +299,26 @@ export const landmineMarkSchema = z.object({
 
 export type LandmineMarkInput = z.infer<typeof landmineMarkSchema>
 
+// Review phase: the round's setter (manual) or the host (auto) checks/overrides every verdict at
+// once (I Call On's caller review). One of resumeToken (setter) / hostToken (host) is required.
+export const landmineSetterMarkSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4).optional(),
+  hostToken: z.string().min(4).optional(),
+  roundId: uuidString('roundId'),
+  verdicts: z
+    .array(
+      z.object({
+        playerId: uuidString('playerId'),
+        valid: z.boolean(),
+      })
+    )
+    .min(1)
+    .max(24),
+})
+
+export type LandmineSetterMarkInput = z.infer<typeof landmineSetterMarkSchema>
+
 export const landmineAdvanceSchema = z.object({
   gameId: gameCodeString(),
 })
