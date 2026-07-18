@@ -117,7 +117,7 @@ export interface NpatMark {
 // and hitters are zeroed (zero_points) or knocked out (elimination).
 // Structurally a single-answer variant of NPAT (I Call On) with a secret mine.
 // ---------------------------------------------------------------------------
-export type LandminePhase = 'category_pick' | 'writing' | 'marking' | 'reveal'
+export type LandminePhase = 'category_pick' | 'writing' | 'marking' | 'review' | 'reveal'
 export type LandmineMode = 'zero_points' | 'elimination'
 /** Who plants the mine: 'system' (server draws it) or 'manual' (a rotating player sets it). */
 export type LandmineMineSource = 'system' | 'manual'

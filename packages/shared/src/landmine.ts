@@ -21,6 +21,9 @@ export const LANDMINE_DEFAULT_WRITING_TIMER = 45
 export const LANDMINE_DEFAULT_MARKING_TIMER = 45
 export const LANDMINE_DEFAULT_CATEGORY_TIMER = 10
 export const LANDMINE_REVEAL_SECONDS = 10
+// Manual mode: after peer marking, the setter gets a fixed window to review/override every
+// verdict before scores reveal (mirrors I Call On's caller review).
+export const LANDMINE_REVIEW_SECONDS = 45
 
 export const LANDMINE_WRITING_TIMER_OPTIONS = [30, 45, 60, 90] as const
 export const LANDMINE_MARKING_TIMER_OPTIONS = [20, 30, 45, 60] as const
@@ -127,7 +130,13 @@ export function parseLandmineMetadata(raw: unknown): LandmineMetadata | null {
   if (!raw || typeof raw !== 'object') return null
   const m = raw as Record<string, unknown>
   const phase = m.phase
-  if (phase !== 'category_pick' && phase !== 'writing' && phase !== 'marking' && phase !== 'reveal') {
+  if (
+    phase !== 'category_pick' &&
+    phase !== 'writing' &&
+    phase !== 'marking' &&
+    phase !== 'review' &&
+    phase !== 'reveal'
+  ) {
     return null
   }
   const reviewer_assignments: Record<string, string> = {}
@@ -218,6 +227,7 @@ export function phaseDeadlineMs(
   if (metadata.phase === 'category_pick') return start + categoryTimerSeconds * 1000
   if (metadata.phase === 'writing') return start + writingTimerSeconds * 1000
   if (metadata.phase === 'marking') return start + markingTimerSeconds * 1000
+  if (metadata.phase === 'review') return start + LANDMINE_REVIEW_SECONDS * 1000
   return null
 }
 
