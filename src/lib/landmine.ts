@@ -137,6 +137,31 @@ export function normalizeAnswer(text: string | null | undefined): string {
   return (text ?? '').trim().toLowerCase()
 }
 
+/** Split a value into normalized alphanumeric word tokens (unicode-aware). */
+function answerTokens(text: string | null | undefined): string[] {
+  return normalizeAnswer(text)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean)
+}
+
+/**
+ * Whether an answer detonates any mine. A mine matches if its word (or full phrase)
+ * appears as a whole word/phrase inside the answer — so "egusi soup" still hits the
+ * "egusi" mine, while partial-word overlaps (mine "art" vs answer "cartoon") don't.
+ */
+export function answerHitsMine(answer: string | null | undefined, mines: string[]): boolean {
+  const tokens = answerTokens(answer)
+  if (tokens.length === 0) return false
+  // Pad with spaces so an ' egusi ' probe only matches on whole-token boundaries.
+  const haystack = ` ${tokens.join(' ')} `
+  for (const mine of mines) {
+    const mineTokens = answerTokens(mine)
+    if (mineTokens.length === 0) continue
+    if (haystack.includes(` ${mineTokens.join(' ')} `)) return true
+  }
+  return false
+}
+
 export function shufflePlayerOrder<T>(items: T[]): T[] {
   const next = [...items]
   for (let i = next.length - 1; i > 0; i -= 1) {
@@ -368,7 +393,6 @@ export function computeRoundResults(
   mines: string[],
   opts: { originalityBonus: boolean }
 ): LandmineRoundResult[] {
-  const mineSet = new Set(mines.map((m) => normalizeAnswer(m)))
   const dupes = duplicateAnswerSet(answers)
   const marksByTarget = new Map(marks.map((m) => [m.target_player_id, m]))
 
@@ -385,7 +409,7 @@ export function computeRoundResults(
       return { player_id: answer.player_id, points: 0, outcome: 'void', mine_hit: false, is_original: false }
     }
 
-    if (mineSet.has(normalized)) {
+    if (answerHitsMine(answer.answer, mines)) {
       return { player_id: answer.player_id, points: 0, outcome: 'mine', mine_hit: true, is_original: false }
     }
 

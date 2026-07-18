@@ -7,6 +7,7 @@ import {
   applyCustomQuestionsUpdate,
   applyParticipantListUpdate,
   applyTriviaSettingsUpdate,
+  applyWstQuoteSourceUpdate,
   canReplaceHostParticipantList,
   clampRoundsForPool,
   parseHostPoolCustomQuestions,
@@ -21,7 +22,10 @@ import {
   isNeverHaveIEver,
   isTriviaGame,
   isCodewordsGame,
+  isWhoSaidThis,
 } from '@/lib/game-types'
+import { WST_DECK_MIN_ENTRIES, type WstDeckEntry } from '@/lib/who-said-this'
+import type { WyrQuestion } from '@/lib/would-you-rather-questions'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { parsePoolUsage } from '@/lib/pool-usage'
 import { CODEWORDS_MIN_CUSTOM_POOL } from '@/lib/codewords'
@@ -40,6 +44,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     custom_questions: rawCustomQuestions,
     participants: rawParticipants,
     question_source,
+    wst_quote_source: rawWstQuoteSource,
     trivia_category,
     timer_seconds,
     rounds_count,
@@ -52,7 +57,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     rounds_count !== undefined ||
     rawCustomQuestions !== undefined
 
-  if (rawCustomQuestions === undefined && rawParticipants === undefined && !hasTriviaSettings) {
+  if (
+    rawCustomQuestions === undefined &&
+    rawParticipants === undefined &&
+    rawWstQuoteSource === undefined &&
+    !hasTriviaSettings
+  ) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
 
@@ -99,8 +109,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     Object.assign(gameUpdate, triviaUpdate)
     poolUsage = nextPoolUsage
     nextGame = { ...nextGame, ...triviaUpdate } as typeof game
+  } else if (isWhoSaidThis(gameType) && (rawWstQuoteSource !== undefined || rawCustomQuestions !== undefined)) {
+    // Who Said This lobby source swap: 'player' reverts to lobby-submitted quotes; any deck
+    // source (Platform / Library / uploaded CSV) arrives as a deck in custom_questions.
+    if (rawWstQuoteSource === 'player') {
+      const { gameUpdate: wstUpdate } = applyWstQuoteSourceUpdate(game, { source: 'player' })
+      Object.assign(gameUpdate, wstUpdate)
+      nextGame = { ...nextGame, ...wstUpdate } as typeof game
+    } else {
+      const nextDeck = parseHostPoolCustomQuestions(rawCustomQuestions, gameType) as WstDeckEntry[] | null
+      if (!nextDeck || nextDeck.length < WST_DECK_MIN_ENTRIES) {
+        return NextResponse.json(
+          { error: `Upload at least ${WST_DECK_MIN_ENTRIES} questions — a quote, its options, and which is correct` },
+          { status: 400 }
+        )
+      }
+      const { gameUpdate: wstUpdate } = applyWstQuoteSourceUpdate(game, { source: 'deck', deck: nextDeck })
+      Object.assign(gameUpdate, wstUpdate)
+      nextGame = { ...nextGame, ...wstUpdate } as typeof game
+    }
   } else if (rawCustomQuestions !== undefined) {
-    const nextQuestions = parseHostPoolCustomQuestions(rawCustomQuestions, gameType)
+    // WST is handled in its own branch above, so any deck here belongs to a WYR/MLT/codewords pool.
+    const nextQuestions = parseHostPoolCustomQuestions(rawCustomQuestions, gameType) as WyrQuestion[] | string[] | null
     if (!nextQuestions) {
       return NextResponse.json({ error: 'Upload at least one valid question' }, { status: 400 })
     }

@@ -256,6 +256,9 @@ export const playAgainSchema = hostActionSchema.extend({
     )
     .optional(),
   question_source: z.enum(['platform', 'custom']).optional(),
+  // Who Said This lobby question-source swap: 'player' (lobby-submitted quotes) or 'deck'
+  // (host Platform/Library/CSV deck sent in custom_questions).
+  wst_quote_source: wstQuoteSourceEnum.optional(),
   trivia_category: z.enum(['tech', 'general']).optional(),
   timer_seconds: z.union([z.literal(10), z.literal(15), z.literal(30), z.literal(60)]).optional(),
   rounds_count: z.number().int().min(3).max(25).optional(),

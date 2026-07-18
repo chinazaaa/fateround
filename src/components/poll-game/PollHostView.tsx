@@ -96,6 +96,7 @@ import {
   wstAutoRoundCount,
   tallyWstVotes,
   tallyWstPlayerScores,
+  wstScoreLabel,
   mergeActiveRound,
   wstQuotePoolStatus,
   dedupeWstPool,
@@ -937,7 +938,7 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
 
   const handleLobbyPoolSave = async (payload: PlayAgainPayload = {}) => {
     if (savingLobbyPool) return
-    if (!payload.custom_questions && !payload.participants && !payload.question_source) {
+    if (!payload.custom_questions && !payload.participants && !payload.question_source && !payload.wst_quote_source) {
       setPoolSetup((prev) => ({ ...prev, open: false }))
       return
     }
@@ -1602,9 +1603,11 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     // Rounds · timer summary pill shown beside the game-type pill in the HostLobby header.
     const roundsPill = (
       <span className="rounded-full border border-[var(--border-strong)] bg-[var(--card-strong)] px-2.5 py-0.5 text-[0.7rem] font-semibold text-muted">
-        {hotSeatLobby && hotSeatEffective > 0
-          ? `${hotSeatEffective} rounds · ${game.timer_seconds}s each`
-          : `${game.rounds_count} rounds · ${game.timer_seconds}s each`}
+        {isWst
+          ? `${wstQuestionCount} question${wstQuestionCount === 1 ? '' : 's'} · ${game.timer_seconds}s each`
+          : hotSeatLobby && hotSeatEffective > 0
+            ? `${hotSeatEffective} rounds · ${game.timer_seconds}s each`
+            : `${game.rounds_count} rounds · ${game.timer_seconds}s each`}
       </span>
     )
 
@@ -1845,11 +1848,16 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     // in the body for the legacy replay lobby.
     const pollRoundsCard = (
       <div className="glass-card p-4 space-y-3">
-        <p className="text-muted text-xs uppercase tracking-wider">Rounds</p>
+        {/* WST has no host-set round count — each question is a round — so it reads as "Questions". */}
+        <p className="text-muted text-xs uppercase tracking-wider">{isWst ? 'Questions' : 'Rounds'}</p>
         {isWst ? (
           <>
-            <p className="font-bold text-body text-2xl">{game.rounds_count}</p>
-            <p className="text-faint text-xs">{roundsHint}</p>
+            <p className="font-bold text-body text-2xl">{wstQuestionCount}</p>
+            <p className="text-faint text-xs">
+              {isWstDeck
+                ? 'Each question becomes a round — fastest correct wins.'
+                : 'Players submit quotes in the lobby — each one becomes a round.'}
+            </p>
           </>
         ) : isPan ? (
           <>
@@ -2187,46 +2195,73 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     // Question source / library / custom-question (or name-list) editing — the host can
     // switch Platform / Library / Your own via the pool-setup modal. Shown in the ⚙ sheet
     // inside HostLobby; inline in the body for the legacy lobby.
-    const pollPoolSetupCard = playAgainNeedsSetup(game)
+    const pollPoolSetupCard = isWst
       ? (() => {
-          const poolLabels = hostPoolSetupLabels(game)
-          const hostListCount = participants.filter((p) => !p.submitted_by_player_id).length
+          // WST question source: Players submit / Platform / Library / Your own (CSV). The card
+          // advertises all four so the host knows the button opens a source picker, not CSV-only.
           return (
             <div className="glass-card p-4 space-y-3">
-              <p className="text-muted text-xs uppercase tracking-wider">{poolLabels.title}</p>
+              <p className="text-muted text-xs uppercase tracking-wider">Questions</p>
               <p className="text-faint text-xs">
-                {poolLabels.hasQuestions && poolLabels.hasParticipants
-                  ? 'Keep your current lists or upload a new CSV before you start.'
-                  : poolLabels.hasQuestions
-                    ? 'Keep your loaded questions or upload a new CSV before you start.'
-                    : 'Keep your current name list or upload a new CSV before you start.'}
+                Choose where questions come from — players submit in the lobby, or a Platform / Library / your own CSV
+                deck.
               </p>
-              {poolLabels.hasQuestions && (
-                <p className="text-body text-sm">
-                  {customQuestionCount(game)} question{customQuestionCount(game) === 1 ? '' : 's'} loaded
-                </p>
-              )}
-              {poolLabels.hasParticipants && (
-                <p className="text-body text-sm">
-                  {hostListCount} name{hostListCount === 1 ? '' : 's'} on your list
-                </p>
-              )}
+              <p className="text-body text-sm">
+                {isWstDeck
+                  ? `${wstQuestionCount} question${wstQuestionCount === 1 ? '' : 's'} loaded`
+                  : 'Players submit their own quotes in the lobby'}
+              </p>
               <button
                 type="button"
                 onClick={() => openPoolSetup('lobby')}
                 disabled={savingLobbyPool}
                 className="btn-secondary w-full py-3"
               >
-                {poolLabels.hasQuestions && poolLabels.hasParticipants
-                  ? 'Change list or upload CSV'
-                  : poolLabels.hasQuestions
-                    ? 'Change questions or upload CSV'
-                    : 'Change names or upload CSV'}
+                Change question source
               </button>
             </div>
           )
         })()
-      : null
+      : playAgainNeedsSetup(game)
+        ? (() => {
+            const poolLabels = hostPoolSetupLabels(game)
+            const hostListCount = participants.filter((p) => !p.submitted_by_player_id).length
+            return (
+              <div className="glass-card p-4 space-y-3">
+                <p className="text-muted text-xs uppercase tracking-wider">{poolLabels.title}</p>
+                <p className="text-faint text-xs">
+                  {poolLabels.hasQuestions && poolLabels.hasParticipants
+                    ? 'Keep your current lists or upload a new CSV before you start.'
+                    : poolLabels.hasQuestions
+                      ? 'Keep your loaded questions or upload a new CSV before you start.'
+                      : 'Keep your current name list or upload a new CSV before you start.'}
+                </p>
+                {poolLabels.hasQuestions && (
+                  <p className="text-body text-sm">
+                    {customQuestionCount(game)} question{customQuestionCount(game) === 1 ? '' : 's'} loaded
+                  </p>
+                )}
+                {poolLabels.hasParticipants && (
+                  <p className="text-body text-sm">
+                    {hostListCount} name{hostListCount === 1 ? '' : 's'} on your list
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => openPoolSetup('lobby')}
+                  disabled={savingLobbyPool}
+                  className="btn-secondary w-full py-3"
+                >
+                  {poolLabels.hasQuestions && poolLabels.hasParticipants
+                    ? 'Change list or upload CSV'
+                    : poolLabels.hasQuestions
+                      ? 'Change questions or upload CSV'
+                      : 'Change names or upload CSV'}
+                </button>
+              </div>
+            )
+          })()
+        : null
 
     const renderPollLobby = (inHostLobby: boolean) => (
       <>
@@ -3657,6 +3692,26 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             )}
           </RoundResultsShareBlock>
 
+          {isWst &&
+            (() => {
+              // Running leaderboard between rounds — players see standings after every question.
+              const runningScores = tallyWstPlayerScores(allRounds, votes, players)
+              if (runningScores.length === 0) return null
+              return (
+                <PaginatedLeaderboard
+                  title="Leaderboard"
+                  rows={runningScores.map((row, i) => ({
+                    id: row.playerId,
+                    name: row.name,
+                    score: row.points,
+                    rank: i + 1,
+                  }))}
+                  highlightId={hostPlayerId}
+                  scoreLabel={wstScoreLabel}
+                />
+              )
+            })()}
+
           {roundConfessions.length > 0 && (
             <div>
               <h2 className="text-muted text-xs uppercase tracking-wider mb-3">
@@ -3801,6 +3856,7 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
                     score: row.points,
                     rank: i + 1,
                   }))}
+                  scoreLabel={wstScoreLabel}
                 />
               )}
 
