@@ -42,7 +42,6 @@ import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
@@ -143,6 +142,7 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, QuickDrawGuessSession | null>({
     gameCode,
@@ -262,7 +262,7 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
   // Change name · Leave game for players/spectators live behind the main chrome's ⚙ gear
   // (top header). Registered while the game is active; GameChromeSettings renders it in the sheet.
   const playerSettingsNode = useMemo(() => {
-    if (!myPlayerId || game?.status !== 'active') return null
+    if (!myPlayerId) return null
     return (
       <div className="space-y-3">
         <EditNameInline
@@ -316,6 +316,8 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           footer={
             <p className="text-center pt-1">
@@ -359,6 +361,7 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={minPlayers}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -385,6 +388,7 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
           onLeft={handlePlayerLeft}
           title="Waiting for host to start"
           gameType="quick_draw"
+          capacityGame={game}
           rulesLink={<GameRulesLink gameType="quick_draw" variant="subtle" />}
           isSpectator={me?.spectator === true}
           onReady={async () => {
@@ -433,17 +437,6 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
           highlightPlayerId={myPlayerId}
           roundKey={session?.id}
         />
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby
-            spectating={isViewer}
-          />
-        )}
       </div>
     )
   }
@@ -477,16 +470,6 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
           onGuess={!isViewer ? (text) => void sendAction('guess', { text }) : undefined}
           onSkip={!isViewer ? () => void sendAction('guess-skip', {}) : undefined}
           acting={acting}
-        />
-      )}
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isViewer}
         />
       )}
     </div>

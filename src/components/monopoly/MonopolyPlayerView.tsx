@@ -29,7 +29,6 @@ import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
@@ -126,6 +125,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, null>({
     gameCode,
@@ -273,7 +273,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   // gear (top header). Registered while the game is active; the shared settings sheet
   // renders it. Purely additive — the in-page PlayerSessionControls stays as-is.
   const playerSettingsNode = useMemo(() => {
-    if (!myPlayerId || game?.status !== 'active') return null
+    if (!myPlayerId) return null
     return (
       <div className="space-y-3">
         <EditNameInline
@@ -364,6 +364,19 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             void join()
           }}
         />
+        {lobbyFull && !joiningAsViewer && (
+          <div className="space-y-2 text-center">
+            <p className="text-faint text-xs leading-relaxed">This game is full — you can watch.</p>
+            <button
+              type="button"
+              onClick={() => void join({ joinAsViewer: true })}
+              disabled={joining}
+              className="btn-secondary w-full"
+            >
+              Watch instead
+            </button>
+          </div>
+        )}
         <LeaderboardJoinNote gameType="monopoly" />
         <p className="text-faint text-xs leading-relaxed text-center">
           {joiningAsViewer
@@ -386,6 +399,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={MONOPOLY_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -461,17 +475,6 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               ))}
             </div>
           )}
-          {myPlayerId && (
-            <PlayerSessionControls
-              gameCode={gameCode}
-              playerId={myPlayerId}
-              currentName={displayName}
-              onRenamed={() => void load()}
-              onLeft={handlePlayerLeft}
-              inLobby
-              spectating={isSpectator}
-            />
-          )}
         </div>
       </GameJoinLobbyShell>
     )
@@ -542,19 +545,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <div className="min-h-screen pb-24 overflow-x-hidden px-2 sm:px-4 py-3 sm:py-6">
       <div className="max-w-6xl mx-auto space-y-3 sm:space-y-4">
-        <MonopolyPageHeader title={game?.title}>
-          {myPlayerId && sessionName ? (
-            <PlayerSessionControls
-              gameCode={gameCode}
-              playerId={myPlayerId}
-              currentName={sessionName}
-              onRenamed={() => void load()}
-              onLeft={handlePlayerLeft}
-              align="center"
-              spectating={isViewer}
-            />
-          ) : null}
-        </MonopolyPageHeader>
+        <MonopolyPageHeader title={game?.title}></MonopolyPageHeader>
 
         {isViewer && myPlayer && (
           <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={myPlayer} />

@@ -25,6 +25,18 @@ export async function autoJoinGame(gameCode: string, resumeToken?: string | null
   return data
 }
 
+/**
+ * Record which player row is the game's host (games.host_player_id) so every client
+ * can badge the host in the roster drawer. Mirrors web `useHostSeat`. Best-effort.
+ */
+export async function publishHostPlayerId(gameCode: string, hostToken: string, playerId: string): Promise<void> {
+  await fetch(apiUrl(`/api/games/${gameCode.toUpperCase()}/host-player`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hostToken, playerId }),
+  }).catch(() => {})
+}
+
 export async function fetchMobileConfig(): Promise<MobileConfig> {
   const res = await fetch(apiUrl('/api/mobile-config'), { cache: 'no-store' })
   if (!res.ok) throw new Error('Failed to load mobile config')
@@ -124,10 +136,7 @@ export async function searchGifs(query: string, type: KlipyMediaType = 'gifs'): 
     .filter((g) => g.previewUrl && g.fullUrl)
 }
 
-export function isGameMobileSupported(
-  gameType: GameType,
-  config: MobileConfig | null
-): boolean {
+export function isGameMobileSupported(gameType: GameType, config: MobileConfig | null): boolean {
   if (config?.forceWebFallbackFor.includes(gameType)) return false
   if (config) return config.mobileSupportedGames.includes(gameType)
   return NATIVE_GAME_TYPES.includes(gameType)

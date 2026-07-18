@@ -29,7 +29,6 @@ import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } fr
 import { playerIsViewer, preJoinScreen, allowLatePlayers } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { EliminationBanner } from '@/components/EliminationBanner'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { GameWaitingRoom } from '@/components/game-lobby/GameWaitingRoom'
 
 type Screen = 'loading' | 'join' | 'game_started_waiting' | 'late_join_choice' | 'game_ended' | 'playing' | 'not_found'
@@ -78,6 +77,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, null>({
     gameCode,
@@ -121,7 +121,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
   // gear (top header). Registered while the game is active; the shared settings sheet
   // renders it. Purely additive — the in-page PlayerSessionControls stays as-is.
   const playerSettingsNode = useMemo(() => {
-    if (!myPlayerId || game?.status !== 'active') return null
+    if (!myPlayerId) return null
     return (
       <div className="space-y-3">
         <EditNameInline
@@ -246,6 +246,8 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="trivia"
         />
@@ -307,16 +309,6 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
           />
         ) : (
           <>
-            {!isFinished && (
-              <PlayerSessionControls
-                gameCode={gameCode}
-                playerId={myPlayerId}
-                currentName={myPlayerName}
-                onRenamed={() => void load()}
-                onLeft={handlePlayerLeft}
-                spectating={isViewer}
-              />
-            )}
             <TriviaActiveRound
               gameCode={gameCode}
               game={game}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
@@ -11,6 +11,8 @@ import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaiting
 import { HostPingPongLobbyPanel } from '@/components/host-lobby/HostPingPongLobbyPanel'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -206,6 +208,25 @@ export function PingPongHostView({ gameCode, hostToken }: { gameCode: string; ho
     isMyTurn: null,
   })
 
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer): How-to-play + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' && !gameFinished ? (
+        <HostActiveSettings
+          gameCode={gameCode}
+          hostToken={hostToken}
+          gameType="ping_pong"
+          onEnded={load}
+          endGameLabel="End game early"
+          endGameConfirmTitle="End this game early?"
+          endGameConfirmMessage="The current game will end and players will see the results screen."
+        />
+      ) : null,
+    [game?.status, gameFinished, gameCode, hostToken, load]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (loading) {
     return <HostLobbySkeleton />
   }
@@ -324,6 +345,7 @@ export function PingPongHostView({ gameCode, hostToken }: { gameCode: string; ho
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={PING_PONG_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}
@@ -348,6 +370,7 @@ export function PingPongHostView({ gameCode, hostToken }: { gameCode: string; ho
         hostToken={hostToken}
         game={game}
         gameTypeLabel={gameTypeConfig('ping_pong').label}
+        resumeToken={hostResumeToken}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('ping_pong', game) ?? game.max_players}
         playCard={
@@ -407,6 +430,7 @@ export function PingPongHostView({ gameCode, hostToken }: { gameCode: string; ho
       header={gameFinished ? undefined : <HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : watchBoard}
       manage={manage}
+      noManageTab
       finished={
         <>
           <PingPongFinalResultsShareBlock

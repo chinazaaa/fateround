@@ -38,6 +38,7 @@ export function HostGameLayout({
   hostPlayerId,
   onHostRejoined,
   onRemovePlayer,
+  noManageTab = false,
 }: {
   gameCode: string
   status: GameStatus | undefined
@@ -66,6 +67,13 @@ export function HostGameLayout({
   onHostRejoined?: () => void | Promise<unknown>
   /** When set, the roster drawer gets a per-row Remove for the host. */
   onRemovePlayer?: (playerId: string, playerName: string) => void
+  /**
+   * Drop the Manage tab: gameplay is always the body (no tabs). Host controls live in
+   * the header ⚙ gear (game settings + End game, registered via GameSettingsContext)
+   * and the roster drawer (players + Remove). `manage` is then only used as the
+   * finished-screen fallback. The mobile-parity target for in-game host UI.
+   */
+  noManageTab?: boolean
 }) {
   const isFinished = status === 'finished'
   const layout = hostPlayLayoutFlags(tab, showTabs, status)
@@ -96,9 +104,14 @@ export function HostGameLayout({
     playerIsViewer(hostPlayer, game)
   )
 
+  const tabsShown = showTabs && !isFinished && !noManageTab
+
   let body: React.ReactNode
   if (isFinished) {
     body = finished ?? manage
+  } else if (noManageTab) {
+    // No tabs — gameplay is always the body; host controls live in the ⚙ gear + drawer.
+    body = primary
   } else if (!showTabs) {
     body = manage
   } else if (tab === 'play') {
@@ -129,7 +142,7 @@ export function HostGameLayout({
         />
       )}
 
-      {showTabs && !isFinished && (
+      {tabsShown && (
         <div className="grid grid-cols-2 gap-1.5 p-1.5 rounded-2xl bg-[var(--surface-inset-bg)] border border-[var(--border)]">
           <HostTabButton
             active={tab === 'play'}
@@ -146,7 +159,7 @@ export function HostGameLayout({
         </div>
       )}
 
-      {body}
+      {isFinished ? <div className="mx-auto w-full max-w-lg space-y-2">{body}</div> : body}
     </HostPageShell>
   )
 }

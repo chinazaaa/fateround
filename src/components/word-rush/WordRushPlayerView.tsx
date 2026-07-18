@@ -35,7 +35,6 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
@@ -110,7 +109,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     []
   )
 
-  const { screen, game, players, myPlayerId, myResumeToken, joinName, setJoinName, joining, load, join } =
+  const { screen, game, players, myPlayerId, myResumeToken, joinName, setJoinName, joining, load, lobbyFull, join } =
     useGameViewBootstrap<Screen, WordRushSession | null>({
       gameCode,
       loadingScreen: 'loading',
@@ -209,7 +208,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
   // Change name · Leave game for players/spectators live behind the main chrome's ⚙ gear
   // (top header). Registered while the game is active; GameChromeSettings renders it in the sheet.
   const playerSettingsNode = useMemo(() => {
-    if (!myPlayerId || game?.status !== 'active') return null
+    if (!myPlayerId) return null
     return (
       <div className="space-y-3">
         <EditNameInline
@@ -265,6 +264,8 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="word_rush"
           footer={
@@ -310,6 +311,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={minPlayers}
+            capacityGame={game}
             onToggleReady={async (ready) => {
               if (!myResumeToken) return
               await fetch('/api/players/ready', {
@@ -332,6 +334,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myName}
@@ -389,17 +392,6 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
           answers={answers}
           highlightPlayerId={myPlayerId}
         />
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby
-            spectating={isViewer}
-          />
-        )}
       </WordRushShell>
     )
   }
@@ -430,16 +422,6 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
           }
           acting={acting}
           readOnly={isViewer}
-        />
-      )}
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isViewer}
         />
       )}
     </WordRushShell>

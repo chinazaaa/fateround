@@ -184,6 +184,18 @@ function spectatorOnJoin(game: Game, joinAsViewer: boolean | undefined): boolean
   return spectatorForActiveJoin(game, joinAsViewer)
 }
 
+// Decide what to do when a waiting lobby has no open seats. Returns a NextResponse to
+// return immediately, or `null` to admit the joiner as a spectator ("watch instead").
+// The watch fallback is only offered when the game allows viewers — a game with viewers
+// turned off still turns a full lobby away with a plain "full" error (no `full` flag, so
+// the client shows no "watch instead" affordance).
+function seatFullGate(game: Game, seatsFull: boolean, joinAsViewer: boolean | undefined, message: string) {
+  if (!seatsFull) return null
+  const canWatch = allowLateJoin(game)
+  if (joinAsViewer === true && canWatch) return null
+  return NextResponse.json(canWatch ? { error: message, full: true } : { error: message }, { status: 400 })
+}
+
 async function nameTaken(gameId: string, name: string, excludePlayerId?: string) {
   let query = supabase.from('players').select('id').eq('game_id', gameId).ilike('name', name)
   if (excludePlayerId) query = query.neq('id', excludePlayerId)
@@ -349,6 +361,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
     if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
       return NextResponse.json({ error: 'This room is full' }, { status: 400 })
@@ -438,10 +451,11 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
-    if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
-      return NextResponse.json({ error: 'This bingo room is full' }, { status: 400 })
-    }
+    const seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This bingo room is full')
+    if (seatFullResp) return seatFullResp
 
     if (await nameTaken(gameId, name)) {
       return NextResponse.json({ error: 'That name is already taken' }, { status: 400 })
@@ -464,7 +478,7 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
 
-    if (gameRow.status === 'waiting' || (gameRow.status === 'active' && !isSpectator)) {
+    if (!isSpectator && (gameRow.status === 'waiting' || gameRow.status === 'active')) {
       const { error: cardError } = await createBingoCardForPlayer(getSupabaseAdmin(), gameId, player.id)
       if (cardError) return NextResponse.json({ error: cardError }, { status: 500 })
     }
@@ -487,16 +501,18 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
-    if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
-      return NextResponse.json({ error: 'This game is full' }, { status: 400 })
-    }
+    const seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
+    if (seatFullResp) return seatFullResp
 
     if (await nameTaken(gameId, name)) {
       return NextResponse.json({ error: 'That name is already taken' }, { status: 400 })
     }
 
-    const isSpectator = gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false
+    const isSpectator =
+      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     if (!isSpectator) {
       if (!rawMonopolyToken || !isMonopolyTokenId(rawMonopolyToken)) {
@@ -552,16 +568,18 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
-    if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
-      return NextResponse.json({ error: 'This game is full' }, { status: 400 })
-    }
+    const seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
+    if (seatFullResp) return seatFullResp
 
     if (await nameTaken(gameId, name)) {
       return NextResponse.json({ error: 'That name is already taken' }, { status: 400 })
     }
 
-    const isSpectator = gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false
+    const isSpectator =
+      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     const { data: player, error } = await getSupabaseAdmin()
       .from('players')
@@ -597,16 +615,18 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
-    if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
-      return NextResponse.json({ error: 'This game is full' }, { status: 400 })
-    }
+    const seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
+    if (seatFullResp) return seatFullResp
 
     if (await nameTaken(gameId, name)) {
       return NextResponse.json({ error: 'That name is already taken' }, { status: 400 })
     }
 
-    const isSpectator = gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false
+    const isSpectator =
+      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     const { data: player, error } = await getSupabaseAdmin()
       .from('players')
@@ -646,16 +666,18 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
-    if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
-      return NextResponse.json({ error: 'This game is full' }, { status: 400 })
-    }
+    const seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
+    if (seatFullResp) return seatFullResp
 
     if (await nameTaken(gameId, name)) {
       return NextResponse.json({ error: 'That name is already taken' }, { status: 400 })
     }
 
-    const isSpectator = gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false
+    const isSpectator =
+      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     const { data: player, error } = await getSupabaseAdmin()
       .from('players')
@@ -708,16 +730,18 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
-    if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
-      return NextResponse.json({ error: 'This game is full' }, { status: 400 })
-    }
+    const seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
+    if (seatFullResp) return seatFullResp
 
     if (await nameTaken(gameId, name)) {
       return NextResponse.json({ error: 'That name is already taken' }, { status: 400 })
     }
 
-    const isSpectator = gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false
+    const isSpectator =
+      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     const { data: player, error } = await getSupabaseAdmin()
       .from('players')
@@ -754,10 +778,11 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
-    if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
-      return NextResponse.json({ error: 'This game is full' }, { status: 400 })
-    }
+    const seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
+    if (seatFullResp) return seatFullResp
 
     if (gameRow.status === 'active' && (playerCount ?? 0) >= maxPlayers) {
       return NextResponse.json({ error: 'This game is full' }, { status: 400 })
@@ -813,9 +838,10 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
-    if ((playerCount ?? 0) >= maxPlayers) {
-      return NextResponse.json({ error: 'This game is full' }, { status: 400 })
-    }
+      .eq('spectator', false)
+    const seatsFull = (playerCount ?? 0) >= maxPlayers
+    const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
+    if (seatFullResp) return seatFullResp
 
     if (await nameTaken(gameId, name)) {
       return NextResponse.json({ error: 'That name is already taken' }, { status: 400 })
@@ -865,9 +891,10 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
-    if ((playerCount ?? 0) >= maxPlayers) {
-      return NextResponse.json({ error: 'This game is full' }, { status: 400 })
-    }
+      .eq('spectator', false)
+    const seatsFull = (playerCount ?? 0) >= maxPlayers
+    const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
+    if (seatFullResp) return seatFullResp
 
     if (await nameTaken(gameId, name)) {
       return NextResponse.json({ error: 'That name is already taken' }, { status: 400 })
@@ -921,10 +948,11 @@ export async function POST(req: NextRequest) {
         .from('players')
         .select('id', { count: 'exact', head: true })
         .eq('game_id', id)
+        .eq('spectator', false)
 
-      if (game.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
-        return NextResponse.json({ error: 'This room is full' }, { status: 400 })
-      }
+      const seatsFull = game.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+      const seatFullResp = seatFullGate(game as Game, seatsFull, rawJoinAsViewer, 'This room is full')
+      if (seatFullResp) return seatFullResp
     }
 
     if (await nameTaken(id, name)) {

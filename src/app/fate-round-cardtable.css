@@ -827,20 +827,21 @@
   color: var(--text-muted);
 }
 
-/* ── Whot · roomy / desktop board ─────────────────────────────────────
+/* ── Card table · roomy / desktop board ───────────────────────────────
    The card table is a mobile-faithful phone column. On a wide or tall
    viewport (desktop, a 13" laptop, or a phone in desktop mode) that column
    stretched full-height and the small piles floated in a huge empty felt —
-   the board read as tiny and lost. For Whot (scoped via `.ct-surface.whot`)
-   contain the board to a centred, framed block and scale the cards up so the
-   gameplay fills the space and reads big. Mobile (< 560px) is untouched. */
+   the board read as tiny and lost. For the card-table games (scoped via
+   `.ct-surface:is(.whot, .crazy)`) contain the board to a centred, framed
+   block and scale the cards up so the gameplay fills the space and reads
+   big. Mobile (< 560px) is untouched. */
 @media (min-width: 560px) {
-  .fr-room-poll:has(.ct-surface.whot) .pr-stage {
+  .fr-room-poll:has(.ct-surface:is(.whot, .crazy)) .pr-stage {
     justify-content: safe center;
     align-items: center;
     padding: 24px;
   }
-  .fr-room .ct-surface.whot {
+  .fr-room .ct-surface:is(.whot, .crazy) {
     flex: 0 1 auto;
     width: 100%;
     max-width: 600px;
@@ -851,36 +852,36 @@
     background: var(--surface-sunken);
     overflow: hidden;
   }
-  .fr-room .ct-surface.whot > .pr-prog {
+  .fr-room .ct-surface:is(.whot, .crazy) > .pr-prog {
     padding: 14px 18px 10px;
   }
-  .fr-room .ct-surface.whot > .turnrail {
+  .fr-room .ct-surface:is(.whot, .crazy) > .turnrail {
     padding: 12px 16px 4px;
     justify-content: safe center;
   }
-  .fr-room .ct-surface.whot > .table {
+  .fr-room .ct-surface:is(.whot, .crazy) > .table {
     flex: 0 1 auto;
     padding: 22px 18px;
     gap: 18px;
   }
-  .fr-room .ct-surface.whot > .hand-wrap {
+  .fr-room .ct-surface:is(.whot, .crazy) > .hand-wrap {
     margin-bottom: 0;
   }
-  .fr-room .ct-surface.whot .pc {
+  .fr-room .ct-surface:is(.whot, .crazy) .pc {
     width: 62px;
     height: 90px;
     border-radius: 10px;
   }
-  .fr-room .ct-surface.whot .pc.lg {
+  .fr-room .ct-surface:is(.whot, .crazy) .pc.lg {
     width: 92px;
     height: 132px;
     border-radius: 13px;
   }
-  .fr-room .ct-surface.whot .pc .mid svg {
+  .fr-room .ct-surface:is(.whot, .crazy) .pc .mid svg {
     width: 30px;
     height: 30px;
   }
-  .fr-room .ct-surface.whot .pc.lg .mid svg {
+  .fr-room .ct-surface:is(.whot, .crazy) .pc.lg .mid svg {
     width: 40px;
     height: 40px;
   }
@@ -889,7 +890,7 @@
    board has room to breathe. The >= 1024px grid keeps its own full-width shell
    + side rail, so leave that range alone. */
 @media (min-width: 560px) and (max-width: 1023px) {
-  .fr-room-poll:has(.ct-surface.whot) {
+  .fr-room-poll:has(.ct-surface:is(.whot, .crazy)) {
     max-width: 660px;
   }
 }
@@ -902,36 +903,36 @@
    space so it all fits without scrolling; on very short screens also shrink
    the piles a touch. Whot-scoped. */
 @media (max-height: 820px) {
-  .fr-room .ct-surface.whot > .table {
+  .fr-room .ct-surface:is(.whot, .crazy) > .table {
     gap: 10px;
     padding: 8px 16px;
   }
-  .fr-room .ct-surface.whot .pile {
+  .fr-room .ct-surface:is(.whot, .crazy) .pile {
     gap: 5px;
   }
-  .fr-room .ct-surface.whot .whot-demand {
+  .fr-room .ct-surface:is(.whot, .crazy) .whot-demand {
     padding: 5px 11px;
   }
-  .fr-room .ct-surface.whot .act-toast {
+  .fr-room .ct-surface:is(.whot, .crazy) .act-toast {
     padding: 8px 14px;
   }
-  .fr-room .ct-surface.whot > .hand-wrap {
+  .fr-room .ct-surface:is(.whot, .crazy) > .hand-wrap {
     margin-bottom: calc(2.5dvh + env(safe-area-inset-bottom, 0px));
   }
 }
 @media (max-height: 700px) {
-  .fr-room .ct-surface.whot .table .pc {
+  .fr-room .ct-surface:is(.whot, .crazy) .table .pc {
     width: 50px;
     height: 72px;
   }
-  .fr-room .ct-surface.whot .table .pc.lg {
+  .fr-room .ct-surface:is(.whot, .crazy) .table .pc.lg {
     width: 64px;
     height: 92px;
   }
-  .fr-room .ct-surface.whot .table .pc.lg .mid {
+  .fr-room .ct-surface:is(.whot, .crazy) .table .pc.lg .mid {
     font-size: 28px;
   }
-  .fr-room .ct-surface.whot .table .pc.whot.lg .mid {
+  .fr-room .ct-surface:is(.whot, .crazy) .table .pc.whot.lg .mid {
     font-size: 15px;
   }
 }

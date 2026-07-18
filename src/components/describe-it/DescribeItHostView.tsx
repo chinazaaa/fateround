@@ -1,12 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
@@ -374,6 +376,31 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     if (gameFinished) setTab('manage')
     else if (game?.status === 'active') setTab('play')
   }, [gameFinished, game?.status])
+
+  // Host controls in the main-header ⚙ gear (no Manage tab — gameplay is the body). The
+  // only host driver here is the rare break-phase "Next describer/team now →"; How-to-play
+  // + End game come from HostActiveSettings. Roster/scoreboard live in the drawer/watch view.
+  const hostSettingsNode = useMemo(() => {
+    if (game?.status !== 'active') return null
+    const solo = clampDescribeItMode(game.describe_it_mode) === 'individual'
+    return (
+      <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="describe_it" onEnded={load}>
+        {session?.phase === 'break' && (
+          <button
+            type="button"
+            onClick={() => void advanceTurn()}
+            disabled={advancing}
+            className="btn-primary w-full py-2.5"
+          >
+            {advancing ? 'Starting…' : solo ? 'Next describer now →' : 'Next team now →'}
+          </button>
+        )}
+      </HostActiveSettings>
+    )
+    // advanceTurn is a stable-enough closure (reads gameCode/hostToken + setState); omitted from deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game, gameCode, hostToken, load, session?.phase, advancing])
+  useRegisterGameSettings(hostSettingsNode)
 
   if (loading) {
     return <HostLobbySkeleton />
@@ -911,6 +938,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={minPlayers}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}
@@ -983,6 +1011,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
       header={gameFinished ? undefined : <HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : watchRound}
       manage={manage}
+      noManageTab={game.status === 'active'}
       finished={finished}
     />
   )

@@ -2,10 +2,12 @@
 
 import { useEffect, useRef } from 'react'
 import { markPlayerReady } from '@/lib/player-ready'
+import { getPersistedHostMode } from '@/hooks/useHostSeat'
 import { getPlayerSession } from '@/lib/utils'
 import type { GameStatus, Player } from '@/types'
 
-/** Keeps the host-player ready when the lobby reopens after play again. */
+/** Keeps the host-player ready when the lobby reopens after play again — unless the host
+ *  deliberately chose "Host only" (spectator), in which case their choice is respected. */
 export function useHostAutoReady(
   gameCode: string,
   gameStatus: GameStatus | undefined,
@@ -22,6 +24,8 @@ export function useHostAutoReady(
     if (gameStatus !== 'waiting' || !hostPlayerId) return
     const host = players.find((p) => p.id === hostPlayerId)
     if (host?.spectator !== true) return
+    // Respect a deliberate "Host only" choice — don't drag the host back into a seat.
+    if (getPersistedHostMode(gameCode) === 'spectator') return
 
     const resumeToken = getPlayerSession(gameCode)?.resumeToken
     if (!resumeToken) return

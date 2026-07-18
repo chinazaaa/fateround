@@ -46,6 +46,8 @@ import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
 
 type HostTab = 'play' | 'manage'
@@ -286,6 +288,18 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer). NPAT has no in-game settings,
+  // so this is just How-to-play + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="i_call_on" onEnded={load} />
+      ) : null,
+    [game?.status, gameCode, hostToken, load]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (!game) {
     return <HostLobbySkeleton />
   }
@@ -318,6 +332,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={NPAT_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}
@@ -628,6 +643,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       header={<HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : watchRound}
       manage={manage}
+      noManageTab={game.status === 'active'}
       finished={
         <>
           <NpatFinalResultsShareBlock

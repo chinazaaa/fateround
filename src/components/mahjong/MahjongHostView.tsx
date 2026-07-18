@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostPageShell, hostPlayLayoutFlags } from '@/components/host/HostPageShell'
 import { HostLobby } from '@/components/host/HostLobby'
@@ -17,6 +17,7 @@ import { gameTypeConfig } from '@/lib/game-types'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useRosterBase, useRosterManage } from '@/components/roster/RosterDrawerContext'
 import { useHostSeat } from '@/hooks/useHostSeat'
 import { useMahjongTurnTimer } from '@/hooks/useMahjongTurnTimer'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
@@ -296,6 +297,15 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
     game?.status === 'active' && (tab === 'play' ? isHostTurn || session?.phase === 'claim' : true)
   )
 
+  // Feed the shared roster side-drawer (opened from the header people button) while
+  // active — the host sees who's here + can Remove, same as every game.
+  useRosterBase(game?.status === 'active' ? players : undefined, game, hostPlayerId)
+  const rosterRemove = useMemo(
+    () => (row: { id: string; name: string }) => removePlayer(row.id, row.name),
+    [removePlayer]
+  )
+  useRosterManage(game?.status === 'active' ? { hostPlayerId: hostPlayerId ?? null, onRemove: rosterRemove } : null)
+
   if (!game) {
     return <HostLobbySkeleton />
   }
@@ -312,6 +322,7 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
           meId={hostPlayerId}
           isHost
           minPlayers={MAHJONG_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}

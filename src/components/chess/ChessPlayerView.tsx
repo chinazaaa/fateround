@@ -29,7 +29,6 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
@@ -127,6 +126,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
     joinName,
     setJoinName,
     joining,
+    lobbyFull,
     load,
     join,
   } = useGameViewBootstrap<Screen, ChessSession | null>({
@@ -322,9 +322,10 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   useChessClockExpiry(gameCode, session, game?.status === 'active' && !isViewer)
 
   // Change name · Leave game for players/spectators live behind the main chrome's ⚙
-  // gear (top header). Registered while the game is active; GameChromeSettings renders it.
+  // gear (top header). Available whenever the player holds a seat — lobby, active play,
+  // and the finished / replay ready-up screen — not just during active play.
   const playerSettingsNode = useMemo(() => {
-    if (!myPlayerId || game?.status !== 'active') return null
+    if (!myPlayerId) return null
     return (
       <div className="space-y-3">
         <EditNameInline
@@ -389,6 +390,8 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           onSubmit={() => void join()}
           joining={joining}
           gameType="chess"
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
           footer={
             <p className="text-center pt-1">
@@ -419,6 +422,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={CHESS_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -433,6 +437,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myName}
@@ -492,17 +497,6 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
             roundKey={session?.id}
           />
         )}
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby
-            spectating={isViewer}
-          />
-        )}
       </ChessShell>
     )
   }
@@ -521,16 +515,6 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           onMove={!isViewer ? movePiece : undefined}
           onResign={!isViewer ? resign : undefined}
           acting={acting}
-        />
-      )}
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isViewer}
         />
       )}
     </ChessShell>

@@ -22,6 +22,8 @@ import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
 import {
   parseCrosswordMetadata,
@@ -167,6 +169,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
   const {
     hostMode,
     hostPlayerId,
+    hostResumeToken,
     hostPlayerName,
     hostJoinName,
     setHostJoinName,
@@ -407,6 +410,26 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
     return Math.round((owned / fillable) * 100)
   }, [metadata, cellOwners])
 
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer): late-join rules + How-to-play
+  // + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings
+          gameCode={gameCode}
+          hostToken={hostToken}
+          gameType="crossword"
+          onEnded={load}
+          endGameConfirmMessage="Players will see the final results."
+        >
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load, setGame]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (!game) {
     return <HostLobbySkeleton />
   }
@@ -575,6 +598,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={CROSSWORD_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void handleStart()}
           starting={starting}
@@ -642,6 +666,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
         hostToken={hostToken}
         game={game}
         gameTypeLabel={cfg.label}
+        resumeToken={hostResumeToken}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('crossword', game) ?? game.max_players}
         playCard={lobbyModeCard}
@@ -680,6 +705,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
       header={<HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : watchBoard}
       manage={manage}
+      noManageTab
       finished={
         <>
           <FinalResultsShareBlock

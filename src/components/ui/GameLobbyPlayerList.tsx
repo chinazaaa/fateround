@@ -12,6 +12,9 @@ type Props = {
   maxCapacity?: number | null
   className?: string
   emptyMessage?: string
+  /** Label shown after a spectator's name. Defaults to "not ready"; pass "watching"
+   *  when spectators can't take a seat (e.g. the lobby is full). */
+  spectatorLabel?: string
 }
 
 export function GameLobbyPlayerList({
@@ -22,6 +25,7 @@ export function GameLobbyPlayerList({
   maxCapacity,
   className = '',
   emptyMessage = 'No players yet',
+  spectatorLabel = 'not ready',
 }: Props) {
   const countSuffix =
     maxCapacity != null
@@ -58,7 +62,7 @@ export function GameLobbyPlayerList({
                     {player.name.length > 12 ? `${player.name.slice(0, 11)}…` : player.name}
                   </span>
                   {isMe ? ' (you)' : ''}
-                  {notReady ? <span className="text-faint text-xs"> · not ready</span> : null}
+                  {notReady ? <span className="text-faint text-xs"> · {spectatorLabel}</span> : null}
                 </span>
               </div>
             )
