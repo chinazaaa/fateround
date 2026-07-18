@@ -29,6 +29,7 @@ export function GameWaitingRoom({
   title = 'Waiting for the host to start',
   subtitle = 'The game will begin shortly',
   minPlayers,
+  children,
 }: {
   gameCode: string
   players: Parameters<typeof GameLobbyPlayerList>[0]['players']
@@ -44,6 +45,12 @@ export function GameWaitingRoom({
   title?: string
   subtitle?: string
   minPlayers?: number
+  /**
+   * Game-specific lobby content — e.g. a team picker ("pick a team"), a card the
+   * host set up, etc. Rendered between the hero and the roster so team games can
+   * reuse this same room instead of building their own. Omit for plain games.
+   */
+  children?: React.ReactNode
 }) {
   const [readying, setReadying] = useState(false)
 
@@ -85,6 +92,9 @@ export function GameWaitingRoom({
           </button>
         ) : null}
       </div>
+
+      {/* Game-specific lobby content (e.g. a team picker) slots in here. */}
+      {children}
 
       {/* Who's already here. */}
       <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label="In lobby" minPlayers={minPlayers} />
