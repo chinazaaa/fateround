@@ -2,6 +2,7 @@
 
 import { HostPlayerManageList } from '@/components/host/HostPlayerManageList'
 import { EyeIcon, UsersIcon } from '@/components/host/host-icons'
+import { seatedParticipantCount } from '@/lib/game-limits'
 import type { Player } from '@/types'
 
 type Props = {
@@ -42,6 +43,14 @@ export function HostLobbyPlayersSection({
   children,
 }: Props) {
   const Icon = tone === 'viewers' ? EyeIcon : UsersIcon
+  // Split the roster into seats vs watchers so the count reads clearly: the "N / max"
+  // badge counts only seated players (watchers don't consume a seat), and watchers are
+  // surfaced separately instead of inflating the total into a confusing "4 / 2".
+  const seatedCount = seatedParticipantCount(players)
+  const watcherCount = players.length - seatedCount
+  // No open seats → a sitting-out spectator can't ready up, so show "Watching" (not
+  // "Not ready") on their row.
+  const seatsFull = capacity != null && seatedCount >= capacity
 
   return (
     <div
@@ -56,8 +65,15 @@ export function HostLobbyPlayersSection({
           <Icon size={15} />
         </span>
         <p className="label-caps !text-[var(--muted)]">{label}</p>
-        <span className="ml-auto rounded-full bg-[var(--surface-inset-bg)] px-2.5 py-0.5 text-xs font-bold text-body">
-          {capacity ? `${players.length} / ${capacity}` : players.length}
+        <span className="ml-auto flex items-center gap-1.5">
+          <span className="rounded-full bg-[var(--surface-inset-bg)] px-2.5 py-0.5 text-xs font-bold text-body">
+            {capacity ? `${seatedCount} / ${capacity}` : players.length}
+          </span>
+          {watcherCount > 0 ? (
+            <span className="rounded-full bg-[var(--surface-inset-bg)] px-2.5 py-0.5 text-xs font-semibold text-faint">
+              {watcherCount} watching
+            </span>
+          ) : null}
         </span>
       </div>
       <HostPlayerManageList
@@ -71,6 +87,7 @@ export function HostLobbyPlayersSection({
         emptyMessage={emptyMessage}
         hint={hint}
         alwaysShowReady={alwaysShowReady}
+        seatsFull={seatsFull}
       />
       {children}
     </div>

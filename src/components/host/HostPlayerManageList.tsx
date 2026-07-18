@@ -24,6 +24,7 @@ export function HostPlayerManageList({
   className = '',
   compact = false,
   alwaysShowReady = false,
+  seatsFull = false,
 }: {
   players: Player[]
   removingPlayerId?: string | null
@@ -40,6 +41,10 @@ export function HostPlayerManageList({
   compact?: boolean
   /** Keep the ✓/✗ ready column visible even when everyone is ready (no spectators). */
   alwaysShowReady?: boolean
+  /** When the lobby has no open seats, a sitting-out spectator can't ready up — so their
+   *  row reads "Watching" instead of "Not ready", reserving "Not ready" for players who
+   *  still hold an open seat they haven't claimed. */
+  seatsFull?: boolean
 }) {
   const showAdmit = (playerId: string) => !!onAdmitPlayer && (!canAdmitPlayer || canAdmitPlayer(playerId))
   if (players.length === 0) {
@@ -62,7 +67,7 @@ export function HostPlayerManageList({
               <li key={p.id} className="flex items-center justify-between gap-2 text-sm">
                 <span className="font-medium text-sm truncate min-w-0">{p.name}</span>
                 <div className="flex items-center gap-2 shrink-0">
-                  {isHostWatching ? (
+                  {isHostWatching || (!ready && seatsFull) ? (
                     <span className="text-[10px] font-bold uppercase text-faint">Watching</span>
                   ) : (
                     showReady && (
@@ -132,7 +137,7 @@ export function HostPlayerManageList({
                 )}
               </div>
 
-              {isHostWatching ? (
+              {isHostWatching || (!ready && seatsFull) ? (
                 <span className="shrink-0 rounded-full bg-[var(--surface-inset-bg)] px-2.5 py-1 text-[11px] font-semibold text-faint">
                   Watching
                 </span>

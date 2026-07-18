@@ -44,6 +44,13 @@ function readPersistedMode(gameCode: string): HostSeatMode {
   return localStorage.getItem(hostModeKey(gameCode)) === 'spectator' ? 'spectator' : 'player'
 }
 
+/** The host's chosen seat mode ('player' = Host + play, 'spectator' = Host only), read
+ *  from the same persisted store `useHostSeat` writes. Lets other host hooks respect a
+ *  deliberate "Host only" choice (e.g. so auto-ready doesn't fight it). */
+export function getPersistedHostMode(gameCode: string): HostSeatMode {
+  return readPersistedMode(gameCode)
+}
+
 function writePersistedMode(gameCode: string, mode: HostSeatMode) {
   if (typeof window === 'undefined') return
   try {
