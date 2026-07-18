@@ -26,7 +26,7 @@ export type FinishedLeaderboardRow = {
 }
 
 /** Theme-aware colors for the on-screen results card (mirrors the shared PNG). */
-function themedResultsPalette(theme: Theme): ResultsPalette {
+export function themedResultsPalette(theme: Theme): ResultsPalette {
   return {
     cardBg: theme.surface,
     gameTitle: theme.primary,
