@@ -29,7 +29,6 @@ import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
@@ -531,19 +530,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <div className="min-h-screen pb-24 overflow-x-hidden px-2 sm:px-4 py-3 sm:py-6">
       <div className="max-w-6xl mx-auto space-y-3 sm:space-y-4">
-        <MonopolyPageHeader title={game?.title}>
-          {myPlayerId && sessionName ? (
-            <PlayerSessionControls
-              gameCode={gameCode}
-              playerId={myPlayerId}
-              currentName={sessionName}
-              onRenamed={() => void load()}
-              onLeft={handlePlayerLeft}
-              align="center"
-              spectating={isViewer}
-            />
-          ) : null}
-        </MonopolyPageHeader>
+        <MonopolyPageHeader title={game?.title}></MonopolyPageHeader>
 
         {isViewer && myPlayer && (
           <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={myPlayer} />
