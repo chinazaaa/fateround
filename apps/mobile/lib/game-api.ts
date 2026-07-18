@@ -1134,7 +1134,7 @@ export function postTriviaLobbySettings(
 export function postLobbyPool(
   gameCode: string,
   hostToken: string,
-  patch: { question_source?: string; custom_questions?: unknown[] }
+  patch: { question_source?: string; custom_questions?: unknown[]; wst_quote_source?: 'player' | 'deck' }
 ) {
   return postJson<{ ok?: boolean }>(`/api/games/${gameCode.toUpperCase()}/lobby-pool`, {
     hostToken,
