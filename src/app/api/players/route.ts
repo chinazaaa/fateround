@@ -1254,6 +1254,7 @@ export async function PATCH(req: NextRequest) {
     gameCode,
     playerId,
     playerName: rawName,
+    monopolyToken: rawMonopolyTokenUpdate,
     gender: rawGender,
     pollGender: rawPollGender,
     identityGender: rawIdentityGender,
@@ -1289,6 +1290,49 @@ export async function PATCH(req: NextRequest) {
     .maybeSingle()
 
   if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
+
+  // Monopoly: swap your board token from the lobby. Isolated single-field update —
+  // only fires when a token is sent (name/gender edits never carry one).
+  if (rawMonopolyTokenUpdate !== undefined) {
+    const token = String(rawMonopolyTokenUpdate)
+    if (!isMonopolyTokenId(token)) {
+      return NextResponse.json({ error: 'Pick a valid token' }, { status: 400 })
+    }
+    const { data: gameRow } = await getSupabaseAdmin().from('games').select('status').eq('id', id).maybeSingle()
+    if (gameRow?.status !== 'waiting') {
+      return NextResponse.json({ error: 'Tokens lock once the game starts' }, { status: 400 })
+    }
+    if (player.spectator) {
+      return NextResponse.json({ error: 'Watchers don’t use a board token' }, { status: 400 })
+    }
+    const { data: clash } = await getSupabaseAdmin()
+      .from('players')
+      .select('id')
+      .eq('game_id', id)
+      .eq('monopoly_token', token)
+      .neq('id', playerId)
+      .maybeSingle()
+    if (clash) {
+      return NextResponse.json({ error: 'That token was just taken — pick another' }, { status: 400 })
+    }
+    const { data: updatedPlayer, error } = await getSupabaseAdmin()
+      .from('players')
+      .update({ monopoly_token: token })
+      .eq('id', playerId)
+      .select()
+      .single()
+    if (error) {
+      if (error.code === '23505') {
+        return NextResponse.json({ error: 'That token was just taken — pick another' }, { status: 400 })
+      }
+      return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    }
+    return NextResponse.json({
+      playerId: updatedPlayer.id,
+      playerName: updatedPlayer.name,
+      playerGender: updatedPlayer.gender,
+    })
+  }
 
   const gameType = parseGameType((game as { game_type?: string }).game_type)
 
