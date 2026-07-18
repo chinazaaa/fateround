@@ -20,6 +20,7 @@ export function PlayerSessionControls({
   align = 'start',
   className = '',
   spectating = false,
+  hideResume = false,
 }: {
   gameCode: string
   playerId: string
@@ -34,6 +35,8 @@ export function PlayerSessionControls({
   className?: string
   /** Show a "Watching as" label instead of "Playing as" for spectators/viewers. */
   spectating?: boolean
+  /** Hide the "Continue on another device" resume card (e.g. it lives in the share popup). */
+  hideResume?: boolean
 }) {
   const leaveButton = (
     <LeaveGameButton
@@ -79,7 +82,7 @@ export function PlayerSessionControls({
         </div>
         {leaveButton}
       </div>
-      <PlayerResumeCard gameCode={gameCode} compact={!inLobby} />
+      {hideResume ? null : <PlayerResumeCard gameCode={gameCode} compact={!inLobby} />}
     </div>
   )
 }

@@ -26,9 +26,8 @@ import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } fr
 import { playerIsViewer, preJoinScreen, allowLatePlayers } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { EliminationBanner } from '@/components/EliminationBanner'
-import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
-import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { GameWaitingRoom } from '@/components/game-lobby/GameWaitingRoom'
 
 type Screen = 'loading' | 'join' | 'game_started_waiting' | 'late_join_choice' | 'game_ended' | 'playing' | 'not_found'
 
@@ -250,54 +249,56 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
             onPromoted={load}
           />
         )}
-        {!isFinished && (
-          <PlayerSessionControls
+        {game.status === 'waiting' ? (
+          <GameWaitingRoom
             gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myPlayerName}
+            players={players}
+            myPlayerId={myPlayerId}
+            myPlayerName={myPlayerName}
+            gameType="trivia"
+            spectating={isViewer}
             onRenamed={() => void load()}
             onLeft={handlePlayerLeft}
-            inLobby={game.status === 'waiting'}
-            spectating={isViewer}
+            onReady={
+              me?.spectator === true && !game.tournament_id
+                ? async () => {
+                    if (!myResumeToken) return
+                    await fetch('/api/players/ready', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken }),
+                    })
+                    await load()
+                  }
+                : undefined
+            }
           />
-        )}
-        {game.status === 'waiting' && (
+        ) : (
           <>
-            {me?.spectator === true && !game.tournament_id && (
-              <button
-                type="button"
-                className="btn-primary w-full py-3 text-base font-bold"
-                onClick={async () => {
-                  if (!myResumeToken) return
-                  await fetch('/api/players/ready', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken }),
-                  })
-                  await load()
-                }}
-              >
-                I&apos;m in — ready to play
-              </button>
+            {!isFinished && (
+              <PlayerSessionControls
+                gameCode={gameCode}
+                playerId={myPlayerId}
+                currentName={myPlayerName}
+                onRenamed={() => void load()}
+                onLeft={handlePlayerLeft}
+                spectating={isViewer}
+              />
             )}
-            <p className="text-center">
-              <GameRulesLink gameType="trivia" variant="subtle" />
-            </p>
-            <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label="In lobby" />
+            <TriviaActiveRound
+              gameCode={gameCode}
+              game={game}
+              players={players}
+              rounds={rounds}
+              answers={answers}
+              myPlayerId={myPlayerId}
+              myResumeToken={myResumeToken}
+              playerName={myPlayerName}
+              onReload={load}
+              readOnly={isViewer}
+            />
           </>
         )}
-        <TriviaActiveRound
-          gameCode={gameCode}
-          game={game}
-          players={players}
-          rounds={rounds}
-          answers={answers}
-          myPlayerId={myPlayerId}
-          myResumeToken={myResumeToken}
-          playerName={myPlayerName}
-          onReload={load}
-          readOnly={isViewer}
-        />
       </div>
     </div>
   )
