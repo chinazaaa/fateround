@@ -653,6 +653,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
       header={<HostGameHeader game={game} />}
       primary={<div className="max-w-lg mx-auto w-full">{hostPlays ? interactivePlay : watchBoard}</div>}
       manage={manage}
+      noManageTab
       finished={
         <>
           <CrazyEightsFinalResultsShareBlock

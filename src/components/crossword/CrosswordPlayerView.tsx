@@ -222,6 +222,7 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<View, CrosswordGameState>({
     gameCode,
@@ -849,6 +850,8 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="crossword"
           submitLabel="Join game"

@@ -559,7 +559,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
                 type="button"
                 onClick={() => void confirmPlayAgain()}
                 disabled={playingAgain}
-                className="btn-secondary w-full py-3 text-base disabled:opacity-60"
+                className="btn-secondary w-full py-3 text-sm disabled:opacity-60"
               >
                 {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
               </button>
@@ -569,12 +569,11 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
                 type="button"
                 onClick={() => void confirmReturnToLobby()}
                 disabled={playingAgain}
-                className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
+                className="btn-secondary w-full py-3 text-sm disabled:opacity-60"
               >
-                Return to lobby
+                Return to lobby · different settings
               </button>
             }
-            lobbyNote="Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak settings first."
           />
           {hostPlayerId && session?.winner_player_id === hostPlayerId && (
             <PostWinToCommunity

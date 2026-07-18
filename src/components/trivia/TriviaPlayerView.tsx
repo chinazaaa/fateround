@@ -77,6 +77,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, null>({
     gameCode,
@@ -245,6 +246,8 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="trivia"
         />

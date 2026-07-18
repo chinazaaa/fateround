@@ -98,6 +98,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, MafiaStateResponse | null>({
     gameCode,
@@ -334,6 +335,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="mafia"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}

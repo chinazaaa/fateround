@@ -102,6 +102,7 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, TicTacToeSession | null>({
     gameCode,
@@ -305,6 +306,8 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="tic_tac_toe"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}

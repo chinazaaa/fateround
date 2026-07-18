@@ -101,6 +101,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, void>({
     gameCode,
@@ -335,6 +336,8 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="ludo"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}

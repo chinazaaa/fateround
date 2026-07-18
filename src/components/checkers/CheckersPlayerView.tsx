@@ -100,6 +100,7 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, CheckersSession | null>({
     gameCode,
@@ -319,6 +320,8 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="checkers"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}

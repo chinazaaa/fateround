@@ -109,7 +109,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     []
   )
 
-  const { screen, game, players, myPlayerId, myResumeToken, joinName, setJoinName, joining, load, join } =
+  const { screen, game, players, myPlayerId, myResumeToken, joinName, setJoinName, joining, load, lobbyFull, join } =
     useGameViewBootstrap<Screen, WordRushSession | null>({
       gameCode,
       loadingScreen: 'loading',
@@ -264,6 +264,8 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="word_rush"
           footer={

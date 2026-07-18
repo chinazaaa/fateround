@@ -114,6 +114,7 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, void>({
     gameCode,
@@ -366,6 +367,8 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="snake_and_ladder"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}

@@ -184,6 +184,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<View, WordSearchGameState>({
     gameCode,
@@ -585,6 +586,8 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="word_search"
           submitLabel="Join game"

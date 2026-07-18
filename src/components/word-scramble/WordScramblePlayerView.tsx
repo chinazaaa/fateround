@@ -191,6 +191,7 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<View, WordScrambleGameState>({
     gameCode,
@@ -587,6 +588,8 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="word_scramble"
           submitLabel="Join game"
