@@ -2530,7 +2530,8 @@ async function attemptRemoveMonopolyPlayer(
     winner_player_id: winner ?? board.winner_player_id,
     status_message: statusMessage,
     turn_deadline_at: phase === 'finished' ? null : monopolyDeadlineForPhase(settings.timerSeconds, phase),
-    updated_at: new Date().toISOString(),
+    // NB: updated_at is set by monopoly_claim_and_apply (to now()) and is not an
+    // accepted patch key — including it here raises UNKNOWN_BOARD_COLUMN.
   }
 
   if (pendingTrade === null && board.pending_trade) {
