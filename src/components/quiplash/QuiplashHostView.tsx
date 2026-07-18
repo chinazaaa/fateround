@@ -16,7 +16,7 @@ import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
-import { getQuiplashHostMode, setQuiplashHostMode, type QuiplashHostMode, QUIPLASH_MIN_PLAYERS } from '@/lib/quiplash'
+import { QUIPLASH_MIN_PLAYERS } from '@/lib/quiplash'
 import { playerIsViewer } from '@/lib/viewers'
 import { supabase } from '@/lib/supabase'
 import {
@@ -29,11 +29,10 @@ import {
   ROUND_SELECT,
 } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
-import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useQuiplashAdvance } from '@/hooks/useQuiplashAdvance'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import type { Game, Player, QuiplashAnswer, QuiplashBattle, QuiplashSession, QuiplashVote, Round } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
@@ -58,12 +57,6 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [votes, setVotes] = useState<QuiplashVote[]>([])
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
-  const [hostMode, setHostMode] = useState<QuiplashHostMode>('player')
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
 
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
@@ -91,30 +84,40 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
 
   useEffect(() => {
     load()
-    setHostMode(getQuiplashHostMode(gameCode))
-    const sessionRow = getPlayerSession(gameCode)
-    if (sessionRow) {
-      setHostPlayerId(sessionRow.playerId)
-      setHostResumeToken(sessionRow.resumeToken ?? null)
-      setHostPlayerName(sessionRow.playerName)
-    }
   }, [gameCode, load])
+
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+    onModeChange: (mode) => {
+      if (mode === 'spectator') setTab('manage')
+    },
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostResumeToken(null)
-        setHostPlayerName('')
-        clearPlayerSession(gameCode)
-      }
+      onHostSeatRemoved(playerId)
       setPlayers((prev) => prev.filter((p) => p.id !== playerId))
     },
-    [gameCode, hostPlayerId]
+    [onHostSeatRemoved]
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   const connected = useGameTableSync(
@@ -148,40 +151,6 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
     if (game?.status === 'finished') setTab('manage')
     else if (game?.status === 'active') setTab('play')
   }, [game?.status])
-
-  const changeHostMode = (mode: QuiplashHostMode) => {
-    if (game?.status !== 'waiting') return
-    setHostMode(mode)
-    setQuiplashHostMode(gameCode, mode)
-    if (mode === 'spectator') setTab('manage')
-  }
-
-  const hostJoinGame = async () => {
-    const name = hostJoinName.trim()
-    if (!name || hostJoining) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: name }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostResumeToken(data.resumeToken ?? null)
-      setHostPlayerName(data.playerName)
-      setHostMode('player')
-      setQuiplashHostMode(gameCode, 'player')
-      await load()
-      success(`Joined as ${data.playerName}`)
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }
 
   const startGame = async () => {
     if (starting) return

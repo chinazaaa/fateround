@@ -22,21 +22,17 @@ import {
   codewordsInLobby,
   codewordsPlayerPicks,
   codewordsRandomizeTeams,
-  getCodewordsHostMode,
   lobbyReadyForGame,
   mergeCodewordsGuesses,
-  setCodewordsHostMode,
   teamLabel,
-  type CodewordsHostMode,
 } from '@/lib/codewords'
 import { useCodewordsRealtime } from '@/hooks/useCodewordsRealtime'
 import { useCodewordsNotifications } from '@/hooks/useCodewordsNotifications'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
-import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import type {
   CodewordsBoard,
   CodewordsGuess,
@@ -73,12 +69,6 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
   const [operativeTimer, setOperativeTimer] = useState(CODEWORDS_DEFAULT_OPERATIVE_TIMER)
   const [savingTimers, setSavingTimers] = useState(false)
   const [benchingPlayerId, setBenchingPlayerId] = useState<string | null>(null)
-  const [hostMode, setHostMode] = useState<CodewordsHostMode>('player')
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
   const [playAgainOpen, setPlayAgainOpen] = useState(false)
   const [lobbyPoolOpen, setLobbyPoolOpen] = useState(false)
@@ -136,13 +126,6 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
 
   useEffect(() => {
     load()
-    setHostMode(getCodewordsHostMode(gameCode))
-    const session = getPlayerSession(gameCode)
-    if (session) {
-      setHostPlayerId(session.playerId)
-      setHostResumeToken(session.resumeToken ?? null)
-      setHostPlayerName(session.playerName)
-    }
   }, [gameCode, load])
 
   useCodewordsRealtime(gameCode, 'host', {
@@ -169,20 +152,37 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     onReload: load,
   })
 
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+    onModeChange: (mode) => {
+      if (mode === 'spectator') setTab('manage')
+    },
+  })
+
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostResumeToken(null)
-        setHostPlayerName('')
-        clearPlayerSession(gameCode)
-        setHostMode('spectator')
-        setCodewordsHostMode(gameCode, 'spectator')
-      }
+      onHostSeatRemoved(playerId)
       setPlayers((prev) => prev.filter((p) => p.id !== playerId))
       setRoles((prev) => prev.filter((r) => r.player_id !== playerId))
     },
-    [gameCode, hostPlayerId]
+    [onHostSeatRemoved]
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
@@ -215,9 +215,6 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     },
     [gameCode, hostToken, load, toastError]
   )
-
-  // Clear stale host-as-player state if the host's own row is removed elsewhere.
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
 
   const lateJoinNotifyReadyRef = useRef(false)
   const prevPlayerIdsRef = useRef<Set<string>>(new Set())
@@ -283,83 +280,6 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     void assignRole(playerId, team, makeSpymaster ? 'spymaster' : 'operative')
   }
 
-  const changeHostMode = async (mode: CodewordsHostMode) => {
-    const prev = hostMode
-    if (game?.status !== 'waiting') return
-    setHostMode(mode)
-    setCodewordsHostMode(gameCode, mode)
-    if (mode === 'spectator') setTab('manage')
-    // Switching to "Host only" while holding a seat → give up the seat so the host
-    // drops out of the players list.
-    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
-      try {
-        const res = await fetch('/api/players', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error ?? 'Failed to leave seat')
-        }
-        handlePlayerRemoved(hostPlayerId)
-        await load()
-      } catch (err) {
-        setHostMode(prev)
-        setCodewordsHostMode(gameCode, prev)
-        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
-      }
-    }
-  }
-
-  const renameHost = async (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed || !hostPlayerId) return
-    try {
-      const res = await fetch('/api/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
-      setHostPlayerName(data.playerName)
-      const storedGender = getPlayerSession(gameCode)?.playerGender ?? 'both'
-      setPlayerSession(gameCode, hostPlayerId, data.playerName, storedGender, hostResumeToken)
-      await load()
-      success('Name updated!')
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to update name')
-    }
-  }
-
-  const hostJoinGame = async () => {
-    const name = hostJoinName.trim()
-    if (!name) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: name }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostResumeToken(data.resumeToken ?? null)
-      setHostPlayerName(data.playerName)
-      setHostMode('player')
-      setCodewordsHostMode(gameCode, 'player')
-      await load()
-      success(`Joined as ${data.playerName}`)
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }
-
   const startGame = async () => {
     setStarting(true)
     try {
@@ -409,12 +329,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to move player to waiting room')
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostResumeToken(null)
-        setHostPlayerName('')
-        clearPlayerSession(gameCode)
-      }
+      onHostSeatRemoved(playerId)
       await load()
       success('Player moved to waiting room')
     } catch (err) {
