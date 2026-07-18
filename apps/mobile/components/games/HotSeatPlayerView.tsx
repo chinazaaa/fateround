@@ -18,6 +18,7 @@ import { PollReactionBar } from '@/components/games/poll/PollReactionBar'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { RoundTimerBadge } from '@/components/party/RoundTimerBadge'
 import { RoundResultsWaitText } from '@/components/party/RoundResultsWaitText'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { getHotSeatSubmissions, postHotSeat } from '@/lib/game-api'
 import { playSound } from '@/lib/sounds'
@@ -185,6 +186,18 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
 
   const selectedTypeMeta = HOT_SEAT_SUBMISSION_TYPES.find((t) => t.type === submissionType)
 
+  // Pinned countdown — visible under the header while the write body scrolls.
+  const hotSeatTimer = (
+    <RoundTimerBadge
+      game={bootstrap.game}
+      currentRound={writePhaseActive ? currentRound : null}
+      active={writePhaseActive}
+      onExpire={() => void submitRef.current()}
+      containerStyle={styles.timerRow}
+    />
+  )
+  const hotSeatTimerPinned = useStickyTimer(hotSeatTimer, [bootstrap.game, writePhaseActive, currentRound])
+
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
   if (bootstrap.screen === 'join' && bootstrap.game) {
@@ -323,13 +336,7 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
           </View>
         ) : (
           <>
-            <RoundTimerBadge
-              game={bootstrap.game}
-              currentRound={writePhaseActive ? currentRound : null}
-              active={writePhaseActive}
-              onExpire={() => void submitRef.current()}
-              containerStyle={styles.timerRow}
-            />
+            {hotSeatTimerPinned ? null : hotSeatTimer}
             <Text style={styles.section}>Pick a vibe</Text>
             <View style={styles.typeRow}>
               {HOT_SEAT_SUBMISSION_TYPES.map(({ type, emoji, label }) => (

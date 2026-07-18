@@ -33,6 +33,7 @@ import { AnonymousRoomHeadcount } from '@/components/games/anonymous/AnonymousRo
 import { AnonymousBanCountdownBar } from '@/components/games/anonymous/AnonymousBanCountdownBar'
 import { anonymousRoomMaxPlayers } from '@/components/games/anonymous/anonymous-room-helpers'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { autoJoinGame } from '@/lib/api'
 import { leaveGame, postAnonymousGif, postAnonymousMessage, postExpireSession, postPlayerReady } from '@/lib/game-api'
 import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
@@ -192,11 +193,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
 
   const myPlayer = players.find((p) => p.id === myPlayerId)
   const canPost =
-    !!game &&
-    !!myPlayer &&
-    anonymousPlayerCanPost(myPlayer, game, banUntil) &&
-    canChat &&
-    screen === 'active'
+    !!game && !!myPlayer && anonymousPlayerCanPost(myPlayer, game, banUntil) && canChat && screen === 'active'
 
   const join = async () => {
     setJoining(true)
@@ -204,7 +201,13 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     try {
       const existing = await getPlayerSession(code)
       const data = await autoJoinGame(code, existing?.resumeToken)
-      await setPlayerSession(code, data.playerId, data.playerName, data.playerGender ?? 'both', data.resumeToken ?? null)
+      await setPlayerSession(
+        code,
+        data.playerId,
+        data.playerName,
+        data.playerGender ?? 'both',
+        data.resumeToken ?? null
+      )
       setMyPlayerId(data.playerId)
       setCanChat(data.canChat !== false)
       await load()
@@ -347,6 +350,18 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     onExpire: () => postExpireSession(code).then(() => load()),
   })
 
+  // Pinned countdowns — session bar (+ ban bar when banned) stay visible under
+  // the header while the message feed scrolls.
+  const anonTimers = (
+    <>
+      <AnonymousSessionTimerBar game={game} tick={timerTick} />
+      {isPlayerBanned(banUntil) && banUntil ? (
+        <AnonymousBanCountdownBar bannedUntil={banUntil} tick={timerTick} />
+      ) : null}
+    </>
+  )
+  const anonTimersPinned = useStickyTimer(anonTimers, [game, timerTick, banUntil])
+
   if (screen === 'loading') return <GameLoading />
   if (screen === 'not_found') return <GameNotFound gameCode={code} />
 
@@ -370,8 +385,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   if (screen === 'join') {
     const sessionInProgress = game?.status === 'active'
     const roomCapacity = game ? anonymousRoomMaxPlayers(game) : null
-    const lobbyFull =
-      game?.status === 'waiting' && roomCapacity != null && players.length >= roomCapacity
+    const lobbyFull = game?.status === 'waiting' && roomCapacity != null && players.length >= roomCapacity
     const joinLabel = joining
       ? 'Joining…'
       : lobbyFull
@@ -459,111 +473,105 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   }
 
   return (
-    <GameShell
-      title={game?.title || batch9GameLabel('anonymous_messages')}
-      subtitle={`${playerCount} in room`}
-    >
+    <GameShell title={game?.title || batch9GameLabel('anonymous_messages')} subtitle={`${playerCount} in room`}>
       {game ? <AnonymousRoomHeadcount game={game} players={players} /> : null}
-      <AnonymousSessionTimerBar game={game} tick={timerTick} />
+      {anonTimersPinned ? null : anonTimers}
       {!canChat && !isPlayerBanned(banUntil) ? (
         <Text style={styles.viewOnly}>View only — you joined after the session started.</Text>
       ) : null}
-      {isPlayerBanned(banUntil) && banUntil ? (
-        <AnonymousBanCountdownBar bannedUntil={banUntil} tick={timerTick} />
-      ) : null}
 
       <View style={styles.feedWrap}>
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        keyExtractor={(item) => item.id}
-        style={styles.feed}
-        contentContainerStyle={styles.feedContent}
-        onScroll={handleFeedScroll}
-        scrollEventThrottle={16}
-        renderItem={({ item }) => {
-          const mine = item.player_id === myPlayerId
-          const isGif = item.message_type === 'gif' && !!item.media_url
-          const msgReactions = reactions.get(item.id)
-          return (
-            <View style={[styles.messageRow, mine && styles.messageRowMine]}>
-              <Pressable
-                style={[styles.message, mine && styles.messageMine]}
-                onLongPress={() => setReactingId(reactingId === item.id ? null : item.id)}
-                delayLongPress={220}
-              >
-                <Text style={styles.messageAuthor}>{item.player_name ?? 'Unknown'}</Text>
-                {item.reply_to_text ? (
-                  <View style={styles.replyQuote}>
-                    <Text style={styles.replyQuoteText} numberOfLines={1}>
-                      {item.reply_to_text}
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          keyExtractor={(item) => item.id}
+          style={styles.feed}
+          contentContainerStyle={styles.feedContent}
+          onScroll={handleFeedScroll}
+          scrollEventThrottle={16}
+          renderItem={({ item }) => {
+            const mine = item.player_id === myPlayerId
+            const isGif = item.message_type === 'gif' && !!item.media_url
+            const msgReactions = reactions.get(item.id)
+            return (
+              <View style={[styles.messageRow, mine && styles.messageRowMine]}>
+                <Pressable
+                  style={[styles.message, mine && styles.messageMine]}
+                  onLongPress={() => setReactingId(reactingId === item.id ? null : item.id)}
+                  delayLongPress={220}
+                >
+                  <Text style={styles.messageAuthor}>{item.player_name ?? 'Unknown'}</Text>
+                  {item.reply_to_text ? (
+                    <View style={styles.replyQuote}>
+                      <Text style={styles.replyQuoteText} numberOfLines={1}>
+                        {item.reply_to_text}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {isGif ? (
+                    <Image source={{ uri: item.media_url! }} style={styles.gif} contentFit="cover" />
+                  ) : (
+                    <Text style={styles.messageText}>{item.text}</Text>
+                  )}
+                  {item.created_at ? (
+                    <Text style={styles.messageTime}>
+                      {new Date(item.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
                     </Text>
+                  ) : null}
+                </Pressable>
+
+                {msgReactions && msgReactions.size > 0 ? (
+                  <View style={[styles.reactionRow, mine && styles.reactionRowMine]}>
+                    {[...msgReactions.entries()].map(([emoji, names]) => (
+                      <Pressable
+                        key={emoji}
+                        style={[styles.reactionChip, names.has(myName) && styles.reactionChipMine]}
+                        onPress={() => toggleReaction(item.id, emoji)}
+                      >
+                        <Text style={styles.reactionText}>
+                          {emoji} {names.size}
+                        </Text>
+                      </Pressable>
+                    ))}
                   </View>
                 ) : null}
-                {isGif ? (
-                  <Image source={{ uri: item.media_url! }} style={styles.gif} contentFit="cover" />
-                ) : (
-                  <Text style={styles.messageText}>{item.text}</Text>
-                )}
-                {item.created_at ? (
-                  <Text style={styles.messageTime}>
-                    {new Date(item.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                  </Text>
-                ) : null}
-              </Pressable>
 
-              {msgReactions && msgReactions.size > 0 ? (
-                <View style={[styles.reactionRow, mine && styles.reactionRowMine]}>
-                  {[...msgReactions.entries()].map(([emoji, names]) => (
+                {reactingId === item.id ? (
+                  <View style={[styles.emojiBar, mine && styles.reactionRowMine]}>
+                    {QUICK_EMOJIS.map((e) => (
+                      <Pressable key={e} onPress={() => toggleReaction(item.id, e)} hitSlop={4}>
+                        <Text style={styles.emojiBarItem}>{e}</Text>
+                      </Pressable>
+                    ))}
                     <Pressable
-                      key={emoji}
-                      style={[styles.reactionChip, names.has(myName) && styles.reactionChipMine]}
-                      onPress={() => toggleReaction(item.id, emoji)}
+                      onPress={() => {
+                        setReactingId(null)
+                        setEmojiTarget({ messageId: item.id })
+                      }}
+                      hitSlop={4}
                     >
-                      <Text style={styles.reactionText}>
-                        {emoji} {names.size}
-                      </Text>
+                      <Text style={styles.emojiBarReply}>＋ React</Text>
                     </Pressable>
-                  ))}
-                </View>
-              ) : null}
-
-              {reactingId === item.id ? (
-                <View style={[styles.emojiBar, mine && styles.reactionRowMine]}>
-                  {QUICK_EMOJIS.map((e) => (
-                    <Pressable key={e} onPress={() => toggleReaction(item.id, e)} hitSlop={4}>
-                      <Text style={styles.emojiBarItem}>{e}</Text>
+                    <Pressable onPress={() => setReplyTo(item)} hitSlop={4}>
+                      <Text style={styles.emojiBarReply}>↩ Reply</Text>
                     </Pressable>
-                  ))}
-                  <Pressable
-                    onPress={() => {
-                      setReactingId(null)
-                      setEmojiTarget({ messageId: item.id })
-                    }}
-                    hitSlop={4}
-                  >
-                    <Text style={styles.emojiBarReply}>＋ React</Text>
-                  </Pressable>
-                  <Pressable onPress={() => setReplyTo(item)} hitSlop={4}>
-                    <Text style={styles.emojiBarReply}>↩ Reply</Text>
-                  </Pressable>
-                </View>
-              ) : null}
-            </View>
-          )
-        }}
-        ListEmptyComponent={<Text style={styles.empty}>No messages yet — say hi!</Text>}
-      />
-      {showScrollBtn ? (
-        <Pressable style={styles.scrollBtn} onPress={scrollToBottom}>
-          <Text style={styles.scrollBtnIcon}>↓</Text>
-          {unreadCount > 0 ? (
-            <View style={styles.scrollBadge}>
-              <Text style={styles.scrollBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
-            </View>
-          ) : null}
-        </Pressable>
-      ) : null}
+                  </View>
+                ) : null}
+              </View>
+            )
+          }}
+          ListEmptyComponent={<Text style={styles.empty}>No messages yet — say hi!</Text>}
+        />
+        {showScrollBtn ? (
+          <Pressable style={styles.scrollBtn} onPress={scrollToBottom}>
+            <Text style={styles.scrollBtnIcon}>↓</Text>
+            {unreadCount > 0 ? (
+              <View style={styles.scrollBadge}>
+                <Text style={styles.scrollBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+              </View>
+            ) : null}
+          </Pressable>
+        ) : null}
       </View>
 
       {canPost ? (
@@ -607,9 +615,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
               <Text style={styles.sendBtnText}>Send</Text>
             </Pressable>
           </View>
-          {messageInput.length >= 400 ? (
-            <Text style={styles.charCount}>{messageInput.length}/500</Text>
-          ) : null}
+          {messageInput.length >= 400 ? <Text style={styles.charCount}>{messageInput.length}/500</Text> : null}
         </View>
       ) : null}
 
@@ -624,186 +630,182 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       ) : null}
 
       <GifPickerSheet visible={gifOpen} onPick={(url) => void sendGif(url)} onClose={() => setGifOpen(false)} />
-      <EmojiPickerSheet
-        visible={emojiTarget !== null}
-        onPick={handleEmojiPick}
-        onClose={() => setEmojiTarget(null)}
-      />
+      <EmojiPickerSheet visible={emojiTarget !== null} onPick={handleEmojiPick} onClose={() => setEmojiTarget(null)} />
     </GameShell>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  joinBox: { gap: 16, paddingVertical: 24 },
-  joinHint: { color: theme.textMuted, fontSize: 15, lineHeight: 22 },
-  joinBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  // white on the solid rose join button — intentional
-  joinBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  viewOnly: { color: '#fbbf24', fontSize: 13, marginBottom: 8 },
-  joinScroll: { gap: 14, paddingVertical: 8 },
-  feedWrap: { flex: 1, position: 'relative' },
-  feed: { flex: 1, maxHeight: 420 },
-  feedContent: { gap: 8, paddingBottom: 12 },
-  messageRow: { alignItems: 'flex-start', maxWidth: '85%', alignSelf: 'flex-start', gap: 4 },
-  messageRowMine: { alignSelf: 'flex-end', alignItems: 'flex-end' },
-  message: {
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    padding: 10,
-  },
-  messageMine: { backgroundColor: theme.primarySoft },
-  messageAuthor: { color: theme.textMuted, fontSize: 11, marginBottom: 4 },
-  messageText: { color: theme.text, fontSize: 15 },
-  messageTime: { color: theme.textFaint, fontSize: 10, marginTop: 4 },
-  gif: { width: 180, height: 140, borderRadius: 8, backgroundColor: theme.bg },
-  replyQuote: {
-    borderLeftWidth: 2,
-    borderLeftColor: theme.primaryMuted,
-    paddingLeft: 8,
-    marginBottom: 6,
-  },
-  replyQuoteText: { color: theme.textMuted, fontSize: 12, fontStyle: 'italic' },
-  reactionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
-  reactionRowMine: { justifyContent: 'flex-end' },
-  reactionChip: {
-    flexDirection: 'row',
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  reactionChipMine: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
-  reactionText: { color: theme.textSecondary, fontSize: 12, fontWeight: '700' },
-  emojiBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: theme.bgElevated,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  emojiBarItem: { fontSize: 20 },
-  emojiBarReply: { color: theme.primaryMuted, fontSize: 13, fontWeight: '700' },
-  empty: { color: theme.textFaint, textAlign: 'center', paddingVertical: 24 },
-  scrollBtn: {
-    position: 'absolute',
-    bottom: 12,
-    right: 12,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: theme.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
-  },
-  // white on the solid rose scroll button — intentional
-  scrollBtnIcon: { color: '#fff', fontSize: 20, fontWeight: '800', lineHeight: 22 },
-  scrollBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: theme.error,
-    paddingHorizontal: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // white on the solid badge — intentional
-  scrollBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
-  charCount: { color: theme.textFaint, fontSize: 11, textAlign: 'right' },
-  readyBox: { gap: 8 },
-  readyHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
-  composerWrap: { marginTop: 8, gap: 6 },
-  replyBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 8,
-  },
-  replyBannerText: { color: theme.textMuted, fontSize: 13, flex: 1 },
-  replyBannerClose: { color: theme.textMuted, fontSize: 14, fontWeight: '700' },
-  gifBtn: {
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-  },
-  gifBtnText: { color: theme.primaryMuted, fontSize: 13, fontWeight: '800' },
-  emojiBtnText: { fontSize: 18 },
-  lobbyScroll: { gap: 12, paddingVertical: 8 },
-  shareBtn: {
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  shareBtnText: { color: theme.primaryMuted, fontSize: 15, fontWeight: '700' },
-  leaveBtn: {
-    borderWidth: 1,
-    borderColor: theme.error,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  leaveBtnQuiet: {
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 12,
-    paddingVertical: 10,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  leaveBtnText: { color: theme.error, fontSize: 15, fontWeight: '700' },
-  composer: { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
-  input: {
-    flex: 1,
-    backgroundColor: theme.surface,
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: 12,
-    color: theme.text,
-    fontSize: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    maxHeight: 120,
-    textAlignVertical: 'top',
-  },
-  sendBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  // white on the solid rose send button — intentional
-  sendBtnText: { color: '#fff', fontWeight: '700' },
-  error: { color: theme.error, fontSize: 14 },
-  btnDisabled: { opacity: 0.5 },
-})
+    joinBox: { gap: 16, paddingVertical: 24 },
+    joinHint: { color: theme.textMuted, fontSize: 15, lineHeight: 22 },
+    joinBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 12,
+      paddingVertical: 16,
+      alignItems: 'center',
+    },
+    // white on the solid rose join button — intentional
+    joinBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+    viewOnly: { color: '#fbbf24', fontSize: 13, marginBottom: 8 },
+    joinScroll: { gap: 14, paddingVertical: 8 },
+    feedWrap: { flex: 1, position: 'relative' },
+    feed: { flex: 1, maxHeight: 420 },
+    feedContent: { gap: 8, paddingBottom: 12 },
+    messageRow: { alignItems: 'flex-start', maxWidth: '85%', alignSelf: 'flex-start', gap: 4 },
+    messageRowMine: { alignSelf: 'flex-end', alignItems: 'flex-end' },
+    message: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 10,
+    },
+    messageMine: { backgroundColor: theme.primarySoft },
+    messageAuthor: { color: theme.textMuted, fontSize: 11, marginBottom: 4 },
+    messageText: { color: theme.text, fontSize: 15 },
+    messageTime: { color: theme.textFaint, fontSize: 10, marginTop: 4 },
+    gif: { width: 180, height: 140, borderRadius: 8, backgroundColor: theme.bg },
+    replyQuote: {
+      borderLeftWidth: 2,
+      borderLeftColor: theme.primaryMuted,
+      paddingLeft: 8,
+      marginBottom: 6,
+    },
+    replyQuoteText: { color: theme.textMuted, fontSize: 12, fontStyle: 'italic' },
+    reactionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
+    reactionRowMine: { justifyContent: 'flex-end' },
+    reactionChip: {
+      flexDirection: 'row',
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 999,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+    },
+    reactionChipMine: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+    reactionText: { color: theme.textSecondary, fontSize: 12, fontWeight: '700' },
+    emojiBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: theme.bgElevated,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+    },
+    emojiBarItem: { fontSize: 20 },
+    emojiBarReply: { color: theme.primaryMuted, fontSize: 13, fontWeight: '700' },
+    empty: { color: theme.textFaint, textAlign: 'center', paddingVertical: 24 },
+    scrollBtn: {
+      position: 'absolute',
+      bottom: 12,
+      right: 12,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: theme.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: '#000',
+      shadowOpacity: 0.25,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 4,
+    },
+    // white on the solid rose scroll button — intentional
+    scrollBtnIcon: { color: '#fff', fontSize: 20, fontWeight: '800', lineHeight: 22 },
+    scrollBadge: {
+      position: 'absolute',
+      top: -4,
+      right: -4,
+      minWidth: 18,
+      height: 18,
+      borderRadius: 9,
+      backgroundColor: theme.error,
+      paddingHorizontal: 4,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    // white on the solid badge — intentional
+    scrollBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+    charCount: { color: theme.textFaint, fontSize: 11, textAlign: 'right' },
+    readyBox: { gap: 8 },
+    readyHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
+    composerWrap: { marginTop: 8, gap: 6 },
+    replyBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      gap: 8,
+    },
+    replyBannerText: { color: theme.textMuted, fontSize: 13, flex: 1 },
+    replyBannerClose: { color: theme.textMuted, fontSize: 14, fontWeight: '700' },
+    gifBtn: {
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+    },
+    gifBtnText: { color: theme.primaryMuted, fontSize: 13, fontWeight: '800' },
+    emojiBtnText: { fontSize: 18 },
+    lobbyScroll: { gap: 12, paddingVertical: 8 },
+    shareBtn: {
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    shareBtnText: { color: theme.primaryMuted, fontSize: 15, fontWeight: '700' },
+    leaveBtn: {
+      borderWidth: 1,
+      borderColor: theme.error,
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    leaveBtnQuiet: {
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 12,
+      paddingVertical: 10,
+      alignItems: 'center',
+      marginTop: 8,
+    },
+    leaveBtnText: { color: theme.error, fontSize: 15, fontWeight: '700' },
+    composer: { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
+    input: {
+      flex: 1,
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: 12,
+      color: theme.text,
+      fontSize: 16,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      maxHeight: 120,
+      textAlignVertical: 'top',
+    },
+    sendBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+    },
+    // white on the solid rose send button — intentional
+    sendBtnText: { color: '#fff', fontWeight: '700' },
+    error: { color: theme.error, fontSize: 14 },
+    btnDisabled: { opacity: 0.5 },
+  })

@@ -327,16 +327,14 @@ const makeStyles = (theme: Theme) =>
     rulesRow: { marginTop: 2 },
     // Cap + center the game content so it doesn't stretch edge-to-edge on iPad.
     body: { flex: 1, ...centeredContent },
-    // Pinned timer slot: sits between the header and the scrolling body so the
-    // game's countdown stays on screen. Solid bg + hairline divider so scrolling
-    // content doesn't bleed through underneath it.
+    // Pinned timer slot: sits between the header and the scrolling body (stacked,
+    // not overlaid — so no background/border is needed and a self-hiding timer
+    // leaves only a small gap rather than an empty bordered box). Games pass a
+    // null node when their timer shouldn't show, keeping this collapsed.
     stickyTimer: {
       ...centeredContent,
       paddingHorizontal: theme.space.lg,
       paddingTop: theme.space.sm,
-      paddingBottom: theme.space.sm,
-      backgroundColor: theme.bg,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.surfaceHover,
+      paddingBottom: theme.space.xs,
     },
   })
