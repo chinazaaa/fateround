@@ -10,6 +10,7 @@ import {
   clampLandmineRoundCount,
   clampLandmineElimSeconds,
   landmineCycleInfo,
+  isLandmineRoundParticipant,
 } from './landmine'
 import type { LandmineAnswer, LandmineMark, LandmineMetadata, Player } from '@/types'
 
@@ -164,6 +165,26 @@ describe('landmine helpers', () => {
     const ids = ['a', 'b', 'c', 'd']
     const map = buildReviewerAssignments(ids, 1)
     for (const id of ids) expect(map[id]).not.toBe(id)
+  })
+
+  it('isLandmineRoundParticipant only counts players in the round ring', () => {
+    const metadata: LandmineMetadata = {
+      phase: 'marking',
+      phase_started_at: '2026-07-16T00:00:00Z',
+      category: 'Fruit',
+      caller_order: ['a', 'b', 'c'],
+      caller_index: 0,
+      reviewer_assignments: { a: 'b', b: 'c', c: 'a' },
+      mine_count: 1,
+      scores_computed: false,
+    }
+    // Everyone present when the round was built is a participant.
+    expect(isLandmineRoundParticipant(metadata, 'a')).toBe(true)
+    expect(isLandmineRoundParticipant(metadata, 'c')).toBe(true)
+    // A player who joined mid-round is in neither the caller order nor the reviewer ring.
+    expect(isLandmineRoundParticipant(metadata, 'latecomer')).toBe(false)
+    expect(isLandmineRoundParticipant(metadata, null)).toBe(false)
+    expect(isLandmineRoundParticipant(null, 'a')).toBe(false)
   })
 })
 

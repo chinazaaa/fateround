@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { LandmineActiveRound } from '@/components/landmine/LandmineActiveRound'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
+import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
+import { ShareResults } from '@/components/ShareResults'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -64,6 +66,7 @@ type HostTab = 'play' | 'manage'
 export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError, success } = useToast()
   const { confirm } = useConfirm()
+  const finishedCaptureRef = useRef<HTMLDivElement>(null)
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [rounds, setRounds] = useState<Round[]>([])
@@ -843,38 +846,61 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
       manage={manage}
       noManageTab={game.status === 'active'}
       finished={
-        <div className="space-y-6">
-          <FinishedWinnerHero
-            winnerName={winner?.name}
-            game={game}
-            subtitle={`Landmine · ${landmineModeLabel(mode)}`}
-            emoji="🧨"
-          />
-          <PaginatedLeaderboard
-            title="Final standings"
-            rows={leaderboard.map((r) => ({ id: r.id, name: r.eliminated ? `${r.name} 💥` : r.name, score: r.score }))}
-            highlightId={hostPlayerId}
-            scoreLabel={(score) => `${score} pts`}
-            emphasizeLeader
-          />
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => void confirmPlayAgain()}
-              disabled={playingAgain}
-              className="btn-secondary w-full py-3 text-base disabled:opacity-60"
-            >
-              {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void confirmReturnToLobby()}
-              disabled={playingAgain}
-              className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
-            >
-              Return to lobby
-            </button>
+        <div className="space-y-4">
+          <div ref={finishedCaptureRef} className="space-y-6">
+            <FinishedWinnerHero
+              winnerName={winner?.name}
+              game={game}
+              subtitle={`Landmine · ${landmineModeLabel(mode)}`}
+              emoji="🧨"
+            />
+            <PaginatedLeaderboard
+              title="Final standings"
+              rows={leaderboard.map((r) => ({
+                id: r.id,
+                name: r.eliminated ? `${r.name} 💥` : r.name,
+                score: r.score,
+              }))}
+              highlightId={hostPlayerId}
+              scoreLabel={(score) => `${score} pts`}
+              emphasizeLeader
+            />
           </div>
+          <HostGameFinishedActions
+            variant="winner"
+            gameCode={game.id}
+            playAgainButton={
+              <button
+                type="button"
+                onClick={() => void confirmPlayAgain()}
+                disabled={playingAgain}
+                className="btn-secondary w-full py-3 text-sm disabled:opacity-60"
+              >
+                {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
+              </button>
+            }
+            returnToLobbyButton={
+              <button
+                type="button"
+                onClick={() => void confirmReturnToLobby()}
+                disabled={playingAgain}
+                className="btn-secondary w-full py-3 text-sm disabled:opacity-60"
+              >
+                Return to lobby · different settings
+              </button>
+            }
+            shareButton={
+              <ShareResults
+                captureRef={finishedCaptureRef}
+                game={game}
+                participants={[]}
+                votes={[]}
+                rounds={[]}
+                players={players}
+                primary
+              />
+            }
+          />
           {hostWon && (
             <PostWinToCommunity
               gameType="landmine"
