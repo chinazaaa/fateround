@@ -587,6 +587,7 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={WORD_SEARCH_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void handleStart()}
           starting={starting}

@@ -564,6 +564,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={CRAZY8_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}

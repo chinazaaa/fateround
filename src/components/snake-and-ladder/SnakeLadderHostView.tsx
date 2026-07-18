@@ -477,6 +477,7 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={SNAKE_LADDER_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}

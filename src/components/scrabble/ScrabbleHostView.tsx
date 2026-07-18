@@ -393,6 +393,7 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={SCRABBLE_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}

@@ -538,6 +538,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={MONOPOLY_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}

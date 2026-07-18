@@ -322,6 +322,7 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
           meId={hostPlayerId}
           isHost
           minPlayers={MAHJONG_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}

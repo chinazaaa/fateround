@@ -597,6 +597,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={CROSSWORD_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void handleStart()}
           starting={starting}

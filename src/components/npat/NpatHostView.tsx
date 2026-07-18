@@ -332,6 +332,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={NPAT_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}

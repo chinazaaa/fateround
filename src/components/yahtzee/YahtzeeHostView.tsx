@@ -487,6 +487,7 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={YAHTZEE_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}

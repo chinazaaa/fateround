@@ -488,6 +488,7 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={WORD_SCRAMBLE_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void handleStart()}
           starting={starting}

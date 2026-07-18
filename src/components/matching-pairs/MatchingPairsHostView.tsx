@@ -684,6 +684,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={MATCHING_PAIRS_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void handleStartGame()}
           starting={starting}

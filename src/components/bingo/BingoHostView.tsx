@@ -736,6 +736,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={BINGO_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}

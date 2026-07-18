@@ -6,7 +6,7 @@ import { HostLobbySettingsSheet } from '@/components/host/HostLobbySettingsSheet
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { WhatsAppChannelLink } from '@/components/WhatsAppChannelLink'
 import { EditNameInline } from '@/components/ui/EditNameInline'
-import { useGameSettingsContent } from '@/components/GameSettingsContext'
+import { useGameSettingsContent, GameSettingsCloseProvider } from '@/components/GameSettingsContext'
 import { getPlayerSession } from '@/lib/utils'
 
 /**
@@ -73,19 +73,21 @@ export function GameChromeSettings({
         gameCode={gameCode}
         resumeToken={resumeToken}
       >
-        {/* Host: edit your own name (players get theirs from their game view's registered
-            block). Shown when the host holds a seat. */}
-        {role === 'host' && gameCode && hostSession ? (
-          <EditNameInline
-            gameCode={gameCode}
-            playerId={hostSession.playerId}
-            currentName={hostSession.playerName}
-            onRenamed={() => {}}
-          />
-        ) : null}
-        {gameSettings}
-        {role === 'host' ? <TransferHostControl triggerClassName={rowClass} /> : null}
-        <WhatsAppChannelLink className="w-full justify-center" />
+        <GameSettingsCloseProvider value={() => setOpen(false)}>
+          {/* Host: edit your own name (players get theirs from their game view's registered
+              block). Shown when the host holds a seat. */}
+          {role === 'host' && gameCode && hostSession ? (
+            <EditNameInline
+              gameCode={gameCode}
+              playerId={hostSession.playerId}
+              currentName={hostSession.playerName}
+              onRenamed={() => {}}
+            />
+          ) : null}
+          {gameSettings}
+          {role === 'host' ? <TransferHostControl triggerClassName={rowClass} /> : null}
+          <WhatsAppChannelLink className="w-full justify-center" />
+        </GameSettingsCloseProvider>
       </HostLobbySettingsSheet>
     </>
   )

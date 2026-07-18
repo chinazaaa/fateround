@@ -455,6 +455,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={CHESS_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}

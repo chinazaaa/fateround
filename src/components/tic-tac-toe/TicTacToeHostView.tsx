@@ -384,6 +384,7 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={TIC_TAC_TOE_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}

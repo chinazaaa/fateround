@@ -415,6 +415,7 @@ export function AyoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={AYO_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}

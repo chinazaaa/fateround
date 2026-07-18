@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
+import { useCloseGameSettings } from '@/components/GameSettingsContext'
 import type { GameType } from '@/types'
 
 /**
@@ -44,6 +45,7 @@ export function HostActiveSettings({
   /** Game-specific settings (late-join rules, game options, …). */
   children?: ReactNode
 }) {
+  const closeSettings = useCloseGameSettings()
   return (
     <div className="space-y-4">
       {children}
@@ -51,7 +53,12 @@ export function HostActiveSettings({
       <HostEndGameButton
         gameCode={gameCode}
         hostToken={hostToken}
-        onEnded={onEnded}
+        onEnded={async () => {
+          // Dismiss the ⚙ sheet as the room flips to the results screen, so the host
+          // isn't left staring at a now-stale open sheet.
+          closeSettings()
+          await onEnded()
+        }}
         label={endGameLabel}
         icon={<ExitIcon size={16} />}
         confirmTitle={endGameConfirmTitle}

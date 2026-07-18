@@ -311,6 +311,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={minPlayers}
+            capacityGame={game}
             onToggleReady={async (ready) => {
               if (!myResumeToken) return
               await fetch('/api/players/ready', {

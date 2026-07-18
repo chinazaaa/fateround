@@ -369,6 +369,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               meId={myPlayerId}
               isHost={false}
               minPlayers={MAFIA_MIN_PLAYERS}
+              capacityGame={game}
               onToggleReady={(ready) => void toggleReplayReady(ready)}
               onStart={() => {}}
               pending={replayReadyPending}
