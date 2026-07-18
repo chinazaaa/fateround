@@ -31,6 +31,7 @@ import { MonopolyStatusCards } from '@/components/games/monopoly/MonopolyStatusC
 import { MonopolyShareCard } from '@/components/games/monopoly/MonopolyShareCard'
 import { formatThemedMoney, formatThemedText, themedSpaceName } from '@/components/games/monopoly/monopoly-theme'
 import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameExpiryTimer } from '@/hooks/useGameExpiryTimer'
@@ -398,6 +399,12 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     void runManage(() => postMonopolyTrade(bootstrap.code, bootstrap.myResumeToken!, { accept }))
 
   const tokenOwners = useMemo(() => monopolyTokenOwners(bootstrap.players), [bootstrap.players])
+
+  const gameTimer =
+    (bootstrap.game?.game_duration_seconds ?? 0) > 0 && bootstrap.game?.status === 'active' ? (
+      <MonopolyGameTimerBar game={bootstrap.game} />
+    ) : null
+  const gameTimerPinned = useStickyTimer(gameTimer, [bootstrap.game])
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
@@ -809,7 +816,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title={batch8GameLabel('monopoly')}>
       <ScrollView ref={scrollRef} contentContainerStyle={styles.playContent}>
-        <MonopolyGameTimerBar game={bootstrap.game} />
+        {gameTimerPinned ? null : gameTimer}
 
         <MonopolyStatusCards
           isMyTurn={!!isMyTurn}

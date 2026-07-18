@@ -39,6 +39,7 @@ import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChro
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { useAdvancePolling } from '@/hooks/useAdvancePolling'
 import { postNpatLetter, postNpatMark, postNpatSubmit } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
@@ -460,6 +461,15 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     void act(() => postNpatDispute(bootstrap.code, bootstrap.myResumeToken!, currentRound.id, targetId, category))
   }
 
+  // Pin the whole-game "time left" bar below the header so it stays visible as
+  // the round scrolls. Gated to a timed, active session so the slot stays empty
+  // in the untimed (all-26-letters) mode and on non-active screens.
+  const iCallOnGameTimer =
+    (bootstrap.game?.game_duration_seconds ?? 0) > 0 && bootstrap.game?.status === 'active' ? (
+      <ICallOnGameTimerBar game={bootstrap.game} />
+    ) : null
+  const iCallOnGameTimerPinned = useStickyTimer(iCallOnGameTimer, [bootstrap.game])
+
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
   if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
@@ -607,7 +617,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
         subtitle={`Round ${currentRound.round_number}`}
       >
         <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
-          {gameTimerBar}
+          {iCallOnGameTimerPinned ? null : gameTimerBar}
           {roundHeaderCard}
           {phaseTimer}
           {isCaller && !isViewer ? (
@@ -650,7 +660,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
         subtitle={`Letter ${metadata.letter ?? '?'}`}
       >
         <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
-          {gameTimerBar}
+          {iCallOnGameTimerPinned ? null : gameTimerBar}
           {roundHeaderCard}
           {phaseTimer}
           {isViewer ? (
@@ -696,7 +706,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Mark ${targetName}'s answers`}>
         <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
-          {gameTimerBar}
+          {iCallOnGameTimerPinned ? null : gameTimerBar}
           {roundHeaderCard}
           {phaseTimer}
           {!reviewTargetAnswer ? (
@@ -775,7 +785,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
         subtitle={`Letter ${metadata.letter ?? '?'}`}
       >
         <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
-          {gameTimerBar}
+          {iCallOnGameTimerPinned ? null : gameTimerBar}
           {roundHeaderCard}
           {isCaller && !isViewer ? (
             <>
@@ -816,7 +826,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Letter ${metadata.letter ?? '?'}`}>
       <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
-        {gameTimerBar}
+        {iCallOnGameTimerPinned ? null : gameTimerBar}
         <View style={styles.revealHead}>
           <Text style={styles.revealTitle}>Round {currentRound.round_number} scores</Text>
           <ICallOnRevealCountdown endedAt={currentRound.ended_at} />

@@ -27,6 +27,7 @@ import { ScrabbleTile } from '@/components/games/scrabble/ScrabbleTile'
 import { ScrabbleGameTimerBar } from '@/components/games/scrabble/ScrabbleGameTimerBar'
 import { ScrabbleShareCard, type ScrabbleShareStanding } from '@/components/games/scrabble/ScrabbleShareCard'
 import { ScrabbleLiveScoreboard, ScrabbleTurnBadge } from '@/components/games/scrabble/ScrabbleClocks'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -307,6 +308,14 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   const submitExchange = () =>
     act(() => postScrabbleExchange(bootstrap.code, bootstrap.myResumeToken!, exchangeIndices))
 
+  const gameTimer =
+    (bootstrap.game?.game_duration_seconds ?? 0) > 0 &&
+    bootstrap.game?.status === 'active' &&
+    bootstrap.game?.scrabble_clock_mode !== 'chess' ? (
+      <ScrabbleGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} onExpired={() => void bootstrap.load()} />
+    ) : null
+  const gameTimerPinned = useStickyTimer(gameTimer, [bootstrap.code, bootstrap.game])
+
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
   if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
@@ -413,7 +422,7 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
           isMyTurn={isMyTurn}
         />
 
-        <ScrabbleGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} onExpired={() => void bootstrap.load()} />
+        {gameTimerPinned ? null : gameTimer}
 
         <ScrabbleTurnBadge
           session={activeSession}

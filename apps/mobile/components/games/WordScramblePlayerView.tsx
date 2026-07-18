@@ -22,6 +22,7 @@ import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChro
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { WordScrambleGameTimerBar } from '@/components/games/word-scramble/WordScrambleGameTimerBar'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { pointsLeaderboard } from '@/lib/finish-leaderboards'
@@ -288,6 +289,16 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
     )
   }, [revealClue])
 
+  const gameTimer =
+    (bootstrap.game?.game_duration_seconds ?? 0) > 0 && bootstrap.game?.status === 'active' ? (
+      <WordScrambleGameTimerBar
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onExpired={() => void bootstrap.load()}
+      />
+    ) : null
+  const gameTimerPinned = useStickyTimer(gameTimer, [bootstrap.code, bootstrap.game])
+
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
   if (bootstrap.screen === 'join' && bootstrap.game) {
@@ -354,11 +365,7 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('word_scramble')} subtitle={bootstrap.code}>
       <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
-        <WordScrambleGameTimerBar
-          gameCode={bootstrap.code}
-          game={bootstrap.game}
-          onExpired={() => void bootstrap.load()}
-        />
+        {gameTimerPinned ? null : gameTimer}
 
         {toast ? (
           <View style={[styles.toast, toast.ok ? styles.toastOk : styles.toastBad]}>

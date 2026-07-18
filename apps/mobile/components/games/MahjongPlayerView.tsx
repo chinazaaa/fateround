@@ -29,6 +29,7 @@ import {
   type MahjongSelfKongOption,
 } from '@/components/games/mahjong/mahjong-self-actions'
 import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -149,6 +150,9 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
     enabled: bootstrap.screen === 'playing' && (isMyTurn || session?.phase === 'claim'),
     onExpire: () => postMahjongExpireTurn(bootstrap.code).then(() => bootstrap.load()),
   })
+
+  const mahjongTimer = secondsLeft > 0 ? <TimerBadge seconds={secondsLeft} /> : null
+  const mahjongTimerPinned = useStickyTimer(mahjongTimer, [secondsLeft])
 
   const act = async (fn: () => Promise<unknown>) => {
     if (!bootstrap.myPlayerId || !bootstrap.myResumeToken || acting) return
@@ -313,7 +317,7 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
 
         {session.status_message ? <Text style={styles.status}>{session.status_message}</Text> : null}
 
-        {secondsLeft > 0 ? <TimerBadge seconds={secondsLeft} /> : null}
+        {mahjongTimerPinned ? null : mahjongTimer}
 
         <MahjongTableView
           session={session}
