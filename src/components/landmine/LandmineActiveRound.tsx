@@ -9,6 +9,7 @@ import {
   gameLandmineMode,
   gameLandmineMineSource,
   gameLandmineCategoryTimer,
+  isLandmineRoundParticipant,
   landmineModeLabel,
   landmineCycleInfo,
   clampLandmineMineCount,
@@ -37,6 +38,7 @@ type PlayScreen =
   | 'setup'
   | 'category_wait'
   | 'setter_watch'
+  | 'round_watch'
   | 'writing'
   | 'writing_locked'
   | 'marking'
@@ -327,6 +329,8 @@ export function LandmineActiveRound({
   // never auto-submit an answer.
   useEffect(() => {
     if (!currentRound || readOnly || isSetter || metadata?.phase !== 'writing' || myAnswer?.submitted_at) return
+    // Late joiners aren't in this round's ring — don't auto-submit an empty answer for them.
+    if (!isLandmineRoundParticipant(metadata, myPlayerId)) return
     if (!metadata.phase_started_at) return
     const deadline = new Date(metadata.phase_started_at).getTime() + writingTimer * 1000
     const msLeft = Math.max(0, deadline - Date.now())
@@ -381,6 +385,11 @@ export function LandmineActiveRound({
     }
     // Manual mode: the setter planted the mine and sits out — they watch, never answer or mark.
     if (isSetter && (phase === 'writing' || phase === 'marking')) return 'setter_watch'
+    // A spectator, or a player who joined after this round began, isn't in the round's
+    // answer/mark ring. Show them a watch view instead of a writing/marking UI they can't act
+    // on — the empty "mark this" screen that looked frozen when you jumped in mid-round.
+    const spectatingRound = readOnly || !isLandmineRoundParticipant(metadata, myPlayerId)
+    if (spectatingRound && (phase === 'writing' || phase === 'marking')) return 'round_watch'
     if (phase === 'writing') {
       const locked = !!myAnswer?.submitted_at || lockedAnswerRound === currentRound.id
       return locked ? 'writing_locked' : 'writing'
@@ -401,6 +410,8 @@ export function LandmineActiveRound({
     myMark,
     lockedAnswerRound,
     lockedMarkRound,
+    readOnly,
+    myPlayerId,
   ])
 
   // ── Finished ────────────────────────────────────────────────────────────────

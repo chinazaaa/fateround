@@ -173,6 +173,25 @@ export function reviewTargetForMarker(metadata: LandmineMetadata | null, markerP
   return metadata.reviewer_assignments[markerPlayerId] ?? null
 }
 
+/**
+ * Whether this player is part of the CURRENT round's answer/mark ring. The ring
+ * (`caller_order` + `reviewer_assignments`) is frozen when the round is built, so a player who
+ * joins mid-round — as a late player or a viewer — isn't in it. Such a player has no answer to
+ * write and nobody assigned to mark, so dropping them onto the writing/marking UI reads as a
+ * frozen "mark this" screen they can't complete. Use this to route them to a watch/wait view
+ * until the next round folds them in.
+ */
+export function isLandmineRoundParticipant(
+  metadata: LandmineMetadata | null,
+  playerId: string | null | undefined
+): boolean {
+  if (!metadata || !playerId) return false
+  return (
+    metadata.caller_order.includes(playerId) ||
+    Object.prototype.hasOwnProperty.call(metadata.reviewer_assignments, playerId)
+  )
+}
+
 export function resolveActiveLandmineRound(rounds: Round[], currentRoundNumber: number): Round | null {
   const active = rounds.find((r) => r.status === 'active') ?? null
   if (active) {
