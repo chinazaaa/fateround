@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { QuickDrawGuessPlayerView } from '@/components/quick-draw/QuickDrawGuessPlayerView'
 import { QuickDrawActiveRound } from '@/components/quick-draw/QuickDrawActiveRound'
@@ -45,6 +45,9 @@ import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { DescribeItLoadingScreen } from '@/components/describe-it/DescribeItChrome'
 
 type Screen =
@@ -230,6 +233,33 @@ function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
     },
     [gameCode, myResumeToken, load, toastError]
   )
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙ gear
+  // (top header). Registered while the game is active; GameChromeSettings renders it in the sheet.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId || game?.status !== 'active') return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={me?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') {
     return (

@@ -8,7 +8,6 @@ import { PlayerRoomShell } from '@/components/rooms/PlayerRoomShell'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
-import { deriveBaseRows, sortRows, useRosterRowsOverride } from '@/components/roster/RosterDrawerContext'
 import { WhotFinalResultsShareBlock } from '@/components/whot/WhotFinalResultsShareBlock'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -274,17 +273,10 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const whotCallActive = session ? hasActiveWhotCall(session) : false
   const pickPenalty = session ? getActivePickPenalty(session) : { type: null, count: 0 }
 
-  // Feed the roster side-drawer from THIS view's bootstrap (authoritative players +
-  // myPlayerId) via the OVERRIDE slot — the dispatcher (PollGamePlayerExperience)
-  // still registers a base copy, but its useGameSession myPlayerId can lag ours, so
-  // a spectator's own row would miss the "· you" highlight. Override always wins over
-  // that base (single writer, no fight — using base here would flicker the header
-  // roster button as the two registrations clobber each other).
-  const rosterRows = useMemo(
-    () => (game?.status === 'active' ? sortRows(deriveBaseRows(players, game, myPlayerId)) : null),
-    [game, players, myPlayerId]
-  )
-  useRosterRowsOverride(rosterRows)
+  // The roster side-drawer is fed centrally by the dispatcher (PollGamePlayerExperience
+  // → useRosterBase), same as every game. Its useGameSession now late-binds myPlayerId
+  // when our row lands, so a spectator's own row is marked "· you" without any Whot-
+  // specific override.
 
   // Change name · Leave game for players/spectators live behind the main chrome's ⚙
   // gear (top header) — the in-room bar that used to hold them is gone. Registered

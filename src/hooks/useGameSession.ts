@@ -352,6 +352,22 @@ export function useGameSession(deps: GameSessionDeps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- polling on mount only
   }, [gameCode])
 
+  // ── Late-bind our own identity ───────────────────────────────────────────
+  // The mount-time load() resolves the session ONCE. A spectator's "Watch" join
+  // (and any join a dedicated view runs through its own useGameViewBootstrap) writes
+  // the local session AFTER that load, and no realtime handler re-resolves it — so
+  // myPlayerId stayed null and the roster drawer never marked the spectator's own
+  // row "· you". Re-bind from the local session as soon as our row lands in `players`.
+  useEffect(() => {
+    if (myPlayerId) return
+    const s = getPlayerSession(gameCode)
+    if (s && players.some((p) => p.id === s.playerId)) {
+      setMyPlayerId(s.playerId)
+      setMyPlayerName(s.playerName)
+      setMyPlayerGender(s.playerGender ?? null)
+    }
+  }, [players, myPlayerId, gameCode])
+
   // ── Round-start sound effect ────────────────────────────────────────────
   useEffect(() => {
     if (view !== 'round' || !currentRound?.id || suppressRoundSoundRef.current) return

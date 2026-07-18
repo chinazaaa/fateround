@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   MahjongCard,
@@ -16,6 +16,9 @@ import { currentMahjongPlayerId, MAHJONG_MIN_PLAYERS } from '@/lib/mahjong'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { setPlayerSession, clearPlayerSession } from '@/lib/utils'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { resolvePlayerSession } from '@/lib/player-resume'
 import type { Game, MahjongClaimType, MahjongPlayerState, MahjongSession, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -276,6 +279,32 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
     session,
     game?.status === 'active' && !isViewer && (isMyTurn || session?.phase === 'claim')
   )
+
+  // Edit name · Leave game for players/spectators, in the main-header ⚙ during play.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId || game?.status !== 'active') return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={myName}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, myName, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') return <MahjongLoadingScreen />
 
