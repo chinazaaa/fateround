@@ -59,6 +59,34 @@ export function landmineMineSourceLabel(source: LandmineMineSource | null | unde
   return parseLandmineMineSource(source) === 'manual' ? 'Manual' : 'Auto'
 }
 
+export const LANDMINE_DEFAULT_ELIM_SECONDS = 300
+export const LANDMINE_ELIM_SECONDS_OPTIONS = [180, 300, 600, 900] as const
+
+export function clampLandmineElimSeconds(seconds: number | undefined | null): number {
+  const n = Number(seconds)
+  return (LANDMINE_ELIM_SECONDS_OPTIONS as readonly number[]).includes(n) ? n : LANDMINE_DEFAULT_ELIM_SECONDS
+}
+
+export function gameLandmineElimSeconds(game: Pick<Game, 'landmine_elim_seconds'>): number {
+  return clampLandmineElimSeconds(game.landmine_elim_seconds)
+}
+
+/**
+ * Manual mode counts a "round" as one full cycle (every player takes their setter turn). Internally
+ * each setter-turn is its own round row, so the displayed round is the cycle: ceil(turn / roster).
+ */
+export function landmineCycleInfo(
+  roundNumber: number,
+  roster: number
+): { round: number; setterInRound: number; roster: number } {
+  const n = Math.max(1, roster)
+  return {
+    round: Math.max(1, Math.ceil(roundNumber / n)),
+    setterInRound: ((Math.max(1, roundNumber) - 1) % n) + 1,
+    roster: n,
+  }
+}
+
 /** The players who answer + peer-mark this round (manual mode excludes the sitting-out setter). */
 export function landmineAnsweringPlayerIds(playerIds: string[], setterId: string | null, manual: boolean): string[] {
   if (!manual || !setterId) return playerIds

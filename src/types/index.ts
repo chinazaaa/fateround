@@ -414,6 +414,8 @@ export interface Game {
   landmine_originality_bonus?: boolean | null
   /** Landmine — 'system' (server draws the mine) or 'manual' (a rotating player sets it). */
   landmine_mine_source?: LandmineMineSource | null
+  /** Landmine — elimination time limit in seconds (game ends when the clock runs out). */
+  landmine_elim_seconds?: number | null
   /** Ping Pong — points required to win the match (3, 5, 7, 11, 15, or 21). */
   ping_pong_points_to_win?: number | null
 }

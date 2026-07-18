@@ -136,9 +136,11 @@ import {
   clampLandmineRoundCount,
   parseLandmineMode,
   parseLandmineMineSource,
+  clampLandmineElimSeconds,
   LANDMINE_DEFAULT_MARKING_TIMER,
   LANDMINE_DEFAULT_CATEGORY_TIMER,
   LANDMINE_DEFAULT_ROUND_COUNT,
+  LANDMINE_DEFAULT_MANUAL_CYCLES,
 } from '@/lib/landmine'
 import {
   clampCodewordsTimer,
@@ -414,6 +416,7 @@ export async function POST(req: NextRequest) {
     landmine_mine_count: rawLandmineMineCount,
     landmine_originality_bonus: rawLandmineOriginalityBonus,
     landmine_mine_source: rawLandmineMineSource,
+    landmine_elim_seconds: rawLandmineElimSeconds,
     allow_viewers: rawAllowViewers,
     allow_late_players: rawAllowLatePlayers,
     late_join_policy: rawLateJoinPolicy,
@@ -619,7 +622,12 @@ export async function POST(req: NextRequest) {
                     : isQuickDrawGame(game_type)
                       ? clampQuickDrawRounds(rounds_count ?? QUICK_DRAW_DEFAULT_ROUNDS)
                       : isLandmineGame(game_type)
-                        ? clampLandmineRoundCount(rounds_count ?? LANDMINE_DEFAULT_ROUND_COUNT)
+                        ? clampLandmineRoundCount(
+                            rounds_count ??
+                              (parseLandmineMineSource(rawLandmineMineSource) === 'manual'
+                                ? LANDMINE_DEFAULT_MANUAL_CYCLES
+                                : LANDMINE_DEFAULT_ROUND_COUNT)
+                          )
                         : Math.min(Math.max(Number(rounds_count) || 3, 1), maxRounds)
 
   if (
@@ -955,6 +963,7 @@ export async function POST(req: NextRequest) {
           landmine_mine_count: clampLandmineMineCount(rawLandmineMineCount),
           landmine_originality_bonus: rawLandmineOriginalityBonus !== false,
           landmine_mine_source: parseLandmineMineSource(rawLandmineMineSource),
+          landmine_elim_seconds: clampLandmineElimSeconds(rawLandmineElimSeconds),
         }
       : {}),
     ...(isQuickDrawGame(game_type)
