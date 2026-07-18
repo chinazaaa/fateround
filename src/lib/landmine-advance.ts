@@ -15,10 +15,11 @@ import {
   gameLandmineMode,
   gameLandmineCategoryTimer,
   landmineAnsweringPlayerIds,
+  landmineReviewEnabled,
+  landmineReviewSeconds,
   LANDMINE_ELIM_MAX_CYCLES,
   LANDMINE_MAX_ANSWER_LENGTH,
   LANDMINE_REVEAL_SECONDS,
-  LANDMINE_REVIEW_SECONDS,
   normalizeAnswer,
   parseLandmineMetadata,
   pickMines,
@@ -94,7 +95,7 @@ function phaseExpired(metadata: LandmineMetadata, game: Game): boolean {
   if (metadata.phase === 'category_pick') return now >= start + gameLandmineCategoryTimer(game) * 1000
   if (metadata.phase === 'writing') return now >= start + writingTimer(game) * 1000
   if (metadata.phase === 'marking') return now >= start + markingTimer(game) * 1000
-  if (metadata.phase === 'review') return now >= start + LANDMINE_REVIEW_SECONDS * 1000
+  if (metadata.phase === 'review') return now >= start + landmineReviewSeconds(game) * 1000
   return false
 }
 
@@ -480,16 +481,19 @@ async function advanceActiveRoundPhase(
     const marked = await countRoundMarks(supabase, round.id, answeringIds)
     const allMarked = answeringIds.length > 0 && marked >= answeringIds.length
     if (allMarked || phaseExpired(metadata, game)) {
-      // Manual mode hands off to the setter's review; system mode scores immediately.
-      const ok = manual ? await startReviewPhase(supabase, round) : await computeAndFinishRound(supabase, game, round)
+      // With review on, hand off to the review phase — the setter (manual) or the host (auto) can
+      // check/override the verdicts before scores reveal. With it off, score straight away.
+      const ok = landmineReviewEnabled(game)
+        ? await startReviewPhase(supabase, round)
+        : await computeAndFinishRound(supabase, game, round)
       return ok ? 'phase_advanced' : 'round_active'
     }
     return 'round_active'
   }
 
   if (metadata.phase === 'review') {
-    // Only the setter's approve (via /api/landmine/setter-mark) finishes early; otherwise the review
-    // window expires and we score with the peer verdicts as they stand.
+    // Only the reviewer's approve (via /api/landmine/setter-mark) finishes early; otherwise the
+    // review window expires and we score with the peer verdicts as they stand.
     if (phaseExpired(metadata, game)) {
       const ok = await computeAndFinishRound(supabase, game, round)
       return ok ? 'phase_advanced' : 'round_active'

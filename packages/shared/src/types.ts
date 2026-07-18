@@ -127,6 +127,7 @@ export interface Game {
   landmine_originality_bonus?: boolean | null
   landmine_mine_source?: LandmineMineSource | null
   landmine_elim_seconds?: number | null
+  landmine_review?: boolean | null
   question_source?: string | null
   /** Who Said This: 'player' (players submit) or 'deck' (host Platform/Library/CSV deck). */
   wst_quote_source?: string | null

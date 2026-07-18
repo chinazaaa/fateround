@@ -21,6 +21,7 @@ import {
   tallyLandmineScores,
   LANDMINE_MAX_ANSWER_LENGTH,
   LANDMINE_REVIEW_SECONDS,
+  LANDMINE_AUTO_REVIEW_SECONDS,
 } from '@fateround/shared/landmine'
 import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
@@ -201,10 +202,12 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   const writingTimer = clampLandmineWritingTimer(bootstrap.game?.timer_seconds)
   const markingTimer = clampLandmineMarkingTimer(bootstrap.game?.operative_timer_seconds)
   const categoryTimer = clampLandmineCategoryTimer(bootstrap.game?.game_duration_seconds)
+  // Manual setter gets the long review window; the auto-mode host gets a short spot-check.
+  const reviewTimer = manual ? LANDMINE_REVIEW_SECONDS : LANDMINE_AUTO_REVIEW_SECONDS
   const secondsLeft = useMemo(() => {
     void tick
-    return metadata ? phaseSecondsLeft(metadata, writingTimer, markingTimer, categoryTimer) : null
-  }, [metadata, tick, writingTimer, markingTimer, categoryTimer])
+    return metadata ? phaseSecondsLeft(metadata, writingTimer, markingTimer, categoryTimer, reviewTimer) : null
+  }, [metadata, tick, writingTimer, markingTimer, categoryTimer, reviewTimer])
 
   // Pin the phase countdown to the session shell (below the header) like the other games, so it
   // stays visible while the answer/marking board scrolls. Each phase anchors to its own start +
@@ -215,7 +218,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
       : metadata?.phase === 'marking'
         ? markingTimer
         : metadata?.phase === 'review'
-          ? LANDMINE_REVIEW_SECONDS
+          ? reviewTimer
           : categoryTimer
   const timerActive = !!metadata && metadata.phase !== 'reveal' && bootstrap.game?.status === 'active'
   const stickyTimerNode = timerActive ? (
@@ -796,7 +799,9 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
         <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
           <View style={styles.waitCard}>
             <Text style={styles.waitEmoji}>⚖️</Text>
-            <Text style={styles.waitTitle}>{callerName} is reviewing the marks…</Text>
+            <Text style={styles.waitTitle}>
+              {manual ? `${callerName} is reviewing the marks…` : 'The host is reviewing the marks…'}
+            </Text>
             <Text style={styles.meta}>They’ll confirm each verdict, then scores reveal.</Text>
           </View>
           {playerAnswers.map((a) => {

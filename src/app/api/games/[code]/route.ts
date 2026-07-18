@@ -223,6 +223,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     if (body.landmine_elim_seconds !== undefined) {
       updatePayload.landmine_elim_seconds = clampLandmineElimSeconds(body.landmine_elim_seconds)
     }
+    if (body.landmine_review !== undefined) {
+      updatePayload.landmine_review = body.landmine_review !== false
+    }
     if (rawTimerSeconds !== undefined) updatePayload.timer_seconds = clampLandmineWritingTimer(rawTimerSeconds)
     if (rawOperativeTimerSeconds !== undefined) {
       updatePayload.operative_timer_seconds = clampLandmineMarkingTimer(rawOperativeTimerSeconds)

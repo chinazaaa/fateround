@@ -11,6 +11,8 @@ import {
   clampLandmineElimSeconds,
   landmineCycleInfo,
   isLandmineRoundParticipant,
+  landmineReviewEnabled,
+  landmineReviewSeconds,
 } from './landmine'
 import type { LandmineAnswer, LandmineMark, LandmineMetadata, Player } from '@/types'
 
@@ -238,6 +240,18 @@ describe('landmine manual mode', () => {
     expect(byPlayer.b.points).toBeGreaterThan(0)
     expect(byPlayer.c.outcome).toBe('void')
     expect(byPlayer.c.points).toBe(0)
+  })
+
+  it('landmineReviewEnabled defaults on, off only when explicitly false', () => {
+    expect(landmineReviewEnabled({ landmine_review: undefined })).toBe(true)
+    expect(landmineReviewEnabled({ landmine_review: null })).toBe(true)
+    expect(landmineReviewEnabled({ landmine_review: true })).toBe(true)
+    expect(landmineReviewEnabled({ landmine_review: false })).toBe(false)
+  })
+
+  it('landmineReviewSeconds is longer for the manual setter than the auto host', () => {
+    expect(landmineReviewSeconds({ landmine_mine_source: 'manual' })).toBe(45)
+    expect(landmineReviewSeconds({ landmine_mine_source: 'system' })).toBe(20)
   })
 
   it('clampLandmineElimSeconds accepts the option set, defaults otherwise', () => {

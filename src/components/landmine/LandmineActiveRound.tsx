@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { LandmineReviewPanel } from '@/components/landmine/LandmineReviewPanel'
 import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
@@ -12,6 +13,7 @@ import {
   gameLandmineMineSource,
   gameLandmineCategoryTimer,
   isLandmineRoundParticipant,
+  landmineReviewSeconds,
   landmineModeLabel,
   landmineCycleInfo,
   clampLandmineMineCount,
@@ -64,6 +66,8 @@ export function LandmineActiveRound({
   onReload,
   skipGameSync = false,
   readOnly = false,
+  isHost = false,
+  hostToken = null,
 }: {
   gameCode: string
   game: Game
@@ -77,6 +81,9 @@ export function LandmineActiveRound({
   onReload?: () => void
   skipGameSync?: boolean
   readOnly?: boolean
+  // Auto mode has no setter, so the host is the review-phase reviewer (authorized by hostToken).
+  isHost?: boolean
+  hostToken?: string | null
 }) {
   const { error: toastError } = useToast()
   const [submitting, setSubmitting] = useState(false)
@@ -94,8 +101,7 @@ export function LandmineActiveRound({
   const [lockedAnswerRound, setLockedAnswerRound] = useState<string | null>(null)
   const [lockedAnswerText, setLockedAnswerText] = useState('')
   const [lockedMarkRound, setLockedMarkRound] = useState<string | null>(null)
-  // Manual mode: the setter's per-answer Valid/Void toggles + a lock once they approve the round.
-  const [setterVerdicts, setSetterVerdicts] = useState<Record<string, boolean>>({})
+  // Review phase: a lock once the reviewer approves the round (the panel keeps its own toggle state).
   const [lockedSetterRound, setLockedSetterRound] = useState<string | null>(null)
   const answerRef = useRef('')
   answerRef.current = answerText
@@ -116,6 +122,8 @@ export function LandmineActiveRound({
   const manual = gameLandmineMineSource(game) === 'manual'
   // In manual mode the caller is the "setter": they plant the mine and sit out the round.
   const isSetter = manual && isCaller
+  // Review-phase reviewer: the setter in manual mode, the host in auto mode (no setter exists).
+  const canReview = manual ? isSetter : isHost
   const mineCount = clampLandmineMineCount(metadata?.mine_count)
 
   const roundAnswers = useMemo(
@@ -145,10 +153,11 @@ export function LandmineActiveRound({
   const markingTimer = clampLandmineMarkingTimer(game.operative_timer_seconds)
   // The category-pick timer also drives the manual-mode setup phase (options run up to 30s).
   const categoryTimer = gameLandmineCategoryTimer(game)
+  const reviewTimer = landmineReviewSeconds(game)
   const secondsLeft = useMemo(() => {
     void tick
-    return metadata ? phaseSecondsLeft(metadata, writingTimer, markingTimer, categoryTimer) : null
-  }, [metadata, tick, writingTimer, markingTimer, categoryTimer])
+    return metadata ? phaseSecondsLeft(metadata, writingTimer, markingTimer, categoryTimer, reviewTimer) : null
+  }, [metadata, tick, writingTimer, markingTimer, categoryTimer, reviewTimer])
 
   // Per-second tick for the countdown display.
   // Keep ticking through every phase INCLUDING reveal, so the "next round in Xs" countdown
@@ -170,7 +179,6 @@ export function LandmineActiveRound({
     setLockedAnswerRound(null)
     setLockedAnswerText('')
     setLockedMarkRound(null)
-    setSetterVerdicts({})
     setLockedSetterRound(null)
     setSubmitting(false)
     submittingRef.current = false
@@ -384,16 +392,20 @@ export function LandmineActiveRound({
     }
   }
 
-  // Manual mode: the setter approves every answer at once (I Call On's caller-approve).
+  // The reviewer approves every answer at once (I Call On's caller review). Manual mode authorizes
+  // by the setter's player token; auto mode by the host token (no setter exists).
   const submitSetterMarks = async (verdicts: { playerId: string; valid: boolean }[]) => {
-    if (!currentRound || readOnly || submitting) return
-    if (!myResumeToken) return toastError('Your player session expired — rejoin to continue')
+    if (!currentRound || submitting) return
+    const auth = manual ? { resumeToken: myResumeToken } : { hostToken }
+    if (!auth.resumeToken && !auth.hostToken) {
+      return toastError('Your session expired — rejoin to continue')
+    }
     setSubmitting(true)
     try {
       const res = await fetch('/api/landmine/setter-mark', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, roundId: currentRound.id, verdicts }),
+        body: JSON.stringify({ gameId: gameCode, ...auth, roundId: currentRound.id, verdicts }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to submit marks')
@@ -416,16 +428,16 @@ export function LandmineActiveRound({
       if (manual) return isSetter ? 'setup' : 'category_wait'
       return isCaller ? 'category_pick' : 'category_wait'
     }
-    // Manual mode: the setter planted the mine and sits out writing + peer marking, then reviews
-    // every verdict during the review phase (I Call On's caller). System mode has no setter/review.
+    // Manual mode: the setter planted the mine and sits out writing + peer marking. During the
+    // review phase the reviewer (setter in manual, host in auto) checks/overrides every verdict.
     if (isSetter && (phase === 'writing' || phase === 'marking')) return 'setter_watch'
-    if (isSetter && phase === 'review') return 'setter_review'
+    if (canReview && phase === 'review') return 'setter_review'
     // A spectator, or a player who joined after this round began, isn't in the round's
     // answer/mark ring. Show them a watch view instead of a phase UI they can't act on —
     // the empty "mark this" screen that looked frozen when you jumped in mid-round.
     const spectatingRound = readOnly || !isLandmineRoundParticipant(metadata, myPlayerId)
     if (spectatingRound && (phase === 'writing' || phase === 'marking' || phase === 'review')) return 'round_watch'
-    // Manual review phase: the answering players wait for the setter to check the marks.
+    // Review phase: everyone who isn't the reviewer waits for the marks to be checked.
     if (phase === 'review') return 'review_wait'
     if (phase === 'writing') {
       const locked = !!myAnswer?.submitted_at || lockedAnswerRound === currentRound.id
@@ -442,6 +454,7 @@ export function LandmineActiveRound({
     metadata,
     isCaller,
     isSetter,
+    canReview,
     manual,
     myAnswer,
     myMark,
@@ -716,7 +729,7 @@ export function LandmineActiveRound({
     const showBoard = metadata.phase === 'marking' || metadata.phase === 'review'
     const heading =
       metadata.phase === 'review'
-        ? 'The setter is reviewing the marks'
+        ? `${manual ? 'The setter' : 'The host'} is reviewing the marks`
         : metadata.phase === 'marking'
           ? 'Players are marking answers'
           : 'Round in progress'
@@ -748,95 +761,42 @@ export function LandmineActiveRound({
     )
   }
 
-  // ── Manual setter review — the setter checks/overrides the peer verdicts, then reveals ──────
+  // ── Review — the reviewer (setter in manual, host in auto) checks/overrides, then reveals ──────
   if (screen === 'setter_review') {
     const approved = lockedSetterRound === currentRound.id
-    // Default each toggle to the peer verdict already on the mark row, so the setter only changes
-    // what they disagree with.
-    const verdictFor = (id: string) =>
-      setterVerdicts[id] ?? roundMarks.find((m) => m.target_player_id === id)?.valid ?? true
     return (
       <div className="glass-card p-6 space-y-4">
         {roundHeader}
         <div className="text-center space-y-1">
           <p className="text-3xl">⚖️</p>
-          <p className="font-bold text-lg">You set this round — review the marks</p>
+          <p className="font-bold text-lg">{manual ? 'You set this round — review the marks' : 'Review the marks'}</p>
           <p className="text-sm text-muted">
             Category: <span className="font-semibold">{metadata.category}</span>. Players marked each answer — adjust
             anything, then reveal.
           </p>
         </div>
-        <div className="space-y-2">
-          {playerAnswers.map((a) => {
-            const name = playerDisplayName(a.player_id, players)
-            const hasText = !!normalizeAnswer(a.answer)
-            const valid = hasText ? verdictFor(a.player_id) : false
-            return (
-              <div key={a.player_id} className="rounded-lg border border-white/10 px-3 py-2 space-y-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold truncate">{name}</p>
-                  <p className="text-sm text-muted truncate">{a.answer || '(no answer)'}</p>
-                </div>
-                {hasText ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      disabled={approved}
-                      onClick={() => setSetterVerdicts((p) => ({ ...p, [a.player_id]: true }))}
-                      className={`py-2 rounded-lg text-sm font-bold border disabled:opacity-60 ${
-                        valid ? 'border-emerald-500 bg-emerald-500/15 text-emerald-200' : 'border-white/10 text-muted'
-                      }`}
-                    >
-                      ✓ Valid
-                    </button>
-                    <button
-                      type="button"
-                      disabled={approved}
-                      onClick={() => setSetterVerdicts((p) => ({ ...p, [a.player_id]: false }))}
-                      className={`py-2 rounded-lg text-sm font-bold border disabled:opacity-60 ${
-                        !valid ? 'border-red-500 bg-red-500/15 text-red-200' : 'border-white/10 text-muted'
-                      }`}
-                    >
-                      ✕ Void
-                    </button>
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted">Empty — scores 0 automatically.</p>
-                )}
-              </div>
-            )
-          })}
-        </div>
-        <button
-          type="button"
-          disabled={submitting || approved}
-          onClick={() =>
-            void submitSetterMarks(
-              playerAnswers.map((a) => ({
-                playerId: a.player_id,
-                valid: !!normalizeAnswer(a.answer) && verdictFor(a.player_id),
-              }))
-            )
-          }
-          className="btn-primary w-full py-3 disabled:opacity-50"
-        >
-          {approved ? 'Revealing…' : 'Approve & reveal scores'}
-        </button>
-        <p className="text-xs text-muted text-center">
-          The mine is still hidden — judge only whether each answer fits the category.
-        </p>
+        <LandmineReviewPanel
+          players={players}
+          playerAnswers={playerAnswers}
+          roundMarks={roundMarks}
+          submitting={submitting}
+          approved={approved}
+          onApprove={(verdicts) => void submitSetterMarks(verdicts)}
+        />
       </div>
     )
   }
 
-  // ── Manual mode: answering players wait while the setter reviews the marks ───────────────
+  // ── Review wait — everyone who isn't the reviewer waits for the marks to be checked ──────────
   if (screen === 'review_wait') {
     return (
       <div className="glass-card p-6 space-y-4">
         {roundHeader}
         <div className="text-center space-y-1">
           <p className="text-3xl">⚖️</p>
-          <p className="font-bold">{callerName} is reviewing the marks…</p>
+          <p className="font-bold">
+            {manual ? `${callerName} is reviewing the marks…` : 'The host is reviewing the marks…'}
+          </p>
           <p className="text-sm text-muted">They’ll confirm each verdict, then scores reveal.</p>
         </div>
         {answerBoard}
