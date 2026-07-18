@@ -210,6 +210,8 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
         onJoin={() =>
           void bootstrap.join(undefined, bootstrap.game?.status === 'active' ? { joinAsViewer: true } : undefined)
         }
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
       />
     )
   }

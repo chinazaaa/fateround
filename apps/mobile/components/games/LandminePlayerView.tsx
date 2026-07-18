@@ -11,6 +11,7 @@ import {
   landmineCycleInfo,
   landmineModeLabel,
   landmineOutcomeLabel,
+  landmineReviewSeconds,
   normalizeAnswer,
   parseLandmineMetadata,
   phaseSecondsLeft,
@@ -21,7 +22,6 @@ import {
   tallyLandmineScores,
   LANDMINE_MAX_ANSWER_LENGTH,
   LANDMINE_REVIEW_SECONDS,
-  LANDMINE_AUTO_REVIEW_SECONDS,
 } from '@fateround/shared/landmine'
 import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
@@ -204,8 +204,8 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   const writingTimer = clampLandmineWritingTimer(bootstrap.game?.timer_seconds)
   const markingTimer = clampLandmineMarkingTimer(bootstrap.game?.operative_timer_seconds)
   const categoryTimer = clampLandmineCategoryTimer(bootstrap.game?.game_duration_seconds)
-  // Manual setter gets the long review window; the auto-mode host gets a short spot-check.
-  const reviewTimer = manual ? LANDMINE_REVIEW_SECONDS : LANDMINE_AUTO_REVIEW_SECONDS
+  // Host-configured review window (falls back to the per-mode default).
+  const reviewTimer = bootstrap.game ? landmineReviewSeconds(bootstrap.game) : LANDMINE_REVIEW_SECONDS
   const secondsLeft = useMemo(() => {
     void tick
     return metadata ? phaseSecondsLeft(metadata, writingTimer, markingTimer, categoryTimer, reviewTimer) : null
@@ -465,6 +465,8 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
       />
     )
   }

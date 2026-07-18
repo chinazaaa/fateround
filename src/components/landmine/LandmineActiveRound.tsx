@@ -420,7 +420,7 @@ export function LandmineActiveRound({
       return isCaller ? 'category_pick' : 'category_wait'
     }
     // Manual mode: the setter planted the mine and sits out writing + peer marking. During the
-    // review phase the reviewer (setter in manual, host in auto) checks/overrides every verdict.
+    // review phase the reviewer (setter in manual, caller in auto) checks/overrides every verdict.
     if (isSetter && (phase === 'writing' || phase === 'marking')) return 'setter_watch'
     if (canReview && phase === 'review') return 'setter_review'
     // A spectator, or a player who joined after this round began, isn't in the round's
@@ -752,7 +752,7 @@ export function LandmineActiveRound({
     )
   }
 
-  // ── Review — the reviewer (setter in manual, host in auto) checks/overrides, then reveals ──────
+  // ── Review — the reviewer (setter in manual, caller in auto) checks/overrides, then reveals ──────
   if (screen === 'setter_review') {
     const approved = lockedSetterRound === currentRound.id
     return (

@@ -468,7 +468,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
                 <span className="block text-xs text-muted">
                   {mineSourceSetting === 'manual'
                     ? 'The setter checks each answer Valid/Void before scores show.'
-                    : 'You (the host) check each answer Valid/Void before scores show. Off = instant reveal.'}
+                    : 'The round’s caller checks each answer Valid/Void before scores show. Off = instant reveal.'}
                 </span>
               </span>
             </label>

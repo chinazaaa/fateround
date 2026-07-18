@@ -3372,7 +3372,7 @@ function CreateGameInner() {
                     <span className="block text-xs font-normal text-faint">
                       {landmineMineSource === 'manual'
                         ? 'The setter checks each answer before scores show.'
-                        : 'The host checks each answer before scores show. Off = instant reveal.'}
+                        : 'The round’s caller checks each answer before scores show. Off = instant reveal.'}
                     </span>
                   </span>
                   <input

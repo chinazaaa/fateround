@@ -409,6 +409,8 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
         hint={
           isWhoSaidThis(bootstrap.game.game_type)
             ? 'Enter your name to join — answer the quotes, fastest correct wins.'

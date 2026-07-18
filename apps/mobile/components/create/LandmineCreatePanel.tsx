@@ -135,7 +135,7 @@ export function LandmineCreatePanel({ value, onChange }: Props) {
           description={
             manual
               ? 'The setter checks each answer before scores show.'
-              : 'The host checks each answer before scores show. Off = instant reveal.'
+              : 'The round’s caller checks each answer before scores show. Off = instant reveal.'
           }
           value={value.review}
           onChange={(review) => onChange({ review })}

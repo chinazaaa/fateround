@@ -438,6 +438,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           error={joinError ?? bootstrap.error}
           onChangeName={bootstrap.setJoinName}
           onJoin={() => void joinWithToken()}
+          lobbyFull={bootstrap.lobbyFull}
+          onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
         />
         {joiningAsViewer ? null : (
           <>
