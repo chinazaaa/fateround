@@ -66,11 +66,13 @@ export const LANDMINE_DEFAULT_WRITING_TIMER = 45
 export const LANDMINE_DEFAULT_MARKING_TIMER = 45
 export const LANDMINE_DEFAULT_CATEGORY_TIMER = 10
 export const LANDMINE_REVEAL_SECONDS = 10
-// After peer marking, the reviewer gets a fixed window to check/override every verdict before
-// scores reveal (mirrors I Call On's caller review). Manual mode's setter planted the mine and is
-// engaged, so they get the longer window; the auto-mode host is just spot-checking, so it's short.
+// After peer marking, the reviewer (round caller) gets a window to check/override every verdict
+// before scores reveal (mirrors I Call On's caller review). Host-configurable; these are the
+// per-mode DEFAULTS the create flow seeds — manual's setter is engaged so it's longer, the
+// auto-mode caller is just spot-checking so it's shorter.
 export const LANDMINE_REVIEW_SECONDS = 45
 export const LANDMINE_AUTO_REVIEW_SECONDS = 20
+export const LANDMINE_REVIEW_TIMER_OPTIONS = [15, 20, 30, 45, 60] as const
 
 export const LANDMINE_WRITING_TIMER_OPTIONS = [30, 45, 60, 90] as const
 export const LANDMINE_MARKING_TIMER_OPTIONS = [20, 30, 45, 60] as const
@@ -153,6 +155,11 @@ export function clampLandmineCategoryTimer(seconds: number | undefined | null): 
   return (LANDMINE_CATEGORY_TIMER_OPTIONS as readonly number[]).includes(n) ? n : LANDMINE_DEFAULT_CATEGORY_TIMER
 }
 
+export function clampLandmineReviewTimer(seconds: number | undefined | null): number {
+  const n = Number(seconds)
+  return (LANDMINE_REVIEW_TIMER_OPTIONS as readonly number[]).includes(n) ? n : LANDMINE_REVIEW_SECONDS
+}
+
 /** The caller's category-pick timer is stored in the shared game_duration_seconds column. */
 export function gameLandmineCategoryTimer(game: Pick<Game, 'game_duration_seconds'>): number {
   return clampLandmineCategoryTimer(game.game_duration_seconds)
@@ -168,9 +175,15 @@ export function landmineReviewEnabled(game: Pick<Game, 'landmine_review'>): bool
   return game.landmine_review !== false
 }
 
-/** The review window length — longer for the engaged manual setter, short for the auto-mode host. */
-export function landmineReviewSeconds(game: Pick<Game, 'landmine_mine_source'>): number {
+/** The default review window when the host hasn't set one — by mode. */
+export function landmineDefaultReviewSeconds(game: Pick<Game, 'landmine_mine_source'>): number {
   return gameLandmineMineSource(game) === 'manual' ? LANDMINE_REVIEW_SECONDS : LANDMINE_AUTO_REVIEW_SECONDS
+}
+
+/** The host-chosen review window (clamped to the options); falls back to the mode default. */
+export function landmineReviewSeconds(game: Pick<Game, 'landmine_mine_source' | 'landmine_review_seconds'>): number {
+  const v = Number(game.landmine_review_seconds)
+  return (LANDMINE_REVIEW_TIMER_OPTIONS as readonly number[]).includes(v) ? v : landmineDefaultReviewSeconds(game)
 }
 
 export function clampLandmineRoundCount(n: number | undefined | null): number {

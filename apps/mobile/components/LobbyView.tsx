@@ -2,6 +2,7 @@ import { ReactNode, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { Game, Player } from '@fateround/shared'
 import { playerIsViewer } from '@fateround/shared/viewers'
+import { lobbySeatsFull, resolveLobbyMaxPlayers } from '@fateround/shared/game-limits-lite'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { PlayerSessionControls } from '@/components/session/PlayerSessionControls'
 import { GameInfoChips } from '@/components/GameInfoChips'
@@ -47,11 +48,14 @@ export function LobbyView({
   const typeLabel = gameLabel(game.game_type)
   const [readying, setReadying] = useState(false)
   const scrollRef = useRef<ScrollView>(null)
+  const maxPlayers = resolveLobbyMaxPlayers(game.game_type, game)
+  const seatsFull = lobbySeatsFull(game.game_type, game, players)
 
   // After a host "Return to lobby" reset everyone is sat out (spectator). Let a
   // spectating player take a seat / get ready straight from the normal lobby —
-  // the replay ring path handles the "Play again" case separately.
-  const canGetReady = spectating && game.status === 'waiting' && !!myResumeToken
+  // the replay ring path handles the "Play again" case separately. When seats are
+  // full a spectator can't ready up, so the button gives way to a "watching" note.
+  const canGetReady = spectating && game.status === 'waiting' && !!myResumeToken && !seatsFull
   const getReady = async () => {
     if (!myResumeToken) return
     setReadying(true)
@@ -71,6 +75,7 @@ export function LobbyView({
           players={players}
           myPlayerId={myPlayerId}
           myResumeToken={myResumeToken ?? null}
+          maxPlayers={maxPlayers}
           onReload={onReload ?? (() => {})}
         />
       </View>
@@ -94,6 +99,8 @@ export function LobbyView({
           >
             <Text style={styles.getReadyText}>{readying ? 'Joining…' : 'Tap to get ready'}</Text>
           </Pressable>
+        ) : spectating && seatsFull && game.status === 'waiting' ? (
+          <Text style={styles.watchNote}>Game is full — you're watching this round.</Text>
         ) : null}
       </View>
 
@@ -192,6 +199,12 @@ const makeStyles = (theme: Theme) =>
     getReadyBtnDisabled: { opacity: 0.7 },
     // White on the solid rose button — correct in both schemes.
     getReadyText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+    watchNote: {
+      marginTop: 8,
+      color: theme.textMuted,
+      fontSize: 13,
+      textAlign: 'center',
+    },
     section: {
       color: theme.text,
       fontSize: 16,

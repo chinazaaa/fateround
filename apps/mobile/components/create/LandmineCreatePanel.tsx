@@ -5,6 +5,7 @@ import {
   LANDMINE_MANUAL_CYCLE_OPTIONS,
   LANDMINE_MARKING_TIMER_OPTIONS,
   LANDMINE_MINE_COUNT_OPTIONS,
+  LANDMINE_REVIEW_TIMER_OPTIONS,
   LANDMINE_ROUND_COUNT_OPTIONS,
   LANDMINE_WRITING_TIMER_OPTIONS,
 } from '@fateround/shared/landmine'
@@ -135,11 +136,21 @@ export function LandmineCreatePanel({ value, onChange }: Props) {
           description={
             manual
               ? 'The setter checks each answer before scores show.'
-              : 'The host checks each answer before scores show. Off = instant reveal.'
+              : 'The round’s caller checks each answer before scores show. Off = instant reveal.'
           }
           value={value.review}
           onChange={(review) => onChange({ review })}
         />
+
+        {value.review && (
+          <TimerPicker
+            label="Review time"
+            value={value.reviewSeconds}
+            options={LANDMINE_REVIEW_TIMER_OPTIONS}
+            format={secondsLabel}
+            onChange={(reviewSeconds) => onChange({ reviewSeconds })}
+          />
+        )}
       </View>
     </SurfaceCard>
   )

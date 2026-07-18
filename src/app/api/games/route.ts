@@ -137,6 +137,8 @@ import {
   parseLandmineMode,
   parseLandmineMineSource,
   clampLandmineElimSeconds,
+  clampLandmineReviewTimer,
+  landmineDefaultReviewSeconds,
   LANDMINE_DEFAULT_MARKING_TIMER,
   LANDMINE_DEFAULT_CATEGORY_TIMER,
   LANDMINE_DEFAULT_ROUND_COUNT,
@@ -418,6 +420,7 @@ export async function POST(req: NextRequest) {
     landmine_mine_source: rawLandmineMineSource,
     landmine_elim_seconds: rawLandmineElimSeconds,
     landmine_review: rawLandmineReview,
+    landmine_review_seconds: rawLandmineReviewSeconds,
     allow_viewers: rawAllowViewers,
     allow_late_players: rawAllowLatePlayers,
     late_join_policy: rawLateJoinPolicy,
@@ -965,12 +968,13 @@ export async function POST(req: NextRequest) {
           landmine_originality_bonus: rawLandmineOriginalityBonus !== false,
           landmine_mine_source: parseLandmineMineSource(rawLandmineMineSource),
           landmine_elim_seconds: clampLandmineElimSeconds(rawLandmineElimSeconds),
-          // Default the review phase per mode when the client omits it: manual (setter judges) on,
-          // auto (host spot-check) off, so auto stays hands-off unless the host opts in.
-          landmine_review:
-            rawLandmineReview === undefined
-              ? parseLandmineMineSource(rawLandmineMineSource) === 'manual'
-              : rawLandmineReview !== false,
+          // Review phase is on by default for both modes (the host can turn it off for instant reveal).
+          landmine_review: rawLandmineReview !== false,
+          // Review-window length: use the client's pick, else the per-mode default.
+          landmine_review_seconds:
+            rawLandmineReviewSeconds === undefined
+              ? landmineDefaultReviewSeconds({ landmine_mine_source: parseLandmineMineSource(rawLandmineMineSource) })
+              : clampLandmineReviewTimer(rawLandmineReviewSeconds),
         }
       : {}),
     ...(isQuickDrawGame(game_type)

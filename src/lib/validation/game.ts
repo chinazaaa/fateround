@@ -101,6 +101,7 @@ export const createGameSchema = z.object({
   landmine_mine_count: z.coerce.number().int().min(1).max(3).optional(),
   landmine_originality_bonus: z.boolean().optional(),
   landmine_review: z.boolean().optional(),
+  landmine_review_seconds: z.coerce.number().int().optional(),
   allow_viewers: z.boolean().optional(),
   allow_late_players: z.boolean().optional(),
   late_join_policy: z.enum(['lobby_only', 'viewers_only', 'viewers_and_players']).optional(),
@@ -222,6 +223,7 @@ export const updateGameSchema = z.object({
   landmine_mine_count: z.coerce.number().int().optional(),
   landmine_originality_bonus: z.boolean().optional(),
   landmine_review: z.boolean().optional(),
+  landmine_review_seconds: z.coerce.number().int().optional(),
   ping_pong_points_to_win: z.coerce
     .number()
     .int()

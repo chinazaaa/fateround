@@ -32,6 +32,8 @@ export const updatePlayerSchema = z.object({
   gameCode: gameCodeString(),
   playerId: uuidString('playerId'),
   playerName: sanitizedString(1, 50).optional(),
+  // Monopoly: swap your board token from the lobby before the game starts.
+  monopolyToken: z.enum(MONOPOLY_TOKEN_ID_LIST as [string, ...string[]]).optional(),
   gender: z.string().optional(),
   pollGender: z.string().optional(),
   identityGender: z.string().optional(),

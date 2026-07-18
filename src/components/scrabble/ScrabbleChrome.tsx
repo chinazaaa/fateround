@@ -23,7 +23,7 @@ export function ScrabbleShell({
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <div
         className={[
-          'page-wrap flex flex-col items-center px-3 overflow-y-auto justify-start',
+          'page-wrap flex flex-col items-center px-3 justify-start',
           compact ? 'py-3 sm:py-4' : 'py-8 sm:py-10',
         ].join(' ')}
       >

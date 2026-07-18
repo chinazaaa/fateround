@@ -464,8 +464,10 @@ function CreateGameInner() {
   const [landmineMineSource, setLandmineMineSource] = useState<'system' | 'manual'>('system')
   const [landmineMineCount, setLandmineMineCount] = useState(1)
   const [landmineOriginality, setLandmineOriginality] = useState(true)
-  // Review-before-reveal: on for manual (setter judges), off for auto (hands-off) by default.
-  const [landmineReview, setLandmineReview] = useState(false)
+  // Review-before-reveal: on by default for both modes (host can turn it off for instant reveal).
+  const [landmineReview, setLandmineReview] = useState(true)
+  // Review-window length (seconds); default seeded per mode (manual 45, auto 20).
+  const [landmineReviewSeconds, setLandmineReviewSeconds] = useState(20)
   const [landmineCategoryTimer, setLandmineCategoryTimer] = useState(10)
   const [landmineMarkingTimer, setLandmineMarkingTimer] = useState(45)
   const [landmineElimSeconds, setLandmineElimSeconds] = useState(300)
@@ -1697,6 +1699,7 @@ function CreateGameInner() {
           landmine_mine_count: isLandmine ? landmineMineCount : undefined,
           landmine_originality_bonus: isLandmine ? landmineOriginality : undefined,
           landmine_review: isLandmine ? landmineReview : undefined,
+          landmine_review_seconds: isLandmine ? landmineReviewSeconds : undefined,
           quick_draw_variant: isQuickDraw ? settings.quick_draw_variant : undefined,
           quick_draw_play_mode:
             isQuickDraw && settings.quick_draw_variant === 'guess' ? settings.quick_draw_play_mode : undefined,
@@ -3209,7 +3212,8 @@ function CreateGameInner() {
                       onClick={() => {
                         setLandmineMineSource('system')
                         setLandmineCategoryTimer(10)
-                        setLandmineReview(false)
+                        setLandmineReview(true)
+                        setLandmineReviewSeconds(20)
                       }}
                       className={[
                         'rounded-2xl border-2 px-4 py-4 text-left',
@@ -3232,6 +3236,7 @@ function CreateGameInner() {
                         setLandmineCategoryTimer(30)
                         setSettings((s) => ({ ...s, rounds_count: 1 }))
                         setLandmineReview(true)
+                        setLandmineReviewSeconds(45)
                       }}
                       className={[
                         'rounded-2xl border-2 px-4 py-4 text-left',
@@ -3372,7 +3377,7 @@ function CreateGameInner() {
                     <span className="block text-xs font-normal text-faint">
                       {landmineMineSource === 'manual'
                         ? 'The setter checks each answer before scores show.'
-                        : 'The host checks each answer before scores show. Off = instant reveal.'}
+                        : 'The round’s caller checks each answer before scores show. Off = instant reveal.'}
                     </span>
                   </span>
                   <input
@@ -3381,6 +3386,15 @@ function CreateGameInner() {
                     onChange={(e) => setLandmineReview(e.target.checked)}
                   />
                 </label>
+                {landmineReview && (
+                  <Field label="Review time">
+                    <SegmentedControl
+                      value={String(landmineReviewSeconds)}
+                      onChange={(v) => setLandmineReviewSeconds(Number(v))}
+                      options={[15, 20, 30, 45, 60].map((n) => ({ value: String(n), label: `${n}s` }))}
+                    />
+                  </Field>
+                )}
                 <Field label="Late joiners">
                   <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
                 </Field>

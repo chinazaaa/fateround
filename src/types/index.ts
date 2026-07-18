@@ -420,8 +420,10 @@ export interface Game {
   landmine_mine_source?: LandmineMineSource | null
   /** Landmine — elimination time limit in seconds (game ends when the clock runs out). */
   landmine_elim_seconds?: number | null
-  /** Landmine — whether the reviewer (setter/host) checks verdicts before reveal. Default true. */
+  /** Landmine — whether the reviewer (round caller) checks verdicts before reveal. Default true. */
   landmine_review?: boolean | null
+  /** Landmine — the review-window length in seconds (15/20/30/45/60). */
+  landmine_review_seconds?: number | null
   /** Ping Pong — points required to win the match (3, 5, 7, 11, 15, or 21). */
   ping_pong_points_to_win?: number | null
 }

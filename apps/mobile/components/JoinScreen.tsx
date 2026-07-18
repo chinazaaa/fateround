@@ -21,6 +21,9 @@ type Props = {
   footer?: ReactNode
   /** Optional settings chips (theme / difficulty / time) shown under the hint. */
   infoChips?: ReactNode
+  /** When the lobby is full, pairs with `onJoinAsViewer` to offer a "Watch instead" button. */
+  lobbyFull?: boolean
+  onJoinAsViewer?: () => void
 }
 
 export function JoinScreen({
@@ -35,6 +38,8 @@ export function JoinScreen({
   submitLabel = 'Join game',
   footer,
   infoChips,
+  lobbyFull = false,
+  onJoinAsViewer,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const theme = useTheme()
@@ -63,6 +68,19 @@ export function JoinScreen({
         {/* White spinner on the solid rose button — correct in both schemes. */}
         {joining ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{submitLabel}</Text>}
       </Pressable>
+
+      {lobbyFull && onJoinAsViewer ? (
+        <>
+          <Text style={styles.watchNote}>This game is full — all seats are taken. You can still watch.</Text>
+          <Pressable
+            style={[styles.watchButton, joining && styles.buttonDisabled]}
+            onPress={onJoinAsViewer}
+            disabled={joining}
+          >
+            <Text style={styles.watchButtonText}>Watch instead</Text>
+          </Pressable>
+        </>
+      ) : null}
 
       {footer}
     </KeyboardFormScreen>
@@ -126,6 +144,25 @@ const makeStyles = (theme: Theme) =>
       // White on the solid rose button — correct in both schemes.
       color: '#fff',
       fontSize: 17,
+      fontWeight: '600',
+    },
+    watchNote: {
+      color: theme.textMuted,
+      fontSize: 13,
+      textAlign: 'center',
+      marginTop: 4,
+    },
+    watchButton: {
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingVertical: 15,
+      alignItems: 'center',
+    },
+    watchButtonText: {
+      color: theme.text,
+      fontSize: 16,
       fontWeight: '600',
     },
   })

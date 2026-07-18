@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { LandmineActiveRound } from '@/components/landmine/LandmineActiveRound'
-import { LandmineReviewPanel } from '@/components/landmine/LandmineReviewPanel'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResults } from '@/components/ShareResults'
@@ -33,7 +32,9 @@ import {
   LANDMINE_WRITING_TIMER_OPTIONS,
   LANDMINE_MARKING_TIMER_OPTIONS,
   LANDMINE_CATEGORY_TIMER_OPTIONS,
+  LANDMINE_REVIEW_TIMER_OPTIONS,
   clampLandmineCategoryTimer,
+  clampLandmineReviewTimer,
   clampLandmineElimSeconds,
   LANDMINE_ELIM_SECONDS_OPTIONS,
   LANDMINE_MINE_COUNT_OPTIONS,
@@ -86,10 +87,8 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [categoryTimer, setCategoryTimer] = useState(10)
   const [elimSeconds, setElimSeconds] = useState(300)
   const [reviewSetting, setReviewSetting] = useState(true)
+  const [reviewSecondsSetting, setReviewSecondsSetting] = useState(45)
   const [tab, setTab] = useState<HostTab>('manage')
-  // Auto mode: the host reviews/overrides the peer verdicts before scores reveal.
-  const [hostReviewLocked, setHostReviewLocked] = useState<string | null>(null)
-  const [hostReviewing, setHostReviewing] = useState(false)
   const settingsHydratedRef = useRef(false)
 
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
@@ -120,6 +119,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
         setCategoryTimer(clampLandmineCategoryTimer(gameRes.data.game_duration_seconds))
         setElimSeconds(clampLandmineElimSeconds(gameRes.data.landmine_elim_seconds))
         setReviewSetting(gameRes.data.landmine_review !== false)
+        setReviewSecondsSetting(clampLandmineReviewTimer(gameRes.data.landmine_review_seconds))
       }
     }
     setPlayers(plrsRes.data ?? [])
@@ -200,29 +200,6 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
   }, [rounds, game])
   const currentMetadata = currentRound ? parseLandmineMetadata(currentRound.landmine_metadata) : null
 
-  const submitHostReview = useCallback(
-    async (verdicts: { playerId: string; valid: boolean }[]) => {
-      if (!currentRound || hostReviewing) return
-      setHostReviewing(true)
-      try {
-        const res = await fetch('/api/landmine/setter-mark', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameId: gameCode, hostToken, roundId: currentRound.id, verdicts }),
-        })
-        const data = await res.json().catch(() => ({}))
-        if (!res.ok) throw new Error(data.error ?? 'Failed to submit review')
-        setHostReviewLocked(currentRound.id)
-        await load()
-      } catch (err) {
-        toastError(err instanceof Error ? err.message : 'Failed to submit review')
-      } finally {
-        setHostReviewing(false)
-      }
-    },
-    [currentRound, hostReviewing, gameCode, hostToken, load, toastError]
-  )
-
   useEffect(() => {
     if (game?.status === 'finished') setTab('manage')
     else if (game?.status === 'active') setTab('play')
@@ -236,6 +213,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
     landmine_originality_bonus: originalityBonus,
     landmine_elim_seconds: elimSeconds,
     landmine_review: reviewSetting,
+    landmine_review_seconds: reviewSecondsSetting,
     rounds_count: roundCount,
     timer_seconds: writingTimer,
     operative_timer_seconds: markingTimer,
@@ -414,40 +392,11 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
       playerName={hostPlayerName}
       onReload={load}
       skipGameSync
-      isHost
-      hostToken={hostToken}
     />
   )
 
-  // Auto mode has no setter, so a watching host reviews the peer verdicts here before scores reveal.
-  const hostReviewCard =
-    game.status === 'active' &&
-    gameLandmineMineSource(game) !== 'manual' &&
-    currentMetadata?.phase === 'review' &&
-    currentRound ? (
-      <div className="glass-card p-6 space-y-4">
-        <div className="text-center space-y-1">
-          <p className="text-3xl">⚖️</p>
-          <p className="font-bold text-lg">Review the marks</p>
-          <p className="text-sm text-muted">
-            Category: <span className="font-semibold">{currentMetadata.category}</span>. Players marked each answer —
-            adjust anything, then reveal.
-          </p>
-        </div>
-        <LandmineReviewPanel
-          players={players}
-          playerAnswers={answers.filter((a) => a.round_id === currentRound.id && a.outcome !== 'setter')}
-          roundMarks={marks.filter((m) => m.round_id === currentRound.id)}
-          submitting={hostReviewing}
-          approved={hostReviewLocked === currentRound.id}
-          onApprove={(verdicts) => void submitHostReview(verdicts)}
-        />
-      </div>
-    ) : null
-
   const watchRound = game.status === 'active' && (
     <div className="space-y-4">
-      {hostReviewCard}
       <PaginatedLeaderboard
         title="Leaderboard"
         rows={leaderboard.map((r) => ({ id: r.id, name: r.eliminated ? `${r.name} 💥` : r.name, score: r.score }))}
@@ -503,8 +452,9 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
                   // Manual setup needs more time to type; default to a single cycle. Auto restores.
                   setCategoryTimer(next === 'manual' ? 30 : 10)
                   setRoundCount(next === 'manual' ? 1 : 5)
-                  // Manual's setter judges (review on); auto stays hands-off by default.
-                  setReviewSetting(next === 'manual')
+                  // Review on by default for both modes; window defaults per mode.
+                  setReviewSetting(true)
+                  setReviewSecondsSetting(next === 'manual' ? 45 : 20)
                 }}
                 className="input-field w-full"
               >
@@ -524,10 +474,26 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
                 <span className="block text-xs text-muted">
                   {mineSourceSetting === 'manual'
                     ? 'The setter checks each answer Valid/Void before scores show.'
-                    : 'You (the host) check each answer Valid/Void before scores show. Off = instant reveal.'}
+                    : 'The round’s caller checks each answer Valid/Void before scores show. Off = instant reveal.'}
                 </span>
               </span>
             </label>
+            {reviewSetting && (
+              <label className="block space-y-1">
+                <span className="text-sm font-semibold">Review time</span>
+                <select
+                  value={reviewSecondsSetting}
+                  onChange={(e) => setReviewSecondsSetting(Number(e.target.value))}
+                  className="input-field w-full"
+                >
+                  {LANDMINE_REVIEW_TIMER_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}s
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="block space-y-1">
               <span className="text-sm font-semibold">Mode</span>
               <select
@@ -741,6 +707,8 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
               // Manual setup needs more time to type; default to a single cycle. Auto restores.
               setCategoryTimer(next === 'manual' ? 30 : 10)
               setRoundCount(next === 'manual' ? 1 : 5)
+              setReviewSetting(true)
+              setReviewSecondsSetting(next === 'manual' ? 45 : 20)
             }}
             className="input-field w-full"
           >
@@ -863,6 +831,26 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
             ))}
           </select>
         </label>
+        <label className="flex items-center justify-between gap-2">
+          <span className="text-sm font-semibold">Review answers before reveal</span>
+          <input type="checkbox" checked={reviewSetting} onChange={(e) => setReviewSetting(e.target.checked)} />
+        </label>
+        {reviewSetting && (
+          <label className="block space-y-1">
+            <span className="text-sm font-semibold">Review time</span>
+            <select
+              value={reviewSecondsSetting}
+              onChange={(e) => setReviewSecondsSetting(Number(e.target.value))}
+              className="input-field w-full"
+            >
+              {LANDMINE_REVIEW_TIMER_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s}s
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="flex items-center justify-between gap-2">
           <span className="text-sm font-semibold">Originality bonus (+5)</span>
           <input type="checkbox" checked={originalityBonus} onChange={(e) => setOriginalityBonus(e.target.checked)} />
