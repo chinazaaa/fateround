@@ -34,34 +34,22 @@ import {
   type SudokuSubmission,
 } from '@/lib/sudoku'
 import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT, SUDOKU_SUBMISSION_SELECT } from '@/lib/supabase-selects'
-import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { formatMinutesSeconds } from '@/lib/timer-format'
 import type { Game, Player } from '@/types'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 
-type SudokuHostMode = 'spectator' | 'player'
 type HostTab = 'manage' | 'play'
 
-const HOST_MODE_KEY = (code: string) => `sudoku_host_mode_${code.toUpperCase()}`
-
-function getSudokuHostMode(gameCode: string): SudokuHostMode {
-  if (typeof window === 'undefined') return 'player'
-  return (localStorage.getItem(HOST_MODE_KEY(gameCode)) as SudokuHostMode) ?? 'player'
-}
-function setSudokuHostMode(gameCode: string, mode: SudokuHostMode) {
-  localStorage.setItem(HOST_MODE_KEY(gameCode), mode)
-}
-
 export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
-  const { error: toastError } = useToast()
+  const { error: toastError, success } = useToast()
   const { confirm } = useConfirm()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
@@ -71,12 +59,6 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
   const [submissions, setSubmissions] = useState<SudokuSubmission[]>([])
   const [playingAgain, setPlayingAgain] = useState(false)
   const [starting, setStarting] = useState(false)
-
-  const [hostMode, setHostModeState] = useState<SudokuHostMode>('player')
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
   const [nowMs, setNowMs] = useState<number>(Date.now())
 
@@ -136,12 +118,6 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
 
   useEffect(() => {
     load()
-    setHostModeState(getSudokuHostMode(gameCode))
-    const stored = getPlayerSession(gameCode)
-    if (stored) {
-      setHostPlayerId(stored.playerId)
-      setHostPlayerName(stored.playerName)
-    }
   }, [gameCode, load])
 
   useEffect(() => {
@@ -149,21 +125,38 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
     else if (game?.status === 'finished') setTab('manage')
   }, [game?.status])
 
+  const {
+    hostMode,
+    hostPlayerId,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+    onModeChange: (mode) => {
+      if (mode === 'spectator') setTab('manage')
+    },
+  })
+
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        clearPlayerSession(gameCode)
-        setHostPlayerId(null)
-        setHostPlayerName('')
-      }
+      onHostSeatRemoved(playerId)
       setPlayers((prev) => prev.filter((p) => p.id !== playerId))
     },
-    [gameCode, hostPlayerId]
+    [onHostSeatRemoved]
   )
-  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
 
-  // Clear stale host-as-player state if the host's own row is removed elsewhere.
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
+  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
@@ -230,81 +223,6 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
       void supabase.removeChannel(ch)
     }
   }, [gameCode])
-
-  const changeHostMode = async (mode: SudokuHostMode) => {
-    if (game?.status !== 'waiting') return
-    const prev = hostMode
-    setHostModeState(mode)
-    setSudokuHostMode(gameCode, mode)
-    if (mode === 'spectator') setTab('manage')
-    // Switching to "Host only" while holding a seat → give up the seat so the host
-    // drops out of the players list.
-    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
-      try {
-        const res = await fetch('/api/players', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error ?? 'Failed to leave seat')
-        }
-        handlePlayerRemoved(hostPlayerId)
-        await load()
-      } catch (err) {
-        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
-      }
-    }
-  }
-
-  const renameHost = async (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed || !hostPlayerId) return
-    try {
-      const res = await fetch('/api/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
-      setHostPlayerName(data.playerName)
-      const stored = getPlayerSession(gameCode)
-      setPlayerSession(
-        gameCode,
-        hostPlayerId,
-        data.playerName,
-        stored?.playerGender ?? 'both',
-        stored?.resumeToken ?? null
-      )
-      await load()
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to update name')
-    }
-  }
-
-  const hostJoinGame = async () => {
-    if (!hostJoinName.trim()) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: hostJoinName.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostPlayerName(data.playerName)
-      await load()
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }
 
   async function handleStart() {
     if (starting) return

@@ -45,32 +45,20 @@ import {
   MEMORY_MATCH_SUBMISSION_SELECT,
   MEMORY_MATCH_PROGRESS_SELECT,
 } from '@/lib/supabase-selects'
-import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { formatMinutesSeconds } from '@/lib/timer-format'
 import { ROUND_RESULTS_AUTO_ADVANCE_SECONDS } from '@/lib/round-timing'
 import type { Game, Player } from '@/types'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useToast } from '@/components/ui/Toast'
 
-type HostMode = 'spectator' | 'player'
 type HostTab = 'manage' | 'play'
 
-const HOST_MODE_KEY = (code: string) => `matching_pairs_host_mode_${code.toUpperCase()}`
-
-function getHostMode(gameCode: string): HostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return (localStorage.getItem(HOST_MODE_KEY(gameCode)) as HostMode) ?? 'spectator'
-}
-function setHostMode(gameCode: string, mode: HostMode) {
-  localStorage.setItem(HOST_MODE_KEY(gameCode), mode)
-}
-
 export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
-  const { error: toastError } = useToast()
+  const { error: toastError, success } = useToast()
   const { confirm } = useConfirm()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
@@ -82,11 +70,6 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
 
-  const [hostModeState, setHostModeState] = useState<HostMode>('spectator')
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
   const [nowMs, setNowMs] = useState<number>(() => Date.now())
   const [roundEnded, setRoundEnded] = useState(false)
@@ -202,12 +185,6 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
 
   useEffect(() => {
     void load()
-    setHostModeState(getHostMode(gameCode))
-    const stored = getPlayerSession(gameCode)
-    if (stored) {
-      setHostPlayerId(stored.playerId)
-      setHostPlayerName(stored.playerName)
-    }
   }, [gameCode, load])
 
   useEffect(() => {
@@ -270,59 +247,40 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   }, [gameCode, load])
 
   useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
-  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
-  const handleSelfRemoved = useCallback(() => {
-    clearPlayerSession(gameCode)
-    setHostPlayerId(null)
-    setHostPlayerName('')
-  }, [gameCode])
+  const {
+    hostMode: hostModeState,
+    hostPlayerId,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame: handleJoinAsPlayer,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+    onModeChange: (mode) => {
+      if (mode === 'spectator') setTab('manage')
+    },
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        clearPlayerSession(gameCode)
-        setHostPlayerId(null)
-        setHostPlayerName('')
-      }
+      onHostSeatRemoved(playerId)
       setPlayers((prev) => prev.filter((p) => p.id !== playerId))
     },
-    [gameCode, hostPlayerId]
+    [onHostSeatRemoved]
   )
+
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
-
-  const changeHostMode = (mode: HostMode) => {
-    if (game?.status !== 'waiting') return
-    setHostModeState(mode)
-    setHostMode(gameCode, mode)
-    if (mode === 'spectator') setTab('manage')
-  }
-
-  const handleJoinAsPlayer = useCallback(async () => {
-    if (!hostJoinName.trim()) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: hostJoinName.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        toastError(data.error ?? 'Failed to join')
-        return
-      }
-      setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostPlayerName(data.playerName)
-      await load()
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }, [gameCode, hostJoinName, toastError, load])
+  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   const handleStartGame = useCallback(async () => {
     setStarting(true)
@@ -360,45 +318,11 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         toastError(d.error || 'Failed to reset')
         return
       }
-      // Save the stored session BEFORE clearing it (clearPlayerSession destroys it,
-      // so the post-load fixup below needs the original to re-match by name or ID).
-      const storedSession = getPlayerSession(gameCode)
-      if (!sameSettings) {
-        clearPlayerSession(gameCode)
-        setHostPlayerId(null)
-        setHostPlayerName('')
-        setHostJoinName('')
-      }
+      // The play-again POST carries hostPlayerId so the server keeps the host's
+      // seat (resetSpectatorsForLobby); useHostSeat retains that seat in its own
+      // state and only drops it via reconciliation if the row truly disappears.
       setTab('manage')
       await load()
-      // Re-check the fresh roster to restore the host's session if their player row
-      // still exists (preserved by resetSpectatorsForLobby on the server). Without
-      // this, "Return to lobby" would silently drop the host's seat.
-      const { data: freshPlayers } = await supabase.from('players').select('id, name').eq('game_id', gameCode)
-      if (storedSession && freshPlayers) {
-        if (freshPlayers.some((p) => p.id === storedSession.playerId)) {
-          // Same player ID survived — restore the session.
-          setPlayerSession(
-            gameCode,
-            storedSession.playerId,
-            storedSession.playerName,
-            'both',
-            storedSession.resumeToken
-          )
-          setHostPlayerId(storedSession.playerId)
-          setHostPlayerName(storedSession.playerName)
-        } else {
-          // Player row was recreated — match by name.
-          const matchingPlayer = (freshPlayers as { id: string; name: string }[]).find(
-            (p) => p.name === storedSession.playerName
-          )
-          if (matchingPlayer) {
-            setPlayerSession(gameCode, matchingPlayer.id, storedSession.playerName, 'both', storedSession.resumeToken)
-            setHostPlayerId(matchingPlayer.id)
-            setHostPlayerName(storedSession.playerName)
-          }
-        }
-      }
     } finally {
       setPlayingAgain(false)
     }
@@ -690,6 +614,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
             onJoinNameChange={setHostJoinName}
             onJoin={() => void handleJoinAsPlayer()}
             joining={hostJoining}
+            onEditName={renameHost}
           />
         ) : undefined
       }
@@ -773,6 +698,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       onJoinNameChange={setHostJoinName}
       onJoin={() => void handleJoinAsPlayer()}
       joining={hostJoining}
+      onEditName={renameHost}
       spectatorHint="Watch the game once it starts"
       playerHint="Play the memory match with everyone"
     />

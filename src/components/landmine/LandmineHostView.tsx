@@ -20,13 +20,11 @@ import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { useLandmineAdvance } from '@/hooks/useLandmineAdvance'
 import {
-  getLandmineHostMode,
   gameLandmineMode,
   gameLandmineMineSource,
   landmineModeLabel,
   parseLandmineMetadata,
   resolveActiveLandmineRound,
-  setLandmineHostMode,
   tallyLandmineScores,
   LANDMINE_MIN_PLAYERS,
   LANDMINE_WRITING_TIMER_OPTIONS,
@@ -38,7 +36,6 @@ import {
   LANDMINE_MINE_COUNT_OPTIONS,
   LANDMINE_ROUND_COUNT_OPTIONS,
   LANDMINE_MANUAL_CYCLE_OPTIONS,
-  type LandmineHostMode,
 } from '@/lib/landmine'
 import { supabase } from '@/lib/supabase'
 import {
@@ -48,10 +45,9 @@ import {
   PLAYER_SELECT,
   ROUND_SELECT,
 } from '@/lib/supabase-selects'
-import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import type { Game, LandmineAnswer, LandmineMark, LandmineMineSource, LandmineMode, Player, Round } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
@@ -83,33 +79,11 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [markingTimer, setMarkingTimer] = useState(45)
   const [categoryTimer, setCategoryTimer] = useState(10)
   const [elimSeconds, setElimSeconds] = useState(300)
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
-  const [hostMode, setHostMode] = useState<LandmineHostMode>('player')
   const [tab, setTab] = useState<HostTab>('manage')
   const settingsHydratedRef = useRef(false)
 
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
   useTurnNotifications({ status: game?.status })
-
-  const handlePlayerRemoved = useCallback(
-    (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostResumeToken(null)
-        setHostPlayerName('')
-        clearPlayerSession(gameCode)
-      }
-      setPlayers((prev) => prev.filter((p) => p.id !== playerId))
-    },
-    [gameCode, hostPlayerId]
-  )
-
-  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
 
   const load = useCallback(async (): Promise<boolean> => {
     const [gameRes, plrsRes, rdsRes, ansRes, marksRes] = await Promise.all([
@@ -146,14 +120,41 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
 
   useEffect(() => {
     load()
-    setHostMode(getLandmineHostMode(gameCode))
-    const session = getPlayerSession(gameCode)
-    if (session) {
-      setHostPlayerId(session.playerId)
-      setHostResumeToken(session.resumeToken ?? null)
-      setHostPlayerName(session.playerName)
-    }
   }, [gameCode, load])
+
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+    onModeChange: (mode) => {
+      if (mode === 'spectator') setTab('manage')
+    },
+  })
+
+  const handlePlayerRemoved = useCallback(
+    (playerId: string) => {
+      onHostSeatRemoved(playerId)
+      setPlayers((prev) => prev.filter((p) => p.id !== playerId))
+    },
+    [onHostSeatRemoved]
+  )
+
+  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
 
   const connected = useGameTableSync(
     gameCode,
@@ -192,82 +193,6 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
     if (game?.status === 'finished') setTab('manage')
     else if (game?.status === 'active') setTab('play')
   }, [game?.status])
-
-  const changeHostMode = async (mode: LandmineHostMode) => {
-    if (game?.status !== 'waiting') return
-    const prev = hostMode
-    setHostMode(mode)
-    setLandmineHostMode(gameCode, mode)
-    if (mode === 'spectator') setTab('manage')
-    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
-      try {
-        const res = await fetch('/api/players', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error ?? 'Failed to leave seat')
-        }
-        handlePlayerRemoved(hostPlayerId)
-        await load()
-      } catch (err) {
-        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
-      }
-    }
-  }
-
-  const renameHost = async (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed || !hostPlayerId) return
-    try {
-      const res = await fetch('/api/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
-      setHostPlayerName(data.playerName)
-      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
-      await load()
-      success('Name updated!')
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to update name')
-    }
-  }
-
-  const hostJoinGame = async () => {
-    const name = hostJoinName.trim()
-    if (!name) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: name }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostResumeToken(data.resumeToken ?? null)
-      setHostPlayerName(data.playerName)
-      setHostMode('player')
-      setLandmineHostMode(gameCode, 'player')
-      await load()
-      success(`Joined as ${data.playerName}`)
-      // Only jump to the play board if the game is already running. In the lobby the host needs
-      // to stay on Manage to actually start the game — jumping to the (empty) primary tab here
-      // was what dumped a freshly-joined host onto the Watch/Play placeholder.
-      if (game?.status === 'active') setTab('play')
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }
 
   const settingsPayload = () => ({
     hostToken,
@@ -478,8 +403,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
           spectatorHint="Watch the game from the Watch tab"
           playingNote={
             <p className="text-sm text-muted">
-              Playing as <strong className="text-body">{hostPlayerName}</strong> — play from the Play tab once you
-              start.
+              Playing as <strong className="text-body">{hostPlayerName}</strong> — play once you start.
             </p>
           }
         />
@@ -702,7 +626,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
       playerHint="Play along with everyone"
       playingNote={
         <p className="text-sm text-muted">
-          Playing as <strong className="text-body">{hostPlayerName}</strong> — play from the Play tab once you start.
+          Playing as <strong className="text-body">{hostPlayerName}</strong> — play once you start.
         </p>
       }
     />
