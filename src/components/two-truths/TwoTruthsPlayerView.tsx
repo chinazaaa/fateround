@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
@@ -26,6 +27,9 @@ import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { EliminationBanner } from '@/components/EliminationBanner'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 
 type Screen =
@@ -122,6 +126,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     if (screen === 'game_started_waiting' || screen === 'playing') void load()
   })
 
+  const router = useRouter()
   const me = players.find((p) => p.id === myPlayerId)
   const myPlayerName = me?.name ?? ''
   // In the lobby, everyone can participate regardless of spectator flag (gets cleared on reset)
@@ -161,6 +166,34 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     if (!prevMyStatement.current && myStatement) setEditingStatements(false)
     prevMyStatement.current = myStatement
   }, [myStatement])
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it. Purely additive — the in-page PlayerSessionControls stays as-is.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId || game?.status !== 'active') return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={me?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') {
     return (

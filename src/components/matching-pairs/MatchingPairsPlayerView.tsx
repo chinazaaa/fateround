@@ -1,7 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { useGameScores } from '@/components/roster/RosterDrawerContext'
@@ -622,8 +626,38 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
   // ── Derived values ─────────────────────────────────────────────────────────
 
+  const router = useRouter()
   const me = players.find((p) => p.id === myPlayerId)
   const isViewer = !!(game && me && playerIsViewer(me, game))
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it. Purely additive.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId || game?.status !== 'active') return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={me?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
   const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
     gameCode,
     game,
