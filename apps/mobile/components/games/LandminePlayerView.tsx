@@ -185,6 +185,8 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   const manual = bootstrap.game ? gameLandmineMineSource(bootstrap.game) === 'manual' : false
   // In manual mode the caller is the "setter": they plant the mine and sit out the round.
   const isSetter = manual && isCaller && !isViewer
+  // The round's caller reviews (setter in manual, category-picker in auto) — same rule both modes.
+  const canReview = isCaller && !isViewer
   const mineCount = Math.min(3, Math.max(1, metadata?.mine_count ?? 1))
   // A viewer, or a player who joined after this round began, isn't in the round's answer/mark
   // ring — no answer to write, nobody assigned to mark. Show them a watch card instead of a
@@ -731,7 +733,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
 
   // ── Manual review — the setter checks/overrides the peer verdicts, then reveals ─────────
   if (metadata.phase === 'review') {
-    if (isSetter) {
+    if (canReview) {
       const approved = lockedSetterRound === currentRound.id
       // Default each toggle to the peer verdict already on the mark row.
       const verdictFor = (id: string) =>
@@ -799,9 +801,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
         <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
           <View style={styles.waitCard}>
             <Text style={styles.waitEmoji}>⚖️</Text>
-            <Text style={styles.waitTitle}>
-              {manual ? `${callerName} is reviewing the marks…` : 'The host is reviewing the marks…'}
-            </Text>
+            <Text style={styles.waitTitle}>{callerName} is reviewing the marks…</Text>
             <Text style={styles.meta}>They’ll confirm each verdict, then scores reveal.</Text>
           </View>
           {playerAnswers.map((a) => {

@@ -35,7 +35,6 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
   const styles = useThemedStyles(makeStyles)
   const code = gameCode.toUpperCase()
   const typeLabel = game ? gameLabel(game.game_type) : undefined
-  const gameEnded = game?.status === 'finished'
 
   const [playerId, setPlayerId] = useState<string | null>(null)
   const [playerName, setPlayerName] = useState('')
@@ -139,7 +138,7 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
                     <SettingsButton />
                     <HeaderAction label="Share" onPress={() => void onShare()} />
                     {hasHostToken ? <HeaderAction label="Host" accent onPress={() => void openHost()} /> : null}
-                    {playerId && !gameEnded ? (
+                    {playerId ? (
                       <PlayerSessionMenu
                         gameCode={gameCode}
                         gameType={game?.game_type}

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { LandmineActiveRound } from '@/components/landmine/LandmineActiveRound'
-import { LandmineReviewPanel } from '@/components/landmine/LandmineReviewPanel'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResults } from '@/components/ShareResults'
@@ -87,9 +86,6 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [elimSeconds, setElimSeconds] = useState(300)
   const [reviewSetting, setReviewSetting] = useState(true)
   const [tab, setTab] = useState<HostTab>('manage')
-  // Auto mode: the host reviews/overrides the peer verdicts before scores reveal.
-  const [hostReviewLocked, setHostReviewLocked] = useState<string | null>(null)
-  const [hostReviewing, setHostReviewing] = useState(false)
   const settingsHydratedRef = useRef(false)
 
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
@@ -199,29 +195,6 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
     return resolveActiveLandmineRound(rounds, game.current_round_number)
   }, [rounds, game])
   const currentMetadata = currentRound ? parseLandmineMetadata(currentRound.landmine_metadata) : null
-
-  const submitHostReview = useCallback(
-    async (verdicts: { playerId: string; valid: boolean }[]) => {
-      if (!currentRound || hostReviewing) return
-      setHostReviewing(true)
-      try {
-        const res = await fetch('/api/landmine/setter-mark', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameId: gameCode, hostToken, roundId: currentRound.id, verdicts }),
-        })
-        const data = await res.json().catch(() => ({}))
-        if (!res.ok) throw new Error(data.error ?? 'Failed to submit review')
-        setHostReviewLocked(currentRound.id)
-        await load()
-      } catch (err) {
-        toastError(err instanceof Error ? err.message : 'Failed to submit review')
-      } finally {
-        setHostReviewing(false)
-      }
-    },
-    [currentRound, hostReviewing, gameCode, hostToken, load, toastError]
-  )
 
   useEffect(() => {
     if (game?.status === 'finished') setTab('manage')
@@ -414,40 +387,11 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
       playerName={hostPlayerName}
       onReload={load}
       skipGameSync
-      isHost
-      hostToken={hostToken}
     />
   )
 
-  // Auto mode has no setter, so a watching host reviews the peer verdicts here before scores reveal.
-  const hostReviewCard =
-    game.status === 'active' &&
-    gameLandmineMineSource(game) !== 'manual' &&
-    currentMetadata?.phase === 'review' &&
-    currentRound ? (
-      <div className="glass-card p-6 space-y-4">
-        <div className="text-center space-y-1">
-          <p className="text-3xl">⚖️</p>
-          <p className="font-bold text-lg">Review the marks</p>
-          <p className="text-sm text-muted">
-            Category: <span className="font-semibold">{currentMetadata.category}</span>. Players marked each answer —
-            adjust anything, then reveal.
-          </p>
-        </div>
-        <LandmineReviewPanel
-          players={players}
-          playerAnswers={answers.filter((a) => a.round_id === currentRound.id && a.outcome !== 'setter')}
-          roundMarks={marks.filter((m) => m.round_id === currentRound.id)}
-          submitting={hostReviewing}
-          approved={hostReviewLocked === currentRound.id}
-          onApprove={(verdicts) => void submitHostReview(verdicts)}
-        />
-      </div>
-    ) : null
-
   const watchRound = game.status === 'active' && (
     <div className="space-y-4">
-      {hostReviewCard}
       <PaginatedLeaderboard
         title="Leaderboard"
         rows={leaderboard.map((r) => ({ id: r.id, name: r.eliminated ? `${r.name} 💥` : r.name, score: r.score }))}

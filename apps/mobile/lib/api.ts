@@ -9,6 +9,18 @@ export type JoinPlayerResponse = {
   playerGender?: PlayerGender
   canChat?: boolean
   error?: string
+  /** Set by the server when a join is refused because the lobby is full. */
+  full?: boolean
+}
+
+/** Error carrying the server's `full` flag so callers can offer "watch instead". */
+export class JoinError extends Error {
+  full: boolean
+  constructor(message: string, full: boolean) {
+    super(message)
+    this.name = 'JoinError'
+    this.full = full
+  }
 }
 
 export async function autoJoinGame(gameCode: string, resumeToken?: string | null): Promise<JoinPlayerResponse> {
@@ -71,7 +83,7 @@ export async function joinGame(input: {
   })
   const data = (await res.json()) as JoinPlayerResponse & { error?: string }
   if (!res.ok) {
-    throw new Error(data.error ?? 'Failed to join game')
+    throw new JoinError(data.error ?? 'Failed to join game', data.full === true)
   }
   return data
 }
