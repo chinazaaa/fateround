@@ -8,6 +8,8 @@ import {
   landmineAnsweringPlayerIds,
   parseLandmineMineSource,
   clampLandmineRoundCount,
+  clampLandmineElimSeconds,
+  landmineCycleInfo,
 } from './landmine'
 import type { LandmineAnswer, LandmineMark, LandmineMetadata, Player } from '@/types'
 
@@ -198,6 +200,24 @@ describe('landmine manual mode', () => {
     const row = buildLandmineInitialRound({ gameId: 'G', playerOrder: order, mineCount: 1, now: 'now' })
     const meta = row.landmine_metadata as LandmineMetadata
     expect(Object.keys(meta.reviewer_assignments).sort()).toEqual(['a', 'b', 'c'])
+  })
+
+  it('clampLandmineElimSeconds accepts the option set, defaults otherwise', () => {
+    expect(clampLandmineElimSeconds(180)).toBe(180)
+    expect(clampLandmineElimSeconds(900)).toBe(900)
+    expect(clampLandmineElimSeconds(45)).toBe(300)
+    expect(clampLandmineElimSeconds(undefined)).toBe(300)
+  })
+
+  it('landmineCycleInfo maps setter-turns to display cycles (3 players)', () => {
+    // Turns 1-3 = round 1 (setters 1,2,3); turns 4-6 = round 2.
+    expect(landmineCycleInfo(1, 3)).toEqual({ round: 1, setterInRound: 1, roster: 3 })
+    expect(landmineCycleInfo(3, 3)).toEqual({ round: 1, setterInRound: 3, roster: 3 })
+    expect(landmineCycleInfo(4, 3)).toEqual({ round: 2, setterInRound: 1, roster: 3 })
+    // Turn 15 with 3 players = round 5 (the "endless" case now reads as Round 5).
+    expect(landmineCycleInfo(15, 3).round).toBe(5)
+    // Guards against a zero roster.
+    expect(landmineCycleInfo(2, 0).round).toBe(2)
   })
 
   it('clampLandmineRoundCount accepts manual cycle counts (1, 2) and auto counts, rejects junk', () => {

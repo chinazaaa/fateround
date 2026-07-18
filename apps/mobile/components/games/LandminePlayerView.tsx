@@ -7,6 +7,7 @@ import {
   clampLandmineWritingTimer,
   gameLandmineMode,
   gameLandmineMineSource,
+  landmineCycleInfo,
   landmineModeLabel,
   landmineOutcomeLabel,
   normalizeAnswer,
@@ -453,6 +454,12 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
 
   const timer = secondsLeft != null && metadata.phase !== 'reveal' ? `${secondsLeft}s` : undefined
   const subtitle = metadata.category ? `Category: ${metadata.category}` : landmineModeLabel(mode)
+  // Manual mode counts a "round" as one full cycle (every player sets once); show that cycle instead
+  // of the raw setter-turn so it reads like Describe It ("Round 1/3") not "Round 15".
+  const manualCycle = manual ? landmineCycleInfo(currentRound.round_number, metadata.caller_order.length || 1) : null
+  const roundLabel = manualCycle
+    ? `Round ${manualCycle.round}/${Math.max(1, bootstrap.game?.rounds_count ?? 1)}`
+    : `Round ${currentRound.round_number}`
 
   // ── Category pick / manual setup ───────────────────────────────────────────────
   if (metadata.phase === 'category_pick') {
@@ -672,7 +679,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
       subtitle={
         bootstrap.game?.status === 'active' && revealLeft > 0
           ? `Next round in ${revealLeft}s`
-          : `Round ${currentRound.round_number} · ${metadata.category ?? ''}`
+          : `${roundLabel} · ${metadata.category ?? ''}`
       }
     >
       <KeyboardAwareGameScroll contentContainerStyle={styles.form}>

@@ -17,6 +17,7 @@ import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { CardTableArea } from '@/components/games/cards/CardTableArea'
 import { GameTimerBar } from '@/components/games/cards/GameTimerBar'
 import { useGameExpiryTimer } from '@/hooks/useGameExpiryTimer'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { CrazyEightsRoster } from '@/components/games/cards/CrazyEightsRoster'
 import { WhotCardFace } from '@/components/games/cards/WhotCardFace'
@@ -200,6 +201,14 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     return counts
   }, [hands])
 
+  // Pin the whole-game countdown below the header so it stays visible as the
+  // table scrolls. Falls back to inline rendering under a host shell (no slot).
+  const gameTimer =
+    gameDurationSeconds > 0 && gameSecondsLeft > 0 ? (
+      <GameTimerBar secondsLeft={gameSecondsLeft} durationSeconds={gameDurationSeconds} />
+    ) : null
+  const gameTimerPinned = useStickyTimer(gameTimer, [gameSecondsLeft, gameDurationSeconds])
+
   const act = async (fn: () => Promise<unknown>) => {
     if (!bootstrap.myResumeToken || acting) return
     setActing(true)
@@ -352,9 +361,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title={batch4GameLabel('whot')} subtitle={bootstrap.code}>
       <ScrollView contentContainerStyle={styles.content}>
-        {gameDurationSeconds > 0 && gameSecondsLeft > 0 ? (
-          <GameTimerBar secondsLeft={gameSecondsLeft} durationSeconds={gameDurationSeconds} />
-        ) : null}
+        {gameTimerPinned ? null : gameTimer}
         <TurnBanner
           text={isWatching ? `Spectating — ${turnName}'s turn` : (session.status_message ?? `${turnName}'s turn`)}
           isMyTurn={isMyTurn && !isWatching}

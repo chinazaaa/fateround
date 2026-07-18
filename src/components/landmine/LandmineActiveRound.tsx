@@ -9,6 +9,7 @@ import {
   gameLandmineMineSource,
   gameLandmineCategoryTimer,
   landmineModeLabel,
+  landmineCycleInfo,
   clampLandmineMineCount,
   normalizeAnswer,
   parseLandmineMetadata,
@@ -451,10 +452,18 @@ export function LandmineActiveRound({
       <span className={`text-sm font-bold ${secondsLeft <= 10 ? 'text-red-400' : 'text-muted'}`}>{secondsLeft}s</span>
     ) : null
 
+  // Manual mode counts a "round" as one full cycle (every player sets once); the raw round_number is
+  // the setter-turn. Show the cycle so it reads like Describe It ("Round 1 of 3") instead of Round 15.
+  const manualCycle = landmineCycleInfo(currentRound.round_number, metadata.caller_order.length || 1)
+  const manualCycleTotal = Math.max(1, game.rounds_count ?? 1)
+  const roundLabel = manual
+    ? `Round ${manualCycle.round} of ${manualCycleTotal} · Setter ${manualCycle.setterInRound}/${manualCycle.roster}`
+    : `Round ${currentRound.round_number}`
+
   const roundHeader = (
     <div className="flex items-center justify-between">
       <div className="text-sm text-muted">
-        Round {currentRound.round_number} · {landmineModeLabel(mode)}
+        {roundLabel} · {landmineModeLabel(mode)}
       </div>
       {timerBadge}
     </div>
@@ -749,7 +758,7 @@ export function LandmineActiveRound({
       <div className="glass-card p-6 space-y-4">
         <div className="flex items-center justify-between gap-2">
           <div className="text-sm text-muted">
-            Round {currentRound.round_number} · {metadata.category}
+            {roundLabel} · {metadata.category}
           </div>
           {game.status === 'active' && revealLeft > 0 && (
             <span className="text-sm font-bold text-sky-300">Next round in {revealLeft}s</span>

@@ -740,6 +740,22 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
             <option value="elimination">Elimination — mine knocks you out</option>
           </select>
         </label>
+        {modeSetting === 'elimination' && (
+          <label className="block space-y-1">
+            <span className="text-sm font-semibold">Time limit</span>
+            <select
+              value={elimSeconds}
+              onChange={(e) => setElimSeconds(Number(e.target.value))}
+              className="input-field w-full"
+            >
+              {LANDMINE_ELIM_SECONDS_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s / 60} min
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {modeSetting === 'zero_points' && mineSourceSetting === 'system' && (
           <label className="block space-y-1">
             <span className="text-sm font-semibold">Rounds</span>
