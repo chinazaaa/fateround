@@ -349,6 +349,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
     if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
       return NextResponse.json({ error: 'This room is full' }, { status: 400 })
@@ -438,6 +439,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
     if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
       return NextResponse.json({ error: 'This bingo room is full' }, { status: 400 })
@@ -487,6 +489,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
     if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
       return NextResponse.json({ error: 'This game is full' }, { status: 400 })
@@ -552,6 +555,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
     if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
       return NextResponse.json({ error: 'This game is full' }, { status: 400 })
@@ -597,6 +601,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
     if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
       return NextResponse.json({ error: 'This game is full' }, { status: 400 })
@@ -646,6 +651,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
     if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
       return NextResponse.json({ error: 'This game is full' }, { status: 400 })
@@ -708,6 +714,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
     if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
       return NextResponse.json({ error: 'This game is full' }, { status: 400 })
@@ -754,6 +761,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
     if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
       return NextResponse.json({ error: 'This game is full' }, { status: 400 })
@@ -813,6 +821,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
     if ((playerCount ?? 0) >= maxPlayers) {
       return NextResponse.json({ error: 'This game is full' }, { status: 400 })
     }
@@ -865,6 +874,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
     if ((playerCount ?? 0) >= maxPlayers) {
       return NextResponse.json({ error: 'This game is full' }, { status: 400 })
     }
@@ -921,6 +931,7 @@ export async function POST(req: NextRequest) {
         .from('players')
         .select('id', { count: 'exact', head: true })
         .eq('game_id', id)
+        .eq('spectator', false)
 
       if (game.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
         return NextResponse.json({ error: 'This room is full' }, { status: 400 })
