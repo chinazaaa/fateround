@@ -1,8 +1,10 @@
 'use client'
 
+import { useMemo } from 'react'
 import { HostPageShell, hostPlayLayoutFlags } from '@/components/host/HostPageShell'
 import { EyeIcon, PlayIcon, SlidersIcon } from '@/components/host/host-icons'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { useRosterBase, useRosterManage } from '@/components/roster/RosterDrawerContext'
 import { playerIsViewer } from '@/lib/viewers'
 import type { Game, GameStatus, Player } from '@/types'
 
@@ -35,6 +37,7 @@ export function HostGameLayout({
   players,
   hostPlayerId,
   onHostRejoined,
+  onRemovePlayer,
 }: {
   gameCode: string
   status: GameStatus | undefined
@@ -61,10 +64,24 @@ export function HostGameLayout({
   hostPlayerId?: string | null
   /** Called after the host promotes back to a player, to re-fetch game state. */
   onHostRejoined?: () => void | Promise<unknown>
+  /** When set, the roster drawer gets a per-row Remove for the host. */
+  onRemovePlayer?: (playerId: string, playerName: string) => void
 }) {
   const isFinished = status === 'finished'
   const layout = hostPlayLayoutFlags(tab, showTabs, status)
   const primaryLabel = primaryKind === 'play' ? 'Play' : 'Watch'
+
+  // Feed the shared roster drawer (opened from the header) — only while the game
+  // is actually being played. In the lobby/waiting (and once finished) the roster
+  // lives in the lobby/results UI, so the header button stays hidden. The host's
+  // own row is marked "you" via hostPlayerId; scores are layered on by each game
+  // view via useGameScores. Remove is enabled only when the view wires onRemovePlayer.
+  useRosterBase(status === 'active' ? players : undefined, game, hostPlayerId)
+  const manageRemove = useMemo(
+    () => (onRemovePlayer ? (row: { id: string; name: string }) => onRemovePlayer(row.id, row.name) : undefined),
+    [onRemovePlayer]
+  )
+  useRosterManage(manageRemove ? { hostPlayerId: hostPlayerId ?? null, onRemove: manageRemove } : null)
 
   // A host who joined to play can be flipped to spectator mid-game (e.g. a play-again lobby
   // reset re-seats everyone). Unlike the player views, the host scaffold never surfaced a way

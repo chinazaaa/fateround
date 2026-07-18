@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { copyToClipboard } from '@/lib/copy'
 import { useToast } from '@/components/ui/Toast'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
@@ -22,15 +22,32 @@ export function ShareInviteButton({
   url,
   text = 'Join my game on Fate Round:',
   label = 'Share invite',
+  copyLabel,
   className = '',
 }: {
   url: string
   text?: string
   label?: string
+  /**
+   * Label to show when the native share sheet isn't available (most desktops),
+   * where this button just copies the link. Lets the caller say "Copy invite
+   * link" on desktop while keeping "Share invite" on mobile. Falls back to
+   * `label` when omitted.
+   */
+  copyLabel?: string
   className?: string
 }) {
   const toast = useToast()
   const [copied, setCopied] = useState(false)
+  // Default true so the server + first client render both show `label` (no
+  // hydration mismatch); corrected to the device's real capability after mount.
+  const [canNativeShare, setCanNativeShare] = useState(true)
+
+  useEffect(() => {
+    setCanNativeShare(typeof navigator !== 'undefined' && typeof navigator.share === 'function')
+  }, [])
+
+  const restLabel = canNativeShare ? label : (copyLabel ?? label)
 
   const handleShare = async () => {
     // Prefer the native share sheet (mobile → WhatsApp / Messages / etc.).
@@ -62,7 +79,7 @@ export function ShareInviteButton({
 
   return (
     <button type="button" onClick={handleShare} className={`btn-primary ${className}`}>
-      {copied ? 'Copied ✓' : label}
+      {copied ? 'Copied ✓' : restLabel}
     </button>
   )
 }

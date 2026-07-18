@@ -146,6 +146,7 @@ import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { useRosterBase } from '@/components/roster/RosterDrawerContext'
 import { PlayerSessionBar } from '@/components/ui/PlayerSessionBar'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
@@ -347,6 +348,13 @@ export function PollGamePlayerExperience({
 
   const myPlayer = useMemo(() => players.find((p) => p.id === myPlayerId) ?? null, [players, myPlayerId])
   const isViewer = !!(game && myPlayer && playerIsViewer(myPlayer, game))
+
+  // Feed the shared roster drawer (opened from the player header) — only while the
+  // game is actively being played (not the lobby/join/waiting screen, not once it
+  // has finished). This dispatcher stays mounted with a live roster subscription
+  // even after a dedicated game view takes over, so every game gets the roster for
+  // free. Dedicated views layer per-player scores on top via useGameScores.
+  useRosterBase(game?.status === 'active' ? players : undefined, game, myPlayerId)
 
   const {
     assignment,
