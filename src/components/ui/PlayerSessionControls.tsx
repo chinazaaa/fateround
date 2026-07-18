@@ -2,7 +2,6 @@
 
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
-import { PlayerResumeCard } from '@/components/PlayerResumeCard'
 
 const leaveInlineClassName =
   'shrink-0 rounded-lg border border-red-500/30 px-3.5 py-1.5 text-xs font-semibold text-red-500 transition-colors hover:bg-red-500/10 disabled:opacity-50'
@@ -20,7 +19,6 @@ export function PlayerSessionControls({
   align = 'start',
   className = '',
   spectating = false,
-  hideResume = false,
 }: {
   gameCode: string
   playerId: string
@@ -35,8 +33,6 @@ export function PlayerSessionControls({
   className?: string
   /** Show a "Watching as" label instead of "Playing as" for spectators/viewers. */
   spectating?: boolean
-  /** Hide the "Continue on another device" resume card (e.g. it lives in the share popup). */
-  hideResume?: boolean
 }) {
   const leaveButton = (
     <LeaveGameButton
@@ -82,7 +78,6 @@ export function PlayerSessionControls({
         </div>
         {leaveButton}
       </div>
-      {hideResume ? null : <PlayerResumeCard gameCode={gameCode} compact={!inLobby} />}
     </div>
   )
 }
