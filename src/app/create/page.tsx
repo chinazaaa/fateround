@@ -134,6 +134,7 @@ import { WST_DECK_MIN_ENTRIES, type WstDeckEntry } from '@/lib/who-said-this'
 import { WST_PLATFORM_DECK } from '@/lib/who-said-this-questions'
 import { playerQuestionsOrderOptions, parsePlayerQuestionsOrder } from '@/lib/player-question-pool'
 import { isPeoplePollGame, playerNameSubmissionHint } from '@/lib/player-participant-pool'
+import { setHostPlayIntent } from '@/lib/host-play-intent'
 import { CustomSlotBuilder } from '@/components/CustomSlotBuilder'
 import { GenderRoundModeControl } from '@/components/GenderRoundModeControl'
 import { customPairVoteModeOptions } from '@/lib/custom-game'
@@ -971,6 +972,22 @@ function CreateGameInner() {
 
   const isAnonymousRoom = isAnonymousMessagesGame(settings.game_type)
   const isSecretMessage = isSecretMessageGame(settings.game_type)
+  // Host's create-screen seat choice, carried into the lobby via host-play intent.
+  const [hostName, setHostName] = useState('')
+  const [hostWillPlay, setHostWillPlay] = useState(true)
+  // Games whose host panel supports the "Host only / Host + play" seat toggle.
+  // Excludes the poll family (routed through PollHostView, own join flow) and the
+  // host-only games (message boards, mafia). For these, the host's create-screen
+  // name + role are carried into the lobby via host-play intent.
+  const hostPlaySupported =
+    !isBinaryLobby &&
+    !isMlt &&
+    !isPan &&
+    !isHotSeatGame &&
+    !isPeoplePoll &&
+    !isAnonymousRoom &&
+    !isSecretMessage &&
+    !isMafia
   const isBingo = isBingoGame(settings.game_type)
   const isCodewords = isCodewordsGame(settings.game_type)
   const isMessageBoard = isAnonymousRoom || isSecretMessage
@@ -1867,6 +1884,16 @@ function CreateGameInner() {
         // panel and can reopen it later without the saved link (same-device recovery).
         // The token also lives in the panel's share menu for hosting on another device.
         rememberHostToken(data.gameCode, data.hostToken)
+        // Carry the host's create-screen choice into the lobby. A typed name under
+        // "Host + play" means "seat me automatically" (the lobby auto-joins with it);
+        // an empty name still lands in play mode but waits for a manual Join, and
+        // "Host only" makes the host a spectator. Consumed once on the host panel.
+        if (hostPlaySupported) {
+          setHostPlayIntent(data.gameCode, {
+            name: hostName.trim(),
+            role: hostWillPlay ? 'play' : 'host',
+          })
+        }
         const roomParam = searchParams.get('room')
         const memberParam = searchParams.get('member')
         if (roomParam) {
@@ -5531,6 +5558,34 @@ function CreateGameInner() {
                     </div>
                   )}
                 </div>
+              </SettingsGroup>
+            )}
+
+            {hostPlaySupported && (
+              <SettingsGroup title="You">
+                <SegmentedControl
+                  value={hostWillPlay ? 'play' : 'host'}
+                  onChange={(v) => setHostWillPlay(v === 'play')}
+                  options={[
+                    { label: 'Host + play', value: 'play' },
+                    { label: 'Host only', value: 'host' },
+                  ]}
+                />
+                {hostWillPlay && (
+                  <div className="pt-2">
+                    <input
+                      type="text"
+                      value={hostName}
+                      onChange={(e) => setHostName(e.target.value)}
+                      placeholder="Your name (optional)"
+                      maxLength={24}
+                      className="input-field w-full"
+                    />
+                    <p className="text-faint text-xs mt-1.5 leading-relaxed">
+                      Enter your name to be seated automatically. Leave it blank to add yourself from the lobby.
+                    </p>
+                  </div>
+                )}
               </SettingsGroup>
             )}
 

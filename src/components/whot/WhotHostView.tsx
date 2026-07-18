@@ -9,28 +9,23 @@ import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
-import { consumeHostPlayIntent } from '@/lib/host-play-intent'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   currentPlayerId,
-  getWhotHostMode,
   hasActiveWhotCall,
   hasPlayableCard,
   getActivePickPenalty,
   isDrawPileDepleted,
   parseWhotRules,
-  setWhotHostMode,
   WHOT_MIN_PLAYERS,
-  type WhotHostMode,
 } from '@/lib/whot'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT, WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
-import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import type { Game, Player, WhotPlayerHand, WhotSession, WhotShape } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -73,12 +68,6 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
-  const [hostMode, setHostMode] = useState<WhotHostMode>('player')
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
   const [hostActing, setHostActing] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
 
@@ -102,21 +91,6 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
 
   useEffect(() => {
     load()
-    const intent = consumeHostPlayIntent(gameCode)
-    if (intent) {
-      const mode: WhotHostMode = intent.role === 'host' ? 'spectator' : 'player'
-      setWhotHostMode(gameCode, mode)
-      setHostMode(mode)
-      if (intent.name) setHostJoinName(intent.name)
-    } else {
-      setHostMode(getWhotHostMode(gameCode))
-    }
-    const stored = getPlayerSession(gameCode)
-    if (stored) {
-      setHostPlayerId(stored.playerId)
-      setHostResumeToken(stored.resumeToken ?? null)
-      setHostPlayerName(stored.playerName)
-    }
   }, [gameCode, load])
 
   // Land on the primary (Play/Watch) tab when the game starts, and on Manage when it ends.
@@ -166,123 +140,36 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     runImmediately: false,
   })
 
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+  })
+
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostPlayerName('')
-        clearPlayerSession(gameCode)
-      }
+      onHostSeatRemoved(playerId)
       setPlayers((prev) => prev.filter((p) => p.id !== playerId))
     },
-    [gameCode, hostPlayerId]
+    [onHostSeatRemoved]
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
-
-  // Clear stale host-as-player state if the host's own row is removed elsewhere.
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
-
-  // Fires once to auto-seat the host in "Play as yourself" mode; declared here so
-  // changeHostMode can re-arm it when the host gives up their seat.
-  const hostAutoJoinedRef = useRef(false)
-
-  const changeHostMode = async (mode: WhotHostMode) => {
-    const prev = hostMode
-    setHostMode(mode)
-    setWhotHostMode(gameCode, mode)
-    // Switching to "Host only" while holding a seat → give up the seat so the
-    // host drops out of the players list. Re-arm auto-join so picking "Play as
-    // yourself" again re-seats them.
-    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
-      hostAutoJoinedRef.current = false
-      try {
-        const res = await fetch('/api/players', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error ?? 'Failed to leave seat')
-        }
-        handlePlayerRemoved(hostPlayerId)
-        await load()
-      } catch (err) {
-        setHostMode(prev)
-        setWhotHostMode(gameCode, prev)
-        hostAutoJoinedRef.current = true
-        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
-      }
-    }
-  }
-
-  const hostJoinGame = async () => {
-    if (!hostJoinName.trim()) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: hostJoinName.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostResumeToken(data.resumeToken ?? null)
-      setHostPlayerName(data.playerName)
-      await load()
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }
-
-  // Persist a new host display name (⋯ menu → Edit your name). Only meaningful
-  // when the host holds a seat (host+play); it renames their player row so the
-  // turn rail + everyone else update, and refreshes the session so the voice
-  // rail name (useHostDisplayName) syncs.
-  const renameHost = async (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed) return
-    if (!hostPlayerId || !hostResumeToken) {
-      toastError('Take a seat (Play as yourself) before changing your name.')
-      return
-    }
-    try {
-      const res = await fetch('/api/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, resumeToken: hostResumeToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
-      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
-      setHostPlayerName(data.playerName)
-      await load()
-      success('Name updated!')
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to update name')
-    }
-  }
-
-  // No manual join: when the host chose "Play as yourself" (mode 'player'), seat
-  // them automatically in the lobby using the name carried from the create
-  // screen. Fires once; falls back to "Host" if no name was provided.
-  useEffect(() => {
-    if (hostAutoJoinedRef.current) return
-    if (game?.status !== 'waiting') return
-    if (hostMode !== 'player') return
-    if (hostPlayerId || hostJoining) return
-    if (!hostJoinName.trim()) {
-      setHostJoinName('Host')
-      return
-    }
-    hostAutoJoinedRef.current = true
-    void hostJoinGame()
-  }, [game?.status, hostMode, hostPlayerId, hostJoining, hostJoinName]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const postHostAction = async (path: string, body: Record<string, unknown> = {}) => {
     if (!hostPlayerId) return
