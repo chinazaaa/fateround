@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Alert, Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { type MonopolyBoard, type MonopolyPlayerState, type Player, normalizeGameCode } from '@fateround/shared'
 import { batch8GameLabel } from '@fateround/shared/batch-8-games'
 import { MONOPOLY_JAIL_FINE, spaceAt } from '@fateround/shared/monopoly-board'
@@ -48,6 +48,7 @@ import {
   postMonopolyRoll,
   postMonopolySettleDebt,
   postMonopolyTrade,
+  patchPlayerMonopolyToken,
 } from '@/lib/game-api'
 import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import {
@@ -117,6 +118,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const [selectedToken, setSelectedToken] = useState<MonopolyTokenId | null>(null)
   const [joinError, setJoinError] = useState<string | null>(null)
   const [joiningToken, setJoiningToken] = useState(false)
+  const [editingToken, setEditingToken] = useState(false)
+  const [savingToken, setSavingToken] = useState(false)
   const [timerTick, setTimerTick] = useState(0)
   const [manageError, setManageError] = useState<string | null>(null)
   // Bottom-panel tabs (mirrors web MonopolyActiveLayout `SidePanel`): 'build'
@@ -262,6 +265,28 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       setJoinError(err instanceof Error ? err.message : 'Failed to join')
     } finally {
       setJoiningToken(false)
+    }
+  }
+
+  // Swap your board token from the lobby before the game starts.
+  const changeMyToken = async (tokenId: MonopolyTokenId) => {
+    const meRow = bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
+    if (!bootstrap.myPlayerId || tokenId === meRow?.monopoly_token) {
+      setEditingToken(false)
+      return
+    }
+    setSavingToken(true)
+    try {
+      const code = normalizeGameCode(gameCode)
+      const session = await getPlayerSession(code)
+      if (!session?.resumeToken) throw new Error('Your session expired — rejoin to change token')
+      await patchPlayerMonopolyToken(code, bootstrap.myPlayerId, tokenId, session.resumeToken)
+      setEditingToken(false)
+      await bootstrap.load()
+    } catch (err) {
+      Alert.alert('Could not change token', err instanceof Error ? err.message : 'Please try again.')
+    } finally {
+      setSavingToken(false)
     }
   }
 
@@ -470,8 +495,12 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    const meRow = bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
+    const canChangeToken = !!meRow && !meRow.spectator
+    // Tokens owned by OTHERS (so my own stays selectable when re-picking).
+    const othersOwners = monopolyTokenOwners(bootstrap.players.filter((p) => p.id !== bootstrap.myPlayerId))
     return (
-      <View style={styles.waitingWrap}>
+      <ScrollView style={styles.waitingWrap} contentContainerStyle={styles.waitingContent}>
         <LobbyView {...lobbyProps!} onLeft={onLeft} />
         <View style={styles.tokenList}>
           <Text style={styles.lobbyHint}>Tokens in lobby:</Text>
@@ -490,7 +519,41 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               ))}
           </ScrollView>
         </View>
-      </View>
+        {canChangeToken ? (
+          <View style={styles.changeTokenBlock}>
+            <View style={styles.changeTokenHeader}>
+              <Text style={styles.changeTokenLabel}>
+                Your token: {monopolyTokenEmoji(meRow?.monopoly_token)}{' '}
+                {MONOPOLY_PLAYER_TOKENS.find((t) => t.id === meRow?.monopoly_token)?.label ?? '—'}
+              </Text>
+              <Pressable onPress={() => setEditingToken((v) => !v)} hitSlop={8}>
+                <Text style={styles.changeTokenAction}>{editingToken ? 'Cancel' : 'Change token'}</Text>
+              </Pressable>
+            </View>
+            {editingToken ? (
+              <View style={styles.tokenGrid}>
+                {MONOPOLY_PLAYER_TOKENS.map((token) => {
+                  const owner = othersOwners.get(token.id)
+                  const taken = !!owner
+                  const selected = meRow?.monopoly_token === token.id
+                  return (
+                    <Pressable
+                      key={token.id}
+                      style={[styles.tokenBtn, selected && styles.tokenBtnActive, taken && styles.tokenBtnTaken]}
+                      disabled={taken || savingToken}
+                      onPress={() => void changeMyToken(token.id)}
+                    >
+                      <Text style={styles.tokenEmoji}>{token.emoji}</Text>
+                      <Text style={styles.tokenLabel}>{token.label}</Text>
+                      {owner ? <Text style={styles.tokenOwner}>{owner}</Text> : null}
+                    </Pressable>
+                  )
+                })}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+      </ScrollView>
     )
   }
 
@@ -942,6 +1005,25 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     waitingWrap: { flex: 1, backgroundColor: theme.bg },
+    waitingContent: { paddingBottom: 32 },
+    changeTokenBlock: {
+      marginHorizontal: 20,
+      marginBottom: 24,
+      borderRadius: theme.radius.md,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surface,
+      padding: 12,
+      gap: 8,
+    },
+    changeTokenHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    changeTokenLabel: { color: theme.text, fontSize: 14, fontWeight: '600', flex: 1 },
+    changeTokenAction: { color: theme.primaryMuted, fontSize: 14, fontWeight: '700' },
     tokenList: { paddingHorizontal: 20, paddingBottom: 24 },
     joinWrap: { flex: 1, backgroundColor: theme.bg },
     joinContent: { paddingBottom: 32 },
