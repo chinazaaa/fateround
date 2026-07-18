@@ -90,6 +90,7 @@ import { PARTICIPANT_SELECT, ROUND_SELECT, VOTE_SELECT } from '@/lib/supabase-se
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { mltVoteLeaderboard } from '@/lib/finish-leaderboards'
 import { tallyWstScores, wstLeaderboard } from '@/lib/wst-standings'
+import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
@@ -676,6 +677,27 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
             players={bootstrap.players}
             myPlayerId={bootstrap.myPlayerId}
           />
+          {/* WST running leaderboard after every question — mirrors trivia's between-round standings. */}
+          {isWhoSaidThis(gameType)
+            ? (() => {
+                const scores = tallyWstScores(pollState.rounds, pollState.votes, bootstrap.players)
+                if (scores.length === 0) return null
+                return (
+                  <LeaderboardPanel
+                    title="Leaderboard"
+                    rows={scores.map((s, i) => ({
+                      id: s.playerId,
+                      name: s.name,
+                      score: s.points,
+                      highlight: i === 0 && s.points > 0 ? true : undefined,
+                    }))}
+                    highlightId={bootstrap.myPlayerId}
+                    scoreSuffix=""
+                    embedded
+                  />
+                )
+              })()
+            : null}
           {bootstrap.myPlayerId ? <PollReactionBar gameCode={bootstrap.code} playerId={bootstrap.myPlayerId} /> : null}
           {!isViewer && bootstrap.myResumeToken ? (
             <ConfessionInput

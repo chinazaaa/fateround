@@ -109,6 +109,7 @@ import {
   isTriviaLobbyGame,
   type TriviaLobbyState,
 } from '@/components/host/lobby-settings/TriviaLobbySection'
+import { WstSourceLobbyEditor } from '@/components/host/lobby/WstSourceLobbyEditor'
 import {
   customContentStateFromGame,
   customContentPayload,
@@ -215,6 +216,7 @@ export function HostLobbySettingsSheet({
   const isScrabble = isScrabbleLobbyGame(gameType)
   const isMonopoly = isMonopolyLobbyGame(gameType)
   const isICallOn = isICallOnLobbyGame(gameType)
+  const isWst = isWhoSaidThis(gameType)
   const showPollQuestions = hasPollQuestionSettings(gameType)
   // "Rounds include" (all vs joined) applies only to import-roster poll games — a pre-set host
   // list where not everyone may join. Mirrors web's participant_filter gate. Not tied to
@@ -742,7 +744,8 @@ export function HostLobbySettingsSheet({
               </View>
             ) : null}
 
-            {showRounds ? (
+            {/* WST has no host-set round count — each question is a round — so hide the picker. */}
+            {showRounds && !isWst ? (
               <RoundCountPicker
                 label="Rounds"
                 value={roundsCount}
@@ -753,7 +756,7 @@ export function HostLobbySettingsSheet({
 
             {showTimer ? (
               <TimerPicker
-                label={isTrivia ? 'Time per question' : 'Time per round'}
+                label={isTrivia || isWst ? 'Time per question' : 'Time per round'}
                 value={timerSeconds}
                 options={timerOptions}
                 format={formatPollRoundTimer}
@@ -812,6 +815,11 @@ export function HostLobbySettingsSheet({
                 onChange={(p) => setPoll((prev) => ({ ...prev, ...p }))}
                 showParticipantFilter={showPollParticipantFilter}
               />
+            ) : null}
+
+            {/* Who Said This question source (Players submit / Platform / Library / your own CSV). */}
+            {isWst ? (
+              <WstSourceLobbyEditor gameCode={gameCode} hostToken={hostToken} game={game} onSaved={onSaved} />
             ) : null}
 
             {isBingo ? (
