@@ -15,6 +15,8 @@ import {
   gameLandmineMode,
   gameLandmineCategoryTimer,
   landmineAnsweringPlayerIds,
+  landmineReviewEnabled,
+  landmineReviewSeconds,
   LANDMINE_ELIM_MAX_CYCLES,
   LANDMINE_MAX_ANSWER_LENGTH,
   LANDMINE_REVEAL_SECONDS,
@@ -93,6 +95,7 @@ function phaseExpired(metadata: LandmineMetadata, game: Game): boolean {
   if (metadata.phase === 'category_pick') return now >= start + gameLandmineCategoryTimer(game) * 1000
   if (metadata.phase === 'writing') return now >= start + writingTimer(game) * 1000
   if (metadata.phase === 'marking') return now >= start + markingTimer(game) * 1000
+  if (metadata.phase === 'review') return now >= start + landmineReviewSeconds(game) * 1000
   return false
 }
 
@@ -285,6 +288,19 @@ async function startMarkingPhase(
   return updateRoundMetadata(supabase, round.id, { ...metadata, phase: 'marking', phase_started_at: now })
 }
 
+/**
+ * MANUAL mode: after peer marking, hand the round to the setter to review/override every verdict
+ * before scores reveal (mirrors I Call On's caller review). Peer marks already sit in the table
+ * keyed by target; the setter's approve simply overrides them. A timeout falls straight through to
+ * scoring, keeping the peer verdicts.
+ */
+async function startReviewPhase(supabase: SupabaseClient, round: Round): Promise<boolean> {
+  const metadata = parseLandmineMetadata(round.landmine_metadata)
+  if (!metadata || metadata.phase !== 'marking') return false
+  const now = new Date().toISOString()
+  return updateRoundMetadata(supabase, round.id, { ...metadata, phase: 'review', phase_started_at: now })
+}
+
 async function getRoundMines(supabase: SupabaseClient, roundId: string): Promise<string[]> {
   const { data } = await supabase.from('landmine_round_mines').select('words').eq('round_id', roundId).maybeSingle()
   const words = (data as { words?: unknown } | null)?.words
@@ -295,10 +311,11 @@ async function getRoundMines(supabase: SupabaseClient, roundId: string): Promise
  * Reveal: compute per-player results, persist points/outcome, reveal the mine into the
  * (now public) metadata, eliminate mine-hitters in elimination mode, and finish the round.
  */
-async function computeAndFinishRound(supabase: SupabaseClient, game: Game, round: Round): Promise<boolean> {
+export async function computeAndFinishRound(supabase: SupabaseClient, game: Game, round: Round): Promise<boolean> {
   const metadata = parseLandmineMetadata(round.landmine_metadata)
   if (!metadata || metadata.scores_computed) return false
-  if (metadata.phase !== 'marking') return false
+  // System mode finishes straight from marking; manual mode finishes from the setter's review.
+  if (metadata.phase !== 'marking' && metadata.phase !== 'review') return false
 
   const [{ data: answers }, { data: marks }, mines] = await Promise.all([
     supabase.from('landmine_answers').select('*').eq('round_id', round.id),
@@ -464,6 +481,20 @@ async function advanceActiveRoundPhase(
     const marked = await countRoundMarks(supabase, round.id, answeringIds)
     const allMarked = answeringIds.length > 0 && marked >= answeringIds.length
     if (allMarked || phaseExpired(metadata, game)) {
+      // With review on, hand off to the review phase — the setter (manual) or the host (auto) can
+      // check/override the verdicts before scores reveal. With it off, score straight away.
+      const ok = landmineReviewEnabled(game)
+        ? await startReviewPhase(supabase, round)
+        : await computeAndFinishRound(supabase, game, round)
+      return ok ? 'phase_advanced' : 'round_active'
+    }
+    return 'round_active'
+  }
+
+  if (metadata.phase === 'review') {
+    // Only the reviewer's approve (via /api/landmine/setter-mark) finishes early; otherwise the
+    // review window expires and we score with the peer verdicts as they stand.
+    if (phaseExpired(metadata, game)) {
       const ok = await computeAndFinishRound(supabase, game, round)
       return ok ? 'phase_advanced' : 'round_active'
     }

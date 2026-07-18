@@ -117,7 +117,7 @@ export interface NpatMark {
 // and hitters are zeroed (zero_points) or knocked out (elimination).
 // Structurally a single-answer variant of NPAT (I Call On) with a secret mine.
 // ---------------------------------------------------------------------------
-export type LandminePhase = 'category_pick' | 'writing' | 'marking' | 'reveal'
+export type LandminePhase = 'category_pick' | 'writing' | 'marking' | 'review' | 'reveal'
 export type LandmineMode = 'zero_points' | 'elimination'
 /** Who plants the mine: 'system' (server draws it) or 'manual' (a rotating player sets it). */
 export type LandmineMineSource = 'system' | 'manual'
@@ -420,6 +420,8 @@ export interface Game {
   landmine_mine_source?: LandmineMineSource | null
   /** Landmine — elimination time limit in seconds (game ends when the clock runs out). */
   landmine_elim_seconds?: number | null
+  /** Landmine — whether the reviewer (setter/host) checks verdicts before reveal. Default true. */
+  landmine_review?: boolean | null
   /** Ping Pong — points required to win the match (3, 5, 7, 11, 15, or 21). */
   ping_pong_points_to_win?: number | null
 }

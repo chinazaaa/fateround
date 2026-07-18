@@ -129,6 +129,17 @@ export function LandmineCreatePanel({ value, onChange }: Props) {
           value={value.originalityBonus}
           onChange={(originalityBonus) => onChange({ originalityBonus })}
         />
+
+        <SettingToggle
+          label="Review answers before reveal"
+          description={
+            manual
+              ? 'The setter checks each answer before scores show.'
+              : 'The host checks each answer before scores show. Off = instant reveal.'
+          }
+          value={value.review}
+          onChange={(review) => onChange({ review })}
+        />
       </View>
     </SurfaceCard>
   )

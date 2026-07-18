@@ -7,6 +7,7 @@ import {
   clampLandmineWritingTimer,
   gameLandmineMode,
   gameLandmineMineSource,
+  isLandmineRoundParticipant,
   landmineCycleInfo,
   landmineModeLabel,
   landmineOutcomeLabel,
@@ -19,6 +20,8 @@ import {
   roundCallerPlayerId,
   tallyLandmineScores,
   LANDMINE_MAX_ANSWER_LENGTH,
+  LANDMINE_REVIEW_SECONDS,
+  LANDMINE_AUTO_REVIEW_SECONDS,
 } from '@fateround/shared/landmine'
 import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
@@ -39,6 +42,7 @@ import {
   postLandmineCategory,
   postLandmineDraft,
   postLandmineMark,
+  postLandmineSetterMark,
   postLandmineSetup,
   postLandmineSubmit,
 } from '@/lib/game-api'
@@ -80,6 +84,9 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   const [lockedAnswerRound, setLockedAnswerRound] = useState<string | null>(null)
   const [lockedAnswerText, setLockedAnswerText] = useState('')
   const [lockedMarkRound, setLockedMarkRound] = useState<string | null>(null)
+  // Manual mode: the setter's per-answer Valid/Void toggles + a lock once they approve the round.
+  const [setterVerdicts, setSetterVerdicts] = useState<Record<string, boolean>>({})
+  const [lockedSetterRound, setLockedSetterRound] = useState<string | null>(null)
 
   const answerRef = useRef('')
   answerRef.current = answerText
@@ -179,6 +186,10 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   // In manual mode the caller is the "setter": they plant the mine and sit out the round.
   const isSetter = manual && isCaller && !isViewer
   const mineCount = Math.min(3, Math.max(1, metadata?.mine_count ?? 1))
+  // A viewer, or a player who joined after this round began, isn't in the round's answer/mark
+  // ring — no answer to write, nobody assigned to mark. Show them a watch card instead of a
+  // writing/marking UI they can't act on (the empty "mark this" that looked frozen mid-round).
+  const spectatingRound = isViewer || !isLandmineRoundParticipant(metadata, bootstrap.myPlayerId)
 
   const roundAnswers = useMemo(
     () => (currentRound ? answers.filter((a) => a.round_id === currentRound.id) : []),
@@ -191,16 +202,24 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   const writingTimer = clampLandmineWritingTimer(bootstrap.game?.timer_seconds)
   const markingTimer = clampLandmineMarkingTimer(bootstrap.game?.operative_timer_seconds)
   const categoryTimer = clampLandmineCategoryTimer(bootstrap.game?.game_duration_seconds)
+  // Manual setter gets the long review window; the auto-mode host gets a short spot-check.
+  const reviewTimer = manual ? LANDMINE_REVIEW_SECONDS : LANDMINE_AUTO_REVIEW_SECONDS
   const secondsLeft = useMemo(() => {
     void tick
-    return metadata ? phaseSecondsLeft(metadata, writingTimer, markingTimer, categoryTimer) : null
-  }, [metadata, tick, writingTimer, markingTimer, categoryTimer])
+    return metadata ? phaseSecondsLeft(metadata, writingTimer, markingTimer, categoryTimer, reviewTimer) : null
+  }, [metadata, tick, writingTimer, markingTimer, categoryTimer, reviewTimer])
 
   // Pin the phase countdown to the session shell (below the header) like the other games, so it
   // stays visible while the answer/marking board scrolls. Each phase anchors to its own start +
   // per-phase length; reveal has no countdown. Falls back to the subtitle timer when not pinned.
   const phaseDelay =
-    metadata?.phase === 'writing' ? writingTimer : metadata?.phase === 'marking' ? markingTimer : categoryTimer
+    metadata?.phase === 'writing'
+      ? writingTimer
+      : metadata?.phase === 'marking'
+        ? markingTimer
+        : metadata?.phase === 'review'
+          ? reviewTimer
+          : categoryTimer
   const timerActive = !!metadata && metadata.phase !== 'reveal' && bootstrap.game?.status === 'active'
   const stickyTimerNode = timerActive ? (
     <CountdownTimerBadge anchorTime={metadata?.phase_started_at} delaySeconds={phaseDelay} active={timerActive} />
@@ -236,6 +255,8 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     setLockedAnswerRound(null)
     setLockedAnswerText('')
     setLockedMarkRound(null)
+    setSetterVerdicts({})
+    setLockedSetterRound(null)
     autoSubmittedRoundRef.current = null
     hydratedRoundRef.current = null
     if (draftTimerRef.current != null) {
@@ -359,9 +380,21 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
+  // Manual mode: the setter approves every answer at once (I Call On's caller-approve).
+  const submitSetterMarks = (verdicts: { playerId: string; valid: boolean }[]) => {
+    if (!token || !roundId) return
+    const rid = roundId
+    runOptimistic(
+      rid,
+      () => postLandmineSetterMark(gameCode, token, rid, verdicts),
+      () => setLockedSetterRound(rid)
+    )
+  }
+
   // Auto-submit at the writing deadline. The setter sits out, so they never auto-submit.
   useEffect(() => {
-    if (!currentRound || isViewer || isSetter || metadata?.phase !== 'writing' || myAnswer?.submitted_at) return
+    // spectatingRound covers viewers AND mid-round joiners — neither is in this round's ring.
+    if (!currentRound || spectatingRound || isSetter || metadata?.phase !== 'writing' || myAnswer?.submitted_at) return
     if (!metadata.phase_started_at) return
     const deadline = new Date(metadata.phase_started_at).getTime() + writingTimer * 1000
     const msLeft = Math.max(0, deadline - Date.now())
@@ -380,7 +413,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     metadata?.phase_started_at,
     writingTimer,
     myAnswer?.submitted_at,
-    isViewer,
+    spectatingRound,
     isSetter,
   ])
 
@@ -583,11 +616,17 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
               <Text style={styles.waitTitle}>You set this round — sit back</Text>
               <Text style={styles.meta}>You’ll score the total everyone else earns.</Text>
             </View>
-          ) : locked || isViewer ? (
+          ) : locked || spectatingRound ? (
             <View style={styles.waitCard}>
-              <Text style={styles.waitEmoji}>🔒</Text>
-              <Text style={styles.waitTitle}>{isViewer ? 'Watching' : 'Answer locked in'}</Text>
-              {!isViewer ? <Text style={styles.meta}>“{myAnswer?.answer || lockedAnswerText}”</Text> : null}
+              <Text style={styles.waitEmoji}>{locked ? '🔒' : '👀'}</Text>
+              <Text style={styles.waitTitle}>
+                {locked ? 'Answer locked in' : isViewer ? 'Watching' : 'You joined mid-round'}
+              </Text>
+              {locked ? (
+                <Text style={styles.meta}>“{myAnswer?.answer || lockedAnswerText}”</Text>
+              ) : !isViewer ? (
+                <Text style={styles.meta}>You’ll play from the next round.</Text>
+              ) : null}
             </View>
           ) : (
             <>
@@ -631,13 +670,16 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
           {isSetter ? (
             <View style={styles.waitCard}>
               <Text style={styles.waitEmoji}>🕵️</Text>
-              <Text style={styles.waitTitle}>You set this round — watching</Text>
-              <Text style={styles.meta}>Category: {metadata.category}</Text>
+              <Text style={styles.waitTitle}>You set this round — players are marking</Text>
+              <Text style={styles.meta}>You’ll review their verdicts next.</Text>
             </View>
-          ) : marked || isViewer ? (
+          ) : marked || spectatingRound ? (
             <View style={styles.waitCard}>
-              <Text style={styles.waitEmoji}>✅</Text>
-              <Text style={styles.waitTitle}>{isViewer ? 'Marking in progress' : 'Your mark is in'}</Text>
+              <Text style={styles.waitEmoji}>{marked ? '✅' : '👀'}</Text>
+              <Text style={styles.waitTitle}>
+                {marked ? 'Your mark is in' : isViewer ? 'Marking in progress' : 'You joined mid-round'}
+              </Text>
+              {!marked && !isViewer ? <Text style={styles.meta}>You’ll play from the next round.</Text> : null}
             </View>
           ) : (
             <>
@@ -665,6 +707,103 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
           )}
           {/* Everyone sees every answer + its live verdict (mine stays hidden until reveal). */}
           <Text style={[styles.meta, { textAlign: 'left', marginTop: 8, fontWeight: '700' }]}>Everyone’s answers</Text>
+          {playerAnswers.map((a) => {
+            const hasAns = !!normalizeAnswer(a.answer)
+            const m = marks.find((mk) => mk.round_id === currentRound.id && mk.target_player_id === a.player_id)
+            const verdict = !hasAns ? '—' : m?.marked_at ? (m.valid ? '✓ Valid' : '✕ Void') : '· marking'
+            return (
+              <View key={a.player_id} style={styles.resultRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.resultName}>
+                    {playerDisplayName(a.player_id, bootstrap.players)}
+                    {a.player_id === bootstrap.myPlayerId ? ' (you)' : ''}
+                  </Text>
+                  <Text style={styles.meta}>{a.answer || '(no answer)'}</Text>
+                </View>
+                <Text style={styles.resultBadge}>{verdict}</Text>
+              </View>
+            )
+          })}
+        </KeyboardAwareGameScroll>
+      </GameShell>
+    )
+  }
+
+  // ── Manual review — the setter checks/overrides the peer verdicts, then reveals ─────────
+  if (metadata.phase === 'review') {
+    if (isSetter) {
+      const approved = lockedSetterRound === currentRound.id
+      // Default each toggle to the peer verdict already on the mark row.
+      const verdictFor = (id: string) =>
+        setterVerdicts[id] ??
+        marks.find((mk) => mk.round_id === currentRound.id && mk.target_player_id === id)?.valid ??
+        true
+      return (
+        <GameShell bootstrap={bootstrap} title="Landmine" subtitle={timer ? `Review · ${timer}` : 'Review'}>
+          <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
+            <Text style={styles.section}>Review the marks</Text>
+            <Text style={styles.meta}>
+              Category: {metadata.category}. Players marked each answer — adjust anything, then reveal.
+            </Text>
+            {playerAnswers.map((a) => {
+              const hasText = !!normalizeAnswer(a.answer)
+              const valid = hasText ? verdictFor(a.player_id) : false
+              return (
+                <View key={a.player_id} style={styles.reviewRow}>
+                  <Text style={styles.resultName}>{playerDisplayName(a.player_id, bootstrap.players)}</Text>
+                  <Text style={styles.meta}>{a.answer || '(no answer)'}</Text>
+                  {hasText ? (
+                    <View style={styles.markRow}>
+                      <Pressable
+                        style={[styles.markBtn, valid ? styles.markValidOn : styles.markOff]}
+                        disabled={approved}
+                        onPress={() => setSetterVerdicts((p) => ({ ...p, [a.player_id]: true }))}
+                      >
+                        <Text style={styles.markText}>✓ Valid</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.markBtn, !valid ? styles.markVoidOn : styles.markOff]}
+                        disabled={approved}
+                        onPress={() => setSetterVerdicts((p) => ({ ...p, [a.player_id]: false }))}
+                      >
+                        <Text style={styles.markText}>✕ Void</Text>
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <Text style={styles.meta}>Empty — scores 0 automatically.</Text>
+                  )}
+                </View>
+              )
+            })}
+            <Pressable
+              style={styles.primaryBtn}
+              disabled={acting || approved}
+              onPress={() =>
+                submitSetterMarks(
+                  playerAnswers.map((a) => ({
+                    playerId: a.player_id,
+                    valid: !!normalizeAnswer(a.answer) && verdictFor(a.player_id),
+                  }))
+                )
+              }
+            >
+              <Text style={styles.primaryText}>{approved ? 'Revealing…' : 'Approve & reveal scores'}</Text>
+            </Pressable>
+            <Text style={styles.meta}>The mine is still hidden — judge only whether each answer fits.</Text>
+          </KeyboardAwareGameScroll>
+        </GameShell>
+      )
+    }
+    return (
+      <GameShell bootstrap={bootstrap} title="Landmine" subtitle={timer ? `Review · ${timer}` : 'Review'}>
+        <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
+          <View style={styles.waitCard}>
+            <Text style={styles.waitEmoji}>⚖️</Text>
+            <Text style={styles.waitTitle}>
+              {manual ? `${callerName} is reviewing the marks…` : 'The host is reviewing the marks…'}
+            </Text>
+            <Text style={styles.meta}>They’ll confirm each verdict, then scores reveal.</Text>
+          </View>
           {playerAnswers.map((a) => {
             const hasAns = !!normalizeAnswer(a.answer)
             const m = marks.find((mk) => mk.round_id === currentRound.id && mk.target_player_id === a.player_id)
@@ -773,7 +912,18 @@ const makeStyles = (theme: Theme) =>
     markBtn: { flex: 1, borderRadius: 10, padding: 14, alignItems: 'center', borderWidth: 1 },
     markValid: { borderColor: '#22c55e' },
     markVoid: { borderColor: '#ef4444' },
+    markValidOn: { borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.15)' },
+    markVoidOn: { borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.15)' },
+    markOff: { borderColor: theme.border },
     markText: { color: theme.text, fontSize: 16, fontWeight: '700' },
+    reviewRow: {
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 12,
+      gap: 8,
+    },
     mineText: { color: '#ef4444', fontSize: 22, fontWeight: '800' },
     resultRow: {
       flexDirection: 'row',
