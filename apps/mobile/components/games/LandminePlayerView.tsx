@@ -27,6 +27,8 @@ import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWait
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
+import { CountdownTimerBadge } from '@/components/party/CountdownTimerBadge'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
@@ -193,6 +195,22 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     void tick
     return metadata ? phaseSecondsLeft(metadata, writingTimer, markingTimer, categoryTimer) : null
   }, [metadata, tick, writingTimer, markingTimer, categoryTimer])
+
+  // Pin the phase countdown to the session shell (below the header) like the other games, so it
+  // stays visible while the answer/marking board scrolls. Each phase anchors to its own start +
+  // per-phase length; reveal has no countdown. Falls back to the subtitle timer when not pinned.
+  const phaseDelay =
+    metadata?.phase === 'writing' ? writingTimer : metadata?.phase === 'marking' ? markingTimer : categoryTimer
+  const timerActive = !!metadata && metadata.phase !== 'reveal' && bootstrap.game?.status === 'active'
+  const stickyTimerNode = timerActive ? (
+    <CountdownTimerBadge anchorTime={metadata?.phase_started_at} delaySeconds={phaseDelay} active={timerActive} />
+  ) : null
+  const timerPinned = useStickyTimer(stickyTimerNode, [
+    metadata?.phase,
+    metadata?.phase_started_at,
+    phaseDelay,
+    timerActive,
+  ])
 
   // Tick through every phase INCLUDING reveal so the "next round in Xs" countdown updates.
   useEffect(() => {
@@ -452,7 +470,8 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  const timer = secondsLeft != null && metadata.phase !== 'reveal' ? `${secondsLeft}s` : undefined
+  // Pinned to the shell when available; the subtitle text is the not-pinned fallback.
+  const timer = !timerPinned && secondsLeft != null && metadata.phase !== 'reveal' ? `${secondsLeft}s` : undefined
   const subtitle = metadata.category ? `Category: ${metadata.category}` : landmineModeLabel(mode)
   // Manual mode counts a "round" as one full cycle (every player sets once); show that cycle instead
   // of the raw setter-turn so it reads like Describe It ("Round 1/3") not "Round 15".
