@@ -55,6 +55,30 @@ describe('landmine scoring', () => {
     expect(byId.b.points).toBe(15)
   })
 
+  it('an answer that contains the mine word as a whole word still detonates', () => {
+    // "egusi soup" must still hit the "egusi" mine — you can't dodge it by appending a word.
+    const answers = [answer('a', 'egusi soup'), answer('b', 'cartoon')]
+    const marks = [mark('x', 'a', true), mark('y', 'b', true)]
+    const results = computeRoundResults(answers, marks, ['egusi', 'art'], { originalityBonus: false })
+    const byId = Object.fromEntries(results.map((r) => [r.player_id, r]))
+    // 'egusi soup' contains the whole word 'egusi' → mine.
+    expect(byId.a.outcome).toBe('mine')
+    expect(byId.a.mine_hit).toBe(true)
+    // 'cartoon' merely contains the letters of the 'art' mine, not the whole word → valid.
+    expect(byId.b.outcome).toBe('valid')
+    expect(byId.b.mine_hit).toBe(false)
+  })
+
+  it('a multi-word mine matches only as a whole phrase inside the answer', () => {
+    const answers = [answer('a', 'hot jollof rice please'), answer('b', 'rice jollof')]
+    const marks = [mark('x', 'a', true), mark('y', 'b', true)]
+    const results = computeRoundResults(answers, marks, ['jollof rice'], { originalityBonus: false })
+    const byId = Object.fromEntries(results.map((r) => [r.player_id, r]))
+    expect(byId.a.outcome).toBe('mine')
+    // 'rice jollof' is the phrase reversed → not a match.
+    expect(byId.b.outcome).toBe('valid')
+  })
+
   it('voided answers score 0 regardless of the mine', () => {
     const answers = [answer('a', 'bathtub')]
     const marks = [mark('x', 'a', false)]

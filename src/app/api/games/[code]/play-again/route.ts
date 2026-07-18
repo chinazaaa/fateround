@@ -24,6 +24,7 @@ import {
   isCrosswordGame,
   isWordSearchGame,
   isPingPongGame,
+  isWhoSaidThis,
 } from '@/lib/game-types'
 import { clearAnonymousRoomSessionData, reopenSecretMessageBoard } from '@/lib/anonymous-messages'
 import { clearBingoSessionData } from '@/lib/bingo'
@@ -60,12 +61,15 @@ import {
   applyCustomQuestionsUpdate,
   applyParticipantListUpdate,
   applyTriviaSettingsUpdate,
+  applyWstQuoteSourceUpdate,
   canReplaceHostParticipantList,
   parseHostPoolCustomQuestions,
   parseHostPoolTriviaQuestions,
   parseHostPoolParticipants,
   replaceHostParticipantList,
 } from '@/lib/host-pool-update'
+import { WST_DECK_MIN_ENTRIES, type WstDeckEntry } from '@/lib/who-said-this'
+import type { WyrQuestion } from '@/lib/would-you-rather-questions'
 import { extractRoundUsage, extractCodewordsBoardUsage, mergePoolUsageState, parsePoolUsage } from '@/lib/pool-usage'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { resetSpectatorsForLobby } from '@/lib/viewers'
@@ -167,6 +171,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     custom_questions: rawCustomQuestions,
     participants: rawParticipants,
     question_source,
+    wst_quote_source: rawWstQuoteSource,
     trivia_category,
     timer_seconds,
     rounds_count,
@@ -265,7 +270,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
   }
 
   if (rawCustomQuestions !== undefined && isCodewordsGame(gameType)) {
-    const nextWords = parseHostPoolCustomQuestions(rawCustomQuestions, gameType)
+    const nextWords = parseHostPoolCustomQuestions(rawCustomQuestions, gameType) as string[] | null
     if (!nextWords || !Array.isArray(nextWords) || nextWords.length < CODEWORDS_MIN_CUSTOM_POOL) {
       return NextResponse.json(
         { error: `Need at least ${CODEWORDS_MIN_CUSTOM_POOL} valid words in your library` },
@@ -275,8 +280,24 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     const { gameUpdate: wordUpdate, poolUsage: nextPoolUsage } = applyCustomQuestionsUpdate(game, nextWords, poolUsage)
     Object.assign(gameUpdate, wordUpdate)
     poolUsage = nextPoolUsage
+  } else if (isWhoSaidThis(gameType) && (rawWstQuoteSource !== undefined || rawCustomQuestions !== undefined)) {
+    // Who Said This replay source swap — 'player' reverts to lobby-submitted quotes; a deck
+    // source arrives as a deck in custom_questions. Mirrors the lobby-pool route.
+    if (rawWstQuoteSource === 'player') {
+      Object.assign(gameUpdate, applyWstQuoteSourceUpdate(game, { source: 'player' }).gameUpdate)
+    } else {
+      const nextDeck = parseHostPoolCustomQuestions(rawCustomQuestions, gameType) as WstDeckEntry[] | null
+      if (!nextDeck || nextDeck.length < WST_DECK_MIN_ENTRIES) {
+        return NextResponse.json(
+          { error: `Upload at least ${WST_DECK_MIN_ENTRIES} questions — a quote, its options, and which is correct` },
+          { status: 400 }
+        )
+      }
+      Object.assign(gameUpdate, applyWstQuoteSourceUpdate(game, { source: 'deck', deck: nextDeck }).gameUpdate)
+    }
   } else if (rawCustomQuestions !== undefined && !isTriviaGame(gameType)) {
-    const nextQuestions = parseHostPoolCustomQuestions(rawCustomQuestions, gameType)
+    // WST is handled in its own branch above, so any deck here belongs to a WYR/MLT pool.
+    const nextQuestions = parseHostPoolCustomQuestions(rawCustomQuestions, gameType) as WyrQuestion[] | string[] | null
     if (!nextQuestions) {
       return NextResponse.json({ error: 'Upload at least one valid question' }, { status: 400 })
     }

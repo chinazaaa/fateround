@@ -94,6 +94,7 @@ import {
   wstSubmitterName,
   tallyWstVotes,
   tallyWstPlayerScores,
+  wstScoreLabel,
   mergeActiveRound,
   dedupeWstPool,
   mergeWstPoolEntry,
@@ -2345,6 +2346,18 @@ export function PollGamePlayerExperience({
           ? (participants.find((p) => p.id === myVote.target_participant_id)?.name ?? null)
           : null
       const isLastRound = lastFinishedRound.round_number >= (game?.rounds_count ?? 0)
+      // Running leaderboard through the just-finished round — mirrors trivia's between-round
+      // standings so players see the score after every question, not just at the end.
+      const runningScores = tallyWstPlayerScores(allRounds, allVotes, players)
+      const wstRunningLeaderboard =
+        runningScores.length > 0 ? (
+          <PaginatedLeaderboard
+            title="Leaderboard"
+            rows={runningScores.map((row, i) => ({ id: row.playerId, name: row.name, score: row.points, rank: i + 1 }))}
+            highlightId={myPlayerId}
+            scoreLabel={wstScoreLabel}
+          />
+        ) : null
 
       if (isAnimeRound(lastFinishedRound)) {
         const meta = lastFinishedRound.anime_metadata as {
@@ -2382,6 +2395,7 @@ export function PollGamePlayerExperience({
                 myPickName={myPickName}
               />
             </RoundResultsShareBlock>
+            {wstRunningLeaderboard}
             <p className="text-faint text-sm text-center">
               {roundResultsWaitMessage({
                 isLastRound,
@@ -2427,6 +2441,7 @@ export function PollGamePlayerExperience({
               myPickName={myPickName}
             />
           </RoundResultsShareBlock>
+          {wstRunningLeaderboard}
           <ConfessionsTicker confessions={allConfessions.filter((c) => c.round_id === lastFinishedRound.id)} />
           <ReactionBar className="pt-1" gameCode={gameCode} playerId={myPlayerId} />
           <p className="text-faint text-sm text-center">
@@ -2807,6 +2822,7 @@ function FinalResultsView({
                 rank: i + 1,
               }))}
               highlightId={myPlayerId}
+              scoreLabel={wstScoreLabel}
             />
           )}
 

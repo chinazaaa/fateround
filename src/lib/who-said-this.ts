@@ -385,3 +385,12 @@ export function tallyWstPlayerScores(
     )
     .map(({ playerId, name, points, correctGuesses }) => ({ playerId, name, points, correctGuesses }))
 }
+
+/**
+ * Leaderboard score formatter for Who Said This. Scores are speed-based points ("fastest correct
+ * wins"), NOT a count of correct answers — so show the raw number, never the "N correct" default
+ * that PaginatedLeaderboard uses for count-based games.
+ */
+export function wstScoreLabel(points: number): string {
+  return String(points)
+}
