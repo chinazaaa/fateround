@@ -1,6 +1,10 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput } from 'react-native'
+import { normalizeGameCode } from '@fateround/shared'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
+import { resumePlayerByCode } from '@/lib/api'
+import { setPlayerSession } from '@/lib/secure-session'
+import { notifyPlayerSessionChanged } from '@/lib/session-events'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
@@ -43,6 +47,31 @@ export function JoinScreen({
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const theme = useTheme()
+  const [resumeOpen, setResumeOpen] = useState(false)
+  const [codeInput, setCodeInput] = useState('')
+  const [resuming, setResuming] = useState(false)
+  const [resumeError, setResumeError] = useState<string | null>(null)
+
+  const resume = async () => {
+    const trimmed = codeInput.trim()
+    if (!trimmed) {
+      setResumeError('Enter your player code')
+      return
+    }
+    setResuming(true)
+    setResumeError(null)
+    try {
+      const code = normalizeGameCode(gameCode)
+      const data = await resumePlayerByCode(code, trimmed)
+      await setPlayerSession(code, data.playerId, data.playerName, data.playerGender, data.resumeToken)
+      // The view's bootstrap subscribes to session changes and reloads into the game.
+      notifyPlayerSessionChanged(code)
+    } catch (err) {
+      setResumeError(err instanceof Error ? err.message : 'Could not find that player code')
+    } finally {
+      setResuming(false)
+    }
+  }
   return (
     <KeyboardFormScreen contentContainerStyle={styles.container}>
       <Text style={styles.kicker}>{kicker}</Text>
@@ -78,6 +107,39 @@ export function JoinScreen({
             disabled={joining}
           >
             <Text style={styles.watchButtonText}>Watch instead</Text>
+          </Pressable>
+        </>
+      ) : null}
+
+      <Pressable style={styles.resumeToggle} onPress={() => setResumeOpen((v) => !v)} hitSlop={8}>
+        <Text style={styles.resumeToggleText}>
+          {resumeOpen ? 'Hide player code' : 'Already joined? Enter your player code'}
+        </Text>
+      </Pressable>
+
+      {resumeOpen ? (
+        <>
+          <TextInput
+            style={styles.input}
+            placeholder="Your player code"
+            placeholderTextColor={theme.textFaint}
+            value={codeInput}
+            onChangeText={setCodeInput}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            maxLength={40}
+          />
+          {resumeError ? <Text style={styles.error}>{resumeError}</Text> : null}
+          <Pressable
+            style={[styles.watchButton, resuming && styles.buttonDisabled]}
+            onPress={() => void resume()}
+            disabled={resuming}
+          >
+            {resuming ? (
+              <ActivityIndicator color={theme.text} />
+            ) : (
+              <Text style={styles.watchButtonText}>Continue as my player</Text>
+            )}
           </Pressable>
         </>
       ) : null}
@@ -129,6 +191,16 @@ const makeStyles = (theme: Theme) =>
     error: {
       color: theme.error,
       fontSize: 14,
+    },
+    resumeToggle: {
+      alignSelf: 'center',
+      paddingVertical: 8,
+      marginTop: 4,
+    },
+    resumeToggleText: {
+      color: theme.primaryMuted,
+      fontSize: 14,
+      fontWeight: '600',
     },
     button: {
       backgroundColor: theme.primary,
