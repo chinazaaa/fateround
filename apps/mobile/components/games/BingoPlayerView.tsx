@@ -211,6 +211,8 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
         submitLabel="Join Bingo"
         hint="You'll get a random card when the host starts. Called numbers turn blue on your card — tap them to mark them green."
         footer={<BingoCardLegend />}

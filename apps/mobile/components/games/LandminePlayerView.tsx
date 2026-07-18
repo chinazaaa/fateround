@@ -11,6 +11,7 @@ import {
   landmineCycleInfo,
   landmineModeLabel,
   landmineOutcomeLabel,
+  landmineReviewSeconds,
   normalizeAnswer,
   parseLandmineMetadata,
   phaseSecondsLeft,
@@ -21,7 +22,6 @@ import {
   tallyLandmineScores,
   LANDMINE_MAX_ANSWER_LENGTH,
   LANDMINE_REVIEW_SECONDS,
-  LANDMINE_AUTO_REVIEW_SECONDS,
 } from '@fateround/shared/landmine'
 import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
@@ -185,6 +185,8 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   const manual = bootstrap.game ? gameLandmineMineSource(bootstrap.game) === 'manual' : false
   // In manual mode the caller is the "setter": they plant the mine and sit out the round.
   const isSetter = manual && isCaller && !isViewer
+  // The round's caller reviews (setter in manual, category-picker in auto) — same rule both modes.
+  const canReview = isCaller && !isViewer
   const mineCount = Math.min(3, Math.max(1, metadata?.mine_count ?? 1))
   // A viewer, or a player who joined after this round began, isn't in the round's answer/mark
   // ring — no answer to write, nobody assigned to mark. Show them a watch card instead of a
@@ -202,8 +204,8 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   const writingTimer = clampLandmineWritingTimer(bootstrap.game?.timer_seconds)
   const markingTimer = clampLandmineMarkingTimer(bootstrap.game?.operative_timer_seconds)
   const categoryTimer = clampLandmineCategoryTimer(bootstrap.game?.game_duration_seconds)
-  // Manual setter gets the long review window; the auto-mode host gets a short spot-check.
-  const reviewTimer = manual ? LANDMINE_REVIEW_SECONDS : LANDMINE_AUTO_REVIEW_SECONDS
+  // Host-configured review window (falls back to the per-mode default).
+  const reviewTimer = bootstrap.game ? landmineReviewSeconds(bootstrap.game) : LANDMINE_REVIEW_SECONDS
   const secondsLeft = useMemo(() => {
     void tick
     return metadata ? phaseSecondsLeft(metadata, writingTimer, markingTimer, categoryTimer, reviewTimer) : null
@@ -463,6 +465,8 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
       />
     )
   }
@@ -731,7 +735,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
 
   // ── Manual review — the setter checks/overrides the peer verdicts, then reveals ─────────
   if (metadata.phase === 'review') {
-    if (isSetter) {
+    if (canReview) {
       const approved = lockedSetterRound === currentRound.id
       // Default each toggle to the peer verdict already on the mark row.
       const verdictFor = (id: string) =>
@@ -799,9 +803,7 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
         <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
           <View style={styles.waitCard}>
             <Text style={styles.waitEmoji}>⚖️</Text>
-            <Text style={styles.waitTitle}>
-              {manual ? `${callerName} is reviewing the marks…` : 'The host is reviewing the marks…'}
-            </Text>
+            <Text style={styles.waitTitle}>{callerName} is reviewing the marks…</Text>
             <Text style={styles.meta}>They’ll confirm each verdict, then scores reveal.</Text>
           </View>
           {playerAnswers.map((a) => {

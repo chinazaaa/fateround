@@ -20,6 +20,9 @@ type Props = {
    * for them (matches web). They're still seated/counted; they just don't toggle.
    */
   isHost?: boolean
+  /** Resolved seat cap. When seats are full, a spectator sees a "watching" state instead
+   *  of a dead "Tap to get ready" button; the button returns once a seat frees up. */
+  maxPlayers?: number | null
 }
 
 export function ReplayReadyRing({
@@ -31,6 +34,7 @@ export function ReplayReadyRing({
   onReload,
   onRemovePlayer,
   isHost = false,
+  maxPlayers = null,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const [pending, setPending] = useState(false)
@@ -41,6 +45,9 @@ export function ReplayReadyRing({
   const canStart = readyCount >= minPlayers
   const me = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const meReady = !!me && me.spectator !== true
+  // Seats full → a sitting-out spectator can't ready up. Derived from the live player list,
+  // so the ready button reappears the moment a seat frees.
+  const seatsFull = maxPlayers != null && readyCount >= maxPlayers
 
   const toggleReady = useCallback(
     async (ready: boolean) => {
@@ -89,7 +96,9 @@ export function ReplayReadyRing({
                 <Text style={styles.avatarText}>{p.name.charAt(0).toUpperCase()}</Text>
               </View>
               <Text style={styles.name}>{isMe ? `${p.name} (you)` : p.name}</Text>
-              <Text style={[styles.status, on && styles.statusReady]}>{on ? 'Ready' : 'Not ready'}</Text>
+              <Text style={[styles.status, on && styles.statusReady]}>
+                {on ? 'Ready' : seatsFull ? 'Watching' : 'Not ready'}
+              </Text>
               {onRemovePlayer && !isMe ? (
                 <Pressable onPress={() => onRemovePlayer(p)} hitSlop={8}>
                   <Text style={styles.remove}>Remove</Text>
@@ -103,11 +112,24 @@ export function ReplayReadyRing({
       {/* The host doesn't ready up — they start the game from their own Start
           control. Only players see the ready toggle. */}
       {isHost ? null : meReady ? (
-        <Pressable style={[styles.secondaryButton, pending && styles.buttonDisabled]} onPress={() => void toggleReady(false)} disabled={pending}>
+        <Pressable
+          style={[styles.secondaryButton, pending && styles.buttonDisabled]}
+          onPress={() => void toggleReady(false)}
+          disabled={pending}
+        >
           <Text style={styles.secondaryButtonText}>You're ready — tap to cancel</Text>
         </Pressable>
+      ) : seatsFull ? (
+        <View style={styles.watchCard}>
+          <Text style={styles.watchTitle}>Game full — you're watching this round</Text>
+          <Text style={styles.watchSub}>A seat opens up if someone sits out — you can grab it then.</Text>
+        </View>
       ) : (
-        <Pressable style={[styles.primaryButton, pending && styles.buttonDisabled]} onPress={() => void toggleReady(true)} disabled={pending}>
+        <Pressable
+          style={[styles.primaryButton, pending && styles.buttonDisabled]}
+          onPress={() => void toggleReady(true)}
+          disabled={pending}
+        >
           <Text style={styles.primaryButtonText}>Tap to get ready</Text>
         </Pressable>
       )}
@@ -124,143 +146,165 @@ export function ReplayReadyRing({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  container: {
-    padding: 16,
-    gap: 12,
-    alignItems: 'center',
-  },
-  kicker: {
-    color: theme.textFaint,
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-  },
-  title: {
-    color: theme.text,
-    fontSize: 24,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  subtitle: {
-    color: theme.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: 'center',
-    maxWidth: 320,
-  },
-  ring: {
-    width: 132,
-    height: 132,
-    borderRadius: 66,
-    borderWidth: 10,
-    borderColor: theme.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 8,
-    backgroundColor: theme.surface,
-  },
-  ringCount: {
-    color: theme.text,
-    fontSize: 32,
-    fontWeight: '800',
-  },
-  ringLabel: {
-    color: theme.textFaint,
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  list: {
-    width: '100%',
-    gap: 8,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: 12,
-  },
-  rowReady: {
-    borderColor: theme.primary,
-  },
-  rowMe: {
-    backgroundColor: theme.primarySoft,
-  },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: theme.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    color: theme.text,
-    fontWeight: '800',
-  },
-  name: {
-    flex: 1,
-    color: theme.text,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  status: {
-    color: theme.textFaint,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  statusReady: {
-    color: theme.primaryMuted,
-  },
-  remove: {
-    color: theme.error,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  primaryButton: {
-    backgroundColor: theme.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    width: '100%',
-    alignItems: 'center',
-  },
-  primaryButtonText: {
-    // white on the solid rose button — intentional
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  secondaryButton: {
-    backgroundColor: theme.border,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    width: '100%',
-    alignItems: 'center',
-  },
-  secondaryButtonText: {
-    color: theme.text,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  hint: {
-    color: theme.textFaint,
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  error: {
-    color: theme.error,
-    fontSize: 13,
-    textAlign: 'center',
-  },
-})
+    container: {
+      padding: 16,
+      gap: 12,
+      alignItems: 'center',
+    },
+    kicker: {
+      color: theme.textFaint,
+      fontSize: 11,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 1.2,
+    },
+    title: {
+      color: theme.text,
+      fontSize: 24,
+      fontWeight: '800',
+      textAlign: 'center',
+    },
+    subtitle: {
+      color: theme.textMuted,
+      fontSize: 14,
+      lineHeight: 20,
+      textAlign: 'center',
+      maxWidth: 320,
+    },
+    ring: {
+      width: 132,
+      height: 132,
+      borderRadius: 66,
+      borderWidth: 10,
+      borderColor: theme.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginVertical: 8,
+      backgroundColor: theme.surface,
+    },
+    ringCount: {
+      color: theme.text,
+      fontSize: 32,
+      fontWeight: '800',
+    },
+    ringLabel: {
+      color: theme.textFaint,
+      fontSize: 10,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+    list: {
+      width: '100%',
+      gap: 8,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 12,
+    },
+    rowReady: {
+      borderColor: theme.primary,
+    },
+    rowMe: {
+      backgroundColor: theme.primarySoft,
+    },
+    avatar: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: theme.bg,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarText: {
+      color: theme.text,
+      fontWeight: '800',
+    },
+    name: {
+      flex: 1,
+      color: theme.text,
+      fontSize: 15,
+      fontWeight: '600',
+    },
+    status: {
+      color: theme.textFaint,
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    statusReady: {
+      color: theme.primaryMuted,
+    },
+    remove: {
+      color: theme.error,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    primaryButton: {
+      backgroundColor: theme.primary,
+      borderRadius: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 20,
+      width: '100%',
+      alignItems: 'center',
+    },
+    primaryButtonText: {
+      // white on the solid rose button — intentional
+      color: '#fff',
+      fontSize: 16,
+      fontWeight: '700',
+    },
+    secondaryButton: {
+      backgroundColor: theme.border,
+      borderRadius: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 20,
+      width: '100%',
+      alignItems: 'center',
+    },
+    secondaryButtonText: {
+      color: theme.text,
+      fontSize: 16,
+      fontWeight: '700',
+    },
+    buttonDisabled: {
+      opacity: 0.7,
+    },
+    watchCard: {
+      width: '100%',
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      alignItems: 'center',
+      gap: 4,
+    },
+    watchTitle: {
+      color: theme.text,
+      fontSize: 15,
+      fontWeight: '700',
+      textAlign: 'center',
+    },
+    watchSub: {
+      color: theme.textMuted,
+      fontSize: 13,
+      textAlign: 'center',
+    },
+    hint: {
+      color: theme.textFaint,
+      fontSize: 12,
+      textAlign: 'center',
+    },
+    error: {
+      color: theme.error,
+      fontSize: 13,
+      textAlign: 'center',
+    },
+  })

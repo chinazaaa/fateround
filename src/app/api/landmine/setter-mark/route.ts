@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { computeAndFinishRound } from '@/lib/landmine-advance'
 import { isLandmineGame, parseGameType } from '@/lib/game-types'
-import { gameLandmineMineSource, normalizeAnswer, parseLandmineMetadata, roundCallerPlayerId } from '@/lib/landmine'
+import { normalizeAnswer, parseLandmineMetadata, roundCallerPlayerId } from '@/lib/landmine'
 import { landmineSetterMarkSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
@@ -10,18 +10,18 @@ import { parseJsonBody } from '@/lib/parse-body'
 import type { Game, Round } from '@/types'
 
 /**
- * Review phase: the reviewer checks every answer and can override the peer verdict (mirrors I Call
- * On's caller review). In MANUAL mode the reviewer is the round's setter (authorized by their player
- * resume_token); in AUTO mode there's no setter, so the host reviews (authorized by host_token).
- * Overrides land on the existing per-target mark rows; empty answers are force-Void. Approving
- * finalizes the round (scores + reveal) right away — otherwise the review window expires and the
- * peer verdicts stand.
+ * Review phase: the round's CALLER checks every answer and can override the peer verdict (mirrors I
+ * Call On's caller review). The caller is the setter in manual mode and the category-picker in auto
+ * mode — either way a regular player, authorized by their player resume_token, so it works the same
+ * on web and mobile. Overrides land on the existing per-target mark rows; empty answers are
+ * force-Void. Approving finalizes the round (scores + reveal) right away — otherwise the review
+ * window expires and the peer verdicts stand.
  */
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, landmineSetterMarkSchema)
   if (bodyError) return bodyError
 
-  const { gameId, resumeToken, hostToken, roundId, verdicts } = body
+  const { gameId, resumeToken, roundId, verdicts } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 
@@ -42,21 +42,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not in the review phase' }, { status: 400 })
   }
 
-  // Manual mode → the round's setter reviews (player resume_token). Auto mode → the host reviews
-  // (host_token), since there's no setter.
-  if (gameLandmineMineSource(game) === 'manual') {
-    const auth = await assertPlayer(supabase, code, resumeToken)
-    if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
-    if (roundCallerPlayerId(round, metadata) !== auth.player.id) {
-      return NextResponse.json({ error: 'Only the setter can review this round' }, { status: 403 })
-    }
-  } else {
-    if (!hostToken || game.host_token !== hostToken) {
-      return NextResponse.json({ error: 'Only the host can review this round' }, { status: 403 })
-    }
+  // The round's caller (setter in manual, category-picker in auto) reviews — a regular player.
+  const auth = await assertPlayer(supabase, code, resumeToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  if (roundCallerPlayerId(round, metadata) !== auth.player.id) {
+    return NextResponse.json({ error: 'Only the round caller can review this round' }, { status: 403 })
   }
 
-  // The answering players (setter sits out) are the only valid verdict targets this round.
+  // Real answers are the valid verdict targets (the manual setter's synthetic mirror row is excluded).
   const { data: roundAnswers, error: answersError } = await supabase
     .from('landmine_answers')
     .select('player_id, answer, outcome')

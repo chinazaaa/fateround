@@ -26,6 +26,7 @@ export const LANDMINE_REVEAL_SECONDS = 10
 // engaged, so they get the longer window; the auto-mode host is just spot-checking, so it's short.
 export const LANDMINE_REVIEW_SECONDS = 45
 export const LANDMINE_AUTO_REVIEW_SECONDS = 20
+export const LANDMINE_REVIEW_TIMER_OPTIONS = [15, 20, 30, 45, 60] as const
 
 export const LANDMINE_WRITING_TIMER_OPTIONS = [30, 45, 60, 90] as const
 export const LANDMINE_MARKING_TIMER_OPTIONS = [20, 30, 45, 60] as const
@@ -72,9 +73,15 @@ export function landmineReviewEnabled(game: Pick<Game, 'landmine_review'>): bool
   return game.landmine_review !== false
 }
 
-/** The review window length — longer for the engaged manual setter, short for the auto-mode host. */
-export function landmineReviewSeconds(game: Pick<Game, 'landmine_mine_source'>): number {
+/** The default review window when the host hasn't set one — by mode. */
+export function landmineDefaultReviewSeconds(game: Pick<Game, 'landmine_mine_source'>): number {
   return gameLandmineMineSource(game) === 'manual' ? LANDMINE_REVIEW_SECONDS : LANDMINE_AUTO_REVIEW_SECONDS
+}
+
+/** The host-chosen review window (clamped to the options); falls back to the mode default. */
+export function landmineReviewSeconds(game: Pick<Game, 'landmine_mine_source' | 'landmine_review_seconds'>): number {
+  const v = Number(game.landmine_review_seconds)
+  return (LANDMINE_REVIEW_TIMER_OPTIONS as readonly number[]).includes(v) ? v : landmineDefaultReviewSeconds(game)
 }
 
 export const LANDMINE_DEFAULT_ELIM_SECONDS = 300
@@ -128,6 +135,11 @@ export function clampLandmineCategoryTimer(seconds: number | undefined | null): 
 
 export function gameLandmineCategoryTimer(game: Pick<Game, 'game_duration_seconds'>): number {
   return clampLandmineCategoryTimer(game.game_duration_seconds)
+}
+
+export function clampLandmineReviewTimer(seconds: number | undefined | null): number {
+  const n = Number(seconds)
+  return (LANDMINE_REVIEW_TIMER_OPTIONS as readonly number[]).includes(n) ? n : LANDMINE_REVIEW_SECONDS
 }
 
 export function normalizeAnswer(text: string | null | undefined): string {

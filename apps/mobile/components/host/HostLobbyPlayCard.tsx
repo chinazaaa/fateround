@@ -61,7 +61,14 @@ export function HostLobbyPlayCard({
       onSessionChange(next)
       onReload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not join')
+      const full = (err as { full?: boolean })?.full === true
+      setError(
+        full
+          ? 'Game is full — remove a player to free a seat, then Play as yourself.'
+          : err instanceof Error
+            ? err.message
+            : 'Could not join'
+      )
     } finally {
       setBusy(false)
     }

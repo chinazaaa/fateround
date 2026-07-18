@@ -21,6 +21,7 @@ import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useGamePlayerLimits } from '@/hooks/useGamePlayerLimits'
 import { isLobbyLimitGameType } from '@fateround/shared/lobby-limits'
+import { resolveLobbyMaxPlayers } from '@fateround/shared/game-limits-lite'
 import { WORD_RUSH_MIN_PLAYERS_INDIVIDUAL } from '@fateround/shared/word-rush'
 import { uniqueTopic } from '@/lib/realtime'
 import { centeredContent } from '@/constants/layout'
@@ -205,6 +206,11 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
     hasTeamManagement && hasWordPool ? 'Teams & pool' : hasTeamManagement ? 'Manage teams' : 'Question pool'
   const readyCount = activePlayers.length
   const gameType = game?.game_type
+  // Seat cap + watcher split so the roster reads "Watching" (not "Not ready") once full,
+  // and the count shows seated/max plus a separate watcher tally instead of a raw total.
+  const maxPlayers = resolveLobbyMaxPlayers(gameType, game ?? { max_players: null })
+  const watcherCount = players.length - activePlayers.length
+  const seatsFull = maxPlayers != null && activePlayers.length >= maxPlayers
   const lobbyMin = gameType && isLobbyLimitGameType(gameType) ? limits[gameType].min : 1
   // Word Rush individual mode is solo-friendly (play by yourself); team mode keeps
   // the higher lobby minimum since it needs enough players to fill the teams.
@@ -246,6 +252,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
             players={players}
             myPlayerId={hostPlayerId}
             myResumeToken={resumeToken}
+            maxPlayers={maxPlayers}
             onReload={() => void load()}
             onRemovePlayer={confirmRemove}
             isHost
@@ -297,7 +304,12 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
           <>
             <View style={styles.rosterHeader}>
               <Text style={styles.sectionTitle}>Players</Text>
-              <Text style={styles.count}>{players.length}</Text>
+              <View style={styles.countRow}>
+                <Text style={styles.count}>
+                  {maxPlayers != null ? `${activePlayers.length} / ${maxPlayers}` : players.length}
+                </Text>
+                {watcherCount > 0 ? <Text style={styles.watchingCount}>{watcherCount} watching</Text> : null}
+              </View>
             </View>
 
             {players.length === 0 ? (
@@ -313,7 +325,9 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
                       <Text style={[styles.playerName, notReady && styles.playerNameDim]} numberOfLines={1}>
                         {p.name}
                         {isHost ? <Text style={styles.youTag}> · you</Text> : null}
-                        {notReady ? <Text style={styles.notReadyTag}> · not ready</Text> : null}
+                        {notReady ? (
+                          <Text style={styles.notReadyTag}> · {seatsFull ? 'watching' : 'not ready'}</Text>
+                        ) : null}
                       </Text>
                     </View>
                     {!isHost ? (
@@ -443,9 +457,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
       {/* Floats over the screen, above the pinned Start/End footer. Mounted at
           the shell root — inside the ScrollView it would scroll away. The footer
           height is measured, not hardcoded: it grows when Start errors. */}
-      {game ? (
-        <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} bottomOffset={footerHeight} />
-      ) : null}
+      {game ? <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} bottomOffset={footerHeight} /> : null}
     </SafeAreaView>
   )
 }
@@ -522,6 +534,17 @@ const makeStyles = (theme: Theme) =>
     rosterHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
     sectionTitle: { color: theme.text, fontSize: 18, fontWeight: '700' },
     count: { color: theme.textMuted, fontSize: 16, fontWeight: '600' },
+    countRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    watchingCount: {
+      color: theme.textFaint,
+      fontSize: 12,
+      fontWeight: '600',
+      backgroundColor: theme.surface,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 999,
+      overflow: 'hidden',
+    },
     empty: { color: theme.textFaint, fontSize: 15, paddingVertical: 12 },
     playerRow: {
       flexDirection: 'row',

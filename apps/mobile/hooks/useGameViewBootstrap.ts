@@ -45,6 +45,8 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   const [joinName, setJoinName] = useState('')
   const [joining, setJoining] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Set when a join is refused because the lobby is full — cue to offer "watch instead".
+  const [lobbyFull, setLobbyFull] = useState(false)
 
   // The game-specific callbacks are passed as fresh literals every render by most call
   // sites. Mirror them in refs so `load` can stay referentially stable — otherwise `load`
@@ -191,8 +193,10 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         setMyPlayerId(data.playerId)
         setMyResumeToken(data.resumeToken ?? null)
         setJoinName(data.playerName)
+        setLobbyFull(false)
         await load()
       } catch (err) {
+        setLobbyFull((err as { full?: boolean })?.full === true)
         setError(err instanceof Error ? err.message : 'Failed to join')
       } finally {
         setJoining(false)
@@ -224,6 +228,7 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
     setJoinName,
     joining,
     error,
+    lobbyFull,
     load,
     join,
     joinScreen,

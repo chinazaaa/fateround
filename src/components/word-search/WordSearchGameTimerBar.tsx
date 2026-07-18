@@ -58,7 +58,7 @@ export function WordSearchGameTimerBar({
   return (
     <div
       className={[
-        'rounded-xl border px-3 py-2 sm:px-4 sm:py-2.5',
+        'sticky top-[3.75rem] z-30 rounded-xl border px-3 py-2 sm:px-4 sm:py-2.5',
         urgent
           ? 'border-amber-500/35 bg-[color-mix(in_srgb,var(--marry)_8%,var(--card))]'
           : 'border-[var(--border-strong)] bg-[var(--card-strong)]',

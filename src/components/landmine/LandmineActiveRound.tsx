@@ -66,8 +66,6 @@ export function LandmineActiveRound({
   onReload,
   skipGameSync = false,
   readOnly = false,
-  isHost = false,
-  hostToken = null,
 }: {
   gameCode: string
   game: Game
@@ -81,9 +79,6 @@ export function LandmineActiveRound({
   onReload?: () => void
   skipGameSync?: boolean
   readOnly?: boolean
-  // Auto mode has no setter, so the host is the review-phase reviewer (authorized by hostToken).
-  isHost?: boolean
-  hostToken?: string | null
 }) {
   const { error: toastError } = useToast()
   const [submitting, setSubmitting] = useState(false)
@@ -122,8 +117,8 @@ export function LandmineActiveRound({
   const manual = gameLandmineMineSource(game) === 'manual'
   // In manual mode the caller is the "setter": they plant the mine and sit out the round.
   const isSetter = manual && isCaller
-  // Review-phase reviewer: the setter in manual mode, the host in auto mode (no setter exists).
-  const canReview = manual ? isSetter : isHost
+  // The round's caller reviews (setter in manual, category-picker in auto) — same rule both modes.
+  const canReview = isCaller && !readOnly
   const mineCount = clampLandmineMineCount(metadata?.mine_count)
 
   const roundAnswers = useMemo(
@@ -392,20 +387,16 @@ export function LandmineActiveRound({
     }
   }
 
-  // The reviewer approves every answer at once (I Call On's caller review). Manual mode authorizes
-  // by the setter's player token; auto mode by the host token (no setter exists).
+  // The round's caller approves every answer at once (I Call On's caller review), as a player.
   const submitSetterMarks = async (verdicts: { playerId: string; valid: boolean }[]) => {
     if (!currentRound || submitting) return
-    const auth = manual ? { resumeToken: myResumeToken } : { hostToken }
-    if (!auth.resumeToken && !auth.hostToken) {
-      return toastError('Your session expired — rejoin to continue')
-    }
+    if (!myResumeToken) return toastError('Your session expired — rejoin to continue')
     setSubmitting(true)
     try {
       const res = await fetch('/api/landmine/setter-mark', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, ...auth, roundId: currentRound.id, verdicts }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, roundId: currentRound.id, verdicts }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to submit marks')
@@ -429,7 +420,7 @@ export function LandmineActiveRound({
       return isCaller ? 'category_pick' : 'category_wait'
     }
     // Manual mode: the setter planted the mine and sits out writing + peer marking. During the
-    // review phase the reviewer (setter in manual, host in auto) checks/overrides every verdict.
+    // review phase the reviewer (setter in manual, caller in auto) checks/overrides every verdict.
     if (isSetter && (phase === 'writing' || phase === 'marking')) return 'setter_watch'
     if (canReview && phase === 'review') return 'setter_review'
     // A spectator, or a player who joined after this round began, isn't in the round's
@@ -729,7 +720,7 @@ export function LandmineActiveRound({
     const showBoard = metadata.phase === 'marking' || metadata.phase === 'review'
     const heading =
       metadata.phase === 'review'
-        ? `${manual ? 'The setter' : 'The host'} is reviewing the marks`
+        ? `${callerName} is reviewing the marks`
         : metadata.phase === 'marking'
           ? 'Players are marking answers'
           : 'Round in progress'
@@ -761,7 +752,7 @@ export function LandmineActiveRound({
     )
   }
 
-  // ── Review — the reviewer (setter in manual, host in auto) checks/overrides, then reveals ──────
+  // ── Review — the reviewer (setter in manual, caller in auto) checks/overrides, then reveals ──────
   if (screen === 'setter_review') {
     const approved = lockedSetterRound === currentRound.id
     return (
@@ -794,9 +785,7 @@ export function LandmineActiveRound({
         {roundHeader}
         <div className="text-center space-y-1">
           <p className="text-3xl">⚖️</p>
-          <p className="font-bold">
-            {manual ? `${callerName} is reviewing the marks…` : 'The host is reviewing the marks…'}
-          </p>
+          <p className="font-bold">{callerName} is reviewing the marks…</p>
           <p className="text-sm text-muted">They’ll confirm each verdict, then scores reveal.</p>
         </div>
         {answerBoard}
