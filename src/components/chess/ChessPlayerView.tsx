@@ -126,6 +126,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
     joinName,
     setJoinName,
     joining,
+    lobbyFull,
     load,
     join,
   } = useGameViewBootstrap<Screen, ChessSession | null>({
@@ -388,6 +389,8 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           onSubmit={() => void join()}
           joining={joining}
           gameType="chess"
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
           footer={
             <p className="text-center pt-1">

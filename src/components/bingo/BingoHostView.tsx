@@ -1,8 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { BingoCardGrid, CalledNumbersBoard } from '@/components/bingo/BingoCardGrid'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { BingoFinalResultsShareBlock } from '@/components/bingo/BingoFinalResultsShareBlock'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -405,6 +407,18 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
+  // Host settings for the active game live in the main-header ⚙ gear (no Manage tab).
+  // Bingo has no in-game settings, so this is just How-to-play + End game. The frequent
+  // "Call random" driver stays in the play body (see `callControl` below), not the gear.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="bingo" onEnded={load} />
+      ) : null,
+    [game?.status, gameCode, hostToken, load]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (!game) {
     return <HostLobbySkeleton />
   }
@@ -420,9 +434,41 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
     </div>
   )
 
+  // The host's number-calling control — lives in the PLAY BODY (not the gear) since
+  // manual calling is frequent. Auto mode just shows the interval note.
+  const callControl = game?.status === 'active' && (
+    <div className="glass-card p-5 space-y-4">
+      <p className="label-caps">{isAuto ? 'Automatic calling' : 'Call numbers'}</p>
+      {isAuto ? (
+        <p className="text-center text-muted text-sm sm:text-base">
+          Numbers are called automatically every <span className="font-bold text-body">{callInterval}s</span>. Keep this
+          tab open or let players stay connected — anyone in the game keeps it running.
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => callNumber(true)}
+            disabled={calling || called.length >= 75}
+            className="btn-primary flex-1 min-w-[140px]"
+          >
+            {calling ? 'Calling…' : 'Call random'}
+          </button>
+        </div>
+      )}
+      {lastCalled != null && (
+        <p className="text-center text-muted text-sm">
+          Last: <span className="font-bold text-blue-300">{formatBingoNumber(lastCalled)}</span> · {called.length}/75
+          called
+        </p>
+      )}
+    </div>
+  )
+
   // Primary tab: interactive card for a host-player, read-only board for a host-only host.
   const interactivePlay = hostPlays && game.status === 'active' && (
     <div className="space-y-4">
+      {callControl}
       {hostCard ? (
         <>
           <div className="glass-card p-4">
@@ -461,6 +507,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   const watchRound = (
     <div className="space-y-4">
+      {callControl}
       {lastCalled != null && (
         <div className="glass-card p-5">
           <p className="text-center text-muted text-sm">
@@ -852,6 +899,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
       header={<HostGameHeader game={game} />}
       primary={<div className="max-w-lg mx-auto w-full">{hostPlays ? interactivePlay : watchRound}</div>}
       manage={manage}
+      noManageTab={game.status === 'active'}
       finished={finished}
     />
   )

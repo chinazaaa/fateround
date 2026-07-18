@@ -43,6 +43,9 @@ export function HostGameFinishedActions({
         {playAgainButton ? <div className="min-w-0">{playAgainButton}</div> : null}
         {returnToLobbyButton ?? null}
         {lobbyNote ? <p className="text-center text-xs text-faint leading-relaxed px-2 pt-0.5">{lobbyNote}</p> : null}
+        {showCreateNewGame ? (
+          <CreateNewGameButton className="block w-full pt-1 text-center text-sm font-medium text-muted hover:text-body transition-colors" />
+        ) : null}
         {gameCode ? (
           <a
             href={`/history/${gameCode}`}
