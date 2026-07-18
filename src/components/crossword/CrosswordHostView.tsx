@@ -665,6 +665,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
 
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={game.status}
       tab={tab}

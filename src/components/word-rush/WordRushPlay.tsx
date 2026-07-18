@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { WordRushAnswer, WordRushSession, Player } from '@/types'
 import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
+import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { WordRushCard, WordRushPromptDisplay, WordRushTeamBadge } from '@/components/word-rush/WordRushChrome'
 import { computeWordRushPlayerScores, computeWordRushTeamScores, teamLabel } from '@/lib/word-rush'
@@ -184,6 +185,11 @@ export function WordRushPlayPanel({
     players,
     teamRows.map((r) => ({ player_id: r.player_id, score: r.score ?? 0 }))
   )
+
+  // Per-player scores feed the shared roster drawer. Team mode keeps its inline
+  // team scoreboard (the drawer is per-player), so this just adds individual pts.
+  const rosterScores = useMemo(() => Object.fromEntries(playerScores.map((row) => [row.id, row.score])), [playerScores])
+  useGameScores(rosterScores, { suffix: ' pts' })
 
   const currentTurnAnswers = answers.filter((a) =>
     isTeam ? a.team_turn_index === session.turn_index : a.turn_index === session.turn_index

@@ -10,6 +10,7 @@ import {
 import { WordList } from '@/components/word-search/WordList'
 import { WordSearchGameTimerBar } from '@/components/word-search/WordSearchGameTimerBar'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import {
@@ -388,6 +389,13 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
     () => (metadata ? tallyWordSearchScores(metadata, found, players) : []),
     [metadata, found, players]
   )
+
+  // Live scores feed the shared roster drawer (opened from the header).
+  const rosterScores = useMemo(
+    () => Object.fromEntries(leaderboard.map((row) => [row.player_id, row.points])),
+    [leaderboard]
+  )
+  useGameScores(rosterScores, { suffix: ' pts' })
   const me = players.find((p) => p.id === myPlayerId)
   const isSpectator = me?.spectator === true
   const isViewer = !!(game && me && playerIsViewer(me, game))

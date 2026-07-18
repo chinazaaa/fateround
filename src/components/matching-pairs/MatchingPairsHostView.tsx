@@ -743,6 +743,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
 
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={game.status}
       tab={tab}

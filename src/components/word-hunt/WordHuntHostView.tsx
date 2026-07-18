@@ -586,6 +586,7 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
 
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={game.status}
       tab={tab}

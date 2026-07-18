@@ -484,6 +484,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
 
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={game.status}
       tab={tab}

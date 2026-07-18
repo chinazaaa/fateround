@@ -557,6 +557,7 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={game.status}
       tab={tab}

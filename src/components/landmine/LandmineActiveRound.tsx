@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import {
@@ -123,6 +124,11 @@ export function LandmineActiveRound({
   const reviewTargetId = reviewTargetForMarker(metadata, myPlayerId)
   const reviewTargetAnswer = reviewTargetId ? (roundAnswers.find((a) => a.player_id === reviewTargetId) ?? null) : null
   const leaderboard = useMemo(() => tallyLandmineScores(answers, players), [answers, players])
+
+  // Live scores feed the shared roster drawer (opened from the header).
+  const rosterScores = useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard])
+  useGameScores(rosterScores, { suffix: ' pts' })
+
   const mode = gameLandmineMode(game)
 
   const writingTimer = clampLandmineWritingTimer(game.timer_seconds)

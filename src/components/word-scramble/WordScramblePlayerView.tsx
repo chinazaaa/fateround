@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { WordScrambleGameTimerBar } from '@/components/word-scramble/WordScrambleGameTimerBar'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ShareResults } from '@/components/ShareResults'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
@@ -374,6 +375,13 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
     () => (metadata ? tallyWordScrambleScores(metadata, solves, players, { hints }) : []),
     [metadata, solves, players, hints]
   )
+
+  // Live scores feed the shared roster drawer (opened from the header).
+  const rosterScores = useMemo(
+    () => Object.fromEntries(leaderboard.map((row) => [row.player_id, row.points])),
+    [leaderboard]
+  )
+  useGameScores(rosterScores, { suffix: ' pts' })
   const myRank = leaderboard.findIndex((r) => r.player_id === myPlayerId) + 1
   const myCompletion = metadata && myPlayerId ? wordScrambleCompletionPercent(metadata, solves, myPlayerId) : 0
   const mySolvedCount = myPlayerId ? playerSolvedIndices(solves, myPlayerId).size : 0

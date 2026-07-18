@@ -541,6 +541,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
 
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={game.status}
       tab={tab}

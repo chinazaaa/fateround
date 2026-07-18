@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { SudokuBoard } from '@/components/sudoku/SudokuBoard'
 import { SudokuGameTimerBar } from '@/components/sudoku/SudokuGameTimerBar'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import {
   parseSudokuMetadata,
@@ -383,7 +384,15 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     return map
   }, [activePlayers])
 
-  const leaderboard = tallySudokuScores(submissions, players)
+  const leaderboard = useMemo(() => tallySudokuScores(submissions, players), [submissions, players])
+
+  // Live scores feed the shared roster drawer (opened from the header).
+  const rosterScores = useMemo(
+    () => Object.fromEntries(leaderboard.map((row) => [row.player_id, row.points])),
+    [leaderboard]
+  )
+  useGameScores(rosterScores, { suffix: ' pts' })
+
   const me = players.find((p) => p.id === myPlayerId)
   const isSpectator = me?.spectator === true
   const isViewer = !!(game && me && playerIsViewer(me, game))

@@ -613,6 +613,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
 
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={game.status}
       tab={tab}

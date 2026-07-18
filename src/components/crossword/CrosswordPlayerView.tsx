@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { CrosswordBoard, crosswordPlayerColor, CROSSWORD_MY_CELL_COLOR } from '@/components/crossword/CrosswordBoard'
 import { CrosswordGameTimerBar } from '@/components/crossword/CrosswordGameTimerBar'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import {
@@ -459,6 +460,13 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     () => (metadata ? tallyCrosswordScores(metadata, submissions, players) : []),
     [metadata, submissions, players]
   )
+
+  // Live scores feed the shared roster drawer (opened from the header).
+  const rosterScores = useMemo(
+    () => Object.fromEntries(leaderboard.map((row) => [row.player_id, row.points])),
+    [leaderboard]
+  )
+  useGameScores(rosterScores, { suffix: ' pts' })
   const me = players.find((p) => p.id === myPlayerId)
   const isSpectator = me?.spectator === true
   const isViewer = !!(game && me && playerIsViewer(me, game))

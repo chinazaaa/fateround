@@ -618,6 +618,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={gameObj.status}
       tab={tab}
