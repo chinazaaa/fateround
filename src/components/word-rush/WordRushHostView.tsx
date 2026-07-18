@@ -30,10 +30,9 @@ import {
   WORD_RUSH_SESSION_SELECT,
 } from '@/lib/supabase-selects'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useToast } from '@/components/ui/Toast'
-import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useWordRushTimer } from '@/hooks/useWordRushTimer'
@@ -54,17 +53,6 @@ import {
 import type { Game, Player, WordRushAnswer, WordRushPlayer, WordRushSession } from '@/types'
 
 type HostTab = 'play' | 'manage'
-type HostMode = 'spectator' | 'player'
-const HOST_MODE_KEY = 'word_rush_host_mode'
-
-function getHostMode(gameCode: string): HostMode {
-  if (typeof window === 'undefined') return 'player'
-  return (localStorage.getItem(`${HOST_MODE_KEY}_${gameCode}`) as HostMode) ?? 'player'
-}
-
-function storeHostMode(gameCode: string, mode: HostMode) {
-  if (typeof window !== 'undefined') localStorage.setItem(`${HOST_MODE_KEY}_${gameCode}`, mode)
-}
 
 export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError, success } = useToast()
@@ -78,12 +66,6 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [playingAgain, setPlayingAgain] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
-  const [hostMode, setHostMode] = useState<HostMode>('player')
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
   const [picking, setPicking] = useState(false)
   const [moving, setMoving] = useState(false)
   const [balancing, setBalancing] = useState(false)
@@ -114,13 +96,6 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
 
   useEffect(() => {
     void load()
-    setHostMode(getHostMode(gameCode))
-    const stored = getPlayerSession(gameCode)
-    if (stored?.playerId) {
-      setHostPlayerId(stored.playerId)
-      setHostResumeToken(stored.resumeToken ?? null)
-      setHostPlayerName(stored.playerName)
-    }
   }, [load, gameCode])
 
   useEffect(() => {
@@ -128,18 +103,36 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
     else if (game?.status === 'active') setTab('play')
   }, [game?.status])
 
-  const clearHostPlayer = () => {
-    setHostPlayerId(null)
-    setHostResumeToken(null)
-    setHostPlayerName('')
-    clearPlayerSession(gameCode)
-  }
-
-  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, (id) => {
-    if (id === hostPlayerId) clearHostPlayer()
-    void load()
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
   })
-  useHostPlayerReconciliation(players, hostPlayerId, clearHostPlayer)
+
+  const handlePlayerRemoved = useCallback(
+    (playerId: string) => {
+      onHostSeatRemoved(playerId)
+      setPlayers((prev) => prev.filter((p) => p.id !== playerId))
+    },
+    [onHostSeatRemoved]
+  )
+
+  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   const connected = useGameTableSync(
@@ -170,72 +163,6 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
       toastError(err instanceof Error ? err.message : 'Failed to save settings')
     } finally {
       setSavingSettings(false)
-    }
-  }
-
-  const changeHostMode = async (mode: HostMode) => {
-    const prev = hostMode
-    setHostMode(mode)
-    storeHostMode(gameCode, mode)
-    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
-      try {
-        const res = await fetch('/api/players', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error ?? 'Failed to leave seat')
-        }
-        clearHostPlayer()
-        await load()
-      } catch (err) {
-        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
-      }
-    }
-  }
-
-  const hostJoinGame = async () => {
-    if (!hostJoinName.trim()) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: hostJoinName.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostResumeToken(data.resumeToken ?? null)
-      setHostPlayerName(data.playerName)
-      await load()
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }
-
-  const renameHost = async (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed || !hostPlayerId) return
-    try {
-      const res = await fetch('/api/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
-      setHostPlayerName(data.playerName)
-      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
-      await load()
-      success('Name updated!')
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to update name')
     }
   }
 
@@ -341,10 +268,6 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
   const resetGame = async (sameSettings: boolean) => {
     if (playingAgain) return
     setPlayingAgain(true)
-    const keepHostSession = hostMode === 'player' && hostPlayerId && hostPlayerName
-    const savedPlayerId = hostPlayerId
-    const savedPlayerName = hostPlayerName
-    const savedResumeToken = hostResumeToken
     try {
       const res = await fetch(`/api/games/${gameCode}/play-again`, {
         method: 'POST',
@@ -356,16 +279,9 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
       if (data.game) setGame(data.game)
       setSession(null)
       setAnswers([])
+      if (!sameSettings) setHostJoinName('')
       success(sameSettings ? 'Ready up for the next game!' : 'Back to the lobby')
       await load()
-      if (keepHostSession && savedPlayerId && savedPlayerName) {
-        setPlayerSession(gameCode, savedPlayerId, savedPlayerName, 'both', savedResumeToken)
-        setHostPlayerId(savedPlayerId)
-        setHostPlayerName(savedPlayerName)
-        setHostResumeToken(savedResumeToken)
-      } else {
-        clearHostPlayer()
-      }
       setTab('manage')
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to reset')
