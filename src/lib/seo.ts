@@ -369,6 +369,11 @@ export const GAME_LANDING_OG_BY_SLUG: Record<string, string> = {
   'matching-pairs': '/og/matching-pairs.png',
   quiplash: '/og/quiplash.png',
   'quick-draw': '/og/quick-draw.png',
+  crossword: '/og/crossword.png',
+  'word-search': '/og/word-search.png',
+  'word-scramble': '/og/word-scramble.png',
+  landmine: '/og/landmine.png',
+  'ping-pong': '/og/ping-pong.png',
 }
 
 export function gameLandingOgPath(slug: string): string {
