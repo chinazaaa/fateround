@@ -61,6 +61,8 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
   const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
   const [joinName, setJoinName] = useState('')
   const [joining, setJoining] = useState(false)
+  // Set when a join is refused for a full lobby — cue to offer "watch instead".
+  const [lobbyFull, setLobbyFull] = useState(false)
   const [acting, setActing] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
@@ -211,14 +213,22 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
             gameCode,
             playerName: name,
             ...joinExtras,
-            ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer ?? true } : {}),
+            // An explicit choice (e.g. "watch instead" on a full lobby) wins in any state;
+            // otherwise active games still default a fresh join to viewer.
+            ...(opts?.joinAsViewer !== undefined
+              ? { joinAsViewer: opts.joinAsViewer }
+              : game?.status === 'active'
+                ? { joinAsViewer: true }
+                : {}),
           }),
         })
         const data = await res.json()
         if (!res.ok) {
+          setLobbyFull(data?.full === true)
           toastError(data.error ?? 'Failed to join')
           return
         }
+        setLobbyFull(false)
         setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
         setMyPlayerId(data.playerId)
         await load()
@@ -344,6 +354,8 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
           onChange={setJoinName}
           onSubmit={() => void join()}
           joining={joining}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           footer={
             <p className="text-center pt-1">
               <GameRulesLink gameType="mahjong" variant="subtle" />

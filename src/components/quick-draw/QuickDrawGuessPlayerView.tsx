@@ -142,6 +142,7 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, QuickDrawGuessSession | null>({
     gameCode,
@@ -315,6 +316,8 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           footer={
             <p className="text-center pt-1">

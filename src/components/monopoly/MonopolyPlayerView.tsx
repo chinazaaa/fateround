@@ -125,6 +125,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, null>({
     gameCode,
@@ -363,6 +364,19 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             void join()
           }}
         />
+        {lobbyFull && !joiningAsViewer && (
+          <div className="space-y-2 text-center">
+            <p className="text-faint text-xs leading-relaxed">This game is full — you can watch.</p>
+            <button
+              type="button"
+              onClick={() => void join({ joinAsViewer: true })}
+              disabled={joining}
+              className="btn-secondary w-full"
+            >
+              Watch instead
+            </button>
+          </div>
+        )}
         <LeaderboardJoinNote gameType="monopoly" />
         <p className="text-faint text-xs leading-relaxed text-center">
           {joiningAsViewer
