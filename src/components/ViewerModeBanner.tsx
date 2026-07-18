@@ -41,15 +41,15 @@ export function ViewerModeBanner({
 
   return (
     <div
-      className={`rounded-xl border border-[color-mix(in_srgb,var(--primary)_35%,transparent)] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] px-4 py-3 text-center text-sm text-body ${className}`}
+      className={`mb-3 rounded-xl border border-[color-mix(in_srgb,var(--primary)_35%,transparent)] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] px-4 py-3 text-center text-sm text-body ${className}`}
     >
       <p className="font-semibold">Spectating</p>
       <p className="text-muted text-xs mt-1">
         {canPromote
-          ? 'You joined after the game started — watch live or switch to playing now.'
+          ? "You're spectating — switch to playing now, or keep watching."
           : players && game && !lobbyHasOpenPlayerSeat(game, players)
-            ? 'This game is full — you can watch but there are no player seats left.'
-            : 'You joined after the game started — watch only until the next lobby.'}
+            ? 'This game is full — you can watch, but there are no open player seats.'
+            : "You're spectating. If you want to play, join when the lobby opens."}
       </p>
       {canPromote && gameCode && playerId && (
         <button
