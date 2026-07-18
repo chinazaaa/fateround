@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { MonopolyActiveLayout } from '@/components/monopoly/MonopolyActiveLayout'
 import { MonopolyJoinForm } from '@/components/monopoly/MonopolyJoinForm'
+import { MonopolyChangeTokenControl } from '@/components/monopoly/MonopolyChangeTokenControl'
 import { tokenColorForOrder } from '@/components/monopoly/monopoly-ui'
 import { monopolyTokenEmoji, type MonopolyTokenId } from '@/lib/monopoly-tokens'
 import { MONOPOLY_COLOR_CLASSES } from '@/lib/monopoly'
@@ -449,6 +450,16 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               <span>{cfg.label}</span>
             </p>
           </div>
+          {!isSpectator && myPlayerId && (
+            <MonopolyChangeTokenControl
+              gameCode={gameCode}
+              playerId={myPlayerId}
+              currentTokenId={me?.monopoly_token}
+              players={players}
+              resumeToken={myResumeToken}
+              onChanged={() => void load()}
+            />
+          )}
           <GameRulesLink gameType="monopoly" variant="subtle" />
           <div className="glass-card-strong p-4 text-center">
             <p className="text-3xl font-black text-[var(--primary)]">{players.length}</p>

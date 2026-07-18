@@ -76,6 +76,13 @@ export interface UseHostSeatOptions {
   buildJoinBody?: (name: string) => Record<string, unknown>
   /** Called after the mode changes, for view-specific side effects (e.g. tab switch). */
   onModeChange?: (mode: HostSeatMode) => void
+  /**
+   * Whether a "Host & play" create intent may auto-seat the host without a click.
+   * Defaults to true. Set false for games whose join needs a required extra choice
+   * first (e.g. Monopoly's token) — auto-joining there POSTs an incomplete body and
+   * fails validation, so the host must complete the join form manually instead.
+   */
+  autoJoinEnabled?: boolean
 }
 
 export interface UseHostSeatResult {
@@ -93,7 +100,17 @@ export interface UseHostSeatResult {
 }
 
 export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
-  const { gameCode, hostToken, gameStatus, players, onReload, toast, buildJoinBody, onModeChange } = options
+  const {
+    gameCode,
+    hostToken,
+    gameStatus,
+    players,
+    onReload,
+    toast,
+    buildJoinBody,
+    onModeChange,
+    autoJoinEnabled = true,
+  } = options
 
   const [hostMode, setHostMode] = useState<HostSeatMode>('player')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
@@ -111,6 +128,8 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
   buildJoinBodyRef.current = buildJoinBody
   const onModeChangeRef = useRef(onModeChange)
   onModeChangeRef.current = onModeChange
+  const autoJoinEnabledRef = useRef(autoJoinEnabled)
+  autoJoinEnabledRef.current = autoJoinEnabled
 
   const autoJoinArmedRef = useRef(false)
   const autoJoinNameRef = useRef('')
@@ -313,8 +332,12 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
       setHostJoinName(name)
       setHostMode('player')
       writePersistedMode(gameCode, 'player')
-      autoJoinArmedRef.current = true
-      autoJoinNameRef.current = name
+      // Games that need an extra required choice at join (e.g. Monopoly's token) opt out
+      // of auto-seating: the name is prefilled, but the host completes the join form.
+      if (autoJoinEnabledRef.current) {
+        autoJoinArmedRef.current = true
+        autoJoinNameRef.current = name
+      }
       return
     }
 

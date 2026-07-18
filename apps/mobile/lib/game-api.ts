@@ -1354,6 +1354,21 @@ export function patchPlayerName(gameCode: string, playerId: string, playerName: 
   })
 }
 
+/** Monopoly: swap your board token from the lobby (before the game starts). */
+export function patchPlayerMonopolyToken(
+  gameCode: string,
+  playerId: string,
+  monopolyToken: string,
+  resumeToken: string
+) {
+  return jsonRequest<{ playerId: string }>('/api/players', 'PATCH', {
+    gameCode: gameCode.toUpperCase(),
+    playerId,
+    monopolyToken,
+    resumeToken,
+  })
+}
+
 /** Issue a fresh player code, invalidating the old one and any link that carries it. */
 export function rotatePlayerResumeToken(gameCode: string, resumeToken: string) {
   return postJson<{ newToken: string }>('/api/players/resume/rotate', {

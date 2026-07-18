@@ -54,6 +54,7 @@ import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useMonopolyNotifications } from '@/hooks/useMonopolyNotifications'
 import { MonopolyJoinForm } from '@/components/monopoly/MonopolyJoinForm'
+import { MonopolyChangeTokenControl } from '@/components/monopoly/MonopolyChangeTokenControl'
 import { type MonopolyTokenId } from '@/lib/monopoly-tokens'
 
 type HostTab = 'play' | 'manage'
@@ -178,6 +179,9 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
     onReload: load,
     toast: { success, error: toastError },
     buildJoinBody: () => ({ monopolyToken: hostJoinToken }),
+    // Monopoly needs a token chosen before joining — don't auto-seat from the
+    // create intent (it would POST monopolyToken: null and fail validation).
+    autoJoinEnabled: false,
   })
 
   const handlePlayerRemoved = useCallback(
@@ -441,9 +445,21 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
             onEditName={renameHost}
             spectatorHint="Spectate from the Watch tab"
             playingNote={
-              <p className="text-sm text-muted">
-                Playing as <strong className="text-body">{hostPlayerName}</strong> — switch to Play after you start.
-              </p>
+              <div className="space-y-3">
+                <p className="text-sm text-muted">
+                  Playing as <strong className="text-body">{hostPlayerName}</strong> — switch to Play after you start.
+                </p>
+                {hostPlayerId && (
+                  <MonopolyChangeTokenControl
+                    gameCode={gameCode}
+                    playerId={hostPlayerId}
+                    currentTokenId={players.find((p) => p.id === hostPlayerId)?.monopoly_token}
+                    players={players}
+                    hostToken={hostToken}
+                    onChanged={() => void load()}
+                  />
+                )}
+              </div>
             }
             renderJoinForm={
               <MonopolyJoinForm
@@ -580,9 +596,21 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
             onEditName={renameHost}
             spectatorHint="Spectate once it starts"
             playingNote={
-              <p className="text-sm text-muted">
-                Playing as <strong className="text-body">{hostPlayerName}</strong> — switch to Play after you start.
-              </p>
+              <div className="space-y-3">
+                <p className="text-sm text-muted">
+                  Playing as <strong className="text-body">{hostPlayerName}</strong> — switch to Play after you start.
+                </p>
+                {hostPlayerId && (
+                  <MonopolyChangeTokenControl
+                    gameCode={gameCode}
+                    playerId={hostPlayerId}
+                    currentTokenId={players.find((p) => p.id === hostPlayerId)?.monopoly_token}
+                    players={players}
+                    hostToken={hostToken}
+                    onChanged={() => void load()}
+                  />
+                )}
+              </div>
             }
             renderJoinForm={
               <MonopolyJoinForm
