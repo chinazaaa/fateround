@@ -299,6 +299,24 @@ export const landmineMarkSchema = z.object({
 
 export type LandmineMarkInput = z.infer<typeof landmineMarkSchema>
 
+// MANUAL mode: the round's setter judges every answer at once (I Call On's caller-approve).
+export const landmineSetterMarkSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  roundId: uuidString('roundId'),
+  verdicts: z
+    .array(
+      z.object({
+        playerId: uuidString('playerId'),
+        valid: z.boolean(),
+      })
+    )
+    .min(1)
+    .max(24),
+})
+
+export type LandmineSetterMarkInput = z.infer<typeof landmineSetterMarkSchema>
+
 export const landmineAdvanceSchema = z.object({
   gameId: gameCodeString(),
 })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { MatchingPairsPlayerView } from '@/components/matching-pairs/MatchingPairsPlayerView'
 import { MatchingPairsGameTimerBar } from '@/components/matching-pairs/MatchingPairsGameTimerBar'
@@ -38,6 +38,8 @@ import {
   type MatchingPairsPlayerScore,
 } from '@/lib/memory-match'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
+import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
+import { ShareResults } from '@/components/ShareResults'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import {
@@ -62,6 +64,7 @@ type HostTab = 'manage' | 'play'
 export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError, success } = useToast()
   const { confirm } = useConfirm()
+  const finishedCaptureRef = useRef<HTMLDivElement>(null)
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [roundId, setRoundId] = useState<string | null>(null)
@@ -779,69 +782,86 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       manage={manage}
       noManageTab
       finished={
-        <>
-          <FinishedWinnerHero
-            winnerName={winnerName}
-            game={game}
-            headline={
-              hostWonMp ? (
-                <>
-                  <span className="gradient-title">You</span> won!
-                </>
-              ) : undefined
+        <div className="space-y-4">
+          <div ref={finishedCaptureRef} className="space-y-4">
+            <FinishedWinnerHero
+              winnerName={winnerName}
+              game={game}
+              headline={
+                hostWonMp ? (
+                  <>
+                    <span className="gradient-title">You</span> won!
+                  </>
+                ) : undefined
+              }
+              stats={[
+                {
+                  value: (cumulativeLeaderboard[0]?.finalScore ?? 0).toLocaleString(),
+                  label: 'Points total',
+                },
+              ]}
+            />
+            <PaginatedLeaderboard
+              title="Final leaderboard"
+              rows={cumulativeLeaderboard.map((row, i) => ({
+                id: row.playerId,
+                rank: i + 1,
+                name: row.name,
+                score: row.finalScore,
+                correctCount: row.pairsMatched,
+                expandDetails: (
+                  <MatchingPairsFinalBreakdown
+                    playerId={row.playerId}
+                    allSubmissions={submissions}
+                    allProgress={progressRows}
+                    gridSizePairs={gridSizePairs}
+                    sessionStartedAt={game?.session_started_at ?? null}
+                    roundStartedAtMap={roundStartedAtMap}
+                    totalRounds={totalRounds}
+                    timerSeconds={game?.timer_seconds ?? null}
+                  />
+                ),
+              }))}
+              totalQuestions={gridSizePairs * totalRounds}
+              scoreLabel={(n) => `${n} pts`}
+              emphasizeLeader
+            />
+          </div>
+          <HostGameFinishedActions
+            variant="winner"
+            gameCode={game.id}
+            playAgainButton={
+              <button
+                type="button"
+                onClick={() => void confirmPlayAgain()}
+                disabled={playingAgain}
+                className="btn-secondary w-full py-3 text-sm disabled:opacity-60"
+              >
+                {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
+              </button>
             }
-            stats={[
-              {
-                value: (cumulativeLeaderboard[0]?.finalScore ?? 0).toLocaleString(),
-                label: 'Points total',
-              },
-            ]}
+            returnToLobbyButton={
+              <button
+                type="button"
+                onClick={() => void confirmReturnToLobby()}
+                disabled={playingAgain}
+                className="btn-secondary w-full py-3 text-sm disabled:opacity-60"
+              >
+                Return to lobby · different settings
+              </button>
+            }
+            shareButton={
+              <ShareResults
+                captureRef={finishedCaptureRef}
+                game={game}
+                participants={[]}
+                votes={[]}
+                rounds={[]}
+                players={players}
+                primary
+              />
+            }
           />
-          <PaginatedLeaderboard
-            title="Final leaderboard"
-            rows={cumulativeLeaderboard.map((row, i) => ({
-              id: row.playerId,
-              rank: i + 1,
-              name: row.name,
-              score: row.finalScore,
-              correctCount: row.pairsMatched,
-              expandDetails: (
-                <MatchingPairsFinalBreakdown
-                  playerId={row.playerId}
-                  allSubmissions={submissions}
-                  allProgress={progressRows}
-                  gridSizePairs={gridSizePairs}
-                  sessionStartedAt={game?.session_started_at ?? null}
-                  roundStartedAtMap={roundStartedAtMap}
-                  totalRounds={totalRounds}
-                  timerSeconds={game?.timer_seconds ?? null}
-                />
-              ),
-            }))}
-            totalQuestions={gridSizePairs * totalRounds}
-            scoreLabel={(n) => `${n} pts`}
-            emphasizeLeader
-          />
-          <button
-            type="button"
-            onClick={() => void confirmPlayAgain()}
-            disabled={playingAgain}
-            className="btn-secondary w-full py-3 text-base font-bold disabled:opacity-60"
-          >
-            {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
-          </button>
-          <button
-            type="button"
-            onClick={() => void confirmReturnToLobby()}
-            disabled={playingAgain}
-            className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
-          >
-            Return to lobby
-          </button>
-          <p className="text-center text-xs text-faint leading-relaxed px-2">
-            Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak
-            settings first.
-          </p>
           {hostWonMp && (
             <PostWinToCommunity
               gameType="matching_pairs"
@@ -850,7 +870,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
               roundKey={game?.session_started_at ?? undefined}
             />
           )}
-        </>
+        </div>
       }
     />
   )

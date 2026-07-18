@@ -8,6 +8,8 @@ import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
+import { ShareResults } from '@/components/ShareResults'
 import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import {
   MatchingPairsStatDetails,
@@ -131,6 +133,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
   // Flash feedback
   const [lastFlashType, setLastFlashType] = useState<'match' | 'miss' | 'streak' | null>(null)
+  const finishedCaptureRef = useRef<HTMLDivElement>(null)
   const flashRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const flipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 

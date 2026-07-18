@@ -641,6 +641,41 @@ export async function ensureDefaultMarks(
   if (inserts.length > 0) await supabase.from('landmine_marks').insert(inserts)
 }
 
+/**
+ * MANUAL mode: the setter is the sole judge (I Call On's caller). Seed one mark row per ANSWERING
+ * player keyed to THEMSELVES (marker = target = player) — this fits the UNIQUE(marker_player_id,
+ * round_id) constraint while letting one person's verdict land on everyone, so the existing
+ * per-target scoring (`computeRoundResults`) and marker-count completion both keep working with no
+ * schema change. Empty answers are force-Void + finalized; non-empty rows stay open (marked_at
+ * null, Valid default) until the setter approves — a timeout then falls through as Valid.
+ */
+export async function ensureSetterMarks(
+  supabase: SupabaseClient,
+  gameId: string,
+  round: Round,
+  answeringIds: string[]
+): Promise<void> {
+  const { data: answers } = await supabase.from('landmine_answers').select('player_id, answer').eq('round_id', round.id)
+  const answersByPlayer = new Map((answers ?? []).map((a) => [a.player_id, a]))
+  const { data: existing } = await supabase.from('landmine_marks').select('marker_player_id').eq('round_id', round.id)
+  const have = new Set((existing ?? []).map((r) => r.marker_player_id))
+  const now = new Date().toISOString()
+  const inserts = answeringIds
+    .filter((id) => !have.has(id))
+    .map((playerId) => {
+      const hasText = Boolean(normalizeAnswer(answersByPlayer.get(playerId)?.answer))
+      return {
+        game_id: gameId,
+        round_id: round.id,
+        marker_player_id: playerId,
+        target_player_id: playerId,
+        valid: hasText,
+        marked_at: hasText ? null : now,
+      }
+    })
+  if (inserts.length > 0) await supabase.from('landmine_marks').insert(inserts)
+}
+
 export async function clearLandmineSessionData(
   supabase: SupabaseClient,
   gameId: string

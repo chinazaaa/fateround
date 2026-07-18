@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { isLandmineGame, parseGameType } from '@/lib/game-types'
-import { parseLandmineMetadata, reviewTargetForMarker, normalizeAnswer } from '@/lib/landmine'
+import { gameLandmineMineSource, parseLandmineMetadata, reviewTargetForMarker, normalizeAnswer } from '@/lib/landmine'
 import { landmineMarkSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
@@ -21,6 +21,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not a Landmine game' }, { status: 400 })
   }
   if (game.status !== 'active') return NextResponse.json({ error: 'Game not active' }, { status: 400 })
+  // Manual mode disables peer marking — the setter is the sole judge (see /api/landmine/setter-mark).
+  if (gameLandmineMineSource(game) === 'manual') {
+    return NextResponse.json({ error: 'The setter judges answers in manual mode' }, { status: 400 })
+  }
 
   const { data: round } = await supabase.from('rounds').select('*').eq('id', roundId).eq('game_id', code).maybeSingle()
   if (!round || round.status !== 'active') {

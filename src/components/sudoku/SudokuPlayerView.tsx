@@ -9,6 +9,8 @@ import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { SudokuBoard } from '@/components/sudoku/SudokuBoard'
 import { SudokuGameTimerBar } from '@/components/sudoku/SudokuGameTimerBar'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
+import { ShareResults } from '@/components/ShareResults'
 import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import {
@@ -113,6 +115,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   const [correctPulse, setCorrectPulse] = useState<{ value: number; id: number } | null>(null)
   const [highlightNumber, setHighlightNumber] = useState<number | null>(null)
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const finishedCaptureRef = useRef<HTMLDivElement>(null)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
 
   function showToast(msg: string, ok: boolean) {
@@ -740,38 +743,57 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
       leaderboard[0].points > 0
     return (
       <div className="min-h-screen flex flex-col">
-        <main className="pt-16 flex-1 px-4 py-8 max-w-lg mx-auto w-full space-y-6">
-          <div className="glass-card-strong p-8 text-center space-y-2">
-            <p className="text-4xl">🏆</p>
-            <p className="text-2xl font-black">Puzzle complete!</p>
-            {leaderboard[0] && (
-              <p className="text-muted text-base">
-                {leaderboard[0].name} wins with {leaderboard[0].points} pts
-              </p>
-            )}
+        <main className="pt-16 flex-1 px-4 py-8 max-w-lg mx-auto w-full space-y-4">
+          <div ref={finishedCaptureRef} className="space-y-6">
+            <div className="glass-card-strong p-8 text-center space-y-2">
+              <p className="text-4xl">🏆</p>
+              <p className="text-2xl font-black">Puzzle complete!</p>
+              {leaderboard[0] && (
+                <p className="text-muted text-base">
+                  {leaderboard[0].name} wins with {leaderboard[0].points} pts
+                </p>
+              )}
+            </div>
+            <PaginatedLeaderboard
+              title="Final leaderboard"
+              rows={leaderboard.map((row, i) => {
+                const pct = puzzle ? playerCompletionPercent(puzzle, submissions, row.player_id) : 0
+                const timeSecs = getPlayerTimeSpent(
+                  game,
+                  submissions,
+                  row.player_id,
+                  pct,
+                  nowMs,
+                  players.find((p) => p.id === row.player_id)?.joined_at
+                )
+                return {
+                  id: row.player_id,
+                  name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,
+                  score: row.points,
+                  rank: i + 1,
+                }
+              })}
+              highlightId={myPlayerId ?? undefined}
+              scoreLabel={(n) => `${n} pts`}
+            />
           </div>
-          <PaginatedLeaderboard
-            title="Final leaderboard"
-            rows={leaderboard.map((row, i) => {
-              const pct = puzzle ? playerCompletionPercent(puzzle, submissions, row.player_id) : 0
-              const timeSecs = getPlayerTimeSpent(
-                game,
-                submissions,
-                row.player_id,
-                pct,
-                nowMs,
-                players.find((p) => p.id === row.player_id)?.joined_at
-              )
-              return {
-                id: row.player_id,
-                name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,
-                score: row.points,
-                rank: i + 1,
+          {game && (
+            <HostGameFinishedActions
+              variant="winner"
+              gameCode={game.id}
+              shareButton={
+                <ShareResults
+                  captureRef={finishedCaptureRef}
+                  game={game}
+                  participants={[]}
+                  votes={[]}
+                  rounds={[]}
+                  players={players}
+                  primary
+                />
               }
-            })}
-            highlightId={myPlayerId ?? undefined}
-            scoreLabel={(n) => `${n} pts`}
-          />
+            />
+          )}
           {iWonSudoku && (
             <PostWinToCommunity
               gameType="sudoku"

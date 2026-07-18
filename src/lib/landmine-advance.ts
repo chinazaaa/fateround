@@ -9,6 +9,7 @@ import {
   computeRoundResults,
   ensureBlankAnswers,
   ensureDefaultMarks,
+  ensureSetterMarks,
   finalizeUnsubmittedAnswers,
   gameLandmineElimSeconds,
   gameLandmineMineSource,
@@ -275,12 +276,16 @@ async function startMarkingPhase(
   supabase: SupabaseClient,
   gameId: string,
   round: Round,
-  playerIds: string[]
+  playerIds: string[],
+  manual: boolean
 ): Promise<boolean> {
   const metadata = parseLandmineMetadata(round.landmine_metadata)
   if (!metadata || metadata.phase !== 'writing') return false
   await finalizeUnsubmittedAnswers(supabase, gameId, round.id, playerIds)
-  await ensureDefaultMarks(supabase, gameId, round, playerIds)
+  // Manual mode: the setter judges everyone, so seed self-marks (marker = target) they'll approve.
+  // System mode: peer marking via the reviewer ring.
+  if (manual) await ensureSetterMarks(supabase, gameId, round, playerIds)
+  else await ensureDefaultMarks(supabase, gameId, round, playerIds)
   const now = new Date().toISOString()
   return updateRoundMetadata(supabase, round.id, { ...metadata, phase: 'marking', phase_started_at: now })
 }
@@ -454,7 +459,7 @@ async function advanceActiveRoundPhase(
     const submitted = await countRoundAnswers(supabase, round.id, answeringIds)
     const allIn = answeringIds.length > 0 && submitted >= answeringIds.length
     if (allIn || phaseExpired(metadata, game)) {
-      const ok = await startMarkingPhase(supabase, game.id, round, answeringIds)
+      const ok = await startMarkingPhase(supabase, game.id, round, answeringIds, manual)
       return ok ? 'phase_advanced' : 'round_active'
     }
     return 'round_active'

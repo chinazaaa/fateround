@@ -223,6 +223,22 @@ describe('landmine manual mode', () => {
     expect(Object.keys(meta.reviewer_assignments).sort()).toEqual(['a', 'b', 'c'])
   })
 
+  it('setter self-marks (marker = target) score exactly like peer marks', () => {
+    // Manual mode seeds one self-mark per answering player; the setter approves valid/void on it.
+    // Scoring keys marks by target, so a self-mark must resolve to the right verdict.
+    const answers = [answer('b', 'Canada'), answer('c', 'Kenya')]
+    const marks = [
+      mark('b', 'b', true), // setter judged b Valid
+      mark('c', 'c', false), // setter judged c Void
+    ]
+    const results = computeRoundResults(answers, marks, ['mexico'], { originalityBonus: true })
+    const byPlayer = Object.fromEntries(results.map((r) => [r.player_id, r]))
+    expect(byPlayer.b.outcome).toBe('original')
+    expect(byPlayer.b.points).toBeGreaterThan(0)
+    expect(byPlayer.c.outcome).toBe('void')
+    expect(byPlayer.c.points).toBe(0)
+  })
+
   it('clampLandmineElimSeconds accepts the option set, defaults otherwise', () => {
     expect(clampLandmineElimSeconds(180)).toBe(180)
     expect(clampLandmineElimSeconds(900)).toBe(900)

@@ -38,6 +38,8 @@ type PlayScreen =
   | 'setup'
   | 'category_wait'
   | 'setter_watch'
+  | 'setter_review'
+  | 'marking_wait'
   | 'round_watch'
   | 'writing'
   | 'writing_locked'
@@ -90,6 +92,9 @@ export function LandmineActiveRound({
   const [lockedAnswerRound, setLockedAnswerRound] = useState<string | null>(null)
   const [lockedAnswerText, setLockedAnswerText] = useState('')
   const [lockedMarkRound, setLockedMarkRound] = useState<string | null>(null)
+  // Manual mode: the setter's per-answer Valid/Void toggles + a lock once they approve the round.
+  const [setterVerdicts, setSetterVerdicts] = useState<Record<string, boolean>>({})
+  const [lockedSetterRound, setLockedSetterRound] = useState<string | null>(null)
   const answerRef = useRef('')
   answerRef.current = answerText
   const draftTimerRef = useRef<number | null>(null)
@@ -162,6 +167,8 @@ export function LandmineActiveRound({
     setLockedAnswerRound(null)
     setLockedAnswerText('')
     setLockedMarkRound(null)
+    setSetterVerdicts({})
+    setLockedSetterRound(null)
     setSubmitting(false)
     submittingRef.current = false
     if (draftTimerRef.current != null) {
@@ -374,6 +381,29 @@ export function LandmineActiveRound({
     }
   }
 
+  // Manual mode: the setter approves every answer at once (I Call On's caller-approve).
+  const submitSetterMarks = async (verdicts: { playerId: string; valid: boolean }[]) => {
+    if (!currentRound || readOnly || submitting) return
+    if (!myResumeToken) return toastError('Your player session expired — rejoin to continue')
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/landmine/setter-mark', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, roundId: currentRound.id, verdicts }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to submit marks')
+      playVoteSubmittedSound()
+      setLockedSetterRound(currentRound.id)
+      void onReload?.()
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to submit marks')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const screen: PlayScreen = useMemo(() => {
     if (game.status === 'finished') return 'finished'
     if (!currentRound) return 'waiting'
@@ -383,13 +413,17 @@ export function LandmineActiveRound({
       if (manual) return isSetter ? 'setup' : 'category_wait'
       return isCaller ? 'category_pick' : 'category_wait'
     }
-    // Manual mode: the setter planted the mine and sits out — they watch, never answer or mark.
-    if (isSetter && (phase === 'writing' || phase === 'marking')) return 'setter_watch'
+    // Manual mode: the setter planted the mine and sits out the writing, then judges every
+    // answer during marking (I Call On's caller). System mode has no setter.
+    if (isSetter && phase === 'writing') return 'setter_watch'
+    if (isSetter && phase === 'marking') return 'setter_review'
     // A spectator, or a player who joined after this round began, isn't in the round's
     // answer/mark ring. Show them a watch view instead of a writing/marking UI they can't act
     // on — the empty "mark this" screen that looked frozen when you jumped in mid-round.
     const spectatingRound = readOnly || !isLandmineRoundParticipant(metadata, myPlayerId)
     if (spectatingRound && (phase === 'writing' || phase === 'marking')) return 'round_watch'
+    // Manual mode: only the setter marks — the answering players wait it out.
+    if (manual && phase === 'marking') return 'marking_wait'
     if (phase === 'writing') {
       const locked = !!myAnswer?.submitted_at || lockedAnswerRound === currentRound.id
       return locked ? 'writing_locked' : 'writing'
@@ -684,6 +718,99 @@ export function LandmineActiveRound({
             {playerAnswers.filter((a) => a.submitted_at).length} locked in
           </p>
         )}
+      </div>
+    )
+  }
+
+  // ── Manual setter judging — the setter marks every answer valid/void, then reveals ──────
+  if (screen === 'setter_review') {
+    const approved = lockedSetterRound === currentRound.id
+    const verdictFor = (id: string) =>
+      setterVerdicts[id] ?? roundMarks.find((m) => m.target_player_id === id)?.valid ?? true
+    return (
+      <div className="glass-card p-6 space-y-4">
+        {roundHeader}
+        <div className="text-center space-y-1">
+          <p className="text-3xl">⚖️</p>
+          <p className="font-bold text-lg">You set this round — judge the answers</p>
+          <p className="text-sm text-muted">
+            Category: <span className="font-semibold">{metadata.category}</span>. Mark each Valid or Void, then reveal.
+          </p>
+        </div>
+        <div className="space-y-2">
+          {playerAnswers.map((a) => {
+            const name = playerDisplayName(a.player_id, players)
+            const hasText = !!normalizeAnswer(a.answer)
+            const valid = hasText ? verdictFor(a.player_id) : false
+            return (
+              <div key={a.player_id} className="rounded-lg border border-white/10 px-3 py-2 space-y-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold truncate">{name}</p>
+                  <p className="text-sm text-muted truncate">{a.answer || '(no answer)'}</p>
+                </div>
+                {hasText ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={approved}
+                      onClick={() => setSetterVerdicts((p) => ({ ...p, [a.player_id]: true }))}
+                      className={`py-2 rounded-lg text-sm font-bold border disabled:opacity-60 ${
+                        valid ? 'border-emerald-500 bg-emerald-500/15 text-emerald-200' : 'border-white/10 text-muted'
+                      }`}
+                    >
+                      ✓ Valid
+                    </button>
+                    <button
+                      type="button"
+                      disabled={approved}
+                      onClick={() => setSetterVerdicts((p) => ({ ...p, [a.player_id]: false }))}
+                      className={`py-2 rounded-lg text-sm font-bold border disabled:opacity-60 ${
+                        !valid ? 'border-red-500 bg-red-500/15 text-red-200' : 'border-white/10 text-muted'
+                      }`}
+                    >
+                      ✕ Void
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted">Empty — scores 0 automatically.</p>
+                )}
+              </div>
+            )
+          })}
+        </div>
+        <button
+          type="button"
+          disabled={submitting || approved}
+          onClick={() =>
+            void submitSetterMarks(
+              playerAnswers.map((a) => ({
+                playerId: a.player_id,
+                valid: !!normalizeAnswer(a.answer) && verdictFor(a.player_id),
+              }))
+            )
+          }
+          className="btn-primary w-full py-3 disabled:opacity-50"
+        >
+          {approved ? 'Revealing…' : 'Approve & reveal scores'}
+        </button>
+        <p className="text-xs text-muted text-center">
+          The mine is still hidden — judge only whether each answer fits the category.
+        </p>
+      </div>
+    )
+  }
+
+  // ── Manual mode: answering players wait for the setter to judge ─────────────────────────
+  if (screen === 'marking_wait') {
+    return (
+      <div className="glass-card p-6 space-y-4">
+        {roundHeader}
+        <div className="text-center space-y-1">
+          <p className="text-3xl">⚖️</p>
+          <p className="font-bold">{callerName} is judging the answers…</p>
+          <p className="text-sm text-muted">They’ll mark each Valid or Void, then scores reveal.</p>
+        </div>
+        {answerBoard}
       </div>
     )
   }
