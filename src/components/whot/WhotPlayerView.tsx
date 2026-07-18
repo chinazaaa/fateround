@@ -8,7 +8,7 @@ import { PlayerRoomShell } from '@/components/rooms/PlayerRoomShell'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
-import { useRosterBase } from '@/components/roster/RosterDrawerContext'
+import { deriveBaseRows, sortRows, useRosterRowsOverride } from '@/components/roster/RosterDrawerContext'
 import { WhotFinalResultsShareBlock } from '@/components/whot/WhotFinalResultsShareBlock'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -275,10 +275,16 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const pickPenalty = session ? getActivePickPenalty(session) : { type: null, count: 0 }
 
   // Feed the roster side-drawer from THIS view's bootstrap (authoritative players +
-  // myPlayerId) rather than the dispatcher's useGameSession copy — otherwise a
-  // spectator's own row can miss the "· you" highlight when the two pipelines drift.
-  // `PollGamePlayerExperience` skips its own registration for Whot (SELF_ROSTERING).
-  useRosterBase(game?.status === 'active' ? players : undefined, game, myPlayerId)
+  // myPlayerId) via the OVERRIDE slot — the dispatcher (PollGamePlayerExperience)
+  // still registers a base copy, but its useGameSession myPlayerId can lag ours, so
+  // a spectator's own row would miss the "· you" highlight. Override always wins over
+  // that base (single writer, no fight — using base here would flicker the header
+  // roster button as the two registrations clobber each other).
+  const rosterRows = useMemo(
+    () => (game?.status === 'active' ? sortRows(deriveBaseRows(players, game, myPlayerId)) : null),
+    [game, players, myPlayerId]
+  )
+  useRosterRowsOverride(rosterRows)
 
   // Change name · Leave game for players/spectators live behind the main chrome's ⚙
   // gear (top header) — the in-room bar that used to hold them is gone. Registered

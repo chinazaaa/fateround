@@ -68,7 +68,7 @@ import {
   isHotSeat,
   isCustomGame,
 } from '@/lib/game-types'
-import { PLAYER_VIEW_REGISTRY, SELF_ROSTERING_GAME_TYPES } from '@/components/game-player-views'
+import { PLAYER_VIEW_REGISTRY } from '@/components/game-player-views'
 import {
   ParticipantRoundResults,
   VoteCountStat,
@@ -355,12 +355,10 @@ export function PollGamePlayerExperience({
   // even after a dedicated game view takes over, so every game gets the roster for
   // free. Dedicated views layer per-player scores on top via useGameScores.
   //
-  // Exception: self-rostering views (Whot) register from their OWN bootstrap so the
-  // spectator's own row is marked "· you" — this dispatcher's session id can lag
-  // theirs. Skip here for those so the child's registration wins (effects run child
-  // → parent, so a double-registration would otherwise let this stale copy clobber it).
-  const selfRosters = !!(game && SELF_ROSTERING_GAME_TYPES.has(parseGameType(game.game_type)))
-  useRosterBase(game?.status === 'active' && !selfRosters ? players : undefined, game, myPlayerId)
+  // Self-contained views with their own bootstrap (Whot) can OVERRIDE these rows
+  // (via useRosterRowsOverride) so the spectator's own row is marked "· you" — this
+  // dispatcher's session id can lag theirs. Override wins over this base, so no fight.
+  useRosterBase(game?.status === 'active' ? players : undefined, game, myPlayerId)
 
   const {
     assignment,
