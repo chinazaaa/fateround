@@ -27,13 +27,10 @@ import { formatThemedText } from '@/components/monopoly/monopoly-themes'
 import {
   buildMonopolyStandings,
   currentPlayerId,
-  getMonopolyHostMode,
   MONOPOLY_COLOR_CLASSES,
   MONOPOLY_MIN_PLAYERS,
   parsePropertyOwners,
-  setMonopolyHostMode,
   type MonopolyColorGroup,
-  type MonopolyHostMode,
 } from '@/lib/monopoly'
 import { supabase } from '@/lib/supabase'
 import {
@@ -44,15 +41,9 @@ import {
   isCompleteMonopolyBoardRow,
 } from '@/lib/supabase-selects'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
-import {
-  clearPlayerSession,
-  getPlayerSession,
-  isFetchNetworkError,
-  messageFromFetchActionError,
-  setPlayerSession,
-} from '@/lib/utils'
+import { useHostSeat } from '@/hooks/useHostSeat'
+import { isFetchNetworkError, messageFromFetchActionError } from '@/lib/utils'
 import type { Game, MonopolyBoard, MonopolyPlayerState, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
@@ -82,13 +73,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
 
-  const [hostMode, setHostMode] = useState<MonopolyHostMode>('player')
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
-  const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoinToken, setHostJoinToken] = useState<MonopolyTokenId | null>(null)
-  const [hostJoining, setHostJoining] = useState(false)
   const [hostActing, setHostActing] = useState(false)
   const hostActingRef = useRef(false)
   const [tab, setTab] = useState<HostTab>('manage')
@@ -117,13 +102,6 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
 
   useEffect(() => {
     load()
-    setHostMode(getMonopolyHostMode(gameCode))
-    const session = getPlayerSession(gameCode)
-    if (session) {
-      setHostPlayerId(session.playerId)
-      setHostPlayerName(session.playerName)
-      setHostResumeToken(session.resumeToken ?? null)
-    }
   }, [gameCode, load])
 
   // Land on the primary (Play/Watch) tab when the game starts, and on Manage when it ends.
@@ -178,98 +156,38 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
     runImmediately: false,
   })
 
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+    buildJoinBody: () => ({ monopolyToken: hostJoinToken }),
+  })
+
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostPlayerName('')
-        setHostResumeToken(null)
-        clearPlayerSession(gameCode)
-      }
+      onHostSeatRemoved(playerId)
       setPlayers((prev) => prev.filter((p) => p.id !== playerId))
       setStates((prev) => prev.filter((s) => s.player_id !== playerId))
     },
-    [gameCode, hostPlayerId]
+    [onHostSeatRemoved]
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
-
-  // Clear stale host-as-player state if the host's own row is removed elsewhere.
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
-
-  const changeHostMode = async (mode: MonopolyHostMode) => {
-    if (game?.status !== 'waiting') return
-    const prev = hostMode
-    setHostMode(mode)
-    setMonopolyHostMode(gameCode, mode)
-    // Switching to "Host only" while holding a seat → give up the seat so the host
-    // drops out of the players list.
-    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
-      try {
-        const res = await fetch('/api/players', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error ?? 'Failed to leave seat')
-        }
-        handlePlayerRemoved(hostPlayerId)
-        await load()
-      } catch (err) {
-        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
-      }
-    }
-  }
-
-  const renameHost = async (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed || !hostPlayerId) return
-    try {
-      const res = await fetch('/api/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
-      setHostPlayerName(data.playerName)
-      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
-      await load()
-      success('Name updated!')
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to update name')
-    }
-  }
-
-  const hostJoinGame = async () => {
-    const name = hostJoinName.trim()
-    if (!name || !hostJoinToken) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: name, monopolyToken: hostJoinToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostPlayerName(data.playerName)
-      setHostResumeToken(data.resumeToken ?? null)
-      setHostMode('player')
-      setMonopolyHostMode(gameCode, 'player')
-      await load()
-      success(`Joined as ${data.playerName}`)
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-      await load()
-    } finally {
-      setHostJoining(false)
-    }
-  }
 
   const postHostAction = async (url: string, body: Record<string, unknown> = {}) => {
     if (!hostPlayerId || hostActingRef.current) return
