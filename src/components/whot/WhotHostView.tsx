@@ -317,13 +317,14 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
 
   // Host game settings for the active room live behind the main chrome's ⚙ gear
   // (top header, beside Share) — not a separate in-room bar. Register the body
-  // (edit name · late-join rules · How to play · End game) while the game is
-  // active; `GameChromeSettings` renders it inside the one sheet. Players are
-  // managed from the roster side-drawer, so there's no player list here.
+  // (late-join rules · How to play · End game) while the game is active;
+  // `GameChromeSettings` renders it inside the one sheet, and it supplies the
+  // universal "Edit your name" row itself. Players are managed from the roster
+  // side-drawer, so there's no player list here.
   const hostSettingsNode = useMemo(() => {
     if (game?.status !== 'active') return null
     return (
-      <WhotHostSettings hostName={hostPlayerName} onEditName={renameHost}>
+      <div className="space-y-4">
         <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
         <HostRulesRow gameType="whot" />
         <HostEndGameButton
@@ -336,9 +337,9 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
           confirmMessage="Everyone sees the final results. You can start a new game from the room afterward."
           className="btn-danger-soft w-full"
         />
-      </WhotHostSettings>
+      </div>
     )
-  }, [game, hostPlayerName, renameHost, gameCode, hostToken, setGame, load])
+  }, [game, gameCode, hostToken, setGame, load])
   useRegisterGameSettings(hostSettingsNode)
 
   if (!game) {

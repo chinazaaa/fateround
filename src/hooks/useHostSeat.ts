@@ -18,22 +18,23 @@ export type HostSeatMode = 'spectator' | 'player'
  *
  * The Trivia host view is the reference implementation this centralizes.
  *
- * "Host only" keeps the host as a SEATED SPECTATOR (a real player row with
- * spectator=true) — not "no row" — so everyone sees the host in the roster with a
- * HOST badge. Toggling Host+play ↔ Host-only flips the seat in place via the ready
- * endpoint (keep the row); it never deletes the seat.
+ * "Host only" in the LOBBY gives up the player seat (no row) so the host is out of
+ * the players list — the lobby's `spectator` flag doubles as "not ready", so a
+ * spectator row there would misread as a not-ready player. Once the game is ACTIVE,
+ * a host-only host is seated as a *visible* spectator row so everyone sees the host
+ * in the roster with a HOST badge.
  *
  * Seeding on mount (in priority order):
  *  1. An existing player session (`getPlayerSession`) → adopt it; mode seeds from the
  *     persisted value, then a one-time reconcile corrects it from the row's spectator flag.
  *  2. The create-screen intent (`consumeHostPlayIntent`, one-shot):
- *       - role 'host' → mode 'spectator' + arm a one-time spectator seat.
+ *       - role 'host' → mode 'spectator'.
  *       - role 'play' WITH a name → mode 'player', prefill the name, and arm a
  *         one-time auto-join so the host is seated without a manual click.
  *  3. Otherwise → the per-game persisted mode (default 'player'), no auto-join.
  *
- * A player name is never invented for a PLAYING seat; a host-only spectator seat
- * defaults to "Host" (the row carries the HOST badge, so the label reads clearly).
+ * A player name is never invented for a PLAYING seat; the active host-only spectator
+ * seat defaults to "Host" (the row carries the HOST badge, so the label reads clearly).
  */
 
 const hostModeKey = (gameCode: string) => `host_mode_${gameCode.toUpperCase()}`
@@ -115,9 +116,9 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
   const hostPlayerIdRef = useRef(hostPlayerId)
   hostPlayerIdRef.current = hostPlayerId
 
-  // "Host only" now keeps the host as a SEATED SPECTATOR (a real player row with
-  // spectator=true) instead of no row, so everyone sees the host in the roster with
-  // a HOST badge. These arm a one-time spectator seat from the create-screen intent,
+  // "Host only" seats the host as a visible SPECTATOR row (spectator=true) — shown as
+  // "Host · Watching" in the roster — so everyone sees the host with a HOST badge, in
+  // the lobby and in-game. These arm a one-time spectator seat from the create intent,
   // and a one-time mode reconcile from the adopted row's spectator flag on refresh.
   const spectatorSeatArmRef = useRef<{ name: string } | null>(null)
   const spectatorSeatFiredRef = useRef(false)
@@ -216,9 +217,9 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
       if (mode === prev) return
       applyMode(mode)
       try {
-        // Toggle the host's seat in place (keep the row) via the ready endpoint —
-        // "Host only" = sit out as a spectator (ready:false), "Host + play" = take the
-        // seat back (ready:true). The host stays a visible roster row either way.
+        // Flip the host's seat in place (keep the row): "Host only" sits out as a
+        // spectator (ready:false → shown as "Host · Watching"), "Host + play" takes the
+        // seat (ready:true). The host stays a visible roster row either way.
         if (hostPlayerId && hostResumeToken) {
           const res = await fetch('/api/players/ready', {
             method: 'POST',
@@ -231,8 +232,8 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
           }
           await onReloadRef.current()
         } else if (mode === 'spectator') {
-          // No seat yet (e.g. host-only from the start) → seat as a spectator so the
-          // host is visible. Taking a player seat with no row is handled by hostJoinGame.
+          // No seat yet (host-only from the start) → seat as a spectator so the host is
+          // visible. Taking a player seat with no row is handled by the join form.
           await seatHostAsSpectator()
         }
       } catch (err) {
@@ -287,7 +288,7 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
     if (intent?.role === 'host') {
       setHostMode('spectator')
       writePersistedMode(gameCode, 'spectator')
-      // Seat the host as a spectator so they're visible in the roster to everyone.
+      // Seat the host as a visible spectator ("Host · Watching") — no name needed.
       spectatorSeatArmRef.current = { name: intent.name }
       return
     }
@@ -328,10 +329,10 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
   }, [gameStatus, hostMode, hostPlayerId, hostJoining, hostJoinGame])
 
   // One-time: seat the host as a spectator when armed by a "Host only" create intent
-  // and they don't already hold a seat, so the host is a visible roster row.
+  // and they don't already hold a seat, so the host shows as "Host · Watching".
   useEffect(() => {
     if (!spectatorSeatArmRef.current || spectatorSeatFiredRef.current) return
-    if (gameStatus !== 'waiting') return
+    if (gameStatus !== 'waiting' && gameStatus !== 'active') return
     if (hostPlayerId || hostJoining) return
     spectatorSeatFiredRef.current = true
     void seatHostAsSpectator(spectatorSeatArmRef.current.name)
