@@ -414,24 +414,10 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
 
   if (!session) return <WhotLoadingScreen />
 
-  // The active play surface mounts inside the design-system room shell, which
-  // supplies the `.fr-room-poll` → `.pr-main` → `.pr-stage` frame the `.ct-surface`
-  // needs, with the top voice rail as the room chrome.
-  const roomShell = (children: React.ReactNode) => (
-    <PlayerRoomShell
-      gameCode={gameCode}
-      gameName={game?.title ?? cfg.label}
-      playerName={activePlayer?.name ?? roomDisplayName}
-      playerId={myPlayerId}
-      resumeToken={myResumeToken}
-      onLeave={() => {
-        clearPlayerSession(gameCode)
-        router.push('/')
-      }}
-    >
-      {children}
-    </PlayerRoomShell>
-  )
+  // The active play surface mounts inside the design-system room frame, which
+  // supplies the `.fr-room-poll` → `.pr-main` → `.pr-stage` layout the `.ct-surface`
+  // needs. The room chrome is the app's fixed top header + the floating Join-voice pill.
+  const roomShell = (children: React.ReactNode) => <PlayerRoomShell>{children}</PlayerRoomShell>
 
   if (isWatching) {
     return roomShell(

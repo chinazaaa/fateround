@@ -6,6 +6,7 @@ import { HostLobbySettingsSheet } from '@/components/host/HostLobbySettingsSheet
 import { NotificationToggle } from '@/components/NotificationToggle'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { WhatsAppChannelLink } from '@/components/WhatsAppChannelLink'
+import { useGameSettingsContent } from '@/components/GameSettingsContext'
 
 /**
  * The in-game chrome's single ⚙ settings entry — mirrors the mobile host/player
@@ -24,6 +25,9 @@ export function GameChromeSettings({
   resumeToken: string | null
 }) {
   const [open, setOpen] = useState(false)
+  // Game-specific controls the in-game view folds into this one sheet (e.g. Whot's
+  // host game settings, edit name, end game) — mirrors the mobile host settings sheet.
+  const gameSettings = useGameSettingsContent()
 
   const rowClass =
     'flex w-full items-center justify-start gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] px-3.5 py-3 text-sm font-semibold text-body transition-colors hover:text-[var(--foreground)]'
@@ -40,6 +44,8 @@ export function GameChromeSettings({
       </button>
 
       <HostLobbySettingsSheet open={open} onClose={() => setOpen(false)} title="Settings">
+        {/* Game-specific settings first (host game rules, edit name, end game …). */}
+        {gameSettings}
         {role === 'host' ? (
           <TransferHostControl triggerClassName={rowClass} />
         ) : (

@@ -6,17 +6,18 @@ import { useToast } from '@/components/ui/Toast'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 
 /**
- * One-tap invite share.
+ * One-tap invite share / copy.
  *
- * On devices with the Web Share API (most phones) this opens the native share
- * sheet — WhatsApp, Messages, etc. — with the invite pre-filled, which converts
- * far better than "copy then paste" for a mobile / WhatsApp-heavy audience and is
- * the biggest lever on the share -> join viral loop. Falls back to copying the
- * link on browsers without `navigator.share` (most desktops).
+ * On TOUCH devices with the Web Share API (phones/tablets) this opens the native
+ * share sheet — WhatsApp, Messages, etc. — with the invite pre-filled, the biggest
+ * lever on the share -> join loop. Everywhere else (desktop — even desktop Chrome,
+ * which technically has `navigator.share` but only surfaces a clunky OS sheet) it
+ * just copies the link to the clipboard. Gated on a coarse pointer so desktop
+ * always copies.
  *
- * Fires the `share_link` GA key event on a successful share or copy. The label is
- * static ("Share invite") so it renders identically on server and client — the
- * behaviour, not the text, adapts to the device (avoids a hydration mismatch).
+ * Fires the `share_link` GA key event on a successful share or copy. Default state
+ * = "copy" so the server + first client render match (no hydration mismatch);
+ * corrected to native-share on touch devices after mount.
  */
 export function ShareInviteButton({
   url,
@@ -29,9 +30,8 @@ export function ShareInviteButton({
   text?: string
   label?: string
   /**
-   * Label to show when the native share sheet isn't available (most desktops),
-   * where this button just copies the link. Lets the caller say "Copy invite
-   * link" on desktop while keeping "Share invite" on mobile. Falls back to
+   * Label shown when the button copies (desktop). Lets the caller say "Copy invite
+   * link" on desktop while keeping "Share invite" on touch devices. Falls back to
    * `label` when omitted.
    */
   copyLabel?: string
@@ -39,42 +39,45 @@ export function ShareInviteButton({
 }) {
   const toast = useToast()
   const [copied, setCopied] = useState(false)
-  // Default true so the server + first client render both show `label` (no
-  // hydration mismatch); corrected to the device's real capability after mount.
-  const [canNativeShare, setCanNativeShare] = useState(true)
+  // Default false → server + first client render show the copy label (safe for
+  // desktop, the SSR majority). Flipped to true on touch devices after mount.
+  const [canNativeShare, setCanNativeShare] = useState(false)
 
   useEffect(() => {
-    setCanNativeShare(typeof navigator !== 'undefined' && typeof navigator.share === 'function')
+    const hasShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+    const coarsePointer = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)')?.matches
+    setCanNativeShare(hasShare && coarsePointer)
   }, [])
 
   const restLabel = canNativeShare ? label : (copyLabel ?? label)
 
+  const copyLink = async () => {
+    const ok = await copyToClipboard(url)
+    if (ok) {
+      trackEvent(GA_EVENTS.shareLink)
+      toast.success('Link copied')
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } else {
+      toast.error('Could not copy — try again')
+    }
+  }
+
   const handleShare = async () => {
-    // Prefer the native share sheet (mobile → WhatsApp / Messages / etc.).
-    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+    // Touch device: native share sheet (WhatsApp / Messages / …).
+    if (canNativeShare) {
       try {
         await navigator.share({ title: 'Fate Round', text, url })
         trackEvent(GA_EVENTS.shareLink)
         return
       } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') {
-          // User intentionally dismissed the share sheet — don't count it as a
-          // share or fall back to copying; just stop here.
-          return
-        }
-        // Real failure (e.g. permission denied) — fall through to copy.
+        // User dismissed the sheet — stop, don't fall back to copy.
+        if (err instanceof Error && err.name === 'AbortError') return
+        // Real failure — fall through to copy.
       }
     }
-    // Desktop / unsupported: copy the link so the invite still gets out.
-    const ok = await copyToClipboard(url)
-    if (ok) {
-      trackEvent(GA_EVENTS.shareLink)
-      toast.success('Invite link copied')
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 2000)
-    } else {
-      toast.error('Could not share — try again')
-    }
+    // Desktop (or share failed): copy the link.
+    await copyLink()
   }
 
   return (

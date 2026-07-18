@@ -463,6 +463,7 @@ export function AyoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
 
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={gameFinished ? 'finished' : game.status}
       tab={tab}

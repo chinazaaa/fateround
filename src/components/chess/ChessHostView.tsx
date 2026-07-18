@@ -508,6 +508,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={gameFinished ? 'finished' : game.status}
       tab={tab}

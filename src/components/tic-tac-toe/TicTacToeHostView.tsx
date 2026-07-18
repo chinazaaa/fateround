@@ -438,6 +438,7 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
 
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={gameFinished ? 'finished' : game.status}
       tab={tab}

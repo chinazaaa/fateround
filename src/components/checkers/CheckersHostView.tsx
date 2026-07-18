@@ -458,6 +458,7 @@ export function CheckersHostView({ gameCode, hostToken }: { gameCode: string; ho
 
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={gameFinished ? 'finished' : game.status}
       tab={tab}

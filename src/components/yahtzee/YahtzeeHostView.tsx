@@ -533,6 +533,7 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
 
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={game.status}
       tab={tab}
