@@ -7,6 +7,7 @@ import { TransferHostControl } from '@/components/TransferHostControl'
 import { WhatsAppChannelLink } from '@/components/WhatsAppChannelLink'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { useGameSettingsContent, GameSettingsCloseProvider } from '@/components/GameSettingsContext'
+import { RotatePlayerCodeButton } from '@/components/ui/RotatePlayerCodeButton'
 import { getPlayerSession } from '@/lib/utils'
 
 /**
@@ -86,6 +87,7 @@ export function GameChromeSettings({
           ) : null}
           {gameSettings}
           {role === 'host' ? <TransferHostControl triggerClassName={rowClass} /> : null}
+          {gameCode && resumeToken ? <RotatePlayerCodeButton gameCode={gameCode} className={rowClass} /> : null}
           <WhatsAppChannelLink className="w-full justify-center" />
         </GameSettingsCloseProvider>
       </HostLobbySettingsSheet>

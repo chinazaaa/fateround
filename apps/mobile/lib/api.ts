@@ -23,6 +23,34 @@ export class JoinError extends Error {
   }
 }
 
+/** Reclaim an existing seat from a typed-in player code. Errors on an unknown code. */
+export async function resumePlayerByCode(
+  gameCode: string,
+  resumeToken: string
+): Promise<{
+  playerId: string
+  playerName: string
+  playerGender: PlayerGender
+  resumeToken: string
+  isViewer: boolean
+}> {
+  const res = await fetch(apiUrl('/api/players/resume'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ gameCode: gameCode.toUpperCase(), resumeToken: resumeToken.trim().toUpperCase() }),
+  })
+  const data = (await res.json()) as {
+    playerId: string
+    playerName: string
+    playerGender: PlayerGender
+    resumeToken: string
+    isViewer: boolean
+    error?: string
+  }
+  if (!res.ok) throw new Error(data.error ?? 'Could not find that player code')
+  return data
+}
+
 export async function autoJoinGame(gameCode: string, resumeToken?: string | null): Promise<JoinPlayerResponse> {
   const res = await fetch(apiUrl('/api/players'), {
     method: 'POST',

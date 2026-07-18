@@ -10,6 +10,7 @@ import { LateJoinPolicyPicker } from '@/components/create/LateJoinPolicyPicker'
 import { WordRushHostRoundControl } from '@/components/games/WordRushHostRoundControl'
 import { QuickDrawHostAdvanceControl } from '@/components/games/QuickDrawHostAdvanceControl'
 import { AddGameTimeControl } from '@/components/host/AddGameTimeControl'
+import { RotatePlayerCodeRow } from '@/components/session/RotatePlayerCodeRow'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
@@ -243,6 +244,15 @@ export function HostControlsSheet({
           <Pressable style={styles.secondaryBtn} onPress={onTransfer}>
             <Text style={styles.secondaryBtnText}>Transfer host to another player</Text>
           </Pressable>
+
+          {hostResumeToken ? (
+            <RotatePlayerCodeRow
+              gameCode={gameCode}
+              style={styles.secondaryBtn}
+              textStyle={styles.secondaryBtnText}
+              spinnerColor={theme.text}
+            />
+          ) : null}
 
           {active && game.game_type === 'word_rush' ? (
             <WordRushHostRoundControl gameCode={gameCode} hostToken={hostToken} onReload={onReload} />

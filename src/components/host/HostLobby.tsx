@@ -10,6 +10,7 @@ import { ShareGameModal } from '@/components/host/ShareGameModal'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostVisibilityToggle } from '@/components/host-lobby/HostVisibilityToggle'
 import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
+import { RotatePlayerCodeButton } from '@/components/ui/RotatePlayerCodeButton'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostLobbySettingsSheet } from '@/components/host/HostLobbySettingsSheet'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
@@ -247,6 +248,12 @@ export function HostLobby({
         <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} />
         <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} />
         {settingsChildren}
+        {resumeToken ? (
+          <RotatePlayerCodeButton
+            gameCode={gameCode}
+            className="flex w-full items-center justify-start gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] px-3.5 py-3 text-sm font-semibold text-body transition-colors hover:text-[var(--foreground)]"
+          />
+        ) : null}
       </HostLobbySettingsSheet>
 
       <ShareGameModal
