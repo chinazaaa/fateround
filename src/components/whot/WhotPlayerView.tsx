@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation'
 import { WhotCard, WhotLoadingScreen, WhotSecondaryButton, WhotShell } from '@/components/whot/WhotChrome'
 import { WhotPlaySurface } from '@/components/whot/WhotPlaySurface'
 import { PlayerRoomShell } from '@/components/rooms/PlayerRoomShell'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { useRosterBase } from '@/components/roster/RosterDrawerContext'
 import { WhotFinalResultsShareBlock } from '@/components/whot/WhotFinalResultsShareBlock'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -269,6 +273,34 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const myCanPlay = session ? hasPlayableCard(myHand, session, whotRules) : false
   const whotCallActive = session ? hasActiveWhotCall(session) : false
   const pickPenalty = session ? getActivePickPenalty(session) : { type: null, count: 0 }
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header) — the in-room bar that used to hold them is gone. Registered
+  // while the game is active; `GameChromeSettings` renders it inside the one sheet.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId || game?.status !== 'active') return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={activePlayer?.name ?? roomDisplayName ?? ''}
+          onRenamed={() => void load()}
+          spectating={isWatching}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, activePlayer?.name, roomDisplayName, isWatching, load, router])
+  useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') return <WhotLoadingScreen />
 

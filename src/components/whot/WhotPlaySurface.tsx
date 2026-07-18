@@ -178,7 +178,7 @@ export function WhotPlaySurface({
 
         {watching ? (
           <TurnStatus muted>
-            Spectating — {turnName}&apos;s turn · <span className="g">you can chat</span>
+            Spectating — {turnName}&apos;s turn · <span className="g">you can join the voice room</span>
           </TurnStatus>
         ) : session.status_message ? (
           <ActionToast tone="ok">{session.status_message}</ActionToast>
@@ -201,10 +201,10 @@ export function WhotPlaySurface({
         )}
       </Table>
 
-      {watching ? // Spectators see who's playing (names + card counts + whose turn) on the
-      // table above the draw/discard piles, so no separate standings list here.
-      // Who's-here + remove lives in the roster side-drawer (header people button).
-      null : (
+      {/* Spectators see who's playing (names + card counts + whose turn) on the table
+          above the draw/discard piles, so no separate standings list here. Who's-here
+          + remove lives in the roster side-drawer (header people button). */}
+      {watching ? null : (
         <Hand
           count={myHand.length}
           many={many}

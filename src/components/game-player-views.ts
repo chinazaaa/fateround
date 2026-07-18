@@ -37,6 +37,16 @@ import { WordScramblePlayerView } from '@/components/word-scramble/WordScrambleP
 export type GamePlayerView = ComponentType<{ gameCode: string }>
 
 /**
+ * Dedicated player views that register the roster drawer THEMSELVES (from their own
+ * authoritative bootstrap state) instead of relying on the shared registration in
+ * `PollGamePlayerExperience`. Needed when a view runs its own game-view bootstrap
+ * (separate `players`/`myPlayerId` pipeline) — the dispatcher's `useGameSession`
+ * copy can lag it, which drops the "· you" highlight on a spectator's own row.
+ * `PollGamePlayerExperience` skips its roster registration for these game types.
+ */
+export const SELF_ROSTERING_GAME_TYPES = new Set<GameType>(['whot'])
+
+/**
  * Games with a dedicated player view, keyed by canonical `GameType`.
  *
  * The poll-family games (smash_marry_kill, would_you_rather, …) are intentionally

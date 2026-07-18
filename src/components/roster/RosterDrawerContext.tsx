@@ -26,6 +26,8 @@ export type RosterRow = {
   isMe?: boolean
   viewer?: boolean
   eliminated?: boolean
+  /** This row is the game's host — drives the "HOST" pill. */
+  host?: boolean
   /** Free-form badge, e.g. "Team Red". */
   status?: string
 }

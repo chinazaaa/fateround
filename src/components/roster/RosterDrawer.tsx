@@ -106,6 +106,10 @@ export function RosterDrawer() {
               // has a leaderboard the leading number reads as rank; otherwise it
               // falls back to the join-order seat.
               number={ranked ? index + 1 : row.seat}
+              // The host's own client knows its host player id (via the manage
+              // config it registers); other clients rely on `row.host` once it's
+              // wired from game data. Either marks the row with a HOST pill.
+              isHost={row.host || (!!ctx.manage?.hostPlayerId && row.id === ctx.manage.hostPlayerId)}
               onRemove={
                 ctx.manage && !row.isMe && row.id !== ctx.manage.hostPlayerId
                   ? () => ctx.manage?.onRemove(row)
@@ -120,7 +124,17 @@ export function RosterDrawer() {
   )
 }
 
-function RosterRowView({ row, number, onRemove }: { row: RosterRow; number: number; onRemove?: () => void }) {
+function RosterRowView({
+  row,
+  number,
+  isHost = false,
+  onRemove,
+}: {
+  row: RosterRow
+  number: number
+  isHost?: boolean
+  onRemove?: () => void
+}) {
   const scoreText =
     row.score === null || row.score === undefined
       ? null
@@ -137,9 +151,14 @@ function RosterRowView({ row, number, onRemove }: { row: RosterRow; number: numb
     >
       <span className="w-5 shrink-0 text-center text-[13px] font-bold text-faint">{number}</span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[15px] font-semibold text-body">
-          {row.name}
-          {row.isMe ? <span className="text-xs font-bold text-faint"> · you</span> : null}
+        <p className="flex items-center gap-1.5 truncate text-[15px] font-semibold text-body">
+          <span className="truncate">{row.name}</span>
+          {isHost ? (
+            <span className="shrink-0 rounded-full bg-[color-mix(in_srgb,var(--primary)_16%,transparent)] px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-[var(--primary)]">
+              Host
+            </span>
+          ) : null}
+          {row.isMe ? <span className="shrink-0 text-xs font-bold text-faint">· you</span> : null}
         </p>
         {statusText ? <p className="text-[11px] font-semibold text-faint">{statusText}</p> : null}
       </div>
