@@ -464,8 +464,8 @@ function CreateGameInner() {
   const [landmineMineSource, setLandmineMineSource] = useState<'system' | 'manual'>('system')
   const [landmineMineCount, setLandmineMineCount] = useState(1)
   const [landmineOriginality, setLandmineOriginality] = useState(true)
-  // Review-before-reveal: on for manual (setter judges), off for auto (hands-off) by default.
-  const [landmineReview, setLandmineReview] = useState(false)
+  // Review-before-reveal: on by default for both modes (host can turn it off for instant reveal).
+  const [landmineReview, setLandmineReview] = useState(true)
   // Review-window length (seconds); default seeded per mode (manual 45, auto 20).
   const [landmineReviewSeconds, setLandmineReviewSeconds] = useState(20)
   const [landmineCategoryTimer, setLandmineCategoryTimer] = useState(10)
@@ -1699,6 +1699,7 @@ function CreateGameInner() {
           landmine_mine_count: isLandmine ? landmineMineCount : undefined,
           landmine_originality_bonus: isLandmine ? landmineOriginality : undefined,
           landmine_review: isLandmine ? landmineReview : undefined,
+          landmine_review_seconds: isLandmine ? landmineReviewSeconds : undefined,
           quick_draw_variant: isQuickDraw ? settings.quick_draw_variant : undefined,
           quick_draw_play_mode:
             isQuickDraw && settings.quick_draw_variant === 'guess' ? settings.quick_draw_play_mode : undefined,
@@ -3211,7 +3212,7 @@ function CreateGameInner() {
                       onClick={() => {
                         setLandmineMineSource('system')
                         setLandmineCategoryTimer(10)
-                        setLandmineReview(false)
+                        setLandmineReview(true)
                         setLandmineReviewSeconds(20)
                       }}
                       className={[
@@ -3235,6 +3236,7 @@ function CreateGameInner() {
                         setLandmineCategoryTimer(30)
                         setSettings((s) => ({ ...s, rounds_count: 1 }))
                         setLandmineReview(true)
+                        setLandmineReviewSeconds(45)
                       }}
                       className={[
                         'rounded-2xl border-2 px-4 py-4 text-left',

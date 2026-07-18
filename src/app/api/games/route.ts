@@ -968,12 +968,8 @@ export async function POST(req: NextRequest) {
           landmine_originality_bonus: rawLandmineOriginalityBonus !== false,
           landmine_mine_source: parseLandmineMineSource(rawLandmineMineSource),
           landmine_elim_seconds: clampLandmineElimSeconds(rawLandmineElimSeconds),
-          // Default the review phase per mode when the client omits it: manual (setter judges) on,
-          // auto (caller spot-check) off, so auto stays hands-off unless the host opts in.
-          landmine_review:
-            rawLandmineReview === undefined
-              ? parseLandmineMineSource(rawLandmineMineSource) === 'manual'
-              : rawLandmineReview !== false,
+          // Review phase is on by default for both modes (the host can turn it off for instant reveal).
+          landmine_review: rawLandmineReview !== false,
           // Review-window length: use the client's pick, else the per-mode default.
           landmine_review_seconds:
             rawLandmineReviewSeconds === undefined

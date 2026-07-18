@@ -13,6 +13,7 @@ import {
   isLandmineRoundParticipant,
   landmineReviewEnabled,
   landmineReviewSeconds,
+  clampLandmineReviewTimer,
 } from './landmine'
 import type { LandmineAnswer, LandmineMark, LandmineMetadata, Player } from '@/types'
 
@@ -249,9 +250,22 @@ describe('landmine manual mode', () => {
     expect(landmineReviewEnabled({ landmine_review: false })).toBe(false)
   })
 
-  it('landmineReviewSeconds is longer for the manual setter than the auto host', () => {
+  it('landmineReviewSeconds uses the host-chosen window, else the per-mode default', () => {
+    // No stored value → per-mode default (manual 45, auto 20).
     expect(landmineReviewSeconds({ landmine_mine_source: 'manual' })).toBe(45)
     expect(landmineReviewSeconds({ landmine_mine_source: 'system' })).toBe(20)
+    // A valid stored value wins over the default, in either mode.
+    expect(landmineReviewSeconds({ landmine_mine_source: 'system', landmine_review_seconds: 30 })).toBe(30)
+    expect(landmineReviewSeconds({ landmine_mine_source: 'manual', landmine_review_seconds: 15 })).toBe(15)
+    // An out-of-range value falls back to the mode default.
+    expect(landmineReviewSeconds({ landmine_mine_source: 'manual', landmine_review_seconds: 999 })).toBe(45)
+  })
+
+  it('clampLandmineReviewTimer accepts the option set, defaults to 45', () => {
+    expect(clampLandmineReviewTimer(15)).toBe(15)
+    expect(clampLandmineReviewTimer(60)).toBe(60)
+    expect(clampLandmineReviewTimer(999)).toBe(45)
+    expect(clampLandmineReviewTimer(undefined)).toBe(45)
   })
 
   it('clampLandmineElimSeconds accepts the option set, defaults otherwise', () => {

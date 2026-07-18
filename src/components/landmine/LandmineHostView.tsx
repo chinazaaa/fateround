@@ -32,7 +32,9 @@ import {
   LANDMINE_WRITING_TIMER_OPTIONS,
   LANDMINE_MARKING_TIMER_OPTIONS,
   LANDMINE_CATEGORY_TIMER_OPTIONS,
+  LANDMINE_REVIEW_TIMER_OPTIONS,
   clampLandmineCategoryTimer,
+  clampLandmineReviewTimer,
   clampLandmineElimSeconds,
   LANDMINE_ELIM_SECONDS_OPTIONS,
   LANDMINE_MINE_COUNT_OPTIONS,
@@ -85,6 +87,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [categoryTimer, setCategoryTimer] = useState(10)
   const [elimSeconds, setElimSeconds] = useState(300)
   const [reviewSetting, setReviewSetting] = useState(true)
+  const [reviewSecondsSetting, setReviewSecondsSetting] = useState(45)
   const [tab, setTab] = useState<HostTab>('manage')
   const settingsHydratedRef = useRef(false)
 
@@ -116,6 +119,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
         setCategoryTimer(clampLandmineCategoryTimer(gameRes.data.game_duration_seconds))
         setElimSeconds(clampLandmineElimSeconds(gameRes.data.landmine_elim_seconds))
         setReviewSetting(gameRes.data.landmine_review !== false)
+        setReviewSecondsSetting(clampLandmineReviewTimer(gameRes.data.landmine_review_seconds))
       }
     }
     setPlayers(plrsRes.data ?? [])
@@ -209,6 +213,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
     landmine_originality_bonus: originalityBonus,
     landmine_elim_seconds: elimSeconds,
     landmine_review: reviewSetting,
+    landmine_review_seconds: reviewSecondsSetting,
     rounds_count: roundCount,
     timer_seconds: writingTimer,
     operative_timer_seconds: markingTimer,
@@ -447,8 +452,9 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
                   // Manual setup needs more time to type; default to a single cycle. Auto restores.
                   setCategoryTimer(next === 'manual' ? 30 : 10)
                   setRoundCount(next === 'manual' ? 1 : 5)
-                  // Manual's setter judges (review on); auto stays hands-off by default.
-                  setReviewSetting(next === 'manual')
+                  // Review on by default for both modes; window defaults per mode.
+                  setReviewSetting(true)
+                  setReviewSecondsSetting(next === 'manual' ? 45 : 20)
                 }}
                 className="input-field w-full"
               >
@@ -472,6 +478,22 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
                 </span>
               </span>
             </label>
+            {reviewSetting && (
+              <label className="block space-y-1">
+                <span className="text-sm font-semibold">Review time</span>
+                <select
+                  value={reviewSecondsSetting}
+                  onChange={(e) => setReviewSecondsSetting(Number(e.target.value))}
+                  className="input-field w-full"
+                >
+                  {LANDMINE_REVIEW_TIMER_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}s
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="block space-y-1">
               <span className="text-sm font-semibold">Mode</span>
               <select
@@ -685,6 +707,8 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
               // Manual setup needs more time to type; default to a single cycle. Auto restores.
               setCategoryTimer(next === 'manual' ? 30 : 10)
               setRoundCount(next === 'manual' ? 1 : 5)
+              setReviewSetting(true)
+              setReviewSecondsSetting(next === 'manual' ? 45 : 20)
             }}
             className="input-field w-full"
           >
@@ -807,6 +831,26 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
             ))}
           </select>
         </label>
+        <label className="flex items-center justify-between gap-2">
+          <span className="text-sm font-semibold">Review answers before reveal</span>
+          <input type="checkbox" checked={reviewSetting} onChange={(e) => setReviewSetting(e.target.checked)} />
+        </label>
+        {reviewSetting && (
+          <label className="block space-y-1">
+            <span className="text-sm font-semibold">Review time</span>
+            <select
+              value={reviewSecondsSetting}
+              onChange={(e) => setReviewSecondsSetting(Number(e.target.value))}
+              className="input-field w-full"
+            >
+              {LANDMINE_REVIEW_TIMER_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s}s
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="flex items-center justify-between gap-2">
           <span className="text-sm font-semibold">Originality bonus (+5)</span>
           <input type="checkbox" checked={originalityBonus} onChange={(e) => setOriginalityBonus(e.target.checked)} />
