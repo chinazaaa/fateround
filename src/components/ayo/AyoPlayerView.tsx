@@ -429,17 +429,6 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
             roundKey={game.session_started_at ?? session?.id}
           />
         )}
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby
-            spectating={isViewer}
-          />
-        )}
       </AyoShell>
     )
   }
@@ -459,16 +448,6 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
           onResign={!isViewer ? resign : undefined}
           acting={acting}
           sowAnimation={sowAnimation.animating ? sowAnimation : null}
-        />
-      )}
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isViewer}
         />
       )}
     </AyoShell>

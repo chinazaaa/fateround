@@ -393,17 +393,6 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
             onPromoted={load}
           />
         )}
-        {!isFinished && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myPlayerName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby={false}
-            spectating={isViewer}
-          />
-        )}
         <QuiplashActiveRound
           gameCode={gameCode}
           game={game}

@@ -497,16 +497,6 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     return (
       <YahtzeeShell title={game?.title} wide compact>
         <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={myPlayer} />
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            spectating={isViewer}
-          />
-        )}
         <div className="space-y-2">
           <YahtzeeScorecard
             players={players}
@@ -533,16 +523,6 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <YahtzeeShell title={game?.title} wide compact>
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isViewer}
-        />
-      )}
       <div className="space-y-2">
         <YahtzeeScorecard
           players={players}

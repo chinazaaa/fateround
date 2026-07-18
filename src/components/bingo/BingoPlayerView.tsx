@@ -588,16 +588,6 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
           <div className="text-3xl">{cfg.headerEmoji}</div>
           <h1 className="text-xl font-black gradient-title">{game?.title}</h1>
         </div>
-        {myPlayerId && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myPlayerName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            spectating={isViewer}
-          />
-        )}
 
         {lastCalled != null && (
           <div className="glass-card p-4 text-center">

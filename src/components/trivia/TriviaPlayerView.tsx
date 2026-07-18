@@ -307,16 +307,6 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
           />
         ) : (
           <>
-            {!isFinished && (
-              <PlayerSessionControls
-                gameCode={gameCode}
-                playerId={myPlayerId}
-                currentName={myPlayerName}
-                onRenamed={() => void load()}
-                onLeft={handlePlayerLeft}
-                spectating={isViewer}
-              />
-            )}
             <TriviaActiveRound
               gameCode={gameCode}
               game={game}

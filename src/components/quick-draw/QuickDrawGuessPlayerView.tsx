@@ -42,7 +42,6 @@ import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
@@ -433,17 +432,6 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
           highlightPlayerId={myPlayerId}
           roundKey={session?.id}
         />
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby
-            spectating={isViewer}
-          />
-        )}
       </div>
     )
   }
@@ -477,16 +465,6 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
           onGuess={!isViewer ? (text) => void sendAction('guess', { text }) : undefined}
           onSkip={!isViewer ? () => void sendAction('guess-skip', {}) : undefined}
           acting={acting}
-        />
-      )}
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isViewer}
         />
       )}
     </div>

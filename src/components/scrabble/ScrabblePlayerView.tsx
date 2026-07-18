@@ -460,17 +460,6 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
             roundKey={session?.id}
           />
         )}
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby
-            spectating={isViewer}
-          />
-        )}
       </ScrabbleShell>
     )
   }
@@ -492,16 +481,6 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
           onExchange={isMyTurn && !isViewer ? exchangeTiles : undefined}
           onPass={isMyTurn && !isViewer ? passTurn : undefined}
           acting={acting}
-        />
-      )}
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isViewer}
         />
       )}
     </ScrabbleShell>

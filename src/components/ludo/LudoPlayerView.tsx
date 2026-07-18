@@ -430,17 +430,6 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
         {iWon && game && (
           <PostWinToCommunity gameType="ludo" gameCode={gameCode} winnerName={myName ?? ''} roundKey={session?.id} />
         )}
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby
-            spectating={isViewer}
-          />
-        )}
       </LudoShell>
     )
   }
@@ -468,16 +457,6 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
           rolling={rolling}
           displayDice={displayDice}
           variant={parseLudoVariant(game?.ludo_variant)}
-        />
-      )}
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isViewer}
         />
       )}
     </LudoShell>

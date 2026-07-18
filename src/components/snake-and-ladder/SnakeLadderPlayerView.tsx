@@ -474,17 +474,6 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
             roundKey={session?.id}
           />
         )}
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby
-            spectating={isViewer}
-          />
-        )}
       </SnakeLadderShell>
     )
   }
@@ -512,16 +501,6 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
           acting={acting}
           rolling={rolling}
           displayRoll={displayRoll}
-        />
-      )}
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isViewer}
         />
       )}
     </SnakeLadderShell>

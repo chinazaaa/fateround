@@ -461,17 +461,6 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               ))}
             </div>
           )}
-          {myPlayerId && (
-            <PlayerSessionControls
-              gameCode={gameCode}
-              playerId={myPlayerId}
-              currentName={displayName}
-              onRenamed={() => void load()}
-              onLeft={handlePlayerLeft}
-              inLobby
-              spectating={isSpectator}
-            />
-          )}
         </div>
       </GameJoinLobbyShell>
     )
