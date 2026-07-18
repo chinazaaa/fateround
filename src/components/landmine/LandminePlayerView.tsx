@@ -1,6 +1,10 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
@@ -39,6 +43,7 @@ type Screen =
   | 'not_found'
 
 export function LandminePlayerView({ gameCode }: { gameCode: string }) {
+  const router = useRouter()
   const { error: toastError, success } = useToast()
   const [rounds, setRounds] = useState<Round[]>([])
   const [answers, setAnswers] = useState<LandmineAnswer[]>([])
@@ -138,6 +143,34 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   const me = players.find((p) => p.id === myPlayerId)
   const isViewer = !!(game && me && game.status !== 'waiting' && playerIsViewer(me, game))
   const myPlayerName = me?.name ?? ''
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it. Purely additive.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId || game?.status !== 'active') return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={me?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
 
   useRoomMemberAutoJoin({
     gameCode,

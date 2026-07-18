@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   CheckersCard,
@@ -8,6 +8,9 @@ import {
   CheckersSecondaryButton,
   CheckersShell,
 } from '@/components/checkers/CheckersChrome'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { CheckersFinalResultsShareBlock } from '@/components/checkers/CheckersFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { CheckersGamePanel } from '@/components/checkers/CheckersBoard'
@@ -250,6 +253,33 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
   const myName = activePlayer?.name ?? ''
 
   useCheckersClockExpiry(gameCode, session, game?.status === 'active' && !isViewer)
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; GameChromeSettings renders it.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId || game?.status !== 'active') return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={myName}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, myName, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') return <CheckersLoadingScreen />
 

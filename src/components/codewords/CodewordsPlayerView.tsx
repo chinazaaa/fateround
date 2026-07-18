@@ -1,6 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { CodewordsLeaveButton } from '@/components/codewords/CodewordsLeaveButton'
 import { CodewordsFinalResultsShareBlock } from '@/components/codewords/CodewordsFinalResultsShareBlock'
 import { CodewordsEndGameStats } from '@/components/codewords/CodewordsEndGameStats'
@@ -399,9 +403,39 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     if (screen === 'finished' || screen === 'game_started_waiting' || screen === 'late_join_choice') void load()
   })
 
+  const router = useRouter()
   const cfg = gameTypeConfig('codewords')
   const me = allPlayers.find((p) => p.id === myPlayerId)
   const isViewer = !!(game && me && playerIsViewer(me, game))
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it. Purely additive — the in-page leave button stays as-is.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId || game?.status !== 'active') return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={me?.name ?? myPlayerName}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, me?.name, myPlayerName, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
   const { context: viewerPromoteContext } = useLateJoinContext(gameCode, game, isViewer && screen === 'active')
   const playersPickTeams = game ? codewordsPlayerPicks(game) : true
   const randomizeTeams = game ? codewordsRandomizeTeams(game) : false
