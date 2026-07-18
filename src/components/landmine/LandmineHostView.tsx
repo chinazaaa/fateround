@@ -55,6 +55,8 @@ import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
 
 type HostTab = 'play' | 'manage'
@@ -305,6 +307,18 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
     !!hostRow && winner != null && hostRow.id === winner.id && (mode === 'elimination' || hostRow.score > 0)
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
+
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer). Landmine has no in-game settings,
+  // so this is just How-to-play + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="landmine" onEnded={load} />
+      ) : null,
+    [game?.status, gameCode, hostToken, load]
+  )
+  useRegisterGameSettings(hostSettingsNode)
 
   if (!game) {
     return <HostLobbySkeleton />
@@ -826,6 +840,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
       header={<HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : watchRound}
       manage={manage}
+      noManageTab={game.status === 'active'}
       finished={
         <div className="space-y-6">
           <FinishedWinnerHero

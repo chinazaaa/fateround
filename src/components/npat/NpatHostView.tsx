@@ -642,6 +642,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       header={<HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : watchRound}
       manage={manage}
+      noManageTab={game.status === 'active'}
       finished={
         <>
           <NpatFinalResultsShareBlock

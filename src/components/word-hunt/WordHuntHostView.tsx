@@ -1,7 +1,9 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
@@ -302,6 +304,26 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
   const hostPlays = hostMode === 'player' && !!hostPlayerId
   const totalWords = submissions.length
 
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer): late-join rules + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings
+          gameCode={gameCode}
+          hostToken={hostToken}
+          gameType="word_hunt"
+          onEnded={load}
+          endGameConfirmTitle="End this hunt early?"
+          endGameConfirmMessage="The round will end and players will see the final scores."
+        >
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (!game) {
     return <HostLobbySkeleton />
   }
@@ -601,6 +623,7 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
       header={<HostGameHeader game={game} />}
       primary={<div className="max-w-2xl mx-auto w-full">{hostPlays ? interactivePlay : watchRound}</div>}
       manage={manage}
+      noManageTab={game?.status === 'active'}
       finished={finished}
     />
   )

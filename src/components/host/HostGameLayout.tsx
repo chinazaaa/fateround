@@ -159,7 +159,7 @@ export function HostGameLayout({
         </div>
       )}
 
-      {body}
+      {isFinished ? <div className="mx-auto w-full max-w-lg space-y-2">{body}</div> : body}
     </HostPageShell>
   )
 }
