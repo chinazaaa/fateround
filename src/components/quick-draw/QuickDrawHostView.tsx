@@ -18,13 +18,7 @@ import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { QuickDrawGuessHostView } from '@/components/quick-draw/QuickDrawGuessHostView'
 import { DescribeItLoadingScreen } from '@/components/describe-it/DescribeItChrome'
-import {
-  getQuickDrawHostMode,
-  setQuickDrawHostMode,
-  type QuickDrawHostMode,
-  QUICK_DRAW_MIN_PLAYERS,
-  isQuickDrawGuessVariant,
-} from '@/lib/quick-draw'
+import { QUICK_DRAW_MIN_PLAYERS, isQuickDrawGuessVariant } from '@/lib/quick-draw'
 import { playerIsViewer } from '@/lib/viewers'
 import { supabase } from '@/lib/supabase'
 import {
@@ -38,10 +32,9 @@ import {
   ROUND_SELECT,
 } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
-import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useQuickDrawAdvance } from '@/hooks/useQuickDrawAdvance'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import type {
   QuickDrawAssignment,
@@ -111,12 +104,6 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const [votes, setVotes] = useState<QuickDrawVote[]>([])
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
-  const [hostMode, setHostMode] = useState<QuickDrawHostMode>('player')
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
 
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
@@ -146,30 +133,41 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   useEffect(() => {
     load()
-    setHostMode(getQuickDrawHostMode(gameCode))
-    const sessionRow = getPlayerSession(gameCode)
-    if (sessionRow) {
-      setHostPlayerId(sessionRow.playerId)
-      setHostResumeToken(sessionRow.resumeToken ?? null)
-      setHostPlayerName(sessionRow.playerName)
-    }
   }, [gameCode, load])
+
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+    onModeChange: (mode) => {
+      if (mode === 'spectator') setTab('manage')
+    },
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostResumeToken(null)
-        setHostPlayerName('')
-        clearPlayerSession(gameCode)
-      }
+      onHostSeatRemoved(playerId)
       setPlayers((prev) => prev.filter((p) => p.id !== playerId))
     },
-    [gameCode, hostPlayerId]
+    [onHostSeatRemoved]
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   const connected = useGameTableSync(
@@ -204,40 +202,6 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
     if (game?.status === 'finished') setTab('manage')
     else if (game?.status === 'active') setTab('play')
   }, [game?.status])
-
-  const changeHostMode = (mode: QuickDrawHostMode) => {
-    if (game?.status !== 'waiting') return
-    setHostMode(mode)
-    setQuickDrawHostMode(gameCode, mode)
-    if (mode === 'spectator') setTab('manage')
-  }
-
-  const hostJoinGame = async () => {
-    const name = hostJoinName.trim()
-    if (!name || hostJoining) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: name }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostResumeToken(data.resumeToken ?? null)
-      setHostPlayerName(data.playerName)
-      setHostMode('player')
-      setQuickDrawHostMode(gameCode, 'player')
-      await load()
-      success(`Joined as ${data.playerName}`)
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }
 
   const startGame = async () => {
     if (starting) return
@@ -397,11 +361,11 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
           onJoinNameChange={setHostJoinName}
           onJoin={() => void hostJoinGame()}
           joining={hostJoining}
+          onEditName={renameHost}
           spectatorHint="Watch drawings from the Watch tab"
           playingNote={
             <p className="text-sm text-muted">
-              Playing as <strong className="text-body">{hostPlayerName}</strong> — draw and vote from the Play tab once
-              you start.
+              Playing as <strong className="text-body">{hostPlayerName}</strong> — draw and vote once you start.
             </p>
           }
         />
@@ -536,12 +500,12 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
       onJoinNameChange={setHostJoinName}
       onJoin={() => void hostJoinGame()}
       joining={hostJoining}
+      onEditName={renameHost}
       spectatorHint="Watch drawings once it starts"
       playerHint="Draw and vote with everyone"
       playingNote={
         <p className="text-sm text-muted">
-          Playing as <strong className="text-body">{hostPlayerName}</strong> — draw and vote from the Play tab once you
-          start.
+          Playing as <strong className="text-body">{hostPlayerName}</strong> — draw and vote once you start.
         </p>
       }
     />
