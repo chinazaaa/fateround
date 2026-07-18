@@ -68,6 +68,7 @@ export function deriveBaseRows(
   myPlayerId: string | null | undefined
 ): RosterRow[] {
   if (!players?.length) return []
+  const hostId = game?.host_player_id ?? null
   return players.map((p, index) => ({
     id: p.id,
     name: p.name,
@@ -75,6 +76,10 @@ export function deriveBaseRows(
     isMe: !!myPlayerId && p.id === myPlayerId,
     viewer: game ? playerIsViewer(p, game) : !!p.spectator,
     eliminated: !!p.is_eliminated,
+    // Cross-client host badge: lights up once game.host_player_id is populated +
+    // read (migration 20260718140000 + GAME_SELECT). Until then the host's own
+    // client still badges itself via the roster manage config (see RosterDrawer).
+    host: !!hostId && p.id === hostId,
   }))
 }
 

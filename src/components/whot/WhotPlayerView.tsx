@@ -274,6 +274,12 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const whotCallActive = session ? hasActiveWhotCall(session) : false
   const pickPenalty = session ? getActivePickPenalty(session) : { type: null, count: 0 }
 
+  // Feed the roster side-drawer from THIS view's bootstrap (authoritative players +
+  // myPlayerId) rather than the dispatcher's useGameSession copy — otherwise a
+  // spectator's own row can miss the "· you" highlight when the two pipelines drift.
+  // `PollGamePlayerExperience` skips its own registration for Whot (SELF_ROSTERING).
+  useRosterBase(game?.status === 'active' ? players : undefined, game, myPlayerId)
+
   // Change name · Leave game for players/spectators live behind the main chrome's ⚙
   // gear (top header) — the in-room bar that used to hold them is gone. Registered
   // while the game is active; `GameChromeSettings` renders it inside the one sheet.
