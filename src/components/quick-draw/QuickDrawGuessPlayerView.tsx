@@ -387,6 +387,7 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
           onLeft={handlePlayerLeft}
           title="Waiting for host to start"
           gameType="quick_draw"
+          capacityGame={game}
           rulesLink={<GameRulesLink gameType="quick_draw" variant="subtle" />}
           isSpectator={me?.spectator === true}
           onReady={async () => {

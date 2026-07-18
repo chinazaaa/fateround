@@ -77,6 +77,9 @@ export function RosterDrawer() {
                 <RosterRowView
                   row={item}
                   styles={styles}
+                  // Host's own client knows its host player id (manage config); other
+                  // clients rely on `row.host` (from game.host_player_id). Either marks HOST.
+                  isHost={item.host || (!!ctx.manage?.hostPlayerId && item.id === ctx.manage.hostPlayerId)}
                   onRemove={
                     ctx.manage && !item.isMe && item.id !== ctx.manage.hostPlayerId
                       ? () => ctx.manage?.onRemove(item)
@@ -95,10 +98,12 @@ export function RosterDrawer() {
 function RosterRowView({
   row,
   styles,
+  isHost = false,
   onRemove,
 }: {
   row: RosterRow
   styles: ReturnType<typeof makeStyles>
+  isHost?: boolean
   onRemove?: () => void
 }) {
   const scoreText =
@@ -115,6 +120,7 @@ function RosterRowView({
       <View style={styles.nameCol}>
         <Text style={styles.name} numberOfLines={1}>
           {row.name}
+          {isHost ? <Text style={styles.hostTag}> HOST</Text> : null}
           {row.isMe ? <Text style={styles.youTag}> · you</Text> : null}
         </Text>
         {statusText ? <Text style={styles.status}>{statusText}</Text> : null}
@@ -174,6 +180,7 @@ const makeStyles = (t: Theme) =>
     nameCol: { flex: 1, gap: 1 },
     name: { color: t.text, fontSize: 15, fontWeight: '600' },
     youTag: { color: t.textFaint, fontSize: 12, fontWeight: '700' },
+    hostTag: { color: t.primary, fontSize: 10, fontWeight: '800' },
     status: { color: t.textFaint, fontSize: 11, fontWeight: '600' },
     score: { color: t.primaryMuted, fontWeight: '700', fontSize: 14, flexShrink: 0 },
     remove: { color: t.error, fontSize: 13, fontWeight: '700', flexShrink: 0 },

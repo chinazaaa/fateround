@@ -906,6 +906,7 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           game={game}
           players={players}
           myPlayerId={myPlayerId}

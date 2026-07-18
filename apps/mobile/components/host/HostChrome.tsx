@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game, Player } from '@fateround/shared'
 import { gameLabel } from '@/lib/mobile-registry'
 import { removePlayerAsHost } from '@/lib/game-api'
+import { publishHostPlayerId } from '@/lib/api'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { RosterDrawerProvider, type RosterRow } from '@/components/session/RosterDrawerContext'
@@ -58,6 +59,13 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
     read()
     return subscribePlayerSession(gameCode, read)
   }, [gameCode])
+
+  // Publish the host's own player id so every client can badge the host in the roster
+  // drawer (games.host_player_id) — parity with web's useHostSeat. Idempotent server-side.
+  useEffect(() => {
+    if (!hostPlayerId || !hostToken) return
+    void publishHostPlayerId(gameCode, hostToken, hostPlayerId)
+  }, [gameCode, hostToken, hostPlayerId])
 
   const canPlay = hasMobilePlayerView(game.game_type)
   // Play-along games (playFirst) render the game board inline. Host-run games

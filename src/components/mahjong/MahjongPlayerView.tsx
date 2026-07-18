@@ -398,6 +398,7 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
       <GameJoinLobbyShell gameCode={gameCode}>
         <GameLobbyWaitingPanel
           gameCode={gameCode}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myName}

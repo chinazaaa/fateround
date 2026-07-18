@@ -97,6 +97,9 @@ export interface Game {
   rounds_count?: number | null
   replay_pending?: boolean | null
   pending_host_player_id?: string | null
+  /** The host's own player row id, so every client can badge the host in the roster
+   *  drawer. Non-secret (just a player id, like pending_host_player_id). */
+  host_player_id?: string | null
   tournament_id?: string | null
   chess_board_theme?: string | null
   chess_piece_set?: string | null
