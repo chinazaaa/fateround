@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import { NpatCallerReviewPanel } from '@/components/npat/NpatCallerReviewPanel'
 import { NpatFinalResultsShareBlock } from '@/components/npat/NpatFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -140,6 +141,10 @@ export function NpatActiveRound({
   const reviewTargetId = reviewTargetForMarker(metadata, myPlayerId)
   const reviewTargetAnswer = reviewTargetId ? (roundAnswers.find((a) => a.player_id === reviewTargetId) ?? null) : null
   const leaderboard = useMemo(() => tallyNpatScores(answers, players), [answers, players])
+
+  // Live scores feed the shared roster drawer (opened from the header).
+  const rosterScores = useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard])
+  useGameScores(rosterScores, { suffix: ' pts' })
   const callerName = playerDisplayName(callerId, players)
 
   const writingTimer = clampNpatTimer(game.timer_seconds)

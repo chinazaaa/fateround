@@ -4,13 +4,11 @@ import { useEffect } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
-import { GameShareMenu } from '@/components/GameShareMenu'
+import { ShareGameButton } from '@/components/ShareGameButton'
 import { BackToRoomLink } from '@/components/BackToRoomLink'
-import { ThemeToggle } from '@/components/ThemeToggle'
-import { SoundToggle } from '@/components/SoundToggle'
+import { RosterButton } from '@/components/roster/RosterButton'
+import { GameChromeSettings } from '@/components/GameChromeSettings'
 import { useHostPlayerSession } from '@/hooks/useHostPlayerSession'
-import { WhatsAppHeaderIcon } from '@/components/WhatsAppChannelLink'
-import { TransferHostControl } from '@/components/TransferHostControl'
 import { useHostToken } from '@/hooks/useHostToken'
 import { setupAudioUnlock } from '@/lib/sounds'
 
@@ -32,19 +30,17 @@ export function GameHostChrome() {
           <FateRoundLogo className="h-8 w-auto max-w-[7.5rem] sm:max-w-[11rem]" />
         </Link>
         <BackToRoomLink gameCode={code} compact />
+        <RosterButton />
       </div>
-      <div className="flex items-center gap-1.5 sm:gap-2 pointer-events-auto shrink-0">
-        <WhatsAppHeaderIcon />
-        <TransferHostControl />
+      <div className="flex items-center gap-2 pointer-events-auto shrink-0">
         {code ? (
-          <GameShareMenu
+          <ShareGameButton
             gameCode={code}
             hostToken={hostToken || undefined}
             resumeToken={hasHostPlayer ? resumeToken : null}
           />
         ) : null}
-        <SoundToggle variant="inline" />
-        <ThemeToggle variant="inline" />
+        <GameChromeSettings role="host" gameCode={code} resumeToken={hasHostPlayer ? resumeToken : null} />
       </div>
     </header>
   )

@@ -288,6 +288,10 @@ export interface Game {
   /** Claim-based host transfer: player id the current host has nominated to take over.
    *  Non-secret (just a player id); the nominee claims via /api/games/[code]/claim-host. */
   pending_host_player_id?: string | null
+  /** The host's own player row id, so every client can badge the host in the roster
+   *  drawer. Non-secret (just a player id, like pending_host_player_id). Populated by
+   *  migration 20260718140000 + host-seat writes; undefined until added to GAME_SELECT. */
+  host_player_id?: string | null
   rounds_count: number
   timer_seconds: number
   /** Scrabble — which word list to validate plays against (default 'enable'). */
@@ -414,6 +418,8 @@ export interface Game {
   landmine_originality_bonus?: boolean | null
   /** Landmine — 'system' (server draws the mine) or 'manual' (a rotating player sets it). */
   landmine_mine_source?: LandmineMineSource | null
+  /** Landmine — elimination time limit in seconds (game ends when the clock runs out). */
+  landmine_elim_seconds?: number | null
   /** Ping Pong — points required to win the match (3, 5, 7, 11, 15, or 21). */
   ping_pong_points_to_win?: number | null
 }

@@ -10,10 +10,12 @@ import {
   ensureBlankAnswers,
   ensureDefaultMarks,
   finalizeUnsubmittedAnswers,
+  gameLandmineElimSeconds,
   gameLandmineMineSource,
   gameLandmineMode,
   gameLandmineCategoryTimer,
   landmineAnsweringPlayerIds,
+  LANDMINE_ELIM_MAX_CYCLES,
   LANDMINE_MAX_ANSWER_LENGTH,
   LANDMINE_REVEAL_SECONDS,
   normalizeAnswer,
@@ -478,17 +480,26 @@ async function shouldFinishSession(
   finishedRound: Round,
   activePlayerIds: string[]
 ): Promise<boolean> {
+  const meta = parseLandmineMetadata(finishedRound.landmine_metadata)
+  const roster = Math.max(1, meta?.caller_order.length ?? activePlayerIds.length)
+
   if (gameLandmineMode(game) === 'elimination') {
     // Last player standing (or nobody left). Elimination governs length even in manual mode.
-    return activePlayerIds.length <= 1
+    if (activePlayerIds.length <= 1) return true
+    // Time limit: if nobody's hitting mines the last-standing rule never triggers, so the game ends
+    // when the wall clock (from session start) runs out — survivors are then ranked by score.
+    if (game.session_started_at) {
+      const elapsed = (Date.now() - new Date(game.session_started_at).getTime()) / 1000
+      if (elapsed >= gameLandmineElimSeconds(game)) return true
+    }
+    // Absolute backstop in case the timer is ever missing/unevaluated.
+    return finishedRound.round_number >= roster * LANDMINE_ELIM_MAX_CYCLES
   }
   // Manual (zero-points): "rounds" are full cycles — one round = every player sets once. A game of
   // R rounds with N players runs R×N setter-turns (each setter-turn is one internal round).
   if (gameLandmineMineSource(game) === 'manual') {
-    const meta = parseLandmineMetadata(finishedRound.landmine_metadata)
-    const setters = Math.max(1, meta?.caller_order.length ?? activePlayerIds.length)
     const cycles = Math.max(1, game.rounds_count ?? 1)
-    return finishedRound.round_number >= cycles * setters
+    return finishedRound.round_number >= cycles * roster
   }
   // Zero Points (system): fixed round count.
   return finishedRound.round_number >= (game.rounds_count ?? 1)

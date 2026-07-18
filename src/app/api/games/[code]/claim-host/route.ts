@@ -35,7 +35,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   // claim races in, or the host cancelled the nomination, no row matches and we 409.
   const { data: updated, error: updateError } = await supabase
     .from('games')
-    .update({ host_token: newHostToken, pending_host_player_id: null })
+    // Repoint the roster HOST badge to the new host's player row (they claim as a player).
+    .update({ host_token: newHostToken, pending_host_player_id: null, host_player_id: playerId })
     .eq('id', gameId)
     .eq('pending_host_player_id', playerId)
     .select('id')

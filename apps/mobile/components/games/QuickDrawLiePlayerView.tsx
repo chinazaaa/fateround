@@ -36,6 +36,7 @@ import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { DrawingCanvas, DrawingPreview } from '@/components/quick-draw/DrawingCanvas'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { useGameScores } from '@/components/session/RosterDrawerContext'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useQuickDrawAutoAdvance } from '@/hooks/useQuickDrawAutoAdvance'
@@ -193,6 +194,9 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
     void bootstrap.load()
   }, [countdown, session, bootstrap])
 
+  const drawTimer = session && countdown > 0 && session.phase !== 'reveal' ? <TimerBadge seconds={countdown} /> : null
+  const drawTimerPinned = useStickyTimer(drawTimer, [countdown, session?.phase])
+
   const act = async (fn: () => Promise<unknown>) => {
     if (!bootstrap.myResumeToken || submitting) return
     setSubmitting(true)
@@ -295,7 +299,7 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
           }
         />
 
-        {countdown > 0 && session.phase !== 'reveal' ? <TimerBadge seconds={countdown} /> : null}
+        {drawTimerPinned ? null : drawTimer}
 
         {session.phase !== 'drawing' && activeDrawing ? <Text style={styles.sub}>Drawing by {artistName}</Text> : null}
 

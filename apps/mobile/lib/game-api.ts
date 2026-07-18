@@ -992,6 +992,7 @@ export type LobbySettingsPatch = {
   codewords_player_picks?: boolean
   codewords_randomize_teams?: boolean
   pair_vote_mode?: 'one_each' | 'any'
+  participant_filter?: 'all' | 'joined'
   player_questions_enabled?: boolean
   player_questions_order?: 'players_first' | 'uploaded_first' | 'mixed'
   ai_questions_enabled?: boolean
@@ -1133,7 +1134,7 @@ export function postTriviaLobbySettings(
 export function postLobbyPool(
   gameCode: string,
   hostToken: string,
-  patch: { question_source?: string; custom_questions?: unknown[] }
+  patch: { question_source?: string; custom_questions?: unknown[]; wst_quote_source?: 'player' | 'deck' }
 ) {
   return postJson<{ ok?: boolean }>(`/api/games/${gameCode.toUpperCase()}/lobby-pool`, {
     hostToken,

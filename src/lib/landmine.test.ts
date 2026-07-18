@@ -8,6 +8,8 @@ import {
   landmineAnsweringPlayerIds,
   parseLandmineMineSource,
   clampLandmineRoundCount,
+  clampLandmineElimSeconds,
+  landmineCycleInfo,
 } from './landmine'
 import type { LandmineAnswer, LandmineMark, LandmineMetadata, Player } from '@/types'
 
@@ -53,6 +55,30 @@ describe('landmine scoring', () => {
     // 'protractor' is valid, unique → 10 + 5 originality
     expect(byId.b.outcome).toBe('original')
     expect(byId.b.points).toBe(15)
+  })
+
+  it('an answer that contains the mine word as a whole word still detonates', () => {
+    // "egusi soup" must still hit the "egusi" mine — you can't dodge it by appending a word.
+    const answers = [answer('a', 'egusi soup'), answer('b', 'cartoon')]
+    const marks = [mark('x', 'a', true), mark('y', 'b', true)]
+    const results = computeRoundResults(answers, marks, ['egusi', 'art'], { originalityBonus: false })
+    const byId = Object.fromEntries(results.map((r) => [r.player_id, r]))
+    // 'egusi soup' contains the whole word 'egusi' → mine.
+    expect(byId.a.outcome).toBe('mine')
+    expect(byId.a.mine_hit).toBe(true)
+    // 'cartoon' merely contains the letters of the 'art' mine, not the whole word → valid.
+    expect(byId.b.outcome).toBe('valid')
+    expect(byId.b.mine_hit).toBe(false)
+  })
+
+  it('a multi-word mine matches only as a whole phrase inside the answer', () => {
+    const answers = [answer('a', 'hot jollof rice please'), answer('b', 'rice jollof')]
+    const marks = [mark('x', 'a', true), mark('y', 'b', true)]
+    const results = computeRoundResults(answers, marks, ['jollof rice'], { originalityBonus: false })
+    const byId = Object.fromEntries(results.map((r) => [r.player_id, r]))
+    expect(byId.a.outcome).toBe('mine')
+    // 'rice jollof' is the phrase reversed → not a match.
+    expect(byId.b.outcome).toBe('valid')
   })
 
   it('voided answers score 0 regardless of the mine', () => {
@@ -174,6 +200,24 @@ describe('landmine manual mode', () => {
     const row = buildLandmineInitialRound({ gameId: 'G', playerOrder: order, mineCount: 1, now: 'now' })
     const meta = row.landmine_metadata as LandmineMetadata
     expect(Object.keys(meta.reviewer_assignments).sort()).toEqual(['a', 'b', 'c'])
+  })
+
+  it('clampLandmineElimSeconds accepts the option set, defaults otherwise', () => {
+    expect(clampLandmineElimSeconds(180)).toBe(180)
+    expect(clampLandmineElimSeconds(900)).toBe(900)
+    expect(clampLandmineElimSeconds(45)).toBe(300)
+    expect(clampLandmineElimSeconds(undefined)).toBe(300)
+  })
+
+  it('landmineCycleInfo maps setter-turns to display cycles (3 players)', () => {
+    // Turns 1-3 = round 1 (setters 1,2,3); turns 4-6 = round 2.
+    expect(landmineCycleInfo(1, 3)).toEqual({ round: 1, setterInRound: 1, roster: 3 })
+    expect(landmineCycleInfo(3, 3)).toEqual({ round: 1, setterInRound: 3, roster: 3 })
+    expect(landmineCycleInfo(4, 3)).toEqual({ round: 2, setterInRound: 1, roster: 3 })
+    // Turn 15 with 3 players = round 5 (the "endless" case now reads as Round 5).
+    expect(landmineCycleInfo(15, 3).round).toBe(5)
+    // Guards against a zero roster.
+    expect(landmineCycleInfo(2, 0).round).toBe(2)
   })
 
   it('clampLandmineRoundCount accepts manual cycle counts (1, 2) and auto counts, rejects junk', () => {

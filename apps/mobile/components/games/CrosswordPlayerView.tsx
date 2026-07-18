@@ -31,6 +31,7 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { CrosswordBoardView } from '@/components/games/crossword/CrosswordBoardView'
 import { CrosswordGameTimerBar } from '@/components/games/crossword/CrosswordGameTimerBar'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -552,6 +553,12 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     ])
   }
 
+  const gameTimer =
+    (bootstrap.game?.game_duration_seconds ?? 0) > 0 && bootstrap.game?.status === 'active' ? (
+      <CrosswordGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} onExpired={() => void bootstrap.load()} />
+    ) : null
+  const gameTimerPinned = useStickyTimer(gameTimer, [bootstrap.code, bootstrap.game])
+
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
   if (bootstrap.screen === 'join' && bootstrap.game) {
@@ -648,11 +655,7 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('crossword')} subtitle={bootstrap.code}>
       <View style={styles.playArea}>
         <KeyboardAwareGameScroll ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.content}>
-          <CrosswordGameTimerBar
-            gameCode={bootstrap.code}
-            game={bootstrap.game}
-            onExpired={() => void bootstrap.load()}
-          />
+          {gameTimerPinned ? null : gameTimer}
 
           {toast ? (
             <View style={[styles.toast, toast.ok ? styles.toastOk : styles.toastBad]}>

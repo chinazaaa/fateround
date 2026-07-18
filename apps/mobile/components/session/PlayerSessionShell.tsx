@@ -1,4 +1,5 @@
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { StickyTimerContext } from '@/components/session/StickyTimerContext'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -9,6 +10,7 @@ import { subscribePlayerSession } from '@/lib/session-events'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { PlayerSessionMenu } from '@/components/session/PlayerSessionMenu'
 import { HeaderBadgeContext } from '@/components/session/HeaderBadgeContext'
+import { SpectatorBadgeContext } from '@/components/session/SpectatorBadgeContext'
 import { RosterDrawerProvider } from '@/components/session/RosterDrawerContext'
 import { RosterDrawer } from '@/components/session/RosterDrawer'
 import { RosterButton } from '@/components/session/RosterButton'
@@ -44,6 +46,13 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
   // Optional mode/phase label a game view registers via useHeaderBadge — shown
   // as a pill next to the game-type pill instead of a floating body subtitle.
   const [headerBadge, setHeaderBadge] = useState<string | null>(null)
+  // Whether the current player is watching as a spectator — surfaced as a
+  // compact pill in the header (mirrors the host badge) by game views via
+  // useSpectatorBadge, replacing the old full-width spectator banner.
+  const [spectating, setSpectating] = useState(false)
+  // A game's timer bar/badge, pinned below the header so it stays visible while
+  // the game body scrolls. Games register it via useStickyTimer.
+  const [stickyTimer, setStickyTimer] = useState<ReactNode>(null)
 
   const reloadSeqRef = useRef(0)
   const reloadSession = useCallback(async () => {
@@ -114,80 +123,90 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
   return (
     <RosterDrawerProvider myPlayerId={playerId}>
       <HeaderBadgeContext.Provider value={setHeaderBadge}>
-        <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-          <View style={styles.header}>
-            <View style={styles.toolbar}>
-              <View style={styles.toolbarLeading}>
-                <Pressable style={styles.backBtn} onPress={goHome} hitSlop={8}>
-                  <Text style={styles.backIcon}>←</Text>
-                </Pressable>
-                <RosterButton />
-              </View>
-
-              <View style={styles.toolbarActions}>
-                <SettingsButton />
-                <HeaderAction label="Share" onPress={() => void onShare()} />
-                {hasHostToken ? <HeaderAction label="Host" accent onPress={() => void openHost()} /> : null}
-                {playerId && !gameEnded ? (
-                  <PlayerSessionMenu
-                    gameCode={gameCode}
-                    gameType={game?.game_type}
-                    playerId={playerId}
-                    playerName={playerName}
-                    onRenamed={(name) => {
-                      setPlayerName(name)
-                      void reloadSession()
-                    }}
-                    onLeft={() => void onLeft()}
-                  />
-                ) : null}
-              </View>
-            </View>
-
-            <View style={styles.meta}>
-              <View style={styles.codeRow}>
-                <Text style={styles.code}>{code}</Text>
-                {typeLabel ? (
-                  <View style={styles.typePill}>
-                    <Text style={styles.typePillText}>{typeLabel}</Text>
+        <SpectatorBadgeContext.Provider value={setSpectating}>
+          <StickyTimerContext.Provider value={setStickyTimer}>
+            <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+              <View style={styles.header}>
+                <View style={styles.toolbar}>
+                  <View style={styles.toolbarLeading}>
+                    <Pressable style={styles.backBtn} onPress={goHome} hitSlop={8}>
+                      <Text style={styles.backIcon}>←</Text>
+                    </Pressable>
+                    <RosterButton />
                   </View>
-                ) : null}
-                {headerBadge ? (
-                  <View style={styles.modePill}>
-                    <Text style={styles.modePillText}>{headerBadge}</Text>
+
+                  <View style={styles.toolbarActions}>
+                    <SettingsButton />
+                    <HeaderAction label="Share" onPress={() => void onShare()} />
+                    {hasHostToken ? <HeaderAction label="Host" accent onPress={() => void openHost()} /> : null}
+                    {playerId && !gameEnded ? (
+                      <PlayerSessionMenu
+                        gameCode={gameCode}
+                        gameType={game?.game_type}
+                        playerId={playerId}
+                        playerName={playerName}
+                        onRenamed={(name) => {
+                          setPlayerName(name)
+                          void reloadSession()
+                        }}
+                        onLeft={() => void onLeft()}
+                      />
+                    ) : null}
                   </View>
-                ) : null}
-              </View>
-              {game?.title ? (
-                <Text style={styles.title} numberOfLines={1}>
-                  {game.title}
-                </Text>
-              ) : null}
-              {game?.game_type ? (
-                <View style={styles.rulesRow}>
-                  <GameRulesLink gameType={game.game_type} variant="subtle" />
                 </View>
-              ) : null}
-            </View>
-          </View>
 
-          {/* Not gated on gameEnded: a host may transfer host after the game finishes
+                <View style={styles.meta}>
+                  <View style={styles.codeRow}>
+                    <Text style={styles.code}>{code}</Text>
+                    {typeLabel ? (
+                      <View style={styles.typePill}>
+                        <Text style={styles.typePillText}>{typeLabel}</Text>
+                      </View>
+                    ) : null}
+                    {headerBadge ? (
+                      <View style={styles.modePill}>
+                        <Text style={styles.modePillText}>{headerBadge}</Text>
+                      </View>
+                    ) : null}
+                    {spectating ? (
+                      <View style={styles.spectatorPill}>
+                        <Text style={styles.spectatorPillText}>👁 Watching</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  {game?.title ? (
+                    <Text style={styles.title} numberOfLines={1}>
+                      {game.title}
+                    </Text>
+                  ) : null}
+                  {game?.game_type ? (
+                    <View style={styles.rulesRow}>
+                      <GameRulesLink gameType={game.game_type} variant="subtle" />
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+
+              {/* Not gated on gameEnded: a host may transfer host after the game finishes
             (e.g. so the new host can start "play again") — the nominee must still
             see the invite on the finished screen. The banner self-hides unless
             there's a pending nomination for this player. */}
-          <HostNominationBanner gameCode={gameCode} playerId={playerId} resumeToken={resumeToken} />
-          <View style={styles.body}>{children}</View>
-          {/* Floats over the screen — last child so it paints above the body. */}
-          {game ? <VoiceRail gameCode={gameCode} mode="player" /> : null}
-          <ShareGameSheet
-            visible={shareOpen}
-            gameCode={gameCode}
-            hostToken={hostToken}
-            resumeToken={resumeToken}
-            onClose={() => setShareOpen(false)}
-          />
-          <RosterDrawer />
-        </SafeAreaView>
+              <HostNominationBanner gameCode={gameCode} playerId={playerId} resumeToken={resumeToken} />
+              {stickyTimer ? <View style={styles.stickyTimer}>{stickyTimer}</View> : null}
+              <View style={styles.body}>{children}</View>
+              {/* Floats over the screen — last child so it paints above the body. */}
+              {game ? <VoiceRail gameCode={gameCode} mode="player" /> : null}
+              <ShareGameSheet
+                visible={shareOpen}
+                gameCode={gameCode}
+                hostToken={hostToken}
+                resumeToken={resumeToken}
+                onClose={() => setShareOpen(false)}
+              />
+              <RosterDrawer />
+            </SafeAreaView>
+          </StickyTimerContext.Provider>
+        </SpectatorBadgeContext.Provider>
       </HeaderBadgeContext.Provider>
     </RosterDrawerProvider>
   )
@@ -283,6 +302,23 @@ const makeStyles = (theme: Theme) =>
       letterSpacing: 0.8,
       textTransform: 'uppercase',
     },
+    // Spectator status pill — an amber accent so "watching" reads distinctly
+    // from the game-type and mode pills without pulling primary-color focus.
+    spectatorPill: {
+      borderRadius: theme.radius.pill,
+      backgroundColor: '#f59e0b22',
+      borderWidth: 1,
+      borderColor: '#f59e0b66',
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+    },
+    spectatorPillText: {
+      color: theme.text,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 0.6,
+      textTransform: 'uppercase',
+    },
     title: {
       color: theme.textMuted,
       fontSize: 15,
@@ -291,4 +327,14 @@ const makeStyles = (theme: Theme) =>
     rulesRow: { marginTop: 2 },
     // Cap + center the game content so it doesn't stretch edge-to-edge on iPad.
     body: { flex: 1, ...centeredContent },
+    // Pinned timer slot: sits between the header and the scrolling body (stacked,
+    // not overlaid — so no background/border is needed and a self-hiding timer
+    // leaves only a small gap rather than an empty bordered box). Games pass a
+    // null node when their timer shouldn't show, keeping this collapsed.
+    stickyTimer: {
+      ...centeredContent,
+      paddingHorizontal: theme.space.lg,
+      paddingTop: theme.space.sm,
+      paddingBottom: theme.space.xs,
+    },
   })

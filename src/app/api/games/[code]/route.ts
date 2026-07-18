@@ -27,6 +27,7 @@ import {
 } from '@/lib/game-types'
 import {
   clampLandmineCategoryTimer,
+  clampLandmineElimSeconds,
   clampLandmineMarkingTimer,
   clampLandmineMineCount,
   clampLandmineWritingTimer,
@@ -218,6 +219,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     }
     if (body.landmine_originality_bonus !== undefined) {
       updatePayload.landmine_originality_bonus = body.landmine_originality_bonus !== false
+    }
+    if (body.landmine_elim_seconds !== undefined) {
+      updatePayload.landmine_elim_seconds = clampLandmineElimSeconds(body.landmine_elim_seconds)
     }
     if (rawTimerSeconds !== undefined) updatePayload.timer_seconds = clampLandmineWritingTimer(rawTimerSeconds)
     if (rawOperativeTimerSeconds !== undefined) {

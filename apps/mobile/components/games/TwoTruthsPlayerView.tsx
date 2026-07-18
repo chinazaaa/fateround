@@ -23,6 +23,7 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { useGameScores } from '@/components/session/RosterDrawerContext'
 import { CountdownTimerBadge } from '@/components/party/CountdownTimerBadge'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { TwoTruthsSubmitterBadge } from '@/components/games/TwoTruthsSubmitterBadge'
 import { useDeadlineExpiry } from '@/hooks/useDeadlineExpiry'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -179,6 +180,16 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   }, [currentRound?.id])
 
   useDeadlineExpiry(currentRound?.started_at, timerSeconds, timerActive && !myGuess, () => setTimeExpired(true))
+
+  // Pinned countdown — visible under the header while the guessing body scrolls.
+  const ttlTimer = (
+    <CountdownTimerBadge
+      anchorTime={currentRound?.started_at}
+      delaySeconds={timerSeconds}
+      active={timerActive && !myGuess && !timeExpired}
+    />
+  )
+  const ttlTimerPinned = useStickyTimer(ttlTimer, [currentRound, timerSeconds, timerActive, myGuess, timeExpired])
 
   const canSubmitStatements = !!stmtA.trim() && !!stmtB.trim() && !!stmtC.trim() && lieIndex != null
 
@@ -498,11 +509,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
         {liveBanners}
         {submitterBadge}
         <Text style={styles.featured}>Which is {featuredName}&apos;s lie?</Text>
-        <CountdownTimerBadge
-          anchorTime={currentRound.started_at}
-          delaySeconds={timerSeconds}
-          active={timerActive && !myGuess && !timeExpired}
-        />
+        {ttlTimerPinned ? null : ttlTimer}
         {metadata ? (
           <View style={styles.choices}>
             {metadata.statements.map((text, index) => {

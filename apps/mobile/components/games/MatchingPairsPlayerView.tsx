@@ -35,6 +35,7 @@ import { getSupabase } from '@/lib/supabase'
 import { MEMORY_MATCH_PROGRESS_SELECT, MEMORY_MATCH_SUBMISSION_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { MatchingPairsGameTimerBar } from '@/components/games/matching-pairs/MatchingPairsGameTimerBar'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { MatchingPairsOpponentStrip } from '@/components/games/matching-pairs/MatchingPairsOpponentStrip'
 import { MatchingPairsWaitingForOthers } from '@/components/games/matching-pairs/MatchingPairsWaitingForOthers'
 import {
@@ -323,6 +324,17 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
+  const gameTimer =
+    (bootstrap.game?.timer_seconds ?? 0) > 0 && bootstrap.game?.status === 'active' ? (
+      <MatchingPairsGameTimerBar
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        roundStartedAt={round?.started_at ?? null}
+        onExpired={() => void bootstrap.load()}
+      />
+    ) : null
+  const gameTimerPinned = useStickyTimer(gameTimer, [bootstrap.code, bootstrap.game, round?.started_at])
+
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
   if (bootstrap.screen === 'join' && bootstrap.game) {
@@ -441,12 +453,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       subtitle={`${roundLabel}Score ${points} · Streak ${streak}`}
     >
       <ScrollView contentContainerStyle={styles.content}>
-        <MatchingPairsGameTimerBar
-          gameCode={bootstrap.code}
-          game={bootstrap.game}
-          roundStartedAt={round?.started_at ?? null}
-          onExpired={() => void bootstrap.load()}
-        />
+        {gameTimerPinned ? null : gameTimer}
         {finished && meta ? (
           <MatchingPairsWaitingForOthers
             pairsMatched={pairsMatched}

@@ -31,6 +31,7 @@ import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { PlayingCardFace } from '@/components/games/cards/PlayingCardFace'
 import { CardHand } from '@/components/games/cards/CardHand'
 import { useTurnDeadlineSeconds } from '@/components/games/cards/useTurnDeadlineSeconds'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { JoinScreen } from '@/components/JoinScreen'
@@ -202,6 +203,12 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     onExpire: () => postCrazyEightsExpireTurn(bootstrap.code).then(() => bootstrap.load()),
   })
 
+  const gameTimer =
+    gameDurationSeconds > 0 && gameSecondsLeft > 0 ? (
+      <GameTimerBar secondsLeft={gameSecondsLeft} durationSeconds={gameDurationSeconds} />
+    ) : null
+  const gameTimerPinned = useStickyTimer(gameTimer, [gameSecondsLeft, gameDurationSeconds])
+
   const handCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const hand of hands) counts[hand.player_id] = hand.cards.length
@@ -366,9 +373,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title={batch4GameLabel('crazy_eights')} subtitle={bootstrap.code}>
       <ScrollView contentContainerStyle={styles.content}>
-        {gameDurationSeconds > 0 && gameSecondsLeft > 0 ? (
-          <GameTimerBar secondsLeft={gameSecondsLeft} durationSeconds={gameDurationSeconds} />
-        ) : null}
+        {gameTimerPinned ? null : gameTimer}
         <TurnBanner
           text={isWatching ? `Spectating — ${turnName}'s turn` : (session.status_message ?? `${turnName}'s turn`)}
           isMyTurn={isMyTurn && !isWatching}

@@ -24,6 +24,7 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { WordSearchBoardView } from '@/components/games/word-search/WordSearchBoardView'
 import { WordSearchGameTimerBar } from '@/components/games/word-search/WordSearchGameTimerBar'
 import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { pointsLeaderboard } from '@/lib/finish-leaderboards'
@@ -325,6 +326,12 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
+  const gameTimer =
+    (bootstrap.game?.game_duration_seconds ?? 0) > 0 && bootstrap.game?.status === 'active' ? (
+      <WordSearchGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} onExpired={() => void bootstrap.load()} />
+    ) : null
+  const gameTimerPinned = useStickyTimer(gameTimer, [bootstrap.code, bootstrap.game])
+
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
   if (bootstrap.screen === 'join' && bootstrap.game) {
@@ -413,11 +420,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('word_search')} subtitle={bootstrap.code}>
       <ScrollView contentContainerStyle={styles.content} scrollEnabled={!dragActive}>
-        <WordSearchGameTimerBar
-          gameCode={bootstrap.code}
-          game={bootstrap.game}
-          onExpired={() => void bootstrap.load()}
-        />
+        {gameTimerPinned ? null : gameTimer}
 
         {toast ? (
           <View style={[styles.toast, toast.ok ? styles.toastOk : styles.toastBad]}>

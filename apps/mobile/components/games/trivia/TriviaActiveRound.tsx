@@ -9,6 +9,7 @@ import {
   TRIVIA_REVEAL_SECONDS,
 } from '@fateround/shared/trivia'
 import { useGameScores } from '@/components/session/RosterDrawerContext'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useRoundTimer } from '@/hooks/useRoundTimer'
@@ -136,6 +137,9 @@ export function TriviaActiveRound({
     onAdvanced: onReload,
   })
 
+  const roundTimer = roundStillTiming ? <TimerBadge seconds={timeLeft} /> : null
+  const roundTimerPinned = useStickyTimer(roundTimer, [roundStillTiming, timeLeft])
+
   const submitAnswer = useCallback(
     async (choiceIndex: number) => {
       if (!currentRound || readOnly || submitting || myAnswer || answerLockRef.current || !myResumeToken) return
@@ -178,7 +182,7 @@ export function TriviaActiveRound({
             Round {currentRound.round_number} of {game.rounds_count ?? '?'}
           </Text>
         ) : null}
-        {roundStillTiming ? <TimerBadge seconds={timeLeft} /> : null}
+        {roundTimerPinned ? null : roundTimer}
       </View>
 
       {screen === 'waiting' ? (

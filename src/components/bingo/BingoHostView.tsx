@@ -27,10 +27,7 @@ import {
   bingoCallIntervalFromGame,
   bingoCallModeFromGame,
   formatBingoNumber,
-  getBingoHostMode,
-  setBingoHostMode,
   hasBingoWin,
-  type BingoHostMode,
 } from '@/lib/bingo'
 import { supabase } from '@/lib/supabase'
 import {
@@ -41,11 +38,10 @@ import {
   PLAYER_SELECT,
 } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
-import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import type { BingoCallMode, BingoCalledNumber, BingoClaim, BingoCard, Game, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useBingoWinNotification, useBingoStartNotification } from '@/hooks/useBingoNotifications'
@@ -71,12 +67,6 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const [lobbyMaxPlayers, setLobbyMaxPlayers] = useState(BINGO_MIN_PLAYERS)
 
   // Host+play mode
-  const [hostMode, setHostMode] = useState<BingoHostMode>('player')
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
   const [hostCard, setHostCard] = useState<BingoCard | null>(null)
   const [hostMarking, setHostMarking] = useState(false)
   const [hostClaiming, setHostClaiming] = useState(false)
@@ -128,14 +118,39 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   useEffect(() => {
     load()
-    setHostMode(getBingoHostMode(gameCode))
-    const session = getPlayerSession(gameCode)
-    if (session) {
-      setHostPlayerId(session.playerId)
-      setHostResumeToken(session.resumeToken ?? null)
-      setHostPlayerName(session.playerName)
-    }
   }, [gameCode, load])
+
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+  })
+
+  const handlePlayerRemoved = useCallback(
+    (playerId: string) => {
+      onHostSeatRemoved(playerId)
+      if (playerId === hostPlayerId) setHostCard(null)
+      setPlayers((prev) => prev.filter((p) => p.id !== playerId))
+    },
+    [onHostSeatRemoved, hostPlayerId]
+  )
+
+  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
 
   useEffect(() => {
     if (hostPlayerId && game?.status === 'active' && !hostCard) {
@@ -195,25 +210,6 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
-  const handlePlayerRemoved = useCallback(
-    (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostResumeToken(null)
-        setHostPlayerName('')
-        setHostCard(null)
-        clearPlayerSession(gameCode)
-      }
-      setPlayers((prev) => prev.filter((p) => p.id !== playerId))
-    },
-    [gameCode, hostPlayerId]
-  )
-
-  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
-
-  // Clear stale host-as-player state if the host's own row is removed elsewhere.
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
-
   const playerManageBlock =
     game && (game.status === 'waiting' || game.status === 'active') ? (
       <HostLobbyPlayersSection
@@ -226,79 +222,6 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
     ) : null
 
   useBingoAutoCall({ gameCode, game, enabled: game?.status === 'active', onSynced: load })
-
-  const changeHostMode = async (mode: BingoHostMode) => {
-    if (game?.status !== 'waiting') return
-    const prev = hostMode
-    setHostMode(mode)
-    setBingoHostMode(gameCode, mode)
-    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
-      try {
-        const res = await fetch('/api/players', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error ?? 'Failed to leave seat')
-        }
-        handlePlayerRemoved(hostPlayerId)
-        await load()
-      } catch (err) {
-        setHostMode(prev)
-        setBingoHostMode(gameCode, prev)
-        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
-      }
-    }
-  }
-
-  const renameHost = async (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed || !hostPlayerId) return
-    try {
-      const res = await fetch('/api/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
-      setHostPlayerName(data.playerName)
-      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
-      await load()
-      success('Name updated!')
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to update name')
-    }
-  }
-
-  const hostJoinGame = async () => {
-    const name = hostJoinName.trim()
-    if (!name) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: name }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostResumeToken(data.resumeToken ?? null)
-      setHostPlayerName(data.playerName)
-      setHostMode('player')
-      setBingoHostMode(gameCode, 'player')
-      await load()
-      success(`Joined as ${data.playerName}`)
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }
 
   const markHostNumber = async (cellIndex: number) => {
     if (!hostPlayerId || !hostCard || hostMarking) return
@@ -914,6 +837,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={game.status}
       tab={tab}

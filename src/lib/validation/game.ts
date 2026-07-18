@@ -97,6 +97,7 @@ export const createGameSchema = z.object({
   word_rush_difficulty: z.enum(['standard', 'hard']).optional(),
   landmine_mode: z.enum(['zero_points', 'elimination']).optional(),
   landmine_mine_source: z.enum(['system', 'manual']).optional(),
+  landmine_elim_seconds: z.coerce.number().int().optional(),
   landmine_mine_count: z.coerce.number().int().min(1).max(3).optional(),
   landmine_originality_bonus: z.boolean().optional(),
   allow_viewers: z.boolean().optional(),
@@ -216,6 +217,7 @@ export const updateGameSchema = z.object({
   // Landmine host-lobby settings (edit before start).
   landmine_mode: z.enum(['zero_points', 'elimination']).optional(),
   landmine_mine_source: z.enum(['system', 'manual']).optional(),
+  landmine_elim_seconds: z.coerce.number().int().optional(),
   landmine_mine_count: z.coerce.number().int().optional(),
   landmine_originality_bonus: z.boolean().optional(),
   ping_pong_points_to_win: z.coerce
@@ -256,6 +258,9 @@ export const playAgainSchema = hostActionSchema.extend({
     )
     .optional(),
   question_source: z.enum(['platform', 'custom']).optional(),
+  // Who Said This lobby question-source swap: 'player' (lobby-submitted quotes) or 'deck'
+  // (host Platform/Library/CSV deck sent in custom_questions).
+  wst_quote_source: wstQuoteSourceEnum.optional(),
   trivia_category: z.enum(['tech', 'general']).optional(),
   timer_seconds: z.union([z.literal(10), z.literal(15), z.literal(30), z.literal(60)]).optional(),
   rounds_count: z.number().int().min(3).max(25).optional(),

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import {
   WordSearchBoard,
@@ -10,6 +11,7 @@ import {
 import { WordList } from '@/components/word-search/WordList'
 import { WordSearchGameTimerBar } from '@/components/word-search/WordSearchGameTimerBar'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import {
@@ -42,6 +44,9 @@ import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
@@ -72,6 +77,7 @@ type WordSearchGameState = { hasValidRound: boolean }
 
 export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
   const cfg = gameTypeConfig('word_search')
+  const router = useRouter()
   const { confirm } = useConfirm()
   const [roundId, setRoundId] = useState<string | null>(null)
   const [metadata, setMetadata] = useState<WordSearchMetadata | null>(null)
@@ -388,9 +394,45 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
     () => (metadata ? tallyWordSearchScores(metadata, found, players) : []),
     [metadata, found, players]
   )
+
+  // Live scores feed the shared roster drawer (opened from the header).
+  const rosterScores = useMemo(
+    () => Object.fromEntries(leaderboard.map((row) => [row.player_id, row.points])),
+    [leaderboard]
+  )
+  useGameScores(rosterScores, { suffix: ' pts' })
   const me = players.find((p) => p.id === myPlayerId)
   const isSpectator = me?.spectator === true
   const isViewer = !!(game && me && playerIsViewer(me, game))
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId || game?.status !== 'active') return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={me?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
   const myRank = leaderboard.findIndex((r) => r.player_id === myPlayerId) + 1
   const myCompletion = metadata && myPlayerId ? wordSearchCompletionPercent(metadata, found, myPlayerId) : 0
   const allFound = !!metadata && myFoundWords.size >= metadata.words.length

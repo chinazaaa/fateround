@@ -94,6 +94,7 @@ import {
   wstSubmitterName,
   tallyWstVotes,
   tallyWstPlayerScores,
+  wstScoreLabel,
   mergeActiveRound,
   dedupeWstPool,
   mergeWstPoolEntry,
@@ -145,6 +146,7 @@ import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { useRosterBase } from '@/components/roster/RosterDrawerContext'
 import { PlayerSessionBar } from '@/components/ui/PlayerSessionBar'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
@@ -346,6 +348,17 @@ export function PollGamePlayerExperience({
 
   const myPlayer = useMemo(() => players.find((p) => p.id === myPlayerId) ?? null, [players, myPlayerId])
   const isViewer = !!(game && myPlayer && playerIsViewer(myPlayer, game))
+
+  // Feed the shared roster drawer (opened from the player header) — only while the
+  // game is actively being played (not the lobby/join/waiting screen, not once it
+  // has finished). This dispatcher stays mounted with a live roster subscription
+  // even after a dedicated game view takes over, so every game gets the roster for
+  // free. Dedicated views layer per-player scores on top via useGameScores.
+  //
+  // Self-contained views with their own bootstrap (Whot) can OVERRIDE these rows
+  // (via useRosterRowsOverride) so the spectator's own row is marked "· you" — this
+  // dispatcher's session id can lag theirs. Override wins over this base, so no fight.
+  useRosterBase(game?.status === 'active' ? players : undefined, game, myPlayerId)
 
   const {
     assignment,
@@ -2345,6 +2358,18 @@ export function PollGamePlayerExperience({
           ? (participants.find((p) => p.id === myVote.target_participant_id)?.name ?? null)
           : null
       const isLastRound = lastFinishedRound.round_number >= (game?.rounds_count ?? 0)
+      // Running leaderboard through the just-finished round — mirrors trivia's between-round
+      // standings so players see the score after every question, not just at the end.
+      const runningScores = tallyWstPlayerScores(allRounds, allVotes, players)
+      const wstRunningLeaderboard =
+        runningScores.length > 0 ? (
+          <PaginatedLeaderboard
+            title="Leaderboard"
+            rows={runningScores.map((row, i) => ({ id: row.playerId, name: row.name, score: row.points, rank: i + 1 }))}
+            highlightId={myPlayerId}
+            scoreLabel={wstScoreLabel}
+          />
+        ) : null
 
       if (isAnimeRound(lastFinishedRound)) {
         const meta = lastFinishedRound.anime_metadata as {
@@ -2382,6 +2407,7 @@ export function PollGamePlayerExperience({
                 myPickName={myPickName}
               />
             </RoundResultsShareBlock>
+            {wstRunningLeaderboard}
             <p className="text-faint text-sm text-center">
               {roundResultsWaitMessage({
                 isLastRound,
@@ -2427,6 +2453,7 @@ export function PollGamePlayerExperience({
               myPickName={myPickName}
             />
           </RoundResultsShareBlock>
+          {wstRunningLeaderboard}
           <ConfessionsTicker confessions={allConfessions.filter((c) => c.round_id === lastFinishedRound.id)} />
           <ReactionBar className="pt-1" gameCode={gameCode} playerId={myPlayerId} />
           <p className="text-faint text-sm text-center">
@@ -2807,6 +2834,7 @@ function FinalResultsView({
                 rank: i + 1,
               }))}
               highlightId={myPlayerId}
+              scoreLabel={wstScoreLabel}
             />
           )}
 

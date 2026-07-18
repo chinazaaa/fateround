@@ -5,7 +5,9 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import type { GameType } from '@fateround/shared'
 import { isCrosswordGame, isWordSearchGame, isWordScrambleGame } from '@fateround/shared/game-type-checks'
 import { isWhoSaidThis } from '@fateround/shared/poll-games'
+import { isLandmineGame } from '@fateround/shared/game-type-checks'
 import { GameTypePickerField } from '@/components/create/GameTypePickerField'
+import { LandmineCreatePanel } from '@/components/create/LandmineCreatePanel'
 import { ParticipantListEditor } from '@/components/create/ParticipantListEditor'
 import { StepIndicator } from '@/components/create/StepIndicator'
 import { UniversalLobbyFields } from '@/components/create/UniversalLobbyFields'
@@ -187,10 +189,19 @@ export function CreateWizardShell() {
               />
             ) : null}
 
+            {/* Landmine owns a dedicated settings panel (mine source, mode, elimination timer, phase
+                timers) instead of the generic party-room settings. */}
+            {isLandmineGame(state.gameType) ? (
+              <LandmineCreatePanel
+                value={state.landmine}
+                onChange={(landminePatch) => patchState({ landmine: { ...state.landmine, ...landminePatch } })}
+              />
+            ) : null}
+
             {/* Puzzle games (crossword/word_search/word_scramble) show the content SOURCE first —
                 players pick Platform/Library/Your own, then the theme + difficulty (which depend on
                 that choice) appear below. Other games keep source last. */}
-            {isWhoSaidThis(state.gameType)
+            {isWhoSaidThis(state.gameType) || isLandmineGame(state.gameType)
               ? null
               : (() => {
                   const isPuzzle =

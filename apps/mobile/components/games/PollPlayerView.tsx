@@ -83,6 +83,7 @@ import {
 import { ParticipantAvatar } from '@/components/ui/ParticipantAvatar'
 import { RoundTimerBadge } from '@/components/party/RoundTimerBadge'
 import { RoundResultsWaitText } from '@/components/party/RoundResultsWaitText'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postVote } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
@@ -90,6 +91,7 @@ import { PARTICIPANT_SELECT, ROUND_SELECT, VOTE_SELECT } from '@/lib/supabase-se
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { mltVoteLeaderboard } from '@/lib/finish-leaderboards'
 import { tallyWstScores, wstLeaderboard } from '@/lib/wst-standings'
+import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
@@ -212,6 +214,33 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
     !!currentRound && !!bootstrap.game && (currentRound.round_number ?? 0) >= (bootstrap.game.rounds_count ?? 0)
 
   const voteTimerActive = bootstrap.screen === 'playing' && !isViewer && currentRound?.status === 'active' && !myVote
+
+  // Pick a Number derivations — lifted above the early returns so the pinned
+  // timer can read them (they're re-used in the live-play body below).
+  const isPan = !!gameType && isPickANumber(gameType)
+  const pickerId = currentRound?.submitter_player_id ?? null
+  const isPicker = !!bootstrap.myPlayerId && bootstrap.myPlayerId === pickerId
+  const panRevealed = isPan && !!currentRound?.mlt_question?.trim()
+
+  // Pinned countdown — visible under the header while the vote body scrolls.
+  const gameTimer = (
+    <RoundTimerBadge
+      game={bootstrap.game}
+      currentRound={voteTimerActive ? currentRound : null}
+      active={voteTimerActive}
+      onExpire={() => autoSubmitPickerRef.current()}
+      show={!isPan || (isPicker && !panRevealed)}
+      containerStyle={styles.timerRow}
+    />
+  )
+  const gameTimerPinned = useStickyTimer(gameTimer, [
+    bootstrap.game,
+    voteTimerActive,
+    currentRound,
+    isPan,
+    isPicker,
+    panRevealed,
+  ])
 
   const updateParticipantPhoto = useCallback((participantId: string, photoUrl: string | null) => {
     setPollState((prev) => ({
@@ -556,14 +585,11 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
   const panAvailable = panAvailableNumbers(panPool.length, panUsed)
 
   // Pick a Number — only the round's designated picker chooses; the list stays hidden.
-  const isPan = isPickANumber(gameType)
-  const pickerId = currentRound?.submitter_player_id ?? null
-  const isPicker = !!bootstrap.myPlayerId && bootstrap.myPlayerId === pickerId
+  // (isPan / pickerId / isPicker / panRevealed are lifted above the early returns.)
   const pickerName = hotSeatPlayerDisplayName(pickerId, bootstrap.players, pollState.participants)
   const pickerVote = currentRound
     ? pollState.votes.find((v) => v.round_id === currentRound.id && v.player_id === pickerId)
     : undefined
-  const panRevealed = isPan && !!currentRound?.mlt_question?.trim()
   const panPickedNumber = pickerVote?.picked_number ?? null
 
   // Pick a Number — when the picker's timer runs out, auto-lock a still-available
@@ -676,6 +702,27 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
             players={bootstrap.players}
             myPlayerId={bootstrap.myPlayerId}
           />
+          {/* WST running leaderboard after every question — mirrors trivia's between-round standings. */}
+          {isWhoSaidThis(gameType)
+            ? (() => {
+                const scores = tallyWstScores(pollState.rounds, pollState.votes, bootstrap.players)
+                if (scores.length === 0) return null
+                return (
+                  <LeaderboardPanel
+                    title="Leaderboard"
+                    rows={scores.map((s, i) => ({
+                      id: s.playerId,
+                      name: s.name,
+                      score: s.points,
+                      highlight: i === 0 && s.points > 0 ? true : undefined,
+                    }))}
+                    highlightId={bootstrap.myPlayerId}
+                    scoreSuffix=""
+                    embedded
+                  />
+                )
+              })()
+            : null}
           {bootstrap.myPlayerId ? <PollReactionBar gameCode={bootstrap.code} playerId={bootstrap.myPlayerId} /> : null}
           {!isViewer && bootstrap.myResumeToken ? (
             <ConfessionInput
@@ -709,14 +756,7 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
       onPromoted={() => bootstrap.load()}
     >
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <RoundTimerBadge
-          game={bootstrap.game}
-          currentRound={voteTimerActive ? currentRound : null}
-          active={voteTimerActive}
-          onExpire={() => autoSubmitPickerRef.current()}
-          show={!isPan || (isPicker && !panRevealed)}
-          containerStyle={styles.timerRow}
-        />
+        {gameTimerPinned ? null : gameTimer}
         {isViewer ? (
           <Text style={styles.waiting}>You are watching — voting is disabled.</Text>
         ) : isPan ? (

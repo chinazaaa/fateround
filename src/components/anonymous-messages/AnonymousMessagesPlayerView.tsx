@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AnonymousMessageFeed } from '@/components/anonymous-messages/AnonymousMessageFeed'
 import { AnonymousBanCountdownBar } from '@/components/anonymous-messages/AnonymousBanCountdownBar'
@@ -32,6 +32,9 @@ import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
@@ -269,6 +272,31 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       setSending(false)
     }
   }
+
+  // Edit name · Leave, in the main-header ⚙ while the room is active.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId || screen !== 'active') return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={myPlayerName ?? ''}
+          onRenamed={(name) => setMyPlayerName(name)}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, screen, gameCode, myPlayerName, router])
+  useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') {
     return (

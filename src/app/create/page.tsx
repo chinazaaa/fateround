@@ -134,6 +134,7 @@ import { WST_DECK_MIN_ENTRIES, type WstDeckEntry } from '@/lib/who-said-this'
 import { WST_PLATFORM_DECK } from '@/lib/who-said-this-questions'
 import { playerQuestionsOrderOptions, parsePlayerQuestionsOrder } from '@/lib/player-question-pool'
 import { isPeoplePollGame, playerNameSubmissionHint } from '@/lib/player-participant-pool'
+import { setHostPlayIntent } from '@/lib/host-play-intent'
 import { CustomSlotBuilder } from '@/components/CustomSlotBuilder'
 import { GenderRoundModeControl } from '@/components/GenderRoundModeControl'
 import { customPairVoteModeOptions } from '@/lib/custom-game'
@@ -465,6 +466,7 @@ function CreateGameInner() {
   const [landmineOriginality, setLandmineOriginality] = useState(true)
   const [landmineCategoryTimer, setLandmineCategoryTimer] = useState(10)
   const [landmineMarkingTimer, setLandmineMarkingTimer] = useState(45)
+  const [landmineElimSeconds, setLandmineElimSeconds] = useState(300)
   const [eliminationEnabled, setEliminationEnabled] = useState(false)
   const [eliminationMode, setEliminationMode] = useState<'per-round' | 'lives'>('per-round')
   const [eliminationRule, setEliminationRule] = useState<'bottom-n' | 'score-threshold'>('bottom-n')
@@ -971,6 +973,22 @@ function CreateGameInner() {
 
   const isAnonymousRoom = isAnonymousMessagesGame(settings.game_type)
   const isSecretMessage = isSecretMessageGame(settings.game_type)
+  // Host's create-screen seat choice, carried into the lobby via host-play intent.
+  const [hostName, setHostName] = useState('')
+  const [hostWillPlay, setHostWillPlay] = useState(true)
+  // Games whose host panel supports the "Host only / Host + play" seat toggle.
+  // Excludes the poll family (routed through PollHostView, own join flow) and the
+  // host-only games (message boards, mafia). For these, the host's create-screen
+  // name + role are carried into the lobby via host-play intent.
+  const hostPlaySupported =
+    !isBinaryLobby &&
+    !isMlt &&
+    !isPan &&
+    !isHotSeatGame &&
+    !isPeoplePoll &&
+    !isAnonymousRoom &&
+    !isSecretMessage &&
+    !isMafia
   const isBingo = isBingoGame(settings.game_type)
   const isCodewords = isCodewordsGame(settings.game_type)
   const isMessageBoard = isAnonymousRoom || isSecretMessage
@@ -1673,6 +1691,7 @@ function CreateGameInner() {
           describe_it_mode: isDescribeIt ? settings.describe_it_mode : undefined,
           landmine_mode: isLandmine ? landmineMode : undefined,
           landmine_mine_source: isLandmine ? landmineMineSource : undefined,
+          landmine_elim_seconds: isLandmine ? landmineElimSeconds : undefined,
           landmine_mine_count: isLandmine ? landmineMineCount : undefined,
           landmine_originality_bonus: isLandmine ? landmineOriginality : undefined,
           quick_draw_variant: isQuickDraw ? settings.quick_draw_variant : undefined,
@@ -1867,6 +1886,16 @@ function CreateGameInner() {
         // panel and can reopen it later without the saved link (same-device recovery).
         // The token also lives in the panel's share menu for hosting on another device.
         rememberHostToken(data.gameCode, data.hostToken)
+        // Carry the host's create-screen choice into the lobby. A typed name under
+        // "Host + play" means "seat me automatically" (the lobby auto-joins with it);
+        // an empty name still lands in play mode but waits for a manual Join, and
+        // "Host only" makes the host a spectator. Consumed once on the host panel.
+        if (hostPlaySupported) {
+          setHostPlayIntent(data.gameCode, {
+            name: hostName.trim(),
+            role: hostWillPlay ? 'play' : 'host',
+          })
+        }
         const roomParam = searchParams.get('room')
         const memberParam = searchParams.get('member')
         if (roomParam) {
@@ -1987,6 +2016,36 @@ function CreateGameInner() {
               })}
             </div>
           </div>
+
+          {/* You — host seat choice, carried into the lobby via host-play intent */}
+          {hostPlaySupported && (
+            <div className="glass-card p-5 space-y-3">
+              <p className="label-caps">You</p>
+              <SegmentedControl
+                value={hostWillPlay ? 'play' : 'host'}
+                onChange={(v) => setHostWillPlay(v === 'play')}
+                options={[
+                  { label: 'Host + play', value: 'play' },
+                  { label: 'Host only', value: 'host' },
+                ]}
+              />
+              {hostWillPlay && (
+                <div className="pt-1">
+                  <input
+                    type="text"
+                    value={hostName}
+                    onChange={(e) => setHostName(e.target.value)}
+                    placeholder="Your name (optional)"
+                    maxLength={24}
+                    className="input-field w-full"
+                  />
+                  <p className="text-faint text-xs mt-1.5 leading-relaxed">
+                    Enter your name to be seated automatically. Leave it blank to add yourself from the lobby.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Rules */}
           <div className="glass-card p-5 space-y-5">
@@ -3233,6 +3292,19 @@ function CreateGameInner() {
                     knocked out). More mines = riskier.
                   </p>
                 </Field>
+                {landmineMode === 'elimination' && (
+                  <Field label="Time limit">
+                    <SegmentedControl
+                      value={String(landmineElimSeconds)}
+                      onChange={(v) => setLandmineElimSeconds(Number(v))}
+                      options={[180, 300, 600, 900].map((s) => ({ value: String(s), label: `${s / 60} min` }))}
+                    />
+                    <p className="text-faint text-xs mt-1">
+                      Elimination plays until one player is left — but if nobody hits a mine it would run forever, so
+                      the game ends when the clock runs out and ranks survivors by score.
+                    </p>
+                  </Field>
+                )}
                 {landmineMode === 'zero_points' && landmineMineSource === 'system' && (
                   <Field label="Number of rounds">
                     <SegmentedControl

@@ -72,6 +72,44 @@ export const LANDMINE_MANUAL_CYCLE_OPTIONS = [1, 2, 3, 5] as const
 // manual cycle count (the UI restricts what's offered per mode).
 const LANDMINE_ROUND_COUNT_ALLOWED = [1, 2, 3, 5, 8, 10] as const
 
+// Elimination has no fixed round count (it plays to last-standing), so it uses a wall-clock time
+// limit as its length control + safety against a game where nobody hits a mine. Seconds.
+export const LANDMINE_DEFAULT_ELIM_SECONDS = 300
+export const LANDMINE_ELIM_SECONDS_OPTIONS = [180, 300, 600, 900] as const
+// Absolute round backstop for elimination, in case the time limit is somehow never evaluated.
+export const LANDMINE_ELIM_MAX_CYCLES = 8
+
+export function clampLandmineElimSeconds(seconds: number | undefined | null): number {
+  const n = Number(seconds)
+  return (LANDMINE_ELIM_SECONDS_OPTIONS as readonly number[]).includes(n) ? n : LANDMINE_DEFAULT_ELIM_SECONDS
+}
+
+export function gameLandmineElimSeconds(game: Pick<Game, 'landmine_elim_seconds'>): number {
+  return clampLandmineElimSeconds(game.landmine_elim_seconds)
+}
+
+export function landmineElimMinutesLabel(seconds: number): string {
+  const m = Math.round(seconds / 60)
+  return `${m} min`
+}
+
+/**
+ * Manual mode counts a "round" as one full cycle (every player takes their setter turn). Internally
+ * each setter-turn is its own round row, so the displayed round is the cycle: ceil(turn / roster).
+ * `setterInRound` is 1-based progress within the current cycle.
+ */
+export function landmineCycleInfo(
+  roundNumber: number,
+  roster: number
+): { round: number; setterInRound: number; roster: number } {
+  const n = Math.max(1, roster)
+  return {
+    round: Math.max(1, Math.ceil(roundNumber / n)),
+    setterInRound: ((Math.max(1, roundNumber) - 1) % n) + 1,
+    roster: n,
+  }
+}
+
 export function clampLandmineMaxPlayers(n: number): number {
   return Math.min(Math.max(Math.floor(n), LANDMINE_MIN_PLAYERS), LANDMINE_MAX_PLAYERS)
 }
@@ -135,6 +173,31 @@ export function landmineAnsweringPlayerIds(playerIds: string[], setterId: string
 
 export function normalizeAnswer(text: string | null | undefined): string {
   return (text ?? '').trim().toLowerCase()
+}
+
+/** Split a value into normalized alphanumeric word tokens (unicode-aware). */
+function answerTokens(text: string | null | undefined): string[] {
+  return normalizeAnswer(text)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean)
+}
+
+/**
+ * Whether an answer detonates any mine. A mine matches if its word (or full phrase)
+ * appears as a whole word/phrase inside the answer — so "egusi soup" still hits the
+ * "egusi" mine, while partial-word overlaps (mine "art" vs answer "cartoon") don't.
+ */
+export function answerHitsMine(answer: string | null | undefined, mines: string[]): boolean {
+  const tokens = answerTokens(answer)
+  if (tokens.length === 0) return false
+  // Pad with spaces so an ' egusi ' probe only matches on whole-token boundaries.
+  const haystack = ` ${tokens.join(' ')} `
+  for (const mine of mines) {
+    const mineTokens = answerTokens(mine)
+    if (mineTokens.length === 0) continue
+    if (haystack.includes(` ${mineTokens.join(' ')} `)) return true
+  }
+  return false
 }
 
 export function shufflePlayerOrder<T>(items: T[]): T[] {
@@ -368,7 +431,6 @@ export function computeRoundResults(
   mines: string[],
   opts: { originalityBonus: boolean }
 ): LandmineRoundResult[] {
-  const mineSet = new Set(mines.map((m) => normalizeAnswer(m)))
   const dupes = duplicateAnswerSet(answers)
   const marksByTarget = new Map(marks.map((m) => [m.target_player_id, m]))
 
@@ -385,7 +447,7 @@ export function computeRoundResults(
       return { player_id: answer.player_id, points: 0, outcome: 'void', mine_hit: false, is_original: false }
     }
 
-    if (mineSet.has(normalized)) {
+    if (answerHitsMine(answer.answer, mines)) {
       return { player_id: answer.player_id, points: 0, outcome: 'mine', mine_hit: true, is_original: false }
     }
 

@@ -41,7 +41,13 @@ import {
   wstCreatePayload,
   type WstCreateState,
 } from '@/lib/create-settings/who-said-this'
+import {
+  defaultLandmineCreateState,
+  landmineCreatePayload,
+  type LandmineCreateState,
+} from '@/lib/create-settings/landmine'
 import { isWhoSaidThis } from '@fateround/shared/poll-games'
+import { isLandmineGame } from '@fateround/shared/game-type-checks'
 
 export type { GameRoomSettings } from '@/lib/create-settings/board-games'
 export { hasGameRoomSettings, BATCH_19_BOARD_GAMES } from '@/lib/create-settings/board-games'
@@ -52,6 +58,7 @@ export { supportsCustomContent } from '@/lib/create-settings/custom-content'
 export type { PeopleSettings } from '@/lib/create-settings/people'
 export { supportsImportMode, participantModeOptions, isCustomGame, minParticipants } from '@/lib/create-settings/people'
 export type { WstCreateState, WstSource } from '@/lib/create-settings/who-said-this'
+export type { LandmineCreateState } from '@/lib/create-settings/landmine'
 
 export type CreateWizardStep = 'setup' | 'people'
 
@@ -67,6 +74,7 @@ export type CreateWizardState = {
   custom: CustomContentState
   people: PeopleSettings
   wst: WstCreateState
+  landmine: LandmineCreateState
 }
 
 export type CreateSettingsRegistryEntry = {
@@ -101,6 +109,7 @@ export function createInitialState(gameType: GameType, limits: GamePlayerLimitsM
     custom: defaultCustomContentState(),
     people: defaultPeopleSettings(gameType),
     wst: defaultWstCreateState(),
+    landmine: defaultLandmineCreateState(),
   }
 }
 
@@ -120,10 +129,13 @@ export function applyGameTypeChange(
     custom: defaultCustomContentState(),
     people: defaultPeopleSettings(gameType),
     wst: defaultWstCreateState(),
+    landmine: defaultLandmineCreateState(),
   }
 }
 
-export const CREATE_SETTINGS_REGISTRY: Partial<Record<GameType, CreateSettingsRegistryEntry>> = {}
+export const CREATE_SETTINGS_REGISTRY: Partial<Record<GameType, CreateSettingsRegistryEntry>> = {
+  landmine: { extraPayload: (state) => landmineCreatePayload(state.landmine) },
+}
 
 /** Everything the host must get right on the Setup step before the People step. */
 export function validateSetupStep(state: CreateWizardState): string | null {

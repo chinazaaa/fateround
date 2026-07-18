@@ -1,8 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Game, Participant, ParticipantGender } from '@/types'
+import type { Game, Participant, ParticipantGender, WstQuoteSource } from '@/types'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
+import { parseWstDeckImport, parseExcelWstDeckImport, parseStoredWstDeck } from '@/lib/custom-questions'
+import { WST_DECK_MIN_ENTRIES, type WstDeckEntry } from '@/lib/who-said-this'
+import { WST_PLATFORM_DECK } from '@/lib/who-said-this-questions'
 import { Modal } from '@/components/ui/Modal'
 import { Field } from '@/components/ui/PageShell'
 import { SegmentedControl } from '@/components/ui/CreateWizard'
@@ -46,6 +49,7 @@ import {
   isAnonymousMessagesGame,
   isCodewordsGame,
   isPickANumber,
+  isWhoSaidThis,
 } from '@/lib/game-types'
 import type { QuestionSource } from '@/types'
 import { supportsHostListPlayAgain, hostListPlayAgainHint } from '@/lib/participant-mode'
@@ -53,10 +57,20 @@ import { isGameGenderBased } from '@/lib/gender-based'
 import { LibraryPackBrowser } from '@/components/LibraryPackPicker'
 
 export type PlayAgainPayload = {
-  custom_questions?: WyrQuestion[] | string[]
+  custom_questions?: WyrQuestion[] | string[] | WstDeckEntry[]
   participants?: ParticipantInput[]
   question_source?: QuestionSource
+  wst_quote_source?: WstQuoteSource
 }
+
+/** Who Said This UI source options — the create-flow's 4 choices (players submit or a host deck). */
+type WstUiSource = 'player' | 'platform' | 'library' | 'custom'
+const WST_SOURCE_OPTIONS: { value: WstUiSource; label: string; hint: string }[] = [
+  { value: 'player', label: 'Players submit', hint: 'Everyone writes a quote + options in the lobby.' },
+  { value: 'platform', label: 'Platform', hint: 'Our built-in pack of famous quotes.' },
+  { value: 'library', label: 'Library', hint: 'Pick a community quote pack.' },
+  { value: 'custom', label: 'Your own', hint: 'Upload a CSV of quotes, options, and answers.' },
+]
 
 type PoolTab = 'upload' | 'manual'
 type PoolMode = 'same' | 'change'
@@ -124,7 +138,8 @@ function hasQuestionPool(game: Game): boolean {
     isWouldYouRather(type) ||
     isNeverHaveIEver(type) ||
     isMostLikelyTo(type) ||
-    isPickANumber(type)
+    isPickANumber(type) ||
+    isWhoSaidThis(type)
   )
 }
 
@@ -150,10 +165,18 @@ export function PlayAgainSetup({
   const isMlt = isMostLikelyTo(gameType)
   const isPan = isPickANumber(gameType)
   const isCodewords = isCodewordsGame(gameType)
+  const isWst = isWhoSaidThis(gameType)
   const isBinaryLobby = isBinaryChoiceGame(gameType)
   const needsGender = participantsNeedGenderForGame(gameType, { game, genderBased: isGameGenderBased(game) })
   const participantOpts = { game, genderBased: isGameGenderBased(game) }
   const sourceOptions = questionSourceOptions(gameType)
+
+  const [wstSource, setWstSource] = useState<WstUiSource>('player')
+  const [wstDeck, setWstDeck] = useState<WstDeckEntry[]>([])
+  const [wstDeckError, setWstDeckError] = useState<string | null>(null)
+  const wstFileRef = useRef<HTMLInputElement>(null)
+  // Effective deck for the chosen source: built-in Platform pack, or the loaded Library/CSV deck.
+  const wstEffectiveDeck = wstSource === 'platform' ? WST_PLATFORM_DECK : wstDeck
 
   const [questionSource, setQuestionSource] = useState<QuestionSource>('custom')
   const [participantMode, setParticipantMode] = useState<PoolMode>('same')
@@ -193,7 +216,16 @@ export function PlayAgainSetup({
     setCustomMltQuestions(parseStoredMltQuestions(game.custom_questions))
     setCustomCodewordsWords(parseStoredCodewordsWords(game.custom_questions))
     setDraftParticipants(hostParticipants(participants))
-  }, [open, game.custom_questions, game.question_source, gameType, participants, variant])
+    // Who Said This: re-open on the source that was saved. 'player' → Players submit; a deck that
+    // exactly matches the built-in pack → Platform (so picking Platform doesn't reappear as a
+    // custom upload); any other deck → Your own with the stored deck loaded to keep/replace.
+    const storedDeck = parseStoredWstDeck(game.custom_questions)
+    const isPlatformDeck =
+      storedDeck.length === WST_PLATFORM_DECK.length && JSON.stringify(storedDeck) === JSON.stringify(WST_PLATFORM_DECK)
+    setWstSource(game.wst_quote_source === 'deck' ? (isPlatformDeck ? 'platform' : 'custom') : 'player')
+    setWstDeck(storedDeck)
+    setWstDeckError(null)
+  }, [open, game.custom_questions, game.question_source, game.wst_quote_source, gameType, participants, variant])
 
   const customQuestionCount = isCodewords
     ? customCodewordsWords.length
@@ -203,7 +235,8 @@ export function PlayAgainSetup({
 
   const unusedHint = useMemo(() => {
     const hints: string[] = []
-    if (showQuestions) {
+    // WST manages its own source/deck copy below, so skip the "unused first" pool hint for it.
+    if (showQuestions && !isWst) {
       hints.push(
         isCodewords
           ? 'Words that did not appear on the last board are picked first for the next round.'
@@ -213,7 +246,7 @@ export function PlayAgainSetup({
     if (showParticipants) hints.push(hostListPlayAgainHint(game))
     if (hints.length === 0) return null
     return hints.join(' ')
-  }, [showQuestions, showParticipants, game, isCodewords])
+  }, [showQuestions, showParticipants, game, isCodewords, isWst])
 
   const addCustomQuestionsFromRows = (
     wyrRows: WyrQuestion[],
@@ -452,8 +485,61 @@ export function PlayAgainSetup({
     setBulkPaste('')
   }
 
+  const switchWstSource = (source: WstUiSource) => {
+    if (source === wstSource) return
+    setWstDeckError(null)
+    // Platform uses the built-in constant; every other switch starts from an empty loaded deck.
+    if (source !== 'custom' && source !== 'platform') setWstDeck([])
+    setWstSource(source)
+  }
+
+  const handleWstFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setWstDeckError(null)
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    try {
+      const result =
+        ext === 'xlsx' || ext === 'xls'
+          ? await parseExcelWstDeckImport(await file.arrayBuffer())
+          : ext === 'csv'
+            ? parseWstDeckImport(await file.text())
+            : null
+      if (!result) {
+        setWstDeckError('Please upload a .csv or .xlsx file')
+        return
+      }
+      if (result.questions.length < WST_DECK_MIN_ENTRIES) {
+        setWstDeck([])
+        setWstDeckError(
+          `Need at least ${WST_DECK_MIN_ENTRIES} questions — each row is a quote, its options, and which is correct.`
+        )
+        return
+      }
+      setWstDeck(result.questions)
+    } catch {
+      setWstDeckError('Could not read that file. Try the sample CSV.')
+    }
+  }
+
   const handleConfirm = () => {
     const payload: PlayAgainPayload = {}
+
+    if (isWst) {
+      if (wstSource === 'player') {
+        payload.wst_quote_source = 'player'
+      } else {
+        if (wstEffectiveDeck.length < WST_DECK_MIN_ENTRIES) {
+          setWstDeckError(`Add at least ${WST_DECK_MIN_ENTRIES} questions before you save.`)
+          return
+        }
+        payload.wst_quote_source = 'deck'
+        payload.custom_questions = wstEffectiveDeck
+      }
+      void onConfirm(payload)
+      return
+    }
 
     if (showQuestions) {
       if (questionSource === 'platform') {
@@ -490,11 +576,13 @@ export function PlayAgainSetup({
 
   const confirmDisabled =
     loading ||
-    (showQuestions &&
-      questionSource !== 'platform' &&
-      (isCodewords
-        ? customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL
-        : (isBinaryLobby ? customWyrQuestions : customMltQuestions).length === 0))
+    (isWst
+      ? wstSource !== 'player' && wstEffectiveDeck.length < WST_DECK_MIN_ENTRIES
+      : showQuestions &&
+        questionSource !== 'platform' &&
+        (isCodewords
+          ? customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL
+          : (isBinaryLobby ? customWyrQuestions : customMltQuestions).length === 0))
 
   return (
     <Modal
@@ -511,7 +599,80 @@ export function PlayAgainSetup({
       <div className="space-y-6">
         {unusedHint && <p className="text-faint text-sm leading-relaxed">{unusedHint}</p>}
 
-        {showQuestions && (
+        {isWst && (
+          <div className="space-y-3">
+            <p className="label-caps">Questions</p>
+            <SegmentedControl
+              value={wstSource}
+              onChange={(v) => switchWstSource(v as WstUiSource)}
+              options={WST_SOURCE_OPTIONS}
+            />
+
+            {wstSource === 'player' ? (
+              <p className="text-faint text-sm leading-relaxed">
+                Players join and each submits a quote with up to four options, marking the answer. Everyone answers the
+                pooled questions — fastest correct wins.
+              </p>
+            ) : wstSource === 'platform' ? (
+              <p className="text-faint text-sm leading-relaxed">
+                {WST_PLATFORM_DECK.length} famous quotes are built in — players just join and answer, fastest correct
+                wins. No upload needed.
+              </p>
+            ) : (
+              <div className="surface-inset border border-theme rounded-xl p-4 space-y-3">
+                {wstSource === 'library' ? (
+                  <div className="space-y-2">
+                    <LibraryPackBrowser
+                      gameType={gameType}
+                      noun="questions"
+                      onPick={(questions) => {
+                        setWstDeckError(null)
+                        setWstDeck(parseStoredWstDeck(questions))
+                      }}
+                    />
+                    <p className="text-faint text-xs text-center">Picking a pack replaces the current deck.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {wstDeck.length > 0 && (
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                        ✓ {wstDeck.length} question{wstDeck.length === 1 ? '' : 's'} loaded — kept unless you replace
+                        them below.
+                      </p>
+                    )}
+                    <p className="text-faint text-xs">
+                      Columns: quote, option_a, option_b, option_c, option_d, correct. The “correct” column is the
+                      answer letter (A–D).
+                    </p>
+                    <input
+                      ref={wstFileRef}
+                      type="file"
+                      accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                      className="hidden"
+                      onChange={handleWstFileUpload}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => wstFileRef.current?.click()}
+                      className="btn-secondary w-full py-3 text-sm"
+                    >
+                      {wstDeck.length > 0 ? 'Replace deck (CSV or Excel)' : 'Choose CSV or Excel file'}
+                    </button>
+                    <p className="text-faint text-xs text-center">Uploading a file replaces the current deck.</p>
+                  </div>
+                )}
+                {wstDeckError && <p className="text-red-400 text-sm">{wstDeckError}</p>}
+              </div>
+            )}
+            {wstSource !== 'player' && wstEffectiveDeck.length > 0 && (
+              <p className="text-faint text-xs">
+                {wstEffectiveDeck.length} question{wstEffectiveDeck.length === 1 ? '' : 's'} → each becomes a round.
+              </p>
+            )}
+          </div>
+        )}
+
+        {showQuestions && !isWst && (
           <div className="space-y-3">
             <p className="label-caps">{isCodewords ? 'Words' : 'Questions'}</p>
             <SegmentedControl

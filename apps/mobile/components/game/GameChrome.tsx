@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import type { Game, GameType, Player } from '@fateround/shared'
 import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { useRosterBase } from '@/components/session/RosterDrawerContext'
+import { useSpectatorBadge } from '@/components/session/SpectatorBadgeContext'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import type { BootstrapLike } from '@/lib/bootstrap-props'
 import { shellPropsFromBootstrap } from '@/lib/bootstrap-props'
@@ -99,7 +100,12 @@ export function GameShell({
   const roster = shell.players
   const pid = shell.myPlayerId
   const me = pid && roster ? roster.find((p) => p.id === pid) : undefined
-  const showViewerBanner = !!(g && me && code && playerIsViewer(me, g))
+  const isViewer = !!(g && me && code && playerIsViewer(me, g))
+
+  // Surface spectator status as a compact header pill (mirrors the host badge)
+  // rather than a full-width body banner. The banner below now only renders its
+  // actionable "join as player" case — plain watch-only status lives in the pill.
+  useSpectatorBadge(isViewer)
 
   // Feed the roster drawer that lives in the session/host shell. This alone
   // gives every game a plain roster; game views layer scores via useGameScores.
@@ -116,7 +122,7 @@ export function GameShell({
   return (
     <View style={styles.shell}>
       {showSubtitle ? <Text style={styles.shellSubtitle}>{subtitle}</Text> : null}
-      {showViewerBanner ? (
+      {isViewer ? (
         <ViewerModeBanner
           gameCode={code!}
           playerId={pid!}

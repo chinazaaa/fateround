@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
-import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
+import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import { TwoTruthsShareBlock } from '@/components/two-truths/TwoTruthsShareBlock'
 import { TwoTruthsSubmitterBadge } from '@/components/two-truths/TwoTruthsSubmitterBadge'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -67,6 +67,11 @@ export function TwoTruthsActiveRound({
     [guesses, currentRound, myPlayerId]
   )
   const leaderboard = useMemo(() => tallyTtlScores(guesses, players, rounds), [guesses, players, rounds])
+
+  // Live scores feed the shared roster drawer (opened from the header).
+  const rosterScores = useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard])
+  useGameScores(rosterScores, { suffix: ' pts' })
+
   const featuredName = playerDisplayName(currentRound?.submitter_player_id, players)
 
   // "Best guesser" achievement = whoever read the most lies correctly (not raw
@@ -221,16 +226,7 @@ export function TwoTruthsActiveRound({
   if (!metadata || !currentRound) return null
 
   return (
-    <LiveLeaderboardLayout
-      sidebar={
-        <PaginatedLeaderboard
-          title="Leaderboard"
-          rows={leaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
-          highlightId={myPlayerId}
-          scoreLabel={(score) => `${score} pts`}
-        />
-      }
-    >
+    <div className="mx-auto w-full max-w-2xl">
       <div className="glass-card p-5 text-center space-y-3">
         <p className="label-caps text-xs">
           Round {currentRound.round_number} of {game.rounds_count}
@@ -314,6 +310,6 @@ export function TwoTruthsActiveRound({
           Next round in {revealCountdownSeconds(currentRound.ended_at)}s…
         </p>
       )}
-    </LiveLeaderboardLayout>
+    </div>
   )
 }

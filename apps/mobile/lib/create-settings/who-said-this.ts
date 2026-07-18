@@ -1,4 +1,10 @@
-import { WST_DECK_MIN_ENTRIES, WST_PLATFORM_DECK, type WstDeckEntry } from '@/lib/who-said-this-deck'
+import type { Game } from '@fateround/shared'
+import {
+  WST_DECK_MIN_ENTRIES,
+  WST_PLATFORM_DECK,
+  parseStoredWstDeck,
+  type WstDeckEntry,
+} from '@/lib/who-said-this-deck'
 
 /**
  * Who Said This create-flow settings (mobile parallel of the web `create/page.tsx` WST block).
@@ -19,6 +25,33 @@ export type WstCreateState = {
 
 export function defaultWstCreateState(): WstCreateState {
   return { source: 'player', deck: [], libraryPackTitle: null }
+}
+
+/**
+ * Re-open state for the lobby source editor. A saved deck that exactly matches the built-in pack
+ * re-opens under "Platform" (so picking Platform doesn't reappear as a custom upload); any other
+ * deck opens under "Your own" with the stored deck loaded; player-submit opens on "Players submit".
+ */
+export function wstCreateStateFromGame(game: Game): WstCreateState {
+  const isDeck = (game.wst_quote_source ?? 'player') === 'deck'
+  if (!isDeck) return { source: 'player', deck: [], libraryPackTitle: null }
+  const deck = parseStoredWstDeck(game.custom_questions)
+  const isPlatform =
+    deck.length === WST_PLATFORM_DECK.length && JSON.stringify(deck) === JSON.stringify(WST_PLATFORM_DECK)
+  return { source: isPlatform ? 'platform' : 'custom', deck: isPlatform ? [] : deck, libraryPackTitle: null }
+}
+
+/**
+ * Lobby-pool payload for a source change (no participant_mode/rounds — the server auto-sizes rounds
+ * to the deck). Players-submit clears any deck; deck sources send the effective deck.
+ */
+export function wstLobbySourcePayload(wst: WstCreateState): {
+  wst_quote_source: 'player' | 'deck'
+  question_source?: string
+  custom_questions?: unknown[]
+} {
+  if (wst.source === 'player') return { wst_quote_source: 'player' }
+  return { wst_quote_source: 'deck', question_source: 'custom', custom_questions: wstEffectiveDeck(wst) }
 }
 
 /** The questions that will be sent for the selected source (Platform is the built-in pack). */
