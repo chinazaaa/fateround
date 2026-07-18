@@ -28,6 +28,11 @@ export type RosterRow = {
   eliminated?: boolean
   /** This row is the game's host — drives the "HOST" pill. */
   host?: boolean
+  /**
+   * 1-based finishing place layered on by the game view — 1 = winner, 2 =
+   * runner-up, … — drives the medal pill. Omit for players who haven't placed.
+   */
+  placement?: number
   /** Free-form badge, e.g. "Team Red". */
   status?: string
 }
@@ -36,6 +41,9 @@ type ScoreRegistration = {
   scores: Record<string, number | string> | null
   suffix?: string
 }
+
+/** Per-player 1-based finishing place (1 = winner) keyed by player id. */
+type PlacementRegistration = Record<string, number> | null
 
 type ManageConfig = {
   /** The host's own player id, so their row never shows a Remove button. */
@@ -52,6 +60,7 @@ type RosterDrawerValue = {
   manage: ManageConfig | null
   registerBase: (rows: RosterRow[] | null) => void
   registerScores: (reg: ScoreRegistration | null) => void
+  registerPlacements: (reg: PlacementRegistration) => void
   registerManage: (config: ManageConfig | null) => void
   registerOverride: (rows: RosterRow[] | null) => void
 }
@@ -86,6 +95,14 @@ export function deriveBaseRows(
 function sortRows(rows: RosterRow[]): RosterRow[] {
   const hasNumericScore = rows.some((r) => typeof r.score === 'number')
   return [...rows].sort((a, b) => {
+    // Placed players (winner, runner-up, …) always float to the top in finishing
+    // order — a Whot/Crazy8 winner is flagged "out" so the viewer rule below would
+    // otherwise sink them beneath still-playing losers.
+    if (a.placement != null || b.placement != null) {
+      if (a.placement == null) return 1
+      if (b.placement == null) return -1
+      if (a.placement !== b.placement) return a.placement - b.placement
+    }
     // Watchers (spectators) always sink below active players, so the drawer reads
     // as "who's playing, then who's watching" — the main value on board games
     // where player names are already on the board.
@@ -103,6 +120,7 @@ export function RosterDrawerProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false)
   const [base, setBase] = useState<RosterRow[] | null>(null)
   const [scoreReg, setScoreReg] = useState<ScoreRegistration | null>(null)
+  const [placementReg, setPlacementReg] = useState<PlacementRegistration>(null)
   const [manage, setManage] = useState<ManageConfig | null>(null)
   const [override, setOverride] = useState<RosterRow[] | null>(null)
 
@@ -113,11 +131,14 @@ export function RosterDrawerProvider({ children }: { children: ReactNode }) {
     const identity = base ?? []
     const scores = scoreReg?.scores
     const suffix = scoreReg?.suffix
-    const joined = scores
+    const scored = scores
       ? identity.map((r) => (r.id in scores ? { ...r, score: scores[r.id], scoreSuffix: suffix } : r))
       : identity
+    const joined = placementReg
+      ? scored.map((r) => (r.id in placementReg ? { ...r, placement: placementReg[r.id] } : r))
+      : scored
     return sortRows(joined)
-  }, [override, base, scoreReg])
+  }, [override, base, scoreReg, placementReg])
 
   const participantCount = useMemo(() => rows.filter((r) => !r.viewer).length, [rows])
 
@@ -136,6 +157,7 @@ export function RosterDrawerProvider({ children }: { children: ReactNode }) {
       manage,
       registerBase: setBase,
       registerScores: setScoreReg,
+      registerPlacements: setPlacementReg,
       registerManage: setManage,
       registerOverride: setOverride,
     }),
@@ -185,6 +207,21 @@ export function useGameScores(scores: Record<string, number | string> | null, op
     register({ scores, suffix })
     return () => register(null)
   }, [register, scores, suffix])
+}
+
+/**
+ * Layer per-player finishing places onto the roster drawer for as long as the
+ * caller is mounted — 1 = winner, 2 = runner-up, … — driving a medal pill. Pass
+ * `null` for games with no placement concept. Memoize the map at the call site.
+ */
+export function useGamePlacements(placements: Record<string, number> | null) {
+  const ctx = useContext(RosterDrawerContext)
+  const register = ctx?.registerPlacements
+  useEffect(() => {
+    if (!register) return
+    register(placements)
+    return () => register(null)
+  }, [register, placements])
 }
 
 /**

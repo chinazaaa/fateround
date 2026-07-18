@@ -26,7 +26,14 @@ export function WhotCardFace({
         { backgroundColor: isWhot ? '#581c87' : accent },
       ]}
     >
-      <Text style={[styles.number, big && styles.numberBig]}>{isWhot ? 'WHOT' : card.number}</Text>
+      <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.6}
+        style={[styles.number, big && styles.numberBig, isWhot && styles.numberWord]}
+      >
+        {isWhot ? 'WHOT' : card.number}
+      </Text>
       <WhotShapeIcon shape={card.shape} size={compact ? 18 : big ? 28 : 22} onCard />
     </View>
   )
@@ -52,4 +59,5 @@ const styles = StyleSheet.create({
   cardPlayable: { borderColor: '#fcd34d', borderWidth: 2 },
   number: { color: '#fff', fontSize: 15, fontWeight: '800' },
   numberBig: { fontSize: 20 },
+  numberWord: { fontSize: 11, letterSpacing: 0.5 },
 })
