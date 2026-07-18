@@ -3,6 +3,7 @@ import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native
 import type { GameType } from '@fateround/shared'
 import { EditNameInline } from '@/components/session/EditNameInline'
 import { LeaveGameButton } from '@/components/session/LeaveGameButton'
+import { RotatePlayerCodeRow } from '@/components/session/RotatePlayerCodeRow'
 import { PushMuteToggle } from '@/components/push/PushMuteToggle'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { gameLabel } from '@/lib/mobile-registry'
@@ -102,6 +103,8 @@ export function PlayerSessionMenu({ gameCode, gameType, playerId, playerName, on
                 ) : null}
 
                 <PushMuteToggle gameCode={gameCode} />
+
+                <RotatePlayerCodeRow gameCode={gameCode} style={styles.row} textStyle={styles.rowText} />
 
                 <View style={styles.leaveRow}>
                   <LeaveGameButton gameCode={gameCode} playerId={playerId} onLeft={requestLeave} quiet={false} />
