@@ -16,6 +16,7 @@ import {
   validateMultiSet,
   unoTeamIndex,
   unoTeammateId,
+  unoPlayerSharesWin,
 } from './uno'
 import type { UnoCard, UnoPlayerHand, UnoSession } from '@/types'
 
@@ -264,6 +265,20 @@ describe('Team-Up helpers', () => {
     expect(unoTeammateId(order, 'c')).toBe('a')
     expect(unoTeammateId(order, 'b')).toBe('d')
     expect(unoTeammateId(order, 'd')).toBe('b')
+  })
+
+  it('sharesWin: winner and (in team mode) their teammate both count; opponents never do', () => {
+    // 'a' emptied their hand; teammate is 'c'.
+    expect(unoPlayerSharesWin(order, 'a', 'a', true)).toBe(true) // winner
+    expect(unoPlayerSharesWin(order, 'a', 'c', true)).toBe(true) // winner's partner
+    expect(unoPlayerSharesWin(order, 'a', 'b', true)).toBe(false) // opponent
+    expect(unoPlayerSharesWin(order, 'a', 'd', true)).toBe(false) // opponent
+    // Outside team mode only the winner counts.
+    expect(unoPlayerSharesWin(order, 'a', 'c', false)).toBe(false)
+    expect(unoPlayerSharesWin(order, 'a', 'a', false)).toBe(true)
+    // Null-safe.
+    expect(unoPlayerSharesWin(order, null, 'a', true)).toBe(false)
+    expect(unoPlayerSharesWin(order, 'a', null, true)).toBe(false)
   })
 
   it('placement ranks the winning team first (both members), then the losers', () => {

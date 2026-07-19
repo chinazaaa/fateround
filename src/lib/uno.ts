@@ -73,6 +73,22 @@ export function unoTeammateId(turnOrder: string[], playerId: string): string | n
   return order.find((id, j) => j !== i && j % 2 === i % 2) ?? null
 }
 
+/**
+ * Did `playerId` win this round? True for the winner, and — in Team-Up — also for
+ * the winner's teammate (both partners share the win, so both belong on the
+ * community leaderboard).
+ */
+export function unoPlayerSharesWin(
+  turnOrder: string[],
+  winnerId: string | null | undefined,
+  playerId: string | null | undefined,
+  teamMode: boolean
+): boolean {
+  if (!winnerId || !playerId) return false
+  if (winnerId === playerId) return true
+  return teamMode && unoTeammateId(turnOrder ?? [], winnerId) === playerId
+}
+
 /** Multi-Play grouping rule. `off` = Classic (one card per turn). */
 export type UnoMultiPlayMode = 'off' | 'same_color' | 'same_number' | 'same_color_or_number'
 

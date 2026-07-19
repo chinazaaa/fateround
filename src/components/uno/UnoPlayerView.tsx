@@ -14,7 +14,9 @@ import {
   isDrawPileDepleted,
   parseMultiPlayMode,
   unoTeammateId,
+  unoPlayerSharesWin,
   UNO_MIN_PLAYERS,
+  UNO_TEAM_PLAYERS,
 } from '@/lib/uno'
 import { UNO_PLAYER_HANDS_SELECT, UNO_SESSION_SELECT } from '@/lib/supabase-selects'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
@@ -404,7 +406,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
             players={players}
             meId={myPlayerId}
             isHost={false}
-            minPlayers={UNO_MIN_PLAYERS}
+            minPlayers={game?.uno_team_mode ? UNO_TEAM_PLAYERS : UNO_MIN_PLAYERS}
             capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
@@ -461,14 +463,20 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
             {winner && <p className="text-2xl font-black text-[var(--marry)]">{winner.name}</p>}
           </UnoCard>
         )}
-        {myPlayerId && session?.winner_player_id === myPlayerId && (
-          <PostWinToCommunity
-            gameType="uno"
-            gameCode={gameCode}
-            winnerName={players.find((p) => p.id === myPlayerId)?.name ?? ''}
-            roundKey={session?.id}
-          />
-        )}
+        {myPlayerId &&
+          unoPlayerSharesWin(
+            session?.turn_order ?? [],
+            session?.winner_player_id,
+            myPlayerId,
+            game?.uno_team_mode === true
+          ) && (
+            <PostWinToCommunity
+              gameType="uno"
+              gameCode={gameCode}
+              winnerName={players.find((p) => p.id === myPlayerId)?.name ?? ''}
+              roundKey={session?.id}
+            />
+          )}
       </UnoShell>
     )
   }

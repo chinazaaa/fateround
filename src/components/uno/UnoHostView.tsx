@@ -18,6 +18,7 @@ import {
   isDrawPileDepleted,
   parseMultiPlayMode,
   unoTeammateId,
+  unoPlayerSharesWin,
   UNO_MIN_PLAYERS,
   UNO_TEAM_PLAYERS,
 } from '@/lib/uno'
@@ -515,7 +516,7 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
           isHost
           gameCode={gameCode}
           hostToken={hostToken}
-          minPlayers={UNO_MIN_PLAYERS}
+          minPlayers={game?.uno_team_mode ? UNO_TEAM_PLAYERS : UNO_MIN_PLAYERS}
           capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
@@ -637,9 +638,15 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             }
             lobbyNote="Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak settings first."
           />
-          {hostPlayerId && session?.winner_player_id === hostPlayerId && (
-            <PostWinToCommunity gameType="uno" gameCode={gameCode} winnerName={hostPlayerName} roundKey={session?.id} />
-          )}
+          {hostPlayerId &&
+            unoPlayerSharesWin(session?.turn_order ?? [], session?.winner_player_id, hostPlayerId, teamMode) && (
+              <PostWinToCommunity
+                gameType="uno"
+                gameCode={gameCode}
+                winnerName={hostPlayerName}
+                roundKey={session?.id}
+              />
+            )}
         </>
       }
     />
