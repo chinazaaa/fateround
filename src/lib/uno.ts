@@ -1228,7 +1228,9 @@ export async function processUnoDraw(
         current_turn_index: session.current_turn_index,
         uno_pending_player: null,
         uno_called: false,
-        status_message: `${playerName(playerNames, playerId)} drew ${cardLabel(drawnCard)} — play it or keep it${reshuffledNote}${missedNote}`,
+        // Never disclose the drawn card in the shared board status — only the drawer sees it
+        // (in their own hand + private "play it or keep it" hint).
+        status_message: `${playerName(playerNames, playerId)} drew a card${reshuffledNote}${missedNote}`,
       }
     } else {
       const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
@@ -1241,7 +1243,7 @@ export async function processUnoDraw(
         current_turn_index: nextIndex,
         uno_pending_player: null,
         uno_called: false,
-        status_message: `${playerName(playerNames, playerId)} drew a card (nothing to play) — ${playerName(playerNames, nextPlayerId)}'s turn${reshuffledNote}${missedNote}`,
+        status_message: `${playerName(playerNames, playerId)} drew a card — ${playerName(playerNames, nextPlayerId)}'s turn${reshuffledNote}${missedNote}`,
       }
     }
   }
