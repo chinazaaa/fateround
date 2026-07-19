@@ -309,10 +309,17 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
   // goes through the SAME destructive removal path a normal player leave uses (DELETE
   // /api/players → the game's removeXPlayer / reconcile helper splices turn_order, discards
   // the hand, reassigns the role, and — in a 2-player game — declares the other player the
-  // winner). The host keeps their host token, so they stay in charge and watch on; unlike
-  // the spectate path there's no row left, so re-taking the seat means a fresh join.
+  // winner). The host keeps their host token, so they stay in charge and watch on.
+  //
+  // Removal DELETES the row, which would drop the host out of the roster entirely — so if the
+  // game is still going, we immediately re-seat them as a fresh SPECTATOR row (joinAsViewer)
+  // so everyone still sees them in the drawer as the watching host (mirrors how the spectate
+  // path keeps a visible "Host · Watching" row). Best-effort: if the game just ended (e.g. a
+  // 2-player game the opponent won) or viewers aren't allowed, the viewer join no-ops and the
+  // host simply stays removed.
   const leaveGameRemovePlayer = useCallback(async () => {
     if (!hostPlayerId || !hostResumeToken) return
+    const watchName = hostPlayerName.trim() || 'Host'
     try {
       const res = await fetch('/api/players', {
         method: 'DELETE',
@@ -327,12 +334,36 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
       setHostResumeToken(null)
       setHostPlayerName('')
       applyMode('spectator')
+
+      // Re-seat as a visible spectator so the host still shows in the roster as watching.
+      try {
+        const vres = await fetch('/api/players', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gameCode,
+            playerName: watchName,
+            joinAsViewer: true,
+            ...(buildJoinBodyRef.current?.(watchName) ?? {}),
+          }),
+        })
+        const vdata = await vres.json().catch(() => ({}))
+        if (vres.ok && vdata.playerId) {
+          setPlayerSession(gameCode, vdata.playerId, vdata.playerName, vdata.playerGender ?? 'both', vdata.resumeToken)
+          setHostPlayerId(vdata.playerId)
+          setHostResumeToken(vdata.resumeToken ?? null)
+          setHostPlayerName(vdata.playerName)
+        }
+      } catch {
+        // Best-effort — the host stays removed (no roster row) if the re-seat can't happen.
+      }
+
       await onReloadRef.current()
       toastRef.current.success("You've left the game — you're still hosting")
     } catch (err) {
       toastRef.current.error(err instanceof Error ? err.message : 'Failed to leave game')
     }
-  }, [gameCode, hostPlayerId, hostResumeToken, applyMode])
+  }, [gameCode, hostPlayerId, hostResumeToken, hostPlayerName, applyMode])
 
   const renameHost = useCallback(
     async (name: string) => {

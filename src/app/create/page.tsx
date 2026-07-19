@@ -725,7 +725,7 @@ function CreateGameInner() {
               participant_mode: 'joiners' as const,
               anonymous: true,
               rounds_count: 1,
-              timer_seconds: 0,
+              timer_seconds: 300, // 5 min per-player time bank
             }
           : {}),
         ...(isScrabbleGame(type)
@@ -733,8 +733,7 @@ function CreateGameInner() {
               participant_mode: 'joiners' as const,
               anonymous: true,
               rounds_count: 1,
-              // Optional per-turn timer; default off.
-              timer_seconds: 0,
+              timer_seconds: 120, // 2 min per turn
             }
           : {}),
         ...(isDescribeItGame(type)
@@ -783,6 +782,7 @@ function CreateGameInner() {
               participant_mode: 'joiners' as const,
               anonymous: true,
               rounds_count: 1,
+              timer_seconds: 30,
             }
           : {}),
         ...(isWhoSaidThis(type)
@@ -1188,7 +1188,7 @@ function CreateGameInner() {
             participant_mode: 'joiners' as const,
             anonymous: true,
             rounds_count: 1,
-            timer_seconds: 0,
+            timer_seconds: 30,
           }
         : {}),
       ...(isWhotGame(type)
@@ -1196,7 +1196,7 @@ function CreateGameInner() {
             participant_mode: 'joiners' as const,
             anonymous: true,
             rounds_count: 1,
-            timer_seconds: 0,
+            timer_seconds: 30,
           }
         : {}),
       ...(isCrazyEightsGame(type)
@@ -1204,7 +1204,7 @@ function CreateGameInner() {
             participant_mode: 'joiners' as const,
             anonymous: true,
             rounds_count: 1,
-            timer_seconds: 0,
+            timer_seconds: 30,
           }
         : {}),
       ...(isLudoGame(type)
@@ -1212,7 +1212,7 @@ function CreateGameInner() {
             participant_mode: 'joiners' as const,
             anonymous: true,
             rounds_count: 1,
-            timer_seconds: 60,
+            timer_seconds: 30,
           }
         : {}),
       ...(isSnakeAndLadderGame(type)
@@ -1246,7 +1246,7 @@ function CreateGameInner() {
             participant_mode: 'joiners' as const,
             anonymous: true,
             rounds_count: 1,
-            timer_seconds: 0,
+            timer_seconds: 300, // 5 min per-player time bank
           }
         : {}),
       ...(isICallOnGame(type)
@@ -1298,6 +1298,23 @@ function CreateGameInner() {
             participant_mode: 'joiners' as const,
             anonymous: true,
             rounds_count: 1,
+            timer_seconds: 30,
+          }
+        : {}),
+      ...(isScrabbleGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: 120, // 2 min per turn
+          }
+        : {}),
+      ...(isTicTacToeGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: 30,
           }
         : {}),
       ...(isWhoSaidThis(type)
@@ -3102,6 +3119,19 @@ function CreateGameInner() {
             ) : isMahjong ? (
               <SettingsGroup title="Mahjong room">
                 <p className="text-faint text-sm">Exactly 4 players — the host can join as one of them.</p>
+                <Field label="Turn timer">
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    <option value={0}>No timer</option>
+                    <option value={30}>30 seconds</option>
+                    <option value={60}>60 seconds</option>
+                    <option value={90}>90 seconds</option>
+                    <option value={120}>2 minutes</option>
+                  </select>
+                </Field>
                 <Field label="Ruleset">
                   <select
                     value={mahjongRuleset}

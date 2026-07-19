@@ -5,18 +5,15 @@ import {
   AYO_VARIANT_OPTIONS,
   CHESS_DEFAULT_BOARD_THEME,
   CHESS_DEFAULT_PIECE_SET,
+  defaultBoardGameTurnTimer,
   parseAyoVariant,
   parseScrabbleClockMode,
-  turnTimerOptionsFor,
   type ScrabbleClockMode,
 } from '@fateround/shared/create-board-games'
 import { parseLudoVariant } from '@fateround/shared/ludo'
 import { DEFAULT_MAHJONG_RULESET, DEFAULT_MAHJONG_RULE_OPTIONS } from '@fateround/shared/mahjong-rulesets'
 import type { ScrabbleDictionaryId } from '@fateround/shared/scrabble-dictionary-meta'
-import {
-  SCRABBLE_DEFAULT_DICTIONARY,
-  parseScrabbleDictionaryId,
-} from '@fateround/shared/scrabble-dictionary-meta'
+import { SCRABBLE_DEFAULT_DICTIONARY, parseScrabbleDictionaryId } from '@fateround/shared/scrabble-dictionary-meta'
 
 export const BATCH_19_BOARD_GAMES: GameType[] = [
   'ludo',
@@ -55,8 +52,9 @@ export type GameRoomSettings = {
 
 export function defaultGameRoomSettings(gameType: GameType): GameRoomSettings {
   const timerKey = boardGameTimerKey(gameType)
-  const timerOptions = timerKey ? turnTimerOptionsFor(timerKey) : [0]
-  const defaultTimer = timerOptions.includes(0) ? 0 : (timerOptions[0] ?? 0)
+  // Never default a turn timer to 0 — a game with no turn timer can stall on an
+  // AFK player. Use the shared per-game default (parity with web create).
+  const defaultTimer = timerKey ? defaultBoardGameTurnTimer(timerKey) : 0
 
   return {
     timerSeconds: defaultTimer,
@@ -187,11 +185,7 @@ export function gameRoomSettingsPayload(gameType: GameType, room: GameRoomSettin
     return payload
   }
 
-  if (
-    gameType === 'snake_and_ladder' ||
-    gameType === 'yahtzee' ||
-    gameType === 'tic_tac_toe'
-  ) {
+  if (gameType === 'snake_and_ladder' || gameType === 'yahtzee' || gameType === 'tic_tac_toe') {
     payload.timer_seconds = room.timerSeconds
     return payload
   }
