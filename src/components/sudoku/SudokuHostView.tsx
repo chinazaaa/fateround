@@ -343,7 +343,11 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
         >
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
           {hostMode === 'player' && !!hostPlayerId && (
-            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+            <HostLeaveSeatButton
+              onLeave={leaveSeatKeepHosting}
+              canRejoin={false}
+              className="btn-secondary w-full py-3 text-base"
+            />
           )}
         </HostActiveSettings>
       ) : null,

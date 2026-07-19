@@ -26,11 +26,19 @@ export function HostLeaveSeatButton({
   className,
   label = 'Leave game (keep hosting)',
   variant = 'spectate',
+  canRejoin = true,
 }: {
   onLeave: () => Promise<void>
   className: string
   label?: string
   variant?: 'spectate' | 'remove'
+  /**
+   * Whether the game lets a spectator switch back to playing mid-game (`gameAllowsLatePlayerJoin`).
+   * Only meaningful for `variant="spectate"`: when false (e.g. sudoku / crossword / word-search),
+   * the copy promises "play again once this game finishes" instead of "rejoin any time", since
+   * there's no mid-game rejoin. Defaults to true (most spectate-path games allow it).
+   */
+  canRejoin?: boolean
 }) {
   const { confirm } = useConfirm()
   const close = useCloseGameSettings()
@@ -38,12 +46,15 @@ export function HostLeaveSeatButton({
 
   const handleLeave = async () => {
     if (leaving) return
+    const spectateMessage = canRejoin
+      ? "You'll stop playing and watch instead — the game keeps going and you stay the host. You can rejoin as a player any time."
+      : "You'll stop playing and watch instead — the game keeps going and you stay the host. You can play again once this game finishes."
     const ok = await confirm({
       title: 'Leave the game?',
       message:
         variant === 'remove'
           ? "You'll stop playing and watch as the host — the game keeps going for everyone else. If too few players are left it ends (in a 2-player game the other player wins). You can't take your seat back in this game."
-          : "You'll stop playing and watch instead — the game keeps going and you stay the host. You can rejoin as a player at any time.",
+          : spectateMessage,
       confirmLabel: 'Leave game',
       destructive: true,
     })

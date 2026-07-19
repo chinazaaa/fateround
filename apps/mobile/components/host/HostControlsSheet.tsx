@@ -170,16 +170,16 @@ export function HostControlsSheet({
 
   const confirmLeaveGame = () => {
     const inPlace = gameSupportsInPlaceSpectate(game.game_type)
-    Alert.alert(
-      'Leave the game?',
-      inPlace
+    const canRejoin = gameAllowsLatePlayerJoin(game.game_type)
+    const message = !inPlace
+      ? "You'll stop playing and watch as the host — the game keeps going for everyone else. If too few players are left it ends (in a 2-player game the other player wins). You can't take your seat back in this game."
+      : canRejoin
         ? "You'll stop playing and watch instead — the game keeps going and you stay the host. You can rejoin as a player at any time."
-        : "You'll stop playing and watch as the host — the game keeps going for everyone else. If too few players are left it ends (in a 2-player game the other player wins). You can't take your seat back in this game.",
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Leave game', style: 'destructive', onPress: () => void doLeaveGame(inPlace) },
-      ]
-    )
+        : "You'll stop playing and watch instead — the game keeps going and you stay the host. You can play again once this game finishes."
+    Alert.alert('Leave the game?', message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Leave game', style: 'destructive', onPress: () => void doLeaveGame(inPlace) },
+    ])
   }
 
   const confirmEndGame = () => {
