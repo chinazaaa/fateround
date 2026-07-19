@@ -68,7 +68,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={api}>
       {children}
       <div
-        className="fixed bottom-5 left-1/2 z-[200] flex w-full max-w-sm -translate-x-1/2 flex-col gap-2 px-4 pointer-events-none"
+        className="fixed top-[4.5rem] left-1/2 z-[200] flex w-full max-w-sm -translate-x-1/2 flex-col gap-2 px-4 pointer-events-none"
         aria-live="polite"
         aria-relevant="additions"
       >
@@ -76,7 +76,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           <div
             key={item.id}
             role="status"
-            className={`pointer-events-auto flex items-start gap-3 rounded-2xl border px-4 py-3 shadow-lg backdrop-blur-md animate-[slide-up_0.25s_cubic-bezier(0.16,1,0.3,1)] ${kindStyles[item.kind]}`}
+            className={`pointer-events-auto flex items-start gap-3 rounded-2xl border px-4 py-3 shadow-lg backdrop-blur-md animate-slide-down ${kindStyles[item.kind]}`}
           >
             <span className={`text-sm font-bold mt-0.5 shrink-0 ${kindIconColors[item.kind]}`}>
               {kindIcons[item.kind]}

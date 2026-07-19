@@ -941,7 +941,7 @@ export async function processUnoPlay(
         // hands are the source), then clear the UNO-call obligation since sizes just changed.
         const handMap = handMapAfter(hands, playerId, newHand, missed)
         rotatedWrites = rotateActiveHands(session, handMap, advance.direction)
-        status = `${playerName(playerNames, nextPlayerId)}'s turn — everyone passed their hand (0)`
+        status = `${name} played a 0 — everyone passed their hand · ${playerName(playerNames, nextPlayerId)}'s turn`
       }
       patch = {
         ...board,
