@@ -18,6 +18,7 @@ import {
   isDrawPileDepleted,
   parseMultiPlayMode,
   unoTeammateId,
+  unoPlayerSharesWin,
   UNO_MIN_PLAYERS,
   UNO_TEAM_PLAYERS,
 } from '@/lib/uno'
@@ -53,6 +54,7 @@ import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { playerIsViewer } from '@/lib/viewers'
 import { UnoFinalResultsShareBlock } from '@/components/uno/UnoFinalResultsShareBlock'
+import { UnoRulePills } from '@/components/uno/UnoRulePills'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -279,6 +281,8 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
     if (game?.uno_team_mode !== true || !session || !hostPlayerId || !hostPlays) return null
     const mateId = unoTeammateId(session.turn_order ?? [], hostPlayerId)
     if (!mateId) return null
+    // A teammate who left mid-round is no longer a partner (their seat stays for parity).
+    if ((session.left_player_ids ?? []).includes(mateId)) return null
     const mateCards = hands.find((h) => h.player_id === mateId)?.cards ?? []
     const mateName = players.find((p) => p.id === mateId)?.name ?? 'Partner'
     return { id: mateId, name: mateName, cards: mateCards }
@@ -496,6 +500,8 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             onPlayMulti={(cardIds) => void postHostAction('/api/uno/play-multi', { cardIds })}
             partner={partner}
             quickChat={quickChat}
+            onTeamLeaveDecision={(decision) => void postHostAction('/api/uno/team-leave', { decision })}
+            rulePills={game ? <UnoRulePills game={game} /> : null}
           />
         ) : (
           <p className="turn-status g" style={{ textAlign: 'center', padding: 24 }}>
@@ -515,7 +521,7 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
           isHost
           gameCode={gameCode}
           hostToken={hostToken}
-          minPlayers={UNO_MIN_PLAYERS}
+          minPlayers={game?.uno_team_mode ? UNO_TEAM_PLAYERS : UNO_MIN_PLAYERS}
           capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
@@ -539,8 +545,10 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
       <HostLobby
         gameCode={gameCode}
         hostToken={hostToken}
+        resumeToken={hostResumeToken}
         game={game}
         gameTypeLabel={cfg.label}
+        titleMeta={<UnoRulePills game={game} className="mt-2" />}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('uno', game) ?? game.max_players}
         playCard={
@@ -637,9 +645,15 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             }
             lobbyNote="Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak settings first."
           />
-          {hostPlayerId && session?.winner_player_id === hostPlayerId && (
-            <PostWinToCommunity gameType="uno" gameCode={gameCode} winnerName={hostPlayerName} roundKey={session?.id} />
-          )}
+          {hostPlayerId &&
+            unoPlayerSharesWin(session?.turn_order ?? [], session?.winner_player_id, hostPlayerId, teamMode) && (
+              <PostWinToCommunity
+                gameType="uno"
+                gameCode={gameCode}
+                winnerName={hostPlayerName}
+                roundKey={session?.id}
+              />
+            )}
         </>
       }
     />

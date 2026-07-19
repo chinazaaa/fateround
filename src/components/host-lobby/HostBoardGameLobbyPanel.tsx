@@ -77,6 +77,7 @@ export function HostBoardGameLobbyPanel({
   const [unoZeroSeven, setUnoZeroSeven] = useState(false)
   const [unoStacking, setUnoStacking] = useState(false)
   const [unoMultiPlayMode, setUnoMultiPlayMode] = useState('off')
+  const [unoTeamMode, setUnoTeamMode] = useState(false)
   const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -124,6 +125,7 @@ export function HostBoardGameLobbyPanel({
       setUnoZeroSeven(game.uno_zero_seven === true)
       setUnoStacking(game.uno_stacking === true)
       setUnoMultiPlayMode(game.uno_multi_play_mode ?? 'off')
+      setUnoTeamMode(game.uno_team_mode === true)
     }
     if (boardGameType === 'ludo') {
       setLudoVariant(game.ludo_variant === 'traditional' ? 'traditional' : 'modern')
@@ -207,6 +209,7 @@ export function HostBoardGameLobbyPanel({
     if (patch.uno_zero_seven !== undefined) setUnoZeroSeven(patch.uno_zero_seven as boolean)
     if (patch.uno_stacking !== undefined) setUnoStacking(patch.uno_stacking as boolean)
     if (patch.uno_multi_play_mode !== undefined) setUnoMultiPlayMode(patch.uno_multi_play_mode as string)
+    if (patch.uno_team_mode !== undefined) setUnoTeamMode(patch.uno_team_mode as boolean)
     void patchSettings(patch)
   }
 
@@ -423,6 +426,14 @@ export function HostBoardGameLobbyPanel({
         {boardGameType === 'uno' && (
           <HostLobbySettingBlock title="House rules" className="sm:col-span-2">
             <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Toggle
+                  label="Team-Up (2v2)"
+                  description="Play as 2 teams of 2 — partners see each other's hands and share the win. Needs exactly 4 players; caps the room at 4."
+                  value={unoTeamMode}
+                  onChange={(v) => onUnoRuleChange({ uno_team_mode: v })}
+                />
+              </div>
               <div>
                 <p className="label-caps text-[10px] mb-1.5">Missed “UNO” penalty</p>
                 <HostLobbyOptionChips

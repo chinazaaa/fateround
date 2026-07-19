@@ -28,7 +28,7 @@ import {
   UnoCardFace,
   type TurnSeat,
 } from '@/components/rooms/card-table/primitives'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   canPlayCard,
   cardShortLabel,
@@ -41,6 +41,7 @@ import {
 } from '@/lib/uno'
 import { formatCountdown } from '@/lib/timer-format'
 import { UNO_QUICK_MESSAGES, unoQuickMessage, type UnoQuickMessage } from '@/lib/uno-quick-messages'
+import type { ReactNode } from 'react'
 import type { UnoColor, UnoCard, UnoSession } from '@/types'
 
 /** Deck accent for the UNO card backs (classic UNO red). */
@@ -111,6 +112,10 @@ export type UnoPlaySurfaceProps = {
     onSend: (messageId: string) => void
     onDismiss: () => void
   } | null
+  /** Team-Up: after a teammate leaves, the remaining partner continues solo or forfeits. */
+  onTeamLeaveDecision?: (decision: 'continue' | 'forfeit') => void
+  /** Active house-rule pills (Stacking, 0-7, WD4 challenge, Multi-Play, Team-Up). */
+  rulePills?: ReactNode
 }
 
 /** The swatch (colour) or glyph tile that fronts a quick message in both the picker and the bubble. */
@@ -152,8 +157,31 @@ export function UnoPlaySurface({
   onPlayMulti,
   partner,
   quickChat,
+  onTeamLeaveDecision,
+  rulePills,
 }: UnoPlaySurfaceProps) {
   const [quickPickerOpen, setQuickPickerOpen] = useState(false)
+  // Close the quick-message picker on a click/tap anywhere outside it (or Escape) —
+  // so you can dismiss it without sending a hint.
+  const quickTriggerRef = useRef<HTMLButtonElement>(null)
+  const quickPickerRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!quickPickerOpen) return
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target as Node
+      if (quickTriggerRef.current?.contains(t) || quickPickerRef.current?.contains(t)) return
+      setQuickPickerOpen(false)
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setQuickPickerOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [quickPickerOpen])
   const turnTimeLabel =
     turnTimer?.hasTimer && turnTimer.secondsLeft > 0 ? formatCountdown(turnTimer.secondsLeft) : undefined
 
@@ -254,6 +282,7 @@ export function UnoPlaySurface({
     <CardTableSurface variant="uno">
       {gameTimer?.active && <GameTimerBar label={gameTimer.label} pct={gamePct} low={gameTimer.secondsLeft <= 60} />}
       <TurnRail seats={seats} />
+      {rulePills}
 
       <Table>
         <Piles
@@ -328,6 +357,25 @@ export function UnoPlaySurface({
             </button>
           </div>
         )}
+
+        {/* Team-Up: a teammate left — the remaining partner plays on solo or forfeits. */}
+        {session.phase === 'team_leave_decision' &&
+          !watching &&
+          myPlayerId === session.team_decider_id &&
+          onTeamLeaveDecision && (
+            <div className="uno-team-leave">
+              <p className="uno-team-leave-title">🤝 Your teammate left</p>
+              <p className="uno-team-leave-desc">Play on alone against both opponents, or forfeit the round?</p>
+              <div className="uno-challenge">
+                <button type="button" disabled={acting} onClick={() => onTeamLeaveDecision('continue')}>
+                  🙋 Continue solo · 1 v 2
+                </button>
+                <button type="button" className="hot" disabled={acting} onClick={() => onTeamLeaveDecision('forfeit')}>
+                  🏳️ Forfeit
+                </button>
+              </div>
+            </div>
+          )}
       </Table>
 
       {/* Team-Up: your teammate's hand, read-only. A digital-only advantage — you can see it,
@@ -340,6 +388,7 @@ export function UnoPlaySurface({
               {quickChat && !watching && (
                 <button
                   type="button"
+                  ref={quickTriggerRef}
                   className={`uno-qm-trigger${quickPickerOpen ? ' open' : ''}`}
                   aria-expanded={quickPickerOpen}
                   aria-label="Send a quick message to your partner"
@@ -355,7 +404,7 @@ export function UnoPlaySurface({
           </div>
 
           {quickChat && quickPickerOpen && !watching && (
-            <div className="uno-qm-picker" role="menu" aria-label="Quick messages">
+            <div className="uno-qm-picker" role="menu" aria-label="Quick messages" ref={quickPickerRef}>
               {UNO_QUICK_MESSAGES.map((msg) => (
                 <button
                   key={msg.id}

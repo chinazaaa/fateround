@@ -85,7 +85,7 @@ export function EditNameInline({
           if (e.key === 'Escape') setEditing(false)
         }}
         className="input-field flex-1 py-1 text-sm"
-        maxLength={40}
+        maxLength={10}
         autoFocus
       />
       <button
