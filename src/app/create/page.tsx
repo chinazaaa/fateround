@@ -439,6 +439,9 @@ function CreateGameInner() {
   const [unoUnoPenalty, setUnoUnoPenalty] = useState(2)
   const [unoZeroSeven, setUnoZeroSeven] = useState(false)
   const [unoStacking, setUnoStacking] = useState(false)
+  const [unoMultiPlayMode, setUnoMultiPlayMode] = useState<
+    'off' | 'same_color' | 'same_number' | 'same_color_or_number'
+  >('off')
   const [ludoMaxPlayers, setLudoMaxPlayers] = useState(LUDO_DEFAULT_MAX_PLAYERS)
   const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
   const [ayoVariant, setAyoVariant] = useState<AyoVariant>('traditional')
@@ -1920,6 +1923,7 @@ function CreateGameInner() {
           uno_uno_penalty: isUno ? unoUnoPenalty : undefined,
           uno_zero_seven: isUno ? unoZeroSeven : undefined,
           uno_stacking: isUno ? unoStacking : undefined,
+          uno_multi_play_mode: isUno ? unoMultiPlayMode : undefined,
           ludo_variant: isLudo ? ludoVariant : undefined,
           ayo_variant: isAyo ? ayoVariant : undefined,
           mahjong_ruleset: isMahjong ? mahjongRuleset : undefined,
@@ -2978,6 +2982,21 @@ function CreateGameInner() {
                       onChange={setUnoStacking}
                     />
                   </div>
+                </Field>
+                <Field label="Multi-Play">
+                  <select
+                    value={unoMultiPlayMode}
+                    onChange={(e) => setUnoMultiPlayMode(e.target.value as typeof unoMultiPlayMode)}
+                    className="input-field w-full"
+                  >
+                    <option value="off">Off — one card per turn</option>
+                    <option value="same_color_or_number">Same colour or number</option>
+                    <option value="same_color">Same colour only</option>
+                    <option value="same_number">Same number only</option>
+                  </select>
+                  <p className="mt-1 text-xs text-faint">
+                    Lay several matching cards in a single turn — the last one played sets the next colour.
+                  </p>
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
                   The party card classic — match the top card by colour, number, or symbol. Skip, Reverse, Draw Two, and

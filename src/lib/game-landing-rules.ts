@@ -782,6 +782,15 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
     {
+      title: 'Multi-Play (optional)',
+      points: [
+        'A host setting — Off, Same colour, Same number, or Same colour or number (off by default).',
+        'On your turn, tap “Play multiple”, then tap the cards you want to lay down together and confirm — so you can dump all your reds, or all your 6s, in one turn.',
+        'The first card must legally match the top of the discard pile, and every card in the set must fit the chosen grouping rule.',
+        'Action cards can be included; their effects apply and the last card you place decides what the next player must match.',
+      ],
+    },
+    {
       title: 'Wild Draw Four challenge',
       points: [
         'A Wild Draw Four is only meant to be played when you have no card of the current colour.',
