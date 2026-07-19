@@ -938,18 +938,22 @@ export async function processUnoPlay(
       }
       if (isZero) {
         // Rotate every active hand one seat in the direction of play (this play's post-settle
-        // hands are the source), then clear the UNO-call obligation since sizes just changed.
+        // hands are the source). The UNO-call obligation is recomputed from the new sizes below.
         const handMap = handMapAfter(hands, playerId, newHand, missed)
         rotatedWrites = rotateActiveHands(session, handMap, advance.direction)
-        status = `${playerName(playerNames, nextPlayerId)}'s turn — everyone passed their hand (0)`
+        status = `${name} played a 0 — everyone passed their hand · ${playerName(playerNames, nextPlayerId)}'s turn`
       }
+      // A 0 can leave a player on exactly one card — flag the first such seat (turn order) to
+      // owe an "UNO" call. (Single field, so if the pass leaves several on one card only the
+      // first is tracked.)
+      const zeroPending = isZero ? (rotatedWrites?.find((w) => w.cards.length === 1)?.playerId ?? null) : null
       patch = {
         ...board,
         current_turn_index: advance.nextIndex,
         direction: advance.direction,
         phase: 'playing',
         status_message: status,
-        ...(isZero ? { uno_pending_player: null, uno_called: false } : unoPatch),
+        ...(isZero ? { uno_pending_player: zeroPending, uno_called: false } : unoPatch),
       }
     }
   }
@@ -1570,12 +1574,17 @@ export async function processUnoSwap(
   const nextIndex = unoNextTurnIndex(session, handsAfter, session.current_turn_index, 1, direction)
   const nextPlayerId = session.turn_order[nextIndex]
 
+  // A swap can leave a player on exactly one card — they now owe an "UNO" call.
+  const swapPending = theirCards.length === 1 ? playerId : myCards.length === 1 ? targetId : null
+
   const won = await persistSession(
     supabase,
     gameId,
     {
       phase: 'playing',
       current_turn_index: nextIndex,
+      uno_pending_player: swapPending,
+      uno_called: false,
       status_message: `${playerName(playerNames, playerId)} swapped hands with ${playerName(playerNames, targetId)} — ${playerName(playerNames, nextPlayerId)}'s turn`,
     },
     timerSeconds,
