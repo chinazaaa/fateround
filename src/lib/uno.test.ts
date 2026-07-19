@@ -32,6 +32,7 @@ function session(partial: Partial<UnoSession>): UnoSession {
     top_card: null,
     required_color: null,
     draw_penalty: 0,
+    drawn_card_id: null,
     pending_wild: null,
     challenge_prev_color: null,
     wd4_player_id: null,
@@ -224,9 +225,9 @@ describe('unoPlacementOrder / buildUnoStandings', () => {
 })
 
 describe('parseUnoRules', () => {
-  it('defaults: challenge on, penalty 2, wd4 penalty 4, 0-7 off', () => {
+  it('defaults: challenge on, penalty 2, wd4 penalty 6, 0-7 off', () => {
     const r = parseUnoRules(null)
-    expect(r).toEqual({ wd4Challenge: true, unoPenalty: 2, wd4ChallengePenalty: 4, zeroSeven: false })
+    expect(r).toEqual({ wd4Challenge: true, unoPenalty: 2, wd4ChallengePenalty: 6, zeroSeven: false })
   })
   it('reads host overrides', () => {
     const r = parseUnoRules({
@@ -237,10 +238,10 @@ describe('parseUnoRules', () => {
     })
     expect(r).toEqual({ wd4Challenge: false, unoPenalty: 4, wd4ChallengePenalty: 6, zeroSeven: true })
   })
-  it('clamps invalid penalties to the nearest legal value', () => {
-    const r = parseUnoRules({ uno_uno_penalty: 3, uno_wd4_challenge_penalty: 5 })
-    expect(r.unoPenalty).toBe(2)
-    expect(r.wd4ChallengePenalty).toBe(4)
+  it('reads the milder wd4 penalty variant (4) and clamps junk to 6', () => {
+    expect(parseUnoRules({ uno_wd4_challenge_penalty: 4 }).wd4ChallengePenalty).toBe(4)
+    expect(parseUnoRules({ uno_uno_penalty: 3, uno_wd4_challenge_penalty: 5 }).wd4ChallengePenalty).toBe(6)
+    expect(parseUnoRules({ uno_uno_penalty: 3 }).unoPenalty).toBe(2)
   })
 })
 

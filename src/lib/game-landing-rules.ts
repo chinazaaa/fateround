@@ -741,7 +741,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'How to play',
       points: [
         "On your turn, play a card matching the top card's colour, number, or symbol.",
-        'If you cannot (or choose not to) play, draw a card — you may play it immediately or pass.',
+        'If you cannot (or choose not to) play, draw a card — if it can be played you may play it or keep it; otherwise your turn ends.',
         'When the draw pile runs out, played cards (except the current top card) are shuffled back in as a new draw pile.',
         'If nobody can play and no cards can be drawn, the game ends — lowest hand total wins.',
       ],
@@ -777,7 +777,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'A Wild Draw Four is only meant to be played when you have no card of the current colour.',
         'The next player can accept the draw, or challenge: the system reveals the hand.',
         'If the player was bluffing (held the colour), they draw 4 instead — the challenger is safe.',
-        'If the challenge is wrong, the challenger draws 4 (or 6) as a penalty and is skipped.',
+        'If the challenge is wrong, the challenger draws 6 (the 4 they refused plus a 2 penalty) and is skipped.',
         'Hosts can turn the challenge off, in which case a Wild Draw Four always makes the next player draw 4.',
       ],
     },

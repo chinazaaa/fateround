@@ -461,6 +461,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
       onChallenge={(challenge) => void postAction('/api/uno/challenge', { challenge })}
       onCallUno={() => void postAction('/api/uno/call-uno', {})}
       onSwap={(targetId) => void postAction('/api/uno/swap', { targetId })}
+      onPass={() => void postAction('/api/uno/pass', {})}
     />
   )
 

@@ -66,6 +66,8 @@ export type UnoPlaySurfaceProps = {
   onCallUno: () => void
   /** 0-7 rule: pick whose hand to swap with after playing a 7. */
   onSwap: (targetId: string) => void
+  /** Keep the card you just drew instead of playing it (ends your turn). */
+  onPass: () => void
 }
 
 export function UnoPlaySurface({
@@ -90,6 +92,7 @@ export function UnoPlaySurface({
   onChallenge,
   onCallUno,
   onSwap,
+  onPass,
 }: UnoPlaySurfaceProps) {
   const turnTimeLabel =
     turnTimer?.hasTimer && turnTimer.secondsLeft > 0 ? formatCountdown(turnTimer.secondsLeft) : undefined
@@ -130,6 +133,9 @@ export function UnoPlaySurface({
 
   // "Call UNO!" is owed when I dropped to one card and haven't called yet.
   const owesUnoCall = !watching && session.uno_pending_player === myPlayerId && !session.uno_called
+
+  // After a voluntary draw, the drawn (playable) card can be played or kept — show "Keep it".
+  const hasDrawn = canAct && session.drawn_card_id != null
 
   const many = myHand.length > 8
 
@@ -215,7 +221,13 @@ export function UnoPlaySurface({
         <Hand
           count={myHand.length}
           many={many}
-          hint={canAct ? `Tap a highlighted card to play it${many ? ' · swipe to see more' : ''}` : undefined}
+          hint={
+            hasDrawn
+              ? 'You drew a card — play it or keep it'
+              : canAct
+                ? `Tap a highlighted card to play it${many ? ' · swipe to see more' : ''}`
+                : undefined
+          }
           actions={
             <>
               {owesUnoCall && (
@@ -223,7 +235,16 @@ export function UnoPlaySurface({
                   Call UNO!
                 </button>
               )}
-              {canAct && !(drawDepleted && myCanPlay) ? (
+              {hasDrawn ? (
+                <button
+                  type="button"
+                  className="fr-btn fr-btn--secondary fr-btn--block"
+                  disabled={acting}
+                  onClick={onPass}
+                >
+                  Keep it
+                </button>
+              ) : canAct && !(drawDepleted && myCanPlay) ? (
                 <button
                   type="button"
                   className="fr-btn fr-btn--secondary fr-btn--block"
@@ -243,6 +264,7 @@ export function UnoPlaySurface({
                 key={card.id}
                 card={card}
                 playable={playable}
+                sel={card.id === session.drawn_card_id}
                 dim={canAct && !playable}
                 onClick={playable && !acting ? () => onPlay(card.id) : undefined}
               />

@@ -52,11 +52,12 @@ export function parseUnoRules(
     | undefined
 ): UnoRules {
   const penalty = Number(game?.uno_uno_penalty ?? 2)
-  const wd4Penalty = Number(game?.uno_wd4_challenge_penalty ?? 4)
+  const wd4Penalty = Number(game?.uno_wd4_challenge_penalty ?? 6)
   return {
     wd4Challenge: game?.uno_wd4_challenge !== false,
     unoPenalty: penalty === 4 ? 4 : 2,
-    wd4ChallengePenalty: wd4Penalty === 6 ? 6 : 4,
+    // Standard UNO: a failed challenger draws 6 (the 4 they refused + a 2 penalty). 4 is a milder variant.
+    wd4ChallengePenalty: wd4Penalty === 4 ? 4 : 6,
     zeroSeven: game?.uno_zero_seven === true,
   }
 }
@@ -813,6 +814,7 @@ export async function processUnoPlay(
       challenge_prev_color: card.kind === 'wild_draw4' ? activeColor(session) : null,
       wd4_player_id: card.kind === 'wild_draw4' ? playerId : null,
       draw_penalty: 0,
+      drawn_card_id: null,
       phase: 'choose_color',
       status_message:
         card.kind === 'wild_draw4'
@@ -828,6 +830,7 @@ export async function processUnoPlay(
       challenge_prev_color: null,
       wd4_player_id: null,
       draw_penalty: card.kind === 'draw2' ? 2 : 0,
+      drawn_card_id: null,
       discard_pile: discardWith(baseDiscard, session.top_card),
       draw_pile: basePile,
     }
@@ -874,6 +877,9 @@ export async function processUnoPlay(
     }
   }
 
+  // Surface a missed-UNO penalty in the status so the whole room sees the catch.
+  if (missed && patch.status_message) patch.status_message = `${patch.status_message} · ${missed.note}`
+
   const won = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
   if (!won) return {}
 
@@ -916,6 +922,10 @@ export async function processUnoDraw(
   const currentId = currentPlayerId(session)
   if (currentId !== playerId) return { error: 'Not your turn' }
   if (unoHandCount(hands, playerId) === 0) return { error: 'You are out of the game' }
+  // One draw per turn: after drawing you either play the drawn card or keep it (pass).
+  if (session.drawn_card_id && (session.draw_penalty ?? 0) === 0) {
+    return { error: 'You already drew — play it or keep it' }
+  }
 
   // Settle a missed UNO call by the previous player first.
   const missed = settleMissedUno(session, hands, playerId, rules, playerNames)
@@ -968,42 +978,113 @@ export async function processUnoDraw(
   }
 
   const newHand = [...hand, ...drawn]
-
-  // A forced penalty draw (Draw Two target) ends the turn — pass play on. A voluntary single
-  // draw keeps the turn with this player so they may play the drawn card.
+  const missedNote = missed ? ` · ${missed.note}` : ''
+  const reshuffledNote = reshuffled ? ' · deck reshuffled' : ''
   const forced = penalty > 0
-  const nextIndex = forced
-    ? unoNextTurnIndex({ ...session }, updateHand(hands, playerId, newHand), session.current_turn_index, 1, direction)
-    : session.current_turn_index
-  const nextPlayerId = session.turn_order[nextIndex]
 
-  const drawMsg = forced
-    ? `${playerName(playerNames, playerId)} drew ${drawn.length} (Draw Two)`
-    : `${playerName(playerNames, playerId)} drew a card`
-  const status = forced
-    ? `${playerName(playerNames, nextPlayerId)}'s turn — ${drawMsg}${reshuffled ? ' · deck reshuffled' : ''}`
-    : `${playerName(playerNames, playerId)} drew — play it or pass${reshuffled ? ' · deck reshuffled' : ''}`
+  let patch: Partial<UnoSession>
 
-  const won = await persistSession(
-    supabase,
-    gameId,
-    {
+  if (forced) {
+    // A forced penalty draw (Draw Two target) ends the turn — pass play on.
+    const nextIndex = unoNextTurnIndex(
+      session,
+      updateHand(hands, playerId, newHand),
+      session.current_turn_index,
+      1,
+      direction
+    )
+    const nextPlayerId = session.turn_order[nextIndex]
+    patch = {
       draw_pile: drawPile,
       discard_pile: discardPile,
       draw_penalty: 0,
+      drawn_card_id: null,
       current_turn_index: nextIndex,
       uno_pending_player: null,
       uno_called: false,
-      status_message: status,
-    },
-    timerSeconds,
-    session.updated_at
-  )
+      status_message: `${playerName(playerNames, nextPlayerId)}'s turn — ${playerName(playerNames, playerId)} drew ${drawn.length} (Draw Two)${reshuffledNote}${missedNote}`,
+    }
+  } else {
+    // Voluntary single draw. If the drawn card is playable, keep the turn so the player may
+    // play it or keep it (pass). Otherwise the turn ends — they keep the card.
+    const drawnCard = drawn[0]!
+    const drawnPlayable = canPlayCard(drawnCard, { ...session, draw_penalty: 0 })
+    if (drawnPlayable) {
+      patch = {
+        draw_pile: drawPile,
+        discard_pile: discardPile,
+        draw_penalty: 0,
+        drawn_card_id: drawnCard.id,
+        current_turn_index: session.current_turn_index,
+        uno_pending_player: null,
+        uno_called: false,
+        status_message: `${playerName(playerNames, playerId)} drew ${cardLabel(drawnCard)} — play it or keep it${reshuffledNote}${missedNote}`,
+      }
+    } else {
+      const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
+      const nextPlayerId = session.turn_order[nextIndex]
+      patch = {
+        draw_pile: drawPile,
+        discard_pile: discardPile,
+        draw_penalty: 0,
+        drawn_card_id: null,
+        current_turn_index: nextIndex,
+        uno_pending_player: null,
+        uno_called: false,
+        status_message: `${playerName(playerNames, playerId)} drew a card (nothing to play) — ${playerName(playerNames, nextPlayerId)}'s turn${reshuffledNote}${missedNote}`,
+      }
+    }
+  }
+
+  const won = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
   if (!won) return {}
 
   await writeHand(supabase, gameId, playerId, newHand)
   if (missed) await writeHand(supabase, gameId, missed.playerId, missed.hand)
 
+  return {}
+}
+
+// ── Keep the drawn card (pass) ──────────────────────────────────────────────────
+export async function processUnoPass(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string
+): Promise<{ error?: string }> {
+  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, playerNames } = await loadGameState(
+    supabase,
+    gameId
+  )
+  if (!session) return { error: 'Session not found' }
+  if (session.phase === 'finished') return { error: 'Game is finished' }
+
+  if (
+    await finalizeIfGameExpired(supabase, gameId, session, hands, playerNames, sessionStartedAt, gameDurationSeconds)
+  ) {
+    return { error: "Time's up — the game has ended" }
+  }
+
+  if (session.phase !== 'playing') return { error: 'Resolve the current card first' }
+  const currentId = currentPlayerId(session)
+  if (currentId !== playerId) return { error: 'Not your turn' }
+  // You can only pass after drawing (keeping the card you just drew).
+  if (!session.drawn_card_id) return { error: 'Draw a card first' }
+
+  const direction = session.direction < 0 ? -1 : 1
+  const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
+  const nextPlayerId = session.turn_order[nextIndex]
+
+  await persistSession(
+    supabase,
+    gameId,
+    {
+      drawn_card_id: null,
+      current_turn_index: nextIndex,
+      status_message: `${playerName(playerNames, playerId)} kept the card — ${playerName(playerNames, nextPlayerId)}'s turn`,
+    },
+    timerSeconds,
+    session.updated_at
+  )
   return {}
 }
 
@@ -1369,6 +1450,11 @@ export async function processUnoExpireTurn(
       session.updated_at
     )
     return {}
+  }
+
+  // Already drew this turn and idled — keep the card (auto-pass), the safe default.
+  if (session.drawn_card_id) {
+    return processUnoPass(supabase, gameId, currentId)
   }
 
   if (hasPlayableCard(hand, session)) {

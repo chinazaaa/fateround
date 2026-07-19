@@ -99,7 +99,7 @@ export const CRAZY8_SESSION_SELECT =
 export const CRAZY8_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
 export const UNO_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_color,draw_penalty,pending_wild,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,turn_deadline_at,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_color,draw_penalty,drawn_card_id,pending_wild,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,turn_deadline_at,created_at,updated_at'
 
 export const UNO_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
