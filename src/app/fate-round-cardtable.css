@@ -1081,6 +1081,32 @@
   color: #e2231a;
 }
 
+/* Active house-rule pills — shown on the UNO join screen + during play. */
+.fr-room .uno-rule-pills,
+.uno-rule-pills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+.fr-room .ct-surface.uno > .uno-rule-pills {
+  flex: 0 0 auto;
+  padding: 2px 14px 0;
+}
+.fr-room .uno-rule-pill,
+.uno-rule-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  border: 1px solid var(--border);
+  background: var(--surface-sunken, var(--surface));
+  color: var(--text);
+  font: 700 11px var(--font-display);
+  white-space: nowrap;
+}
+
 /* Team-Up mid-round leave — the remaining teammate's continue-solo / forfeit prompt. */
 .fr-room .uno-team-leave {
   display: flex;

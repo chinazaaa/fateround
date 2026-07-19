@@ -54,6 +54,7 @@ import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { playerIsViewer } from '@/lib/viewers'
 import { UnoFinalResultsShareBlock } from '@/components/uno/UnoFinalResultsShareBlock'
+import { UnoRulePills } from '@/components/uno/UnoRulePills'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -500,6 +501,7 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             partner={partner}
             quickChat={quickChat}
             onTeamLeaveDecision={(decision) => void postHostAction('/api/uno/team-leave', { decision })}
+            rulePills={game ? <UnoRulePills game={game} /> : null}
           />
         ) : (
           <p className="turn-status g" style={{ textAlign: 'center', padding: 24 }}>
@@ -543,8 +545,10 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
       <HostLobby
         gameCode={gameCode}
         hostToken={hostToken}
+        resumeToken={hostResumeToken}
         game={game}
         gameTypeLabel={cfg.label}
+        titleMeta={<UnoRulePills game={game} className="mt-2" />}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('uno', game) ?? game.max_players}
         playCard={

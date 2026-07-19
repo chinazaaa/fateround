@@ -6,6 +6,7 @@ import { UnoCard, UnoLoadingScreen, UnoSecondaryButton, UnoShell } from '@/compo
 import { UnoPlaySurface } from '@/components/uno/UnoPlaySurface'
 import { PlayerRoomShell } from '@/components/rooms/PlayerRoomShell'
 import { UnoFinalResultsShareBlock } from '@/components/uno/UnoFinalResultsShareBlock'
+import { UnoRulePills } from '@/components/uno/UnoRulePills'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
@@ -379,6 +380,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
           />
         }
       >
+        {game ? <UnoRulePills game={game} className="mb-4" /> : null}
         <NameJoinForm
           value={joinName}
           onChange={setJoinName}
@@ -404,6 +406,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     if (game?.replay_pending) {
       return (
         <GameJoinLobbyShell gameCode={gameCode}>
+          {game ? <UnoRulePills game={game} className="mb-4" /> : null}
           <ReplayReadyRing
             players={players}
             meId={myPlayerId}
@@ -421,6 +424,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     }
     return (
       <GameJoinLobbyShell gameCode={gameCode}>
+        {game ? <UnoRulePills game={game} className="mb-4" /> : null}
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
@@ -514,6 +518,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
       partner={partner}
       quickChat={quickChat}
       onTeamLeaveDecision={(decision) => void postAction('/api/uno/team-leave', { decision })}
+      rulePills={game ? <UnoRulePills game={game} /> : null}
     />
   )
 
