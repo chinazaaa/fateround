@@ -63,18 +63,20 @@ describe('pokeTargetFor', () => {
     expect(pokeTargetFor('mafia', 'ABCD')).toEqual({ path: '/api/mafia/ABCD/advance', body: { isAuto: true } })
   })
 
-  it('returns null for games with no server-driveable timer (incl. host-driven bingo)', () => {
-    expect(pokeTargetFor('bingo', 'ABCD')).toBeNull()
+  it('maps bingo to its tokenless auto-call sync route', () => {
+    expect(pokeTargetFor('bingo', 'ABCD')).toEqual({ path: '/api/bingo/sync', body: { gameId: 'ABCD' } })
+  })
+
+  it('returns null for games with no server-driveable timer', () => {
     expect(pokeTargetFor('anonymous_messages', 'ABCD')).toBeNull()
     expect(pokeTargetFor('most_likely_to', 'ABCD')).toBeNull()
     expect(pokeTargetFor('not_a_game', 'ABCD')).toBeNull()
   })
 
-  it('every handled type produces a target, and bingo is not handled', () => {
+  it('every handled type produces a target', () => {
     for (const t of HANDLED_GAME_TYPES) {
       expect(pokeTargetFor(t, 'ABCD')).not.toBeNull()
     }
-    expect(HANDLED_GAME_TYPES).not.toContain('bingo')
   })
 })
 

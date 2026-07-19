@@ -49,7 +49,12 @@ const TURN_EXPIRE_SLUG: Record<string, string> = {
 
 // Bingo is deliberately excluded: its auto-call route requires the host token (it's a
 // host-run game, not a tokenless system timer), so the ticker can't drive it.
-export const HANDLED_GAME_TYPES = [...Object.keys(ROUND_ADVANCE_SLUG), ...Object.keys(TURN_EXPIRE_SLUG), 'mafia']
+export const HANDLED_GAME_TYPES = [
+  ...Object.keys(ROUND_ADVANCE_SLUG),
+  ...Object.keys(TURN_EXPIRE_SLUG),
+  'mafia',
+  'bingo',
+]
 
 type PokeTarget = { path: string; body: Record<string, unknown> }
 
@@ -64,6 +69,11 @@ export function pokeTargetFor(gameType: string, gameId: string): PokeTarget | nu
   // (authorized only once the phase deadline has passed).
   if (gameType === 'mafia') {
     return { path: `/api/mafia/${gameId}/advance`, body: { isAuto: true } }
+  }
+  // Bingo auto-call: the tokenless `sync` route calls the next number only once the
+  // configured interval has elapsed (no-op in manual mode / before the interval).
+  if (gameType === 'bingo') {
+    return { path: `/api/bingo/sync`, body: { gameId } }
   }
   return null
 }
@@ -89,6 +99,12 @@ export async function tickActiveGames(): Promise<void> {
       .in('game_type', HANDLED_GAME_TYPES)
 
     if (error || !games || games.length === 0) return
+
+    if (process.env.GAME_TICK_DEBUG === '1') {
+      console.log(
+        `[game-tick] poking ${games.length} active game(s): ${games.map((g) => `${g.game_type}:${g.id}`).join(', ')}`
+      )
+    }
 
     const base = selfBaseUrl()
     await Promise.all(
@@ -131,6 +147,7 @@ export function startGameTicker(): void {
   if (!enabled) return
   started = true
   const intervalMs = Number(process.env.GAME_TICK_INTERVAL_MS) || 2500
+  console.log(`[game-tick] server ticker started (interval=${intervalMs}ms)`)
   const timer = setInterval(() => {
     void tickActiveGames()
   }, intervalMs)
