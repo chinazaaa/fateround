@@ -170,10 +170,12 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   // channel is down — no redundant reloads alongside healthy realtime.
   usePolling(() => load(), [gameCode, load], {
     intervalMs:
-      screen === 'active' && session?.status === 'active'
-        ? POLL_INTERVALS.duelFallback
-        : POLL_INTERVALS.realtimeFallback,
-    enabled: !connected,
+      game?.status === 'waiting'
+        ? POLL_INTERVALS.lobby
+        : screen === 'active' && session?.status === 'active'
+          ? POLL_INTERVALS.duelFallback
+          : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
     runImmediately: false,
   })
 

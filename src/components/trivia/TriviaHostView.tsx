@@ -116,7 +116,11 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
       return load()
     },
     [gameCode, load],
-    { intervalMs: POLL_INTERVALS.realtimeFallback, enabled: !connected, runImmediately: false }
+    {
+      intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+      enabled: game?.status === 'waiting' || !connected,
+      runImmediately: false,
+    }
   )
 
   const endRound = useCallback(async () => {

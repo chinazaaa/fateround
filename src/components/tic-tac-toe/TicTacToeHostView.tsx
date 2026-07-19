@@ -109,8 +109,8 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
 
   // Safety-net poll only while realtime is disconnected — no redundant reloads when healthy.
   usePolling(() => load(), [gameCode, load], {
-    intervalMs: POLL_INTERVALS.realtimeFallback,
-    enabled: !connected,
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
     runImmediately: false,
   })
 

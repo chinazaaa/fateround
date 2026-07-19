@@ -173,8 +173,8 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
 
   // Safety-net poll in case a realtime event is missed / the socket drops.
   usePolling(() => load(), [gameCode, load], {
-    intervalMs: POLL_INTERVALS.realtimeFallback,
-    enabled: !connected,
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
     runImmediately: false,
   })
 
