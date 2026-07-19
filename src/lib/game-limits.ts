@@ -12,6 +12,7 @@ import { MONOPOLY_DEFAULT_MAX_PLAYERS, MONOPOLY_MAX_PLAYERS, MONOPOLY_MIN_PLAYER
 import { YAHTZEE_DEFAULT_MAX_PLAYERS, YAHTZEE_MAX_PLAYERS, YAHTZEE_MIN_PLAYERS } from '@/lib/yahtzee'
 import { WHOT_DEFAULT_MAX_PLAYERS, WHOT_MAX_PLAYERS, WHOT_MIN_PLAYERS } from '@/lib/whot'
 import { CRAZY8_DEFAULT_MAX_PLAYERS, CRAZY8_MAX_PLAYERS, CRAZY8_MIN_PLAYERS } from '@/lib/crazy-eights'
+import { UNO_DEFAULT_MAX_PLAYERS, UNO_MAX_PLAYERS, UNO_MIN_PLAYERS } from '@/lib/uno'
 import { LUDO_DEFAULT_MAX_PLAYERS, LUDO_MAX_PLAYERS, LUDO_MIN_PLAYERS } from '@/lib/ludo'
 import { MAHJONG_DEFAULT_MAX_PLAYERS, MAHJONG_MAX_PLAYERS, MAHJONG_MIN_PLAYERS } from '@/lib/mahjong'
 import { NPAT_DEFAULT_MAX_PLAYERS, NPAT_MAX_PLAYERS, NPAT_MIN_PLAYERS } from '@/lib/npat'
@@ -61,6 +62,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'yahtzee',
   'whot',
   'crazy_eights',
+  'uno',
   'ludo',
   'mahjong',
   'i_call_on',
@@ -153,6 +155,11 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     min: CRAZY8_MIN_PLAYERS,
     max: CRAZY8_MAX_PLAYERS,
     default: CRAZY8_DEFAULT_MAX_PLAYERS,
+  },
+  uno: {
+    min: UNO_MIN_PLAYERS,
+    max: UNO_MAX_PLAYERS,
+    default: UNO_DEFAULT_MAX_PLAYERS,
   },
   ludo: {
     min: LUDO_MIN_PLAYERS,
@@ -275,6 +282,7 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
     yahtzee: { ...GAME_LIMIT_CODE_DEFAULTS.yahtzee },
     whot: { ...GAME_LIMIT_CODE_DEFAULTS.whot },
     crazy_eights: { ...GAME_LIMIT_CODE_DEFAULTS.crazy_eights },
+    uno: { ...GAME_LIMIT_CODE_DEFAULTS.uno },
     ludo: { ...GAME_LIMIT_CODE_DEFAULTS.ludo },
     mahjong: { ...GAME_LIMIT_CODE_DEFAULTS.mahjong },
     i_call_on: { ...GAME_LIMIT_CODE_DEFAULTS.i_call_on },
