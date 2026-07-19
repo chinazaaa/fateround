@@ -41,7 +41,6 @@ import {
 } from '@/lib/uno'
 import { formatCountdown } from '@/lib/timer-format'
 import { UNO_QUICK_MESSAGES, unoQuickMessage, type UnoQuickMessage } from '@/lib/uno-quick-messages'
-import type { ReactNode } from 'react'
 import type { UnoColor, UnoCard, UnoSession } from '@/types'
 
 /** Deck accent for the UNO card backs (classic UNO red). */
@@ -114,8 +113,6 @@ export type UnoPlaySurfaceProps = {
   } | null
   /** Team-Up: after a teammate leaves, the remaining partner continues solo or forfeits. */
   onTeamLeaveDecision?: (decision: 'continue' | 'forfeit') => void
-  /** Active house-rule pills (Stacking, 0-7, WD4 challenge, Multi-Play, Team-Up). */
-  rulePills?: ReactNode
 }
 
 /** The swatch (colour) or glyph tile that fronts a quick message in both the picker and the bubble. */
@@ -158,7 +155,6 @@ export function UnoPlaySurface({
   partner,
   quickChat,
   onTeamLeaveDecision,
-  rulePills,
 }: UnoPlaySurfaceProps) {
   const [quickPickerOpen, setQuickPickerOpen] = useState(false)
   // Close the quick-message picker on a click/tap anywhere outside it (or Escape) —
@@ -282,7 +278,6 @@ export function UnoPlaySurface({
     <CardTableSurface variant="uno">
       {gameTimer?.active && <GameTimerBar label={gameTimer.label} pct={gamePct} low={gameTimer.secondsLeft <= 60} />}
       <TurnRail seats={seats} />
-      {rulePills}
 
       <Table>
         <Piles
