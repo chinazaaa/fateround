@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { loadPlatformEntries } from '@/lib/platform-content'
 import { internalErrorMessage, internalFailure } from '@/lib/api-errors'
 import { markGameFinished } from '@/lib/game-finish'
 import type { DescribeItGuess, DescribeItMode, DescribeItSession, DescribeItWord, Game } from '@/types'
@@ -124,14 +125,21 @@ export function clueContainsWord(clue: string, word: string): boolean {
  * never see words the host didn't add; a short list recycles rather than pulling
  * defaults). With no custom words, the built-in bank is primary.
  */
-export function describeItWordPools(game: Pick<Game, 'question_source' | 'custom_questions'>): {
+export async function describeItWordPools(
+  supabase: SupabaseClient,
+  game: Pick<Game, 'question_source' | 'custom_questions'>
+): Promise<{
   primary: readonly string[]
   fallback: readonly string[]
-} {
-  if (game.question_source !== 'custom') return { primary: DESCRIBE_IT_WORD_POOL, fallback: [] }
-  const custom = parseStoredDescribeItWords(game.custom_questions as unknown)
-  if (custom.length === 0) return { primary: DESCRIBE_IT_WORD_POOL, fallback: [] }
-  return { primary: custom, fallback: [] }
+}> {
+  if (game.question_source === 'custom') {
+    const custom = parseStoredDescribeItWords(game.custom_questions as unknown)
+    if (custom.length > 0) return { primary: custom, fallback: [] }
+    return { primary: DESCRIBE_IT_WORD_POOL, fallback: [] }
+  }
+  // Platform source: admin-managed bank when present, else the built-in word pool.
+  const admin = await loadPlatformEntries<string>(supabase, 'describe_it')
+  return { primary: admin.length > 0 ? admin : DESCRIBE_IT_WORD_POOL, fallback: [] }
 }
 
 export function totalDescribeItTurns(numTeams: number, totalRounds: number): number {
@@ -466,7 +474,10 @@ export async function initializeDescribeItGame(
     teamRoster_ = teamRoster(teamRows)
   }
 
-  const { primary, fallback } = describeItWordPools(game as Pick<Game, 'question_source' | 'custom_questions'>)
+  const { primary, fallback } = await describeItWordPools(
+    supabase,
+    game as Pick<Game, 'question_source' | 'custom_questions'>
+  )
 
   // Carry word usage across Play again so each new game prefers fresh words.
   // Track the primary (cycled) pool; once all of it has been used, start fresh.
@@ -619,7 +630,10 @@ export async function processDescribeItGuess(
     .select('question_source, custom_questions')
     .eq('id', gameId)
     .maybeSingle()
-  const { primary, fallback } = describeItWordPools((game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>)
+  const { primary, fallback } = await describeItWordPools(
+    supabase,
+    (game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>
+  )
   const nextWord = pickDescribeWord(primary, fallback, session.used_words)
   const name = await playerName(supabase, gameId, playerId)
 
@@ -829,7 +843,10 @@ export async function processDescribeItSkip(
     .select('question_source, custom_questions')
     .eq('id', gameId)
     .maybeSingle()
-  const { primary, fallback } = describeItWordPools((game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>)
+  const { primary, fallback } = await describeItWordPools(
+    supabase,
+    (game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>
+  )
   const nextWord = pickDescribeWord(primary, fallback, session.used_words)
 
   // Same atomic claim as a guess, so a skip can't skip a word that was just
@@ -928,7 +945,10 @@ export async function processDescribeItAdvance(
     .select('question_source, custom_questions')
     .eq('id', gameId)
     .maybeSingle()
-  const { primary, fallback } = describeItWordPools((game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>)
+  const { primary, fallback } = await describeItWordPools(
+    supabase,
+    (game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>
+  )
 
   // Claim the break→next-turn transition, scoped to the break we observed so
   // concurrent advances (every client runs the timer) resolve to a single winner

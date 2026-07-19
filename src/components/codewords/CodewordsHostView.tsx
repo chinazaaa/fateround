@@ -45,6 +45,7 @@ import type {
 import { useToast } from '@/components/ui/Toast'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
@@ -164,6 +165,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveGameRemovePlayer,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -514,9 +516,16 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
       game && game.status === 'active' ? (
         <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="codewords" onEnded={load}>
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton
+              onLeave={leaveGameRemovePlayer}
+              variant="remove"
+              className="btn-secondary w-full py-3 text-base"
+            />
+          )}
         </HostActiveSettings>
       ) : null,
-    [game, gameCode, hostToken, load]
+    [game, gameCode, hostToken, load, hostMode, hostPlayerId, leaveGameRemovePlayer]
   )
   useRegisterGameSettings(hostSettingsNode)
 

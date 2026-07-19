@@ -52,6 +52,7 @@ import {
   useRosterManage,
 } from '@/components/roster/RosterDrawerContext'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { WhotFinalResultsShareBlock } from '@/components/whot/WhotFinalResultsShareBlock'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
@@ -154,6 +155,7 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveGameRemovePlayer,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -353,6 +355,13 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     return (
       <div className="space-y-4">
         <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        {hostMode === 'player' && !!hostPlayerId && (
+          <HostLeaveSeatButton
+            onLeave={leaveGameRemovePlayer}
+            variant="remove"
+            className="btn-secondary w-full py-3 text-base"
+          />
+        )}
         <HostRulesRow gameType="whot" />
         <HostEndGameButton
           gameCode={gameCode}
@@ -366,7 +375,7 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
         />
       </div>
     )
-  }, [game, gameCode, hostToken, setGame, load])
+  }, [game, gameCode, hostToken, setGame, load, hostMode, hostPlayerId, leaveGameRemovePlayer])
   useRegisterGameSettings(hostSettingsNode)
 
   if (!game) {

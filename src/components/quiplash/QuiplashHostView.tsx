@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { QuiplashActiveRound } from '@/components/quiplash/QuiplashActiveRound'
 import { QuiplashFinishedResults } from '@/components/quiplash/QuiplashFinishedResults'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
@@ -98,6 +99,7 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveSeatKeepHosting,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -239,9 +241,12 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
       game?.status === 'active' ? (
         <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="quiplash" onEnded={load}>
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+          )}
         </HostActiveSettings>
       ) : null,
-    [game, gameCode, hostToken, load]
+    [game, gameCode, hostToken, load, leaveSeatKeepHosting, hostMode, hostPlayerId]
   )
   useRegisterGameSettings(hostSettingsNode)
 

@@ -3,7 +3,12 @@
 import { useState } from 'react'
 import { LateJoinPolicyToggle } from '@/components/AllowViewersToggle'
 import { useToast } from '@/components/ui/Toast'
-import { gameSupportsViewerSetting, lateJoinPolicyFromGame, type LateJoinPolicy } from '@/lib/viewers'
+import {
+  gameAllowsLatePlayerJoin,
+  gameSupportsViewerSetting,
+  lateJoinPolicyFromGame,
+  type LateJoinPolicy,
+} from '@/lib/viewers'
 import type { Game } from '@/types'
 
 export function HostAllowViewersField({
@@ -30,6 +35,9 @@ export function HostAllowViewersField({
   const [saving, setSaving] = useState(false)
 
   if (!gameSupportsViewerSetting(game.game_type)) return null
+  // View-only games (board games etc.) offer no view-vs-play choice now that
+  // "Lobby only" is gone — hide the whole late-joiners line.
+  if (!gameAllowsLatePlayerJoin(game.game_type)) return null
 
   const value = lateJoinPolicyFromGame(game)
 

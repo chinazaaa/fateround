@@ -12,6 +12,7 @@ import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaiting
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
@@ -135,6 +136,7 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveGameRemovePlayer,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -626,6 +628,14 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
                   : `Need exactly ${MAHJONG_MIN_PLAYERS} ready players (${readyPlayers.length}/${MAHJONG_MIN_PLAYERS})`
               }
               className="space-y-3"
+            />
+          )}
+
+          {game.status === 'active' && !gameFinished && hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton
+              onLeave={leaveGameRemovePlayer}
+              variant="remove"
+              className="btn-secondary w-full py-3 text-base"
             />
           )}
 

@@ -17,13 +17,14 @@ export async function POST(req: NextRequest) {
 
   for (const def of platformGameDefs()) {
     for (const batch of def.builtins) {
-      const { data: existing } = await supabase
+      // `.is()` only handles null; a real variant value ('lie'/'guess') must use `.eq()`.
+      let existingQuery = supabase
         .from('platform_content')
         .select('id')
         .eq('game_type', def.gameType)
-        .is('variant', def.variant ?? null)
         .eq('builtin_key', batch.key)
-        .maybeSingle()
+      existingQuery = def.variant == null ? existingQuery.is('variant', null) : existingQuery.eq('variant', def.variant)
+      const { data: existing } = await existingQuery.maybeSingle()
       if (existing) {
         skipped++
         continue

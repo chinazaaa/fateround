@@ -60,6 +60,7 @@ import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
 
@@ -143,6 +144,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveSeatKeepHosting,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -328,9 +330,13 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
   const hostSettingsNode = useMemo(
     () =>
       game?.status === 'active' ? (
-        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="landmine" onEnded={load} />
+        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="landmine" onEnded={load}>
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+          )}
+        </HostActiveSettings>
       ) : null,
-    [game?.status, gameCode, hostToken, load]
+    [game?.status, gameCode, hostToken, load, hostMode, hostPlayerId, leaveSeatKeepHosting]
   )
   useRegisterGameSettings(hostSettingsNode)
 

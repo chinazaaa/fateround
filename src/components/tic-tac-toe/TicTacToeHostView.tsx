@@ -12,6 +12,7 @@ import { HostDuelLobbyPanel } from '@/components/host-lobby/HostDuelLobbyPanel'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
@@ -123,6 +124,7 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveGameRemovePlayer,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -262,9 +264,17 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
           endGameLabel="End game early"
           endGameConfirmTitle="End this game early?"
           endGameConfirmMessage="The current game will end and players will see the results screen."
-        />
+        >
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton
+              onLeave={leaveGameRemovePlayer}
+              variant="remove"
+              className="btn-secondary w-full py-3 text-base"
+            />
+          )}
+        </HostActiveSettings>
       ) : null,
-    [game?.status, gameFinished, gameCode, hostToken, load]
+    [game?.status, gameFinished, gameCode, hostToken, load, hostMode, hostPlayerId, leaveGameRemovePlayer]
   )
   useRegisterGameSettings(hostSettingsNode)
 

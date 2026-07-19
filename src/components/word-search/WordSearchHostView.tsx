@@ -23,6 +23,7 @@ import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
 import {
@@ -184,6 +185,7 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveSeatKeepHosting,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -415,9 +417,16 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
           endGameConfirmMessage="Players will see the final results."
         >
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton
+              onLeave={leaveSeatKeepHosting}
+              canRejoin={false}
+              className="btn-secondary w-full py-3 text-base"
+            />
+          )}
         </HostActiveSettings>
       ) : null,
-    [game, gameCode, hostToken, load, setGame]
+    [game, gameCode, hostToken, load, setGame, hostMode, hostPlayerId, leaveSeatKeepHosting]
   )
   useRegisterGameSettings(hostSettingsNode)
 

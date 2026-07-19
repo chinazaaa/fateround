@@ -210,7 +210,7 @@ async function initializeEliminationLives(
   }
   return { error: null }
 }
-import type { AiGeneratedQuestions, AiQuestionsConfig } from '@/types'
+import type { AiGeneratedQuestions, AiQuestionsConfig, TriviaQuestion } from '@/types'
 
 /** Same-gender round groups for custom games with 4–5 slots. */
 function generateGenderBasedNRounds(
@@ -371,9 +371,15 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     }
 
     const triviaUsage = poolUsageToMap(poolUsage.trivia as Record<string, number> | undefined)
+    // Platform source: draw from the admin bank for this category (variant), else the built-in pool.
+    const adminTriviaPool = useCustom
+      ? []
+      : await loadPlatformEntries<TriviaQuestion>(getSupabaseAdmin(), 'trivia', category)
     const questions = useCustom
       ? pickCustomTriviaQuestions(customPool, game.rounds_count, triviaUsage)
-      : pickTriviaQuestions(game.rounds_count, category, triviaUsage)
+      : adminTriviaPool.length > 0
+        ? pickCustomTriviaQuestions(adminTriviaPool, game.rounds_count, triviaUsage)
+        : pickTriviaQuestions(game.rounds_count, category, triviaUsage)
 
     if (questions.length === 0) {
       return NextResponse.json({ error: 'No trivia questions available' }, { status: 400 })
@@ -573,7 +579,14 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       }
     }
     const wordUsage = poolUsageToMap(poolUsage.codewords)
-    const words = pickBoardWords(customPool ?? undefined, wordUsage)
+    // Platform source: draw the board from the admin bank when present, else the built-in pool
+    // (pickBoardWords falls back to CODEWORDS_WORD_POOL when given an empty/undefined pool).
+    const adminCwPool =
+      parseQuestionSource(game.question_source, gameType) === 'custom'
+        ? []
+        : await loadPlatformEntries<string>(getSupabaseAdmin(), 'codewords')
+    const boardPool = customPool ?? (adminCwPool.length > 0 ? adminCwPool : undefined)
+    const words = pickBoardWords(boardPool, wordUsage)
     const key = generateKey(startingTeam)
     const spymasterTimer = clampCodewordsTimer(game.timer_seconds ?? CODEWORDS_DEFAULT_SPYMASTER_TIMER)
     const operativeTimer = clampCodewordsTimer(game.operative_timer_seconds ?? CODEWORDS_DEFAULT_OPERATIVE_TIMER)
@@ -1188,9 +1201,12 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     }
 
     const quiplashUsage = poolUsageToMap(poolUsage.quiplash as Record<string, number> | undefined)
+    const adminQuiplashPool = useCustom ? [] : await loadPlatformEntries<string>(getSupabaseAdmin(), 'quiplash')
     const prompts = useCustom
       ? pickCustomQuiplashPrompts(customPool, game.rounds_count, quiplashUsage)
-      : pickQuiplashPrompts(game.rounds_count, quiplashUsage)
+      : adminQuiplashPool.length > 0
+        ? pickCustomQuiplashPrompts(adminQuiplashPool, game.rounds_count, quiplashUsage)
+        : pickQuiplashPrompts(game.rounds_count, quiplashUsage)
 
     if (prompts.length === 0) {
       return NextResponse.json({ error: 'No prompts available' }, { status: 400 })
@@ -1288,9 +1304,12 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     }
 
     const quickDrawUsage = poolUsageToMap(poolUsage.quick_draw as Record<string, number> | undefined)
+    const adminQdPool = useCustom ? [] : await loadPlatformEntries<string>(getSupabaseAdmin(), 'quick_draw', 'lie')
     const prompts = useCustom
       ? pickCustomQuickDrawPrompts(customPool, promptsNeeded, quickDrawUsage)
-      : pickQuickDrawPrompts(promptsNeeded, quickDrawUsage)
+      : adminQdPool.length > 0
+        ? pickCustomQuickDrawPrompts(adminQdPool, promptsNeeded, quickDrawUsage)
+        : pickQuickDrawPrompts(promptsNeeded, quickDrawUsage)
 
     if (prompts.length < promptsNeeded) {
       return NextResponse.json({ error: 'Not enough prompts available' }, { status: 400 })
@@ -1653,9 +1672,14 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       questionOrder,
       playerQuestionsEnabled
     )
+    // Platform source: draw from the admin bank (platform_content) when present, else the hardcoded array.
+    const nhiePlatformUsage = mergeUsageMaps(await fetchNhieQuestionUsage(supabase), customMltUsage)
+    const adminNhiePool = useCustom ? [] : await loadPlatformEntries<string>(getSupabaseAdmin(), 'never_have_i_ever')
     const platformQuestions = useCustom
       ? pickCustomMltQuestions(customPool, poolNeeded, customMltUsage)
-      : pickNhieQuestions(poolNeeded, mergeUsageMaps(await fetchNhieQuestionUsage(supabase), customMltUsage))
+      : adminNhiePool.length > 0
+        ? pickCustomMltQuestions(adminNhiePool, poolNeeded, nhiePlatformUsage)
+        : pickNhieQuestions(poolNeeded, nhiePlatformUsage)
 
     const aiNhieQuestions: string[] =
       game.ai_questions_enabled &&
@@ -1739,9 +1763,13 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
         ? customPool.length + (playerQuestionsEnabled ? effectivePlayerCount : 0)
         : PAN_DEFAULT_POOL_SIZE + (playerQuestionsEnabled ? effectivePlayerCount : 0)
     )
+    const panPlatformUsage = mergeUsageMaps(await fetchPanQuestionUsage(supabase), customMltUsage)
+    const adminPanPool = useCustom ? [] : await loadPlatformEntries<string>(getSupabaseAdmin(), 'pick_a_number')
     const platformQuestions = useCustom
       ? pickCustomMltQuestions(customPool, poolNeeded, customMltUsage)
-      : pickPanQuestions(poolNeeded, mergeUsageMaps(await fetchPanQuestionUsage(supabase), customMltUsage))
+      : adminPanPool.length > 0
+        ? pickCustomMltQuestions(adminPanPool, poolNeeded, panPlatformUsage)
+        : pickPanQuestions(poolNeeded, panPlatformUsage)
     const questionPool = combineLobbyQuestions(
       playerQuestionsEnabled ? playerPanQuestions : [],
       platformQuestions,
@@ -1842,9 +1870,14 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       questionOrder,
       playerQuestionsEnabled
     )
+    const adminTotPool = useCustom
+      ? []
+      : await loadPlatformEntries<{ optionA: string; optionB: string }>(getSupabaseAdmin(), 'this_or_that')
     const poolQuestions = useCustom
       ? pickCustomWyrQuestions(customPool, poolNeeded, customWyrUsage)
-      : pickThisOrThatQuestions(poolNeeded)
+      : adminTotPool.length > 0
+        ? pickCustomWyrQuestions(adminTotPool, poolNeeded)
+        : pickThisOrThatQuestions(poolNeeded)
     const questions = combineLobbyQuestions(
       playerQuestionsEnabled ? playerTotQuestions : [],
       poolQuestions,
@@ -1909,9 +1942,15 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       questionOrder,
       playerQuestionsEnabled
     )
+    const wyrPlatformUsage = mergeUsageMaps(await fetchWyrQuestionUsage(supabase), customWyrUsage)
+    const adminWyrPool = useCustom
+      ? []
+      : await loadPlatformEntries<{ optionA: string; optionB: string }>(getSupabaseAdmin(), 'would_you_rather')
     const platformQuestions = useCustom
       ? pickCustomWyrQuestions(customPool, poolNeeded, customWyrUsage)
-      : pickWyrQuestions(poolNeeded, mergeUsageMaps(await fetchWyrQuestionUsage(supabase), customWyrUsage))
+      : adminWyrPool.length > 0
+        ? pickCustomWyrQuestions(adminWyrPool, poolNeeded, wyrPlatformUsage)
+        : pickWyrQuestions(poolNeeded, wyrPlatformUsage)
 
     const aiWyrQuestions: { optionA: string; optionB: string }[] =
       game.ai_questions_enabled &&

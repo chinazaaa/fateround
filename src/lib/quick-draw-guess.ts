@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage, internalFailure } from '@/lib/api-errors'
 import { markGameFinished } from '@/lib/game-finish'
 import { parseStoredMltQuestions } from '@/lib/custom-questions'
+import { loadPlatformEntries } from '@/lib/platform-content'
 import { QUICK_DRAW_GUESS_WORD_POOL } from '@/lib/quick-draw-guess-words'
 import { pickQuickDrawWord } from '@/lib/quick-draw-prompts'
 import { validateStrokeData } from '@/lib/quick-draw'
@@ -76,12 +77,17 @@ function emptyStrokeData() {
   return { width: 400, height: 280, strokes: [] }
 }
 
-export function quickDrawGuessWordPool(game: Pick<Game, 'question_source' | 'custom_questions'>): readonly string[] {
+export async function quickDrawGuessWordPool(
+  supabase: SupabaseClient,
+  game: Pick<Game, 'question_source' | 'custom_questions'>
+): Promise<readonly string[]> {
   if (game.question_source === 'custom') {
     const custom = parseStoredMltQuestions(game.custom_questions)
-    if (custom.length > 0) return custom
+    return custom.length > 0 ? custom : QUICK_DRAW_GUESS_WORD_POOL
   }
-  return QUICK_DRAW_GUESS_WORD_POOL
+  // Platform source: admin-managed Guess-mode bank when present, else the built-in word pool.
+  const admin = await loadPlatformEntries<string>(supabase, 'quick_draw', 'guess')
+  return admin.length > 0 ? admin : QUICK_DRAW_GUESS_WORD_POOL
 }
 
 function readUsedFromPoolUsage(poolUsage: unknown): string[] {
@@ -218,7 +224,7 @@ export async function initializeQuickDrawGuessGame(
     teamRoster_ = teamRoster(teamRows)
   }
 
-  const primary = quickDrawGuessWordPool(game as Pick<Game, 'question_source' | 'custom_questions'>)
+  const primary = await quickDrawGuessWordPool(supabase, game as Pick<Game, 'question_source' | 'custom_questions'>)
   const primaryKeys = new Set(primary.map((w) => w.toLowerCase()))
   let priorUsed = readUsedFromPoolUsage(game.pool_usage).filter((w) => primaryKeys.has(w.toLowerCase()))
   if (priorUsed.length >= primary.length) priorUsed = []
@@ -324,7 +330,10 @@ export async function processQuickDrawGuessGuess(
     .select('question_source, custom_questions')
     .eq('id', gameId)
     .maybeSingle()
-  const primary = quickDrawGuessWordPool((game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>)
+  const primary = await quickDrawGuessWordPool(
+    supabase,
+    (game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>
+  )
   const nextWord = pickQuickDrawWord(primary, session.used_words)
   const name = await playerName(supabase, gameId, playerId)
 
@@ -483,7 +492,10 @@ export async function processQuickDrawGuessSkip(
     .select('question_source, custom_questions')
     .eq('id', gameId)
     .maybeSingle()
-  const primary = quickDrawGuessWordPool((game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>)
+  const primary = await quickDrawGuessWordPool(
+    supabase,
+    (game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>
+  )
   const nextWord = pickQuickDrawWord(primary, session.used_words)
 
   const { data: claimed } = await supabase
@@ -598,7 +610,10 @@ export async function processQuickDrawGuessAdvance(
     .select('question_source, custom_questions')
     .eq('id', gameId)
     .maybeSingle()
-  const primary = quickDrawGuessWordPool((game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>)
+  const primary = await quickDrawGuessWordPool(
+    supabase,
+    (game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>
+  )
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const teamRows = await loadTeamRows(supabase, gameId)

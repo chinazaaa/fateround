@@ -90,7 +90,6 @@ export default function AdminPlatformContentPage() {
               }`}
             >
               {g.label}
-              {g.variant ? ` · ${g.variant}` : ''}
             </button>
           )
         })}

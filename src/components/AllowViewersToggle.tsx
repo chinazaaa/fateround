@@ -1,6 +1,7 @@
 'use client'
 
 import { SegmentedControl } from '@/components/ui/CreateWizard'
+import { Field } from '@/components/ui/PageShell'
 import { gameAllowsLatePlayerJoin, clampLateJoinPolicyForGameType, type LateJoinPolicy } from '@/lib/viewers'
 import type { GameType } from '@/types'
 
@@ -9,11 +10,12 @@ const LATE_JOIN_OPTIONS: {
   label: string
   hint: string
 }[] = [
-  {
-    value: 'lobby_only',
-    label: 'Lobby only',
-    hint: 'No one can join after the game starts',
-  },
+  // "Lobby only" removed from the UI — games are now either view-only or view+play.
+  // {
+  //   value: 'lobby_only',
+  //   label: 'Lobby only',
+  //   hint: 'No one can join after the game starts',
+  // },
   {
     value: 'viewers_only',
     label: 'Viewers only',
@@ -37,10 +39,11 @@ export function LateJoinPolicyToggle({
   disabled?: boolean
   gameType?: GameType
 }) {
-  const options =
-    gameType && !gameAllowsLatePlayerJoin(gameType)
-      ? LATE_JOIN_OPTIONS.filter((option) => option.value !== 'viewers_and_players')
-      : LATE_JOIN_OPTIONS
+  // View-only games (board games etc.) have no view+play choice to make now that
+  // "Lobby only" is gone — there's nothing to toggle, so render nothing.
+  if (gameType && !gameAllowsLatePlayerJoin(gameType)) return null
+
+  const options = LATE_JOIN_OPTIONS
 
   const effectiveValue = gameType ? clampLateJoinPolicyForGameType(value, gameType) : value
 
@@ -48,6 +51,27 @@ export function LateJoinPolicyToggle({
     <div className={disabled ? 'opacity-50 pointer-events-none' : undefined}>
       <SegmentedControl value={effectiveValue} onChange={(v) => onChange(v as LateJoinPolicy)} options={options} />
     </div>
+  )
+}
+
+/**
+ * The "Late joiners" labeled field used on the create screen. Hides itself
+ * entirely for view-only games, since those have no view-vs-play choice to make.
+ */
+export function LateJoinField({
+  value,
+  onChange,
+  gameType,
+}: {
+  value: LateJoinPolicy
+  onChange: (value: LateJoinPolicy) => void
+  gameType?: GameType
+}) {
+  if (gameType && !gameAllowsLatePlayerJoin(gameType)) return null
+  return (
+    <Field label="Late joiners">
+      <LateJoinPolicyToggle value={value} onChange={onChange} gameType={gameType} />
+    </Field>
   )
 }
 

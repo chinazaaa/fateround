@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { QuickDrawActiveRound } from '@/components/quick-draw/QuickDrawActiveRound'
 import { QuickDrawFinishedResults } from '@/components/quick-draw/QuickDrawFinishedResults'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
@@ -147,6 +148,7 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveSeatKeepHosting,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -290,9 +292,12 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
       game?.status === 'active' ? (
         <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="quick_draw" onEnded={load}>
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+          )}
         </HostActiveSettings>
       ) : null,
-    [game, gameCode, hostToken, load]
+    [game, gameCode, hostToken, load, leaveSeatKeepHosting, hostMode, hostPlayerId]
   )
   useRegisterGameSettings(hostSettingsNode)
 

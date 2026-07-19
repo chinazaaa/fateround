@@ -13,6 +13,7 @@ import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
 import { currentTurnPlayerId, isScrabbleResultsPhase } from '@/lib/scrabble-board'
@@ -162,6 +163,7 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveGameRemovePlayer,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -377,9 +379,16 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
             hostToken={hostToken}
             onExtended={() => void load()}
           />
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton
+              onLeave={leaveGameRemovePlayer}
+              variant="remove"
+              className="btn-secondary w-full py-3 text-base"
+            />
+          )}
         </HostActiveSettings>
       ) : null,
-    [game, gameCode, hostToken, load, gameFinished]
+    [game, gameCode, hostToken, load, gameFinished, hostMode, hostPlayerId, leaveGameRemovePlayer]
   )
   useRegisterGameSettings(hostSettingsNode)
 

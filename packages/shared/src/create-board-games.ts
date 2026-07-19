@@ -27,6 +27,36 @@ export type BoardGameLobbyType =
   | 'mahjong'
   | 'snake_and_ladder'
 
+/**
+ * Default per-turn timer for each board/card game, in seconds. Never 0 — a
+ * game with no turn timer can stall forever on an AFK player. Overall
+ * match-length timers (Monopoly game length, Ping Pong match, etc.) are a
+ * separate setting and legitimately default to "no limit".
+ */
+export const BOARD_GAME_DEFAULT_TURN_TIMER: Record<
+  BoardGameLobbyType | 'tic_tac_toe' | 'chess' | 'checkers' | 'ayo' | 'scrabble',
+  number
+> = {
+  monopoly: 45,
+  yahtzee: 30,
+  whot: 30,
+  crazy_eights: 30,
+  ludo: 30,
+  snake_and_ladder: 30,
+  tic_tac_toe: 30,
+  mahjong: 30,
+  ayo: 300, // per-player time bank — 5 minutes each
+  scrabble: 120, // per-turn — 2 minutes
+  chess: 600, // per-player clock — 10 minutes each
+  checkers: 600,
+}
+
+export function defaultBoardGameTurnTimer(
+  gameType: BoardGameLobbyType | 'tic_tac_toe' | 'chess' | 'checkers' | 'ayo' | 'scrabble'
+): number {
+  return BOARD_GAME_DEFAULT_TURN_TIMER[gameType]
+}
+
 export function turnTimerOptionsFor(
   gameType: BoardGameLobbyType | 'tic_tac_toe' | 'chess' | 'checkers' | 'ayo' | 'scrabble'
 ): readonly number[] {

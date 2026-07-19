@@ -53,6 +53,7 @@ import {
 } from '@/components/roster/RosterDrawerContext'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { playerIsViewer } from '@/lib/viewers'
 import { CrazyEightsGameTimerBar } from '@/components/crazy-eights/CrazyEightsGameTimerBar'
@@ -164,6 +165,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveGameRemovePlayer,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -360,6 +362,13 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
     return (
       <div className="space-y-4">
         <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        {hostMode === 'player' && !!hostPlayerId && (
+          <HostLeaveSeatButton
+            onLeave={leaveGameRemovePlayer}
+            variant="remove"
+            className="btn-secondary w-full py-3 text-base"
+          />
+        )}
         <HostRulesRow gameType="crazy_eights" />
         <HostEndGameButton
           gameCode={gameCode}
@@ -373,7 +382,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
         />
       </div>
     )
-  }, [game, gameCode, hostToken, setGame, load])
+  }, [game, gameCode, hostToken, setGame, load, hostMode, hostPlayerId, leaveGameRemovePlayer])
   useRegisterGameSettings(hostSettingsNode)
 
   if (!game) {
