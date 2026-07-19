@@ -148,6 +148,40 @@ export type CrazyEightsPlayInput = z.infer<typeof crazyEightsPlaySchema>
 export type CrazyEightsDrawInput = z.infer<typeof crazyEightsDrawSchema>
 export type CrazyEightsChooseInput = z.infer<typeof crazyEightsChooseSchema>
 
+// UNO (POST /api/uno/*)
+
+const unoColorEnum = z.enum(['red', 'yellow', 'green', 'blue'])
+
+export const unoActionSchema = z.object({
+  gameId: gameCodeString(),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
+})
+
+export const unoPlaySchema = unoActionSchema.extend({
+  cardId: z.string().min(1),
+  // True when the player is calling "UNO" as they play their second-to-last card.
+  callUno: z.coerce.boolean().optional(),
+})
+
+export const unoDrawSchema = unoActionSchema
+
+export const unoChooseSchema = unoActionSchema.extend({
+  color: unoColorEnum,
+})
+
+export const unoChallengeSchema = unoActionSchema.extend({
+  // true = challenge the Wild Draw Four, false = accept the draw.
+  challenge: z.coerce.boolean(),
+})
+
+export const unoCallSchema = unoActionSchema
+
+export type UnoPlayInput = z.infer<typeof unoPlaySchema>
+export type UnoDrawInput = z.infer<typeof unoDrawSchema>
+export type UnoChooseInput = z.infer<typeof unoChooseSchema>
+export type UnoChallengeInput = z.infer<typeof unoChallengeSchema>
+
 // Ludo (POST /api/ludo/*)
 
 export const ludoActionSchema = z.object({

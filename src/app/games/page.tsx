@@ -81,10 +81,10 @@ export default function GamesIndexPage() {
               <p>
                 You&apos;ll find classic party games like Smash Marry Kill, Would You Rather, Most Likely To, Red Flag
                 Green Flag, Never Have I Ever, and Hot Seat; board and card games including Monopoly, Yahtzee, Whot,
-                Ludo, Chess, Checkers, Crazy Eights, Snakes and Ladders, and Scrabble; plus word, trivia, and puzzle
-                games such as Codewords, Trivia, Word Hunt, Sudoku, Tic-Tac-Toe, and Bingo. Many modes let you upload
-                your own questions or participant lists, so any theme works for birthdays, icebreakers, team socials, or
-                family game night.
+                Ludo, Chess, Checkers, Crazy Eights, UNO, Snakes and Ladders, and Scrabble; plus word, trivia, and
+                puzzle games such as Codewords, Trivia, Word Hunt, Sudoku, Tic-Tac-Toe, and Bingo. Many modes let you
+                upload your own questions or participant lists, so any theme works for birthdays, icebreakers, team
+                socials, or family game night.
               </p>
             </div>
           </div>

@@ -832,16 +832,16 @@
    viewport (desktop, a 13" laptop, or a phone in desktop mode) that column
    stretched full-height and the small piles floated in a huge empty felt —
    the board read as tiny and lost. For the card-table games (scoped via
-   `.ct-surface:is(.whot, .crazy)`) contain the board to a centred, framed
+   `.ct-surface:is(.whot, .crazy, .uno)`) contain the board to a centred, framed
    block and scale the cards up so the gameplay fills the space and reads
    big. Mobile (< 560px) is untouched. */
 @media (min-width: 560px) {
-  .fr-room-poll:has(.ct-surface:is(.whot, .crazy)) .pr-stage {
+  .fr-room-poll:has(.ct-surface:is(.whot, .crazy, .uno)) .pr-stage {
     justify-content: safe center;
     align-items: center;
     padding: 24px;
   }
-  .fr-room .ct-surface:is(.whot, .crazy) {
+  .fr-room .ct-surface:is(.whot, .crazy, .uno) {
     flex: 0 1 auto;
     width: 100%;
     max-width: 600px;
@@ -852,36 +852,36 @@
     background: var(--surface-sunken);
     overflow: hidden;
   }
-  .fr-room .ct-surface:is(.whot, .crazy) > .pr-prog {
+  .fr-room .ct-surface:is(.whot, .crazy, .uno) > .pr-prog {
     padding: 14px 18px 10px;
   }
-  .fr-room .ct-surface:is(.whot, .crazy) > .turnrail {
+  .fr-room .ct-surface:is(.whot, .crazy, .uno) > .turnrail {
     padding: 12px 16px 4px;
     justify-content: safe center;
   }
-  .fr-room .ct-surface:is(.whot, .crazy) > .table {
+  .fr-room .ct-surface:is(.whot, .crazy, .uno) > .table {
     flex: 0 1 auto;
     padding: 22px 18px;
     gap: 18px;
   }
-  .fr-room .ct-surface:is(.whot, .crazy) > .hand-wrap {
+  .fr-room .ct-surface:is(.whot, .crazy, .uno) > .hand-wrap {
     margin-bottom: 0;
   }
-  .fr-room .ct-surface:is(.whot, .crazy) .pc {
+  .fr-room .ct-surface:is(.whot, .crazy, .uno) .pc {
     width: 62px;
     height: 90px;
     border-radius: 10px;
   }
-  .fr-room .ct-surface:is(.whot, .crazy) .pc.lg {
+  .fr-room .ct-surface:is(.whot, .crazy, .uno) .pc.lg {
     width: 92px;
     height: 132px;
     border-radius: 13px;
   }
-  .fr-room .ct-surface:is(.whot, .crazy) .pc .mid svg {
+  .fr-room .ct-surface:is(.whot, .crazy, .uno) .pc .mid svg {
     width: 30px;
     height: 30px;
   }
-  .fr-room .ct-surface:is(.whot, .crazy) .pc.lg .mid svg {
+  .fr-room .ct-surface:is(.whot, .crazy, .uno) .pc.lg .mid svg {
     width: 40px;
     height: 40px;
   }
@@ -890,7 +890,7 @@
    board has room to breathe. The >= 1024px grid keeps its own full-width shell
    + side rail, so leave that range alone. */
 @media (min-width: 560px) and (max-width: 1023px) {
-  .fr-room-poll:has(.ct-surface:is(.whot, .crazy)) {
+  .fr-room-poll:has(.ct-surface:is(.whot, .crazy, .uno)) {
     max-width: 660px;
   }
 }
@@ -903,36 +903,167 @@
    space so it all fits without scrolling; on very short screens also shrink
    the piles a touch. Whot-scoped. */
 @media (max-height: 820px) {
-  .fr-room .ct-surface:is(.whot, .crazy) > .table {
+  .fr-room .ct-surface:is(.whot, .crazy, .uno) > .table {
     gap: 10px;
     padding: 8px 16px;
   }
-  .fr-room .ct-surface:is(.whot, .crazy) .pile {
+  .fr-room .ct-surface:is(.whot, .crazy, .uno) .pile {
     gap: 5px;
   }
-  .fr-room .ct-surface:is(.whot, .crazy) .whot-demand {
+  .fr-room .ct-surface:is(.whot, .crazy, .uno) .whot-demand {
     padding: 5px 11px;
   }
-  .fr-room .ct-surface:is(.whot, .crazy) .act-toast {
+  .fr-room .ct-surface:is(.whot, .crazy, .uno) .act-toast {
     padding: 8px 14px;
   }
-  .fr-room .ct-surface:is(.whot, .crazy) > .hand-wrap {
+  .fr-room .ct-surface:is(.whot, .crazy, .uno) > .hand-wrap {
     margin-bottom: calc(2.5dvh + env(safe-area-inset-bottom, 0px));
   }
 }
 @media (max-height: 700px) {
-  .fr-room .ct-surface:is(.whot, .crazy) .table .pc {
+  .fr-room .ct-surface:is(.whot, .crazy, .uno) .table .pc {
     width: 50px;
     height: 72px;
   }
-  .fr-room .ct-surface:is(.whot, .crazy) .table .pc.lg {
+  .fr-room .ct-surface:is(.whot, .crazy, .uno) .table .pc.lg {
     width: 64px;
     height: 92px;
   }
-  .fr-room .ct-surface:is(.whot, .crazy) .table .pc.lg .mid {
+  .fr-room .ct-surface:is(.whot, .crazy, .uno) .table .pc.lg .mid {
     font-size: 28px;
   }
-  .fr-room .ct-surface:is(.whot, .crazy) .table .pc.whot.lg .mid {
+  .fr-room .ct-surface:is(.whot, .crazy, .uno) .table .pc.whot.lg .mid {
     font-size: 15px;
   }
+}
+
+/* ── UNO card faces ────────────────────────────────────────────────
+   UNO cards are solid-colour faces with a white centre oval carrying the
+   value/symbol in the card's colour (the iconic UNO look). Wild / Wild Draw
+   Four are dark with a rainbow ring. Colours mirror UNO_COLOR_HEX in
+   src/lib/uno.ts. */
+.fr-room .pc.uno {
+  color: #fff;
+  border-color: rgba(0, 0, 0, 0.28);
+}
+.fr-room .pc.uno-red {
+  background: #e2231a;
+}
+.fr-room .pc.uno-yellow {
+  background: #f5b400;
+  color: #3a2f00;
+}
+.fr-room .pc.uno-green {
+  background: #2fa317;
+}
+.fr-room .pc.uno-blue {
+  background: #1a72d6;
+}
+.fr-room .pc.uno .mid {
+  font: 800 20px var(--font-display);
+}
+.fr-room .pc.uno.lg .mid {
+  font-size: 26px;
+}
+/* white centre oval, colour text */
+.fr-room .pc.uno .uno-oval {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #fff;
+  transform: rotate(-20deg);
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.05);
+}
+.fr-room .pc.uno.lg .uno-oval {
+  width: 52px;
+  height: 52px;
+}
+.fr-room .pc.uno .uno-oval > span {
+  transform: rotate(20deg);
+}
+.fr-room .pc.uno-red .uno-oval > span {
+  color: #e2231a;
+}
+.fr-room .pc.uno-yellow .uno-oval > span {
+  color: #d99400;
+}
+.fr-room .pc.uno-green .uno-oval > span {
+  color: #2fa317;
+}
+.fr-room .pc.uno-blue .uno-oval > span {
+  color: #1a72d6;
+}
+.fr-room .pc.uno-wild {
+  color: #fff;
+  background:
+    conic-gradient(from 0deg, #e2231a, #f5b400, #2fa317, #1a72d6, #e2231a);
+  border-color: rgba(0, 0, 0, 0.4);
+}
+.fr-room .pc.uno-wild .uno-oval > span {
+  color: #1a1720;
+  font-size: 15px;
+}
+.fr-room .pc.uno.lg.uno-wild .uno-oval > span {
+  font-size: 18px;
+}
+
+/* UNO colour picker tiles */
+.fr-room .picker-grid.uno button {
+  color: #fff;
+  border-color: rgba(0, 0, 0, 0.25);
+  font: 800 14px var(--font-display);
+}
+.fr-room .picker-grid.uno button.uno-red {
+  background: #e2231a;
+}
+.fr-room .picker-grid.uno button.uno-yellow {
+  background: #f5b400;
+  color: #3a2f00;
+}
+.fr-room .picker-grid.uno button.uno-green {
+  background: #2fa317;
+}
+.fr-room .picker-grid.uno button.uno-blue {
+  background: #1a72d6;
+}
+
+/* UNO "Call UNO!" button + challenge choices */
+.fr-room .uno-call-btn {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  border-radius: var(--radius-lg);
+  border: none;
+  background: linear-gradient(135deg, #e2231a, #f5b400);
+  color: #fff;
+  font: 900 18px var(--font-display);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  animation: uno-pulse 1s ease-in-out infinite;
+}
+@keyframes uno-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+}
+.fr-room .uno-challenge {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+.fr-room .uno-challenge button {
+  flex: 1;
+  padding: 12px;
+  border-radius: var(--radius-lg);
+  border: 1.5px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font: 700 14px var(--font-display);
+  cursor: pointer;
+}
+.fr-room .uno-challenge button.hot {
+  border-color: #e2231a;
+  color: #e2231a;
 }

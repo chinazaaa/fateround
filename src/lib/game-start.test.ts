@@ -27,7 +27,7 @@ describe('startCountError', () => {
 })
 
 describe('GAME_START_SPECS', () => {
-  it('registers exactly the 14 uniform games', () => {
+  it('registers exactly the 15 uniform games', () => {
     expect(Object.keys(GAME_START_SPECS).sort()).toEqual([
       'ayo',
       'checkers',
@@ -41,6 +41,7 @@ describe('GAME_START_SPECS', () => {
       'scrabble',
       'snake_and_ladder',
       'tic_tac_toe',
+      'uno',
       'whot',
       'yahtzee',
     ])
