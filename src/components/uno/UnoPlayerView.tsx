@@ -148,9 +148,15 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     load
   )
 
+  // In the lobby / play-again ring, a join or "ready" is a players-only realtime event —
+  // and Supabase postgres_changes occasionally drops those, leaving the roster stale until a
+  // manual refresh (the `!connected` safety poll never fires while the socket is healthy). So
+  // keep a short reconciling poll running there even when connected. Active play is kept on the
+  // cheap disconnected-only poll — its frequent session/hand events already keep it fresh.
+  const inLobby = screen === 'waiting' || screen === 'game_started_waiting'
   usePolling(() => load(), [gameCode, load], {
-    intervalMs: POLL_INTERVALS.realtimeFallback,
-    enabled: !connected,
+    intervalMs: inLobby ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: inLobby || !connected,
     runImmediately: false,
   })
 

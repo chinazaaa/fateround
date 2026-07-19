@@ -109,7 +109,11 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
       void load()
     },
     [gameCode, load],
-    { intervalMs: POLL_INTERVALS.realtimeFallback, enabled: !connected, runImmediately: false }
+    {
+      intervalMs: mafiaState?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+      enabled: mafiaState?.status === 'waiting' || !connected,
+      runImmediately: false,
+    }
   )
 
   useEffect(() => {
