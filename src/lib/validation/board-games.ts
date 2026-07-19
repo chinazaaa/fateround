@@ -164,6 +164,12 @@ export const unoPlaySchema = unoActionSchema.extend({
   callUno: z.coerce.boolean().optional(),
 })
 
+export const unoPlayMultiSchema = unoActionSchema.extend({
+  // Cards to lay down together, in play order (the last one stays on top).
+  cardIds: z.array(z.string().min(1)).min(2).max(20),
+  callUno: z.coerce.boolean().optional(),
+})
+
 export const unoDrawSchema = unoActionSchema
 
 export const unoChooseSchema = unoActionSchema.extend({

@@ -12,6 +12,8 @@ import {
   hasPlayableCard,
   parseUnoRules,
   rotateActiveHands,
+  multiSetGroupingOk,
+  validateMultiSet,
 } from './uno'
 import type { UnoCard, UnoPlayerHand, UnoSession } from '@/types'
 
@@ -244,10 +246,85 @@ describe('unoPlacementOrder / buildUnoStandings', () => {
   })
 })
 
+describe('multiSetGroupingOk', () => {
+  const reds = [
+    card({ id: 'r1', color: 'red', kind: 'number', value: 1 }),
+    card({ id: 'r5', color: 'red', kind: 'skip' }),
+  ]
+  const fives = [
+    card({ id: 'r5n', color: 'red', kind: 'number', value: 5 }),
+    card({ id: 'b5n', color: 'blue', kind: 'number', value: 5 }),
+  ]
+  const mixed = [
+    card({ id: 'r1', color: 'red', kind: 'number', value: 1 }),
+    card({ id: 'b7', color: 'blue', kind: 'number', value: 7 }),
+  ]
+
+  it('same_color: only all-one-colour sets', () => {
+    expect(multiSetGroupingOk(reds, 'same_color')).toBe(true)
+    expect(multiSetGroupingOk(fives, 'same_color')).toBe(false)
+  })
+  it('same_number: only all-one-number sets', () => {
+    expect(multiSetGroupingOk(fives, 'same_number')).toBe(true)
+    expect(multiSetGroupingOk(reds, 'same_number')).toBe(false)
+  })
+  it('same_color_or_number: either', () => {
+    expect(multiSetGroupingOk(reds, 'same_color_or_number')).toBe(true)
+    expect(multiSetGroupingOk(fives, 'same_color_or_number')).toBe(true)
+    expect(multiSetGroupingOk(mixed, 'same_color_or_number')).toBe(false)
+  })
+  it('rejects off, singletons, and wilds', () => {
+    expect(multiSetGroupingOk(reds, 'off')).toBe(false)
+    expect(multiSetGroupingOk([reds[0]!], 'same_color')).toBe(false)
+    expect(multiSetGroupingOk([reds[0]!, card({ color: 'wild', kind: 'wild' })], 'same_color')).toBe(false)
+  })
+})
+
+describe('validateMultiSet', () => {
+  const top = card({ color: 'red', kind: 'number', value: 3 })
+  const s = session({ top_card: top })
+
+  it('accepts a legal same-colour dump whose first card matches the top', () => {
+    const set = [
+      card({ id: 'r3', color: 'red', kind: 'number', value: 3 }), // matches top
+      card({ id: 'rs', color: 'red', kind: 'skip' }),
+    ]
+    expect(validateMultiSet(set, s, 'same_color')).toBeNull()
+  })
+  it('rejects when the first card does not match the top', () => {
+    const set = [
+      card({ id: 'g4', color: 'green', kind: 'number', value: 4 }),
+      card({ id: 'g8', color: 'green', kind: 'number', value: 8 }),
+    ]
+    expect(validateMultiSet(set, s, 'same_color')).toMatch(/first card/i)
+  })
+  it('rejects a set that violates the grouping', () => {
+    const set = [
+      card({ id: 'r3', color: 'red', kind: 'number', value: 3 }),
+      card({ id: 'b8', color: 'blue', kind: 'number', value: 8 }),
+    ]
+    expect(validateMultiSet(set, s, 'same_color')).toMatch(/colour/i)
+  })
+  it('rejects while a draw penalty is pending', () => {
+    const set = [
+      card({ id: 'r3', color: 'red', kind: 'number', value: 3 }),
+      card({ id: 'r5', color: 'red', kind: 'number', value: 5 }),
+    ]
+    expect(validateMultiSet(set, session({ top_card: top, draw_penalty: 2 }), 'same_color')).toMatch(/penalty/i)
+  })
+})
+
 describe('parseUnoRules', () => {
   it('defaults: challenge on, penalty 2, wd4 penalty 6, 0-7 off, stacking off', () => {
     const r = parseUnoRules(null)
-    expect(r).toEqual({ wd4Challenge: true, unoPenalty: 2, wd4ChallengePenalty: 6, zeroSeven: false, stacking: false })
+    expect(r).toEqual({
+      wd4Challenge: true,
+      unoPenalty: 2,
+      wd4ChallengePenalty: 6,
+      zeroSeven: false,
+      stacking: false,
+      multiPlay: 'off',
+    })
   })
   it('reads host overrides', () => {
     const r = parseUnoRules({
@@ -256,8 +333,16 @@ describe('parseUnoRules', () => {
       uno_wd4_challenge_penalty: 6,
       uno_zero_seven: true,
       uno_stacking: true,
+      uno_multi_play_mode: 'same_color_or_number',
     })
-    expect(r).toEqual({ wd4Challenge: false, unoPenalty: 4, wd4ChallengePenalty: 6, zeroSeven: true, stacking: true })
+    expect(r).toEqual({
+      wd4Challenge: false,
+      unoPenalty: 4,
+      wd4ChallengePenalty: 6,
+      zeroSeven: true,
+      stacking: true,
+      multiPlay: 'same_color_or_number',
+    })
   })
   it('reads the milder wd4 penalty variant (4) and clamps junk to 6', () => {
     expect(parseUnoRules({ uno_wd4_challenge_penalty: 4 }).wd4ChallengePenalty).toBe(4)
