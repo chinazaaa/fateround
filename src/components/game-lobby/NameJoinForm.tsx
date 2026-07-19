@@ -53,7 +53,7 @@ export function NameJoinForm({
           onKeyDown={(e) => e.key === 'Enter' && !disabled && !joining && value.trim() && onSubmit()}
           placeholder={placeholder}
           className="input-field w-full"
-          maxLength={40}
+          maxLength={10}
           autoComplete="name"
         />
       </div>

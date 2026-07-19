@@ -39,9 +39,10 @@ export function UnoFinalResultsShareBlock({
         players,
         session?.turn_order ?? [],
         session?.finish_order ?? [],
-        game.uno_team_mode === true
+        game.uno_team_mode === true,
+        session?.left_player_ids ?? []
       ),
-    [hands, players, session?.turn_order, session?.finish_order, game.uno_team_mode]
+    [hands, players, session?.turn_order, session?.finish_order, game.uno_team_mode, session?.left_player_ids]
   )
 
   const teamMode = game.uno_team_mode === true

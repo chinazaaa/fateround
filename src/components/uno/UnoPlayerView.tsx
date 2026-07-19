@@ -6,6 +6,7 @@ import { UnoCard, UnoLoadingScreen, UnoSecondaryButton, UnoShell } from '@/compo
 import { UnoPlaySurface } from '@/components/uno/UnoPlaySurface'
 import { PlayerRoomShell } from '@/components/rooms/PlayerRoomShell'
 import { UnoFinalResultsShareBlock } from '@/components/uno/UnoFinalResultsShareBlock'
+import { UnoRulePills } from '@/components/uno/UnoRulePills'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
@@ -14,7 +15,9 @@ import {
   isDrawPileDepleted,
   parseMultiPlayMode,
   unoTeammateId,
+  unoPlayerSharesWin,
   UNO_MIN_PLAYERS,
+  UNO_TEAM_PLAYERS,
 } from '@/lib/uno'
 import { UNO_PLAYER_HANDS_SELECT, UNO_SESSION_SELECT } from '@/lib/supabase-selects'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
@@ -264,6 +267,8 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     if (game?.uno_team_mode !== true || !session || !myPlayerId || isWatching) return null
     const mateId = unoTeammateId(session.turn_order ?? [], myPlayerId)
     if (!mateId) return null
+    // A teammate who left mid-round is no longer a partner (their seat stays for parity).
+    if ((session.left_player_ids ?? []).includes(mateId)) return null
     const mateCards = hands.find((h) => h.player_id === mateId)?.cards ?? []
     const mateName = players.find((p) => p.id === mateId)?.name ?? 'Partner'
     return { id: mateId, name: mateName, cards: mateCards }
@@ -375,6 +380,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
           />
         }
       >
+        {game ? <UnoRulePills game={game} className="mb-4" /> : null}
         <NameJoinForm
           value={joinName}
           onChange={setJoinName}
@@ -400,11 +406,12 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     if (game?.replay_pending) {
       return (
         <GameJoinLobbyShell gameCode={gameCode}>
+          {game ? <UnoRulePills game={game} className="mb-4" /> : null}
           <ReplayReadyRing
             players={players}
             meId={myPlayerId}
             isHost={false}
-            minPlayers={UNO_MIN_PLAYERS}
+            minPlayers={game?.uno_team_mode ? UNO_TEAM_PLAYERS : UNO_MIN_PLAYERS}
             capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
@@ -417,6 +424,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     }
     return (
       <GameJoinLobbyShell gameCode={gameCode}>
+        {game ? <UnoRulePills game={game} className="mb-4" /> : null}
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
@@ -461,14 +469,20 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
             {winner && <p className="text-2xl font-black text-[var(--marry)]">{winner.name}</p>}
           </UnoCard>
         )}
-        {myPlayerId && session?.winner_player_id === myPlayerId && (
-          <PostWinToCommunity
-            gameType="uno"
-            gameCode={gameCode}
-            winnerName={players.find((p) => p.id === myPlayerId)?.name ?? ''}
-            roundKey={session?.id}
-          />
-        )}
+        {myPlayerId &&
+          unoPlayerSharesWin(
+            session?.turn_order ?? [],
+            session?.winner_player_id,
+            myPlayerId,
+            game?.uno_team_mode === true
+          ) && (
+            <PostWinToCommunity
+              gameType="uno"
+              gameCode={gameCode}
+              winnerName={players.find((p) => p.id === myPlayerId)?.name ?? ''}
+              roundKey={session?.id}
+            />
+          )}
       </UnoShell>
     )
   }
@@ -503,6 +517,8 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
       onPlayMulti={(cardIds) => void postAction('/api/uno/play-multi', { cardIds })}
       partner={partner}
       quickChat={quickChat}
+      onTeamLeaveDecision={(decision) => void postAction('/api/uno/team-leave', { decision })}
+      rulePills={game ? <UnoRulePills game={game} /> : null}
     />
   )
 

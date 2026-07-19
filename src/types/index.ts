@@ -694,7 +694,13 @@ export type UnoColor = 'red' | 'yellow' | 'green' | 'blue'
 /** What a card does. Number cards carry `value` 0–9; everything else is an action. */
 export type UnoCardKind = 'number' | 'skip' | 'reverse' | 'draw2' | 'wild' | 'wild_draw4'
 
-export type UnoPhase = 'playing' | 'choose_color' | 'challenge_window' | 'swap_target' | 'finished'
+export type UnoPhase =
+  | 'playing'
+  | 'choose_color'
+  | 'challenge_window'
+  | 'swap_target'
+  | 'team_leave_decision'
+  | 'finished'
 
 export interface UnoCard {
   id: string
@@ -737,6 +743,10 @@ export interface UnoSession {
   winner_player_id: string | null
   /** Player ids in the order they emptied their hands. Drives final placement. */
   finish_order: string[]
+  /** Team-Up: players who left mid-round — kept in turn_order (parity) but skipped by play + placement. */
+  left_player_ids?: string[]
+  /** Team-Up: the remaining teammate who must choose continue-solo vs forfeit (phase team_leave_decision). */
+  team_decider_id?: string | null
   turn_deadline_at: string | null
   created_at: string
   updated_at: string

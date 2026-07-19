@@ -1146,7 +1146,9 @@ export async function POST(req: NextRequest) {
                 game_duration_seconds: clampUnoGameDuration(rawGameDurationSeconds),
                 uno_wd4_challenge: rawUnoWd4Challenge !== false,
                 uno_uno_penalty: Number(rawUnoUnoPenalty) === 4 ? 4 : 2,
-                uno_wd4_challenge_penalty: Number(rawUnoWd4ChallengePenalty) === 6 ? 6 : 4,
+                // Standard UNO: a failed challenger draws 6 (the 4 they refused + a 2 penalty).
+                // Default to 6 when unset (the create UI doesn't expose it); only 4 is the milder variant.
+                uno_wd4_challenge_penalty: Number(rawUnoWd4ChallengePenalty) === 4 ? 4 : 6,
                 uno_zero_seven: rawUnoZeroSeven === true,
                 uno_stacking: rawUnoStacking === true,
                 uno_multi_play_mode: parseMultiPlayMode(rawUnoMultiPlayMode),

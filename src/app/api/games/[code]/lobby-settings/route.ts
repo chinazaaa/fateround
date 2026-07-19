@@ -29,7 +29,7 @@ import { clampBoardGameTurnTimer, type BoardGameLobbyType } from '@/lib/board-ga
 import { clampMonopolyGameDuration } from '@/lib/monopoly'
 import { clampWhotGameDuration } from '@/lib/whot'
 import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
-import { clampUnoGameDuration, parseMultiPlayMode } from '@/lib/uno'
+import { clampUnoGameDuration, parseMultiPlayMode, UNO_TEAM_PLAYERS } from '@/lib/uno'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { parseMahjongRuleOptions, parseMahjongRuleset } from '@/lib/mahjong-rulesets'
 import { clampSudokuGameDuration } from '@/lib/sudoku'
@@ -131,6 +131,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     uno_zero_seven,
     uno_stacking,
     uno_multi_play_mode,
+    uno_team_mode,
     ludo_variant,
     mahjong_ruleset,
     mahjong_rule_options,
@@ -178,6 +179,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     uno_zero_seven === undefined &&
     uno_stacking === undefined &&
     uno_multi_play_mode === undefined &&
+    uno_team_mode === undefined &&
     ludo_variant === undefined &&
     mahjong_ruleset === undefined &&
     mahjong_rule_options === undefined &&
@@ -502,12 +504,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (uno_zero_seven !== undefined) gameUpdate.uno_zero_seven = uno_zero_seven
     if (uno_stacking !== undefined) gameUpdate.uno_stacking = uno_stacking
     if (uno_multi_play_mode !== undefined) gameUpdate.uno_multi_play_mode = parseMultiPlayMode(uno_multi_play_mode)
+    if (uno_team_mode !== undefined) {
+      gameUpdate.uno_team_mode = uno_team_mode
+      // Team-Up is strictly 2v2 — enabling it caps the room at 4 (mirrors create).
+      // Turning it off leaves max_players for the host to adjust separately.
+      if (uno_team_mode === true) gameUpdate.max_players = UNO_TEAM_PLAYERS
+    }
   } else if (
     uno_wd4_challenge !== undefined ||
     uno_uno_penalty !== undefined ||
     uno_zero_seven !== undefined ||
     uno_stacking !== undefined ||
-    uno_multi_play_mode !== undefined
+    uno_multi_play_mode !== undefined ||
+    uno_team_mode !== undefined
   ) {
     return NextResponse.json({ error: 'House rules only apply to UNO games' }, { status: 400 })
   }

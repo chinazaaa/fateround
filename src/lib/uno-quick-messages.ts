@@ -23,8 +23,11 @@ export const UNO_QUICK_MESSAGES: readonly UnoQuickMessage[] = [
   { id: 'skip', label: 'Skip', kind: 'glyph', glyph: '⊘' },
   { id: 'draw2', label: 'Draw 2', kind: 'glyph', glyph: '+2' },
   { id: 'wild', label: 'Wild', kind: 'glyph', glyph: '🌈' },
+  { id: 'swap', label: 'Swap', kind: 'glyph', glyph: '🔄' },
   { id: 'uno', label: 'I have UNO!', kind: 'glyph', glyph: '🎉' },
   { id: 'go', label: 'Go for it', kind: 'glyph', glyph: '👍' },
+  { id: 'ok', label: 'OK', kind: 'glyph', glyph: '👌' },
+  { id: 'thanks', label: 'Thank you', kind: 'glyph', glyph: '🙏' },
   { id: 'save', label: 'Save me', kind: 'glyph', glyph: '🆘' },
 ]
 

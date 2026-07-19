@@ -212,7 +212,7 @@ async function getCompetitiveStandings(
     const [{ data: session }, { data: hands }, { data: gameRow }] = await Promise.all([
       supabase
         .from('uno_sessions')
-        .select('winner_player_id, turn_order, finish_order')
+        .select('winner_player_id, turn_order, finish_order, left_player_ids')
         .eq('game_id', gameId)
         .maybeSingle(),
       supabase.from('uno_player_hands').select('player_id, cards').eq('game_id', gameId),
@@ -223,7 +223,8 @@ async function getCompetitiveStandings(
       hands as { player_id: string; cards: UnoCard[] }[],
       session?.turn_order ?? [],
       session?.finish_order ?? [],
-      gameRow?.uno_team_mode === true
+      gameRow?.uno_team_mode === true,
+      (session?.left_player_ids as string[] | undefined) ?? []
     )
   }
 
