@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { GameLinkQrCode } from '@/components/GameLinkQrCode'
 import { ShareInviteButton } from '@/components/ShareInviteButton'
-import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import { copyToClipboard } from '@/lib/copy'
 import { useToast } from '@/components/ui/Toast'
 import { hostGameUrl, hostPlayerUrl, playerGameUrl, playerResumeUrl, shareOrigin } from '@/lib/site'
@@ -167,8 +166,8 @@ export function ShareGameModal({
             <GameLinkQrCode url={active.url} size={116} />
             <p className="text-[11px] font-semibold text-faint">{active.scanLabel}</p>
           </div>
-          <div className="min-w-0 flex-1 space-y-2">
-            {/* Primary: native share sheet on mobile, copy on desktop (label adapts). */}
+          <div className="min-w-0 flex-1">
+            {/* One action: native share sheet on mobile, copy on desktop (label adapts). */}
             <ShareInviteButton
               url={active.url}
               text={active.shareText}
@@ -176,11 +175,6 @@ export function ShareGameModal({
               copyLabel={active.copyLabel}
               className="w-full justify-center"
             />
-            {/* Always-available explicit copy-to-clipboard (so mobile users who want the link,
-                not the native share sheet, can grab it too). */}
-            <div className="text-center">
-              <CopyLinkButton value={active.url} label={active.copyLabel} successMessage="Invite link copied" />
-            </div>
           </div>
         </div>
       </div>
