@@ -1152,34 +1152,59 @@
   overflow-x: auto;
   padding-bottom: 2px;
 }
-/* Compact colour chips — reference only, so they take a fraction of the height a
-   full card face would (which was clipping the draw/discard piles). */
-.fr-room .uno-chip {
-  display: inline-flex;
+/* Compact mini UNO cards — the real card look (colour + white oval) at a fraction of
+   the size, with symbols instead of long words so they stay uniform and legible and
+   don't clip the draw/discard piles. */
+.fr-room .uno-mini {
+  width: 28px;
+  height: 40px;
+  border-radius: 6px;
+  display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 24px;
-  height: 26px;
-  padding: 0 7px;
-  border-radius: 7px;
-  font: 800 13px var(--font-display);
-  color: #fff;
   flex-shrink: 0;
-  border: 1px solid rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(0, 0, 0, 0.22);
+  box-shadow: 0 1px 2px rgba(20, 18, 26, 0.14);
 }
-.fr-room .uno-chip-red {
+.fr-room .uno-mini-red {
   background: #e2231a;
 }
-.fr-room .uno-chip-yellow {
+.fr-room .uno-mini-yellow {
   background: #f5b400;
-  color: #3a2f00;
 }
-.fr-room .uno-chip-green {
+.fr-room .uno-mini-green {
   background: #2fa317;
 }
-.fr-room .uno-chip-blue {
+.fr-room .uno-mini-blue {
   background: #1a72d6;
 }
-.fr-room .uno-chip-wild {
+.fr-room .uno-mini-wild {
   background: conic-gradient(from 0deg, #e2231a, #f5b400, #2fa317, #1a72d6, #e2231a);
+}
+.fr-room .uno-mini-oval {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 800 12px var(--font-display);
+  transform: rotate(-18deg);
+}
+.fr-room .uno-mini-red .uno-mini-oval {
+  color: #e2231a;
+}
+.fr-room .uno-mini-yellow .uno-mini-oval {
+  color: #d99400;
+}
+.fr-room .uno-mini-green .uno-mini-oval {
+  color: #2fa317;
+}
+.fr-room .uno-mini-blue .uno-mini-oval {
+  color: #1a72d6;
+}
+.fr-room .uno-mini-wild .uno-mini-oval {
+  color: #1a1720;
+  font-size: 11px;
 }

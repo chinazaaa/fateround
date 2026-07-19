@@ -45,6 +45,26 @@ import type { UnoColor, UnoCard, UnoSession } from '@/types'
 /** Deck accent for the UNO card backs (classic UNO red). */
 const UNO_ACCENT = '#e2231a'
 
+/** Short glyph for the compact partner mini-cards (symbols beat long words like "Reverse"). */
+function miniGlyph(card: UnoCard): string {
+  switch (card.kind) {
+    case 'number':
+      return String(card.value ?? '')
+    case 'skip':
+      return '⊘'
+    case 'reverse':
+      return '↺'
+    case 'draw2':
+      return '+2'
+    case 'wild':
+      return '🌈'
+    case 'wild_draw4':
+      return '+4'
+    default:
+      return ''
+  }
+}
+
 type Player = { id: string; name: string; spectator?: boolean | null }
 
 export type UnoPlaySurfaceProps = {
@@ -294,7 +314,7 @@ export function UnoPlaySurface({
       {partner && (
         <div className="uno-partner">
           <div className="uno-partner-head">
-            <span className="uno-partner-name">🤝 {partner.name}</span>
+            <span className="uno-partner-name">🤝 {partner.name} (partner)</span>
             <span className="uno-partner-count">
               {partner.cards.length} card{partner.cards.length === 1 ? '' : 's'}
             </span>
@@ -303,10 +323,10 @@ export function UnoPlaySurface({
             {partner.cards.map((card) => (
               <span
                 key={card.id}
-                className={`uno-chip ${card.color === 'wild' ? 'uno-chip-wild' : `uno-chip-${card.color}`}`}
-                title={card.color === 'wild' ? 'Wild' : `${card.color} ${cardShortLabel(card)}`}
+                className={`uno-mini ${card.color === 'wild' ? 'uno-mini-wild' : `uno-mini-${card.color}`}`}
+                title={card.color === 'wild' ? cardShortLabel(card) : `${card.color} ${cardShortLabel(card)}`}
               >
-                {card.color === 'wild' ? (card.kind === 'wild_draw4' ? '+4' : '🌈') : cardShortLabel(card)}
+                <span className="uno-mini-oval">{miniGlyph(card)}</span>
               </span>
             ))}
           </div>
