@@ -134,9 +134,14 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
     load
   )
 
+  // In the lobby / play-again ring, joins + "ready" are players-only realtime events that
+  // Supabase sometimes drops, leaving the host roster stale until a refresh (the `!connected`
+  // poll never fires while the socket is healthy). Keep a short reconciling poll running there
+  // even when connected; active play stays on the cheap disconnected-only poll.
+  const hostInLobby = game?.status === 'waiting'
   usePolling(() => load(), [gameCode, load], {
-    intervalMs: POLL_INTERVALS.realtimeFallback,
-    enabled: !connected,
+    intervalMs: hostInLobby ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: hostInLobby || !connected,
     runImmediately: false,
   })
 
