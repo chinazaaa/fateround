@@ -13,6 +13,7 @@ import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { currentPlayerId, SNAKE_LADDER_MIN_PLAYERS } from '@/lib/snake-and-ladder'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { supabase } from '@/lib/supabase'
 import {
   GAME_SELECT,
@@ -295,6 +296,21 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
   })
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
+
+  // Roster drawer scoreboard: current square (sorts furthest-ahead first).
+  const rosterScores = useMemo(() => Object.fromEntries(states.map((s) => [s.player_id, s.position])), [states])
+  useGameScores(rosterScores, { suffix: '' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        states.map((s) => [
+          s.player_id,
+          s.position === 0 ? '📍 Start' : s.position >= 100 ? '🏁 Home!' : `📍 Square ${s.position}`,
+        ])
+      ),
+    [states]
+  )
+  useGameStats(rosterDetails)
 
   // Linger on the finished board for a few seconds so the winning move is visible
   // before showing the final leaderboard. Only triggers when we witnessed live

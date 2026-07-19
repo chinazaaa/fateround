@@ -2,13 +2,14 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
-import { PageShell, Chip } from '@/components/ui/PageShell'
+import { PageShell } from '@/components/ui/PageShell'
 
 interface PackSummary {
   id: string
   title: string
   game_type:
     | 'trivia'
+    | 'who_said_this'
     | 'would_you_rather'
     | 'most_likely_to'
     | 'this_or_that'
@@ -26,6 +27,10 @@ interface PackSummary {
 
 const GAME_TYPE_META: Record<string, { label: string; color: string }> = {
   trivia: { label: 'Trivia', color: 'text-violet-600 dark:text-violet-400 bg-violet-500/10 border-violet-500/25' },
+  who_said_this: {
+    label: 'Who Said This',
+    color: 'text-teal-600 dark:text-teal-400 bg-teal-500/10 border-teal-500/25',
+  },
   would_you_rather: {
     label: 'Would You Rather',
     color: 'text-rose-600 dark:text-rose-400 bg-rose-500/10 border-rose-500/25',
@@ -85,6 +90,7 @@ const TAG_META: Record<string, { label: string; color: string }> = {
 const GAME_TYPE_FILTERS = [
   { value: '', label: 'All types' },
   { value: 'trivia', label: 'Trivia' },
+  { value: 'who_said_this', label: 'Who Said This' },
   { value: 'would_you_rather', label: 'Would You Rather' },
   { value: 'most_likely_to', label: 'Most Likely To' },
   { value: 'this_or_that', label: 'This or That' },
@@ -108,6 +114,42 @@ const TAG_FILTERS = [
   { value: 'party', label: 'Party' },
   { value: 'spicy', label: 'Spicy' },
 ]
+
+/** Compact styled dropdown for the library filter bar. Native select + chevron overlay. */
+function FilterSelect({
+  value,
+  onChange,
+  options,
+  ariaLabel,
+}: {
+  value: string
+  onChange: (value: string) => void
+  options: { value: string; label: string }[]
+  ariaLabel: string
+}) {
+  const active = value !== ''
+  return (
+    <div className="relative flex-1 sm:flex-none">
+      <select
+        aria-label={ariaLabel}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`input-field w-full cursor-pointer appearance-none pr-9 text-sm ${
+          active ? 'border-[var(--chip-active-border)] text-[var(--chip-active-text)]' : ''
+        }`}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-faint)] text-xs">
+        ▾
+      </span>
+    </div>
+  )
+}
 
 export default function LibraryPage() {
   const [packs, setPacks] = useState<PackSummary[]>([])
@@ -162,7 +204,7 @@ export default function LibraryPage() {
   }
 
   return (
-    <PageShell>
+    <PageShell wide>
       <div className="space-y-1">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -175,39 +217,28 @@ export default function LibraryPage() {
         </div>
       </div>
 
-      <div className="relative">
-        <input
-          type="search"
-          value={searchInput}
-          onChange={(e) => handleSearchInput(e.target.value)}
-          placeholder="Search packs by title, author, or description…"
-          className="input-field w-full"
-          style={{ paddingLeft: '2.5rem' }}
-        />
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-faint)] pointer-events-none text-sm">
-          🔍
-        </span>
-      </div>
-
-      <div className="space-y-2">
-        <p className="label-caps text-faint">Game type</p>
-        <div className="flex flex-wrap gap-2">
-          {GAME_TYPE_FILTERS.map((f) => (
-            <Chip key={f.value} active={gameType === f.value} onClick={() => handleGameType(f.value)}>
-              {f.label}
-            </Chip>
-          ))}
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <input
+            type="search"
+            value={searchInput}
+            onChange={(e) => handleSearchInput(e.target.value)}
+            placeholder="Search packs…"
+            className="input-field w-full"
+            style={{ paddingLeft: '2.5rem' }}
+          />
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-faint)] pointer-events-none text-sm">
+            🔍
+          </span>
         </div>
-      </div>
-
-      <div className="space-y-2">
-        <p className="label-caps text-faint">Tag</p>
-        <div className="flex flex-wrap gap-2">
-          {TAG_FILTERS.map((f) => (
-            <Chip key={f.value} active={tag === f.value} onClick={() => handleTag(f.value)}>
-              {f.label}
-            </Chip>
-          ))}
+        <div className="flex gap-2.5">
+          <FilterSelect
+            ariaLabel="Filter by game type"
+            value={gameType}
+            onChange={handleGameType}
+            options={GAME_TYPE_FILTERS}
+          />
+          <FilterSelect ariaLabel="Filter by level" value={tag} onChange={handleTag} options={TAG_FILTERS} />
         </div>
       </div>
 
@@ -237,11 +268,11 @@ export default function LibraryPage() {
         </div>
       ) : (
         <>
-          <div className="space-y-3 animate-stagger">
+          <div className="grid gap-3 animate-stagger sm:grid-cols-2">
             {packs.map((pack) => {
               const meta = GAME_TYPE_META[pack.game_type]
               return (
-                <div key={pack.id} className="glass-card p-5 space-y-3">
+                <div key={pack.id} className="glass-card p-5 space-y-3 flex flex-col">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 space-y-0.5">
                       <p className="font-bold leading-snug">{pack.title}</p>
@@ -271,7 +302,7 @@ export default function LibraryPage() {
                       })}
                     </div>
                   )}
-                  <div className="flex items-center justify-between gap-3 pt-1">
+                  <div className="mt-auto flex items-center justify-between gap-3 pt-1">
                     <span className="text-faint text-xs">{pack.question_count} questions</span>
                     <Link
                       href={`/create?pack=${pack.id}&type=${pack.game_type}`}

@@ -1,17 +1,20 @@
 interface PageShellProps {
   children: React.ReactNode
   narrow?: boolean
+  /** Wider column (max-w-3xl) for multi-column layouts like the pack library grid. */
+  wide?: boolean
   centered?: boolean
 }
 
-export function PageShell({ children, narrow, centered }: PageShellProps) {
+export function PageShell({ children, narrow, wide, centered }: PageShellProps) {
+  const maxWidth = narrow ? 'max-w-md' : wide ? 'max-w-3xl' : 'max-w-lg'
   return (
     <div
       className={`page-wrap flex flex-col items-center px-4 py-10 overflow-y-auto ${
         centered ? 'justify-center min-h-screen py-16' : 'justify-start'
       }`}
     >
-      <div className={`w-full space-y-6 ${narrow ? 'max-w-md' : 'max-w-lg'}`}>{children}</div>
+      <div className={`w-full space-y-6 ${maxWidth}`}>{children}</div>
     </div>
   )
 }

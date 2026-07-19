@@ -65,6 +65,8 @@ const participantItemSchema = z.union([
 
 export const createGameSchema = z.object({
   title: sanitizedString(1, 100),
+  // Player-facing content label ("Maths", "Bible trivia") for CSV/library content games.
+  content_label: z.string().max(40).optional(),
   rounds_count: z.coerce.number().int().min(1).max(100).optional(),
   timer_seconds: z.coerce.number().optional(),
   operative_timer_seconds: z.coerce.number().optional(),

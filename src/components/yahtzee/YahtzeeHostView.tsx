@@ -30,6 +30,7 @@ import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostSeat } from '@/hooks/useHostSeat'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import type { Game, Player, YahtzeeCategory, YahtzeePlayerScore, YahtzeeSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
@@ -314,6 +315,24 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
   useYahtzeeNotifications({ game, session, myPlayerId: hostPlayerId, enabled: hostPlays && game?.status === 'active' })
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
+
+  // Roster drawer scoreboard: total score headline + filled-categories detail.
+  const rosterScores = useMemo(
+    () => Object.fromEntries(scores.map((s) => [s.player_id, totalScore(s.scores.categories)])),
+    [scores]
+  )
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        scores.map((s) => [
+          s.player_id,
+          `📋 ${Object.values(s.scores.categories).filter((v) => v !== null).length}/13 filled`,
+        ])
+      ),
+    [scores]
+  )
+  useGameStats(rosterDetails)
 
   // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
   // gameplay is the body, roster + Remove in the drawer): late-join rules + How-to-play

@@ -1,7 +1,13 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import type { GameType } from '@/types'
-import { GAME_TYPE_DISPLAY_ORDER, gameTypeConfig } from '@/lib/game-types'
+import {
+  GAME_TYPE_DISPLAY_ORDER,
+  GAME_CATEGORIES,
+  gameTypeCategory,
+  gameTypeConfig,
+  type GameCategory,
+} from '@/lib/game-types'
 import { Modal } from '@/components/ui/Modal'
 import { GameTypeCard } from '@/components/GameTypeCard'
 
@@ -11,6 +17,8 @@ interface GameTypeModalProps {
   selected?: GameType
   onSelect: (type: GameType) => void
 }
+
+type CategoryFilter = GameCategory | 'all'
 
 function matchesGameSearch(type: GameType, query: string): boolean {
   const cfg = gameTypeConfig(type)
@@ -22,21 +30,36 @@ function matchesGameSearch(type: GameType, query: string): boolean {
 
 export function GameTypeModal({ open, onClose, selected, onSelect }: GameTypeModalProps) {
   const [search, setSearch] = useState('')
+  const [category, setCategory] = useState<CategoryFilter>('all')
 
   useEffect(() => {
-    if (!open) setSearch('')
+    if (!open) {
+      setSearch('')
+      setCategory('all')
+    }
   }, [open])
+
+  // Searching spans every category, so drop the category filter while a query is active.
+  const searching = search.trim().length > 0
 
   const filteredTypes = useMemo(() => {
     const query = search.trim().toLowerCase()
-    if (!query) return GAME_TYPE_DISPLAY_ORDER
-    return GAME_TYPE_DISPLAY_ORDER.filter((type) => matchesGameSearch(type, query))
-  }, [search])
+    return GAME_TYPE_DISPLAY_ORDER.filter((type) => {
+      if (query) return matchesGameSearch(type, query)
+      if (category === 'all') return true
+      return gameTypeCategory(type) === category
+    })
+  }, [search, category])
 
   const handleSelect = (type: GameType) => {
     onSelect(type)
     onClose()
   }
+
+  const tabs: { key: CategoryFilter; label: string }[] = [
+    { key: 'all', label: 'All' },
+    ...GAME_CATEGORIES.map((c) => ({ key: c.key as CategoryFilter, label: c.label })),
+  ]
 
   return (
     <Modal
@@ -48,10 +71,10 @@ export function GameTypeModal({ open, onClose, selected, onSelect }: GameTypeMod
       fillHeight
     >
       <div className="space-y-4">
-        {/* Pinned so the search stays visible above the on-screen keyboard while
-            results scroll. Negative margins pull it over the body padding so no
+        {/* Pinned so the search + category tabs stay visible above the on-screen keyboard
+            while results scroll. Negative margins pull it over the body padding so no
             cards peek through above the bar. */}
-        <div className="sticky top-0 z-10 -mx-6 -mt-6 bg-[var(--card-strong)] px-6 pt-6 pb-4">
+        <div className="sticky top-0 z-10 -mx-6 -mt-6 bg-[var(--card-strong)] px-6 pt-6 pb-3 space-y-3">
           <div className="relative">
             <input
               type="search"
@@ -73,10 +96,37 @@ export function GameTypeModal({ open, onClose, selected, onSelect }: GameTypeMod
               </button>
             )}
           </div>
+
+          {!searching && (
+            <div
+              className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              role="tablist"
+              aria-label="Game categories"
+            >
+              {tabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={category === tab.key}
+                  onClick={() => setCategory(tab.key)}
+                  className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
+                    category === tab.key
+                      ? 'bg-[var(--chip-active-bg)] text-[var(--chip-active-text)] border border-[var(--chip-active-border)]'
+                      : 'chip'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {filteredTypes.length === 0 ? (
-          <p className="text-muted text-sm text-center py-8">No games match &ldquo;{search.trim()}&rdquo;</p>
+          <p className="text-muted text-sm text-center py-8">
+            {searching ? <>No games match &ldquo;{search.trim()}&rdquo;</> : 'No games in this category yet'}
+          </p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 animate-stagger">
             {filteredTypes.map((type) => (
