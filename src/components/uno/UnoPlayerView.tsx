@@ -518,7 +518,6 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
       partner={partner}
       quickChat={quickChat}
       onTeamLeaveDecision={(decision) => void postAction('/api/uno/team-leave', { decision })}
-      rulePills={game ? <UnoRulePills game={game} /> : null}
     />
   )
 
