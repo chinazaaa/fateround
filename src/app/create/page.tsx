@@ -442,6 +442,7 @@ function CreateGameInner() {
   const [unoMultiPlayMode, setUnoMultiPlayMode] = useState<
     'off' | 'same_color' | 'same_number' | 'same_color_or_number'
   >('off')
+  const [unoTeamMode, setUnoTeamMode] = useState(false)
   const [ludoMaxPlayers, setLudoMaxPlayers] = useState(LUDO_DEFAULT_MAX_PLAYERS)
   const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
   const [ayoVariant, setAyoVariant] = useState<AyoVariant>('traditional')
@@ -1924,6 +1925,9 @@ function CreateGameInner() {
           uno_zero_seven: isUno ? unoZeroSeven : undefined,
           uno_stacking: isUno ? unoStacking : undefined,
           uno_multi_play_mode: isUno ? unoMultiPlayMode : undefined,
+          uno_team_mode: isUno ? unoTeamMode : undefined,
+          // Team-Up is strictly 2v2.
+          ...(isUno && unoTeamMode ? { max_players: 4 } : {}),
           ludo_variant: isLudo ? ludoVariant : undefined,
           ayo_variant: isAyo ? ayoVariant : undefined,
           mahjong_ruleset: isMahjong ? mahjongRuleset : undefined,
@@ -2911,19 +2915,35 @@ function CreateGameInner() {
               </SettingsGroup>
             ) : isUno ? (
               <SettingsGroup title="UNO room">
-                <Field label={`Max players (${effectiveLimits.uno.min}–${effectiveLimits.uno.max})`}>
-                  <select
-                    value={unoMaxPlayers}
-                    onChange={(e) => setUnoMaxPlayers(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {playerCountOptions(effectiveLimits.uno.min, effectiveLimits.uno.max).map((n) => (
-                      <option key={n} value={n}>
-                        {n} players
-                      </option>
-                    ))}
-                  </select>
+                <Field label="Team-Up (2v2)">
+                  <Toggle
+                    label="Team-Up mode"
+                    description="4 players in 2 teams of 2. Teammates sit across and see each other's hands; a team wins the round the moment either partner empties their hand."
+                    value={unoTeamMode}
+                    onChange={setUnoTeamMode}
+                  />
                 </Field>
+                {unoTeamMode ? (
+                  <Field label="Players">
+                    <div className="input-field w-full bg-[var(--surface-inset-bg)] text-muted">
+                      4 players (2 teams of 2)
+                    </div>
+                  </Field>
+                ) : (
+                  <Field label={`Max players (${effectiveLimits.uno.min}–${effectiveLimits.uno.max})`}>
+                    <select
+                      value={unoMaxPlayers}
+                      onChange={(e) => setUnoMaxPlayers(Number(e.target.value))}
+                      className="input-field w-full"
+                    >
+                      {playerCountOptions(effectiveLimits.uno.min, effectiveLimits.uno.max).map((n) => (
+                        <option key={n} value={n}>
+                          {n} players
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
                 <Field label="Turn timer">
                   <select
                     value={settings.timer_seconds}

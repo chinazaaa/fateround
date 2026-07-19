@@ -47,6 +47,30 @@ export type UnoRules = {
   stacking: boolean
   /** Multi-Play grouping rule (lay several matching cards in one turn). */
   multiPlay: UnoMultiPlayMode
+  /** 2v2 Team-Up mode: a team wins the moment either member empties their hand. */
+  teamMode: boolean
+}
+
+/** Team-Up requires exactly this many players (2 teams of 2). */
+export const UNO_TEAM_PLAYERS = 4
+
+/**
+ * Team-Up teams are derived from seating parity: turn_order alternates A–B–A–B, so seats at
+ * even indices are team 0 and odd indices are team 1. Returns the team (0/1) for a player, or
+ * null if they're not seated.
+ */
+export function unoTeamIndex(turnOrder: string[], playerId: string): 0 | 1 | null {
+  const i = (turnOrder ?? []).indexOf(playerId)
+  if (i < 0) return null
+  return (i % 2) as 0 | 1
+}
+
+/** The player id of `playerId`'s teammate (same parity, other seat), or null. */
+export function unoTeammateId(turnOrder: string[], playerId: string): string | null {
+  const order = turnOrder ?? []
+  const i = order.indexOf(playerId)
+  if (i < 0) return null
+  return order.find((id, j) => j !== i && j % 2 === i % 2) ?? null
 }
 
 /** Multi-Play grouping rule. `off` = Classic (one card per turn). */
@@ -68,6 +92,7 @@ export function parseUnoRules(
         | 'uno_zero_seven'
         | 'uno_stacking'
         | 'uno_multi_play_mode'
+        | 'uno_team_mode'
       >
     | null
     | undefined
@@ -82,6 +107,7 @@ export function parseUnoRules(
     zeroSeven: game?.uno_zero_seven === true,
     stacking: game?.uno_stacking === true,
     multiPlay: parseMultiPlayMode(game?.uno_multi_play_mode),
+    teamMode: game?.uno_team_mode === true,
   }
 }
 
@@ -363,10 +389,37 @@ type UnoRankableHand = { player_id: string; cards: UnoCard[] }
  * exact order they finished (`finishOrder`); everyone still holding cards follows, ordered
  * by lowest hand total then fewest cards. Mirrors crazyEightsPlacementOrder.
  */
-export function unoPlacementOrder(hands: UnoRankableHand[], turnOrder: string[], finishOrder: string[]): string[] {
+export function unoPlacementOrder(
+  hands: UnoRankableHand[],
+  turnOrder: string[],
+  finishOrder: string[],
+  teamMode = false
+): string[] {
   const activeIds = new Set(turnOrder ?? [])
   const finished = (finishOrder ?? []).filter((id) => activeIds.has(id))
   const finishedSet = new Set(finished)
+
+  // Team-Up: rank the winning team's two members first, then the losing team. The winning team
+  // is whoever emptied a hand first, or — if a timer ended it — the lower combined hand total.
+  const order = turnOrder ?? []
+  if (teamMode && order.length === UNO_TEAM_PLAYERS) {
+    const sumOf = (id: string) => unoHandSum((hands.find((h) => h.player_id === id)?.cards as UnoCard[]) ?? [])
+    let winTeam: number
+    if (finished.length > 0) winTeam = order.indexOf(finished[0]!) % 2
+    else {
+      const s0 = order.filter((_, i) => i % 2 === 0).reduce((s, id) => s + sumOf(id), 0)
+      const s1 = order.filter((_, i) => i % 2 === 1).reduce((s, id) => s + sumOf(id), 0)
+      winTeam = s0 <= s1 ? 0 : 1
+    }
+    const winners = order
+      .filter((_, i) => i % 2 === winTeam)
+      .sort(
+        (a, b) =>
+          (finishedSet.has(b) ? 1 : 0) - (finishedSet.has(a) ? 1 : 0) || sumOf(a) - sumOf(b) || a.localeCompare(b)
+      )
+    const losers = order.filter((_, i) => i % 2 !== winTeam).sort((a, b) => sumOf(a) - sumOf(b) || a.localeCompare(b))
+    return [...winners, ...losers]
+  }
   const remaining = hands
     .filter((h) => activeIds.has(h.player_id) && !finishedSet.has(h.player_id))
     .map((h) => {
@@ -386,11 +439,12 @@ export function buildUnoStandings(
   hands: UnoPlayerHand[],
   players: { id: string; name: string }[],
   turnOrder: string[],
-  finishOrder: string[] = []
+  finishOrder: string[] = [],
+  teamMode = false
 ): UnoStanding[] {
   const activeIds = new Set(turnOrder ?? [])
   const byId = new Map(hands.filter((h) => activeIds.has(h.player_id)).map((h) => [h.player_id, h]))
-  return unoPlacementOrder(hands, turnOrder, finishOrder).map((playerId, index) => {
+  return unoPlacementOrder(hands, turnOrder, finishOrder, teamMode).map((playerId, index) => {
     const cards = (byId.get(playerId)?.cards as UnoCard[]) ?? []
     return {
       playerId,
@@ -442,10 +496,26 @@ export async function initializeUnoGame(
   gameId: string,
   playerIds: string[]
 ): Promise<{ error?: string }> {
-  const { data: gameRow } = await supabase.from('games').select('timer_seconds').eq('id', gameId).maybeSingle()
+  const { data: gameRow } = await supabase
+    .from('games')
+    .select('timer_seconds, uno_team_mode')
+    .eq('id', gameId)
+    .maybeSingle()
   const timerSeconds = gameRow?.timer_seconds ?? 0
+  const teamMode = gameRow?.uno_team_mode === true
 
-  const turnOrder = shuffle(playerIds)
+  if (teamMode && playerIds.length !== UNO_TEAM_PLAYERS) {
+    return { error: `Team-Up needs exactly ${UNO_TEAM_PLAYERS} players (2 teams of 2)` }
+  }
+
+  // Team-Up: randomly pair the 4 players into two teams, then seat them alternating
+  // (A–B–A–B) so teammates sit across and team = seat parity in turn_order.
+  const turnOrder = teamMode
+    ? (() => {
+        const s = shuffle(playerIds)
+        return [s[0]!, s[2]!, s[1]!, s[3]!]
+      })()
+    : shuffle(playerIds)
   const deck = shuffle(buildUnoDeck())
 
   const hands: UnoCard[][] = turnOrder.map(() => [])
@@ -533,7 +603,7 @@ async function loadGameState(
     supabase
       .from('games')
       .select(
-        'timer_seconds, game_duration_seconds, session_started_at, uno_wd4_challenge, uno_uno_penalty, uno_wd4_challenge_penalty, uno_zero_seven, uno_stacking, uno_multi_play_mode'
+        'timer_seconds, game_duration_seconds, session_started_at, uno_wd4_challenge, uno_uno_penalty, uno_wd4_challenge_penalty, uno_zero_seven, uno_stacking, uno_multi_play_mode, uno_team_mode'
       )
       .eq('id', gameId)
       .maybeSingle(),
@@ -638,18 +708,31 @@ async function finishByLowestHand(
   session: UnoSession,
   hands: UnoPlayerHand[],
   playerNames: Map<string, string>,
-  reasonPrefix: string
+  reasonPrefix: string,
+  teamMode = false
 ): Promise<boolean> {
   const finishOrder = session.finish_order ?? []
-  const winnerId = unoPlacementOrder(hands, session.turn_order ?? [], finishOrder)[0] ?? null
+  const placement = unoPlacementOrder(hands, session.turn_order ?? [], finishOrder, teamMode)
+  const winnerId = placement[0] ?? null
   const winnerName = winnerId ? playerName(playerNames, winnerId) : 'Nobody'
 
-  let detail = 'lowest hand total'
-  if (winnerId && finishOrder.includes(winnerId)) {
-    detail = 'emptied their hand first'
-  } else if (winnerId) {
-    const winnerHand = hands.find((h) => h.player_id === winnerId)
-    detail = `lowest hand total (${unoHandSum((winnerHand?.cards as UnoCard[]) ?? [])})`
+  let statusMessage: string
+  if (teamMode && winnerId) {
+    // The winner + their teammate share the round.
+    const mate = unoTeammateId(session.turn_order ?? [], winnerId)
+    const mateName = mate ? playerName(playerNames, mate) : null
+    statusMessage = mateName
+      ? `${reasonPrefix} ${winnerName} & ${mateName} win!`
+      : `${reasonPrefix} ${winnerName} wins!`
+  } else {
+    let detail = 'lowest hand total'
+    if (winnerId && finishOrder.includes(winnerId)) {
+      detail = 'emptied their hand first'
+    } else if (winnerId) {
+      const winnerHand = hands.find((h) => h.player_id === winnerId)
+      detail = `lowest hand total (${unoHandSum((winnerHand?.cards as UnoCard[]) ?? [])})`
+    }
+    statusMessage = `${reasonPrefix} ${winnerName} wins — ${detail}.`
   }
 
   const { data } = await supabase
@@ -657,7 +740,7 @@ async function finishByLowestHand(
     .update({
       phase: 'finished',
       winner_player_id: winnerId,
-      status_message: `${reasonPrefix} ${winnerName} wins — ${detail}.`,
+      status_message: statusMessage,
       turn_deadline_at: null,
       updated_at: new Date().toISOString(),
     })
@@ -677,11 +760,12 @@ async function finalizeIfGameExpired(
   hands: UnoPlayerHand[],
   playerNames: Map<string, string>,
   sessionStartedAt: string | null,
-  gameDurationSeconds: number
+  gameDurationSeconds: number,
+  teamMode = false
 ): Promise<boolean> {
   if (session.phase === 'finished') return false
   if (!unoGameSessionExpired(sessionStartedAt, gameDurationSeconds)) return false
-  return finishByLowestHand(supabase, gameId, session, hands, playerNames, "Time's up!")
+  return finishByLowestHand(supabase, gameId, session, hands, playerNames, "Time's up!", teamMode)
 }
 
 /**
@@ -696,11 +780,26 @@ function playerOutPatch(
   name: string,
   playerNames: Map<string, string>,
   board: Partial<UnoSession>,
-  nextDirection: number
+  nextDirection: number,
+  teamMode: boolean
 ): Partial<UnoSession> {
-  const remaining = (session.turn_order ?? []).filter((id) => id !== playerId && unoHandCount(hands, id) > 0)
   const finishOrder = [...(session.finish_order ?? []), playerId]
   const winnerId = finishOrder[0]
+
+  // Team-Up: the round ends the instant a member empties their hand — their team wins.
+  if (teamMode) {
+    const mate = unoTeammateId(session.turn_order ?? [], playerId)
+    const mateName = mate ? playerName(playerNames, mate) : null
+    return {
+      ...board,
+      phase: 'finished',
+      finish_order: finishOrder,
+      winner_player_id: winnerId,
+      status_message: mateName ? `${name} & ${mateName} win!` : `${name} wins!`,
+    }
+  }
+
+  const remaining = (session.turn_order ?? []).filter((id) => id !== playerId && unoHandCount(hands, id) > 0)
 
   if (gameDurationSeconds <= 0 || remaining.length < 2) {
     return {
@@ -827,7 +926,16 @@ export async function processUnoPlay(
   if (session.phase === 'finished') return { error: 'Game is finished' }
 
   if (
-    await finalizeIfGameExpired(supabase, gameId, session, hands, playerNames, sessionStartedAt, gameDurationSeconds)
+    await finalizeIfGameExpired(
+      supabase,
+      gameId,
+      session,
+      hands,
+      playerNames,
+      sessionStartedAt,
+      gameDurationSeconds,
+      rules.teamMode
+    )
   ) {
     return { error: "Time's up — the game has ended" }
   }
@@ -912,7 +1020,17 @@ export async function processUnoPlay(
 
     if (wentOut) {
       patch = {
-        ...playerOutPatch(session, hands, gameDurationSeconds, playerId, name, playerNames, board, session.direction),
+        ...playerOutPatch(
+          session,
+          hands,
+          gameDurationSeconds,
+          playerId,
+          name,
+          playerNames,
+          board,
+          session.direction,
+          rules.teamMode
+        ),
         ...unoPatch,
       }
     } else if (isSeven) {
@@ -995,7 +1113,16 @@ export async function processUnoPlayMulti(
   if (session.phase === 'finished') return { error: 'Game is finished' }
 
   if (
-    await finalizeIfGameExpired(supabase, gameId, session, hands, playerNames, sessionStartedAt, gameDurationSeconds)
+    await finalizeIfGameExpired(
+      supabase,
+      gameId,
+      session,
+      hands,
+      playerNames,
+      sessionStartedAt,
+      gameDurationSeconds,
+      rules.teamMode
+    )
   ) {
     return { error: "Time's up — the game has ended" }
   }
@@ -1072,7 +1199,17 @@ export async function processUnoPlayMulti(
   let patch: Partial<UnoSession>
   if (wentOut) {
     patch = {
-      ...playerOutPatch(session, hands, gameDurationSeconds, playerId, name, playerNames, board, direction),
+      ...playerOutPatch(
+        session,
+        hands,
+        gameDurationSeconds,
+        playerId,
+        name,
+        playerNames,
+        board,
+        direction,
+        rules.teamMode
+      ),
       ...unoPatch,
     }
   } else {
@@ -1119,7 +1256,16 @@ export async function processUnoDraw(
   if (session.phase === 'finished') return { error: 'Game is finished' }
 
   if (
-    await finalizeIfGameExpired(supabase, gameId, session, hands, playerNames, sessionStartedAt, gameDurationSeconds)
+    await finalizeIfGameExpired(
+      supabase,
+      gameId,
+      session,
+      hands,
+      playerNames,
+      sessionStartedAt,
+      gameDurationSeconds,
+      rules.teamMode
+    )
   ) {
     return { error: "Time's up — the game has ended" }
   }
@@ -1159,7 +1305,7 @@ export async function processUnoDraw(
       return { error: 'Draw pile is empty — play a card from your hand' }
     }
     if (!anyPlayerCanPlay(hands, session)) {
-      await finishByLowestHand(supabase, gameId, session, hands, playerNames, 'Nobody can play —')
+      await finishByLowestHand(supabase, gameId, session, hands, playerNames, 'Nobody can play —', rules.teamMode)
       return {}
     }
     const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
@@ -1267,15 +1413,22 @@ export async function processUnoPass(
   gameId: string,
   playerId: string
 ): Promise<{ error?: string }> {
-  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, playerNames } = await loadGameState(
-    supabase,
-    gameId
-  )
+  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
+    await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { error: 'Game is finished' }
 
   if (
-    await finalizeIfGameExpired(supabase, gameId, session, hands, playerNames, sessionStartedAt, gameDurationSeconds)
+    await finalizeIfGameExpired(
+      supabase,
+      gameId,
+      session,
+      hands,
+      playerNames,
+      sessionStartedAt,
+      gameDurationSeconds,
+      rules.teamMode
+    )
   ) {
     return { error: "Time's up — the game has ended" }
   }
@@ -1320,7 +1473,16 @@ export async function processUnoChoose(
   if (!session) return { error: 'Session not found' }
 
   if (
-    await finalizeIfGameExpired(supabase, gameId, session, hands, playerNames, sessionStartedAt, gameDurationSeconds)
+    await finalizeIfGameExpired(
+      supabase,
+      gameId,
+      session,
+      hands,
+      playerNames,
+      sessionStartedAt,
+      gameDurationSeconds,
+      rules.teamMode
+    )
   ) {
     return { error: "Time's up — the game has ended" }
   }
@@ -1419,7 +1581,16 @@ export async function processUnoChallenge(
   if (!session) return { error: 'Session not found' }
 
   if (
-    await finalizeIfGameExpired(supabase, gameId, session, hands, playerNames, sessionStartedAt, gameDurationSeconds)
+    await finalizeIfGameExpired(
+      supabase,
+      gameId,
+      session,
+      hands,
+      playerNames,
+      sessionStartedAt,
+      gameDurationSeconds,
+      rules.teamMode
+    )
   ) {
     return { error: "Time's up — the game has ended" }
   }
@@ -1545,14 +1716,21 @@ export async function processUnoSwap(
   playerId: string,
   targetId: string
 ): Promise<{ error?: string }> {
-  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, playerNames } = await loadGameState(
-    supabase,
-    gameId
-  )
+  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
+    await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
 
   if (
-    await finalizeIfGameExpired(supabase, gameId, session, hands, playerNames, sessionStartedAt, gameDurationSeconds)
+    await finalizeIfGameExpired(
+      supabase,
+      gameId,
+      session,
+      hands,
+      playerNames,
+      sessionStartedAt,
+      gameDurationSeconds,
+      rules.teamMode
+    )
   ) {
     return { error: "Time's up — the game has ended" }
   }
@@ -1625,15 +1803,22 @@ export async function processUnoExpireTurn(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, playerNames } = await loadGameState(
-    supabase,
-    gameId
-  )
+  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
+    await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { skipped: true }
 
   if (
-    await finalizeIfGameExpired(supabase, gameId, session, hands, playerNames, sessionStartedAt, gameDurationSeconds)
+    await finalizeIfGameExpired(
+      supabase,
+      gameId,
+      session,
+      hands,
+      playerNames,
+      sessionStartedAt,
+      gameDurationSeconds,
+      rules.teamMode
+    )
   ) {
     return {}
   }
@@ -1651,7 +1836,7 @@ export async function processUnoExpireTurn(
     const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
     const nextId = session.turn_order[nextIndex]
     if (!nextId || unoHandCount(hands, nextId) === 0) {
-      await finishByLowestHand(supabase, gameId, session, hands, playerNames, 'Nobody left —')
+      await finishByLowestHand(supabase, gameId, session, hands, playerNames, 'Nobody left —', rules.teamMode)
       return {}
     }
     const top = session.top_card
@@ -1719,7 +1904,7 @@ export async function processUnoExpireTurn(
 
 export async function finishExpiredUnoGame(
   supabase: SupabaseClient,
-  game: Pick<Game, 'id' | 'status' | 'session_started_at' | 'game_duration_seconds'>
+  game: Pick<Game, 'id' | 'status' | 'session_started_at' | 'game_duration_seconds' | 'uno_team_mode'>
 ): Promise<boolean> {
   if (game.status !== 'active') return false
   if (!unoGameSessionExpired(game.session_started_at, game.game_duration_seconds)) return false
@@ -1738,7 +1923,7 @@ export async function finishExpiredUnoGame(
   for (const p of playersRes.data ?? []) playerNames.set(p.id, p.name)
 
   const hands = (handsRes.data as UnoPlayerHand[]) ?? []
-  await finishByLowestHand(supabase, gameId, session, hands, playerNames, "Time's up!")
+  await finishByLowestHand(supabase, gameId, session, hands, playerNames, "Time's up!", game.uno_team_mode === true)
   return true
 }
 

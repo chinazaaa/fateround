@@ -209,19 +209,21 @@ async function getCompetitiveStandings(
   }
 
   if (isUnoGame(gameType)) {
-    const [{ data: session }, { data: hands }] = await Promise.all([
+    const [{ data: session }, { data: hands }, { data: gameRow }] = await Promise.all([
       supabase
         .from('uno_sessions')
         .select('winner_player_id, turn_order, finish_order')
         .eq('game_id', gameId)
         .maybeSingle(),
       supabase.from('uno_player_hands').select('player_id, cards').eq('game_id', gameId),
+      supabase.from('games').select('uno_team_mode').eq('id', gameId).maybeSingle(),
     ])
     if (!hands?.length) return session?.winner_player_id ? [session.winner_player_id] : []
     return unoPlacementOrder(
       hands as { player_id: string; cards: UnoCard[] }[],
       session?.turn_order ?? [],
-      session?.finish_order ?? []
+      session?.finish_order ?? [],
+      gameRow?.uno_team_mode === true
     )
   }
 

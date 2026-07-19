@@ -11,7 +11,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ co
 
   const { data: game } = await supabase
     .from('games')
-    .select('id, status, game_type, session_started_at, game_duration_seconds')
+    .select('id, status, game_type, session_started_at, game_duration_seconds, uno_team_mode')
     .eq('id', gameId)
     .maybeSingle()
 

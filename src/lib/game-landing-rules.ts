@@ -791,6 +791,16 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
     {
+      title: 'Team-Up 2v2 (optional)',
+      points: [
+        'A host setting chosen when creating the room — exactly 4 players in 2 teams of 2.',
+        'Teams are drawn at random and seated alternating, so teammates always sit across the table and play in strict order (you never skip to your partner).',
+        'You can see your teammate’s hand at all times (shown as a read-only “Partner” panel) — a digital-only edge; opponents still can’t see either of your hands.',
+        'The round ends the moment either member of a team empties their hand — that team wins, no matter how many cards their partner is still holding.',
+        'Penalties still hit only the targeted player; with Stacking on, the target can play their own matching Draw card on their turn to pass it to an opponent. Everyone still calls “UNO” for themselves.',
+      ],
+    },
+    {
       title: 'Wild Draw Four challenge',
       points: [
         'A Wild Draw Four is only meant to be played when you have no card of the current colour.',

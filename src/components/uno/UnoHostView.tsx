@@ -12,7 +12,15 @@ import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaiting
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
-import { currentPlayerId, hasPlayableCard, isDrawPileDepleted, parseMultiPlayMode, UNO_MIN_PLAYERS } from '@/lib/uno'
+import {
+  currentPlayerId,
+  hasPlayableCard,
+  isDrawPileDepleted,
+  parseMultiPlayMode,
+  unoTeammateId,
+  UNO_MIN_PLAYERS,
+  UNO_TEAM_PLAYERS,
+} from '@/lib/uno'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT, UNO_PLAYER_HANDS_SELECT, UNO_SESSION_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
@@ -245,7 +253,13 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
   }
 
   const cfg = gameTypeConfig('uno')
-  const canStart = players.filter((p) => p.spectator !== true).length >= UNO_MIN_PLAYERS
+  const teamMode = game?.uno_team_mode === true
+  const seatedCount = players.filter((p) => p.spectator !== true).length
+  // Team-Up needs exactly 4 (2v2); classic UNO needs the usual minimum.
+  const canStart = teamMode ? seatedCount === UNO_TEAM_PLAYERS : seatedCount >= UNO_MIN_PLAYERS
+  const startHint = teamMode
+    ? `Team-Up needs exactly ${UNO_TEAM_PLAYERS} players (${seatedCount}/${UNO_TEAM_PLAYERS})`
+    : `Need at least ${UNO_MIN_PLAYERS} players to start (${players.length}/${UNO_MIN_PLAYERS})`
   const turnPlayerId = session ? currentPlayerId(session) : null
   const winner = players.find((p) => p.id === session?.winner_player_id)
   const hostPlays = hostMode === 'player' && !!hostPlayerId
@@ -258,6 +272,16 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
     const row = hands.find((h) => h.player_id === hostPlayerId)
     return row?.cards ?? []
   }, [hands, hostPlayerId])
+
+  // Team-Up: the host (when playing) sees their teammate's hand read-only.
+  const partner = useMemo(() => {
+    if (game?.uno_team_mode !== true || !session || !hostPlayerId || !hostPlays) return null
+    const mateId = unoTeammateId(session.turn_order ?? [], hostPlayerId)
+    if (!mateId) return null
+    const mateCards = hands.find((h) => h.player_id === mateId)?.cards ?? []
+    const mateName = players.find((p) => p.id === mateId)?.name ?? 'Partner'
+    return { name: mateName, cards: mateCards }
+  }, [game?.uno_team_mode, session, hostPlayerId, hostPlays, hands, players])
 
   useUnoNotifications({
     game,
@@ -391,11 +415,7 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             onEnded={load}
             canStart={canStart}
             starting={starting}
-            startDisabledHint={
-              canStart
-                ? null
-                : `Need at least ${UNO_MIN_PLAYERS} players to start (${players.length}/${UNO_MIN_PLAYERS})`
-            }
+            startDisabledHint={canStart ? null : startHint}
             className="space-y-3"
           />
         ) : game.status === 'active' ? (
@@ -457,6 +477,7 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             onPass={() => void postHostAction('/api/uno/pass')}
             multiPlayMode={parseMultiPlayMode(game.uno_multi_play_mode)}
             onPlayMulti={(cardIds) => void postHostAction('/api/uno/play-multi', { cardIds })}
+            partner={partner}
           />
         ) : (
           <p className="turn-status g" style={{ textAlign: 'center', padding: 24 }}>
@@ -535,9 +556,7 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
         onStart={() => void startGame()}
         starting={starting}
         startDisabled={!canStart}
-        startDisabledHint={
-          canStart ? null : `Need at least ${UNO_MIN_PLAYERS} players to start (${players.length}/${UNO_MIN_PLAYERS})`
-        }
+        startDisabledHint={canStart ? null : startHint}
         startLabel="Start game"
         onRemovePlayer={removePlayer}
         removingPlayerId={removingPlayerId}
