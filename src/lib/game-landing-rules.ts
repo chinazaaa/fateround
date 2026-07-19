@@ -777,7 +777,8 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'A host toggle — off by default.',
         'When you are hit with a Draw Two you may play your own Draw Two instead of drawing; the penalty grows by 2 and passes to the next player. Draw Four stacks the same way on Draw Four (+4).',
         'The stack keeps growing until someone can’t (or won’t) add to it — that player draws the whole pile and loses their turn.',
-        'You can only stack like-for-like: a Draw Two on a Draw Two, a Draw Four on a Draw Four. With Draw Four stacking on, the challenge is replaced by the stack.',
+        'You can only stack like-for-like: a Draw Two on a Draw Two, a Draw Four on a Draw Four.',
+        'When stacking and the Wild Draw Four challenge are both on, the player who would have to draw the whole pile can still challenge — they challenge the most recent Wild Draw Four (the last person to stack one).',
       ],
     },
     {

@@ -1068,30 +1068,58 @@
   color: #e2231a;
 }
 
-/* UNO 0-7 swap picker */
+/* UNO 0-7 swap picker — 2-up grid so a full 9-player table mostly fits without
+   scrolling; the picker sheet (max-height:85dvh, overflow:auto) scrolls if needed. */
 .fr-room .uno-swap-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   width: 100%;
 }
+@media (max-width: 380px) {
+  .fr-room .uno-swap-list {
+    grid-template-columns: 1fr;
+  }
+}
 .fr-room .uno-swap-list button {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 12px 14px;
+  gap: 8px;
+  padding: 10px 12px;
   border-radius: var(--radius-lg);
   border: 1.5px solid var(--border-strong);
   background: var(--surface);
   color: var(--text);
   cursor: pointer;
-  font: 700 14px var(--font-display);
+  text-align: left;
 }
 .fr-room .uno-swap-list button:hover {
   border-color: var(--primary);
 }
+.fr-room .uno-swap-av {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-inset-bg, rgba(20, 18, 26, 0.06));
+  font: 800 13px var(--font-display);
+}
+.fr-room .uno-swap-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.fr-room .uno-swap-name {
+  font: 700 14px var(--font-display);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .fr-room .uno-swap-count {
   font-weight: 600;
-  font-size: 12px;
+  font-size: 11px;
   opacity: 0.65;
 }

@@ -1172,17 +1172,23 @@ export async function processUnoChoose(
       return {}
     }
     // Stacking (or challenge disabled): the penalty passes to the next player, who may stack
-    // another Wild Draw Four (when stacking is on) or draw the accumulated total.
-    const stackNote = rules.stacking ? ' or stack a Wild Draw Four' : ''
-    const status = `${playerName(playerNames, nextPlayerId)} must draw ${accumulated}${stackNote} — colour ${UNO_COLOR_LABELS[color]}`
+    // another Wild Draw Four (when stacking is on), draw the accumulated total, or — when the
+    // challenge is also on — challenge the most recent Wild Draw Four player. Keep wd4_player_id
+    // + challenge_prev_color only when the challenge stays available, so the UI can offer it.
+    const challengeable = rules.wd4Challenge && rules.stacking
+    const options = [rules.stacking ? 'stack a Wild Draw Four' : null, challengeable ? 'challenge' : null].filter(
+      Boolean
+    )
+    const optionNote = options.length ? ` or ${options.join(' / ')}` : ''
+    const status = `${playerName(playerNames, nextPlayerId)} must draw ${accumulated}${optionNote} — colour ${UNO_COLOR_LABELS[color]}`
     await persistSession(
       supabase,
       gameId,
       {
         required_color: color,
         pending_wild: null,
-        challenge_prev_color: null,
-        wd4_player_id: null,
+        challenge_prev_color: challengeable ? session.challenge_prev_color : null,
+        wd4_player_id: challengeable ? session.wd4_player_id : null,
         phase: 'playing',
         current_turn_index: nextIndex,
         draw_penalty: accumulated,
@@ -1231,7 +1237,15 @@ export async function processUnoChallenge(
     return { error: "Time's up — the game has ended" }
   }
 
-  if (session.phase !== 'challenge_window') return { error: 'No Wild Draw Four to challenge' }
+  // Challengeable either in the dedicated window (challenge-only games) or, when stacking is on,
+  // while a Wild Draw Four penalty sits pending on the current player in normal play.
+  const inChallengeWindow = session.phase === 'challenge_window'
+  const inStackedPenalty =
+    session.phase === 'playing' &&
+    !!session.wd4_player_id &&
+    (session.draw_penalty ?? 0) > 0 &&
+    session.draw_penalty_kind === 'wild_draw4'
+  if (!inChallengeWindow && !inStackedPenalty) return { error: 'No Wild Draw Four to challenge' }
 
   const currentId = currentPlayerId(session)
   if (currentId !== playerId) return { error: 'Not your decision' }
@@ -1310,8 +1324,10 @@ export async function processUnoChallenge(
     return {}
   }
 
-  // Challenge fails: challenger draws the failed-challenge penalty and is skipped.
-  const failPenalty = rules.wd4ChallengePenalty
+  // Challenge fails: challenger draws the pending total plus the failed-challenge extra
+  // (the standard +2 when wd4ChallengePenalty is 6; +0 for the milder 4 variant). This
+  // generalises correctly when the pending penalty is a stacked total, not just a single 4.
+  const failPenalty = penalty + (rules.wd4ChallengePenalty - 4)
   const { drawn, drawPile, discardPile } = drawCardsWithRefill(
     (session.draw_pile as UnoCard[]) ?? [],
     (session.discard_pile as UnoCard[]) ?? [],

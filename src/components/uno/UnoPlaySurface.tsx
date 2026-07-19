@@ -120,6 +120,13 @@ export function UnoPlaySurface({
   const deciding = isMyTurn && !watching && session.phase === 'challenge_window'
   const swapping = isMyTurn && !watching && session.phase === 'swap_target'
   const canAct = isMyTurn && !watching && session.phase === 'playing'
+  // Stacking + challenge: a pending Wild Draw Four penalty may be challenged during normal play
+  // (wd4_player_id is kept only while the challenge is available).
+  const canChallengeStack =
+    canAct &&
+    (session.draw_penalty ?? 0) > 0 &&
+    session.draw_penalty_kind === 'wild_draw4' &&
+    session.wd4_player_id != null
   const turnName = players.find((p) => p.id === turnPlayerId)?.name ?? 'next player'
 
   // 0-7 rule: candidates to swap hands with (other seated players still holding cards).
@@ -200,7 +207,9 @@ export function UnoPlaySurface({
             {session.draw_penalty_kind === 'draw2'
               ? ' — or stack a Draw Two'
               : session.draw_penalty_kind === 'wild_draw4'
-                ? ' — or stack a Wild Draw Four'
+                ? canChallengeStack
+                  ? ' — stack a Wild Draw Four, or challenge'
+                  : ' — or stack a Wild Draw Four'
                 : ' — no defence'}
           </ActionToast>
         ) : isMyTurn ? (
@@ -219,6 +228,15 @@ export function UnoPlaySurface({
             </button>
             <button type="button" className="hot" disabled={acting} onClick={() => onChallenge(true)}>
               ⚖️ Challenge
+            </button>
+          </div>
+        )}
+
+        {/* Stacking + challenge: challenge the pending Wild Draw Four instead of drawing/stacking. */}
+        {canChallengeStack && (
+          <div className="uno-challenge">
+            <button type="button" className="hot" disabled={acting} onClick={() => onChallenge(true)}>
+              ⚖️ Challenge the Wild Draw Four
             </button>
           </div>
         )}
@@ -305,9 +323,12 @@ export function UnoPlaySurface({
           <div className="uno-swap-list">
             {swapTargets.map((p) => (
               <button key={p.id} type="button" disabled={acting} onClick={() => onSwap(p.id)}>
-                <span className="uno-swap-name">{p.name}</span>
-                <span className="uno-swap-count">
-                  {handCounts[p.id] ?? 0} card{(handCounts[p.id] ?? 0) === 1 ? '' : 's'}
+                <span className="uno-swap-av">{p.name.charAt(0).toUpperCase()}</span>
+                <span className="uno-swap-meta">
+                  <span className="uno-swap-name">{p.name}</span>
+                  <span className="uno-swap-count">
+                    {handCounts[p.id] ?? 0} card{(handCounts[p.id] ?? 0) === 1 ? '' : 's'}
+                  </span>
                 </span>
               </button>
             ))}

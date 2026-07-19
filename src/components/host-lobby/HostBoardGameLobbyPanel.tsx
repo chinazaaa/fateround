@@ -10,6 +10,7 @@ import {
 import { formatMonopolyGameDuration, MONOPOLY_GAME_DURATION_OPTIONS } from '@/lib/monopoly'
 import { formatWhotGameDuration, WHOT_GAME_DURATION_OPTIONS } from '@/lib/whot'
 import { formatCrazyEightsGameDuration, CRAZY8_GAME_DURATION_OPTIONS } from '@/lib/crazy-eights'
+import { formatUnoGameDuration, UNO_GAME_DURATION_OPTIONS } from '@/lib/uno'
 import { lobbyMaxPlayersFromGame, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { MAHJONG_RULESET_CONFIG, parseMahjongRuleOptions, parseMahjongRuleset } from '@/lib/mahjong-rulesets'
 import { gameSupportsViewerSetting, lateJoinPolicyFromGame } from '@/lib/viewers'
@@ -71,6 +72,10 @@ export function HostBoardGameLobbyPanel({
   const [crazy8ActionCards, setCrazy8ActionCards] = useState(true)
   const [crazy8Jokers, setCrazy8Jokers] = useState(false)
   const [crazy8Pick2Stacking, setCrazy8Pick2Stacking] = useState(true)
+  const [unoWd4Challenge, setUnoWd4Challenge] = useState(true)
+  const [unoUnoPenalty, setUnoUnoPenalty] = useState(2)
+  const [unoZeroSeven, setUnoZeroSeven] = useState(false)
+  const [unoStacking, setUnoStacking] = useState(false)
   const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -111,6 +116,12 @@ export function HostBoardGameLobbyPanel({
       setCrazy8ActionCards(game.crazy8_action_cards !== false)
       setCrazy8Jokers(game.crazy8_jokers === true)
       setCrazy8Pick2Stacking(game.crazy8_pick2_stacking !== false)
+    }
+    if (boardGameType === 'uno') {
+      setUnoWd4Challenge(game.uno_wd4_challenge !== false)
+      setUnoUnoPenalty(Number(game.uno_uno_penalty) === 4 ? 4 : 2)
+      setUnoZeroSeven(game.uno_zero_seven === true)
+      setUnoStacking(game.uno_stacking === true)
     }
     if (boardGameType === 'ludo') {
       setLudoVariant(game.ludo_variant === 'traditional' ? 'traditional' : 'modern')
@@ -188,6 +199,14 @@ export function HostBoardGameLobbyPanel({
     void patchSettings(patch)
   }
 
+  const onUnoRuleChange = (patch: Record<string, boolean | number>) => {
+    if (patch.uno_wd4_challenge !== undefined) setUnoWd4Challenge(patch.uno_wd4_challenge as boolean)
+    if (patch.uno_uno_penalty !== undefined) setUnoUnoPenalty(patch.uno_uno_penalty as number)
+    if (patch.uno_zero_seven !== undefined) setUnoZeroSeven(patch.uno_zero_seven as boolean)
+    if (patch.uno_stacking !== undefined) setUnoStacking(patch.uno_stacking as boolean)
+    void patchSettings(patch)
+  }
+
   const onLudoVariantChange = (next: LudoVariant) => {
     if (next === ludoVariant) return
     setLudoVariant(next)
@@ -217,13 +236,17 @@ export function HostBoardGameLobbyPanel({
       ? formatWhotGameDuration
       : boardGameType === 'crazy_eights'
         ? formatCrazyEightsGameDuration
-        : formatMonopolyGameDuration
+        : boardGameType === 'uno'
+          ? formatUnoGameDuration
+          : formatMonopolyGameDuration
   const durationOptionsSource =
     boardGameType === 'whot'
       ? WHOT_GAME_DURATION_OPTIONS
       : boardGameType === 'crazy_eights'
         ? CRAZY8_GAME_DURATION_OPTIONS
-        : MONOPOLY_GAME_DURATION_OPTIONS
+        : boardGameType === 'uno'
+          ? UNO_GAME_DURATION_OPTIONS
+          : MONOPOLY_GAME_DURATION_OPTIONS
 
   const durationOptions = useMemo(
     () =>
@@ -238,7 +261,12 @@ export function HostBoardGameLobbyPanel({
     // Max players is shown always-visible above, so the collapsed summary describes the
     // settings that ARE hidden (visibility / timer / length / rules) rather than the cap.
     const parts = [isPublic ? 'Public' : 'Private', formatBoardGameTurnTimer(turnTimer)]
-    if (boardGameType === 'monopoly' || boardGameType === 'whot' || boardGameType === 'crazy_eights') {
+    if (
+      boardGameType === 'monopoly' ||
+      boardGameType === 'whot' ||
+      boardGameType === 'crazy_eights' ||
+      boardGameType === 'uno'
+    ) {
       parts.push(durationFormatter(gameDuration))
     }
     if (boardGameType === 'ludo') {
@@ -277,7 +305,10 @@ export function HostBoardGameLobbyPanel({
           <HostLobbyOptionChips value={turnTimer} options={turnTimerOptions} onChange={onTurnTimerChange} />
         </HostLobbySettingBlock>
 
-        {(boardGameType === 'monopoly' || boardGameType === 'whot' || boardGameType === 'crazy_eights') && (
+        {(boardGameType === 'monopoly' ||
+          boardGameType === 'whot' ||
+          boardGameType === 'crazy_eights' ||
+          boardGameType === 'uno') && (
           <HostLobbySettingBlock title="Game length" className="sm:col-span-2">
             <HostLobbyOptionChips value={gameDuration} options={durationOptions} onChange={onGameDurationChange} />
           </HostLobbySettingBlock>
@@ -380,6 +411,44 @@ export function HostBoardGameLobbyPanel({
                   description="On: defend a 2 with your own 2. Off: you must draw it."
                   value={crazy8Pick2Stacking}
                   onChange={(v) => onCrazy8RuleChange({ crazy8_pick2_stacking: v })}
+                />
+              </div>
+            </div>
+          </HostLobbySettingBlock>
+        )}
+
+        {boardGameType === 'uno' && (
+          <HostLobbySettingBlock title="House rules" className="sm:col-span-2">
+            <div className="space-y-3">
+              <div>
+                <p className="label-caps text-[10px] mb-1.5">Missed “UNO” penalty</p>
+                <HostLobbyOptionChips
+                  value={unoUnoPenalty}
+                  options={[
+                    { value: 2, label: 'Draw 2' },
+                    { value: 4, label: 'Draw 4' },
+                  ]}
+                  onChange={(v) => onUnoRuleChange({ uno_uno_penalty: v })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Toggle
+                  label="Wild Draw Four challenge"
+                  description="Let the next player challenge a Wild Draw Four. Off: they always draw 4."
+                  value={unoWd4Challenge}
+                  onChange={(v) => onUnoRuleChange({ uno_wd4_challenge: v })}
+                />
+                <Toggle
+                  label="0-7 rule"
+                  description="Play a 0 → everyone passes their hand in play direction. Play a 7 → swap hands with any player."
+                  value={unoZeroSeven}
+                  onChange={(v) => onUnoRuleChange({ uno_zero_seven: v })}
+                />
+                <Toggle
+                  label="Stacking"
+                  description="Stack Draw Two on Draw Two and Draw Four on Draw Four — the penalty piles up and passes on."
+                  value={unoStacking}
+                  onChange={(v) => onUnoRuleChange({ uno_stacking: v })}
                 />
               </div>
             </div>

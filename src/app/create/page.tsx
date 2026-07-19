@@ -2973,7 +2973,7 @@ function CreateGameInner() {
                     />
                     <Toggle
                       label="Stacking"
-                      description="Stack Draw Two on Draw Two and Draw Four on Draw Four — the penalty piles up and passes on. Draw Four stacking replaces the challenge."
+                      description="Stack Draw Two on Draw Two and Draw Four on Draw Four — the penalty piles up and passes on. Whoever would draw the pile can still challenge a Draw Four (if challenge is on)."
                       value={unoStacking}
                       onChange={setUnoStacking}
                     />
