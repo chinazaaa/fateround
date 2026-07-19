@@ -9,6 +9,7 @@ import { removeMonopolyPlayer } from '@/lib/monopoly'
 import { removeScrabblePlayer } from '@/lib/scrabble'
 import { removeWhotPlayer } from '@/lib/whot'
 import { removeCrazyEightsPlayer } from '@/lib/crazy-eights'
+import { removeUnoPlayer } from '@/lib/uno'
 import { removeLudoPlayer } from '@/lib/ludo'
 import { removeMahjongPlayer } from '@/lib/mahjong'
 import { removeSnakeAndLadderPlayer } from '@/lib/snake-and-ladder'
@@ -48,6 +49,7 @@ import {
   isYahtzeeGame,
   isWhotGame,
   isCrazyEightsGame,
+  isUnoGame,
   isLudoGame,
   isMahjongGame,
   isSnakeAndLadderGame,
@@ -599,7 +601,7 @@ export async function POST(req: NextRequest) {
     return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
   }
 
-  if (isWhotGame(rowGameType) || isCrazyEightsGame(rowGameType)) {
+  if (isWhotGame(rowGameType) || isCrazyEightsGame(rowGameType) || isUnoGame(rowGameType)) {
     const joinCheck = canJoinGame(gameRow as Game)
     if (!joinCheck.ok) {
       return NextResponse.json({ error: joinCheck.error }, { status: 400 })
@@ -609,7 +611,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'playerName is required' }, { status: 400 })
     }
 
-    const limitKey = isCrazyEightsGame(rowGameType) ? 'crazy_eights' : 'whot'
+    const limitKey = isCrazyEightsGame(rowGameType) ? 'crazy_eights' : isUnoGame(rowGameType) ? 'uno' : 'whot'
     const maxPlayers = lobbyMaxPlayersFromGame(limitKey, gameRow, lobbyLimits)
     const { count: playerCount } = await supabase
       .from('players')
@@ -1730,6 +1732,12 @@ export async function DELETE(req: NextRequest) {
 
   if (isCrazyEightsGame(gameType)) {
     const { error } = await removeCrazyEightsPlayer(getSupabaseAdmin(), id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isUnoGame(gameType)) {
+    const { error } = await removeUnoPlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }

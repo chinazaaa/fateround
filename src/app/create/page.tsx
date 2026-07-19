@@ -61,6 +61,7 @@ import {
   isYahtzeeGame,
   isWhotGame,
   isCrazyEightsGame,
+  isUnoGame,
   isLudoGame,
   isSnakeAndLadderGame,
   isTicTacToeGame,
@@ -235,6 +236,7 @@ import {
   CRAZY8_GAME_DURATION_OPTIONS,
   formatCrazyEightsGameDuration,
 } from '@/lib/crazy-eights'
+import { UNO_DEFAULT_MAX_PLAYERS, UNO_GAME_DURATION_OPTIONS, formatUnoGameDuration } from '@/lib/uno'
 import { turnTimerOptionsFor, formatBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { LUDO_DEFAULT_MAX_PLAYERS } from '@/lib/ludo'
 import { SNAKE_LADDER_DEFAULT_MAX_PLAYERS } from '@/lib/snake-and-ladder'
@@ -431,6 +433,12 @@ function CreateGameInner() {
   const [crazy8ActionCards, setCrazy8ActionCards] = useState(true)
   const [crazy8Jokers, setCrazy8Jokers] = useState(false)
   const [crazy8Pick2Stacking, setCrazy8Pick2Stacking] = useState(true)
+  const [unoMaxPlayers, setUnoMaxPlayers] = useState(UNO_DEFAULT_MAX_PLAYERS)
+  const [unoGameDuration, setUnoGameDuration] = useState(0)
+  const [unoWd4Challenge, setUnoWd4Challenge] = useState(true)
+  const [unoUnoPenalty, setUnoUnoPenalty] = useState(2)
+  const [unoZeroSeven, setUnoZeroSeven] = useState(false)
+  const [unoStacking, setUnoStacking] = useState(false)
   const [ludoMaxPlayers, setLudoMaxPlayers] = useState(LUDO_DEFAULT_MAX_PLAYERS)
   const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
   const [ayoVariant, setAyoVariant] = useState<AyoVariant>('traditional')
@@ -568,6 +576,7 @@ function CreateGameInner() {
     setYahtzeeMaxPlayers((v) => clamp('yahtzee', v))
     setWhotMaxPlayers((v) => clamp('whot', v))
     setCrazy8MaxPlayers((v) => clamp('crazy_eights', v))
+    setUnoMaxPlayers((v) => clamp('uno', v))
     setLudoMaxPlayers((v) => clamp('ludo', v))
     setSnakeLadderMaxPlayers((v) => clamp('snake_and_ladder', v))
     setNpatMaxPlayers((v) => clamp('i_call_on', v))
@@ -665,6 +674,13 @@ function CreateGameInner() {
             }
           : {}),
         ...(isCrazyEightsGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+            }
+          : {}),
+        ...(isUnoGame(type)
           ? {
               participant_mode: 'joiners' as const,
               anonymous: true,
@@ -869,6 +885,7 @@ function CreateGameInner() {
     if (!whotCardsEnabled) setWhotNumberCallsEnabled(false)
   }, [whotCardsEnabled])
   const isCrazy8 = isCrazyEightsGame(settings.game_type)
+  const isUno = isUnoGame(settings.game_type)
   const isLudo = isLudoGame(settings.game_type)
   const isSnakeLadder = isSnakeAndLadderGame(settings.game_type)
   const isTicTacToe = isTicTacToeGame(settings.game_type)
@@ -1053,6 +1070,7 @@ function CreateGameInner() {
     isYahtzee ||
     isWhot ||
     isCrazy8 ||
+    isUno ||
     isLudo ||
     isSnakeLadder ||
     isTicTacToe ||
@@ -1200,6 +1218,14 @@ function CreateGameInner() {
           }
         : {}),
       ...(isCrazyEightsGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: 30,
+          }
+        : {}),
+      ...(isUnoGame(type)
         ? {
             participant_mode: 'joiners' as const,
             anonymous: true,
@@ -1810,29 +1836,31 @@ function CreateGameInner() {
                               ? whotMaxPlayers
                               : isCrazy8
                                 ? crazy8MaxPlayers
-                                : isLudo
-                                  ? ludoMaxPlayers
-                                  : isSnakeLadder
-                                    ? snakeLadderMaxPlayers
-                                    : isNpat
-                                      ? npatMaxPlayers
-                                      : isSudoku
-                                        ? sudokuMaxPlayers
-                                        : isCrossword
-                                          ? crosswordMaxPlayers
-                                          : isWordSearch
-                                            ? wordSearchMaxPlayers
-                                            : isWordScramble
-                                              ? wordScrambleMaxPlayers
-                                              : isWordHunt
-                                                ? wordHuntMaxPlayers
-                                                : isWordRush
-                                                  ? wordRushMaxPlayers
-                                                  : isDescribeIt
-                                                    ? describeItMaxPlayers
-                                                    : isMatchingPairs
-                                                      ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
-                                                      : undefined,
+                                : isUno
+                                  ? unoMaxPlayers
+                                  : isLudo
+                                    ? ludoMaxPlayers
+                                    : isSnakeLadder
+                                      ? snakeLadderMaxPlayers
+                                      : isNpat
+                                        ? npatMaxPlayers
+                                        : isSudoku
+                                          ? sudokuMaxPlayers
+                                          : isCrossword
+                                            ? crosswordMaxPlayers
+                                            : isWordSearch
+                                              ? wordSearchMaxPlayers
+                                              : isWordScramble
+                                                ? wordScrambleMaxPlayers
+                                                : isWordHunt
+                                                  ? wordHuntMaxPlayers
+                                                  : isWordRush
+                                                    ? wordRushMaxPlayers
+                                                    : isDescribeIt
+                                                      ? describeItMaxPlayers
+                                                      : isMatchingPairs
+                                                        ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
+                                                        : undefined,
           operative_timer_seconds: isCodewords
             ? codewordsOperativeTimer
             : isNpat
@@ -1860,25 +1888,27 @@ function CreateGameInner() {
               ? whotGameDuration
               : isCrazy8
                 ? crazy8GameDuration
-                : isNpat
-                  ? npatGameDuration
-                  : isScrabble
-                    ? scrabbleGameDuration
-                    : isSudoku
-                      ? sudokuGameDuration
-                      : isCrossword
-                        ? crosswordGameDuration
-                        : isWordSearch
-                          ? wordSearchGameDuration
-                          : isWordScramble
-                            ? wordScrambleGameDuration
-                            : isMatchingPairs
-                              ? (settings.game_duration_seconds ?? 0)
-                              : isQuickDraw
-                                ? quickDrawVoteTimer
-                                : isLandmine
-                                  ? landmineCategoryTimer
-                                  : undefined,
+                : isUno
+                  ? unoGameDuration
+                  : isNpat
+                    ? npatGameDuration
+                    : isScrabble
+                      ? scrabbleGameDuration
+                      : isSudoku
+                        ? sudokuGameDuration
+                        : isCrossword
+                          ? crosswordGameDuration
+                          : isWordSearch
+                            ? wordSearchGameDuration
+                            : isWordScramble
+                              ? wordScrambleGameDuration
+                              : isMatchingPairs
+                                ? (settings.game_duration_seconds ?? 0)
+                                : isQuickDraw
+                                  ? quickDrawVoteTimer
+                                  : isLandmine
+                                    ? landmineCategoryTimer
+                                    : undefined,
           whot_pick3_enabled: isWhot ? whotPick3Enabled : undefined,
           whot_pick2_stacking: isWhot ? whotPick2Stacking : undefined,
           whot_cards_enabled: isWhot ? whotCardsEnabled : undefined,
@@ -1886,6 +1916,10 @@ function CreateGameInner() {
           crazy8_action_cards: isCrazy8 ? crazy8ActionCards : undefined,
           crazy8_jokers: isCrazy8 ? crazy8Jokers : undefined,
           crazy8_pick2_stacking: isCrazy8 ? crazy8Pick2Stacking : undefined,
+          uno_wd4_challenge: isUno ? unoWd4Challenge : undefined,
+          uno_uno_penalty: isUno ? unoUnoPenalty : undefined,
+          uno_zero_seven: isUno ? unoZeroSeven : undefined,
+          uno_stacking: isUno ? unoStacking : undefined,
           ludo_variant: isLudo ? ludoVariant : undefined,
           ayo_variant: isAyo ? ayoVariant : undefined,
           mahjong_ruleset: isMahjong ? mahjongRuleset : undefined,
@@ -2869,6 +2903,87 @@ function CreateGameInner() {
                   suit{crazy8ActionCards ? '; 2 makes them draw, J & A skip, Q reverses' : ''}. First to empty their
                   hand wins! With a game length set, time running out ends the game — whoever has the lowest total on
                   the cards left in their hand wins.
+                </p>
+              </SettingsGroup>
+            ) : isUno ? (
+              <SettingsGroup title="UNO room">
+                <Field label={`Max players (${effectiveLimits.uno.min}–${effectiveLimits.uno.max})`}>
+                  <select
+                    value={unoMaxPlayers}
+                    onChange={(e) => setUnoMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {playerCountOptions(effectiveLimits.uno.min, effectiveLimits.uno.max).map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Turn timer">
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    {turnTimerOptionsFor('uno').map((s) => (
+                      <option key={s} value={s}>
+                        {formatBoardGameTurnTimer(s)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Game length">
+                  <select
+                    value={unoGameDuration}
+                    onChange={(e) => setUnoGameDuration(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {UNO_GAME_DURATION_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {formatUnoGameDuration(s)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="uno" />
+                <Field label="Missed “UNO” penalty">
+                  <select
+                    value={unoUnoPenalty}
+                    onChange={(e) => setUnoUnoPenalty(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    <option value={2}>Draw 2 cards</option>
+                    <option value={4}>Draw 4 cards (harsher)</option>
+                  </select>
+                </Field>
+                <Field label="House rules">
+                  <div className="space-y-2">
+                    <Toggle
+                      label="Wild Draw Four challenge"
+                      description="Let the next player challenge a Wild Draw Four — the system reveals the hand. Off: they always draw 4."
+                      value={unoWd4Challenge}
+                      onChange={setUnoWd4Challenge}
+                    />
+                    <Toggle
+                      label="0-7 rule"
+                      description="Play a 0 → everyone passes their whole hand in the direction of play. Play a 7 → swap hands with any player."
+                      value={unoZeroSeven}
+                      onChange={setUnoZeroSeven}
+                    />
+                    <Toggle
+                      label="Stacking"
+                      description="Stack Draw Two on Draw Two and Draw Four on Draw Four — the penalty piles up and passes on. Whoever would draw the pile can still challenge a Draw Four (if challenge is on)."
+                      value={unoStacking}
+                      onChange={setUnoStacking}
+                    />
+                  </div>
+                </Field>
+                <p className="text-faint text-sm leading-relaxed">
+                  The party card classic — match the top card by colour, number, or symbol. Skip, Reverse, Draw Two, and
+                  Wild cards keep it lively; call &quot;UNO&quot; on your second-to-last card or draw a penalty. First
+                  to empty their hand wins! With a game length set, time running out ends the game — lowest hand total
+                  wins.
                 </p>
               </SettingsGroup>
             ) : isLudo ? (

@@ -7,6 +7,7 @@ import {
   isYahtzeeGame,
   isWhotGame,
   isCrazyEightsGame,
+  isUnoGame,
   isLudoGame,
   isMahjongGame,
   isSnakeAndLadderGame,
@@ -101,6 +102,7 @@ export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
     !isYahtzeeGame(gameType) &&
     !isWhotGame(gameType) &&
     !isCrazyEightsGame(gameType) &&
+    !isUnoGame(gameType) &&
     !isLudoGame(gameType) &&
     !isMahjongGame(gameType) &&
     !isSnakeAndLadderGame(gameType) &&
@@ -260,7 +262,13 @@ export function spectatorForActiveJoin(
   if (game.status !== 'active') return false
   const gameType = parseGameType(game.game_type)
   if (isAnonymousMessagesGame(gameType)) return true
-  if (isMonopolyGame(gameType) || isYahtzeeGame(gameType) || isWhotGame(gameType) || isCrazyEightsGame(gameType))
+  if (
+    isMonopolyGame(gameType) ||
+    isYahtzeeGame(gameType) ||
+    isWhotGame(gameType) ||
+    isCrazyEightsGame(gameType) ||
+    isUnoGame(gameType)
+  )
     return true
   if (!allowLatePlayers(game)) return true
   if (gameOffersLateJoinChoice(gameType)) return joinAsViewer === true

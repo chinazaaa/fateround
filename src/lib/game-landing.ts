@@ -50,6 +50,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   yahtzee: 'yahtzee',
   whot: 'whot',
   crazy_eights: 'crazy-eights',
+  uno: 'uno',
   ludo: 'ludo',
   mahjong: 'mahjong',
   i_call_on: 'i-call-on',
@@ -1605,6 +1606,76 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'Is Crazy Eights like Uno?',
         answer:
           'Very much — Uno is a branded descendant of Crazy Eights. Both are match-by-rank-or-suit shedding games where you race to empty your hand, and Crazy Eights’ wild 8s and action cards mirror Uno’s Wilds and Draw/Skip/Reverse cards. If you like Uno, you already know how to play. Fate Round has both.',
+      },
+    ],
+  }),
+  uno: landing('uno', {
+    seoTitle: 'Play UNO Online Free with Friends — No Sign-Up',
+    seoDescription:
+      'Play UNO online free with friends — no sign-up, no download. Match by colour, number, or symbol; Skip, Reverse, Draw Two, and Wild cards; call UNO on your second-to-last card. 2–10 players.',
+    keywords: [
+      'uno online',
+      'uno rules',
+      'how to play uno',
+      'uno card game',
+      'play uno with friends',
+      'uno multiplayer',
+      'play uno online free',
+      'uno with friends online',
+      'uno online free no download',
+      'uno game online',
+      'uno wild card',
+      'uno draw four challenge',
+    ],
+    heroSubtitle: 'The party card classic — match colours and numbers, go wild, and empty your hand first.',
+    bodyParagraph:
+      'UNO on Fate Round plays by the rules everyone knows: match the top card by colour, number, or symbol, and use Skip, Reverse, and Draw Two cards to control the table. Wild cards let you name the next colour, and a Wild Draw Four forces the next player to draw four — unless they challenge it. Call "UNO" the moment you have one card left, or draw a penalty. First to shed every card wins.',
+    highlights: ['108-card deck', '2–10 players', 'Wild + Draw Four challenge'],
+    features: [
+      {
+        title: 'Match or go wild',
+        description: 'Play a card matching the colour, number, or symbol on top — or drop a Wild and name the colour.',
+        emoji: '🎴',
+      },
+      {
+        title: 'Action cards',
+        description: 'Skip and Reverse control the turn order; Draw Two and Wild Draw Four stack the pressure.',
+        emoji: '🌈',
+      },
+      SHARED_FEATURES.mobile,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Join a room', description: 'Enter your name and wait for the host to deal 7 cards each.' },
+      { title: 'Play your turn', description: 'Match by colour, number, or symbol, play a Wild, or draw a card.' },
+      { title: 'Call UNO & win', description: 'Call "UNO" on your second-to-last card, then empty your hand to win.' },
+    ],
+    perfectFor: ['Game nights', 'Family card games', 'Quick card breaks'],
+    extraFaqs: [
+      {
+        question: 'How do you win at UNO?',
+        answer:
+          'Be the first to play every card in your hand. If a game clock is running and time runs out, the player with the lowest points left in hand wins instead — number cards score their face value, action cards 20, and Wild cards 50.',
+      },
+      {
+        question: 'When do you call UNO?',
+        answer:
+          'You must call "UNO" when you play your second-to-last card, leaving you with one. If you forget before the next player takes their turn, you draw a penalty of 2 cards.',
+      },
+      {
+        question: 'What is the Wild Draw Four challenge?',
+        answer:
+          'A Wild Draw Four can only legally be played if you have no card matching the current colour. The next player can challenge it: the system reveals the player’s hand — if they were bluffing, they draw four instead; if the challenge was wrong, the challenger draws four (or six) as a penalty. Hosts can turn challenges off.',
+      },
+      {
+        question: 'How many cards do you start with in UNO?',
+        answer:
+          'Each player is dealt 7 cards, with one card turned face-up to start the discard pile. The host deals when everyone is ready.',
+      },
+      {
+        question: 'Is UNO like Crazy Eights?',
+        answer:
+          'Yes — UNO is a branded descendant of Crazy Eights. Both are match-by-colour-or-number shedding games where you race to empty your hand. Fate Round has both.',
       },
     ],
   }),

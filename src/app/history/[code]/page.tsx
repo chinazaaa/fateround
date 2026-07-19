@@ -34,6 +34,7 @@ import {
   isYahtzeeGame,
   isWhotGame,
   isCrazyEightsGame,
+  isUnoGame,
   isLudoGame,
   isSnakeAndLadderGame,
 } from '@/lib/game-types'
@@ -54,6 +55,8 @@ import {
   WHOT_SESSION_SELECT,
   CRAZY8_PLAYER_HANDS_SELECT,
   CRAZY8_SESSION_SELECT,
+  UNO_PLAYER_HANDS_SELECT,
+  UNO_SESSION_SELECT,
   YAHTZEE_PLAYER_SCORES_SELECT,
   YAHTZEE_SESSION_SELECT,
 } from '@/lib/supabase-selects'
@@ -67,6 +70,7 @@ import { MonopolySessionSummary } from '@/components/monopoly/MonopolySessionSum
 import { YahtzeeSessionSummary } from '@/components/yahtzee/YahtzeeSessionSummary'
 import { WhotSessionSummary } from '@/components/whot/WhotSessionSummary'
 import { CrazyEightsSessionSummary } from '@/components/crazy-eights/CrazyEightsSessionSummary'
+import { UnoSessionSummary } from '@/components/uno/UnoSessionSummary'
 import { RematchHistory } from '@/components/RematchHistory'
 import { LudoSessionSummary } from '@/components/ludo/LudoSessionSummary'
 import { SnakeLadderSessionSummary } from '@/components/snake-and-ladder/SnakeLadderSessionSummary'
@@ -110,6 +114,8 @@ import type {
   WhotSession,
   CrazyEightsPlayerHand,
   CrazyEightsSession,
+  UnoPlayerHand,
+  UnoSession,
   YahtzeePlayerScore,
   YahtzeeSession,
 } from '@/types'
@@ -209,6 +215,8 @@ export default function GameHistoryPage() {
   const [whotHands, setWhotHands] = useState<WhotPlayerHand[]>([])
   const [crazy8Session, setCrazy8Session] = useState<CrazyEightsSession | null>(null)
   const [crazy8Hands, setCrazy8Hands] = useState<CrazyEightsPlayerHand[]>([])
+  const [unoSession, setUnoSession] = useState<UnoSession | null>(null)
+  const [unoHands, setUnoHands] = useState<UnoPlayerHand[]>([])
   const [ludoSession, setLudoSession] = useState<LudoSession | null>(null)
   const [ludoStates, setLudoStates] = useState<LudoPlayerState[]>([])
   const [snakeLadderSession, setSnakeLadderSession] = useState<SnakeLadderSession | null>(null)
@@ -244,6 +252,8 @@ export default function GameHistoryPage() {
         setWhotHands([])
         setCrazy8Session(null)
         setCrazy8Hands([])
+        setUnoSession(null)
+        setUnoHands([])
         setLudoSession(null)
         setLudoStates([])
         setSnakeLadderSession(null)
@@ -422,6 +432,30 @@ export default function GameHistoryPage() {
         resetSpecializedState()
         setCrazy8Session((sessionData as CrazyEightsSession | null) ?? null)
         setCrazy8Hands((handRows as CrazyEightsPlayerHand[]) ?? [])
+        setLoadState('ready')
+        return
+      }
+
+      if (isUnoGame(gameType)) {
+        const [{ data: plrs }, { data: sessionData }, { data: handRows }] = await Promise.all([
+          supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+          supabase.from('uno_sessions').select(UNO_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
+          supabase
+            .from('uno_player_hands')
+            .select(UNO_PLAYER_HANDS_SELECT)
+            .eq('game_id', gameCode)
+            .order('player_order'),
+        ])
+        setGame(gameData)
+        setPlayers(plrs ?? [])
+        setParticipants([])
+        setRounds([])
+        setVotes([])
+        setConfessions([])
+        setHotSeatSubmissions([])
+        resetSpecializedState()
+        setUnoSession((sessionData as UnoSession | null) ?? null)
+        setUnoHands((handRows as UnoPlayerHand[]) ?? [])
         setLoadState('ready')
         return
       }
@@ -643,6 +677,14 @@ export default function GameHistoryPage() {
     return (
       <HistoryPageShell game={game} gameType={gameType}>
         <CrazyEightsSessionSummary game={game} players={players} hands={crazy8Hands} session={crazy8Session} />
+      </HistoryPageShell>
+    )
+  }
+
+  if (isUnoGame(gameType)) {
+    return (
+      <HistoryPageShell game={game} gameType={gameType}>
+        <UnoSessionSummary game={game} players={players} hands={unoHands} session={unoSession} />
       </HistoryPageShell>
     )
   }

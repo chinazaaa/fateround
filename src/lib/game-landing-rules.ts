@@ -722,6 +722,94 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     },
   ],
 
+  uno: [
+    {
+      title: 'Objective',
+      points: [
+        'Be the first player to get rid of all the cards in your hand.',
+        'Match the top of the discard pile by colour, number, or symbol — or play a Wild to name the colour opponents must follow.',
+      ],
+    },
+    {
+      title: 'Setup',
+      points: [
+        '2–10 players join a room. Each player is dealt 7 cards from the 108-card deck.',
+        'The rest form the draw pile, with one number card turned face-up to start the discard pile.',
+      ],
+    },
+    {
+      title: 'How to play',
+      points: [
+        "On your turn, play a card matching the top card's colour, number, or symbol.",
+        'If you cannot (or choose not to) play, draw a card — if it can be played you may play it or keep it; otherwise your turn ends.',
+        'When the draw pile runs out, played cards (except the current top card) are shuffled back in as a new draw pile.',
+        'If nobody can play and no cards can be drawn, the game ends — lowest hand total wins.',
+      ],
+    },
+    {
+      title: 'Special cards',
+      points: [
+        'Skip — the next player loses their turn.',
+        'Reverse — the direction of play flips (acts as a Skip in a 2-player game).',
+        'Draw Two — the next player draws 2 cards and is skipped.',
+        'Wild — play on anything and name the colour the next player must follow.',
+        'Wild Draw Four — name the colour and the next player draws 4. Playable anytime, but can be challenged.',
+      ],
+    },
+    {
+      title: 'Calling UNO',
+      points: [
+        'When you play your second-to-last card, call "UNO" — leaving you with one card.',
+        'If you forget before the next player takes their turn, you draw a penalty (2 cards by default; the host can raise it to 4).',
+      ],
+    },
+    {
+      title: '0-7 rule (optional)',
+      points: [
+        'A host toggle for a spicier game — off by default.',
+        'Play a 0 — every player passes their entire hand to the next player in the current direction of play.',
+        'Play a 7 — swap your whole hand with any player you choose.',
+      ],
+    },
+    {
+      title: 'Stacking (optional)',
+      points: [
+        'A host toggle — off by default.',
+        'When you are hit with a Draw Two you may play your own Draw Two instead of drawing; the penalty grows by 2 and passes to the next player. Draw Four stacks the same way on Draw Four (+4).',
+        'The stack keeps growing until someone can’t (or won’t) add to it — that player draws the whole pile and loses their turn.',
+        'You can only stack like-for-like: a Draw Two on a Draw Two, a Draw Four on a Draw Four.',
+        'When stacking and the Wild Draw Four challenge are both on, the player who would have to draw the whole pile can still challenge — they challenge the most recent Wild Draw Four (the last person to stack one).',
+      ],
+    },
+    {
+      title: 'Wild Draw Four challenge',
+      points: [
+        'A Wild Draw Four is only meant to be played when you have no card of the current colour.',
+        'The next player can accept the draw, or challenge: the system reveals the hand.',
+        'If the player was bluffing (held the colour), they draw 4 instead — the challenger is safe.',
+        'If the challenge is wrong, the challenger draws 6 (the 4 they refused plus a 2 penalty) and is skipped.',
+        'Hosts can turn the challenge off, in which case a Wild Draw Four always makes the next player draw 4.',
+      ],
+    },
+    {
+      title: 'Card values (for scoring)',
+      points: [
+        'Values only matter when a timed game ends before someone empties their hand — lowest hand total wins.',
+        'Number cards — worth their face value (0–9).',
+        'Skip, Reverse, Draw Two — 20 points each.',
+        'Wild and Wild Draw Four — 50 points each, so avoid getting stuck holding them.',
+      ],
+    },
+    {
+      title: 'Game length',
+      points: [
+        'The host can set a game length (10, 15, 30 minutes, etc.) or play with no limit.',
+        'First to empty their hand wins during normal play (no game clock).',
+        'With a game clock, time running out ends the game — lowest hand total wins.',
+      ],
+    },
+  ],
+
   ludo: [
     {
       title: 'Objective',

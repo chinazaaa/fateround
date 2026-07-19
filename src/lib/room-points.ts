@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { buildLudoStandings } from '@/lib/ludo'
 import { whotPlacementOrder } from '@/lib/whot'
 import { crazyEightsPlacementOrder } from '@/lib/crazy-eights'
+import { unoPlacementOrder } from '@/lib/uno'
 import { buildSnakeLadderStandings } from '@/lib/snake-and-ladder'
 import { totalScore } from '@/lib/yahtzee'
 import { tallyTriviaPlayerScores } from '@/lib/trivia'
@@ -13,6 +14,7 @@ import {
   isYahtzeeGame,
   isWhotGame,
   isCrazyEightsGame,
+  isUnoGame,
   isLudoGame,
   isSnakeAndLadderGame,
   isBingoGame,
@@ -23,6 +25,7 @@ import {
 } from '@/lib/game-types'
 import type {
   CrazyEightsCard,
+  UnoCard,
   GameType,
   LudoPlayerState,
   Player,
@@ -57,6 +60,7 @@ export function isCompetitiveRoomGame(gameType: GameType): boolean {
     isYahtzeeGame(gameType) ||
     isWhotGame(gameType) ||
     isCrazyEightsGame(gameType) ||
+    isUnoGame(gameType) ||
     isLudoGame(gameType) ||
     isSnakeAndLadderGame(gameType) ||
     isBingoGame(gameType) ||
@@ -199,6 +203,23 @@ async function getCompetitiveStandings(
     // of everyone, then lowest hand total — never card count alone.
     return crazyEightsPlacementOrder(
       hands as { player_id: string; cards: CrazyEightsCard[] }[],
+      session?.turn_order ?? [],
+      session?.finish_order ?? []
+    )
+  }
+
+  if (isUnoGame(gameType)) {
+    const [{ data: session }, { data: hands }] = await Promise.all([
+      supabase
+        .from('uno_sessions')
+        .select('winner_player_id, turn_order, finish_order')
+        .eq('game_id', gameId)
+        .maybeSingle(),
+      supabase.from('uno_player_hands').select('player_id, cards').eq('game_id', gameId),
+    ])
+    if (!hands?.length) return session?.winner_player_id ? [session.winner_player_id] : []
+    return unoPlacementOrder(
+      hands as { player_id: string; cards: UnoCard[] }[],
       session?.turn_order ?? [],
       session?.finish_order ?? []
     )

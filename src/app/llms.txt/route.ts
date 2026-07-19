@@ -40,7 +40,7 @@ export function GET(): Response {
 
 > ${SITE_NAME} is a free, no-sign-up online party game platform. Create a game in seconds, share a short room code or link, and everyone joins from any phone or laptop browser to play together in real time — no app download and no account required.
 
-${SITE_NAME} hosts ${GAME_TYPE_DISPLAY_ORDER.length}+ multiplayer game modes in one place: classic party games (Smash Marry Kill, Would You Rather, Most Likely To, Red Flag Green Flag, Never Have I Ever, Hot Seat), board and card games (Monopoly, Yahtzee, Whot, Ludo, Chess, Checkers, Crazy Eights, Snakes and Ladders, Scrabble), and word, trivia, and puzzle games (Codewords, Trivia, Word Hunt, Sudoku, Tic-Tac-Toe, Bingo). Every mode is free forever, runs entirely in the browser, works on mobile and desktop, and supports custom questions or participant lists via CSV/Excel upload.
+${SITE_NAME} hosts ${GAME_TYPE_DISPLAY_ORDER.length}+ multiplayer game modes in one place: classic party games (Smash Marry Kill, Would You Rather, Most Likely To, Red Flag Green Flag, Never Have I Ever, Hot Seat), board and card games (Monopoly, Yahtzee, Whot, Ludo, Chess, Checkers, Crazy Eights, UNO, Snakes and Ladders, Scrabble), and word, trivia, and puzzle games (Codewords, Trivia, Word Hunt, Sudoku, Tic-Tac-Toe, Bingo). Every mode is free forever, runs entirely in the browser, works on mobile and desktop, and supports custom questions or participant lists via CSV/Excel upload.
 
 Best for: friend groups, Discord and video calls, birthday parties, icebreakers, team socials, family game night, and late-night group chats.
 

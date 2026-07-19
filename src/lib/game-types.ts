@@ -976,6 +976,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  uno: {
+    id: 'uno',
+    label: 'UNO',
+    tagline: 'Match colour or number — first to empty their hand wins',
+    headerEmoji: '🎴🌈',
+    card: {
+      accent: '#ef4444',
+      accentSoft: 'rgba(239, 68, 68, 0.15)',
+      emoji: '🎴',
+      players: '2–10 players',
+      vibe: 'Party card classic',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🎴',
+        label: 'Cards left',
+        color: '#ef4444',
+        leaderboardLabel: 'Fewest cards',
+        activeClass: 'bg-red-500/20 text-red-100 border-red-400',
+        borderClass: 'border-red-500/50 bg-red-500/10',
+        textColor: '#fca5a5',
+      },
+      marry: {
+        emoji: '🌈',
+        label: 'Wild',
+        color: '#f59e0b',
+        leaderboardLabel: 'Wild plays',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+      kill: {
+        emoji: '🏆',
+        label: 'Winner',
+        color: '#fbbf24',
+        leaderboardLabel: 'Winner',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
   ludo: {
     id: 'ludo',
     label: 'Ludo',
@@ -1984,6 +2027,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'word_scramble',
   'landmine',
   'ping_pong',
+  'uno',
 ]
 
 // Games pinned to the top of the picker / games list, in this exact order.
@@ -2065,6 +2109,7 @@ const GAME_CATEGORY_BY_TYPE: Partial<Record<GameType, GameCategory>> = {
   // Cards
   whot: 'cards',
   crazy_eights: 'cards',
+  uno: 'cards',
   // Board / strategy
   monopoly: 'board',
   ludo: 'board',
@@ -2125,6 +2170,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'scrabble') return 'scrabble'
   if (raw === 'snake_and_ladder' || raw === 'snakes-and-ladders') return 'snake_and_ladder'
   if (raw === 'crazy_eights' || raw === 'crazy-eights') return 'crazy_eights'
+  if (raw === 'uno') return 'uno'
   if (raw === 'checkers' || raw === 'draughts') return 'checkers'
   if (raw === 'mafia' || raw === 'werewolf') return 'mafia'
   if (raw === 'matching_pairs') return 'matching_pairs'
@@ -2207,6 +2253,8 @@ export function gameHowItWorks(
       return 'Players roll, hold dice, and choose a score category each turn. Build the best total across all combos.'
     case 'whot':
       return 'Players join with their name. Match the top card by shape or number — WHOT lets you call the next match. Pick 2 and Pick 3 stacks are separate. First to empty their hand wins — or lowest hand total when the game clock runs out.'
+    case 'uno':
+      return 'Players join with their name and are dealt 7 cards. Match the top card by colour, number, or symbol. Skip, Reverse, Draw Two, and Wild cards shake things up — call "UNO" on your second-to-last card or draw a penalty. First to empty their hand wins.'
     case 'ludo':
       return 'Players join with their name. Roll two dice each turn and use each die separately — a 6 brings pieces out; doubles earn another roll after both dice are played. Capture opponents, block with pairs — first to finish all four pieces wins!'
     case 'mahjong':
@@ -2517,6 +2565,7 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   word_scramble: true,
   landmine: true,
   ping_pong: true,
+  uno: true,
   mafia: false,
 }
 
@@ -2564,6 +2613,7 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   word_scramble: false,
   landmine: false,
   ping_pong: false,
+  uno: false,
   mafia: false,
 }
 
@@ -2651,6 +2701,10 @@ export function isWhotGame(gameType: GameType | string | undefined): boolean {
 
 export function isCrazyEightsGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'crazy_eights'
+}
+
+export function isUnoGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'uno'
 }
 
 export function isLudoGame(gameType: GameType | string | undefined): boolean {

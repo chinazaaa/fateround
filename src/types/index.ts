@@ -53,6 +53,7 @@ export type GameType =
   | 'word_scramble'
   | 'landmine'
   | 'ping_pong'
+  | 'uno'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'
@@ -407,6 +408,18 @@ export interface Game {
   crazy8_jokers?: boolean
   /** Crazy Eights — allow stacking/defending a Pick Two (2) instead of forcing the draw. */
   crazy8_pick2_stacking?: boolean
+  /** UNO — allow challenging a Wild Draw Four (default on). */
+  uno_wd4_challenge?: boolean
+  /** UNO — cards drawn for a missed "UNO" call (2 or 4). */
+  uno_uno_penalty?: number
+  /** UNO — cards a failed challenger draws (4 base, 6 variant). */
+  uno_wd4_challenge_penalty?: number
+  /** UNO — 0 rotates all hands, 7 swaps hands (deferred toggle). */
+  uno_zero_seven?: boolean
+  /** UNO — allow stacking Draw Two on Draw Two / Draw Four on Draw Four (deferred toggle). */
+  uno_stacking?: boolean
+  /** UNO — allow laying multiple same-colour cards in one turn (deferred toggle). */
+  uno_multi_play?: boolean
   /** Ludo — 'modern' (start + mid-arm safe stars) or 'traditional' (no track safe squares). */
   ludo_variant?: LudoVariant
   /** Ayo — 'traditional' (capture on 4, houses, match rounds) or 'oware' (2/3 seeds). */
@@ -664,6 +677,72 @@ export interface CrazyEightsPlayerHand {
   game_id: string
   player_id: string
   cards: CrazyEightsCard[]
+  player_order: number
+  created_at: string
+}
+
+/** A playable UNO colour ('wild' is the colourless slot for Wild / Wild Draw Four cards). */
+export type UnoCardColor = 'red' | 'yellow' | 'green' | 'blue' | 'wild'
+
+/** A demandable colour — what a Wild / Wild Draw Four names for the next player. */
+export type UnoColor = 'red' | 'yellow' | 'green' | 'blue'
+
+/** What a card does. Number cards carry `value` 0–9; everything else is an action. */
+export type UnoCardKind = 'number' | 'skip' | 'reverse' | 'draw2' | 'wild' | 'wild_draw4'
+
+export type UnoPhase = 'playing' | 'choose_color' | 'challenge_window' | 'swap_target' | 'finished'
+
+export interface UnoCard {
+  id: string
+  color: UnoCardColor
+  kind: UnoCardKind
+  /** 0–9 for number cards; omitted for action / wild cards. */
+  value?: number
+}
+
+export interface UnoSession {
+  id: string
+  game_id: string
+  turn_order: string[]
+  current_turn_index: number
+  /** 1 = forward through turn_order, -1 = reversed (Reverse flips it). */
+  direction: number
+  phase: UnoPhase
+  draw_pile: UnoCard[]
+  discard_pile: UnoCard[]
+  top_card: UnoCard | null
+  /** Colour demanded by a played Wild / Wild Draw Four. */
+  required_color: UnoColor | null
+  /** Pending forced draw the current player must take (Draw Two / Draw Four target). */
+  draw_penalty: number
+  /** Which card can stack onto the pending penalty ('draw2' | 'wild_draw4'); null = must draw it. */
+  draw_penalty_kind: 'draw2' | 'wild_draw4' | null
+  /** Set to the card the current player just drew while they may still play it or keep it (pass). */
+  drawn_card_id: string | null
+  /** During `choose_color`, which wild is being coloured. */
+  pending_wild: 'wild' | 'wild_draw4' | null
+  /** Colour in effect immediately before a Wild Draw Four (for challenge reveal). */
+  challenge_prev_color: UnoColor | null
+  /** Who played the Wild Draw Four currently in `challenge_window`. */
+  wd4_player_id: string | null
+  /** Player who dropped to one card and still owes an "UNO" call. */
+  uno_pending_player: string | null
+  /** Whether `uno_pending_player` has satisfied their UNO call. */
+  uno_called: boolean
+  status_message: string | null
+  winner_player_id: string | null
+  /** Player ids in the order they emptied their hands. Drives final placement. */
+  finish_order: string[]
+  turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface UnoPlayerHand {
+  id: string
+  game_id: string
+  player_id: string
+  cards: UnoCard[]
   player_order: number
   created_at: string
 }

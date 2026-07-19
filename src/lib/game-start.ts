@@ -4,6 +4,7 @@ import { initializeMonopolyGame, MONOPOLY_MIN_PLAYERS } from '@/lib/monopoly'
 import { initializeYahtzeeGame, YAHTZEE_MIN_PLAYERS } from '@/lib/yahtzee'
 import { initializeWhotGame, WHOT_MIN_PLAYERS } from '@/lib/whot'
 import { initializeCrazyEightsGame, CRAZY8_MIN_PLAYERS } from '@/lib/crazy-eights'
+import { initializeUnoGame, UNO_MIN_PLAYERS, UNO_MAX_PLAYERS } from '@/lib/uno'
 import { initializeLudoGame, LUDO_MIN_PLAYERS, LUDO_MAX_PLAYERS } from '@/lib/ludo'
 import { initializeMahjongGame, MAHJONG_MIN_PLAYERS, MAHJONG_MAX_PLAYERS } from '@/lib/mahjong'
 import {
@@ -64,6 +65,11 @@ export const GAME_START_SPECS: Partial<Record<GameType, StartSpec>> = {
   crazy_eights: {
     minPlayers: CRAZY8_MIN_PLAYERS,
     initialize: (admin, code, ids) => initializeCrazyEightsGame(admin, code, ids),
+  },
+  uno: {
+    minPlayers: UNO_MIN_PLAYERS,
+    maxPlayers: UNO_MAX_PLAYERS,
+    initialize: (admin, code, ids) => initializeUnoGame(admin, code, ids),
   },
   ludo: {
     minPlayers: LUDO_MIN_PLAYERS,
