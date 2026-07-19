@@ -42,6 +42,7 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useUnoTurnTimer } from '@/hooks/useUnoTurnTimer'
 import { useUnoGameTimer } from '@/hooks/useUnoGameTimer'
 import { useUnoNotifications, playUnoActionSound } from '@/hooks/useUnoNotifications'
+import { useUnoQuickChat } from '@/hooks/useUnoQuickChat'
 import { useGamePlacements, useGameStats } from '@/components/roster/RosterDrawerContext'
 
 type Screen =
@@ -265,8 +266,25 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     if (!mateId) return null
     const mateCards = hands.find((h) => h.player_id === mateId)?.cards ?? []
     const mateName = players.find((p) => p.id === mateId)?.name ?? 'Partner'
-    return { name: mateName, cards: mateCards }
+    return { id: mateId, name: mateName, cards: mateCards }
   }, [game?.uno_team_mode, session, myPlayerId, isWatching, hands, players])
+
+  // Team-Up quick messages — a partner-private "emote" channel (colours / values /
+  // actions). Ephemeral broadcast, only active while a live partner exists.
+  const quickChatEnabled = !!partner && game?.status === 'active' && screen === 'active'
+  const {
+    incoming: quickChatIncoming,
+    send: sendQuickMessage,
+    dismiss: dismissQuickMessage,
+  } = useUnoQuickChat(gameCode, myPlayerId, quickChatEnabled)
+  const quickChat = useMemo(() => {
+    if (!partner?.id) return null
+    return {
+      incoming: quickChatIncoming,
+      onDismiss: dismissQuickMessage,
+      onSend: (messageId: string) => sendQuickMessage(partner.id, activePlayer?.name ?? 'Partner', messageId),
+    }
+  }, [partner, quickChatIncoming, dismissQuickMessage, sendQuickMessage, activePlayer?.name])
 
   const turnTimer = useUnoTurnTimer(gameCode, session, game?.status === 'active' && screen === 'active')
   const gameTimer = useUnoGameTimer(gameCode, game)
@@ -484,6 +502,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
       multiPlayMode={parseMultiPlayMode(game?.uno_multi_play_mode)}
       onPlayMulti={(cardIds) => void postAction('/api/uno/play-multi', { cardIds })}
       partner={partner}
+      quickChat={quickChat}
     />
   )
 

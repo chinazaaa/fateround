@@ -38,6 +38,7 @@ import { ExitIcon } from '@/components/host/host-icons'
 import { useUnoTurnTimer } from '@/hooks/useUnoTurnTimer'
 import { useUnoGameTimer } from '@/hooks/useUnoGameTimer'
 import { useUnoNotifications, playUnoActionSound } from '@/hooks/useUnoNotifications'
+import { useUnoQuickChat } from '@/hooks/useUnoQuickChat'
 import { UnoPlaySurface } from '@/components/uno/UnoPlaySurface'
 import { HostRoomShell } from '@/components/host/HostRoomShell'
 import {
@@ -280,8 +281,24 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
     if (!mateId) return null
     const mateCards = hands.find((h) => h.player_id === mateId)?.cards ?? []
     const mateName = players.find((p) => p.id === mateId)?.name ?? 'Partner'
-    return { name: mateName, cards: mateCards }
+    return { id: mateId, name: mateName, cards: mateCards }
   }, [game?.uno_team_mode, session, hostPlayerId, hostPlays, hands, players])
+
+  // Team-Up quick messages — a host who plays inside a team gets the same
+  // partner-private emote channel as a regular player.
+  const {
+    incoming: quickChatIncoming,
+    send: sendQuickMessage,
+    dismiss: dismissQuickMessage,
+  } = useUnoQuickChat(gameCode, hostPlayerId, !!partner && hostPlays && game?.status === 'active')
+  const quickChat = useMemo(() => {
+    if (!partner?.id) return null
+    return {
+      incoming: quickChatIncoming,
+      onDismiss: dismissQuickMessage,
+      onSend: (messageId: string) => sendQuickMessage(partner.id, hostPlayerName ?? 'Partner', messageId),
+    }
+  }, [partner, quickChatIncoming, dismissQuickMessage, sendQuickMessage, hostPlayerName])
 
   useUnoNotifications({
     game,
@@ -478,6 +495,7 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             multiPlayMode={parseMultiPlayMode(game.uno_multi_play_mode)}
             onPlayMulti={(cardIds) => void postHostAction('/api/uno/play-multi', { cardIds })}
             partner={partner}
+            quickChat={quickChat}
           />
         ) : (
           <p className="turn-status g" style={{ textAlign: 'center', padding: 24 }}>
