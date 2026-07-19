@@ -26,6 +26,10 @@ export function useUnoNotifications({
   const prevPhaseRef = useRef<string | null>(null)
   const prevHandCountRef = useRef<number | null>(null)
   const prevUnoCallRef = useRef<string | null>(null)
+  // The round whose opening deal we've already accounted for. The initial deal fills your hand
+  // (0 → 7, or leftover → 7 on play-again) and must NOT be announced as a draw; only increases
+  // AFTER the deal are real draws. Keyed on the session id (recreated each round).
+  const dealtRoundRef = useRef<string | null>(null)
 
   // A player calling "UNO" (either as they play their 2nd-to-last card or via the button)
   // flips uno_called → true for the pending player. Announce it to the whole room once.
@@ -34,6 +38,8 @@ export function useUnoNotifications({
   useEffect(() => {
     if (!enabled || !game) return
 
+    const activeRoundKey = game.status === 'active' ? (session?.id ?? null) : null
+
     if (!readyRef.current) {
       readyRef.current = true
       prevTurnIndexRef.current = session?.current_turn_index ?? null
@@ -41,8 +47,14 @@ export function useUnoNotifications({
       prevPhaseRef.current = session?.phase ?? null
       prevHandCountRef.current = myHandCount
       prevUnoCallRef.current = unoCallKey
+      // Mounting into an already-dealt active round: treat its deal as done so the player's
+      // first real draw still notifies (only a fresh 0 → 7 deal should ever be suppressed).
+      if (activeRoundKey !== null && myHandCount > 0) dealtRoundRef.current = activeRoundKey
       return
     }
+
+    // Has this round's opening deal already landed? Computed BEFORE we (re)mark it below.
+    const dealtThisRound = activeRoundKey !== null && dealtRoundRef.current === activeRoundKey
 
     if (unoCallKey && unoCallKey !== prevUnoCallRef.current && game.status === 'active') {
       const msg =
@@ -66,11 +78,16 @@ export function useUnoNotifications({
     if (prevHandCount !== null && myHandCount !== prevHandCount && isZeroSeven) {
       info(statusMsg)
       playVoteSubmittedSound()
-    } else if (prevHandCount !== null && myHandCount > prevHandCount) {
+    } else if (prevHandCount !== null && myHandCount > prevHandCount && dealtThisRound) {
+      // Only a genuine draw (after the round's opening deal has settled) — never the deal itself.
       const gained = myHandCount - prevHandCount
       info(`You drew ${gained} card${gained === 1 ? '' : 's'} 🃏`)
       playVoteSubmittedSound()
     }
+
+    // Mark this active round's deal accounted-for once the hand is populated, so the very first
+    // fill (this render or an earlier one) is never mistaken for a draw on subsequent updates.
+    if (activeRoundKey !== null && myHandCount > 0) dealtRoundRef.current = activeRoundKey
 
     if (prevStatus === 'waiting' && game.status === 'active') {
       info('Game started! 🃏')
