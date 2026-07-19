@@ -363,6 +363,8 @@ function CreateGameInner() {
   const fileRef = useRef<HTMLInputElement>(null)
   const questionsFileRef = useRef<HTMLInputElement>(null)
   const wstDeckFileRef = useRef<HTMLInputElement>(null)
+  // True once the host manually edits the Category — after that, the AI "Theme" no longer mirrors into it.
+  const contentLabelTouchedRef = useRef(false)
   const [bulkPaste, setBulkPaste] = useState('')
   const [questionSource, setQuestionSource] = useState<QuestionSource>('platform')
   const [playerQuestionsEnabled, setPlayerQuestionsEnabled] = useState(true)
@@ -1002,9 +1004,32 @@ function CreateGameInner() {
   const isBingo = isBingoGame(settings.game_type)
   const isCodewords = isCodewordsGame(settings.game_type)
   // Content games (CSV upload / library packs) can carry a player-facing "category" label
-  // so joiners know what the questions are about before they commit (e.g. "Maths").
+  // so joiners know what the pack is about before they commit (e.g. "Maths"). For library
+  // packs it's auto-filled from the pack name; for a CSV upload we ask the host directly,
+  // right under the upload — hence gated on the custom source. Reused across game blocks.
   const showsContentLabel =
     isLobbyQuestions || isCrossword || isWordSearch || isWordScramble || isCodewords || isDescribeIt || isWst
+  const categoryUploadField =
+    showsContentLabel && questionSource === 'custom' ? (
+      <Field label="Category">
+        <input
+          value={settings.content_label}
+          onChange={(e) => {
+            contentLabelTouchedRef.current = true
+            setSettings({ ...settings, content_label: e.target.value })
+          }}
+          placeholder="Maths, Countries, Mixed"
+          maxLength={40}
+          className="input-field"
+        />
+        <p className="text-faint text-xs mt-2">What is this CSV theme? Shown to players before they join.</p>
+      </Field>
+    ) : null
+  // Mirror the AI "Theme (optional)" into the player-facing Category so the host doesn't fill both —
+  // until they hand-edit the Category, after which we stop overriding it.
+  const handleAiThemeChange = (theme: string) => {
+    if (!contentLabelTouchedRef.current) setSettings((s) => ({ ...s, content_label: theme }))
+  }
   const isMessageBoard = isAnonymousRoom || isSecretMessage
   const isQuickLobby =
     isWst ||
@@ -1957,23 +1982,6 @@ function CreateGameInner() {
               />
             </Field>
 
-            {showsContentLabel && (
-              <Field label="Category">
-                <input
-                  value={settings.content_label}
-                  onChange={(e) => setSettings({ ...settings, content_label: e.target.value })}
-                  placeholder={questionSource === 'custom' ? 'e.g. Maths, Bible, 90s Music' : 'Optional'}
-                  maxLength={40}
-                  className="input-field"
-                />
-                <p className="text-faint text-xs mt-2">
-                  {questionSource === 'library'
-                    ? 'Taken from the pack you picked — edit if you like. Shown to players before they join.'
-                    : 'What are these questions about? Shown to players before they join.'}
-                </p>
-              </Field>
-            )}
-
             <Field label="Game mode">
               <GameTypeCard type={settings.game_type} compact selected onClick={() => setShowGameTypes(true)} />
             </Field>
@@ -2486,6 +2494,7 @@ function CreateGameInner() {
                         gameType="describe_it"
                         noun={settings.quick_draw_variant === 'guess' ? 'words' : 'prompts'}
                         defaultCount={30}
+                        onThemeChange={handleAiThemeChange}
                         onGenerated={(questions) => {
                           setQuickDrawUploadError(null)
                           setQuickDrawWords(parseDescribeItWords((questions as string[]).join('\n')).join('\n'))
@@ -2555,6 +2564,7 @@ function CreateGameInner() {
                     )}
                   </div>
                 )}
+                {categoryUploadField}
                 {showViewerToggle && (
                   <Field label="Late joiners">
                     <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
@@ -3588,6 +3598,7 @@ function CreateGameInner() {
                         gameType="describe_it"
                         noun="words"
                         defaultCount={30}
+                        onThemeChange={handleAiThemeChange}
                         onGenerated={(questions) => {
                           setDescribeItUploadError(null)
                           setDescribeItWords(parseDescribeItWords((questions as string[]).join('\n')).join('\n'))
@@ -3679,6 +3690,7 @@ function CreateGameInner() {
                     )}
                   </div>
                 )}
+                {categoryUploadField}
                 <Field label="Late joiners">
                   <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="describe_it" />
                 </Field>
@@ -4018,6 +4030,7 @@ function CreateGameInner() {
                     {questionTab === 'ai' ? (
                       <AiQuestionsGenerator
                         gameType="codewords"
+                        onThemeChange={handleAiThemeChange}
                         noun="words"
                         defaultCount={Math.max(CODEWORDS_MIN_CUSTOM_POOL, 25)}
                         onGenerated={(questions) => {
@@ -4136,6 +4149,7 @@ function CreateGameInner() {
                     )}
                   </div>
                 )}
+                {categoryUploadField}
                 <p className="text-faint text-sm leading-relaxed">
                   Two teams of spymasters and operatives. Spymasters give one-word clues — operatives guess words on the
                   5×5 grid. First team to find all their words wins. Avoid the assassin!
@@ -4212,6 +4226,7 @@ function CreateGameInner() {
                     }}
                   />
                 )}
+                {categoryUploadField}
                 {questionSource === 'platform' && (
                   <Field label="Theme">
                     <select
@@ -4373,6 +4388,7 @@ function CreateGameInner() {
                     }}
                   />
                 )}
+                {categoryUploadField}
                 {questionSource === 'platform' && (
                   <Field label="Theme">
                     <select
@@ -4532,6 +4548,7 @@ function CreateGameInner() {
                     }}
                   />
                 )}
+                {categoryUploadField}
                 {questionSource === 'platform' && (
                   <Field label="Theme">
                     <select
@@ -4967,6 +4984,7 @@ function CreateGameInner() {
                             The <span className="font-mono">correct</span> column is the answer letter (A–D). Players
                             just join and answer like trivia — fastest correct wins.
                           </p>
+                          {categoryUploadField}
                         </div>
                       )}
                     </div>
@@ -5290,6 +5308,7 @@ function CreateGameInner() {
                             gameType={settings.game_type as AiQuestionGameType}
                             triviaCategory={isTrivia ? triviaCategory : undefined}
                             noun={isTrivia ? 'questions' : 'prompts'}
+                            onThemeChange={handleAiThemeChange}
                             defaultCount={Math.min(50, Math.max(settings.rounds_count ?? 10, 10))}
                             onGenerated={(questions) => {
                               setQuestionsUploadError(null)
@@ -5428,6 +5447,7 @@ function CreateGameInner() {
                               Need at least {settings.rounds_count} questions for {settings.rounds_count} rounds.
                             </p>
                           )}
+                        {categoryUploadField}
                       </div>
                     )}
                   </SettingsGroup>
@@ -5515,47 +5535,8 @@ function CreateGameInner() {
                     </SettingsGroup>
                   )}
 
-                {!isAnonymousRoom && !isLandmine && (
-                  <SettingsGroup
-                    title="Advanced"
-                    description="Timer behavior & privacy"
-                    collapsible
-                    defaultOpen={false}
-                  >
-                    <Field label="When timer runs out">
-                      <SegmentedControl
-                        value={settings.auto_submit_behavior}
-                        onChange={(v) => setSettings({ ...settings, auto_submit_behavior: v })}
-                        options={[
-                          { value: 'random', label: 'Random fill', hint: 'Incomplete votes get random choices.' },
-                          { value: 'no_answer', label: 'No answer', hint: 'Incomplete votes count as no vote.' },
-                        ]}
-                      />
-                    </Field>
-
-                    <div className="space-y-2">
-                      {!isAnonymousGame(settings.game_type) && (
-                        <Toggle
-                          label="Anonymous responses"
-                          description="Hide who voted for what"
-                          value={settings.anonymous}
-                          onChange={(v) => setSettings({ ...settings, anonymous: v })}
-                        />
-                      )}
-                      {isAnonymousGame(settings.game_type) && (
-                        <p className="text-faint text-xs px-1">
-                          Would You Rather, Most Likely To, and Who Said This are always anonymous.
-                        </p>
-                      )}
-                      <Toggle
-                        label="Auto-reveal results"
-                        description="Show results after the last round automatically"
-                        value={settings.auto_reveal}
-                        onChange={(v) => setSettings({ ...settings, auto_reveal: v })}
-                      />
-                    </div>
-                  </SettingsGroup>
-                )}
+                {/* The "Advanced" group (timer-behavior / anonymous / auto-reveal) is hidden from
+                    the create screen — the defaults in the initial settings state are used as-is. */}
               </>
             )}
 

@@ -545,22 +545,7 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
               </>
             )}
 
-            <View style={styles.standings}>
-              <Text style={styles.standingsTitle}>Live scores</Text>
-              {standings.map((row, i) => (
-                <View
-                  key={row.player_id}
-                  style={[styles.standRow, row.player_id === bootstrap.myPlayerId && styles.standRowMe]}
-                >
-                  <Text style={styles.standName} numberOfLines={1}>
-                    {i + 1}. {row.name}
-                  </Text>
-                  <Text style={styles.standMeta}>
-                    {row.solved}/{metadata.count} · {row.points} pts
-                  </Text>
-                </View>
-              ))}
-            </View>
+            {/* Live scores removed — the roster side-drawer now shows the live leaderboard. */}
           </>
         ) : (
           <Text style={styles.watching}>Waiting for the race…</Text>

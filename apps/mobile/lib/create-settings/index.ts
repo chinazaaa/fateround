@@ -191,8 +191,14 @@ export function buildCreatePayload(state: CreateWizardState, limits: GamePlayerL
 
   if (maxPlayers != null) payload.max_players = maxPlayers
 
-  // Player-facing content label — explicit host input wins, else the picked library pack name.
-  const contentLabel = (state.contentLabel.trim() || state.custom.libraryPackTitle?.trim() || '').slice(0, 40)
+  // Player-facing content label — explicit host input wins, else the picked library pack name
+  // (custom-content or Who Said This deck).
+  const contentLabel = (
+    state.contentLabel.trim() ||
+    state.custom.libraryPackTitle?.trim() ||
+    state.wst.libraryPackTitle?.trim() ||
+    ''
+  ).slice(0, 40)
   if (contentLabel) payload.content_label = contentLabel
 
   if (supportsViewers) {

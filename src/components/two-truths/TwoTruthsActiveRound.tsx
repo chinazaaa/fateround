@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
-import { useGameScores } from '@/components/roster/RosterDrawerContext'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { TwoTruthsShareBlock } from '@/components/two-truths/TwoTruthsShareBlock'
 import { TwoTruthsSubmitterBadge } from '@/components/two-truths/TwoTruthsSubmitterBadge'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -71,6 +71,11 @@ export function TwoTruthsActiveRound({
   // Live scores feed the shared roster drawer (opened from the header).
   const rosterScores = useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard])
   useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(
+    () => Object.fromEntries(leaderboard.map((row) => [row.id, `✅ ${row.correctGuesses} correct`])),
+    [leaderboard]
+  )
+  useGameStats(rosterDetails)
 
   const featuredName = playerDisplayName(currentRound?.submitter_player_id, players)
 

@@ -794,12 +794,8 @@ export function NpatActiveRound({
       </div>
 
       <aside className="min-w-0 space-y-4 order-2">
-        <PaginatedLeaderboard
-          title="Leaderboard"
-          rows={leaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
-          highlightId={myPlayerId}
-          scoreLabel={(score) => `${score} pts`}
-        />
+        {/* Plain leaderboard removed — the roster side-drawer now shows the live leaderboard.
+            The per-answer transparency scoreboard below stays (it's not a duplicate). */}
         {showLiveScoreboard && <div className="hidden lg:block">{scoreboard}</div>}
       </aside>
     </div>

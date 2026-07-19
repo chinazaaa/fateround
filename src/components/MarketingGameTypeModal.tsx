@@ -3,13 +3,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { GameType } from '@/types'
-import { GAME_TYPE_DISPLAY_ORDER, gameTypeConfig } from '@/lib/game-types'
+import {
+  GAME_TYPE_DISPLAY_ORDER,
+  GAME_CATEGORIES,
+  gameTypeCategory,
+  gameTypeConfig,
+  type GameCategory,
+} from '@/lib/game-types'
 
 interface Props {
   open: boolean
   onClose: () => void
   onSelect: (type: GameType) => void
 }
+
+type CategoryFilter = GameCategory | 'all'
 
 function matches(type: GameType, query: string): boolean {
   const cfg = gameTypeConfig(type)
@@ -27,11 +35,15 @@ function matches(type: GameType, query: string): boolean {
 export function MarketingGameTypeModal({ open, onClose, onSelect }: Props) {
   const [mounted, setMounted] = useState(false)
   const [search, setSearch] = useState('')
+  const [category, setCategory] = useState<CategoryFilter>('all')
   const backdropRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => setMounted(true), [])
   useEffect(() => {
-    if (!open) setSearch('')
+    if (!open) {
+      setSearch('')
+      setCategory('all')
+    }
   }, [open])
 
   useEffect(() => {
@@ -79,11 +91,22 @@ export function MarketingGameTypeModal({ open, onClose, onSelect }: Props) {
     }
   }, [open, mounted])
 
+  // Searching spans every category, so drop the category filter while a query is active.
+  const searching = search.trim().length > 0
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return GAME_TYPE_DISPLAY_ORDER
-    return GAME_TYPE_DISPLAY_ORDER.filter((type) => matches(type, q))
-  }, [search])
+    return GAME_TYPE_DISPLAY_ORDER.filter((type) => {
+      if (q) return matches(type, q)
+      if (category === 'all') return true
+      return gameTypeCategory(type) === category
+    })
+  }, [search, category])
+
+  const tabs: { key: CategoryFilter; label: string }[] = [
+    { key: 'all', label: 'All' },
+    ...GAME_CATEGORIES.map((c) => ({ key: c.key as CategoryFilter, label: c.label })),
+  ]
 
   if (!open || !mounted) return null
 
@@ -143,11 +166,44 @@ export function MarketingGameTypeModal({ open, onClose, onSelect }: Props) {
                 </button>
               )}
             </div>
+
+            {!searching && (
+              <div
+                className="-mx-1 mt-3 flex gap-1.5 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                role="tablist"
+                aria-label="Game categories"
+              >
+                {tabs.map((tab) => {
+                  const active = category === tab.key
+                  return (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setCategory(tab.key)}
+                      className="fr-chip shrink-0"
+                      style={
+                        active
+                          ? {
+                              background: 'var(--primary)',
+                              borderColor: 'var(--primary)',
+                              color: 'var(--primary-contrast)',
+                            }
+                          : undefined
+                      }
+                    >
+                      {tab.label}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           {filtered.length === 0 ? (
             <p className="py-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
-              No games match &ldquo;{search.trim()}&rdquo;
+              {searching ? <>No games match &ldquo;{search.trim()}&rdquo;</> : 'No games in this category yet'}
             </p>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">

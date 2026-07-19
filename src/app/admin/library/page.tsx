@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Chip } from '@/components/ui/PageShell'
 
 interface QuestionPack {
@@ -195,13 +195,31 @@ function PackCard({
   const [description, setDescription] = useState(pack.description ?? '')
   const [tags, setTags] = useState<string[]>(pack.tags ?? [])
   const [status, setStatus] = useState(pack.status)
+  const [questionsJson, setQuestionsJson] = useState(() => JSON.stringify(pack.questions ?? [], null, 2))
 
   const toggleTag = (t: string) => setTags((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]))
 
+  // Live-parse the questions editor so we can show a count / error and gate saving.
+  const parsedQuestions = useMemo<{ ok: true; value: unknown[] } | { ok: false; error: string }>(() => {
+    try {
+      const value = JSON.parse(questionsJson)
+      if (!Array.isArray(value)) return { ok: false, error: 'Must be a JSON array of question rows' }
+      if (value.length === 0) return { ok: false, error: 'At least one question is required' }
+      return { ok: true, value }
+    } catch {
+      return { ok: false, error: 'Invalid JSON — check for a trailing comma or missing bracket' }
+    }
+  }, [questionsJson])
+
   const handleSave = async () => {
+    if (!parsedQuestions.ok) {
+      setSaveError(parsedQuestions.error)
+      return
+    }
     setSaving(true)
     setSaveError(null)
     try {
+      const nextQuestions = parsedQuestions.value
       const res = await fetch(`/api/admin/library/${pack.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -212,6 +230,7 @@ function PackCard({
           description: description || null,
           tags,
           status,
+          questions: nextQuestions,
         }),
       })
       const data = await res.json()
@@ -224,6 +243,8 @@ function PackCard({
         description: description || null,
         tags,
         status,
+        questions: nextQuestions,
+        question_count: nextQuestions.length,
       })
       setEditing(false)
     } catch (err) {
@@ -240,6 +261,7 @@ function PackCard({
     setDescription(pack.description ?? '')
     setTags(pack.tags ?? [])
     setStatus(pack.status)
+    setQuestionsJson(JSON.stringify(pack.questions ?? [], null, 2))
     setSaveError(null)
     setEditing(false)
   }
@@ -390,12 +412,33 @@ function PackCard({
             </div>
           </div>
 
+          <div className="space-y-1">
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-xs font-medium text-muted">Questions</label>
+              <span className={`text-[10px] ${parsedQuestions.ok ? 'text-faint' : 'text-red-500 dark:text-red-400'}`}>
+                {parsedQuestions.ok ? `${parsedQuestions.value.length} rows` : parsedQuestions.error}
+              </span>
+            </div>
+            <textarea
+              value={questionsJson}
+              onChange={(e) => setQuestionsJson(e.target.value)}
+              rows={12}
+              spellCheck={false}
+              className={`input-field w-full resize-y font-mono text-xs leading-relaxed ${
+                parsedQuestions.ok ? '' : 'border-red-500/50'
+              }`}
+            />
+            <p className="text-faint text-[10px]">
+              Each row is one question. Edit, add, or remove entries directly — the shape must match this game type.
+            </p>
+          </div>
+
           {saveError && <p className="text-xs text-red-500 dark:text-red-400">{saveError}</p>}
 
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving || !title.trim() || !authorName.trim()}
+            disabled={saving || !title.trim() || !authorName.trim() || !parsedQuestions.ok}
             className="btn-primary btn-fit px-5 py-2 text-sm disabled:opacity-50"
           >
             {saving ? 'Saving…' : 'Save changes'}

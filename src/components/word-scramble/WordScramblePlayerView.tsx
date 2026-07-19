@@ -933,23 +933,7 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
               </>
             )}
 
-            {/* Live standings */}
-            <div className="space-y-2 pt-2">
-              <p className="label-caps text-xs px-1">Live scores</p>
-              {leaderboard.map((row, i) => (
-                <div
-                  key={row.player_id}
-                  className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm ${row.player_id === myPlayerId ? 'bg-[var(--primary)]/10 font-semibold' : 'bg-white/60 dark:bg-slate-800/40'}`}
-                >
-                  <span className="truncate">
-                    {i + 1}. {row.name}
-                  </span>
-                  <span className="tabular-nums text-muted">
-                    {row.solved}/{metadata.count} · {row.points} pts
-                  </span>
-                </div>
-              ))}
-            </div>
+            {/* Live scores removed — the roster side-drawer now shows the live leaderboard. */}
           </>
         )}
       </main>

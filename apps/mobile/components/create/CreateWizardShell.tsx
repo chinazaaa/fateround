@@ -30,7 +30,6 @@ import {
   buildCreatePayload,
   createInitialState,
   needsParticipantStep,
-  supportsCustomContent,
   validateCreateState,
   validateSetupStep,
   wizardStepsForGame,
@@ -66,6 +65,21 @@ export function CreateWizardShell() {
     setState((prev) => ({ ...prev, ...patch }))
     setError(null)
   }
+
+  // Player-facing content label, asked directly under a "Your own" CSV upload (for a Library
+  // pack we auto-fill from the pack name instead). Rendered by the custom-content + WST paths.
+  const categoryField = (
+    <FormField
+      label="Category"
+      hint="What is this CSV theme? Shown to players before they join."
+      value={state.contentLabel}
+      onChangeText={(contentLabel) => patchState({ contentLabel })}
+      placeholder="Maths, Countries, Mixed"
+      maxLength={40}
+      autoCapitalize="sentences"
+      autoCorrect={false}
+    />
+  )
 
   const onGameTypeChange = (gameType: GameType) => {
     setState((prev) => applyGameTypeChange(prev, gameType, limits))
@@ -162,18 +176,6 @@ export function CreateWizardShell() {
                 autoCapitalize="sentences"
                 autoCorrect={false}
               />
-              {supportsCustomContent(state.gameType) || isWhoSaidThis(state.gameType) ? (
-                <FormField
-                  label="Category"
-                  hint="What the questions are about — shown to players before they join (e.g. Maths, Bible)."
-                  value={state.contentLabel}
-                  onChangeText={(contentLabel) => patchState({ contentLabel })}
-                  placeholder="e.g. Maths, Bible, 90s Music"
-                  maxLength={40}
-                  autoCapitalize="sentences"
-                  autoCorrect={false}
-                />
-              ) : null}
             </SurfaceCard>
 
             <View style={styles.typeSection}>
@@ -196,10 +198,19 @@ export function CreateWizardShell() {
             {/* Who Said This is a single-step quick create: players just join and answer, so it
                 shows only its Questions source picker (no rounds/name-list/content panels). */}
             {isWhoSaidThis(state.gameType) ? (
-              <WhoSaidThisCreatePanel
-                wst={state.wst}
-                onChange={(wstPatch) => patchState({ wst: { ...state.wst, ...wstPatch } })}
-              />
+              <>
+                <WhoSaidThisCreatePanel
+                  wst={state.wst}
+                  onChange={(wstPatch) => {
+                    const patch: Partial<CreateWizardState> = { wst: { ...state.wst, ...wstPatch } }
+                    // Auto-fill the category from a picked library deck name, unless the host typed their own.
+                    if (wstPatch.libraryPackTitle && !state.contentLabel.trim())
+                      patch.contentLabel = wstPatch.libraryPackTitle.slice(0, 40)
+                    patchState(patch)
+                  }}
+                />
+                {state.wst.source === 'custom' ? categoryField : null}
+              </>
             ) : null}
 
             {/* Landmine owns a dedicated settings panel (mine source, mode, elimination timer, phase
@@ -230,18 +241,22 @@ export function CreateWizardShell() {
                     />
                   )
                   const content = (
-                    <CustomContentPanel
-                      gameType={state.gameType}
-                      custom={state.custom}
-                      roundsCount={state.party.roundsCount}
-                      onChange={(customPatch) => {
-                        const patch: Partial<CreateWizardState> = { custom: { ...state.custom, ...customPatch } }
-                        // Auto-fill the category from the picked library pack name, unless the host typed their own.
-                        if (customPatch.libraryPackTitle && !state.contentLabel.trim())
-                          patch.contentLabel = customPatch.libraryPackTitle.slice(0, 40)
-                        patchState(patch)
-                      }}
-                    />
+                    <>
+                      <CustomContentPanel
+                        gameType={state.gameType}
+                        custom={state.custom}
+                        roundsCount={state.party.roundsCount}
+                        onChange={(customPatch) => {
+                          const patch: Partial<CreateWizardState> = { custom: { ...state.custom, ...customPatch } }
+                          // Auto-fill the category from the picked library pack name, unless the host typed their own.
+                          if (customPatch.libraryPackTitle && !state.contentLabel.trim())
+                            patch.contentLabel = customPatch.libraryPackTitle.slice(0, 40)
+                          patchState(patch)
+                        }}
+                      />
+                      {/* Ask for the category right under a "Your own" CSV upload. */}
+                      {state.custom.source === 'custom' ? categoryField : null}
+                    </>
                   )
                   return isPuzzle ? (
                     <>

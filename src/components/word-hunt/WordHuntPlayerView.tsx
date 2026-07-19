@@ -33,6 +33,7 @@ import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useGameScores, useGameStats, useRosterBase } from '@/components/roster/RosterDrawerContext'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { PLAYER_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
@@ -479,6 +480,27 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   const myFoundWords = mySubmissions.map((s) => s.word)
   const myPoints = mySubmissions.reduce((sum, s) => sum + s.points_awarded, 0)
   const leaderboard = tallyWordHuntScores(submissions, players)
+
+  // The Word Hunt player path skips the shared roster dispatcher, so register base
+  // rows here + feed the drawer scoreboard: points headline + words-found detail.
+  useRosterBase(game?.status === 'active' || game?.status === 'finished' ? players : undefined, game, myPlayerId)
+  const rosterScores = useMemo(
+    () => Object.fromEntries(tallyWordHuntScores(submissions, players).map((r) => [r.player_id, r.points])),
+    [submissions, players]
+  )
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        tallyWordHuntScores(submissions, players).map((r) => [
+          r.player_id,
+          `✅ ${r.word_count} word${r.word_count === 1 ? '' : 's'}`,
+        ])
+      ),
+    [submissions, players]
+  )
+  useGameStats(rosterDetails)
+
   const displayName = me?.name || 'Player'
 
   // Viewers watch one player's hunt at a time — the shared grid is static, so the
@@ -728,32 +750,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
             disabled={timeUp || isViewer}
           />
         )}
-
-        <details className="glass-card p-4 group open:pb-4">
-          <summary className="cursor-pointer list-none flex items-center justify-between gap-3">
-            <div>
-              <p className="label-caps text-xs">Live standings</p>
-              <p className="text-faint text-[11px] mt-0.5 group-open:hidden">See who&apos;s ahead</p>
-            </div>
-            <span className="text-muted text-lg leading-none group-open:rotate-180 transition-transform">▾</span>
-          </summary>
-          <div className="mt-3 space-y-2 border-t border-[var(--border-strong)] pt-3">
-            {leaderboard.slice(0, 8).map((row, i) => (
-              <div
-                key={row.player_id}
-                className={`flex items-center justify-between text-sm ${row.player_id === myPlayerId ? 'font-bold text-[var(--foreground)]' : 'text-muted'}`}
-              >
-                <span className="flex items-center gap-2 min-w-0">
-                  <span className="w-5 text-faint tabular-nums shrink-0">{i + 1}</span>
-                  <span className="truncate">{row.name}</span>
-                </span>
-                <span className="shrink-0 tabular-nums text-xs">
-                  {row.points} pts · {row.word_count}w
-                </span>
-              </div>
-            ))}
-          </div>
-        </details>
+        {/* Live standings removed — the roster side-drawer now shows the live leaderboard. */}
       </main>
     </div>
   )

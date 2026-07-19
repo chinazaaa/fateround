@@ -8,7 +8,7 @@ import {
   tallyTriviaPlayerScores,
   TRIVIA_REVEAL_SECONDS,
 } from '@fateround/shared/trivia'
-import { useGameScores } from '@/components/session/RosterDrawerContext'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
@@ -74,6 +74,12 @@ export function TriviaActiveRound({
   useGameScores(
     useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard]),
     { suffix: ' pts' }
+  )
+  useGameStats(
+    useMemo(
+      () => Object.fromEntries(leaderboard.map((row) => [row.id, `✅ ${row.correctCount} correct`])),
+      [leaderboard]
+    )
   )
   const isLastRound = (game.current_round_number ?? 0) >= (game.rounds_count ?? 0)
 
