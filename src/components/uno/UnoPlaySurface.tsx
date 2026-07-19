@@ -28,7 +28,16 @@ import {
   UnoCardFace,
   type TurnSeat,
 } from '@/components/rooms/card-table/primitives'
-import { canPlayCard, UNO_COLORS, UNO_COLOR_HEX, UNO_COLOR_LABELS } from '@/lib/uno'
+import { useEffect, useState } from 'react'
+import {
+  canPlayCard,
+  multiSetGroupingOk,
+  validateMultiSet,
+  UNO_COLORS,
+  UNO_COLOR_HEX,
+  UNO_COLOR_LABELS,
+  type UnoMultiPlayMode,
+} from '@/lib/uno'
 import { formatCountdown } from '@/lib/timer-format'
 import type { UnoColor, UnoCard, UnoSession } from '@/types'
 
@@ -68,6 +77,10 @@ export type UnoPlaySurfaceProps = {
   onSwap: (targetId: string) => void
   /** Keep the card you just drew instead of playing it (ends your turn). */
   onPass: () => void
+  /** Multi-Play grouping mode ('off' hides the multi-play affordance). */
+  multiPlayMode?: UnoMultiPlayMode
+  /** Play several cards at once (ids in play order — last stays on top). */
+  onPlayMulti: (cardIds: string[]) => void
 }
 
 export function UnoPlaySurface({
@@ -93,6 +106,8 @@ export function UnoPlaySurface({
   onCallUno,
   onSwap,
   onPass,
+  multiPlayMode = 'off',
+  onPlayMulti,
 }: UnoPlaySurfaceProps) {
   const turnTimeLabel =
     turnTimer?.hasTimer && turnTimer.secondsLeft > 0 ? formatCountdown(turnTimer.secondsLeft) : undefined
@@ -143,6 +158,43 @@ export function UnoPlaySurface({
 
   // After a voluntary draw, the drawn (playable) card can be played or kept — show "Keep it".
   const hasDrawn = canAct && session.drawn_card_id != null
+
+  // ── Multi-Play selection ──────────────────────────────────────────────────────
+  const multiEnabled = canAct && !hasDrawn && drawPenalty === 0 && multiPlayMode !== 'off' && myHand.length >= 2
+  const [multiMode, setMultiMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  // Reset the builder whenever it's no longer usable (turn passed, drew, penalty, etc.).
+  useEffect(() => {
+    if (!multiEnabled) {
+      setMultiMode(false)
+      setSelectedIds([])
+    }
+  }, [multiEnabled])
+
+  const handById = new Map(myHand.map((c) => [c.id, c]))
+  const selectedCards = selectedIds.map((id) => handById.get(id)).filter((c): c is UnoCard => !!c)
+  const multiValid =
+    multiMode && selectedCards.length >= 2 && validateMultiSet(selectedCards, session, multiPlayMode) === null
+  // A card can be added to the current set: as the first pick it must be playable on top;
+  // afterwards it must keep the group legal under the mode.
+  const canAddToSet = (card: UnoCard): boolean => {
+    if (card.color === 'wild') return false
+    if (selectedCards.length === 0) return canPlayCard(card, session)
+    return multiSetGroupingOk([...selectedCards, card], multiPlayMode)
+  }
+  const toggleSelect = (card: UnoCard) => {
+    setSelectedIds((prev) =>
+      prev.includes(card.id) ? prev.filter((id) => id !== card.id) : canAddToSet(card) ? [...prev, card.id] : prev
+    )
+  }
+  const enterMultiMode = () => {
+    setMultiMode(true)
+    setSelectedIds([])
+  }
+  const exitMultiMode = () => {
+    setMultiMode(false)
+    setSelectedIds([])
+  }
 
   const many = myHand.length > 8
 
@@ -231,15 +283,6 @@ export function UnoPlaySurface({
             </button>
           </div>
         )}
-
-        {/* Stacking + challenge: challenge the pending Wild Draw Four instead of drawing/stacking. */}
-        {canChallengeStack && (
-          <div className="uno-challenge">
-            <button type="button" className="hot" disabled={acting} onClick={() => onChallenge(true)}>
-              ⚖️ Challenge the Wild Draw Four
-            </button>
-          </div>
-        )}
       </Table>
 
       {watching ? null : (
@@ -247,11 +290,15 @@ export function UnoPlaySurface({
           count={myHand.length}
           many={many}
           hint={
-            hasDrawn
-              ? 'You drew a card — play it or keep it'
-              : canAct
-                ? `Tap a highlighted card to play it${many ? ' · swipe to see more' : ''}`
-                : undefined
+            multiMode
+              ? selectedCards.length
+                ? `${selectedCards.length} selected — the last card you pick lands on top`
+                : 'Tap matching cards to lay them down together'
+              : hasDrawn
+                ? 'You drew a card — play it or keep it'
+                : canAct
+                  ? `Tap a highlighted card to play it${many ? ' · swipe to see more' : ''}`
+                  : undefined
           }
           actions={
             <>
@@ -260,7 +307,55 @@ export function UnoPlaySurface({
                   Call UNO!
                 </button>
               )}
-              {hasDrawn ? (
+              {canChallengeStack ? (
+                // Draw (accept) + Challenge side by side, in the pinned hand actions so both
+                // stay on-screen together — plus you can still tap a Wild Draw Four to stack.
+                <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+                  <button
+                    type="button"
+                    className="fr-btn fr-btn--secondary"
+                    style={{ flex: 1 }}
+                    disabled={acting}
+                    onClick={onDraw}
+                  >
+                    Draw {drawPenalty}
+                  </button>
+                  <button
+                    type="button"
+                    className="fr-btn fr-btn--primary"
+                    style={{ flex: 1 }}
+                    disabled={acting}
+                    onClick={() => onChallenge(true)}
+                  >
+                    ⚖️ Challenge
+                  </button>
+                </div>
+              ) : multiMode ? (
+                <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+                  <button
+                    type="button"
+                    className="fr-btn fr-btn--secondary"
+                    style={{ flex: 1 }}
+                    disabled={acting}
+                    onClick={exitMultiMode}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="fr-btn fr-btn--primary"
+                    style={{ flex: 2 }}
+                    disabled={acting || !multiValid}
+                    onClick={() => {
+                      const ids = selectedIds
+                      exitMultiMode()
+                      onPlayMulti(ids)
+                    }}
+                  >
+                    Play {selectedCards.length || ''} card{selectedCards.length === 1 ? '' : 's'}
+                  </button>
+                </div>
+              ) : hasDrawn ? (
                 <button
                   type="button"
                   className="fr-btn fr-btn--secondary fr-btn--block"
@@ -269,20 +364,48 @@ export function UnoPlaySurface({
                 >
                   Keep it
                 </button>
-              ) : canAct && !(drawDepleted && myCanPlay) ? (
-                <button
-                  type="button"
-                  className="fr-btn fr-btn--secondary fr-btn--block"
-                  disabled={acting}
-                  onClick={onDraw}
-                >
-                  {drawLabel}
-                </button>
-              ) : null}
+              ) : (
+                <>
+                  {canAct && !(drawDepleted && myCanPlay) ? (
+                    <button
+                      type="button"
+                      className="fr-btn fr-btn--secondary fr-btn--block"
+                      disabled={acting}
+                      onClick={onDraw}
+                    >
+                      {drawLabel}
+                    </button>
+                  ) : null}
+                  {multiEnabled && (
+                    <button
+                      type="button"
+                      className="fr-btn fr-btn--ghost fr-btn--block"
+                      disabled={acting}
+                      onClick={enterMultiMode}
+                    >
+                      ➕ Play multiple
+                    </button>
+                  )}
+                </>
+              )}
             </>
           }
         >
           {myHand.map((card) => {
+            if (multiMode) {
+              const selected = selectedIds.includes(card.id)
+              const eligible = selected || canAddToSet(card)
+              return (
+                <UnoCardFace
+                  key={card.id}
+                  card={card}
+                  playable={eligible && !selected}
+                  sel={selected}
+                  dim={!eligible}
+                  onClick={eligible && !acting ? () => toggleSelect(card) : undefined}
+                />
+              )
+            }
             const playable = canAct && canPlayCard(card, session)
             return (
               <UnoCardFace

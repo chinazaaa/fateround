@@ -8,7 +8,7 @@ import { PlayerRoomShell } from '@/components/rooms/PlayerRoomShell'
 import { UnoFinalResultsShareBlock } from '@/components/uno/UnoFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
-import { currentPlayerId, hasPlayableCard, isDrawPileDepleted, UNO_MIN_PLAYERS } from '@/lib/uno'
+import { currentPlayerId, hasPlayableCard, isDrawPileDepleted, parseMultiPlayMode, UNO_MIN_PLAYERS } from '@/lib/uno'
 import { UNO_PLAYER_HANDS_SELECT, UNO_SESSION_SELECT } from '@/lib/supabase-selects'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
@@ -462,6 +462,8 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
       onCallUno={() => void postAction('/api/uno/call-uno', {})}
       onSwap={(targetId) => void postAction('/api/uno/swap', { targetId })}
       onPass={() => void postAction('/api/uno/pass', {})}
+      multiPlayMode={parseMultiPlayMode(game?.uno_multi_play_mode)}
+      onPlayMulti={(cardIds) => void postAction('/api/uno/play-multi', { cardIds })}
     />
   )
 

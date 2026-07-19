@@ -45,13 +45,29 @@ export type UnoRules = {
   zeroSeven: boolean
   /** Allow stacking Draw Two on Draw Two / Draw Four on Draw Four (penalty accumulates). */
   stacking: boolean
+  /** Multi-Play grouping rule (lay several matching cards in one turn). */
+  multiPlay: UnoMultiPlayMode
+}
+
+/** Multi-Play grouping rule. `off` = Classic (one card per turn). */
+export type UnoMultiPlayMode = 'off' | 'same_color' | 'same_number' | 'same_color_or_number'
+
+const MULTI_PLAY_MODES: UnoMultiPlayMode[] = ['off', 'same_color', 'same_number', 'same_color_or_number']
+
+export function parseMultiPlayMode(raw: unknown): UnoMultiPlayMode {
+  return (MULTI_PLAY_MODES as readonly string[]).includes(String(raw)) ? (raw as UnoMultiPlayMode) : 'off'
 }
 
 export function parseUnoRules(
   game:
     | Pick<
         Game,
-        'uno_wd4_challenge' | 'uno_uno_penalty' | 'uno_wd4_challenge_penalty' | 'uno_zero_seven' | 'uno_stacking'
+        | 'uno_wd4_challenge'
+        | 'uno_uno_penalty'
+        | 'uno_wd4_challenge_penalty'
+        | 'uno_zero_seven'
+        | 'uno_stacking'
+        | 'uno_multi_play_mode'
       >
     | null
     | undefined
@@ -65,6 +81,7 @@ export function parseUnoRules(
     wd4ChallengePenalty: wd4Penalty === 4 ? 4 : 6,
     zeroSeven: game?.uno_zero_seven === true,
     stacking: game?.uno_stacking === true,
+    multiPlay: parseMultiPlayMode(game?.uno_multi_play_mode),
   }
 }
 
@@ -231,6 +248,44 @@ export function playPenaltyError(card: UnoCard, session: UnoSession): string | n
 
 export function hasPlayableCard(hand: UnoCard[], session: UnoSession): boolean {
   return hand.some((c) => canPlayCard(c, session))
+}
+
+// ── Multi-Play ──────────────────────────────────────────────────────────────────
+/** A card that can be part of a Multi-Play set (wilds are colourless — must be played alone). */
+export function isMultiPlayableCard(card: UnoCard): boolean {
+  return !isWildCard(card)
+}
+
+/** Do these cards form a legal Multi-Play group under the mode? Order-independent. */
+export function multiSetGroupingOk(cards: UnoCard[], mode: UnoMultiPlayMode): boolean {
+  if (mode === 'off' || cards.length < 2) return false
+  if (cards.some((c) => isWildCard(c))) return false
+  const first = cards[0]!
+  const allSameColor = cards.every((c) => c.color === first.color)
+  const allSameValue = cards.every((c) => c.kind === 'number' && c.value === first.value)
+  if (mode === 'same_color') return allSameColor
+  if (mode === 'same_number') return allSameValue
+  return allSameColor || allSameValue // same_color_or_number
+}
+
+/**
+ * Validate a Multi-Play. `cards` are IN PLAY ORDER — the FIRST must legally match the top of
+ * the discard, and every card must satisfy the grouping rule. Returns an error string or null.
+ */
+export function validateMultiSet(cards: UnoCard[], session: UnoSession, mode: UnoMultiPlayMode): string | null {
+  if (mode === 'off') return 'Multi-Play is off'
+  if ((session.draw_penalty ?? 0) > 0) return 'Resolve the draw penalty first'
+  if (cards.length < 2) return 'Select at least two cards'
+  if (cards.some((c) => isWildCard(c))) return 'Wild cards must be played on their own'
+  if (!multiSetGroupingOk(cards, mode)) {
+    return mode === 'same_color'
+      ? 'All cards must be the same colour'
+      : mode === 'same_number'
+        ? 'All cards must be the same number'
+        : 'All cards must share a colour or a number'
+  }
+  if (!canPlayCard(cards[0]!, session)) return 'The first card must match the top card'
+  return null
 }
 
 export function unoHandCount(hands: UnoPlayerHand[], playerId: string): number {
@@ -478,7 +533,7 @@ async function loadGameState(
     supabase
       .from('games')
       .select(
-        'timer_seconds, game_duration_seconds, session_started_at, uno_wd4_challenge, uno_uno_penalty, uno_wd4_challenge_penalty, uno_zero_seven, uno_stacking'
+        'timer_seconds, game_duration_seconds, session_started_at, uno_wd4_challenge, uno_uno_penalty, uno_wd4_challenge_penalty, uno_zero_seven, uno_stacking, uno_multi_play_mode'
       )
       .eq('id', gameId)
       .maybeSingle(),
@@ -913,6 +968,132 @@ export async function processUnoPlay(
     await writeHand(supabase, gameId, playerId, newHand)
     if (missed) await writeHand(supabase, gameId, missed.playerId, missed.hand)
   }
+
+  if (wentOut) {
+    await supabase.from('players').update({ spectator: true }).eq('id', playerId).eq('game_id', gameId)
+    if (patch.phase === 'finished') await markGameFinished(supabase, gameId)
+  }
+
+  return {}
+}
+
+// ── Multi-Play (lay several matching cards at once) ──────────────────────────────
+export async function processUnoPlayMulti(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  cardIds: string[],
+  callUno = false
+): Promise<{ error?: string }> {
+  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
+    await loadGameState(supabase, gameId)
+  if (!session) return { error: 'Session not found' }
+  if (session.phase === 'finished') return { error: 'Game is finished' }
+
+  if (
+    await finalizeIfGameExpired(supabase, gameId, session, hands, playerNames, sessionStartedAt, gameDurationSeconds)
+  ) {
+    return { error: "Time's up — the game has ended" }
+  }
+
+  if (rules.multiPlay === 'off') return { error: 'Multi-Play is off for this game' }
+  if (session.phase !== 'playing') return { error: 'Resolve the current card first' }
+
+  const currentId = currentPlayerId(session)
+  if (currentId !== playerId) return { error: 'Not your turn' }
+  if (unoHandCount(hands, playerId) === 0) return { error: 'You are out of the game' }
+
+  const hand = handForPlayer(hands, playerId)
+  // Resolve the requested cards IN ORDER; reject duplicates or unknown ids.
+  const remaining = [...hand]
+  const cards: UnoCard[] = []
+  for (const id of cardIds) {
+    const idx = remaining.findIndex((c) => c.id === id)
+    if (idx < 0) return { error: 'Card not in hand' }
+    cards.push(remaining.splice(idx, 1)[0]!)
+  }
+
+  const setError = validateMultiSet(cards, session, rules.multiPlay)
+  if (setError) return { error: setError }
+
+  const playedIds = new Set(cards.map((c) => c.id))
+  const newHand = hand.filter((c) => !playedIds.has(c.id))
+  const wentOut = newHand.length === 0
+  const name = playerName(playerNames, playerId)
+
+  // Settle a missed "UNO" call by the previous player first.
+  const missed = settleMissedUno(session, hands, playerId, rules, playerNames)
+  const basePile = missed?.drawPile ?? (session.draw_pile as UnoCard[]) ?? []
+  const baseDiscard = missed?.discardPile ?? (session.discard_pile as UnoCard[]) ?? []
+
+  // Resolve the action cards in play order: reverses flip direction (act as a skip with two
+  // players), skips add a skip, Draw Twos accumulate a penalty on the eventual next player.
+  const activeCount = activePlayerCount(session, hands)
+  let direction = session.direction < 0 ? -1 : 1
+  let skipSteps = 0
+  let draw2Count = 0
+  for (const c of cards) {
+    if (c.kind === 'reverse') {
+      if (activeCount <= 2) skipSteps += 1
+      else direction = -direction
+    } else if (c.kind === 'skip') {
+      skipSteps += 1
+    } else if (c.kind === 'draw2') {
+      draw2Count += 1
+    }
+  }
+  const penalty = draw2Count * 2
+  const lastCard = cards[cards.length - 1]!
+  // Discard everything except the card that stays face-up on top.
+  const discardPile = [...baseDiscard, ...(session.top_card ? [session.top_card] : []), ...cards.slice(0, -1)]
+
+  const board: Partial<UnoSession> = {
+    top_card: lastCard,
+    required_color: null,
+    pending_wild: null,
+    challenge_prev_color: null,
+    wd4_player_id: null,
+    draw_penalty: penalty,
+    draw_penalty_kind: penalty > 0 && rules.stacking ? 'draw2' : null,
+    drawn_card_id: null,
+    discard_pile: discardPile,
+    draw_pile: basePile,
+  }
+
+  const owesUno = newHand.length === 1
+  const unoPatch: Partial<UnoSession> = owesUno
+    ? { uno_pending_player: playerId, uno_called: callUno }
+    : { uno_pending_player: null, uno_called: false }
+
+  let patch: Partial<UnoSession>
+  if (wentOut) {
+    patch = {
+      ...playerOutPatch(session, hands, gameDurationSeconds, playerId, name, playerNames, board, direction),
+      ...unoPatch,
+    }
+  } else {
+    const advance = 1 + skipSteps
+    const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, advance, direction)
+    const nextPlayerId = session.turn_order[nextIndex]
+    let status = `${name} played ${cards.length} cards — ${playerName(playerNames, nextPlayerId)}'s turn, match ${cardLabel(lastCard)}`
+    if (penalty > 0) status = `${playerName(playerNames, nextPlayerId)} must draw ${penalty} (${draw2Count} × Draw Two)`
+    patch = {
+      ...board,
+      current_turn_index: nextIndex,
+      direction,
+      phase: 'playing',
+      status_message: status,
+      ...unoPatch,
+    }
+  }
+
+  if (missed && patch.status_message) patch.status_message = `${patch.status_message} · ${missed.note}`
+
+  const won = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
+  if (!won) return {}
+
+  await writeHand(supabase, gameId, playerId, newHand)
+  if (missed) await writeHand(supabase, gameId, missed.playerId, missed.hand)
 
   if (wentOut) {
     await supabase.from('players').update({ spectator: true }).eq('id', playerId).eq('game_id', gameId)
@@ -1417,9 +1598,12 @@ export async function processUnoCall(
   if (session.uno_pending_player !== playerId) return { error: 'Nothing to call' }
   if (session.uno_called) return {}
 
+  const { data: playerRow } = await supabase.from('players').select('name').eq('id', playerId).maybeSingle()
+  const nm = playerRow?.name ?? 'A player'
+
   await supabase
     .from('uno_sessions')
-    .update({ uno_called: true, updated_at: new Date().toISOString() })
+    .update({ uno_called: true, status_message: `${nm} called UNO! 🎉`, updated_at: new Date().toISOString() })
     .eq('game_id', gameId)
     .eq('updated_at', session.updated_at)
   return {}

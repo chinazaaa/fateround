@@ -160,7 +160,7 @@ import {
 import { clampMonopolyGameDuration, clampMonopolyTurnTimer } from '@/lib/monopoly'
 import { clampWhotGameDuration } from '@/lib/whot'
 import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
-import { clampUnoGameDuration } from '@/lib/uno'
+import { clampUnoGameDuration, parseMultiPlayMode } from '@/lib/uno'
 import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { clampSudokuGameDuration } from '@/lib/sudoku'
@@ -443,6 +443,7 @@ export async function POST(req: NextRequest) {
     uno_wd4_challenge_penalty: rawUnoWd4ChallengePenalty,
     uno_zero_seven: rawUnoZeroSeven,
     uno_stacking: rawUnoStacking,
+    uno_multi_play_mode: rawUnoMultiPlayMode,
     ludo_variant: rawLudoVariant,
     ayo_variant: rawAyoVariant,
     mahjong_ruleset: rawMahjongRuleset,
@@ -1147,6 +1148,7 @@ export async function POST(req: NextRequest) {
                 uno_wd4_challenge_penalty: Number(rawUnoWd4ChallengePenalty) === 6 ? 6 : 4,
                 uno_zero_seven: rawUnoZeroSeven === true,
                 uno_stacking: rawUnoStacking === true,
+                uno_multi_play_mode: parseMultiPlayMode(rawUnoMultiPlayMode),
               }
             : isLudoGame(game_type)
               ? { ludo_variant: parseLudoVariant(rawLudoVariant) }

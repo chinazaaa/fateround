@@ -76,6 +76,7 @@ export function HostBoardGameLobbyPanel({
   const [unoUnoPenalty, setUnoUnoPenalty] = useState(2)
   const [unoZeroSeven, setUnoZeroSeven] = useState(false)
   const [unoStacking, setUnoStacking] = useState(false)
+  const [unoMultiPlayMode, setUnoMultiPlayMode] = useState('off')
   const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -122,6 +123,7 @@ export function HostBoardGameLobbyPanel({
       setUnoUnoPenalty(Number(game.uno_uno_penalty) === 4 ? 4 : 2)
       setUnoZeroSeven(game.uno_zero_seven === true)
       setUnoStacking(game.uno_stacking === true)
+      setUnoMultiPlayMode(game.uno_multi_play_mode ?? 'off')
     }
     if (boardGameType === 'ludo') {
       setLudoVariant(game.ludo_variant === 'traditional' ? 'traditional' : 'modern')
@@ -199,11 +201,12 @@ export function HostBoardGameLobbyPanel({
     void patchSettings(patch)
   }
 
-  const onUnoRuleChange = (patch: Record<string, boolean | number>) => {
+  const onUnoRuleChange = (patch: Record<string, boolean | number | string>) => {
     if (patch.uno_wd4_challenge !== undefined) setUnoWd4Challenge(patch.uno_wd4_challenge as boolean)
     if (patch.uno_uno_penalty !== undefined) setUnoUnoPenalty(patch.uno_uno_penalty as number)
     if (patch.uno_zero_seven !== undefined) setUnoZeroSeven(patch.uno_zero_seven as boolean)
     if (patch.uno_stacking !== undefined) setUnoStacking(patch.uno_stacking as boolean)
+    if (patch.uno_multi_play_mode !== undefined) setUnoMultiPlayMode(patch.uno_multi_play_mode as string)
     void patchSettings(patch)
   }
 
@@ -450,6 +453,20 @@ export function HostBoardGameLobbyPanel({
                   value={unoStacking}
                   onChange={(v) => onUnoRuleChange({ uno_stacking: v })}
                 />
+              </div>
+              <div>
+                <p className="label-caps text-[10px] mb-1.5">Multi-Play</p>
+                <HostLobbyOptionChips
+                  value={unoMultiPlayMode}
+                  options={[
+                    { value: 'off', label: 'Off' },
+                    { value: 'same_color_or_number', label: 'Colour or №' },
+                    { value: 'same_color', label: 'Colour' },
+                    { value: 'same_number', label: 'Number' },
+                  ]}
+                  onChange={(v) => onUnoRuleChange({ uno_multi_play_mode: v })}
+                />
+                <p className="mt-1 text-xs text-faint">Lay several matching cards in one turn.</p>
               </div>
             </div>
           </HostLobbySettingBlock>
