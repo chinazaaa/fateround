@@ -453,6 +453,7 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             onChooseColor={(color) => void postHostAction('/api/uno/choose', { color })}
             onChallenge={(challenge) => void postHostAction('/api/uno/challenge', { challenge })}
             onCallUno={() => void postHostAction('/api/uno/call-uno')}
+            onSwap={(targetId) => void postHostAction('/api/uno/swap', { targetId })}
           />
         ) : (
           <p className="turn-status g" style={{ textAlign: 'center', padding: 24 }}>
