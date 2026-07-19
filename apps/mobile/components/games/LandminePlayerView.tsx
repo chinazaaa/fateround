@@ -16,6 +16,7 @@ import {
   parseLandmineMetadata,
   phaseSecondsLeft,
   playerDisplayName,
+  resolveActiveLandmineRound,
   revealCountdownSeconds,
   reviewTargetForMarker,
   roundCallerPlayerId,
@@ -33,6 +34,7 @@ import { LobbyView } from '@/components/LobbyView'
 import { CountdownTimerBadge } from '@/components/party/CountdownTimerBadge'
 import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { useGameScores } from '@/components/session/RosterDrawerContext'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -154,9 +156,10 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
 
   const currentRound = useMemo(() => {
     if (!bootstrap.game) return null
-    const byPointer = rounds.find((r) => r.round_number === bootstrap.game!.current_round_number) ?? null
-    const active = rounds.find((r) => r.status === 'active') ?? null
-    return active ?? byPointer
+    // Use the shared resolver (not a loose `active ?? byPointer`): it ignores a
+    // stale reveal-phase / finished round when a newer active/pending round exists,
+    // so the marking/results screen can't stick on the PREVIOUS round's category.
+    return resolveActiveLandmineRound(rounds, bootstrap.game.current_round_number ?? 0)
   }, [bootstrap.game, rounds])
 
   const metadata = currentRound ? parseLandmineMetadata(currentRound.landmine_metadata) : null
@@ -200,6 +203,15 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
   // The setter's mirror-payout row (outcome 'setter') isn't a real answer — keep it out of the
   // answer boards (it still counts in the leaderboard, which reads all `answers`).
   const playerAnswers = useMemo(() => roundAnswers.filter((a) => a.outcome !== 'setter'), [roundAnswers])
+
+  // Feed the running per-player totals into the roster drawer (parity with web) so the
+  // leaderboard lives in the drawer and it sorts highest-scorer-first. Reads all `answers`,
+  // not just this round's, so it's the cumulative score.
+  const liveScores = useMemo(() => {
+    if (!bootstrap.players.length) return null
+    return Object.fromEntries(tallyLandmineScores(answers, bootstrap.players).map((s) => [s.id, s.score]))
+  }, [answers, bootstrap.players])
+  useGameScores(liveScores, { suffix: ' pts' })
 
   const writingTimer = clampLandmineWritingTimer(bootstrap.game?.timer_seconds)
   const markingTimer = clampLandmineMarkingTimer(bootstrap.game?.operative_timer_seconds)
