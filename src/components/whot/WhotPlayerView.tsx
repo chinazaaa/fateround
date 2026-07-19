@@ -43,6 +43,7 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useWhotTurnTimer } from '@/hooks/useWhotTurnTimer'
 import { useWhotGameTimer } from '@/hooks/useWhotGameTimer'
 import { useWhotNotifications, playWhotActionSound } from '@/hooks/useWhotNotifications'
+import { useGamePlacements, useGameStats } from '@/components/roster/RosterDrawerContext'
 
 type Screen =
   | 'loading'
@@ -240,6 +241,27 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     }
     return counts
   }, [hands])
+
+  // Winner/runner-up medal pills on the roster drawer (mirrors the host view).
+  const placements = useMemo(() => {
+    const map: Record<string, number> = {}
+    ;(session?.finish_order ?? []).forEach((id, i) => {
+      map[id] = i + 1
+    })
+    const winnerId = session?.winner_player_id
+    if (winnerId && !(winnerId in map)) map[winnerId] = 1
+    return Object.keys(map).length ? map : null
+  }, [session?.finish_order, session?.winner_player_id])
+  useGamePlacements(placements)
+
+  // Live card counts in the roster drawer scoreboard (only while playing).
+  const rosterDetails = useMemo(() => {
+    if (game?.status !== 'active') return null
+    const out: Record<string, string> = {}
+    for (const [id, n] of Object.entries(handCounts)) out[id] = `🃏 ${n} card${n === 1 ? '' : 's'}`
+    return Object.keys(out).length ? out : null
+  }, [handCounts, game?.status])
+  useGameStats(rosterDetails)
 
   const cfg = gameTypeConfig('whot')
   const winner = players.find((p) => p.id === session?.winner_player_id)

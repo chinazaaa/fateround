@@ -40,7 +40,7 @@ import { TeamBadge } from '@/components/party/TeamBadge'
 import { TeamPickerGrid } from '@/components/party/TeamPickerGrid'
 import { TeamScoreGrid } from '@/components/party/TeamScoreGrid'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
-import { useGameScores } from '@/components/session/RosterDrawerContext'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { DeadlineTimerBadge } from '@/components/ui/DeadlineTimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import {
@@ -256,6 +256,14 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
       [mode, liveIndividualScores]
     ),
     { suffix: ' pts' }
+  )
+  useGameStats(
+    useMemo(() => {
+      if (mode === 'team') return null
+      const counts: Record<string, number> = {}
+      for (const g of guesses) if (g.correct) counts[g.player_id] = (counts[g.player_id] ?? 0) + 1
+      return Object.fromEntries(liveIndividualScores.map((row) => [row.id, `✅ ${counts[row.id] ?? 0} guessed`]))
+    }, [mode, liveIndividualScores, guesses])
   )
 
   const guessFeed = useMemo(() => {

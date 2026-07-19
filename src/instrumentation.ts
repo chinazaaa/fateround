@@ -16,8 +16,15 @@
 // Env-driven config (endpoint/headers/sampler/resource) is read by the SDK, so switching the
 // export target (Grafana Cloud direct ⇄ on-box collector) is a deploy-config change, not code.
 export async function register() {
-  // Only the Node.js server runtime exports OTLP; skip the edge runtime.
+  // Only the Node.js server runtime runs background work; skip the edge runtime.
   if (process.env.NEXT_RUNTIME !== 'nodejs') return
+
+  // Server-side game ticker — advances timed games (rounds/turns) even when every
+  // participant's tab is backgrounded, so a 10s round can't sit for minutes waiting on
+  // a foregrounded browser to poke it. See src/lib/game-tick.ts. Runs regardless of OTel.
+  const { startGameTicker } = await import('@/lib/game-tick')
+  startGameTicker()
+
   // Not configured for this environment → do nothing.
   if (!process.env.OTEL_EXPORTER_OTLP_ENDPOINT) return
 

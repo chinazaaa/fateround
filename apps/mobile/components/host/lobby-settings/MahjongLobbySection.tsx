@@ -8,6 +8,7 @@ import {
   parseMahjongRuleOptions,
 } from '@fateround/shared/mahjong-rulesets'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
+import { SelectField } from '@/components/create/SelectField'
 import { SettingToggle } from '@/components/create/SettingToggle'
 import { TimerPicker } from '@/components/create/TimerPicker'
 import type { Theme } from '@/constants/theme'
@@ -37,7 +38,10 @@ const UMA_PRESETS: Record<UmaPresetKey, { label: string; value: [number, number,
 }
 
 /** Extra ruleset metadata for the lobby detail panel (mirrors web MAHJONG_RULESET_CONFIG). */
-const MAHJONG_RULESET_DETAIL: Record<string, { tileSet: '136' | '144'; flowers: boolean; dora: boolean; riichi: boolean }> = {
+const MAHJONG_RULESET_DETAIL: Record<
+  string,
+  { tileSet: '136' | '144'; flowers: boolean; dora: boolean; riichi: boolean }
+> = {
   fate_round: { tileSet: '136', flowers: false, dora: false, riichi: false },
   hong_kong: { tileSet: '144', flowers: true, dora: false, riichi: false },
   riichi: { tileSet: '136', flowers: false, dora: true, riichi: true },
@@ -85,7 +89,8 @@ export function MahjongLobbySection({ value, onChange }: Props) {
 
       <View style={styles.field}>
         <Text style={styles.label}>Ruleset</Text>
-        <SegmentedControl
+        <SelectField
+          title="Ruleset"
           value={value.ruleset}
           options={MAHJONG_RULESETS.map((id) => ({
             value: id,
@@ -95,7 +100,9 @@ export function MahjongLobbySection({ value, onChange }: Props) {
           onChange={(ruleset) => onChange({ ruleset })}
         />
         <View style={styles.detailPanel}>
-          <Text style={styles.detailTitle}>{MAHJONG_RULESET_LABELS[value.ruleset as keyof typeof MAHJONG_RULESET_LABELS]?.label ?? value.ruleset}</Text>
+          <Text style={styles.detailTitle}>
+            {MAHJONG_RULESET_LABELS[value.ruleset as keyof typeof MAHJONG_RULESET_LABELS]?.label ?? value.ruleset}
+          </Text>
           <Text style={styles.detailDesc}>
             {MAHJONG_RULESET_LABELS[value.ruleset as keyof typeof MAHJONG_RULESET_LABELS]?.description ?? ''}
           </Text>

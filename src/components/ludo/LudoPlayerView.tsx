@@ -14,7 +14,8 @@ import { LudoFinalResultsShareBlock } from '@/components/ludo/LudoFinalResultsSh
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { gameTypeConfig } from '@/lib/game-types'
-import { currentPlayerId, parseLudoDice, parseLudoVariant, LUDO_MIN_PLAYERS } from '@/lib/ludo'
+import { currentPlayerId, finishedPieceCount, parseLudoDice, parseLudoVariant, LUDO_MIN_PLAYERS } from '@/lib/ludo'
+import { useGameScores, useRosterBase } from '@/components/roster/RosterDrawerContext'
 import { supabase } from '@/lib/supabase'
 import { LUDO_PLAYER_STATE_SELECT, LUDO_SESSION_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
@@ -115,6 +116,15 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
+
+  // The Ludo player path skips the shared roster dispatcher, so register base rows
+  // here for the header drawer + its live "pieces home" scoreboard.
+  useRosterBase(game?.status === 'active' || game?.status === 'finished' ? players : undefined, game, myPlayerId)
+  const rosterScores = useMemo(
+    () => Object.fromEntries(states.map((s) => [s.player_id, finishedPieceCount(s.pieces)])),
+    [states]
+  )
+  useGameScores(rosterScores, { suffix: ' 🏠' })
 
   // Realtime push: reload on any change to this game's row + its tables.
   // Delta fast-path (dual-table). Screen derives from game.status, so session/state writes

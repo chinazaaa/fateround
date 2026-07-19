@@ -136,6 +136,7 @@ import { RoundResultsShareBlock } from '@/components/RoundResultsShareBlock'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { ConfessionsTicker } from '@/components/ConfessionsTicker'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
+import { ContentLabelChip } from '@/components/game-lobby/ContentLabelChip'
 import { GameLobbySummary } from '@/components/GameLobbySummary'
 import ReactionBar from '@/components/ReactionBar'
 import { useToast } from '@/components/ui/Toast'
@@ -358,7 +359,9 @@ export function PollGamePlayerExperience({
   // Self-contained views with their own bootstrap (Whot) can OVERRIDE these rows
   // (via useRosterRowsOverride) so the spectator's own row is marked "· you" — this
   // dispatcher's session id can lag theirs. Override wins over this base, so no fight.
-  useRosterBase(game?.status === 'active' ? players : undefined, game, myPlayerId)
+  // Keep the roster through 'finished' too, so end-of-game winner/runner-up medal
+  // pills (useGamePlacements) stay visible — matching mobile.
+  useRosterBase(game?.status === 'active' || game?.status === 'finished' ? players : undefined, game, myPlayerId)
 
   const {
     assignment,
@@ -584,7 +587,10 @@ export function PollGamePlayerExperience({
         <div className="text-center space-y-1">
           <div className="text-4xl">{gameTypeConfig(game?.game_type).headerEmoji}</div>
           <h1 className="text-2xl font-black tracking-tight gradient-title">{game?.title}</h1>
-          <GameTypeBadge gameType={game?.game_type} />
+          <div className="flex flex-wrap items-center justify-center gap-1.5">
+            <GameTypeBadge gameType={game?.game_type} />
+            <ContentLabelChip label={game?.content_label} />
+          </div>
           <p className="text-muted text-sm">
             {game?.rounds_count} rounds · {game?.timer_seconds}s each
           </p>

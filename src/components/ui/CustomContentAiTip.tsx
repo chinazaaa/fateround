@@ -6,24 +6,21 @@ type Props = {
   className?: string
 }
 
-export function CustomContentAiTip({ hint, accent, className = '' }: Props) {
+/**
+ * Compact "Download sample CSV" link for custom-content uploads. The old version rendered
+ * a full explainer card (headline + body + "ask your AI" prompt); that took a lot of vertical
+ * space above every upload, so it's now just the sample-download link. The AI-prompt guidance
+ * lives in the "Generate with AI" tab instead.
+ */
+export function CustomContentAiTip({ hint, className = '' }: Props) {
+  if (!hint.sampleHref) return null
   return (
-    <div
-      className={`rounded-xl border border-theme p-4 space-y-2.5 ${className}`}
-      style={accent ? { borderLeftWidth: 3, borderLeftColor: accent, background: `${accent}12` } : undefined}
+    <a
+      href={hint.sampleHref}
+      download={hint.sampleDownload}
+      className={`inline-block text-xs font-semibold text-body hover:opacity-80 transition-opacity no-underline ${className}`}
     >
-      <p className="text-sm font-semibold text-body">{hint.headline}</p>
-      <p className="text-muted text-xs leading-relaxed">{hint.body}</p>
-      <p className="text-faint text-xs leading-relaxed">
-        <span className="font-medium text-muted">Try asking your AI:</span> {hint.promptExample}
-      </p>
-      <a
-        href={hint.sampleHref}
-        download={hint.sampleDownload}
-        className="inline-block text-xs font-semibold text-body hover:opacity-80 transition-opacity no-underline"
-      >
-        Download sample CSV →
-      </a>
-    </div>
+      Download sample CSV →
+    </a>
   )
 }

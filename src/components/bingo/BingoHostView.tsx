@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { BingoCardGrid, CalledNumbersBoard } from '@/components/bingo/BingoCardGrid'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { BingoFinalResultsShareBlock } from '@/components/bingo/BingoFinalResultsShareBlock'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
@@ -132,6 +133,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveSeatKeepHosting,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -413,9 +415,13 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const hostSettingsNode = useMemo(
     () =>
       game?.status === 'active' ? (
-        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="bingo" onEnded={load} />
+        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="bingo" onEnded={load}>
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+          )}
+        </HostActiveSettings>
       ) : null,
-    [game?.status, gameCode, hostToken, load]
+    [game?.status, gameCode, hostToken, load, hostMode, hostPlayerId, leaveSeatKeepHosting]
   )
   useRegisterGameSettings(hostSettingsNode)
 

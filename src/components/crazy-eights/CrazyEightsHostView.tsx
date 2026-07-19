@@ -45,9 +45,15 @@ import {
 } from '@/components/crazy-eights/CrazyEightsBoard'
 import { CrazyEightsPlaySurface } from '@/components/crazy-eights/CrazyEightsPlaySurface'
 import { HostRoomShell } from '@/components/host/HostRoomShell'
-import { useRosterBase, useRosterManage } from '@/components/roster/RosterDrawerContext'
+import {
+  useGamePlacements,
+  useGameStats,
+  useRosterBase,
+  useRosterManage,
+} from '@/components/roster/RosterDrawerContext'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { playerIsViewer } from '@/lib/viewers'
 import { CrazyEightsGameTimerBar } from '@/components/crazy-eights/CrazyEightsGameTimerBar'
@@ -159,6 +165,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveGameRemovePlayer,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -317,12 +324,35 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
   // while the game is active — the host sees the same who's-here list as players,
   // with a per-row Remove. The active card-table room renders via HostRoomShell
   // (below) instead of HostGameLayout, so — like Whot — register the roster here.
-  useRosterBase(game?.status === 'active' ? players : undefined, game, hostPlayerId)
+  useRosterBase(game?.status === 'active' || game?.status === 'finished' ? players : undefined, game, hostPlayerId)
   const rosterRemove = useMemo(
     () => (row: { id: string; name: string }) => removePlayer(row.id, row.name),
     [removePlayer]
   )
   useRosterManage(game?.status === 'active' ? { hostPlayerId: hostPlayerId ?? null, onRemove: rosterRemove } : null)
+
+  // Winner/runner-up medal pills on the roster drawer. finish_order lists players
+  // in the order they emptied their hands (first out = winner); make sure the
+  // declared winner is 1st even if they aren't in finish_order yet.
+  const placements = useMemo(() => {
+    const map: Record<string, number> = {}
+    ;(session?.finish_order ?? []).forEach((id, i) => {
+      map[id] = i + 1
+    })
+    const winnerId = session?.winner_player_id
+    if (winnerId && !(winnerId in map)) map[winnerId] = 1
+    return Object.keys(map).length ? map : null
+  }, [session?.finish_order, session?.winner_player_id])
+  useGamePlacements(placements)
+
+  // Live card counts in the roster drawer scoreboard (only while playing).
+  const rosterDetails = useMemo(() => {
+    if (game?.status !== 'active') return null
+    const out: Record<string, string> = {}
+    for (const [id, n] of Object.entries(handCounts)) out[id] = `🃏 ${n} card${n === 1 ? '' : 's'}`
+    return Object.keys(out).length ? out : null
+  }, [handCounts, game?.status])
+  useGameStats(rosterDetails)
 
   // Host game settings for the active room live behind the main chrome's ⚙ gear
   // (top header, beside Share). Register the body (late-join rules · How to play ·
@@ -332,6 +362,13 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
     return (
       <div className="space-y-4">
         <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        {hostMode === 'player' && !!hostPlayerId && (
+          <HostLeaveSeatButton
+            onLeave={leaveGameRemovePlayer}
+            variant="remove"
+            className="btn-secondary w-full py-3 text-base"
+          />
+        )}
         <HostRulesRow gameType="crazy_eights" />
         <HostEndGameButton
           gameCode={gameCode}
@@ -345,7 +382,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
         />
       </div>
     )
-  }, [game, gameCode, hostToken, setGame, load])
+  }, [game, gameCode, hostToken, setGame, load, hostMode, hostPlayerId, leaveGameRemovePlayer])
   useRegisterGameSettings(hostSettingsNode)
 
   if (!game) {

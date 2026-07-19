@@ -25,6 +25,7 @@ import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -334,6 +335,38 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       />
     ) : null
   const gameTimerPinned = useStickyTimer(gameTimer, [bootstrap.code, bootstrap.game, round?.started_at])
+
+  // Feed the roster drawer scoreboard: cumulative points headline + pairs detail.
+  const rosterScored = useMemo(() => {
+    const gridSizePairs = meta?.gridSizePairs ?? 8
+    const sessionStartedAt = bootstrap.game?.session_started_at ?? null
+    const timerSeconds = bootstrap.game?.timer_seconds ?? null
+    const roundStartedAtMap = new Map<string, string>()
+    for (const p of gameProgress) {
+      if (p.created_at && !roundStartedAtMap.has(p.round_id)) roundStartedAtMap.set(p.round_id, p.created_at)
+    }
+    return buildCumulativeMatchingPairsScores(
+      submissions,
+      gameProgress,
+      gridSizePairs,
+      sessionStartedAt,
+      roundStartedAtMap,
+      timerSeconds
+    )
+  }, [meta, bootstrap.game?.session_started_at, bootstrap.game?.timer_seconds, submissions, gameProgress])
+  useGameScores(
+    useMemo(() => Object.fromEntries(rosterScored.map((r) => [r.playerId, r.finalScore])), [rosterScored]),
+    { suffix: ' pts' }
+  )
+  useGameStats(
+    useMemo(
+      () =>
+        Object.fromEntries(
+          rosterScored.map((r) => [r.playerId, `🃏 ${r.pairsMatched} pair${r.pairsMatched === 1 ? '' : 's'}`])
+        ),
+      [rosterScored]
+    )
+  )
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />

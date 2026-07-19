@@ -16,6 +16,7 @@ import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { SudokuGameTimerBar } from '@/components/games/sudoku/SudokuGameTimerBar'
 import { useStickyTimer } from '@/components/session/StickyTimerContext'
@@ -31,6 +32,7 @@ import {
   boardCompletionPercent,
   buildCellOwnerGrid,
   completedSudokuNumbersForPlayer,
+  countEmptyCells,
   formatMinutesSeconds,
   getNewlyCompletedUnits,
   getPlayerTimeSpent,
@@ -188,6 +190,30 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   }, [activePlayers])
 
   const standings = useMemo(() => tallySudokuScores(submissions, activePlayers), [submissions, activePlayers])
+
+  // Feed the roster drawer scoreboard: points headline + "cells left · time" detail.
+  const rosterScores = useMemo(() => Object.fromEntries(standings.map((r) => [r.player_id, r.points])), [standings])
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const r of standings) {
+      const claimed = submissions.filter(
+        (s) => s.player_id === r.player_id && s.is_correct && s.cell_row != null && s.cell_col != null
+      ).length
+      const cellsLeft = puzzle ? countEmptyCells(puzzle) - claimed : 0
+      const timeSecs = getPlayerTimeSpent(
+        bootstrap.game,
+        submissions,
+        r.player_id,
+        puzzle ? playerCompletionPercent(puzzle, submissions, r.player_id) : 0,
+        nowMs,
+        activePlayers.find((p) => p.id === r.player_id)?.joined_at
+      )
+      map[r.player_id] = `⬜ ${cellsLeft} left · ⏱ ${formatMinutesSeconds(timeSecs)}`
+    }
+    return map
+  }, [standings, submissions, puzzle, bootstrap.game, nowMs, activePlayers])
+  useGameStats(rosterDetails)
 
   const me = bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
   const viewing = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))

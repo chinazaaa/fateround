@@ -9,6 +9,7 @@ import { CodewordsLobbyRoster } from '@/components/codewords/CodewordsLobbyRoste
 import { CodewordsScoreboard } from '@/components/codewords/CodewordsScoreboard'
 import { HostLobbyStartButton } from '@/components/host-lobby/HostLobbyStartButton'
 import { HostVisibilityToggle } from '@/components/host-lobby/HostVisibilityToggle'
+import { HostContentLabelField } from '@/components/host-lobby/HostContentLabelField'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
@@ -498,8 +499,9 @@ export function CodewordsHostManagePanel({
           the central Public-game toggle); shown only in the tabbed manage. */}
       {showSettings && inLobby && !embeddedInLobby && (
         <div className="space-y-3">
-          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-3">
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-3 space-y-3">
             <HostVisibilityToggle gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={onGameUpdate} />
+            <HostContentLabelField gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={onGameUpdate} />
           </div>
           {!embeddedInLobby && (
             <>

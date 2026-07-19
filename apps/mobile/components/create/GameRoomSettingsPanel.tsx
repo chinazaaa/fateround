@@ -22,6 +22,7 @@ import {
   SCRABBLE_DICTIONARY_SHORT_LABELS,
 } from '@fateround/shared/scrabble-dictionary-meta'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
+import { SelectField } from '@/components/create/SelectField'
 import { SettingToggle } from '@/components/create/SettingToggle'
 import { TimerPicker } from '@/components/create/TimerPicker'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
@@ -261,9 +262,7 @@ export function GameRoomSettingsPanel({ gameType, room, onChange }: Props) {
                   { value: 'standard', label: 'Normal', hint: 'Per-turn timer + optional game length cap' },
                   { value: 'chess', label: 'Chess clock', hint: 'Per-player time bank — run out and you spectate' },
                 ]}
-                onChange={(value) =>
-                  onChange({ scrabbleClockMode: value as GameRoomSettings['scrabbleClockMode'] })
-                }
+                onChange={(value) => onChange({ scrabbleClockMode: value as GameRoomSettings['scrabbleClockMode'] })}
               />
             </View>
             {room.scrabbleClockMode === 'chess' ? (
@@ -327,16 +326,15 @@ export function GameRoomSettingsPanel({ gameType, room, onChange }: Props) {
             />
             <View style={styles.field}>
               <Text style={styles.label}>Ruleset</Text>
-              <SegmentedControl
+              <SelectField
+                title="Ruleset"
                 value={room.mahjongRuleset}
                 options={MAHJONG_RULESETS.map((id) => ({
                   value: id,
                   label: MAHJONG_RULESET_LABELS[id].label,
                   hint: MAHJONG_RULESET_LABELS[id].description,
                 }))}
-                onChange={(value) =>
-                  onChange({ mahjongRuleset: value as GameRoomSettings['mahjongRuleset'] })
-                }
+                onChange={(value) => onChange({ mahjongRuleset: value as GameRoomSettings['mahjongRuleset'] })}
               />
             </View>
           </>
@@ -371,17 +369,17 @@ export function GameRoomSettingsPanel({ gameType, room, onChange }: Props) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  wrap: { gap: theme.space.md },
-  heading: {
-    color: theme.text,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  field: { gap: theme.space.sm },
-  label: {
-    color: theme.text,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  toggles: { gap: theme.space.sm },
-})
+    wrap: { gap: theme.space.md },
+    heading: {
+      color: theme.text,
+      fontSize: 18,
+      fontWeight: '800',
+    },
+    field: { gap: theme.space.sm },
+    label: {
+      color: theme.text,
+      fontSize: 16,
+      fontWeight: '800',
+    },
+    toggles: { gap: theme.space.sm },
+  })

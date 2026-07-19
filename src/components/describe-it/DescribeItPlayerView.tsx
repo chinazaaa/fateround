@@ -14,10 +14,12 @@ import { gameTypeConfig } from '@/lib/game-types'
 import {
   clampDescribeItMode,
   clampDescribeItTeams,
+  describeItIndividualLeaderboard,
   isDescribeItResultsPhase,
   DESCRIBE_IT_MIN_PLAYERS,
   DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
 } from '@/lib/describe-it'
+import { useGameScores, useGameStats, useRosterBase } from '@/components/roster/RosterDrawerContext'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { DescribeItAchievementPosts } from '@/components/describe-it/DescribeItAchievementPosts'
 import { supabase } from '@/lib/supabase'
@@ -155,6 +157,27 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   })
 
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
+
+  // Describe It is standalone (no shared dispatcher), so register base rows here +
+  // feed the drawer scoreboard in individual mode: points headline + guesses detail.
+  useRosterBase(game?.status === 'active' || game?.status === 'finished' ? players : undefined, game, myPlayerId)
+  const dItIndividual = clampDescribeItMode(game?.describe_it_mode) === 'individual'
+  const dItLeaderboard = useMemo(() => describeItIndividualLeaderboard(teamRows, players), [teamRows, players])
+  useGameScores(
+    useMemo(
+      () => (dItIndividual ? Object.fromEntries(dItLeaderboard.map((r) => [r.id, r.score])) : null),
+      [dItIndividual, dItLeaderboard]
+    ),
+    { suffix: ' pts' }
+  )
+  useGameStats(
+    useMemo(() => {
+      if (!dItIndividual) return null
+      const counts: Record<string, number> = {}
+      for (const g of guesses) if (g.correct) counts[g.player_id] = (counts[g.player_id] ?? 0) + 1
+      return Object.fromEntries(dItLeaderboard.map((r) => [r.id, `✅ ${counts[r.id] ?? 0} guessed`]))
+    }, [dItIndividual, dItLeaderboard, guesses])
+  )
 
   useTurnNotifications({ status: game?.status })
 
@@ -330,6 +353,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
             emoji={cfg.headerEmoji}
             title={game?.title ?? cfg.label}
             gameType="describe_it"
+            contentLabel={game?.content_label}
             subtitle={cfg.tagline}
           />
         }

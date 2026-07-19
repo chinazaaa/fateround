@@ -520,7 +520,14 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     return (
       <GameJoinLobbyShell
         gameCode={gameCode}
-        header={<GameJoinHeader emoji={cfg.headerEmoji} title={game?.title} gameType="codewords" />}
+        header={
+          <GameJoinHeader
+            emoji={cfg.headerEmoji}
+            title={game?.title}
+            gameType="codewords"
+            contentLabel={game?.content_label}
+          />
+        }
       >
         <NameJoinForm
           value={joinName}

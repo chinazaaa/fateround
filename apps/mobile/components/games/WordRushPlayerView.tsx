@@ -38,7 +38,7 @@ import { TeamBadge } from '@/components/party/TeamBadge'
 import { TeamPickerGrid } from '@/components/party/TeamPickerGrid'
 import { TeamScoreGrid } from '@/components/party/TeamScoreGrid'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
-import { useGameScores } from '@/components/session/RosterDrawerContext'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { DeadlineTimerBadge } from '@/components/ui/DeadlineTimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import {
@@ -199,6 +199,14 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
       [mode, livePlayerScores]
     ),
     { suffix: ' pts' }
+  )
+  useGameStats(
+    useMemo(() => {
+      if (mode === 'team') return null
+      const counts: Record<string, number> = {}
+      for (const a of answers) if (a.correct) counts[a.player_id] = (counts[a.player_id] ?? 0) + 1
+      return Object.fromEntries(livePlayerScores.map((row) => [row.id, `✅ ${counts[row.id] ?? 0} words`]))
+    }, [mode, livePlayerScores, answers])
   )
 
   const recentCorrect = useMemo(() => {

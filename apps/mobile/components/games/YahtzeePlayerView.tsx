@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ScrollView, StyleSheet, Text } from 'react-native'
 import { type YahtzeeCategory, type YahtzeePlayerScore, type YahtzeeSession } from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
@@ -7,6 +7,7 @@ import { preJoinScreen } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
 import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
@@ -159,6 +160,24 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
       setActing(false)
     }
   }
+
+  // Roster drawer scoreboard: total score headline + filled-categories detail.
+  const rosterScores = useMemo(
+    () => Object.fromEntries(scores.map((s) => [s.player_id, totalScore(s.scores.categories)])),
+    [scores]
+  )
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        scores.map((s) => {
+          const filled = Object.values(s.scores.categories).filter((v) => v !== null).length
+          return [s.player_id, `📋 ${filled}/13 filled`]
+        })
+      ),
+    [scores]
+  )
+  useGameStats(rosterDetails)
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />

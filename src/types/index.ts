@@ -280,6 +280,11 @@ export type AiGeneratedQuestions =
 export interface Game {
   id: string
   title: string
+  /** Player-facing content label ("what's this pack about") for CSV/library content games —
+   *  e.g. "Maths", "Bible trivia". Distinct from `title` (room name) and `theme` (cosmetic).
+   *  Auto-filled from the library pack name, or typed by the host for a CSV upload; editable
+   *  from the host lobby. Shown next to the room name on join, gameplay, and finished screens. */
+  content_label?: string | null
   /** Secret host credential. Only present on server-side (service-role) reads; never
    *  exposed to clients (migration 0122), so optional on this shared type. */
   host_token?: string

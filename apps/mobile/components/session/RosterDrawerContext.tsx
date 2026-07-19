@@ -22,8 +22,20 @@ export type RosterRow = {
   eliminated?: boolean
   /** This row is the game's host — drives the "HOST" pill. */
   host?: boolean
+  /**
+   * 1-based finishing place layered on by the game view — 1 = winner, 2 =
+   * runner-up, … — drives the medal pill. Omit for players who haven't placed.
+   */
+  placement?: number
   /** Free-form badge, e.g. "Team Red". */
   status?: string
+  /**
+   * Per-game live stat line layered on by the game view — e.g. "🃏 5 cards" for
+   * Whot, "3 props · $1,240" for Monopoly, "4 words · 2:31" for a word game.
+   * Renders as a muted sub-line under the name; turns the drawer into a live
+   * scoreboard. Distinct from `score` (the single sortable headline metric).
+   */
+  detail?: string
   /** Reserved for a future presence feed — renders nothing while undefined. */
   connected?: boolean
 }
@@ -32,6 +44,12 @@ type ScoreRegistration = {
   scores: Record<string, number | string> | null
   suffix?: string
 }
+
+/** Per-player 1-based finishing place (1 = winner) keyed by player id. */
+type PlacementRegistration = Record<string, number> | null
+
+/** Per-player game-specific stat line (e.g. card count), keyed by player id. */
+type DetailRegistration = Record<string, string> | null
 
 type ManageConfig = {
   /** The host's own player id, so their row never shows a Remove button. */
@@ -48,6 +66,8 @@ type RosterDrawerValue = {
   manage: ManageConfig | null
   registerBase: (rows: RosterRow[] | null) => void
   registerScores: (reg: ScoreRegistration | null) => void
+  registerPlacements: (reg: PlacementRegistration) => void
+  registerDetails: (reg: DetailRegistration) => void
   registerOverride: (rows: RosterRow[] | null) => void
 }
 
@@ -81,6 +101,14 @@ export function deriveBaseRows(
 function sortRows(rows: RosterRow[]): RosterRow[] {
   const hasNumericScore = rows.some((r) => typeof r.score === 'number')
   return [...rows].sort((a, b) => {
+    // Placed players (winner, runner-up, …) always float to the top in finishing
+    // order — a Whot/Crazy8 winner is flagged "out" so the viewer rule below would
+    // otherwise sink them beneath still-playing losers.
+    if (a.placement != null || b.placement != null) {
+      if (a.placement == null) return 1
+      if (b.placement == null) return -1
+      if (a.placement !== b.placement) return a.placement - b.placement
+    }
     // Watchers (spectators) always sink below active players, so the drawer reads
     // as "who's playing, then who's watching" — the main value on board games
     // where player names are already on the board.
@@ -112,6 +140,8 @@ export function RosterDrawerProvider({
   const [open, setOpen] = useState(false)
   const [base, setBase] = useState<RosterRow[] | null>(null)
   const [scoreReg, setScoreReg] = useState<ScoreRegistration | null>(null)
+  const [placementReg, setPlacementReg] = useState<PlacementRegistration>(null)
+  const [detailReg, setDetailReg] = useState<DetailRegistration>(null)
   const [override, setOverride] = useState<RosterRow[] | null>(null)
 
   const fallbackRows = useMemo(
@@ -126,11 +156,15 @@ export function RosterDrawerProvider({
     const identity = base ?? fallbackRows
     const scores = scoreReg?.scores
     const suffix = scoreReg?.suffix
-    const joined = scores
+    const scored = scores
       ? identity.map((r) => (r.id in scores ? { ...r, score: scores[r.id], scoreSuffix: suffix } : r))
       : identity
+    const placed = placementReg
+      ? scored.map((r) => (r.id in placementReg ? { ...r, placement: placementReg[r.id] } : r))
+      : scored
+    const joined = detailReg ? placed.map((r) => (r.id in detailReg ? { ...r, detail: detailReg[r.id] } : r)) : placed
     return sortRows(joined)
-  }, [override, base, fallbackRows, scoreReg])
+  }, [override, base, fallbackRows, scoreReg, placementReg, detailReg])
 
   const participantCount = useMemo(() => rows.filter((r) => !r.viewer).length, [rows])
 
@@ -149,6 +183,8 @@ export function RosterDrawerProvider({
       manage: manage ?? null,
       registerBase: setBase,
       registerScores: setScoreReg,
+      registerPlacements: setPlacementReg,
+      registerDetails: setDetailReg,
       registerOverride: setOverride,
     }),
     [open, rows, participantCount, manage]
@@ -196,6 +232,38 @@ export function useGameScores(scores: Record<string, number | string> | null, op
     register({ scores, suffix })
     return () => register(null)
   }, [register, scores, suffix])
+}
+
+/**
+ * Layer per-player finishing places onto the roster drawer for as long as the
+ * caller is mounted — 1 = winner, 2 = runner-up, … — driving a medal pill. Pass
+ * `null` for games with no placement concept. Memoize the map at the call site.
+ */
+export function useGamePlacements(placements: Record<string, number> | null) {
+  const ctx = useContext(RosterDrawerContext)
+  const register = ctx?.registerPlacements
+  useEffect(() => {
+    if (!register) return
+    register(placements)
+    return () => register(null)
+  }, [register, placements])
+}
+
+/**
+ * Layer a per-player game-specific stat line onto the roster drawer for as long
+ * as the caller is mounted — e.g. `{ [id]: '🃏 5 cards' }` for Whot, or
+ * `'3 props · $1,240'` for Monopoly. Renders as a muted sub-line under the name,
+ * turning the drawer into a live scoreboard. Pass `null` to contribute none.
+ * Memoize the map at the call site to avoid churn.
+ */
+export function useGameStats(details: Record<string, string> | null) {
+  const ctx = useContext(RosterDrawerContext)
+  const register = ctx?.registerDetails
+  useEffect(() => {
+    if (!register) return
+    register(details)
+    return () => register(null)
+  }, [register, details])
 }
 
 /**

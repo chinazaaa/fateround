@@ -18,6 +18,7 @@ import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
@@ -115,6 +116,7 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveSeatKeepHosting,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -158,9 +160,12 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
       game && game.status === 'active' ? (
         <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="word_rush" onEnded={load}>
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+          )}
         </HostActiveSettings>
       ) : null,
-    [game, gameCode, hostToken, load]
+    [game, gameCode, hostToken, load, leaveSeatKeepHosting, hostMode, hostPlayerId]
   )
   useRegisterGameSettings(hostSettingsNode)
 

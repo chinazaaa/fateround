@@ -2024,6 +2024,74 @@ export const GAME_TYPE_DISPLAY_ORDER: GameType[] = [
   ...GAME_TYPE_OPTIONS.filter((type) => !PINNED_GAME_TYPES.includes(type)),
 ]
 
+/** Broad groups used to organise the create-screen game picker (mirrors the mobile taxonomy). */
+export type GameCategory = 'party' | 'guessing' | 'board' | 'cards' | 'puzzle'
+
+/** Ordered category tabs shown above the picker grid; `all` is prepended by the UI. */
+export const GAME_CATEGORIES: { key: GameCategory; label: string }[] = [
+  { key: 'party', label: 'Party' },
+  { key: 'guessing', label: 'Guessing' },
+  { key: 'board', label: 'Board' },
+  { key: 'cards', label: 'Cards' },
+  { key: 'puzzle', label: 'Puzzles' },
+]
+
+const GAME_CATEGORY_BY_TYPE: Partial<Record<GameType, GameCategory>> = {
+  // Party / social
+  smash_marry_kill: 'party',
+  red_flag_green_flag: 'party',
+  smash_or_pass: 'party',
+  parent_approval: 'party',
+  would_you_rather: 'party',
+  never_have_i_ever: 'party',
+  pick_a_number: 'party',
+  this_or_that: 'party',
+  most_likely_to: 'party',
+  hot_seat: 'party',
+  anonymous_messages: 'party',
+  secret_message: 'party',
+  two_truths: 'party',
+  i_call_on: 'party',
+  landmine: 'party',
+  mafia: 'party',
+  custom: 'party',
+  // Guessing / word-and-answer
+  who_said_this: 'guessing',
+  trivia: 'guessing',
+  codewords: 'guessing',
+  describe_it: 'guessing',
+  quick_draw: 'guessing',
+  quiplash: 'guessing',
+  // Cards
+  whot: 'cards',
+  crazy_eights: 'cards',
+  // Board / strategy
+  monopoly: 'board',
+  ludo: 'board',
+  mahjong: 'board',
+  snake_and_ladder: 'board',
+  tic_tac_toe: 'board',
+  chess: 'board',
+  checkers: 'board',
+  scrabble: 'board',
+  ayo: 'board',
+  ping_pong: 'board',
+  // Puzzles
+  yahtzee: 'puzzle',
+  sudoku: 'puzzle',
+  bingo: 'puzzle',
+  matching_pairs: 'puzzle',
+  crossword: 'puzzle',
+  word_search: 'puzzle',
+  word_scramble: 'puzzle',
+  word_hunt: 'puzzle',
+  word_rush: 'puzzle',
+}
+
+export function gameTypeCategory(gameType: GameType): GameCategory {
+  return GAME_CATEGORY_BY_TYPE[gameType] ?? 'party'
+}
+
 export function parseGameType(raw: unknown): GameType {
   if (raw === 'red_flag_green_flag') return 'red_flag_green_flag'
   if (raw === 'smash_or_pass') return 'smash_or_pass'

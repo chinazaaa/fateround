@@ -14,6 +14,7 @@ function themeChip(options: { id: string; label: string }[], value: string): str
 type GameMeta = {
   game_type?: string | null
   question_source?: string | null
+  content_label?: string | null
   crossword_theme?: string | null
   crossword_difficulty?: string | null
   word_search_theme?: string | null
@@ -43,6 +44,10 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
   const items: string[] = []
   const isCustomPool = game.question_source === 'custom'
   const gt = game.game_type ?? ''
+
+  // Host-set content label ("Maths", "Bible trivia") leads, so joiners see what the pack
+  // is about before committing.
+  if (game.content_label?.trim()) items.push(game.content_label.trim())
 
   if (gt === 'crossword') {
     if (!isCustomPool && game.crossword_theme) items.push(themeChip(crosswordThemeOptions(), game.crossword_theme))

@@ -12,6 +12,7 @@ import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { HostMaxPlayersLobbyPanel } from '@/components/host-lobby/HostMaxPlayersLobbyPanel'
 import { TransferHostControl } from '@/components/TransferHostControl'
@@ -77,6 +78,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveSeatKeepHosting,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -256,9 +258,23 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
               {advancing ? 'Ending…' : 'End round early'}
             </button>
           )}
+          {hostPlays && (
+            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+          )}
         </HostActiveSettings>
       ) : null,
-    [game, gameCode, hostToken, load, setGame, endRound, advancing, roundAutomation.activeRound]
+    [
+      game,
+      gameCode,
+      hostToken,
+      load,
+      setGame,
+      endRound,
+      advancing,
+      roundAutomation.activeRound,
+      hostPlays,
+      leaveSeatKeepHosting,
+    ]
   )
   useRegisterGameSettings(hostSettingsNode)
 

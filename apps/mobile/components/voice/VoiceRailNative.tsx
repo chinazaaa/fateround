@@ -104,7 +104,7 @@ function DisconnectedBar({
     <View style={styles.pill}>
       <Pressable style={styles.joinBtn} disabled={isConnecting} onPress={onJoin}>
         <Text style={styles.joinText}>
-          {isConnecting ? 'Connecting…' : `🎙️ Join${presenceCount > 0 ? ` · ${presenceCount}` : ''}`}
+          {isConnecting ? 'Connecting…' : `🎙️ Join voice${presenceCount > 0 ? ` · ${presenceCount}` : ''}`}
         </Text>
       </Pressable>
     </View>
@@ -236,17 +236,23 @@ const makeStyles = (theme: Theme) =>
       shadowRadius: 6,
       elevation: 4,
     },
+    // Filled primary pill so "Join voice" reads as a clear call-to-action rather
+    // than blending into the toolbar as a plain grey circle.
     joinBtn: {
       flex: 1,
-      backgroundColor: theme.surfaceHover,
+      flexDirection: 'row',
+      gap: 6,
+      backgroundColor: theme.primary,
       borderRadius: 999,
       borderWidth: 1,
-      borderColor: theme.border,
+      borderColor: theme.primary,
       paddingVertical: 10,
-      paddingHorizontal: 14,
+      paddingHorizontal: 16,
       alignItems: 'center',
+      justifyContent: 'center',
     },
-    joinText: { color: theme.text, fontSize: 13, fontWeight: '700' },
+    // White on the solid primary pill — legible in both schemes.
+    joinText: { color: '#fff', fontSize: 14, fontWeight: '800' },
     mainBtn: {
       flex: 1,
       borderRadius: 999,

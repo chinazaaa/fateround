@@ -13,6 +13,7 @@ import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
 import { currentTurnPlayerId, isScrabbleResultsPhase } from '@/lib/scrabble-board'
@@ -25,6 +26,7 @@ import {
 } from '@/lib/supabase-selects'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { useHostSeat } from '@/hooks/useHostSeat'
 import type { Game, Player, ScrabbleSession, ScrabblePlayerState, ScrabblePlacedTile } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -161,6 +163,7 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveGameRemovePlayer,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -183,6 +186,21 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
+
+  // Roster drawer scoreboard: score headline + tiles-on-rack detail.
+  const rosterScores = useMemo(
+    () => Object.fromEntries(playerStates.map((s) => [s.player_id, s.score])),
+    [playerStates]
+  )
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        playerStates.map((s) => [s.player_id, `🔤 ${s.rack.length} tile${s.rack.length === 1 ? '' : 's'}`])
+      ),
+    [playerStates]
+  )
+  useGameStats(rosterDetails)
 
   const playWord = async (tiles: ScrabblePlacedTile[]) => {
     if (!hostPlayerId) return
@@ -361,9 +379,16 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
             hostToken={hostToken}
             onExtended={() => void load()}
           />
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton
+              onLeave={leaveGameRemovePlayer}
+              variant="remove"
+              className="btn-secondary w-full py-3 text-base"
+            />
+          )}
         </HostActiveSettings>
       ) : null,
-    [game, gameCode, hostToken, load, gameFinished]
+    [game, gameCode, hostToken, load, gameFinished, hostMode, hostPlayerId, leaveGameRemovePlayer]
   )
   useRegisterGameSettings(hostSettingsNode)
 

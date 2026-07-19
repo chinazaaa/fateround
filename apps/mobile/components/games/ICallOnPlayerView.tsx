@@ -50,7 +50,7 @@ import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { ICallOnScoreboard } from '@/components/games/i_call_on/ICallOnScoreboard'
 import { ICallOnGameTimerBar } from '@/components/games/i_call_on/ICallOnGameTimerBar'
-import { ICallOnLiveLeaderboard } from '@/components/games/i_call_on/ICallOnLiveLeaderboard'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { ICallOnRoundHeader } from '@/components/games/i_call_on/ICallOnRoundHeader'
 import {
   ICallOnAutoSendHint,
@@ -208,6 +208,23 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   const isViewer = !!(bootstrap.game && me && playerIsViewer(me, bootstrap.game))
 
   const liveScores = useMemo(() => tallyNpatScores(answers, bootstrap.players), [answers, bootstrap.players])
+  // Feed the roster drawer scoreboard (replaces the inline leaderboard): points + answers.
+  useGameScores(
+    useMemo(() => Object.fromEntries(liveScores.map((row) => [row.id, row.score])), [liveScores]),
+    { suffix: ' pts' }
+  )
+  useGameStats(
+    useMemo(() => {
+      const counts: Record<string, number> = {}
+      for (const a of answers) {
+        const scored = [a.score_name, a.score_animal, a.score_place, a.score_thing, a.score_food].filter(
+          (s) => (s ?? 0) > 0
+        ).length
+        counts[a.player_id] = (counts[a.player_id] ?? 0) + scored
+      }
+      return Object.fromEntries(liveScores.map((row) => [row.id, `✅ ${counts[row.id] ?? 0} answers`]))
+    }, [liveScores, answers])
+  )
   const callerName = playerDisplayName(callerId, bootstrap.players)
   const callerIndex = useMemo(() => {
     const order = metadata?.caller_order
@@ -609,7 +626,8 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
       showReveal={false}
     />
   )
-  const liveLeaderboard = <ICallOnLiveLeaderboard rows={liveScores} myPlayerId={bootstrap.myPlayerId} />
+  // Leaderboard now lives in the roster side-drawer (see useGameScores/useGameStats above).
+  const liveLeaderboard = null
 
   if (metadata.phase === 'letter_pick') {
     return (

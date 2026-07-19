@@ -7,6 +7,7 @@ import { MonopolyHostTimeExtension } from '@/components/monopoly/MonopolyHostTim
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { MonopolyFinalResultsShareBlock } from '@/components/monopoly/MonopolyFinalResultsShareBlock'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
@@ -169,6 +170,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveGameRemovePlayer,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -332,9 +334,16 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
           endGameConfirmMessage="The current game will end and players will see the results screen."
         >
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton
+              onLeave={leaveGameRemovePlayer}
+              variant="remove"
+              className="btn-secondary w-full py-3 text-base"
+            />
+          )}
         </HostActiveSettings>
       ) : null,
-    [game, gameCode, hostToken, load, setGame]
+    [game, gameCode, hostToken, load, setGame, hostMode, hostPlayerId, leaveGameRemovePlayer]
   )
   useRegisterGameSettings(hostSettingsNode)
 

@@ -80,9 +80,12 @@ import {
   isWordHuntGame,
   isMafiaGame,
   isMatchingPairsGame,
+  isMahjongGame,
   isQuiplashGame,
   isQuickDrawGame,
 } from '@/lib/game-types'
+import { DEFAULT_MAHJONG_RULESET, MAHJONG_RULESETS, MAHJONG_RULESET_CONFIG } from '@/lib/mahjong-rulesets'
+import type { MahjongRuleset } from '@/types'
 import { BOARD_THEMES, PIECE_SETS, useChessAppearance } from '@/lib/chess-appearance'
 import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
@@ -147,7 +150,7 @@ import { PuzzleUpload } from '@/components/create/PuzzleUpload'
 import { PageShell, BackBtn, Field, Chip, Toggle, PrimaryBtn } from '@/components/ui/PageShell'
 import { StepIndicator, SettingsGroup, StickyActionBar, SegmentedControl, ChipGrid } from '@/components/ui/CreateWizard'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
-import { LateJoinPolicyToggle } from '@/components/AllowViewersToggle'
+import { LateJoinPolicyToggle, LateJoinField } from '@/components/AllowViewersToggle'
 import {
   gameSupportsViewerSetting,
   clampLateJoinPolicyForGameType,
@@ -322,6 +325,7 @@ function CreateGameInner() {
   const [participantTab, setParticipantTab] = useState<ParticipantTab>('upload')
   const [settings, setSettings] = useState<Settings>({
     title: '',
+    content_label: '',
     rounds_count: 3,
     timer_seconds: 30,
     anonymous: true,
@@ -362,6 +366,8 @@ function CreateGameInner() {
   const fileRef = useRef<HTMLInputElement>(null)
   const questionsFileRef = useRef<HTMLInputElement>(null)
   const wstDeckFileRef = useRef<HTMLInputElement>(null)
+  // True once the host manually edits the Category — after that, the AI "Theme" no longer mirrors into it.
+  const contentLabelTouchedRef = useRef(false)
   const [bulkPaste, setBulkPaste] = useState('')
   const [questionSource, setQuestionSource] = useState<QuestionSource>('platform')
   const [playerQuestionsEnabled, setPlayerQuestionsEnabled] = useState(true)
@@ -428,6 +434,7 @@ function CreateGameInner() {
   const [ludoMaxPlayers, setLudoMaxPlayers] = useState(LUDO_DEFAULT_MAX_PLAYERS)
   const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
   const [ayoVariant, setAyoVariant] = useState<AyoVariant>('traditional')
+  const [mahjongRuleset, setMahjongRuleset] = useState<MahjongRuleset>(DEFAULT_MAHJONG_RULESET)
   const [snakeLadderMaxPlayers, setSnakeLadderMaxPlayers] = useState(SNAKE_LADDER_DEFAULT_MAX_PLAYERS)
   const [npatMaxPlayers, setNpatMaxPlayers] = useState(NPAT_DEFAULT_MAX_PLAYERS)
   const [sudokuMaxPlayers, setSudokuMaxPlayers] = useState(20)
@@ -527,6 +534,10 @@ function CreateGameInner() {
     if (data.pack?.questions) {
       const qs = data.pack.questions
       setLibraryPackQuestions(qs)
+      // Auto-fill the player-facing content label with the pack name (e.g. "Bible trivia")
+      // unless the host has already typed their own.
+      if (data.pack.title && !settings.content_label.trim())
+        setSettings((s) => (s.content_label.trim() ? s : { ...s, content_label: data.pack.title }))
       if (isTriviaGame(settings.game_type)) setCustomTriviaQuestions(qs as TriviaQuestion[])
       else if (isWouldYouRather(settings.game_type) || isThisOrThat(settings.game_type))
         setCustomWyrQuestions(qs as WyrQuestion[])
@@ -714,7 +725,7 @@ function CreateGameInner() {
               participant_mode: 'joiners' as const,
               anonymous: true,
               rounds_count: 1,
-              timer_seconds: 0,
+              timer_seconds: 300, // 5 min per-player time bank
             }
           : {}),
         ...(isScrabbleGame(type)
@@ -722,8 +733,7 @@ function CreateGameInner() {
               participant_mode: 'joiners' as const,
               anonymous: true,
               rounds_count: 1,
-              // Optional per-turn timer; default off.
-              timer_seconds: 0,
+              timer_seconds: 120, // 2 min per turn
             }
           : {}),
         ...(isDescribeItGame(type)
@@ -767,6 +777,14 @@ function CreateGameInner() {
               game_duration_seconds: 0,
             }
           : {}),
+        ...(isMahjongGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+              timer_seconds: 30,
+            }
+          : {}),
         ...(isWhoSaidThis(type)
           ? {
               participant_mode: 'import' as const,
@@ -795,6 +813,7 @@ function CreateGameInner() {
           if (!d.pack?.questions) return
           const gt = d.pack.game_type
           const qs = d.pack.questions
+          if (d.pack.title) setSettings((s) => (s.content_label.trim() ? s : { ...s, content_label: d.pack.title }))
           if (gt === 'describe_it' || gt === 'quick_draw') {
             const words = parseDescribeItWords((qs as string[]).join('\n')).join('\n')
             setQuestionSource('custom')
@@ -875,6 +894,7 @@ function CreateGameInner() {
   const wordScrambleDiffLock = questionSource === 'platform' ? lockedPuzzleDifficulty(wordScrambleTheme) : null
   const isWordHunt = isWordHuntGame(settings.game_type)
   const isMatchingPairs = isMatchingPairsGame(settings.game_type)
+  const isMahjong = isMahjongGame(settings.game_type)
   const showViewerToggle = gameSupportsViewerSetting(settings.game_type)
   const isWst = isWhoSaidThis(settings.game_type)
   // Who Said This host-provided deck (Platform / Library / uploaded). Players just join and
@@ -995,6 +1015,33 @@ function CreateGameInner() {
     !isMafia
   const isBingo = isBingoGame(settings.game_type)
   const isCodewords = isCodewordsGame(settings.game_type)
+  // Content games (CSV upload / library packs) can carry a player-facing "category" label
+  // so joiners know what the pack is about before they commit (e.g. "Maths"). For library
+  // packs it's auto-filled from the pack name; for a CSV upload we ask the host directly,
+  // right under the upload — hence gated on the custom source. Reused across game blocks.
+  const showsContentLabel =
+    isLobbyQuestions || isCrossword || isWordSearch || isWordScramble || isCodewords || isDescribeIt || isWst
+  const categoryUploadField =
+    showsContentLabel && questionSource === 'custom' ? (
+      <Field label="Category">
+        <input
+          value={settings.content_label}
+          onChange={(e) => {
+            contentLabelTouchedRef.current = true
+            setSettings({ ...settings, content_label: e.target.value })
+          }}
+          placeholder="Maths, Countries, Mixed"
+          maxLength={40}
+          className="input-field"
+        />
+        <p className="text-faint text-xs mt-2">What is this CSV theme? Shown to players before they join.</p>
+      </Field>
+    ) : null
+  // Mirror the AI "Theme (optional)" into the player-facing Category so the host doesn't fill both —
+  // until they hand-edit the Category, after which we stop overriding it.
+  const handleAiThemeChange = (theme: string) => {
+    if (!contentLabelTouchedRef.current) setSettings((s) => ({ ...s, content_label: theme }))
+  }
   const isMessageBoard = isAnonymousRoom || isSecretMessage
   const isQuickLobby =
     isWst ||
@@ -1141,7 +1188,7 @@ function CreateGameInner() {
             participant_mode: 'joiners' as const,
             anonymous: true,
             rounds_count: 1,
-            timer_seconds: 0,
+            timer_seconds: 30,
           }
         : {}),
       ...(isWhotGame(type)
@@ -1149,7 +1196,7 @@ function CreateGameInner() {
             participant_mode: 'joiners' as const,
             anonymous: true,
             rounds_count: 1,
-            timer_seconds: 0,
+            timer_seconds: 30,
           }
         : {}),
       ...(isCrazyEightsGame(type)
@@ -1157,7 +1204,7 @@ function CreateGameInner() {
             participant_mode: 'joiners' as const,
             anonymous: true,
             rounds_count: 1,
-            timer_seconds: 0,
+            timer_seconds: 30,
           }
         : {}),
       ...(isLudoGame(type)
@@ -1165,7 +1212,7 @@ function CreateGameInner() {
             participant_mode: 'joiners' as const,
             anonymous: true,
             rounds_count: 1,
-            timer_seconds: 60,
+            timer_seconds: 30,
           }
         : {}),
       ...(isSnakeAndLadderGame(type)
@@ -1199,7 +1246,7 @@ function CreateGameInner() {
             participant_mode: 'joiners' as const,
             anonymous: true,
             rounds_count: 1,
-            timer_seconds: 0,
+            timer_seconds: 300, // 5 min per-player time bank
           }
         : {}),
       ...(isICallOnGame(type)
@@ -1244,6 +1291,30 @@ function CreateGameInner() {
             anonymous: true,
             rounds_count: 1,
             timer_seconds: WORD_HUNT_DEFAULT_TIMER,
+          }
+        : {}),
+      ...(isMahjongGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: 30,
+          }
+        : {}),
+      ...(isScrabbleGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: 120, // 2 min per turn
+          }
+        : {}),
+      ...(isTicTacToeGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: 30,
           }
         : {}),
       ...(isWhoSaidThis(type)
@@ -1817,6 +1888,7 @@ function CreateGameInner() {
           crazy8_pick2_stacking: isCrazy8 ? crazy8Pick2Stacking : undefined,
           ludo_variant: isLudo ? ludoVariant : undefined,
           ayo_variant: isAyo ? ayoVariant : undefined,
+          mahjong_ruleset: isMahjong ? mahjongRuleset : undefined,
           scrabble_dictionary_id: isScrabble ? scrabbleDictionary : undefined,
           scrabble_clock_mode: isScrabble ? scrabbleClockMode : undefined,
           scrabble_clock_seconds: isScrabble && scrabbleClockMode === 'chess' ? scrabbleClockSeconds : undefined,
@@ -2083,9 +2155,7 @@ function CreateGameInner() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} />
                 <p className="text-faint text-sm leading-relaxed">
                   Players join with one tap and get a random lobby name shown on their messages. The cap applies to the
                   lobby before start. With &quot;Allow viewers&quot;, people can watch after the session starts
@@ -2154,11 +2224,7 @@ function CreateGameInner() {
                     </select>
                   </Field>
                 )}
-                {showViewerToggle && (
-                  <Field label="Late joiners">
-                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
-                  </Field>
-                )}
+                {showViewerToggle && <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} />}
                 <p className="text-faint text-sm leading-relaxed">
                   Players join with their name and get a unique 5×5 card. Called squares turn blue on their card; they
                   tap blue to mark green, then tap BINGO when they complete a line.
@@ -2225,11 +2291,7 @@ function CreateGameInner() {
                     ))}
                   </select>
                 </Field>
-                {showViewerToggle && (
-                  <Field label="Late joiners">
-                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
-                  </Field>
-                )}
+                {showViewerToggle && <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} />}
                 <p className="text-faint text-sm leading-relaxed">
                   Everyone writes a funny answer to the same prompt. Answers battle head-to-head and the group votes for
                   the funniest — you earn one point per vote.
@@ -2459,6 +2521,7 @@ function CreateGameInner() {
                         gameType="describe_it"
                         noun={settings.quick_draw_variant === 'guess' ? 'words' : 'prompts'}
                         defaultCount={30}
+                        onThemeChange={handleAiThemeChange}
                         onGenerated={(questions) => {
                           setQuickDrawUploadError(null)
                           setQuickDrawWords(parseDescribeItWords((questions as string[]).join('\n')).join('\n'))
@@ -2528,11 +2591,8 @@ function CreateGameInner() {
                     )}
                   </div>
                 )}
-                {showViewerToggle && (
-                  <Field label="Late joiners">
-                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
-                  </Field>
-                )}
+                {categoryUploadField}
+                {showViewerToggle && <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} />}
                 <p className="text-faint text-sm leading-relaxed">
                   {settings.quick_draw_variant === 'guess'
                     ? settings.quick_draw_play_mode === 'individual'
@@ -2569,11 +2629,7 @@ function CreateGameInner() {
                     ))}
                   </select>
                 </Field>
-                {showViewerToggle && (
-                  <Field label="Late joiners">
-                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
-                  </Field>
-                )}
+                {showViewerToggle && <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} />}
                 <p className="text-faint text-sm leading-relaxed">
                   Everyone writes two truths and one lie in the lobby. Each round spotlights one player — the rest guess
                   which statement is the lie. Correct guesses earn points; fool the room for bonus points.
@@ -2620,9 +2676,7 @@ function CreateGameInner() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="monopoly" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="monopoly" />
                 <p className="text-faint text-sm leading-relaxed">
                   {formatThemedText(
                     'Players join with their name and start on GO with £1,500. Take turns rolling dice, buying properties, paying rent, and drawing cards. Last player standing wins! If someone stalls, their turn auto-resolves. Set a game length to end automatically — the richest player wins when time runs out.',
@@ -2658,9 +2712,7 @@ function CreateGameInner() {
                     <option value={120}>2 minutes</option>
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="yahtzee" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="yahtzee" />
                 <p className="text-faint text-sm leading-relaxed">
                   Play solo or with up to six friends. Take turns rolling 5 dice, holding what you want, and scoring an
                   unused category on your sheet. Highest total score at the end wins!
@@ -2707,9 +2759,7 @@ function CreateGameInner() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="whot" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="whot" />
                 <Field label="House rules">
                   <div className="space-y-2">
                     <Toggle
@@ -2789,9 +2839,7 @@ function CreateGameInner() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="crazy_eights" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="crazy_eights" />
                 <Field label="House rules">
                   <div className="space-y-2">
                     <Toggle
@@ -2860,9 +2908,7 @@ function CreateGameInner() {
                     <option value="traditional">Traditional — no safe squares except your home column</option>
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="ludo" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="ludo" />
                 <p className="text-faint text-sm leading-relaxed">
                   {ludoVariant === 'traditional'
                     ? 'Traditional Ludo — the only safe spot is your own coloured home column; anywhere on the shared track, a lone piece can be captured. Roll two dice to enter, race around, and get all four pieces home to win.'
@@ -2901,13 +2947,7 @@ function CreateGameInner() {
                     <option value={90}>90 seconds</option>
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle
-                    value={lateJoinPolicy}
-                    onChange={setLateJoinPolicy}
-                    gameType="snake_and_ladder"
-                  />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="snake_and_ladder" />
                 <p className="text-faint text-sm leading-relaxed">
                   Classic Snakes &amp; Ladders — roll one die, climb the ladders, dodge the snakes. Roll a 6 to go
                   again. First to land on 100 exactly wins!
@@ -2966,9 +3006,7 @@ function CreateGameInner() {
                     <option value={60}>60 seconds</option>
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="tic_tac_toe" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="tic_tac_toe" />
                 <p className="text-faint text-sm leading-relaxed">
                   Ultimate Tic-Tac-Toe — nine small boards in one big grid. Your move sends your opponent to the
                   matching board; win three boards in a row to win it all.
@@ -2989,9 +3027,7 @@ function CreateGameInner() {
                     <option value={600}>10 minutes each</option>
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="chess" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="chess" />
                 <Field label="Board">
                   <div className="flex flex-wrap gap-2">
                     {BOARD_THEMES.map((theme) => {
@@ -3073,14 +3109,44 @@ function CreateGameInner() {
                     <option value={600}>10 minutes each</option>
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="checkers" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="checkers" />
                 <p className="text-faint text-sm leading-relaxed">
                   Classic checkers — Black moves first, jumps are forced, and reaching the far row crowns a king.
                   Capture all your opponent’s pieces to win. Each player gets their own clock that only ticks on their
                   turn.
                 </p>
+              </SettingsGroup>
+            ) : isMahjong ? (
+              <SettingsGroup title="Mahjong room">
+                <p className="text-faint text-sm">Exactly 4 players — the host can join as one of them.</p>
+                <Field label="Turn timer">
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    <option value={0}>No timer</option>
+                    <option value={30}>30 seconds</option>
+                    <option value={60}>60 seconds</option>
+                    <option value={90}>90 seconds</option>
+                    <option value={120}>2 minutes</option>
+                  </select>
+                </Field>
+                <Field label="Ruleset">
+                  <select
+                    value={mahjongRuleset}
+                    onChange={(e) => setMahjongRuleset(e.target.value as MahjongRuleset)}
+                    className="input-field w-full"
+                  >
+                    {MAHJONG_RULESETS.map((id) => (
+                      <option key={id} value={id}>
+                        {MAHJONG_RULESET_CONFIG[id].label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-faint text-xs mt-2">{MAHJONG_RULESET_CONFIG[mahjongRuleset].description}</p>
+                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="mahjong" />
               </SettingsGroup>
             ) : isAyo ? (
               <SettingsGroup title="Ayo room">
@@ -3108,9 +3174,7 @@ function CreateGameInner() {
                     <option value={600}>10 minutes each</option>
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="ayo" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="ayo" />
                 <p className="text-faint text-sm leading-relaxed">
                   {ayoVariant === 'traditional'
                     ? 'Traditional Ayo Olopon — sow anti-clockwise and complete fours on your own houses to win them. If you complete a four on your opponent’s house with your last seed, you win it; if you still have seeds left to sow, they win it instead. Most houses wins the round; each round win takes one of their houses. Play until all opponent houses are gone. Winner is Ọta; three straight round wins makes an Ọta champion.'
@@ -3193,9 +3257,7 @@ function CreateGameInner() {
                   </select>
                   <p className="text-faint mt-1 text-xs">{SCRABBLE_DICTIONARY_BLURBS[scrabbleDictionary]}</p>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="scrabble" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="scrabble" />
                 <p className="text-faint text-sm leading-relaxed">
                   Build words on a 15×15 board, hit the premium squares, and outscore everyone. Every word is checked
                   against a real dictionary; highest score when the tiles run out wins. Set a game length so it
@@ -3395,9 +3457,7 @@ function CreateGameInner() {
                     />
                   </Field>
                 )}
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} />
               </SettingsGroup>
             ) : isDescribeIt ? (
               <SettingsGroup title="Text Charades room">
@@ -3561,6 +3621,7 @@ function CreateGameInner() {
                         gameType="describe_it"
                         noun="words"
                         defaultCount={30}
+                        onThemeChange={handleAiThemeChange}
                         onGenerated={(questions) => {
                           setDescribeItUploadError(null)
                           setDescribeItWords(parseDescribeItWords((questions as string[]).join('\n')).join('\n'))
@@ -3652,9 +3713,8 @@ function CreateGameInner() {
                     )}
                   </div>
                 )}
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="describe_it" />
-                </Field>
+                {categoryUploadField}
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="describe_it" />
                 <p className="text-faint text-sm leading-relaxed">
                   {settings.describe_it_mode === 'individual'
                     ? 'Everyone takes turns describing one word while the rest race to guess it. Guessers score by speed and the describer scores per correct guess — highest total on the leaderboard wins.'
@@ -3798,9 +3858,7 @@ function CreateGameInner() {
                     </p>
                   )}
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_rush" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_rush" />
               </SettingsGroup>
             ) : isNpat ? (
               <SettingsGroup title="I Call On room">
@@ -3991,6 +4049,7 @@ function CreateGameInner() {
                     {questionTab === 'ai' ? (
                       <AiQuestionsGenerator
                         gameType="codewords"
+                        onThemeChange={handleAiThemeChange}
                         noun="words"
                         defaultCount={Math.max(CODEWORDS_MIN_CUSTOM_POOL, 25)}
                         onGenerated={(questions) => {
@@ -4109,6 +4168,7 @@ function CreateGameInner() {
                     )}
                   </div>
                 )}
+                {categoryUploadField}
                 <p className="text-faint text-sm leading-relaxed">
                   Two teams of spymasters and operatives. Spymasters give one-word clues — operatives guess words on the
                   5×5 grid. First team to find all their words wins. Avoid the assassin!
@@ -4185,6 +4245,7 @@ function CreateGameInner() {
                     }}
                   />
                 )}
+                {categoryUploadField}
                 {questionSource === 'platform' && (
                   <Field label="Theme">
                     <select
@@ -4260,9 +4321,7 @@ function CreateGameInner() {
                   </select>
                 </Field>
                 {showViewerToggle && (
-                  <Field label="Late joiners">
-                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_search" />
-                  </Field>
+                  <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_search" />
                 )}
                 <p className="text-faint text-sm leading-relaxed">
                   Race to find every hidden word in the shared grid. Drag from the first letter to the last — each word
@@ -4346,6 +4405,7 @@ function CreateGameInner() {
                     }}
                   />
                 )}
+                {categoryUploadField}
                 {questionSource === 'platform' && (
                   <Field label="Theme">
                     <select
@@ -4421,13 +4481,7 @@ function CreateGameInner() {
                   </select>
                 </Field>
                 {showViewerToggle && (
-                  <Field label="Late joiners">
-                    <LateJoinPolicyToggle
-                      value={lateJoinPolicy}
-                      onChange={setLateJoinPolicy}
-                      gameType="word_scramble"
-                    />
-                  </Field>
+                  <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_scramble" />
                 )}
                 <p className="text-faint text-sm leading-relaxed">
                   Everyone races the same jumbled words. Type the answer fastest — each solve scores points, with a
@@ -4505,6 +4559,7 @@ function CreateGameInner() {
                     }}
                   />
                 )}
+                {categoryUploadField}
                 {questionSource === 'platform' && (
                   <Field label="Theme">
                     <select
@@ -4580,9 +4635,7 @@ function CreateGameInner() {
                   </select>
                 </Field>
                 {showViewerToggle && (
-                  <Field label="Late joiners">
-                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="crossword" />
-                  </Field>
+                  <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="crossword" />
                 )}
                 <p className="text-faint text-sm leading-relaxed">
                   Race to fill the shared crossword. Each word you complete first scores points; reveal a letter for a
@@ -4618,9 +4671,7 @@ function CreateGameInner() {
                   </select>
                 </Field>
                 {showViewerToggle && (
-                  <Field label="Late joiners">
-                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="sudoku" />
-                  </Field>
+                  <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="sudoku" />
                 )}
                 <p className="text-faint text-sm leading-relaxed">
                   Race to solve the 9×9 puzzle block by block. First to claim a block gets 10 pts, second 6, third 3,
@@ -4655,9 +4706,7 @@ function CreateGameInner() {
                   </select>
                 </Field>
                 {showViewerToggle && (
-                  <Field label="Late joiners">
-                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_hunt" />
-                  </Field>
+                  <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_hunt" />
                 )}
                 <p className="text-faint text-sm leading-relaxed">
                   Everyone races on the same 4×4 letter grid. Connect adjacent letters to spell valid words — 3 letters
@@ -4720,9 +4769,7 @@ function CreateGameInner() {
                   </div>
                 </Field>
                 {showViewerToggle && (
-                  <Field label="Late joiners">
-                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="mafia" />
-                  </Field>
+                  <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="mafia" />
                 )}
                 <p className="text-faint text-sm leading-relaxed">
                   Social deduction game. The Mafia tries to eliminate the Villagers without getting caught, while the
@@ -4806,13 +4853,7 @@ function CreateGameInner() {
                   </div>
                 </Field>
                 {showViewerToggle && (
-                  <Field label="Late joiners">
-                    <LateJoinPolicyToggle
-                      value={lateJoinPolicy}
-                      onChange={setLateJoinPolicy}
-                      gameType="matching_pairs"
-                    />
-                  </Field>
+                  <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="matching_pairs" />
                 )}
                 <Field label="Public game">
                   <div className="flex rounded-xl border border-[var(--border)] overflow-hidden">
@@ -4863,9 +4904,7 @@ function CreateGameInner() {
                     </Field>
                   )}
                   {isTrivia && showViewerToggle && (
-                    <Field label="Late joiners">
-                      <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
-                    </Field>
+                    <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} />
                   )}
                   {isWst ? (
                     <div className="space-y-4">
@@ -4940,6 +4979,7 @@ function CreateGameInner() {
                             The <span className="font-mono">correct</span> column is the answer letter (A–D). Players
                             just join and answer like trivia — fastest correct wins.
                           </p>
+                          {categoryUploadField}
                         </div>
                       )}
                     </div>
@@ -5109,9 +5149,7 @@ function CreateGameInner() {
                   )}
 
                   {showViewerToggle && !isQuickLobby && !isTrivia && (
-                    <Field label="Late joiners">
-                      <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
-                    </Field>
+                    <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} />
                   )}
                 </SettingsGroup>
 
@@ -5263,6 +5301,7 @@ function CreateGameInner() {
                             gameType={settings.game_type as AiQuestionGameType}
                             triviaCategory={isTrivia ? triviaCategory : undefined}
                             noun={isTrivia ? 'questions' : 'prompts'}
+                            onThemeChange={handleAiThemeChange}
                             defaultCount={Math.min(50, Math.max(settings.rounds_count ?? 10, 10))}
                             onGenerated={(questions) => {
                               setQuestionsUploadError(null)
@@ -5401,6 +5440,7 @@ function CreateGameInner() {
                               Need at least {settings.rounds_count} questions for {settings.rounds_count} rounds.
                             </p>
                           )}
+                        {categoryUploadField}
                       </div>
                     )}
                   </SettingsGroup>
@@ -5488,47 +5528,8 @@ function CreateGameInner() {
                     </SettingsGroup>
                   )}
 
-                {!isAnonymousRoom && !isLandmine && (
-                  <SettingsGroup
-                    title="Advanced"
-                    description="Timer behavior & privacy"
-                    collapsible
-                    defaultOpen={false}
-                  >
-                    <Field label="When timer runs out">
-                      <SegmentedControl
-                        value={settings.auto_submit_behavior}
-                        onChange={(v) => setSettings({ ...settings, auto_submit_behavior: v })}
-                        options={[
-                          { value: 'random', label: 'Random fill', hint: 'Incomplete votes get random choices.' },
-                          { value: 'no_answer', label: 'No answer', hint: 'Incomplete votes count as no vote.' },
-                        ]}
-                      />
-                    </Field>
-
-                    <div className="space-y-2">
-                      {!isAnonymousGame(settings.game_type) && (
-                        <Toggle
-                          label="Anonymous responses"
-                          description="Hide who voted for what"
-                          value={settings.anonymous}
-                          onChange={(v) => setSettings({ ...settings, anonymous: v })}
-                        />
-                      )}
-                      {isAnonymousGame(settings.game_type) && (
-                        <p className="text-faint text-xs px-1">
-                          Would You Rather, Most Likely To, and Who Said This are always anonymous.
-                        </p>
-                      )}
-                      <Toggle
-                        label="Auto-reveal results"
-                        description="Show results after the last round automatically"
-                        value={settings.auto_reveal}
-                        onChange={(v) => setSettings({ ...settings, auto_reveal: v })}
-                      />
-                    </div>
-                  </SettingsGroup>
-                )}
+                {/* The "Advanced" group (timer-behavior / anonymous / auto-reveal) is hidden from
+                    the create screen — the defaults in the initial settings state are used as-is. */}
               </>
             )}
 

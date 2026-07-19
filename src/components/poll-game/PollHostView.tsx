@@ -122,6 +122,7 @@ import {
 } from '@/components/FinalLeaderboard'
 import { HostLobbyStartButton } from '@/components/host-lobby/HostLobbyStartButton'
 import { HostVisibilityToggle } from '@/components/host-lobby/HostVisibilityToggle'
+import { HostContentLabelField } from '@/components/host-lobby/HostContentLabelField'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import {
   PlayAgainSetup,
@@ -2782,13 +2783,16 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
         )}
 
         {!inHostLobby && (
-          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-3">
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-3 space-y-3">
             <HostVisibilityToggle
               gameCode={gameCode}
               hostToken={hostToken}
               game={game ?? undefined}
               onGameUpdate={setGame}
             />
+            {game && (
+              <HostContentLabelField gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+            )}
           </div>
         )}
 

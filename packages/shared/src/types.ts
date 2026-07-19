@@ -58,6 +58,9 @@ export type GameType =
 export interface Game {
   id: string
   title: string
+  /** Player-facing content label ("what's this pack about") for CSV/library content games —
+   *  e.g. "Maths", "Bible trivia". Distinct from `title` (room name) and `theme` (cosmetic). */
+  content_label?: string | null
   game_type: GameType
   status: GameStatus
   current_round_number?: number

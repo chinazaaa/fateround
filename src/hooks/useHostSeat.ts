@@ -95,6 +95,8 @@ export interface UseHostSeatResult {
   hostJoining: boolean
   changeHostMode: (mode: HostSeatMode) => Promise<void>
   hostJoinGame: (nameOverride?: string) => Promise<void>
+  leaveSeatKeepHosting: () => Promise<void>
+  leaveGameRemovePlayer: () => Promise<void>
   renameHost: (name: string) => Promise<void>
   handlePlayerRemoved: (playerId: string) => void
 }
@@ -149,6 +151,9 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
   const spectatorSeatArmRef = useRef<{ name: string } | null>(null)
   const spectatorSeatFiredRef = useRef(false)
   const modeReconciledRef = useRef(false)
+  // Last mode the active-game reconcile synced from the row, so it only re-applies on an actual
+  // change (avoids re-running onModeChange / persisting on every unrelated roster update).
+  const lastSyncedModeRef = useRef<HostSeatMode | null>(null)
 
   const applyMode = useCallback(
     (mode: HostSeatMode) => {
@@ -279,6 +284,90 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
     [gameCode, gameStatus, hostMode, hostPlayerId, hostResumeToken, applyMode, seatHostAsSpectator]
   )
 
+  // "Leave game (keep hosting)" — a seated host drops out of active play but keeps the
+  // host token, so the game runs on and they watch. Unlike changeHostMode (lobby-only,
+  // flips the ready flag in place) this is an ACTIVE-game action: it flips the host's own
+  // row to spectator via /api/players/spectate — non-destructive, so the row/score survive
+  // and the host can Join back in via the mid-game ViewerModeBanner ("Join as player").
+  const leaveSeatKeepHosting = useCallback(async () => {
+    if (!hostPlayerId || !hostResumeToken) return
+    try {
+      const res = await fetch('/api/players/spectate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameCode, resumeToken: hostResumeToken }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Failed to leave game')
+      applyMode('spectator')
+      await onReloadRef.current()
+      toastRef.current.success("You've left the game — you're still hosting")
+    } catch (err) {
+      toastRef.current.error(err instanceof Error ? err.message : 'Failed to leave game')
+    }
+  }, [gameCode, hostPlayerId, hostResumeToken, applyMode])
+
+  // "Leave game (keep hosting)" for turn-based / seat / role games, where a bare spectate
+  // flag-flip would strand the host in turn_order (or leave a fixed seat short). Instead it
+  // goes through the SAME destructive removal path a normal player leave uses (DELETE
+  // /api/players → the game's removeXPlayer / reconcile helper splices turn_order, discards
+  // the hand, reassigns the role, and — in a 2-player game — declares the other player the
+  // winner). The host keeps their host token, so they stay in charge and watch on.
+  //
+  // Removal DELETES the row, which would drop the host out of the roster entirely — so if the
+  // game is still going, we immediately re-seat them as a fresh SPECTATOR row (joinAsViewer)
+  // so everyone still sees them in the drawer as the watching host (mirrors how the spectate
+  // path keeps a visible "Host · Watching" row). Best-effort: if the game just ended (e.g. a
+  // 2-player game the opponent won) or viewers aren't allowed, the viewer join no-ops and the
+  // host simply stays removed.
+  const leaveGameRemovePlayer = useCallback(async () => {
+    if (!hostPlayerId || !hostResumeToken) return
+    const watchName = hostPlayerName.trim() || 'Host'
+    try {
+      const res = await fetch('/api/players', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameCode, playerId: hostPlayerId, resumeToken: hostResumeToken }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Failed to leave game')
+      // Drop the player seat + session, but KEEP the host token so the host stays in charge.
+      clearPlayerSession(gameCode)
+      setHostPlayerId(null)
+      setHostResumeToken(null)
+      setHostPlayerName('')
+      applyMode('spectator')
+
+      // Re-seat as a visible spectator so the host still shows in the roster as watching.
+      try {
+        const vres = await fetch('/api/players', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gameCode,
+            playerName: watchName,
+            joinAsViewer: true,
+            ...(buildJoinBodyRef.current?.(watchName) ?? {}),
+          }),
+        })
+        const vdata = await vres.json().catch(() => ({}))
+        if (vres.ok && vdata.playerId) {
+          setPlayerSession(gameCode, vdata.playerId, vdata.playerName, vdata.playerGender ?? 'both', vdata.resumeToken)
+          setHostPlayerId(vdata.playerId)
+          setHostResumeToken(vdata.resumeToken ?? null)
+          setHostPlayerName(vdata.playerName)
+        }
+      } catch {
+        // Best-effort — the host stays removed (no roster row) if the re-seat can't happen.
+      }
+
+      await onReloadRef.current()
+      toastRef.current.success("You've left the game — you're still hosting")
+    } catch (err) {
+      toastRef.current.error(err instanceof Error ? err.message : 'Failed to leave game')
+    }
+  }, [gameCode, hostPlayerId, hostResumeToken, hostPlayerName, applyMode])
+
   const renameHost = useCallback(
     async (name: string) => {
       const trimmed = name.trim()
@@ -377,18 +466,34 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
     void seatHostAsSpectator(spectatorSeatArmRef.current.name)
   }, [gameStatus, hostPlayerId, hostJoining, seatHostAsSpectator])
 
-  // One-time: once the host's own row appears, reconcile the mode from its spectator
-  // flag (a refresh adopts the session before players load, so the initial mode is a
-  // guess from the persisted value). Ref-gated so it never fights later toggles.
+  // Keep hostMode in sync with the host row's own spectator flag.
+  //  - LOBBY: reconcile ONCE (a refresh adopts the session before players load, so the initial
+  //    mode is a guess from the persisted value). Ref-gated so it never fights a deliberate
+  //    changeHostMode toggle that optimistically sets the mode before the row round-trips.
+  //  - ACTIVE: the row is the source of truth (changeHostMode is lobby-only), so sync
+  //    continuously. This is what flips the host back to 'player' after they Join-as-player from
+  //    the spectator banner — promote sets spectator=false on the row but never touches hostMode —
+  //    and back to 'spectator' after they Leave. Guarded by lastSyncedModeRef so an unrelated
+  //    roster update never reverts an in-flight leave (the row still reads its pre-change value
+  //    until the action lands, so we simply hold the current mode until then).
   useEffect(() => {
-    if (modeReconciledRef.current || !hostPlayerId) return
+    if (!hostPlayerId) return
     const row = players.find((p) => p.id === hostPlayerId)
     if (!row) return
-    modeReconciledRef.current = true
     const rowMode: HostSeatMode = row.spectator ? 'spectator' : 'player'
-    setHostMode(rowMode)
-    writePersistedMode(gameCode, rowMode)
-  }, [players, hostPlayerId, gameCode])
+    if (gameStatus !== 'active') {
+      if (modeReconciledRef.current) return
+      modeReconciledRef.current = true
+      lastSyncedModeRef.current = rowMode
+      setHostMode(rowMode)
+      writePersistedMode(gameCode, rowMode)
+      return
+    }
+    modeReconciledRef.current = true
+    if (lastSyncedModeRef.current === rowMode) return
+    lastSyncedModeRef.current = rowMode
+    applyMode(rowMode)
+  }, [players, hostPlayerId, gameCode, gameStatus, applyMode])
 
   // Clear stale host-as-player state if the host's own row is removed elsewhere.
   useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
@@ -403,6 +508,8 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveSeatKeepHosting,
+    leaveGameRemovePlayer,
     renameHost,
     handlePlayerRemoved,
   }

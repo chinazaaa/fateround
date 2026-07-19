@@ -66,6 +66,7 @@ import { MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT } from '@/lib/supab
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { monopolyLeaderboard } from '@/lib/finish-leaderboards'
 import { buildMonopolyStandings } from '@/lib/monopoly-standings'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
@@ -295,6 +296,35 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const me = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
   const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
   const isMyTurn = turnPlayerId === bootstrap.myPlayerId && !myState?.bankrupt && !isViewer
+
+  // Feed the roster drawer scoreboard: cash headline (sorts richest-first) +
+  // "N properties" detail.
+  const rosterStandings = useMemo(
+    () =>
+      board
+        ? buildMonopolyStandings(
+            states,
+            bootstrap.players,
+            board.property_owners,
+            board.property_buildings,
+            board.mortgaged_properties
+          )
+        : [],
+    [board, states, bootstrap.players]
+  )
+  const rosterScores = useMemo(
+    () => Object.fromEntries(rosterStandings.map((s) => [s.playerId, s.cash])),
+    [rosterStandings]
+  )
+  useGameScores(rosterScores, { suffix: '' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        rosterStandings.map((s) => [s.playerId, `🏠 ${s.propertyCount} propert${s.propertyCount === 1 ? 'y' : 'ies'}`])
+      ),
+    [rosterStandings]
+  )
+  useGameStats(rosterDetails)
 
   // Viewers have no Build & trade panel, so pin them to the Players tab.
   useEffect(() => {

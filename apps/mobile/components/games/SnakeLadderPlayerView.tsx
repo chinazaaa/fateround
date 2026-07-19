@@ -7,6 +7,7 @@ import { preJoinScreen } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
 import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
@@ -153,6 +154,21 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
         position: s.position,
       }))
   }, [states, turnPlayerId, bootstrap.players])
+
+  // Roster drawer scoreboard: current square (sorts furthest-ahead first).
+  const rosterScores = useMemo(() => Object.fromEntries(states.map((s) => [s.player_id, s.position])), [states])
+  useGameScores(rosterScores, { suffix: '' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        states.map((s) => [
+          s.player_id,
+          s.position === 0 ? '📍 Start' : s.position >= 100 ? '🏁 Home!' : `📍 Square ${s.position}`,
+        ])
+      ),
+    [states]
+  )
+  useGameStats(rosterDetails)
 
   // Hold on the finished board for a few seconds so the winning move is visible
   // before switching to the final leaderboard. Only triggers when we witnessed live

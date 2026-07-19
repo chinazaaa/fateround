@@ -60,6 +60,7 @@ import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
 
@@ -143,6 +144,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveSeatKeepHosting,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -309,7 +311,10 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
   }
 
   const hostPlays = hostMode === 'player' && !!hostPlayerId
-  const canStart = players.length >= LANDMINE_MIN_PLAYERS
+  // Spectators (incl. a host-only host, who is seated as a spectator) don't count
+  // toward the start minimum — otherwise the button enables with too few real players.
+  const activePlayerCount = players.filter((p) => !p.spectator).length
+  const canStart = activePlayerCount >= LANDMINE_MIN_PLAYERS
   const mode = game ? gameLandmineMode(game) : modeSetting
   const leaderboard = useMemo(() => tallyLandmineScores(answers, players), [answers, players])
   const winner = leaderboard.find((r) => !r.eliminated) ?? leaderboard[0]
@@ -325,9 +330,13 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
   const hostSettingsNode = useMemo(
     () =>
       game?.status === 'active' ? (
-        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="landmine" onEnded={load} />
+        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="landmine" onEnded={load}>
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+          )}
+        </HostActiveSettings>
       ) : null,
-    [game?.status, gameCode, hostToken, load]
+    [game?.status, gameCode, hostToken, load, hostMode, hostPlayerId, leaveSeatKeepHosting]
   )
   useRegisterGameSettings(hostSettingsNode)
 
@@ -634,7 +643,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
             startDisabledHint={
               canStart
                 ? null
-                : `Need at least ${LANDMINE_MIN_PLAYERS} players to start (${players.length}/${LANDMINE_MIN_PLAYERS})`
+                : `Need at least ${LANDMINE_MIN_PLAYERS} players to start (${activePlayerCount}/${LANDMINE_MIN_PLAYERS})`
             }
           />
         </>

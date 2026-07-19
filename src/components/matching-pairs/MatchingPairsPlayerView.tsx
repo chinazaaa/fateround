@@ -10,7 +10,7 @@ import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResults } from '@/components/ShareResults'
-import { useGameScores } from '@/components/roster/RosterDrawerContext'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import {
   MatchingPairsStatDetails,
   MatchingPairsFinalBreakdown,
@@ -739,6 +739,14 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     [leaderboard]
   )
   useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        leaderboard.map((row) => [row.playerId, `🃏 ${row.pairsMatched} pair${row.pairsMatched === 1 ? '' : 's'}`])
+      ),
+    [leaderboard]
+  )
+  useGameStats(rosterDetails)
 
   // Per-round leaderboard for the round_results screen — uses tallyMatchingPairsScore
   // directly (not the cumulative builder) so per-round stats (streak, penalty, placement

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
@@ -32,6 +33,7 @@ import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT } from '@/lib/supabase-selects
 import type { Game, Player } from '@/types'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { useHostSeat } from '@/hooks/useHostSeat'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
@@ -126,6 +128,7 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveSeatKeepHosting,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -162,6 +165,24 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
   }, [game?.status])
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
+
+  // Roster drawer scoreboard: points headline + words-found detail.
+  const rosterScores = useMemo(
+    () => Object.fromEntries(tallyWordHuntScores(submissions, players).map((r) => [r.player_id, r.points])),
+    [submissions, players]
+  )
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        tallyWordHuntScores(submissions, players).map((r) => [
+          r.player_id,
+          `✅ ${r.word_count} word${r.word_count === 1 ? '' : 's'}`,
+        ])
+      ),
+    [submissions, players]
+  )
+  useGameStats(rosterDetails)
 
   // Realtime-fallback poll: keeps the lobby roster fresh (and catches missed
   // status transitions) when a players/games realtime event is dropped.
@@ -319,9 +340,12 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
           endGameConfirmMessage="The round will end and players will see the final scores."
         >
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+          )}
         </HostActiveSettings>
       ) : null,
-    [game, gameCode, hostToken, load]
+    [game, gameCode, hostToken, load, hostMode, hostPlayerId, leaveSeatKeepHosting]
   )
   useRegisterGameSettings(hostSettingsNode)
 

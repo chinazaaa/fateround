@@ -20,6 +20,7 @@ import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaiting
 import { HostMatchingPairsLobbyPanel } from '@/components/host-lobby/HostMatchingPairsLobbyPanel'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
@@ -263,6 +264,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     hostJoining,
     changeHostMode,
     hostJoinGame: handleJoinAsPlayer,
+    leaveSeatKeepHosting,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -437,9 +439,12 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       game?.status === 'active' ? (
         <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="matching_pairs" onEnded={load}>
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          {hostModeState === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+          )}
         </HostActiveSettings>
       ) : null,
-    [game, gameCode, hostToken, load, setGame]
+    [game, gameCode, hostToken, load, setGame, leaveSeatKeepHosting, hostModeState, hostPlayerId]
   )
   useRegisterGameSettings(hostSettingsNode)
 

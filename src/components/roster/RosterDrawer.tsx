@@ -124,6 +124,15 @@ export function RosterDrawer() {
   )
 }
 
+/** 1 = 🥇 Winner, 2 = 🥈 Runner-up, 3 = 🥉 3rd, else Nth. Null for unplaced. */
+function placementLabel(place: number | undefined): string | null {
+  if (place == null) return null
+  if (place === 1) return '🥇 Winner'
+  if (place === 2) return '🥈 Runner-up'
+  if (place === 3) return '🥉 3rd'
+  return `${place}th`
+}
+
 function RosterRowView({
   row,
   number,
@@ -142,6 +151,10 @@ function RosterRowView({
         ? `${row.score}${row.scoreSuffix ?? ''}`
         : row.score
   const statusText = row.eliminated ? 'Out' : row.viewer ? 'Watching' : (row.status ?? null)
+  // Combine the status badge (Out/Watching/team) with the game-specific stat line
+  // (card count, cash, words…) into one muted sub-line.
+  const subline = [statusText, row.detail].filter(Boolean).join(' · ') || null
+  const placeLabel = placementLabel(row.placement)
 
   return (
     <div
@@ -158,9 +171,20 @@ function RosterRowView({
               Host
             </span>
           ) : null}
+          {placeLabel ? (
+            <span
+              className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-extrabold ${
+                row.placement === 1
+                  ? 'bg-[color-mix(in_srgb,var(--primary)_16%,transparent)] text-[var(--primary)]'
+                  : 'bg-[color-mix(in_srgb,var(--foreground)_10%,transparent)] text-muted'
+              }`}
+            >
+              {placeLabel}
+            </span>
+          ) : null}
           {row.isMe ? <span className="shrink-0 text-xs font-bold text-faint">· you</span> : null}
         </p>
-        {statusText ? <p className="text-[11px] font-semibold text-faint">{statusText}</p> : null}
+        {subline ? <p className="text-[11px] font-semibold text-faint">{subline}</p> : null}
       </div>
       {scoreText != null ? <span className="shrink-0 text-sm font-bold text-[var(--primary)]">{scoreText}</span> : null}
       {onRemove ? (
