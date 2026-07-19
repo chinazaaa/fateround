@@ -690,7 +690,7 @@ export type UnoColor = 'red' | 'yellow' | 'green' | 'blue'
 /** What a card does. Number cards carry `value` 0–9; everything else is an action. */
 export type UnoCardKind = 'number' | 'skip' | 'reverse' | 'draw2' | 'wild' | 'wild_draw4'
 
-export type UnoPhase = 'playing' | 'choose_color' | 'challenge_window' | 'finished'
+export type UnoPhase = 'playing' | 'choose_color' | 'challenge_window' | 'swap_target' | 'finished'
 
 export interface UnoCard {
   id: string
@@ -715,6 +715,8 @@ export interface UnoSession {
   required_color: UnoColor | null
   /** Pending forced draw the current player must take (Draw Two / Draw Four target). */
   draw_penalty: number
+  /** Set to the card the current player just drew while they may still play it or keep it (pass). */
+  drawn_card_id: string | null
   /** During `choose_color`, which wild is being coloured. */
   pending_wild: 'wild' | 'wild_draw4' | null
   /** Colour in effect immediately before a Wild Draw Four (for challenge reveal). */

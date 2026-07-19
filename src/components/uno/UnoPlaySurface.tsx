@@ -64,6 +64,10 @@ export type UnoPlaySurfaceProps = {
   onChooseColor: (color: UnoColor) => void
   onChallenge: (challenge: boolean) => void
   onCallUno: () => void
+  /** 0-7 rule: pick whose hand to swap with after playing a 7. */
+  onSwap: (targetId: string) => void
+  /** Keep the card you just drew instead of playing it (ends your turn). */
+  onPass: () => void
 }
 
 export function UnoPlaySurface({
@@ -87,6 +91,8 @@ export function UnoPlaySurface({
   onChooseColor,
   onChallenge,
   onCallUno,
+  onSwap,
+  onPass,
 }: UnoPlaySurfaceProps) {
   const turnTimeLabel =
     turnTimer?.hasTimer && turnTimer.secondsLeft > 0 ? formatCountdown(turnTimer.secondsLeft) : undefined
@@ -112,14 +118,24 @@ export function UnoPlaySurface({
   const top = session.top_card
   const choosing = isMyTurn && !watching && session.phase === 'choose_color'
   const deciding = isMyTurn && !watching && session.phase === 'challenge_window'
+  const swapping = isMyTurn && !watching && session.phase === 'swap_target'
   const canAct = isMyTurn && !watching && session.phase === 'playing'
   const turnName = players.find((p) => p.id === turnPlayerId)?.name ?? 'next player'
+
+  // 0-7 rule: candidates to swap hands with (other seated players still holding cards).
+  const swapTargets = session.turn_order
+    .filter((id) => id !== myPlayerId && (handCounts[id] ?? 0) > 0)
+    .map((id) => byId.get(id))
+    .filter((p): p is Player => !!p)
 
   const requiredColor = session.required_color
   const reversed = session.direction < 0
 
   // "Call UNO!" is owed when I dropped to one card and haven't called yet.
   const owesUnoCall = !watching && session.uno_pending_player === myPlayerId && !session.uno_called
+
+  // After a voluntary draw, the drawn (playable) card can be played or kept — show "Keep it".
+  const hasDrawn = canAct && session.drawn_card_id != null
 
   const many = myHand.length > 8
 
@@ -174,6 +190,10 @@ export function UnoPlaySurface({
           </TurnStatus>
         ) : session.phase === 'challenge_window' ? (
           <TurnStatus>{isMyTurn ? 'Wild Draw Four played against you' : `${turnName} is deciding…`}</TurnStatus>
+        ) : session.phase === 'swap_target' ? (
+          <TurnStatus>
+            {isMyTurn ? 'You played a 7 — choose a player to swap hands with' : `${turnName} is swapping hands…`}
+          </TurnStatus>
         ) : drawPenalty > 0 && canAct ? (
           <ActionToast tone="hot">🔥 Draw {drawPenalty} — no defence</ActionToast>
         ) : isMyTurn ? (
@@ -201,7 +221,13 @@ export function UnoPlaySurface({
         <Hand
           count={myHand.length}
           many={many}
-          hint={canAct ? `Tap a highlighted card to play it${many ? ' · swipe to see more' : ''}` : undefined}
+          hint={
+            hasDrawn
+              ? 'You drew a card — play it or keep it'
+              : canAct
+                ? `Tap a highlighted card to play it${many ? ' · swipe to see more' : ''}`
+                : undefined
+          }
           actions={
             <>
               {owesUnoCall && (
@@ -209,7 +235,16 @@ export function UnoPlaySurface({
                   Call UNO!
                 </button>
               )}
-              {canAct && !(drawDepleted && myCanPlay) ? (
+              {hasDrawn ? (
+                <button
+                  type="button"
+                  className="fr-btn fr-btn--secondary fr-btn--block"
+                  disabled={acting}
+                  onClick={onPass}
+                >
+                  Keep it
+                </button>
+              ) : canAct && !(drawDepleted && myCanPlay) ? (
                 <button
                   type="button"
                   className="fr-btn fr-btn--secondary fr-btn--block"
@@ -229,6 +264,7 @@ export function UnoPlaySurface({
                 key={card.id}
                 card={card}
                 playable={playable}
+                sel={card.id === session.drawn_card_id}
                 dim={canAct && !playable}
                 onClick={playable && !acting ? () => onPlay(card.id) : undefined}
               />
@@ -251,6 +287,21 @@ export function UnoPlaySurface({
                 onClick={() => onChooseColor(color)}
               >
                 {UNO_COLOR_LABELS[color]}
+              </button>
+            ))}
+          </div>
+        </PickerOverlay>
+      )}
+
+      {swapping && (
+        <PickerOverlay title="Swap hands" desc="Pick a player to trade your whole hand with (7 rule).">
+          <div className="uno-swap-list">
+            {swapTargets.map((p) => (
+              <button key={p.id} type="button" disabled={acting} onClick={() => onSwap(p.id)}>
+                <span className="uno-swap-name">{p.name}</span>
+                <span className="uno-swap-count">
+                  {handCounts[p.id] ?? 0} card{(handCounts[p.id] ?? 0) === 1 ? '' : 's'}
+                </span>
               </button>
             ))}
           </div>

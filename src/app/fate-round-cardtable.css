@@ -1067,3 +1067,31 @@
   border-color: #e2231a;
   color: #e2231a;
 }
+
+/* UNO 0-7 swap picker */
+.fr-room .uno-swap-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+.fr-room .uno-swap-list button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  border: 1.5px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font: 700 14px var(--font-display);
+}
+.fr-room .uno-swap-list button:hover {
+  border-color: var(--primary);
+}
+.fr-room .uno-swap-count {
+  font-weight: 600;
+  font-size: 12px;
+  opacity: 0.65;
+}

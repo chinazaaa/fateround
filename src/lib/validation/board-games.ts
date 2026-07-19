@@ -177,6 +177,13 @@ export const unoChallengeSchema = unoActionSchema.extend({
 
 export const unoCallSchema = unoActionSchema
 
+export const unoPassSchema = unoActionSchema
+
+export const unoSwapSchema = unoActionSchema.extend({
+  // The player to swap hands with (0-7 rule, on a 7).
+  targetId: z.string().min(1),
+})
+
 export type UnoPlayInput = z.infer<typeof unoPlaySchema>
 export type UnoDrawInput = z.infer<typeof unoDrawSchema>
 export type UnoChooseInput = z.infer<typeof unoChooseSchema>
