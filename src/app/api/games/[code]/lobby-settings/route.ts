@@ -8,6 +8,7 @@ import {
   isSnakeAndLadderGame,
   isWhotGame,
   isCrazyEightsGame,
+  isUnoGame,
   isYahtzeeGame,
   isMahjongGame,
   isWordHuntGame,
@@ -28,6 +29,7 @@ import { clampBoardGameTurnTimer, type BoardGameLobbyType } from '@/lib/board-ga
 import { clampMonopolyGameDuration } from '@/lib/monopoly'
 import { clampWhotGameDuration } from '@/lib/whot'
 import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
+import { clampUnoGameDuration } from '@/lib/uno'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { parseMahjongRuleOptions, parseMahjongRuleset } from '@/lib/mahjong-rulesets'
 import { clampSudokuGameDuration } from '@/lib/sudoku'
@@ -69,6 +71,7 @@ function boardGameLobbyType(gameType: string): BoardGameLobbyType | null {
   if (isYahtzeeGame(parsed)) return 'yahtzee'
   if (isWhotGame(parsed)) return 'whot'
   if (isCrazyEightsGame(parsed)) return 'crazy_eights'
+  if (isUnoGame(parsed)) return 'uno'
   if (isLudoGame(parsed)) return 'ludo'
   if (isMahjongGame(parsed)) return 'mahjong'
   if (isSnakeAndLadderGame(parsed)) return 'snake_and_ladder'
@@ -123,6 +126,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     crazy8_action_cards,
     crazy8_jokers,
     crazy8_pick2_stacking,
+    uno_wd4_challenge,
+    uno_uno_penalty,
+    uno_zero_seven,
+    uno_stacking,
     ludo_variant,
     mahjong_ruleset,
     mahjong_rule_options,
@@ -165,6 +172,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     crazy8_action_cards === undefined &&
     crazy8_jokers === undefined &&
     crazy8_pick2_stacking === undefined &&
+    uno_wd4_challenge === undefined &&
+    uno_uno_penalty === undefined &&
+    uno_zero_seven === undefined &&
+    uno_stacking === undefined &&
     ludo_variant === undefined &&
     mahjong_ruleset === undefined &&
     mahjong_rule_options === undefined &&
@@ -341,6 +352,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.game_duration_seconds = clampWhotGameDuration(game_duration_seconds)
     } else if (boardLobbyType === 'crazy_eights') {
       gameUpdate.game_duration_seconds = clampCrazyEightsGameDuration(game_duration_seconds)
+    } else if (boardLobbyType === 'uno') {
+      gameUpdate.game_duration_seconds = clampUnoGameDuration(game_duration_seconds)
     } else if (parseGameType(game.game_type) === 'ping_pong') {
       gameUpdate.game_duration_seconds = Math.max(0, game_duration_seconds)
     } else {
@@ -479,6 +492,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (crazy8_pick2_stacking !== undefined) gameUpdate.crazy8_pick2_stacking = crazy8_pick2_stacking
   } else if (crazy8_action_cards !== undefined || crazy8_jokers !== undefined || crazy8_pick2_stacking !== undefined) {
     return NextResponse.json({ error: 'House rules only apply to Crazy Eights games' }, { status: 400 })
+  }
+
+  if (boardLobbyType === 'uno') {
+    if (uno_wd4_challenge !== undefined) gameUpdate.uno_wd4_challenge = uno_wd4_challenge
+    if (uno_uno_penalty !== undefined) gameUpdate.uno_uno_penalty = Number(uno_uno_penalty) === 4 ? 4 : 2
+    if (uno_zero_seven !== undefined) gameUpdate.uno_zero_seven = uno_zero_seven
+    if (uno_stacking !== undefined) gameUpdate.uno_stacking = uno_stacking
+  } else if (
+    uno_wd4_challenge !== undefined ||
+    uno_uno_penalty !== undefined ||
+    uno_zero_seven !== undefined ||
+    uno_stacking !== undefined
+  ) {
+    return NextResponse.json({ error: 'House rules only apply to UNO games' }, { status: 400 })
   }
 
   if (boardLobbyType === 'ludo') {
