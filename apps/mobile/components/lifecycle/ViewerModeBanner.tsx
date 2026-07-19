@@ -40,15 +40,19 @@ export function ViewerModeBanner({ gameCode, playerId, game, player, players, pl
   // action to take — i.e. the spectator can switch to playing right now.
   if (!canSwitchViewerToPlayer(player, game, players)) return null
 
+  // A small pill PINNED near the top of the game shell (position:absolute over the scrolling
+  // content) rather than an inline card — so a spectator always has a way in, even after the
+  // page scrolls or the initial join prompt is gone. Mirrors the web fixed "Join as player" pill.
+  // Plain watch-only status stays in the header "Watching" badge (useSpectatorBadge).
   return (
-    <View style={styles.banner}>
-      <Text style={styles.body}>You joined after the game started — watch live, or jump in now.</Text>
+    <View style={styles.pinnedWrap} pointerEvents="box-none">
       <Pressable
-        style={[styles.button, promoting && styles.buttonDisabled]}
+        style={[styles.pill, promoting && styles.pillDisabled]}
         onPress={() => void promote()}
         disabled={promoting}
       >
-        <Text style={styles.buttonText}>{promoting ? 'Joining…' : 'Join as player'}</Text>
+        {!promoting ? <Text style={styles.pillGlyph}>▶</Text> : null}
+        <Text style={styles.pillText}>{promoting ? 'Joining…' : 'Join as player'}</Text>
       </Pressable>
       {playerDetail ? <Text style={styles.detail}>{playerDetail}</Text> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -58,34 +62,43 @@ export function ViewerModeBanner({ gameCode, playerId, game, player, players, pl
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-    banner: {
-      backgroundColor: theme.primarySoft,
-      borderColor: '#f43f5e55',
-      borderWidth: 1,
-      borderRadius: 12,
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      gap: 8,
-    },
-    body: {
-      color: theme.textSecondary,
-      fontSize: 13,
-      lineHeight: 18,
-      textAlign: 'center',
-    },
-    button: {
-      backgroundColor: theme.primary,
-      borderRadius: 10,
-      paddingVertical: 10,
+    // Pinned over the top of the shell content, centered. box-none lets touches pass through
+    // the wrapper's empty area to the game underneath — only the pill itself is tappable.
+    pinnedWrap: {
+      position: 'absolute',
+      top: 6,
+      left: 0,
+      right: 0,
       alignItems: 'center',
+      gap: 4,
+      zIndex: 20,
     },
-    buttonDisabled: {
+    pill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: theme.primary,
+      borderRadius: 999,
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+      shadowColor: '#000',
+      shadowOpacity: 0.28,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 6,
+    },
+    pillDisabled: {
       opacity: 0.7,
     },
-    buttonText: {
-      // white on the solid rose button — intentional
+    pillGlyph: {
+      // white on the solid rose pill — intentional
       color: '#fff',
-      fontSize: 14,
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    pillText: {
+      color: '#fff',
+      fontSize: 13,
       fontWeight: '700',
     },
     detail: {
