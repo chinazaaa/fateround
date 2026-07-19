@@ -1089,10 +1089,6 @@
   justify-content: center;
   gap: 6px;
 }
-.fr-room .ct-surface.uno > .uno-rule-pills {
-  flex: 0 0 auto;
-  padding: 2px 14px 0;
-}
 .fr-room .uno-rule-pill,
 .uno-rule-pill {
   display: inline-flex;

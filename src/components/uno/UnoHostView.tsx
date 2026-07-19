@@ -501,7 +501,6 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             partner={partner}
             quickChat={quickChat}
             onTeamLeaveDecision={(decision) => void postHostAction('/api/uno/team-leave', { decision })}
-            rulePills={game ? <UnoRulePills game={game} /> : null}
           />
         ) : (
           <p className="turn-status g" style={{ textAlign: 'center', padding: 24 }}>
