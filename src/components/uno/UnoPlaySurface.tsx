@@ -283,15 +283,6 @@ export function UnoPlaySurface({
             </button>
           </div>
         )}
-
-        {/* Stacking + challenge: challenge the pending Wild Draw Four instead of drawing/stacking. */}
-        {canChallengeStack && (
-          <div className="uno-challenge">
-            <button type="button" className="hot" disabled={acting} onClick={() => onChallenge(true)}>
-              ⚖️ Challenge the Wild Draw Four
-            </button>
-          </div>
-        )}
       </Table>
 
       {watching ? null : (
@@ -316,7 +307,30 @@ export function UnoPlaySurface({
                   Call UNO!
                 </button>
               )}
-              {multiMode ? (
+              {canChallengeStack ? (
+                // Draw (accept) + Challenge side by side, in the pinned hand actions so both
+                // stay on-screen together — plus you can still tap a Wild Draw Four to stack.
+                <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+                  <button
+                    type="button"
+                    className="fr-btn fr-btn--secondary"
+                    style={{ flex: 1 }}
+                    disabled={acting}
+                    onClick={onDraw}
+                  >
+                    Draw {drawPenalty}
+                  </button>
+                  <button
+                    type="button"
+                    className="fr-btn fr-btn--primary"
+                    style={{ flex: 1 }}
+                    disabled={acting}
+                    onClick={() => onChallenge(true)}
+                  >
+                    ⚖️ Challenge
+                  </button>
+                </div>
+              ) : multiMode ? (
                 <div style={{ display: 'flex', gap: 8, width: '100%' }}>
                   <button
                     type="button"
