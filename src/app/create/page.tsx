@@ -438,6 +438,7 @@ function CreateGameInner() {
   const [unoWd4Challenge, setUnoWd4Challenge] = useState(true)
   const [unoUnoPenalty, setUnoUnoPenalty] = useState(2)
   const [unoZeroSeven, setUnoZeroSeven] = useState(false)
+  const [unoStacking, setUnoStacking] = useState(false)
   const [ludoMaxPlayers, setLudoMaxPlayers] = useState(LUDO_DEFAULT_MAX_PLAYERS)
   const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
   const [ayoVariant, setAyoVariant] = useState<AyoVariant>('traditional')
@@ -1918,6 +1919,7 @@ function CreateGameInner() {
           uno_wd4_challenge: isUno ? unoWd4Challenge : undefined,
           uno_uno_penalty: isUno ? unoUnoPenalty : undefined,
           uno_zero_seven: isUno ? unoZeroSeven : undefined,
+          uno_stacking: isUno ? unoStacking : undefined,
           ludo_variant: isLudo ? ludoVariant : undefined,
           ayo_variant: isAyo ? ayoVariant : undefined,
           mahjong_ruleset: isMahjong ? mahjongRuleset : undefined,
@@ -2968,6 +2970,12 @@ function CreateGameInner() {
                       description="Play a 0 → everyone passes their whole hand in the direction of play. Play a 7 → swap hands with any player."
                       value={unoZeroSeven}
                       onChange={setUnoZeroSeven}
+                    />
+                    <Toggle
+                      label="Stacking"
+                      description="Stack Draw Two on Draw Two and Draw Four on Draw Four — the penalty piles up and passes on. Draw Four stacking replaces the challenge."
+                      value={unoStacking}
+                      onChange={setUnoStacking}
                     />
                   </div>
                 </Field>

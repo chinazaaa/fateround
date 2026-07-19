@@ -43,11 +43,16 @@ export type UnoRules = {
   wd4ChallengePenalty: number
   /** 0 = all hands pass in play direction; 7 = swap hands with a chosen player. */
   zeroSeven: boolean
+  /** Allow stacking Draw Two on Draw Two / Draw Four on Draw Four (penalty accumulates). */
+  stacking: boolean
 }
 
 export function parseUnoRules(
   game:
-    | Pick<Game, 'uno_wd4_challenge' | 'uno_uno_penalty' | 'uno_wd4_challenge_penalty' | 'uno_zero_seven'>
+    | Pick<
+        Game,
+        'uno_wd4_challenge' | 'uno_uno_penalty' | 'uno_wd4_challenge_penalty' | 'uno_zero_seven' | 'uno_stacking'
+      >
     | null
     | undefined
 ): UnoRules {
@@ -59,6 +64,7 @@ export function parseUnoRules(
     // Standard UNO: a failed challenger draws 6 (the 4 they refused + a 2 penalty). 4 is a milder variant.
     wd4ChallengePenalty: wd4Penalty === 4 ? 4 : 6,
     zeroSeven: game?.uno_zero_seven === true,
+    stacking: game?.uno_stacking === true,
   }
 }
 
@@ -190,8 +196,12 @@ export function activeColor(session: UnoSession): UnoColor | null {
 }
 
 export function canPlayCard(card: UnoCard, session: UnoSession): boolean {
-  // A pending forced draw (Draw Two / Draw Four) must be taken — no defence in Classic.
-  if ((session.draw_penalty ?? 0) > 0) return false
+  // A pending forced draw (Draw Two / Draw Four) must be taken — unless stacking is on, in
+  // which case only a matching card stacks onto it. `draw_penalty_kind` is set to the
+  // stackable card only when the host enabled stacking, so no rules lookup is needed here.
+  if ((session.draw_penalty ?? 0) > 0) {
+    return card.kind === session.draw_penalty_kind
+  }
 
   // Wild cards play on anything, anytime.
   if (isWildCard(card)) return true
@@ -211,9 +221,12 @@ export function canPlayCard(card: UnoCard, session: UnoSession): boolean {
 
 export function playPenaltyError(card: UnoCard, session: UnoSession): string | null {
   const penalty = session.draw_penalty ?? 0
-  if (penalty > 0) return `Draw Two/Four active — draw the ${penalty}-card penalty`
-  void card
-  return null
+  if (penalty <= 0) return null
+  if (card.kind === session.draw_penalty_kind) return null // a legal stack
+  const kind = session.draw_penalty_kind
+  if (kind === 'draw2') return `Draw ${penalty} — play another Draw Two to stack, or draw`
+  if (kind === 'wild_draw4') return `Draw ${penalty} — play another Wild Draw Four to stack, or draw`
+  return `Draw the ${penalty}-card penalty`
 }
 
 export function hasPlayableCard(hand: UnoCard[], session: UnoSession): boolean {
@@ -465,7 +478,7 @@ async function loadGameState(
     supabase
       .from('games')
       .select(
-        'timer_seconds, game_duration_seconds, session_started_at, uno_wd4_challenge, uno_uno_penalty, uno_wd4_challenge_penalty, uno_zero_seven'
+        'timer_seconds, game_duration_seconds, session_started_at, uno_wd4_challenge, uno_uno_penalty, uno_wd4_challenge_penalty, uno_zero_seven, uno_stacking'
       )
       .eq('id', gameId)
       .maybeSingle(),
@@ -813,7 +826,10 @@ export async function processUnoPlay(
       pending_wild: card.kind === 'wild_draw4' ? 'wild_draw4' : 'wild',
       challenge_prev_color: card.kind === 'wild_draw4' ? activeColor(session) : null,
       wd4_player_id: card.kind === 'wild_draw4' ? playerId : null,
-      draw_penalty: 0,
+      // Carry the accumulated Draw Four penalty when stacking a WD4 onto a WD4 (choose adds its 4).
+      draw_penalty:
+        card.kind === 'wild_draw4' && session.draw_penalty_kind === 'wild_draw4' ? (session.draw_penalty ?? 0) : 0,
+      draw_penalty_kind: null,
       drawn_card_id: null,
       phase: 'choose_color',
       status_message:
@@ -823,13 +839,17 @@ export async function processUnoPlay(
       ...unoPatch,
     }
   } else {
+    // Draw Two: with stacking on, a 2 played onto a pending Draw-Two stack adds to it.
+    const draw2Base = card.kind === 'draw2' && session.draw_penalty_kind === 'draw2' ? (session.draw_penalty ?? 0) : 0
+    const draw2Penalty = card.kind === 'draw2' ? draw2Base + 2 : 0
     const board: Partial<UnoSession> = {
       top_card: card,
       required_color: null,
       pending_wild: null,
       challenge_prev_color: null,
       wd4_player_id: null,
-      draw_penalty: card.kind === 'draw2' ? 2 : 0,
+      draw_penalty: draw2Penalty,
+      draw_penalty_kind: card.kind === 'draw2' && rules.stacking ? 'draw2' : null,
       drawn_card_id: null,
       discard_pile: discardWith(baseDiscard, session.top_card),
       draw_pile: basePile,
@@ -858,7 +878,9 @@ export async function processUnoPlay(
       const special = specialCardMessage(card)
       let status = `${playerName(playerNames, nextPlayerId)}'s turn — match ${cardLabel(card)}`
       if (special) status = `${status} · ${special}`
-      if (card.kind === 'draw2') status = `${playerName(playerNames, nextPlayerId)} must draw 2 (Draw Two)`
+      if (card.kind === 'draw2') {
+        status = `${playerName(playerNames, nextPlayerId)} must draw ${draw2Penalty}${rules.stacking ? ' or stack a Draw Two' : ''} (Draw Two)`
+      }
       if (isZero) {
         // Rotate every active hand one seat in the direction of play (this play's post-settle
         // hands are the source), then clear the UNO-call obligation since sizes just changed.
@@ -985,7 +1007,7 @@ export async function processUnoDraw(
   let patch: Partial<UnoSession>
 
   if (forced) {
-    // A forced penalty draw (Draw Two target) ends the turn — pass play on.
+    // A forced penalty draw (Draw Two / Draw Four target) ends the turn — pass play on.
     const nextIndex = unoNextTurnIndex(
       session,
       updateHand(hands, playerId, newHand),
@@ -994,15 +1016,22 @@ export async function processUnoDraw(
       direction
     )
     const nextPlayerId = session.turn_order[nextIndex]
+    const penaltyName =
+      session.draw_penalty_kind === 'wild_draw4'
+        ? ' (Draw Four)'
+        : session.draw_penalty_kind === 'draw2'
+          ? ' (Draw Two)'
+          : ''
     patch = {
       draw_pile: drawPile,
       discard_pile: discardPile,
       draw_penalty: 0,
+      draw_penalty_kind: null,
       drawn_card_id: null,
       current_turn_index: nextIndex,
       uno_pending_player: null,
       uno_called: false,
-      status_message: `${playerName(playerNames, nextPlayerId)}'s turn — ${playerName(playerNames, playerId)} drew ${drawn.length} (Draw Two)${reshuffledNote}${missedNote}`,
+      status_message: `${playerName(playerNames, nextPlayerId)}'s turn — ${playerName(playerNames, playerId)} drew ${drawn.length}${penaltyName}${reshuffledNote}${missedNote}`,
     }
   } else {
     // Voluntary single draw. If the drawn card is playable, keep the turn so the player may
@@ -1120,8 +1149,10 @@ export async function processUnoChoose(
   const nextPlayerId = session.turn_order[nextIndex]
 
   if (session.pending_wild === 'wild_draw4') {
-    if (rules.wd4Challenge) {
-      // Move to the next player and open the challenge window.
+    // The play carried any accumulated Draw Four penalty; this WD4 adds its own 4.
+    const accumulated = (session.draw_penalty ?? 0) + 4
+    // The challenge window only applies to a lone Draw Four — stacking replaces it.
+    if (rules.wd4Challenge && !rules.stacking) {
       const status = `${playerName(playerNames, nextPlayerId)} — accept Draw 4 or challenge (colour: ${UNO_COLOR_LABELS[color]})`
       await persistSession(
         supabase,
@@ -1131,7 +1162,8 @@ export async function processUnoChoose(
           pending_wild: null,
           phase: 'challenge_window',
           current_turn_index: nextIndex,
-          draw_penalty: 4,
+          draw_penalty: accumulated,
+          draw_penalty_kind: null,
           status_message: status,
         },
         timerSeconds,
@@ -1139,8 +1171,10 @@ export async function processUnoChoose(
       )
       return {}
     }
-    // Challenge disabled: next player just draws 4 (handled by their draw), skipped.
-    const status = `${playerName(playerNames, nextPlayerId)} must draw 4 (Wild Draw Four) — colour ${UNO_COLOR_LABELS[color]}`
+    // Stacking (or challenge disabled): the penalty passes to the next player, who may stack
+    // another Wild Draw Four (when stacking is on) or draw the accumulated total.
+    const stackNote = rules.stacking ? ' or stack a Wild Draw Four' : ''
+    const status = `${playerName(playerNames, nextPlayerId)} must draw ${accumulated}${stackNote} — colour ${UNO_COLOR_LABELS[color]}`
     await persistSession(
       supabase,
       gameId,
@@ -1151,7 +1185,8 @@ export async function processUnoChoose(
         wd4_player_id: null,
         phase: 'playing',
         current_turn_index: nextIndex,
-        draw_penalty: 4,
+        draw_penalty: accumulated,
+        draw_penalty_kind: rules.stacking ? 'wild_draw4' : null,
         status_message: status,
       },
       timerSeconds,
@@ -1170,6 +1205,7 @@ export async function processUnoChoose(
       phase: 'playing',
       current_turn_index: nextIndex,
       draw_penalty: 0,
+      draw_penalty_kind: null,
       status_message: `${playerName(playerNames, nextPlayerId)}'s turn — match ${UNO_COLOR_LABELS[color]}`,
     },
     timerSeconds,
@@ -1213,6 +1249,7 @@ export async function processUnoChallenge(
     challenge_prev_color: null,
     wd4_player_id: null,
     draw_penalty: 0,
+    draw_penalty_kind: null,
     phase: 'playing',
     ...extra,
   })

@@ -195,7 +195,14 @@ export function UnoPlaySurface({
             {isMyTurn ? 'You played a 7 — choose a player to swap hands with' : `${turnName} is swapping hands…`}
           </TurnStatus>
         ) : drawPenalty > 0 && canAct ? (
-          <ActionToast tone="hot">🔥 Draw {drawPenalty} — no defence</ActionToast>
+          <ActionToast tone="hot">
+            🔥 Draw {drawPenalty}
+            {session.draw_penalty_kind === 'draw2'
+              ? ' — or stack a Draw Two'
+              : session.draw_penalty_kind === 'wild_draw4'
+                ? ' — or stack a Wild Draw Four'
+                : ' — no defence'}
+          </ActionToast>
         ) : isMyTurn ? (
           <TurnStatus>Your turn</TurnStatus>
         ) : (

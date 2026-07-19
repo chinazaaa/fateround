@@ -442,6 +442,7 @@ export async function POST(req: NextRequest) {
     uno_uno_penalty: rawUnoUnoPenalty,
     uno_wd4_challenge_penalty: rawUnoWd4ChallengePenalty,
     uno_zero_seven: rawUnoZeroSeven,
+    uno_stacking: rawUnoStacking,
     ludo_variant: rawLudoVariant,
     ayo_variant: rawAyoVariant,
     mahjong_ruleset: rawMahjongRuleset,
@@ -1145,6 +1146,7 @@ export async function POST(req: NextRequest) {
                 uno_uno_penalty: Number(rawUnoUnoPenalty) === 4 ? 4 : 2,
                 uno_wd4_challenge_penalty: Number(rawUnoWd4ChallengePenalty) === 6 ? 6 : 4,
                 uno_zero_seven: rawUnoZeroSeven === true,
+                uno_stacking: rawUnoStacking === true,
               }
             : isLudoGame(game_type)
               ? { ludo_variant: parseLudoVariant(rawLudoVariant) }

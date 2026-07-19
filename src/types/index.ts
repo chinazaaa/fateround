@@ -715,6 +715,8 @@ export interface UnoSession {
   required_color: UnoColor | null
   /** Pending forced draw the current player must take (Draw Two / Draw Four target). */
   draw_penalty: number
+  /** Which card can stack onto the pending penalty ('draw2' | 'wild_draw4'); null = must draw it. */
+  draw_penalty_kind: 'draw2' | 'wild_draw4' | null
   /** Set to the card the current player just drew while they may still play it or keep it (pass). */
   drawn_card_id: string | null
   /** During `choose_color`, which wild is being coloured. */
