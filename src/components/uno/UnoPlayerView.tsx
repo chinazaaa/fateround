@@ -8,7 +8,14 @@ import { PlayerRoomShell } from '@/components/rooms/PlayerRoomShell'
 import { UnoFinalResultsShareBlock } from '@/components/uno/UnoFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
-import { currentPlayerId, hasPlayableCard, isDrawPileDepleted, parseMultiPlayMode, UNO_MIN_PLAYERS } from '@/lib/uno'
+import {
+  currentPlayerId,
+  hasPlayableCard,
+  isDrawPileDepleted,
+  parseMultiPlayMode,
+  unoTeammateId,
+  UNO_MIN_PLAYERS,
+} from '@/lib/uno'
 import { UNO_PLAYER_HANDS_SELECT, UNO_SESSION_SELECT } from '@/lib/supabase-selects'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
@@ -251,6 +258,16 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   const isOut = !!myHandRow && myHand.length === 0 && game?.status === 'active'
   const isWatching = isViewer || isOut
 
+  // Team-Up: your teammate's hand is visible to you (read-only), never to opponents.
+  const partner = useMemo(() => {
+    if (game?.uno_team_mode !== true || !session || !myPlayerId || isWatching) return null
+    const mateId = unoTeammateId(session.turn_order ?? [], myPlayerId)
+    if (!mateId) return null
+    const mateCards = hands.find((h) => h.player_id === mateId)?.cards ?? []
+    const mateName = players.find((p) => p.id === mateId)?.name ?? 'Partner'
+    return { name: mateName, cards: mateCards }
+  }, [game?.uno_team_mode, session, myPlayerId, isWatching, hands, players])
+
   const turnTimer = useUnoTurnTimer(gameCode, session, game?.status === 'active' && screen === 'active')
   const gameTimer = useUnoGameTimer(gameCode, game)
 
@@ -464,6 +481,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
       onPass={() => void postAction('/api/uno/pass', {})}
       multiPlayMode={parseMultiPlayMode(game?.uno_multi_play_mode)}
       onPlayMulti={(cardIds) => void postAction('/api/uno/play-multi', { cardIds })}
+      partner={partner}
     />
   )
 

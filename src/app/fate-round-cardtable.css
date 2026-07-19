@@ -1123,3 +1123,46 @@
   font-size: 11px;
   opacity: 0.65;
 }
+
+/* UNO Team-Up — partner hand panel (read-only, above your own hand) */
+.fr-room .uno-partner {
+  flex: 0 0 auto;
+  padding: 6px 10px 8px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--primary) 5%, transparent);
+}
+.fr-room .uno-partner-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.fr-room .uno-partner-name {
+  font: 700 12px var(--font-display);
+  color: var(--text);
+  opacity: 0.85;
+}
+.fr-room .uno-partner-count {
+  font: 600 11px var(--font-display);
+  opacity: 0.6;
+}
+.fr-room .uno-partner-cards {
+  display: flex;
+  gap: 3px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+/* Shrink partner cards — they're for reference, not play. */
+.fr-room .uno-partner-cards .pc {
+  width: 34px;
+  height: 49px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.fr-room .uno-partner-cards .pc.uno .mid {
+  font-size: 12px;
+}
+.fr-room .uno-partner-cards .pc.uno .uno-oval {
+  width: 24px;
+  height: 24px;
+}

@@ -81,6 +81,8 @@ export type UnoPlaySurfaceProps = {
   multiPlayMode?: UnoMultiPlayMode
   /** Play several cards at once (ids in play order — last stays on top). */
   onPlayMulti: (cardIds: string[]) => void
+  /** Team-Up: your teammate's hand, shown read-only ("Partner" panel). */
+  partner?: { name: string; cards: UnoCard[] } | null
 }
 
 export function UnoPlaySurface({
@@ -108,6 +110,7 @@ export function UnoPlaySurface({
   onPass,
   multiPlayMode = 'off',
   onPlayMulti,
+  partner,
 }: UnoPlaySurfaceProps) {
   const turnTimeLabel =
     turnTimer?.hasTimer && turnTimer.secondsLeft > 0 ? formatCountdown(turnTimer.secondsLeft) : undefined
@@ -284,6 +287,24 @@ export function UnoPlaySurface({
           </div>
         )}
       </Table>
+
+      {/* Team-Up: your teammate's hand, read-only. A digital-only advantage — you can see it,
+          opponents can't. */}
+      {partner && (
+        <div className="uno-partner">
+          <div className="uno-partner-head">
+            <span className="uno-partner-name">🤝 {partner.name} (partner)</span>
+            <span className="uno-partner-count">
+              {partner.cards.length} card{partner.cards.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          <div className="uno-partner-cards">
+            {partner.cards.map((card) => (
+              <UnoCardFace key={card.id} card={card} dim />
+            ))}
+          </div>
+        </div>
+      )}
 
       {watching ? null : (
         <Hand
