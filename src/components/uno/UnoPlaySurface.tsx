@@ -323,9 +323,12 @@ export function UnoPlaySurface({
           <div className="uno-swap-list">
             {swapTargets.map((p) => (
               <button key={p.id} type="button" disabled={acting} onClick={() => onSwap(p.id)}>
-                <span className="uno-swap-name">{p.name}</span>
-                <span className="uno-swap-count">
-                  {handCounts[p.id] ?? 0} card{(handCounts[p.id] ?? 0) === 1 ? '' : 's'}
+                <span className="uno-swap-av">{p.name.charAt(0).toUpperCase()}</span>
+                <span className="uno-swap-meta">
+                  <span className="uno-swap-name">{p.name}</span>
+                  <span className="uno-swap-count">
+                    {handCounts[p.id] ?? 0} card{(handCounts[p.id] ?? 0) === 1 ? '' : 's'}
+                  </span>
                 </span>
               </button>
             ))}
