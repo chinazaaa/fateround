@@ -134,6 +134,13 @@ export function postPlayerPromote(gameCode: string, resumeToken: string) {
   return postJson<{ success: boolean }>('/api/players/promote', { gameCode: gameCode.toUpperCase(), resumeToken })
 }
 
+/** In-place sit-out (player → spectator) during active play — the inverse of promote. Sets
+ *  spectator=true on the caller's own row without deleting it (keeps the seat id + score). Only
+ *  valid for games where `gameSupportsInPlaceSpectate` is true (no turn_order coupling). */
+export function postPlayerSpectate(gameCode: string, resumeToken: string) {
+  return postJson<{ isViewer: boolean }>('/api/players/spectate', { gameCode: gameCode.toUpperCase(), resumeToken })
+}
+
 export function postVote(gameId: string, resumeToken: string, roundId: string, body: Record<string, unknown>) {
   return postJson<{ success: boolean; revealedQuestion?: string; pickedNumber?: number }>('/api/votes', {
     gameId,

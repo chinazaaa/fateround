@@ -2,9 +2,25 @@ import { useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game, Player } from '@fateround/shared'
-import { gameAllowsLatePlayerJoin, gameSupportsViewerSetting, lateJoinPolicyFromGame } from '@fateround/shared/viewers'
-import { patchGameSettings, patchPlayerName, postFinishGame, postPlayAgain, removePlayerAsHost } from '@/lib/game-api'
-import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
+import {
+  gameAllowsLatePlayerJoin,
+  gameSupportsInPlaceSpectate,
+  gameSupportsViewerSetting,
+  lateJoinPolicyFromGame,
+  playerIsViewer,
+} from '@fateround/shared/viewers'
+import {
+  leaveGame,
+  patchGameSettings,
+  patchPlayerName,
+  postFinishGame,
+  postPlayAgain,
+  postPlayerSpectate,
+  removePlayerAsHost,
+} from '@/lib/game-api'
+import { joinGame } from '@/lib/api'
+import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/secure-session'
+import { notifyPlayerSessionChanged } from '@/lib/session-events'
 import { SettingToggle } from '@/components/create/SettingToggle'
 import { LateJoinPolicyPicker } from '@/components/create/LateJoinPolicyPicker'
 import { WordRushHostRoundControl } from '@/components/games/WordRushHostRoundControl'
@@ -61,6 +77,10 @@ export function HostControlsSheet({
   const activePlayers = players.filter((p) => !p.spectator)
   const finished = game.status === 'finished'
   const active = game.status === 'active'
+  // The host can "leave (keep hosting)" only while actively holding a PLAYING seat (not already
+  // watching). hostPlayerId + resumeToken = they hold a seat; not a viewer row = still playing.
+  const hostRow = hostPlayerId ? players.find((p) => p.id === hostPlayerId) : null
+  const hostIsPlaying = !!hostRow && !!hostResumeToken && !playerIsViewer(hostRow, game)
   // View-only games have no view-vs-play choice — hide the late-join line entirely.
   const showLateJoin = gameSupportsViewerSetting(game.game_type) && gameAllowsLatePlayerJoin(game.game_type)
 
@@ -110,6 +130,56 @@ export function HostControlsSheet({
       if (s) await setPlayerSession(gameCode, s.playerId, trimmed, s.playerGender, s.resumeToken)
       setEditingName(false)
     })
+  }
+
+  // "Leave game (keep hosting)" — the host stops playing but keeps the host token and watches.
+  // Two paths (see gameSupportsInPlaceSpectate): independent games flip the row to spectator in
+  // place (keeps score, can retake the seat); turn/seat/role games go through the destructive
+  // removal that cleans up turn_order (2-player → the other player wins) then re-seat as a viewer
+  // so the host still shows as watching in the roster.
+  const doLeaveGame = (inPlace: boolean) =>
+    run(
+      'leave',
+      async () => {
+        if (!hostPlayerId || !hostResumeToken) return
+        if (inPlace) {
+          await postPlayerSpectate(gameCode, hostResumeToken)
+          // Same player row/id — just tell the chrome to re-read (it's now a viewer seat).
+          notifyPlayerSessionChanged(gameCode)
+          return
+        }
+        const name = (await getPlayerSession(gameCode))?.playerName ?? 'Host'
+        await leaveGame(gameCode, hostPlayerId, hostResumeToken)
+        try {
+          const viewer = await joinGame({ gameCode, playerName: name, joinAsViewer: true })
+          await setPlayerSession(
+            gameCode,
+            viewer.playerId,
+            viewer.playerName,
+            viewer.playerGender ?? 'both',
+            viewer.resumeToken
+          )
+        } catch {
+          // Game may have just ended (2-player) or viewers disabled — stay fully removed.
+          await clearPlayerSession(gameCode)
+        }
+        notifyPlayerSessionChanged(gameCode)
+      },
+      true
+    )
+
+  const confirmLeaveGame = () => {
+    const inPlace = gameSupportsInPlaceSpectate(game.game_type)
+    Alert.alert(
+      'Leave the game?',
+      inPlace
+        ? "You'll stop playing and watch instead — the game keeps going and you stay the host. You can rejoin as a player at any time."
+        : "You'll stop playing and watch as the host — the game keeps going for everyone else. If too few players are left it ends (in a 2-player game the other player wins). You can't take your seat back in this game.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Leave game', style: 'destructive', onPress: () => void doLeaveGame(inPlace) },
+      ]
+    )
   }
 
   const confirmEndGame = () => {
@@ -264,6 +334,20 @@ export function HostControlsSheet({
           ) : null}
 
           <AddGameTimeControl gameCode={gameCode} hostToken={hostToken} game={game} onExtended={onReload} />
+
+          {active && hostIsPlaying ? (
+            <Pressable
+              style={[styles.secondaryBtn, busy === 'leave' && styles.btnDisabled]}
+              disabled={!!busy}
+              onPress={confirmLeaveGame}
+            >
+              {busy === 'leave' ? (
+                <ActivityIndicator color={theme.text} />
+              ) : (
+                <Text style={styles.secondaryBtnText}>Leave game (keep hosting)</Text>
+              )}
+            </Pressable>
+          ) : null}
 
           {active ? (
             <Pressable
