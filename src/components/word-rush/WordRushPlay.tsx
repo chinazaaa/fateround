@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import type { WordRushAnswer, WordRushSession, Player } from '@/types'
 import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
-import { useGameScores } from '@/components/roster/RosterDrawerContext'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { WordRushCard, WordRushPromptDisplay, WordRushTeamBadge } from '@/components/word-rush/WordRushChrome'
 import { computeWordRushPlayerScores, computeWordRushTeamScores, teamLabel } from '@/lib/word-rush'
@@ -190,6 +190,12 @@ export function WordRushPlayPanel({
   // team scoreboard (the drawer is per-player), so this just adds individual pts.
   const rosterScores = useMemo(() => Object.fromEntries(playerScores.map((row) => [row.id, row.score])), [playerScores])
   useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const a of answers) if (a.correct) counts[a.player_id] = (counts[a.player_id] ?? 0) + 1
+    return Object.fromEntries(playerScores.map((row) => [row.id, `✅ ${counts[row.id] ?? 0} words`]))
+  }, [playerScores, answers])
+  useGameStats(rosterDetails)
 
   const currentTurnAnswers = answers.filter((a) =>
     isTeam ? a.team_turn_index === session.turn_index : a.turn_index === session.turn_index

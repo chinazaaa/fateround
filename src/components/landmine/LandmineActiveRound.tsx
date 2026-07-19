@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { LandmineReviewPanel } from '@/components/landmine/LandmineReviewPanel'
-import { useGameScores } from '@/components/roster/RosterDrawerContext'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResults } from '@/components/ShareResults'
@@ -141,6 +141,14 @@ export function LandmineActiveRound({
   // Live scores feed the shared roster drawer (opened from the header).
   const rosterScores = useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard])
   useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const a of answers) {
+      if (a.outcome === 'valid' || a.outcome === 'original') counts[a.player_id] = (counts[a.player_id] ?? 0) + 1
+    }
+    return Object.fromEntries(leaderboard.map((row) => [row.id, `✅ ${counts[row.id] ?? 0} valid`]))
+  }, [leaderboard, answers])
+  useGameStats(rosterDetails)
 
   const mode = gameLandmineMode(game)
 
