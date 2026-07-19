@@ -1,5 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { MLT_QUESTIONS } from '@/lib/most-likely-to-questions'
+import { NHIE_QUESTIONS } from '@/lib/never-have-i-ever-questions'
+import { PAN_QUESTIONS } from '@/lib/pick-a-number-questions'
+import { WYR_QUESTIONS, type WyrQuestion } from '@/lib/would-you-rather-questions'
+import { THIS_OR_THAT_QUESTIONS } from '@/lib/this-or-that-questions'
+import { QUIPLASH_PROMPTS } from '@/lib/quiplash-prompts'
+import { QUICK_DRAW_PROMPTS } from '@/lib/quick-draw-prompts'
+import { parseWyrQuestionRows } from '@/lib/custom-questions'
 
 /**
  * Admin-managed "platform" content banks (the `platform_content` table). Each supported game
@@ -75,6 +82,37 @@ function stringLinesToText(entries: unknown[], header: string): string {
   return [header, ...rows].join('\n')
 }
 
+// --- Shared helpers for two-option banks (would_you_rather / this_or_that) ---
+
+/** Quote a CSV field only when it contains a comma, quote, or newline. */
+function csvField(value: string): string {
+  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
+}
+
+/** Parse "optionA,optionB" rows into deduped WyrQuestion entries + stats. */
+function parseWyrLines(text: string): PlatformContentParse {
+  const parsed = parseWyrQuestionRows(text)
+  const totalRows = text.split(/\r?\n/).filter((l) => l.trim()).length
+  const seen = new Set<string>()
+  const entries: WyrQuestion[] = []
+  let duplicateRows = 0
+  for (const q of parsed) {
+    const key = `${q.optionA.toLowerCase()}|${q.optionB.toLowerCase()}`
+    if (seen.has(key)) {
+      duplicateRows++
+      continue
+    }
+    seen.add(key)
+    entries.push(q)
+  }
+  return { entries, totalRows, skippedRows: Math.max(0, totalRows - parsed.length), duplicateRows }
+}
+
+function wyrToText(entries: unknown[]): string {
+  const rows = (entries as WyrQuestion[]).map((q) => `${csvField(q.optionA ?? '')},${csvField(q.optionB ?? '')}`)
+  return ['option_a,option_b', ...rows].join('\n')
+}
+
 // --- Registry of supported games (add games here as they are migrated off hardcoded arrays) ---
 
 const MOST_LIKELY_TO_DEF: PlatformGameDef = {
@@ -87,7 +125,81 @@ const MOST_LIKELY_TO_DEF: PlatformGameDef = {
   builtins: [{ key: 'default', label: 'Most Likely To — Built-in', entries: MLT_QUESTIONS }],
 }
 
-const PLATFORM_GAME_DEFS: PlatformGameDef[] = [MOST_LIKELY_TO_DEF]
+const NEVER_HAVE_I_EVER_DEF: PlatformGameDef = {
+  gameType: 'never_have_i_ever',
+  label: 'Never Have I Ever',
+  columns: 'one prompt per line',
+  minEntries: 5,
+  parse: (text) => parseStringLines(text, 'question'),
+  toText: (entries) => stringLinesToText(entries, 'question'),
+  builtins: [{ key: 'default', label: 'Never Have I Ever — Built-in', entries: NHIE_QUESTIONS }],
+}
+
+const PICK_A_NUMBER_DEF: PlatformGameDef = {
+  gameType: 'pick_a_number',
+  label: 'Pick a Number',
+  columns: 'one prompt per line',
+  minEntries: 5,
+  parse: (text) => parseStringLines(text, 'question'),
+  toText: (entries) => stringLinesToText(entries, 'question'),
+  builtins: [{ key: 'default', label: 'Pick a Number — Built-in', entries: PAN_QUESTIONS }],
+}
+
+const WOULD_YOU_RATHER_DEF: PlatformGameDef = {
+  gameType: 'would_you_rather',
+  label: 'Would You Rather',
+  columns: 'option_a,option_b',
+  minEntries: 5,
+  parse: parseWyrLines,
+  toText: wyrToText,
+  builtins: [{ key: 'default', label: 'Would You Rather — Built-in', entries: WYR_QUESTIONS }],
+}
+
+const THIS_OR_THAT_DEF: PlatformGameDef = {
+  gameType: 'this_or_that',
+  label: 'This or That',
+  columns: 'option_a,option_b',
+  minEntries: 5,
+  parse: parseWyrLines,
+  toText: wyrToText,
+  builtins: [{ key: 'default', label: 'This or That — Built-in', entries: THIS_OR_THAT_QUESTIONS }],
+}
+
+const QUIPLASH_DEF: PlatformGameDef = {
+  gameType: 'quiplash',
+  label: 'Quiplash',
+  columns: 'one prompt per line',
+  minEntries: 5,
+  parse: (text) => parseStringLines(text, 'prompt'),
+  toText: (entries) => stringLinesToText(entries, 'prompt'),
+  // Stored as plain strings (pickCustomQuiplashPrompts wraps them into {prompt} at draw time).
+  builtins: [{ key: 'default', label: 'Quiplash — Built-in', entries: QUIPLASH_PROMPTS.map((p) => p.prompt) }],
+}
+
+// Quick Draw has two modes with separate banks. Lie mode = surreal scene prompts (this one);
+// Guess mode = a word bank (variant 'guess', still on the hardcoded list — not wired yet).
+const QUICK_DRAW_LIE_DEF: PlatformGameDef = {
+  gameType: 'quick_draw',
+  variant: 'lie',
+  label: 'Quick Draw · Lie mode',
+  columns: 'one prompt per line',
+  minEntries: 5,
+  parse: (text) => parseStringLines(text, 'prompt'),
+  toText: (entries) => stringLinesToText(entries, 'prompt'),
+  builtins: [
+    { key: 'default', label: 'Quick Draw Lie prompts — Built-in', entries: QUICK_DRAW_PROMPTS.map((p) => p.prompt) },
+  ],
+}
+
+const PLATFORM_GAME_DEFS: PlatformGameDef[] = [
+  MOST_LIKELY_TO_DEF,
+  NEVER_HAVE_I_EVER_DEF,
+  PICK_A_NUMBER_DEF,
+  WOULD_YOU_RATHER_DEF,
+  THIS_OR_THAT_DEF,
+  QUIPLASH_DEF,
+  QUICK_DRAW_LIE_DEF,
+]
 
 /** All game defs, optionally keyed by `${gameType}:${variant}` for multi-pool games. */
 export function platformGameDefs(): PlatformGameDef[] {
