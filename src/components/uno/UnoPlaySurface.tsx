@@ -40,6 +40,7 @@ import {
   type UnoMultiPlayMode,
 } from '@/lib/uno'
 import { formatCountdown } from '@/lib/timer-format'
+import { UNO_QUICK_MESSAGES, unoQuickMessage, type UnoQuickMessage } from '@/lib/uno-quick-messages'
 import type { UnoColor, UnoCard, UnoSession } from '@/types'
 
 /** Deck accent for the UNO card backs (classic UNO red). */
@@ -103,7 +104,25 @@ export type UnoPlaySurfaceProps = {
   /** Play several cards at once (ids in play order — last stays on top). */
   onPlayMulti: (cardIds: string[]) => void
   /** Team-Up: your teammate's hand, shown read-only ("Partner" panel). */
-  partner?: { name: string; cards: UnoCard[] } | null
+  partner?: { id: string; name: string; cards: UnoCard[] } | null
+  /** Team-Up quick messages — partner-private emote channel (colour/value/action hints). */
+  quickChat?: {
+    incoming: { key: number; fromName: string; messageId: string } | null
+    onSend: (messageId: string) => void
+    onDismiss: () => void
+  } | null
+}
+
+/** The swatch (colour) or glyph tile that fronts a quick message in both the picker and the bubble. */
+function QuickMessageBadge({ msg }: { msg: UnoQuickMessage }) {
+  if (msg.kind === 'color') {
+    return <span className="uno-qm-swatch" style={{ background: UNO_COLOR_HEX[msg.color] }} aria-hidden />
+  }
+  return (
+    <span className="uno-qm-glyph" aria-hidden>
+      {msg.glyph}
+    </span>
+  )
 }
 
 export function UnoPlaySurface({
@@ -132,7 +151,9 @@ export function UnoPlaySurface({
   multiPlayMode = 'off',
   onPlayMulti,
   partner,
+  quickChat,
 }: UnoPlaySurfaceProps) {
+  const [quickPickerOpen, setQuickPickerOpen] = useState(false)
   const turnTimeLabel =
     turnTimer?.hasTimer && turnTimer.secondsLeft > 0 ? formatCountdown(turnTimer.secondsLeft) : undefined
 
@@ -315,10 +336,44 @@ export function UnoPlaySurface({
         <div className="uno-partner">
           <div className="uno-partner-head">
             <span className="uno-partner-name">🤝 {partner.name} (partner)</span>
-            <span className="uno-partner-count">
-              {partner.cards.length} card{partner.cards.length === 1 ? '' : 's'}
-            </span>
+            <div className="uno-partner-head-right">
+              {quickChat && !watching && (
+                <button
+                  type="button"
+                  className={`uno-qm-trigger${quickPickerOpen ? ' open' : ''}`}
+                  aria-expanded={quickPickerOpen}
+                  aria-label="Send a quick message to your partner"
+                  onClick={() => setQuickPickerOpen((v) => !v)}
+                >
+                  💬 Hint
+                </button>
+              )}
+              <span className="uno-partner-count">
+                {partner.cards.length} card{partner.cards.length === 1 ? '' : 's'}
+              </span>
+            </div>
           </div>
+
+          {quickChat && quickPickerOpen && !watching && (
+            <div className="uno-qm-picker" role="menu" aria-label="Quick messages">
+              {UNO_QUICK_MESSAGES.map((msg) => (
+                <button
+                  key={msg.id}
+                  type="button"
+                  role="menuitem"
+                  className="uno-qm-chip"
+                  onClick={() => {
+                    quickChat.onSend(msg.id)
+                    setQuickPickerOpen(false)
+                  }}
+                >
+                  <QuickMessageBadge msg={msg} />
+                  <span className="uno-qm-label">{msg.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="uno-partner-cards">
             {partner.cards.map((card) => (
               <span
@@ -332,6 +387,26 @@ export function UnoPlaySurface({
           </div>
         </div>
       )}
+
+      {/* Incoming quick message from your partner — a transient bubble, self-dismisses. */}
+      {quickChat?.incoming &&
+        (() => {
+          const msg = unoQuickMessage(quickChat.incoming.messageId)
+          if (!msg) return null
+          return (
+            <button
+              key={quickChat.incoming.key}
+              type="button"
+              className="uno-qm-bubble"
+              onClick={quickChat.onDismiss}
+              aria-label={`${quickChat.incoming.fromName} says ${msg.label} — tap to dismiss`}
+            >
+              <span className="uno-qm-bubble-from">🤝 {quickChat.incoming.fromName}</span>
+              <QuickMessageBadge msg={msg} />
+              <span className="uno-qm-bubble-label">{msg.label}</span>
+            </button>
+          )
+        })()}
 
       {watching ? null : (
         <Hand

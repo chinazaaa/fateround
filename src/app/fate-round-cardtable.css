@@ -885,6 +885,19 @@
     width: 40px;
     height: 40px;
   }
+  /* Team-Up: the read-only partner-hand strip (flex:0 0 auto, ~80px) sits between
+     the felt and the hand and eats into the framed board's capped height, squeezing
+     the felt (overflow-y:auto) so its bottom status line — "…'s turn — match X" —
+     got clipped on desktop. When a partner strip is present, tighten the felt and
+     trim the big piles so the whole status line stays visible without scrolling. */
+  .fr-room .ct-surface.uno:has(> .uno-partner) > .table {
+    gap: 10px;
+    padding: 12px 18px;
+  }
+  .fr-room .ct-surface.uno:has(> .uno-partner) .pc.lg {
+    width: 76px;
+    height: 108px;
+  }
 }
 /* Below the desktop two-pane breakpoint, widen the phone frame so the bigger
    board has room to breathe. The >= 1024px grid keeps its own full-width shell
@@ -1207,4 +1220,145 @@
 .fr-room .uno-mini-wild .uno-mini-oval {
   color: #1a1720;
   font-size: 11px;
+}
+
+/* ── UNO Team-Up quick messages ("emotes" to your partner) ──────────────
+   A 💬 trigger in the partner strip opens a chip grid of preset colour /
+   value / action hints. Sending one pops a transient bubble on the partner's
+   screen only. Ephemeral, partner-private — the tactical fun of team UNO. */
+.fr-room .uno-partner-head-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.fr-room .uno-qm-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: 700 11px var(--font-display);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+.fr-room .uno-qm-trigger:hover {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+}
+.fr-room .uno-qm-trigger.open {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary-strong);
+}
+.fr-room .uno-qm-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 6px;
+  margin: 8px 0 4px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 12px);
+  background: var(--surface);
+  max-height: 38vh;
+  overflow-y: auto;
+}
+.fr-room .uno-qm-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border-radius: 9999px;
+  border: 1px solid var(--border);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font: 700 12px var(--font-display);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    transform 0.1s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+.fr-room .uno-qm-chip:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.fr-room .uno-qm-chip:active {
+  transform: scale(0.96);
+}
+.fr-room .uno-qm-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fr-room .uno-qm-swatch {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.22);
+  box-shadow: inset 0 0 0 2px #fff;
+}
+.fr-room .uno-qm-glyph {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: 800 13px var(--font-display);
+  line-height: 1;
+}
+
+/* Incoming bubble — floats above the hand, self-dismisses, tap to clear early. */
+.fr-room .uno-qm-bubble {
+  position: fixed;
+  left: 50%;
+  /* Sit in the lower-middle of the screen — well above the hand — so a hint
+     isn't missed down by the cards. */
+  bottom: calc(32vh + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 16px;
+  border-radius: 9999px;
+  border: 1px solid var(--primary);
+  background: var(--surface);
+  color: var(--text);
+  font: 700 13.5px var(--font-display);
+  box-shadow: 0 8px 24px rgba(20, 18, 26, 0.22);
+  cursor: pointer;
+  max-width: min(92vw, 420px);
+  animation: uno-qm-pop 0.22s ease;
+}
+.fr-room .uno-qm-bubble-from {
+  color: var(--primary-strong);
+  font-weight: 800;
+}
+.fr-room .uno-qm-bubble-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@keyframes uno-qm-pop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fr-room .uno-qm-bubble {
+    animation: none;
+  }
 }
