@@ -266,6 +266,8 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     if (game?.uno_team_mode !== true || !session || !myPlayerId || isWatching) return null
     const mateId = unoTeammateId(session.turn_order ?? [], myPlayerId)
     if (!mateId) return null
+    // A teammate who left mid-round is no longer a partner (their seat stays for parity).
+    if ((session.left_player_ids ?? []).includes(mateId)) return null
     const mateCards = hands.find((h) => h.player_id === mateId)?.cards ?? []
     const mateName = players.find((p) => p.id === mateId)?.name ?? 'Partner'
     return { id: mateId, name: mateName, cards: mateCards }
@@ -511,6 +513,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
       onPlayMulti={(cardIds) => void postAction('/api/uno/play-multi', { cardIds })}
       partner={partner}
       quickChat={quickChat}
+      onTeamLeaveDecision={(decision) => void postAction('/api/uno/team-leave', { decision })}
     />
   )
 

@@ -17,6 +17,7 @@ import {
   unoTeamIndex,
   unoTeammateId,
   unoPlayerSharesWin,
+  unoActiveTeammates,
 } from './uno'
 import type { UnoCard, UnoPlayerHand, UnoSession } from '@/types'
 
@@ -311,6 +312,71 @@ describe('Team-Up helpers', () => {
     ]
     // a emptied → team {a,c} wins even though c still holds cards.
     expect(unoPlacementOrder(hands, order, ['a'], true)).toEqual(['a', 'c', 'b', 'd'])
+  })
+
+  it('mid-round leave: a left teammate is excluded from the team total and sorts last', () => {
+    const hands: UnoPlayerHand[] = [
+      {
+        id: 'ha',
+        game_id: 'G',
+        player_id: 'a',
+        cards: [card({ color: 'red', kind: 'number', value: 9 }), card({ color: 'red', kind: 'number', value: 9 })],
+        player_order: 0,
+        created_at: '',
+      }, // 18 — solo remainder of team A
+      {
+        id: 'hb',
+        game_id: 'G',
+        player_id: 'b',
+        cards: [card({ color: 'blue', kind: 'number', value: 2 })],
+        player_order: 1,
+        created_at: '',
+      },
+      {
+        id: 'hd',
+        game_id: 'G',
+        player_id: 'd',
+        cards: [card({ color: 'green', kind: 'number', value: 2 })],
+        player_order: 3,
+        created_at: '',
+      },
+      // 'c' (a's teammate) left mid-round — no hand row.
+    ]
+    // Timer end: team A total = just a (18); team B = b+d (4) → team B wins. 'c' sorts last.
+    expect(unoPlacementOrder(hands, order, [], true, ['c'])).toEqual(['b', 'd', 'a', 'c'])
+  })
+
+  it('unoActiveTeammates: the partner is active until they too leave', () => {
+    const hands: UnoPlayerHand[] = [
+      {
+        id: 'hc',
+        game_id: 'G',
+        player_id: 'c',
+        cards: [card({ color: 'red', kind: 'number', value: 1 })],
+        player_order: 2,
+        created_at: '',
+      },
+      {
+        id: 'hb',
+        game_id: 'G',
+        player_id: 'b',
+        cards: [card({ color: 'blue', kind: 'number', value: 2 })],
+        player_order: 1,
+        created_at: '',
+      },
+      {
+        id: 'hd',
+        game_id: 'G',
+        player_id: 'd',
+        cards: [card({ color: 'green', kind: 'number', value: 3 })],
+        player_order: 3,
+        created_at: '',
+      },
+    ]
+    // 'a' left; a & c are a team → c is the remaining active teammate.
+    expect(unoActiveTeammates(order, hands, ['a'], 'a')).toEqual(['c'])
+    // once c also leaves, that team has no active member left.
+    expect(unoActiveTeammates(order, hands, ['a', 'c'], 'a')).toEqual([])
   })
 })
 

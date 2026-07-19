@@ -73,6 +73,28 @@ export function unoTeammateId(turnOrder: string[], playerId: string): string | n
   return order.find((id, j) => j !== i && j % 2 === i % 2) ?? null
 }
 
+/** Ids of players who left mid-round — kept in turn_order (parity) but skipped by play + placement. */
+export function unoLeftPlayerIds(session: Pick<UnoSession, 'left_player_ids'>): string[] {
+  return (session.left_player_ids as string[] | undefined) ?? []
+}
+
+/**
+ * Seats on `playerId`'s Team-Up team that are still in the round — not left, still holding cards.
+ * Used to decide, after a leave, whether a teammate remains (prompt to continue/forfeit) or the
+ * whole team is gone (the other team wins).
+ */
+export function unoActiveTeammates(
+  turnOrder: string[],
+  hands: UnoPlayerHand[],
+  leftIds: string[],
+  playerId: string
+): string[] {
+  const i = (turnOrder ?? []).indexOf(playerId)
+  if (i < 0) return []
+  const left = new Set(leftIds)
+  return (turnOrder ?? []).filter((id, j) => j !== i && j % 2 === i % 2 && !left.has(id) && unoHandCount(hands, id) > 0)
+}
+
 /**
  * Did `playerId` win this round? True for the winner, and — in Team-Up — also for
  * the winner's teammate (both partners share the win, so both belong on the
@@ -409,31 +431,45 @@ export function unoPlacementOrder(
   hands: UnoRankableHand[],
   turnOrder: string[],
   finishOrder: string[],
-  teamMode = false
+  teamMode = false,
+  leftPlayerIds: string[] = []
 ): string[] {
   const activeIds = new Set(turnOrder ?? [])
   const finished = (finishOrder ?? []).filter((id) => activeIds.has(id))
   const finishedSet = new Set(finished)
+  const leftSet = new Set(leftPlayerIds)
 
   // Team-Up: rank the winning team's two members first, then the losing team. The winning team
   // is whoever emptied a hand first, or — if a timer ended it — the lower combined hand total.
+  // A member who left mid-round counts for nothing: excluded from the team total, and sorted to
+  // the back of their group. If a whole team has left, the other team wins by default.
   const order = turnOrder ?? []
   if (teamMode && order.length === UNO_TEAM_PLAYERS) {
     const sumOf = (id: string) => unoHandSum((hands.find((h) => h.player_id === id)?.cards as UnoCard[]) ?? [])
+    const teamActive = (parity: number) => order.filter((id, i) => i % 2 === parity && !leftSet.has(id))
     let winTeam: number
     if (finished.length > 0) winTeam = order.indexOf(finished[0]!) % 2
+    else if (teamActive(0).length === 0) winTeam = 1
+    else if (teamActive(1).length === 0) winTeam = 0
     else {
-      const s0 = order.filter((_, i) => i % 2 === 0).reduce((s, id) => s + sumOf(id), 0)
-      const s1 = order.filter((_, i) => i % 2 === 1).reduce((s, id) => s + sumOf(id), 0)
+      const s0 = teamActive(0).reduce((s, id) => s + sumOf(id), 0)
+      const s1 = teamActive(1).reduce((s, id) => s + sumOf(id), 0)
       winTeam = s0 <= s1 ? 0 : 1
     }
+    // Players who left sort last within their group (they didn't finish the round).
+    const byLeft = (a: string, b: string) => (leftSet.has(a) ? 1 : 0) - (leftSet.has(b) ? 1 : 0)
     const winners = order
       .filter((_, i) => i % 2 === winTeam)
       .sort(
         (a, b) =>
-          (finishedSet.has(b) ? 1 : 0) - (finishedSet.has(a) ? 1 : 0) || sumOf(a) - sumOf(b) || a.localeCompare(b)
+          byLeft(a, b) ||
+          (finishedSet.has(b) ? 1 : 0) - (finishedSet.has(a) ? 1 : 0) ||
+          sumOf(a) - sumOf(b) ||
+          a.localeCompare(b)
       )
-    const losers = order.filter((_, i) => i % 2 !== winTeam).sort((a, b) => sumOf(a) - sumOf(b) || a.localeCompare(b))
+    const losers = order
+      .filter((_, i) => i % 2 !== winTeam)
+      .sort((a, b) => byLeft(a, b) || sumOf(a) - sumOf(b) || a.localeCompare(b))
     return [...winners, ...losers]
   }
   const remaining = hands
@@ -456,11 +492,12 @@ export function buildUnoStandings(
   players: { id: string; name: string }[],
   turnOrder: string[],
   finishOrder: string[] = [],
-  teamMode = false
+  teamMode = false,
+  leftPlayerIds: string[] = []
 ): UnoStanding[] {
   const activeIds = new Set(turnOrder ?? [])
   const byId = new Map(hands.filter((h) => activeIds.has(h.player_id)).map((h) => [h.player_id, h]))
-  return unoPlacementOrder(hands, turnOrder, finishOrder, teamMode).map((playerId, index) => {
+  return unoPlacementOrder(hands, turnOrder, finishOrder, teamMode, leftPlayerIds).map((playerId, index) => {
     const cards = (byId.get(playerId)?.cards as UnoCard[]) ?? []
     return {
       playerId,
@@ -728,15 +765,16 @@ async function finishByLowestHand(
   teamMode = false
 ): Promise<boolean> {
   const finishOrder = session.finish_order ?? []
-  const placement = unoPlacementOrder(hands, session.turn_order ?? [], finishOrder, teamMode)
+  const leftIds = unoLeftPlayerIds(session)
+  const placement = unoPlacementOrder(hands, session.turn_order ?? [], finishOrder, teamMode, leftIds)
   const winnerId = placement[0] ?? null
   const winnerName = winnerId ? playerName(playerNames, winnerId) : 'Nobody'
 
   let statusMessage: string
   if (teamMode && winnerId) {
-    // The winner + their teammate share the round.
+    // The winner + their teammate share the round — unless the teammate left mid-round.
     const mate = unoTeammateId(session.turn_order ?? [], winnerId)
-    const mateName = mate ? playerName(playerNames, mate) : null
+    const mateName = mate && !leftIds.includes(mate) ? playerName(playerNames, mate) : null
     statusMessage = mateName
       ? `${reasonPrefix} ${winnerName} & ${mateName} win!`
       : `${reasonPrefix} ${winnerName} wins!`
@@ -805,7 +843,8 @@ function playerOutPatch(
   // Team-Up: the round ends the instant a member empties their hand — their team wins.
   if (teamMode) {
     const mate = unoTeammateId(session.turn_order ?? [], playerId)
-    const mateName = mate ? playerName(playerNames, mate) : null
+    // A teammate who left mid-round isn't celebrated (the solo player wins for the team).
+    const mateName = mate && !unoLeftPlayerIds(session).includes(mate) ? playerName(playerNames, mate) : null
     return {
       ...board,
       phase: 'finished',
@@ -1976,18 +2015,77 @@ export async function removeUnoPlayer(
   const removedIndex = order.indexOf(playerId)
 
   if (session && removedIndex >= 0 && session.phase !== 'finished') {
+    const { data: gameRow } = await supabase
+      .from('games')
+      .select('timer_seconds, uno_team_mode')
+      .eq('id', gameId)
+      .maybeSingle()
+    const timerSeconds = gameRow?.timer_seconds ?? 0
+    const teamMode = gameRow?.uno_team_mode === true
+    const { data: playerRows } = await supabase.from('players').select('id, name').eq('game_id', gameId)
+    const names = new Map<string, string>()
+    for (const p of playerRows ?? []) names.set(p.id, p.name)
+    const removedName = playerNameArg ?? names.get(playerId) ?? 'A player'
+
+    // ── Team-Up (2v2): keep the leaver's seat in turn_order (teams derive from A-B-A-B
+    // parity, which needs 4 seats) and mark them left instead. If their teammate is still
+    // in, pause for that teammate to choose continue-solo vs forfeit; if the whole team is
+    // gone, the other team wins. ────────────────────────────────────────────────────────
+    if (teamMode && order.length === UNO_TEAM_PLAYERS) {
+      const { data: handRows } = await supabase
+        .from('uno_player_hands')
+        .select('player_id, cards')
+        .eq('game_id', gameId)
+      const hands = (handRows ?? []) as UnoPlayerHand[]
+      const prevLeft = unoLeftPlayerIds(session)
+      const leftIds = prevLeft.includes(playerId) ? prevLeft : [...prevLeft, playerId]
+      const partner = unoTeammateId(order, playerId)
+      const partnerActive = !!partner && !leftIds.includes(partner) && unoHandCount(hands, partner) > 0
+      const opponentIds = order.filter(
+        (id, i) => i % 2 !== removedIndex % 2 && !leftIds.includes(id) && unoHandCount(hands, id) > 0
+      )
+
+      const teamUpdate: Record<string, unknown> = {
+        left_player_ids: leftIds,
+        uno_pending_player: session.uno_pending_player === playerId ? null : session.uno_pending_player,
+        updated_at: new Date().toISOString(),
+      }
+
+      if (partnerActive) {
+        // Pause the round; the remaining teammate decides via processUnoTeamLeaveDecision.
+        teamUpdate.phase = 'team_leave_decision'
+        teamUpdate.team_decider_id = partner
+        teamUpdate.turn_deadline_at = null
+        teamUpdate.status_message = `${removedName} left — ${names.get(partner!) ?? 'their teammate'}: play on solo (1 vs 2) or forfeit?`
+      } else {
+        // The leaver's whole team is gone — the opposing team takes the round.
+        const winnerId = opponentIds[0] ?? null
+        const winnerMate = winnerId ? unoTeammateId(order, winnerId) : null
+        const winNames = [winnerId, winnerMate]
+          .filter((id): id is string => !!id && !leftIds.includes(id))
+          .map((id) => names.get(id) ?? 'Winner')
+        teamUpdate.phase = 'finished'
+        teamUpdate.team_decider_id = null
+        teamUpdate.winner_player_id = winnerId
+        teamUpdate.turn_deadline_at = null
+        teamUpdate.status_message = winNames.length
+          ? `${removedName} left — ${winNames.join(' & ')} win!`
+          : `${removedName} left — game over.`
+      }
+
+      const { error: teamError } = await supabase.from('uno_sessions').update(teamUpdate).eq('game_id', gameId)
+      if (teamError) return { error: internalErrorMessage('uno', teamError) }
+      await supabase.from('uno_player_hands').delete().eq('game_id', gameId).eq('player_id', playerId)
+      if (teamUpdate.phase === 'finished') await markGameFinished(supabase, gameId)
+      const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
+      return { error: error?.message ?? null }
+    }
+
     const turnOrder = order.filter((id) => id !== playerId)
     let currentTurnIndex = session.current_turn_index
     if (removedIndex < currentTurnIndex) currentTurnIndex -= 1
     else if (removedIndex === currentTurnIndex && turnOrder.length > 0) currentTurnIndex %= turnOrder.length
     if (turnOrder.length === 0) currentTurnIndex = 0
-
-    const removedName = playerNameArg ?? 'A player'
-    const { data: gameRow } = await supabase.from('games').select('timer_seconds').eq('id', gameId).maybeSingle()
-    const timerSeconds = gameRow?.timer_seconds ?? 0
-    const { data: playerRows } = await supabase.from('players').select('id, name').eq('game_id', gameId)
-    const names = new Map<string, string>()
-    for (const p of playerRows ?? []) names.set(p.id, p.name)
 
     const update: Record<string, unknown> = {
       turn_order: turnOrder,
@@ -2027,4 +2125,87 @@ export async function removeUnoPlayer(
   await supabase.from('uno_player_hands').delete().eq('game_id', gameId).eq('player_id', playerId)
   const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
   return { error: error?.message ?? null }
+}
+
+// ── Team-Up mid-round leave: the remaining teammate's decision ─────────────────
+/**
+ * The teammate of a player who left mid-round chooses to continue solo (1v2) or forfeit.
+ * Only valid while `phase === 'team_leave_decision'` and only for `team_decider_id`.
+ * - continue → resume play, skipping the departed seat.
+ * - forfeit  → the round ends; the opposing team wins.
+ */
+export async function processUnoTeamLeaveDecision(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  decision: 'continue' | 'forfeit'
+): Promise<{ error?: string }> {
+  const { session, hands, timerSeconds, playerNames } = await loadGameState(supabase, gameId)
+  if (!session) return { error: 'Session not found' }
+  if (session.phase === 'finished') return { error: 'The round has already ended' }
+  if (session.phase !== 'team_leave_decision') return { error: 'No teammate-leave decision pending' }
+  if (session.team_decider_id !== playerId) return { error: 'Not your decision' }
+
+  const order = session.turn_order ?? []
+  const leftIds = unoLeftPlayerIds(session)
+  const deciderName = playerName(playerNames, playerId)
+  const decIdx = order.indexOf(playerId)
+
+  if (decision === 'forfeit') {
+    // The remaining teammate concedes — the opposing team takes the round.
+    const opponents = order.filter((id, i) => decIdx >= 0 && i % 2 !== decIdx % 2 && !leftIds.includes(id))
+    const winnerId = opponents[0] ?? null
+    const winnerMate = winnerId ? unoTeammateId(order, winnerId) : null
+    const winNames = [winnerId, winnerMate]
+      .filter((id): id is string => !!id && !leftIds.includes(id))
+      .map((id) => playerName(playerNames, id))
+    const won = await persistSession(
+      supabase,
+      gameId,
+      {
+        phase: 'finished',
+        team_decider_id: null,
+        winner_player_id: winnerId,
+        turn_deadline_at: null,
+        status_message: winNames.length
+          ? `${deciderName} forfeited — ${winNames.join(' & ')} win!`
+          : `${deciderName} forfeited — game over.`,
+      },
+      timerSeconds,
+      session.updated_at
+    )
+    if (won) await markGameFinished(supabase, gameId)
+    return {}
+  }
+
+  // Continue solo: resume play. The departed teammate's hand is already gone, so the turn
+  // engine skips their seat; advance off it if the paused turn landed there.
+  const direction = session.direction < 0 ? -1 : 1
+  const len = order.length
+  const currentId = len > 0 ? order[((session.current_turn_index % len) + len) % len] : null
+  const currentGone = !currentId || leftIds.includes(currentId) || unoHandCount(hands, currentId) === 0
+  const nextIndex = currentGone
+    ? unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
+    : session.current_turn_index
+  const nextId = order[nextIndex]
+
+  const patch: Partial<UnoSession> = {
+    phase: 'playing',
+    team_decider_id: null,
+    current_turn_index: nextIndex,
+    turn_deadline_at: unoTurnDeadline(timerSeconds),
+    // A pause invalidates any half-made decision by/about the departed seat.
+    pending_wild: null,
+    challenge_prev_color: null,
+    wd4_player_id: null,
+    drawn_card_id: null,
+    status_message: `${deciderName} plays on — 1 vs 2! ${playerName(playerNames, nextId ?? '')}'s turn`,
+  }
+  // A draw penalty owed by the departed seat leaves with them.
+  if (currentGone) {
+    patch.draw_penalty = 0
+    patch.draw_penalty_kind = null
+  }
+  await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
+  return {}
 }

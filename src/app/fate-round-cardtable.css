@@ -1081,6 +1081,27 @@
   color: #e2231a;
 }
 
+/* Team-Up mid-round leave — the remaining teammate's continue-solo / forfeit prompt. */
+.fr-room .uno-team-leave {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+}
+.fr-room .uno-team-leave-title {
+  font: 800 15px var(--font-display);
+  color: var(--text);
+}
+.fr-room .uno-team-leave-desc {
+  font-size: 13px;
+  color: var(--text-faint);
+  margin-bottom: 2px;
+}
+
 /* UNO 0-7 swap picker — 2-up grid so a full 9-player table mostly fits without
    scrolling; the picker sheet (max-height:85dvh, overflow:auto) scrolls if needed. */
 .fr-room .uno-swap-list {

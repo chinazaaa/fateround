@@ -280,6 +280,8 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
     if (game?.uno_team_mode !== true || !session || !hostPlayerId || !hostPlays) return null
     const mateId = unoTeammateId(session.turn_order ?? [], hostPlayerId)
     if (!mateId) return null
+    // A teammate who left mid-round is no longer a partner (their seat stays for parity).
+    if ((session.left_player_ids ?? []).includes(mateId)) return null
     const mateCards = hands.find((h) => h.player_id === mateId)?.cards ?? []
     const mateName = players.find((p) => p.id === mateId)?.name ?? 'Partner'
     return { id: mateId, name: mateName, cards: mateCards }
@@ -497,6 +499,7 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             onPlayMulti={(cardIds) => void postHostAction('/api/uno/play-multi', { cardIds })}
             partner={partner}
             quickChat={quickChat}
+            onTeamLeaveDecision={(decision) => void postHostAction('/api/uno/team-leave', { decision })}
           />
         ) : (
           <p className="turn-status g" style={{ textAlign: 'center', padding: 24 }}>

@@ -190,6 +190,11 @@ export const unoSwapSchema = unoActionSchema.extend({
   targetId: z.string().min(1),
 })
 
+export const unoTeamLeaveSchema = unoActionSchema.extend({
+  // Team-Up: after a teammate leaves, the remaining partner continues solo or forfeits.
+  decision: z.enum(['continue', 'forfeit']),
+})
+
 export type UnoPlayInput = z.infer<typeof unoPlaySchema>
 export type UnoDrawInput = z.infer<typeof unoDrawSchema>
 export type UnoChooseInput = z.infer<typeof unoChooseSchema>

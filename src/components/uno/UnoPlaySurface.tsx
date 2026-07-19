@@ -111,6 +111,8 @@ export type UnoPlaySurfaceProps = {
     onSend: (messageId: string) => void
     onDismiss: () => void
   } | null
+  /** Team-Up: after a teammate leaves, the remaining partner continues solo or forfeits. */
+  onTeamLeaveDecision?: (decision: 'continue' | 'forfeit') => void
 }
 
 /** The swatch (colour) or glyph tile that fronts a quick message in both the picker and the bubble. */
@@ -152,6 +154,7 @@ export function UnoPlaySurface({
   onPlayMulti,
   partner,
   quickChat,
+  onTeamLeaveDecision,
 }: UnoPlaySurfaceProps) {
   const [quickPickerOpen, setQuickPickerOpen] = useState(false)
   const turnTimeLabel =
@@ -328,6 +331,25 @@ export function UnoPlaySurface({
             </button>
           </div>
         )}
+
+        {/* Team-Up: a teammate left — the remaining partner plays on solo or forfeits. */}
+        {session.phase === 'team_leave_decision' &&
+          !watching &&
+          myPlayerId === session.team_decider_id &&
+          onTeamLeaveDecision && (
+            <div className="uno-team-leave">
+              <p className="uno-team-leave-title">🤝 Your teammate left</p>
+              <p className="uno-team-leave-desc">Play on alone against both opponents, or forfeit the round?</p>
+              <div className="uno-challenge">
+                <button type="button" disabled={acting} onClick={() => onTeamLeaveDecision('continue')}>
+                  🙋 Continue solo · 1 v 2
+                </button>
+                <button type="button" className="hot" disabled={acting} onClick={() => onTeamLeaveDecision('forfeit')}>
+                  🏳️ Forfeit
+                </button>
+              </div>
+            </div>
+          )}
       </Table>
 
       {/* Team-Up: your teammate's hand, read-only. A digital-only advantage — you can see it,
