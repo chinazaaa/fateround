@@ -6,6 +6,10 @@ import { WYR_QUESTIONS, type WyrQuestion } from '@/lib/would-you-rather-question
 import { THIS_OR_THAT_QUESTIONS } from '@/lib/this-or-that-questions'
 import { QUIPLASH_PROMPTS } from '@/lib/quiplash-prompts'
 import { QUICK_DRAW_PROMPTS } from '@/lib/quick-draw-prompts'
+import { QUICK_DRAW_GUESS_WORD_POOL } from '@/lib/quick-draw-guess-words'
+import { CODEWORDS_WORD_POOL } from '@/lib/codewords-words'
+import { CODEWORDS_MIN_CUSTOM_POOL } from '@/lib/codewords-pool'
+import { DESCRIBE_IT_WORD_POOL } from '@/lib/describe-it-words'
 import { parseWyrQuestionRows } from '@/lib/custom-questions'
 
 /**
@@ -191,6 +195,37 @@ const QUICK_DRAW_LIE_DEF: PlatformGameDef = {
   ],
 }
 
+const QUICK_DRAW_GUESS_DEF: PlatformGameDef = {
+  gameType: 'quick_draw',
+  variant: 'guess',
+  label: 'Quick Draw · Guess mode',
+  columns: 'one word per line',
+  minEntries: 5,
+  parse: (text) => parseStringLines(text, 'word'),
+  toText: (entries) => stringLinesToText(entries, 'word'),
+  builtins: [{ key: 'default', label: 'Quick Draw Guess words — Built-in', entries: [...QUICK_DRAW_GUESS_WORD_POOL] }],
+}
+
+const CODEWORDS_DEF: PlatformGameDef = {
+  gameType: 'codewords',
+  label: 'Codewords',
+  columns: 'one word per line',
+  minEntries: CODEWORDS_MIN_CUSTOM_POOL, // a full board needs this many words
+  parse: (text) => parseStringLines(text, 'word'),
+  toText: (entries) => stringLinesToText(entries, 'word'),
+  builtins: [{ key: 'default', label: 'Codewords — Built-in', entries: CODEWORDS_WORD_POOL }],
+}
+
+const DESCRIBE_IT_DEF: PlatformGameDef = {
+  gameType: 'describe_it',
+  label: 'Text Charades',
+  columns: 'one word per line',
+  minEntries: 5,
+  parse: (text) => parseStringLines(text, 'word'),
+  toText: (entries) => stringLinesToText(entries, 'word'),
+  builtins: [{ key: 'default', label: 'Text Charades — Built-in', entries: [...DESCRIBE_IT_WORD_POOL] }],
+}
+
 const PLATFORM_GAME_DEFS: PlatformGameDef[] = [
   MOST_LIKELY_TO_DEF,
   NEVER_HAVE_I_EVER_DEF,
@@ -199,6 +234,9 @@ const PLATFORM_GAME_DEFS: PlatformGameDef[] = [
   THIS_OR_THAT_DEF,
   QUIPLASH_DEF,
   QUICK_DRAW_LIE_DEF,
+  QUICK_DRAW_GUESS_DEF,
+  CODEWORDS_DEF,
+  DESCRIBE_IT_DEF,
 ]
 
 /** All game defs, optionally keyed by `${gameType}:${variant}` for multi-pool games. */

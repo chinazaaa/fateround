@@ -60,10 +60,33 @@ describe('platform-content: prompt banks stored as strings (quiplash / quick_dra
     expect(def.builtins[0].entries.every((e) => typeof e === 'string')).toBe(true)
   })
 
-  it('quick_draw uses the lie variant (guess mode not wired yet)', () => {
+  it('quick_draw requires an explicit variant (lie or guess)', () => {
     expect(platformGameDef('quick_draw', 'lie')).toBeTruthy()
+    expect(platformGameDef('quick_draw', 'guess')).toBeTruthy()
     expect(platformGameDef('quick_draw')).toBeUndefined() // must specify the variant
-    expect(platformGameDef('quick_draw', 'guess')).toBeUndefined()
+  })
+})
+
+describe('platform-content: word-pool games (codewords / describe_it / quick_draw guess)', () => {
+  it('codewords is registered with a board-sized minimum', () => {
+    const def = platformGameDef('codewords')!
+    expect(def).toBeTruthy()
+    expect(def.minEntries).toBeGreaterThanOrEqual(25)
+    expect(def.builtins[0].entries.length).toBeGreaterThanOrEqual(def.minEntries)
+  })
+
+  it('describe_it (Text Charades) is registered', () => {
+    expect(platformGameDef('describe_it')).toBeTruthy()
+  })
+
+  it('quick_draw guess is a distinct variant from lie', () => {
+    expect(platformGameDef('quick_draw', 'guess')).toBeTruthy()
+    expect(platformGameDef('quick_draw', 'lie')).toBeTruthy()
+    expect(platformGameDef('quick_draw', 'guess')).not.toBe(platformGameDef('quick_draw', 'lie'))
+  })
+
+  it('all 10 flat-bank defs are registered', () => {
+    expect(platformGameList().length).toBe(10)
   })
 })
 

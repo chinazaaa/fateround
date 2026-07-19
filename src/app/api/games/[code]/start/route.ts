@@ -573,7 +573,14 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       }
     }
     const wordUsage = poolUsageToMap(poolUsage.codewords)
-    const words = pickBoardWords(customPool ?? undefined, wordUsage)
+    // Platform source: draw the board from the admin bank when present, else the built-in pool
+    // (pickBoardWords falls back to CODEWORDS_WORD_POOL when given an empty/undefined pool).
+    const adminCwPool =
+      parseQuestionSource(game.question_source, gameType) === 'custom'
+        ? []
+        : await loadPlatformEntries<string>(getSupabaseAdmin(), 'codewords')
+    const boardPool = customPool ?? (adminCwPool.length > 0 ? adminCwPool : undefined)
+    const words = pickBoardWords(boardPool, wordUsage)
     const key = generateKey(startingTeam)
     const spymasterTimer = clampCodewordsTimer(game.timer_seconds ?? CODEWORDS_DEFAULT_SPYMASTER_TIMER)
     const operativeTimer = clampCodewordsTimer(game.operative_timer_seconds ?? CODEWORDS_DEFAULT_OPERATIVE_TIMER)

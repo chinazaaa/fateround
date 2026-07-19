@@ -72,3 +72,17 @@ export const promotePlayerSchema = z.object({
 })
 
 export type PromotePlayerInput = z.infer<typeof promotePlayerSchema>
+
+// ---------------------------------------------------------------------------
+// Players (POST /api/players/spectate) — the inverse of promote
+// ---------------------------------------------------------------------------
+
+export const spectatePlayerSchema = z.object({
+  gameCode: gameCodeString(),
+  // Self-sit-out (player → spectator), mid-active-game. Same shape as promote: the caller is
+  // resolved from their own resume_token, so a caller can only ever sit *themselves* out. Used
+  // by "Leave game (keep hosting)" — a seated host drops out of play but keeps the host token.
+  resumeToken: z.string().min(4),
+})
+
+export type SpectatePlayerInput = z.infer<typeof spectatePlayerSchema>

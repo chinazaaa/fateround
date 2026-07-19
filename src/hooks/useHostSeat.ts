@@ -95,6 +95,7 @@ export interface UseHostSeatResult {
   hostJoining: boolean
   changeHostMode: (mode: HostSeatMode) => Promise<void>
   hostJoinGame: (nameOverride?: string) => Promise<void>
+  leaveSeatKeepHosting: () => Promise<void>
   renameHost: (name: string) => Promise<void>
   handlePlayerRemoved: (playerId: string) => void
 }
@@ -279,6 +280,29 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
     [gameCode, gameStatus, hostMode, hostPlayerId, hostResumeToken, applyMode, seatHostAsSpectator]
   )
 
+  // "Leave game (keep hosting)" — a seated host drops out of active play but keeps the
+  // host token, so the game runs on and they watch. Unlike changeHostMode (lobby-only,
+  // flips the ready flag in place) this is an ACTIVE-game action: it flips the host's own
+  // row to spectator via /api/players/spectate — non-destructive, so the row/score survive
+  // and the host can Join back in via the mid-game ViewerModeBanner ("Join as player").
+  const leaveSeatKeepHosting = useCallback(async () => {
+    if (!hostPlayerId || !hostResumeToken) return
+    try {
+      const res = await fetch('/api/players/spectate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameCode, resumeToken: hostResumeToken }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Failed to leave game')
+      applyMode('spectator')
+      await onReloadRef.current()
+      toastRef.current.success("You've left the game — you're still hosting")
+    } catch (err) {
+      toastRef.current.error(err instanceof Error ? err.message : 'Failed to leave game')
+    }
+  }, [gameCode, hostPlayerId, hostResumeToken, applyMode])
+
   const renameHost = useCallback(
     async (name: string) => {
       const trimmed = name.trim()
@@ -403,6 +427,7 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveSeatKeepHosting,
     renameHost,
     handlePlayerRemoved,
   }
