@@ -422,6 +422,8 @@ export interface Game {
   uno_multi_play?: boolean
   /** UNO — Multi-Play grouping rule: 'off' | 'same_color' | 'same_number' | 'same_color_or_number'. */
   uno_multi_play_mode?: string
+  /** UNO — 2v2 Team-Up mode (exactly 4 players). */
+  uno_team_mode?: boolean
   /** Ludo — 'modern' (start + mid-arm safe stars) or 'traditional' (no track safe squares). */
   ludo_variant?: LudoVariant
   /** Ayo — 'traditional' (capture on 4, houses, match rounds) or 'oware' (2/3 seeds). */

@@ -14,6 +14,8 @@ import {
   rotateActiveHands,
   multiSetGroupingOk,
   validateMultiSet,
+  unoTeamIndex,
+  unoTeammateId,
 } from './uno'
 import type { UnoCard, UnoPlayerHand, UnoSession } from '@/types'
 
@@ -246,6 +248,57 @@ describe('unoPlacementOrder / buildUnoStandings', () => {
   })
 })
 
+describe('Team-Up helpers', () => {
+  const order = ['a', 'b', 'c', 'd'] // seats: A1(a) B1(b) A2(c) B2(d)
+
+  it('teams follow seating parity', () => {
+    expect(unoTeamIndex(order, 'a')).toBe(0)
+    expect(unoTeamIndex(order, 'c')).toBe(0)
+    expect(unoTeamIndex(order, 'b')).toBe(1)
+    expect(unoTeamIndex(order, 'd')).toBe(1)
+    expect(unoTeamIndex(order, 'z')).toBeNull()
+  })
+
+  it('teammate is the other same-parity seat (across the table)', () => {
+    expect(unoTeammateId(order, 'a')).toBe('c')
+    expect(unoTeammateId(order, 'c')).toBe('a')
+    expect(unoTeammateId(order, 'b')).toBe('d')
+    expect(unoTeammateId(order, 'd')).toBe('b')
+  })
+
+  it('placement ranks the winning team first (both members), then the losers', () => {
+    const hands: UnoPlayerHand[] = [
+      { id: 'ha', game_id: 'G', player_id: 'a', cards: [], player_order: 0, created_at: '' }, // emptied
+      {
+        id: 'hc',
+        game_id: 'G',
+        player_id: 'c',
+        cards: [card({ color: 'red', kind: 'number', value: 9 })],
+        player_order: 2,
+        created_at: '',
+      }, // a's teammate (still holding)
+      {
+        id: 'hb',
+        game_id: 'G',
+        player_id: 'b',
+        cards: [card({ color: 'blue', kind: 'number', value: 2 })],
+        player_order: 1,
+        created_at: '',
+      },
+      {
+        id: 'hd',
+        game_id: 'G',
+        player_id: 'd',
+        cards: [card({ color: 'wild', kind: 'wild' })],
+        player_order: 3,
+        created_at: '',
+      },
+    ]
+    // a emptied → team {a,c} wins even though c still holds cards.
+    expect(unoPlacementOrder(hands, order, ['a'], true)).toEqual(['a', 'c', 'b', 'd'])
+  })
+})
+
 describe('multiSetGroupingOk', () => {
   const reds = [
     card({ id: 'r1', color: 'red', kind: 'number', value: 1 }),
@@ -324,6 +377,7 @@ describe('parseUnoRules', () => {
       zeroSeven: false,
       stacking: false,
       multiPlay: 'off',
+      teamMode: false,
     })
   })
   it('reads host overrides', () => {
@@ -334,6 +388,7 @@ describe('parseUnoRules', () => {
       uno_zero_seven: true,
       uno_stacking: true,
       uno_multi_play_mode: 'same_color_or_number',
+      uno_team_mode: true,
     })
     expect(r).toEqual({
       wd4Challenge: false,
@@ -342,6 +397,7 @@ describe('parseUnoRules', () => {
       zeroSeven: true,
       stacking: true,
       multiPlay: 'same_color_or_number',
+      teamMode: true,
     })
   })
   it('reads the milder wd4 penalty variant (4) and clamps junk to 6', () => {

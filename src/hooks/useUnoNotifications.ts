@@ -58,7 +58,15 @@ export function useUnoNotifications({
     const prevHandCount = prevHandCountRef.current
     const currentTurnIndex = session?.current_turn_index ?? null
 
-    if (prevHandCount !== null && myHandCount > prevHandCount) {
+    // A 0 (pass all hands) or 7 (swap hands) also changes your hand size, but it isn't a draw —
+    // don't mislabel it. The server writes the descriptive status before the hand rows, so it's
+    // current here; announce that instead. (Either direction of size change, not just a gain.)
+    const statusMsg = session?.status_message ?? ''
+    const isZeroSeven = /played a 0|swapped hands with/i.test(statusMsg)
+    if (prevHandCount !== null && myHandCount !== prevHandCount && isZeroSeven) {
+      info(statusMsg)
+      playVoteSubmittedSound()
+    } else if (prevHandCount !== null && myHandCount > prevHandCount) {
       const gained = myHandCount - prevHandCount
       info(`You drew ${gained} card${gained === 1 ? '' : 's'} 🃏`)
       playVoteSubmittedSound()

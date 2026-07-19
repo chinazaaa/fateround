@@ -33,12 +33,23 @@ export function UnoFinalResultsShareBlock({
   const captureRef = useRef<HTMLDivElement>(null)
 
   const standings = useMemo(
-    () => buildUnoStandings(hands, players, session?.turn_order ?? [], session?.finish_order ?? []),
-    [hands, players, session?.turn_order, session?.finish_order]
+    () =>
+      buildUnoStandings(
+        hands,
+        players,
+        session?.turn_order ?? [],
+        session?.finish_order ?? [],
+        game.uno_team_mode === true
+      ),
+    [hands, players, session?.turn_order, session?.finish_order, game.uno_team_mode]
   )
 
+  const teamMode = game.uno_team_mode === true
   const winnerPlayerId = session?.winner_player_id ?? null
-  const displayWinner = winnerName ?? standings.find((row) => row.rank === 1)?.name ?? null
+  // Team-Up: the top two standings are the winning team — show both as the winner.
+  const displayWinner = teamMode
+    ? [standings[0]?.name, standings[1]?.name].filter(Boolean).join(' & ') || null
+    : (winnerName ?? standings.find((row) => row.rank === 1)?.name ?? null)
 
   const winnerStanding =
     (winnerPlayerId ? standings.find((row) => row.playerId === winnerPlayerId) : null) ??
