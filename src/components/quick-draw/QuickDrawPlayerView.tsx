@@ -321,6 +321,7 @@ function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
           emoji={cfg.headerEmoji}
           title={game?.title}
           gameType="quick_draw"
+          contentLabel={game?.content_label}
           meta={
             game ? (
               <>

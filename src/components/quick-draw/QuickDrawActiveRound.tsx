@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useGameScores } from '@/components/roster/RosterDrawerContext'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { QuickDrawFinishedResults } from '@/components/quick-draw/QuickDrawFinishedResults'
 import { DrawingCanvas, DrawingPreview } from '@/components/quick-draw/DrawingCanvas'
 import {
@@ -158,6 +158,13 @@ export function QuickDrawActiveRound({
   // Live scores feed the shared roster drawer (opened from the header).
   const rosterScores = useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard])
   useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(() => {
+    const realTitleIds = new Set(titles.filter((t) => t.is_real).map((t) => t.id))
+    const counts: Record<string, number> = {}
+    for (const v of votes) if (realTitleIds.has(v.chosen_title_id)) counts[v.player_id] = (counts[v.player_id] ?? 0) + 1
+    return Object.fromEntries(leaderboard.map((row) => [row.id, `✏️ ${counts[row.id] ?? 0} guessed`]))
+  }, [leaderboard, titles, votes])
+  useGameStats(rosterDetails)
 
   const screen: PlayScreen = useMemo(() => {
     if (game.status === 'finished' || session?.phase === 'finished') return 'finished'

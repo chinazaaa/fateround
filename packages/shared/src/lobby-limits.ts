@@ -9,6 +9,7 @@ import {
   DESCRIBE_IT_MAX_PLAYERS,
   DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
 } from './describe-it'
+import { LANDMINE_DEFAULT_MAX_PLAYERS, LANDMINE_MAX_PLAYERS, LANDMINE_MIN_PLAYERS } from './landmine'
 import { LUDO_DEFAULT_MAX_PLAYERS, LUDO_MAX_PLAYERS, LUDO_MIN_PLAYERS } from './ludo'
 import { MAFIA_MAX_PLAYERS, MAFIA_MIN_PLAYERS } from './mafia'
 import { MONOPOLY_DEFAULT_MAX_PLAYERS, MONOPOLY_MAX_PLAYERS, MONOPOLY_MIN_PLAYERS } from './monopoly-board'
@@ -36,6 +37,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'yahtzee',
   'whot',
   'crazy_eights',
+  'landmine',
   'ludo',
   'mahjong',
   'i_call_on',
@@ -135,6 +137,7 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
   yahtzee: { min: YAHTZEE_MIN_PLAYERS, max: YAHTZEE_MAX_PLAYERS, default: YAHTZEE_DEFAULT_MAX_PLAYERS },
   whot: { min: WHOT_MIN_PLAYERS, max: WHOT_MAX_PLAYERS, default: WHOT_DEFAULT_MAX_PLAYERS },
   crazy_eights: { min: CRAZY8_MIN_PLAYERS, max: CRAZY8_MAX_PLAYERS, default: CRAZY8_DEFAULT_MAX_PLAYERS },
+  landmine: { min: LANDMINE_MIN_PLAYERS, max: LANDMINE_MAX_PLAYERS, default: LANDMINE_DEFAULT_MAX_PLAYERS },
   ludo: { min: LUDO_MIN_PLAYERS, max: LUDO_MAX_PLAYERS, default: LUDO_DEFAULT_MAX_PLAYERS },
   mahjong: { min: MAHJONG_MIN_PLAYERS, max: MAHJONG_MAX_PLAYERS, default: MAHJONG_DEFAULT_MAX_PLAYERS },
   i_call_on: { min: NPAT_MIN_PLAYERS, max: NPAT_MAX_PLAYERS, default: NPAT_DEFAULT_MAX_PLAYERS },

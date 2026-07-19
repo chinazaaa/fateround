@@ -12,7 +12,8 @@ import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaiting
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
-import { currentPlayerId, LUDO_MIN_PLAYERS, parseLudoDice, parseLudoVariant } from '@/lib/ludo'
+import { currentPlayerId, finishedPieceCount, LUDO_MIN_PLAYERS, parseLudoDice, parseLudoVariant } from '@/lib/ludo'
+import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, LUDO_PLAYER_STATE_SELECT, LUDO_SESSION_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
@@ -285,6 +286,13 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   })
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
+
+  // Roster drawer scoreboard: pieces safely home (sorts leader first).
+  const rosterScores = useMemo(
+    () => Object.fromEntries(states.map((s) => [s.player_id, finishedPieceCount(s.pieces)])),
+    [states]
+  )
+  useGameScores(rosterScores, { suffix: ' 🏠' })
 
   // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
   // gameplay is the body, roster + Remove in the drawer): late-join rules + How-to-play

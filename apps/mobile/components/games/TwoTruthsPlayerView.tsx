@@ -21,7 +21,7 @@ import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScree
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
-import { useGameScores } from '@/components/session/RosterDrawerContext'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { CountdownTimerBadge } from '@/components/party/CountdownTimerBadge'
 import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { TwoTruthsSubmitterBadge } from '@/components/games/TwoTruthsSubmitterBadge'
@@ -152,7 +152,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     : undefined
   const revealSeconds = currentRound?.status === 'finished' ? revealCountdownSeconds(currentRound.ended_at) : null
 
-  // Running standings shown throughout play (mirrors web's live PaginatedLeaderboard).
+  // Running standings feed the roster drawer scoreboard (points + correct-guesses detail).
   const liveScores = useMemo(
     () => tallyTtlScores(guesses, bootstrap.players, rounds),
     [guesses, bootstrap.players, rounds]
@@ -160,6 +160,12 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   useGameScores(
     useMemo(() => Object.fromEntries(liveScores.map((row) => [row.id, row.score])), [liveScores]),
     { suffix: ' pts' }
+  )
+  useGameStats(
+    useMemo(
+      () => Object.fromEntries(liveScores.map((row) => [row.id, `✅ ${row.correctGuesses} correct`])),
+      [liveScores]
+    )
   )
 
   // Next player whose statements are coming up (for the between-round preview).

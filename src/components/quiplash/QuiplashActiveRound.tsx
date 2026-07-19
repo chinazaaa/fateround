@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useGameScores } from '@/components/roster/RosterDrawerContext'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { QuiplashFinishedResults } from '@/components/quiplash/QuiplashFinishedResults'
 import {
   answerAuthorName,
@@ -134,6 +134,17 @@ export function QuiplashActiveRound({
   // Live scores feed the shared roster drawer (opened from the header).
   const rosterScores = useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard])
   useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(() => {
+    const authorOf: Record<string, string> = {}
+    for (const a of answers) authorOf[a.id] = a.player_id
+    const counts: Record<string, number> = {}
+    for (const v of votes) {
+      const author = authorOf[v.chosen_answer_id]
+      if (author) counts[author] = (counts[author] ?? 0) + 1
+    }
+    return Object.fromEntries(leaderboard.map((row) => [row.id, `🗳 ${counts[row.id] ?? 0} votes`]))
+  }, [leaderboard, answers, votes])
+  useGameStats(rosterDetails)
 
   const canSubmitAnswer = !cannotParticipate
 

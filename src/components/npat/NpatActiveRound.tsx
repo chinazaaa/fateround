@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
-import { useGameScores } from '@/components/roster/RosterDrawerContext'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { NpatCallerReviewPanel } from '@/components/npat/NpatCallerReviewPanel'
 import { NpatFinalResultsShareBlock } from '@/components/npat/NpatFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -145,6 +145,18 @@ export function NpatActiveRound({
   // Live scores feed the shared roster drawer (opened from the header).
   const rosterScores = useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard])
   useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(() => {
+    // Count category answers that scored (name/animal/place/thing/food) across rounds.
+    const counts: Record<string, number> = {}
+    for (const a of answers) {
+      const scored = [a.score_name, a.score_animal, a.score_place, a.score_thing, a.score_food].filter(
+        (s) => (s ?? 0) > 0
+      ).length
+      counts[a.player_id] = (counts[a.player_id] ?? 0) + scored
+    }
+    return Object.fromEntries(leaderboard.map((row) => [row.id, `✅ ${counts[row.id] ?? 0} answers`]))
+  }, [leaderboard, answers])
+  useGameStats(rosterDetails)
   const callerName = playerDisplayName(callerId, players)
 
   const writingTimer = clampNpatTimer(game.timer_seconds)
@@ -794,12 +806,8 @@ export function NpatActiveRound({
       </div>
 
       <aside className="min-w-0 space-y-4 order-2">
-        <PaginatedLeaderboard
-          title="Leaderboard"
-          rows={leaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
-          highlightId={myPlayerId}
-          scoreLabel={(score) => `${score} pts`}
-        />
+        {/* Plain leaderboard removed — the roster side-drawer now shows the live leaderboard.
+            The per-answer transparency scoreboard below stays (it's not a duplicate). */}
         {showLiveScoreboard && <div className="hidden lg:block">{scoreboard}</div>}
       </aside>
     </div>

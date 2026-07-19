@@ -1,10 +1,11 @@
 'use client'
 
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
+import { ContentLabelChip } from '@/components/game-lobby/ContentLabelChip'
 import type { Game } from '@/types'
 
 type Props = {
-  game: Pick<Game, 'title' | 'status' | 'game_type'>
+  game: Pick<Game, 'title' | 'status' | 'game_type' | 'content_label'>
   subtitle?: string
   className?: string
 }
@@ -26,6 +27,7 @@ export function HostGameHeader({ game, subtitle, className = '' }: Props) {
           <span aria-hidden>{cfg.headerEmoji}</span>
           {cfg.label}
         </span>
+        <ContentLabelChip label={game.content_label} />
         {subtitle ? (
           <span className="text-[11px] font-bold uppercase tracking-wide text-muted">{subtitle}</span>
         ) : finished ? (

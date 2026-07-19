@@ -25,6 +25,7 @@ import {
 } from '@/lib/supabase-selects'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { useHostSeat } from '@/hooks/useHostSeat'
 import type { Game, Player, ScrabbleSession, ScrabblePlayerState, ScrabblePlacedTile } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -183,6 +184,21 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
+
+  // Roster drawer scoreboard: score headline + tiles-on-rack detail.
+  const rosterScores = useMemo(
+    () => Object.fromEntries(playerStates.map((s) => [s.player_id, s.score])),
+    [playerStates]
+  )
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        playerStates.map((s) => [s.player_id, `🔤 ${s.rack.length} tile${s.rack.length === 1 ? '' : 's'}`])
+      ),
+    [playerStates]
+  )
+  useGameStats(rosterDetails)
 
   const playWord = async (tiles: ScrabblePlacedTile[]) => {
     if (!hostPlayerId) return

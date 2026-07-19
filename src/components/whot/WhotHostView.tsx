@@ -45,7 +45,12 @@ import { HostRoomShell } from '@/components/host/HostRoomShell'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { playerIsViewer } from '@/lib/viewers'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
-import { useGamePlacements, useRosterBase, useRosterManage } from '@/components/roster/RosterDrawerContext'
+import {
+  useGamePlacements,
+  useGameStats,
+  useRosterBase,
+  useRosterManage,
+} from '@/components/roster/RosterDrawerContext'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { WhotFinalResultsShareBlock } from '@/components/whot/WhotFinalResultsShareBlock'
@@ -327,6 +332,15 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     return Object.keys(map).length ? map : null
   }, [session?.finish_order, session?.winner_player_id])
   useGamePlacements(placements)
+
+  // Live card counts in the roster drawer scoreboard (only while playing).
+  const rosterDetails = useMemo(() => {
+    if (game?.status !== 'active') return null
+    const out: Record<string, string> = {}
+    for (const [id, n] of Object.entries(handCounts)) out[id] = `🃏 ${n} card${n === 1 ? '' : 's'}`
+    return Object.keys(out).length ? out : null
+  }, [handCounts, game?.status])
+  useGameStats(rosterDetails)
 
   // Host game settings for the active room live behind the main chrome's ⚙ gear
   // (top header, beside Share) — not a separate in-room bar. Register the body

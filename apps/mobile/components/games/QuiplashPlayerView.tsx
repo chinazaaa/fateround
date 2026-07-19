@@ -36,7 +36,7 @@ import { PlayerSessionControls } from '@/components/session/PlayerSessionControl
 import { RoundBreakCard } from '@/components/party/RoundBreakCard'
 import { DeadlineTimerBadge } from '@/components/ui/DeadlineTimerBadge'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
-import { useGameScores } from '@/components/session/RosterDrawerContext'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useAdvancePolling } from '@/hooks/useAdvancePolling'
 import { postQuiplashAnswer, postQuiplashVote } from '@/lib/game-api'
@@ -177,6 +177,18 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
   useGameScores(
     useMemo(() => Object.fromEntries(liveLeaderboard.map((row) => [row.id, row.score])), [liveLeaderboard]),
     { suffix: ' pts' }
+  )
+  useGameStats(
+    useMemo(() => {
+      const authorOf: Record<string, string> = {}
+      for (const a of answers) authorOf[a.id] = a.player_id
+      const counts: Record<string, number> = {}
+      for (const v of votes) {
+        const author = authorOf[v.chosen_answer_id]
+        if (author) counts[author] = (counts[author] ?? 0) + 1
+      }
+      return Object.fromEntries(liveLeaderboard.map((row) => [row.id, `🗳 ${counts[row.id] ?? 0} votes`]))
+    }, [liveLeaderboard, answers, votes])
   )
 
   const revealAnswers = useMemo(() => {

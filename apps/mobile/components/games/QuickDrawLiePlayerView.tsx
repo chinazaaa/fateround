@@ -35,7 +35,7 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { DrawingCanvas, DrawingPreview } from '@/components/quick-draw/DrawingCanvas'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
-import { useGameScores } from '@/components/session/RosterDrawerContext'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -182,6 +182,15 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
   useGameScores(
     useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard]),
     { suffix: ' pts' }
+  )
+  useGameStats(
+    useMemo(() => {
+      const realTitleIds = new Set(state.titles.filter((t) => t.is_real).map((t) => t.id))
+      const counts: Record<string, number> = {}
+      for (const v of state.votes)
+        if (realTitleIds.has(v.chosen_title_id)) counts[v.player_id] = (counts[v.player_id] ?? 0) + 1
+      return Object.fromEntries(leaderboard.map((row) => [row.id, `✏️ ${counts[row.id] ?? 0} guessed`]))
+    }, [leaderboard, state.titles, state.votes])
   )
 
   const countdown = session?.turn_deadline_at ? phaseDeadlineCountdown(session.turn_deadline_at) : 0

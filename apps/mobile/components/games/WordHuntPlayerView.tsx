@@ -12,6 +12,7 @@ import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -46,7 +47,6 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   const [selectedPath, setSelectedPath] = useState<number[]>([])
   const [message, setMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [standingsOpen, setStandingsOpen] = useState(false)
   const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
 
   const loadGameState = useCallback(
@@ -142,6 +142,18 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     () => tallyWordHuntScores(submissions, bootstrap.players),
     [submissions, bootstrap.players]
   )
+
+  // Feed the roster drawer scoreboard: points headline + words-found detail.
+  const rosterScores = useMemo(() => Object.fromEntries(leaderboard.map((r) => [r.player_id, r.points])), [leaderboard])
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        leaderboard.map((r) => [r.player_id, `✅ ${r.word_count} word${r.word_count === 1 ? '' : 's'}`])
+      ),
+    [leaderboard]
+  )
+  useGameStats(rosterDetails)
 
   // Viewers watch one player's hunt at a time — the shared grid is static, so the
   // interesting part is a chosen player's words and score filling in live.
@@ -335,33 +347,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
 
         {message ? <Text style={styles.message}>{message}</Text> : null}
 
-        <Pressable style={styles.standingsToggle} onPress={() => setStandingsOpen((v) => !v)}>
-          <View>
-            <Text style={styles.standingsTitle}>Live standings</Text>
-            {!standingsOpen ? <Text style={styles.standingsHint}>See who&apos;s ahead</Text> : null}
-          </View>
-          <Text style={styles.standingsChevron}>{standingsOpen ? '▲' : '▾'}</Text>
-        </Pressable>
-        {standingsOpen ? (
-          <View style={styles.standingsList}>
-            {leaderboard.slice(0, 8).map((row, i) => {
-              const isMe = row.player_id === bootstrap.myPlayerId
-              return (
-                <View key={row.player_id} style={styles.standingsRow}>
-                  <View style={styles.standingsLeft}>
-                    <Text style={styles.standingsRank}>{i + 1}</Text>
-                    <Text style={[styles.standingsName, isMe && styles.standingsNameMe]} numberOfLines={1}>
-                      {row.name}
-                    </Text>
-                  </View>
-                  <Text style={[styles.standingsMeta, isMe && styles.standingsNameMe]}>
-                    {row.points} pts · {row.word_count}w
-                  </Text>
-                </View>
-              )
-            })}
-          </View>
-        ) : null}
+        {/* Live standings removed — the roster side-drawer now shows the live leaderboard. */}
       </ScrollView>
     </GameShell>
   )

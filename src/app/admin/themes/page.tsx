@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { puzzleThemeEntriesToCsv } from '@/lib/puzzle-themes'
 
 type GameTypeId = 'crossword' | 'word_search' | 'word_scramble'
 
@@ -67,28 +68,29 @@ export default function AdminThemesPage() {
     void load()
   }, [load])
 
-  const [importing, setImporting] = useState(false)
-  const [importMsg, setImportMsg] = useState<string | null>(null)
-  const importBuiltins = async () => {
-    setImporting(true)
-    setImportMsg(null)
-    try {
-      const res = await fetch('/api/admin/puzzle-themes/import-builtins', { method: 'POST' })
-      const json = await res.json()
-      if (!res.ok) {
-        setImportMsg(json.error ?? 'Import failed')
-        return
-      }
-      setImportMsg(
-        json.inserted > 0 ? `Imported ${json.inserted} built-in theme(s).` : 'Built-in themes are already imported.'
-      )
-      load()
-    } catch {
-      setImportMsg('Network error')
-    } finally {
-      setImporting(false)
-    }
-  }
+  // Import built-in themes — already imported, hidden.
+  // const [importing, setImporting] = useState(false)
+  // const [importMsg, setImportMsg] = useState<string | null>(null)
+  // const importBuiltins = async () => {
+  //   setImporting(true)
+  //   setImportMsg(null)
+  //   try {
+  //     const res = await fetch('/api/admin/puzzle-themes/import-builtins', { method: 'POST' })
+  //     const json = await res.json()
+  //     if (!res.ok) {
+  //       setImportMsg(json.error ?? 'Import failed')
+  //       return
+  //     }
+  //     setImportMsg(
+  //       json.inserted > 0 ? `Imported ${json.inserted} built-in theme(s).` : 'Built-in themes are already imported.'
+  //     )
+  //     load()
+  //   } catch {
+  //     setImportMsg('Network error')
+  //   } finally {
+  //     setImporting(false)
+  //   }
+  // }
 
   return (
     <div className="space-y-6">
@@ -100,6 +102,7 @@ export default function AdminThemesPage() {
             &ldquo;Geography Hard&rdquo; its own theme; leave it unlocked to let the host choose.
           </p>
         </div>
+        {/* Import built-in themes — already imported, hidden.
         <div className="text-right">
           <button
             type="button"
@@ -111,6 +114,7 @@ export default function AdminThemesPage() {
           </button>
           {importMsg && <p className="mt-1 text-xs text-[var(--muted)]">{importMsg}</p>}
         </div>
+        */}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -280,8 +284,35 @@ function ThemeRow({ theme, onChanged }: { theme: Theme; onChanged: () => void })
   const [name, setName] = useState(theme.name)
   const [difficulty, setDifficulty] = useState(theme.difficulty ?? '')
   const [csv, setCsv] = useState('')
+  const [loadingWords, setLoadingWords] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Open the editor and load the theme's current words into the CSV box so the admin can
+  // add/remove individual lines instead of blindly replacing the whole list.
+  const openEditor = async () => {
+    setEditing(true)
+    setError(null)
+    setLoadingWords(true)
+    try {
+      const res = await fetch(`/api/admin/puzzle-themes/${theme.id}`)
+      const json = await res.json()
+      const entries = (json.theme?.entries ?? []) as Record<string, string>[]
+      setCsv(puzzleThemeEntriesToCsv(theme.game_type, entries))
+    } catch {
+      setError('Could not load the current words — you can still paste a new list to replace them.')
+    } finally {
+      setLoadingWords(false)
+    }
+  }
+
+  const closeEditor = () => {
+    setEditing(false)
+    setCsv('')
+    setName(theme.name)
+    setDifficulty(theme.difficulty ?? '')
+    setError(null)
+  }
 
   const save = async () => {
     setBusy(true)
@@ -340,7 +371,11 @@ function ThemeRow({ theme, onChanged }: { theme: Theme; onChanged: () => void })
           )}
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={() => setEditing((v) => !v)} className="btn-secondary px-3 py-1.5 text-xs">
+          <button
+            type="button"
+            onClick={() => (editing ? closeEditor() : openEditor())}
+            className="btn-secondary px-3 py-1.5 text-xs"
+          >
             {editing ? 'Cancel' : 'Edit'}
           </button>
           <button type="button" onClick={del} disabled={busy} className="btn-ghost px-3 py-1.5 text-xs text-red-500">
@@ -377,13 +412,17 @@ function ThemeRow({ theme, onChanged }: { theme: Theme; onChanged: () => void })
             </label>
           </div>
           <label className="block text-sm">
-            <span className="mb-1 block font-semibold">Replace words (optional — leave blank to keep current)</span>
+            <span className="mb-1 flex items-center justify-between gap-2">
+              <span className="font-semibold">Words ({GAME_TYPES.find((g) => g.id === theme.game_type)?.columns})</span>
+              <span className="text-xs font-normal text-[var(--muted)]">Edit a line to add or remove words</span>
+            </span>
             <textarea
-              value={csv}
+              value={loadingWords ? 'Loading current words…' : csv}
               onChange={(e) => setCsv(e.target.value)}
-              rows={5}
-              placeholder="Paste a new CSV to replace the word list"
-              className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 font-mono text-xs"
+              disabled={loadingWords}
+              rows={8}
+              placeholder="answer,clue"
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 font-mono text-xs disabled:opacity-60"
             />
           </label>
           {error && <p className="text-sm text-red-500">{error}</p>}

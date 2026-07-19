@@ -17,6 +17,7 @@ const libraryPatchSchema = z.object({
   description: z.unknown().optional(),
   tags: z.unknown().optional(),
   status: z.string().optional(),
+  questions: z.unknown().optional(),
 })
 
 const VALID_GAME_TYPES = [
@@ -41,7 +42,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params
   const { data: body, error: bodyError } = await parseJsonBody(req, libraryPatchSchema)
   if (bodyError) return bodyError
-  const { action, title, game_type, author_name, description, tags, status } = body
+  const { action, title, game_type, author_name, description, tags, status, questions } = body
 
   const supabase = getSupabaseAdmin()
   const updates: Record<string, unknown> = {}
@@ -83,6 +84,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (!VALID_STATUSES.includes(status)) return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
       updates.status = status
       if (status === 'approved') updates.approved_at = new Date().toISOString()
+    }
+    if (questions !== undefined) {
+      if (!Array.isArray(questions) || questions.length === 0)
+        return NextResponse.json({ error: 'questions must be a non-empty array' }, { status: 400 })
+      if (questions.length > 500) return NextResponse.json({ error: 'Too many questions (max 500)' }, { status: 400 })
+      updates.questions = questions
+      updates.question_count = questions.length
     }
   }
 

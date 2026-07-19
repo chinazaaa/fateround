@@ -62,6 +62,30 @@ export function parsePuzzleThemeCsv(gameType: PuzzleThemeGameType, csv: string):
   }
 }
 
+/** Quote a CSV field only when it contains a comma, quote, or newline (escaping `"` as `""`). */
+function csvField(value: string): string {
+  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
+}
+
+/**
+ * Serialize stored theme entries back into editable CSV text (header + rows) matching the shape
+ * `parsePuzzleThemeCsv` expects, so the admin edit form can show the current words for
+ * line-by-line editing instead of only offering a blind "replace".
+ */
+export function puzzleThemeEntriesToCsv(gameType: PuzzleThemeGameType, entries: Record<string, string>[]): string {
+  if (gameType === 'crossword') {
+    const rows = entries.map((e) => `${csvField(e.answer ?? '')},${csvField(e.clue ?? '')}`)
+    return ['answer,clue', ...rows].join('\n')
+  }
+  if (gameType === 'word_scramble') {
+    const rows = entries.map((e) => `${csvField(e.word ?? '')},${csvField(e.hint ?? '')}`)
+    return ['word,hint', ...rows].join('\n')
+  }
+  // word_search — single column
+  const rows = entries.map((e) => csvField(e.word ?? ''))
+  return ['word', ...rows].join('\n')
+}
+
 /** Public-safe metadata for the theme dropdown — NEVER includes `entries` (they hold answers). */
 export type PuzzleThemeMeta = {
   id: string

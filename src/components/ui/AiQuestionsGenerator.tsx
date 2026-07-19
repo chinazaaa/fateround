@@ -14,6 +14,9 @@ type Props = {
   maxCount?: number
   /** Called with the generated items, already in the game's custom-question storage shape. */
   onGenerated: (questions: unknown[]) => void
+  /** Called as the host types the AI theme — lets the create screen mirror it into the
+   *  player-facing "Category" so they don't have to fill in both. */
+  onThemeChange?: (theme: string) => void
   accent?: string
 }
 
@@ -24,6 +27,7 @@ export function AiQuestionsGenerator({
   defaultCount = 20,
   maxCount = 50,
   onGenerated,
+  onThemeChange,
   accent,
 }: Props) {
   const [count, setCount] = useState(Math.max(1, Math.min(maxCount, defaultCount)))
@@ -101,7 +105,10 @@ export function AiQuestionsGenerator({
           placeholder="e.g. 90s movies, our office, a birthday party"
           maxLength={100}
           value={theme}
-          onChange={(e) => setTheme(e.target.value)}
+          onChange={(e) => {
+            setTheme(e.target.value)
+            onThemeChange?.(e.target.value)
+          }}
         />
       </label>
 

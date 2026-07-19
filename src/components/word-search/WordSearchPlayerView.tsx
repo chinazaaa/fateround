@@ -11,7 +11,7 @@ import {
 import { WordList } from '@/components/word-search/WordList'
 import { WordSearchGameTimerBar } from '@/components/word-search/WordSearchGameTimerBar'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
-import { useGameScores } from '@/components/roster/RosterDrawerContext'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import {
@@ -401,6 +401,24 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
     [leaderboard]
   )
   useGameScores(rosterScores, { suffix: ' pts' })
+  // Detail sub-line for the drawer scoreboard: words found + time spent.
+  const rosterDetails = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const row of leaderboard) {
+      const pct = metadata ? wordSearchCompletionPercent(metadata, found, row.player_id) : 0
+      const timeSecs = getPlayerTimeSpent(
+        game,
+        foundAsTimeRows(found),
+        row.player_id,
+        pct,
+        nowMs,
+        players.find((p) => p.id === row.player_id)?.joined_at
+      )
+      map[row.player_id] = `✅ ${row.wordsFound} words · ⏱ ${formatMinutesSeconds(timeSecs)}`
+    }
+    return map
+  }, [leaderboard, metadata, found, game, nowMs, players])
+  useGameStats(rosterDetails)
   const me = players.find((p) => p.id === myPlayerId)
   const isSpectator = me?.spectator === true
   const isViewer = !!(game && me && playerIsViewer(me, game))
@@ -838,43 +856,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
           </>
         )}
 
-        {/* Live standings */}
-        <div className="space-y-2">
-          {leaderboard.map((row, i) => {
-            const pct = metadata ? wordSearchCompletionPercent(metadata, found, row.player_id) : 0
-            const color = playerColors[row.player_id] ?? '#94a3b8'
-            const timeSecs = getPlayerTimeSpent(
-              game,
-              foundAsTimeRows(found),
-              row.player_id,
-              pct,
-              nowMs,
-              players.find((p) => p.id === row.player_id)?.joined_at
-            )
-            return (
-              <div
-                key={row.player_id}
-                className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 ${
-                  row.player_id === myPlayerId
-                    ? 'border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-900'
-                    : 'border-transparent bg-slate-100/60 dark:bg-slate-900/40'
-                }`}
-              >
-                <div className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: color }} />
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate">{row.name}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {ordinal(i + 1)} of {leaderboard.length} · {row.wordsFound} words · {pct}%
-                    {game?.session_started_at ? ` · ⏱️ ${formatMinutesSeconds(timeSecs)}` : ''}
-                  </p>
-                </div>
-                <span className="text-sm font-bold text-slate-600 dark:text-slate-300 tabular-nums">
-                  {row.points} pts
-                </span>
-              </div>
-            )
-          })}
-        </div>
+        {/* Live standings removed — the roster side-drawer now shows the live leaderboard. */}
       </main>
     </div>
   )

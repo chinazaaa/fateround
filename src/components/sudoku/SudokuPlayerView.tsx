@@ -11,7 +11,7 @@ import { SudokuGameTimerBar } from '@/components/sudoku/SudokuGameTimerBar'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResults } from '@/components/ShareResults'
-import { useGameScores } from '@/components/roster/RosterDrawerContext'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import {
   parseSudokuMetadata,
@@ -23,6 +23,7 @@ import {
   boardCompletionPercent,
   sudokuPlayerColor,
   buildPlayerSolvedGrid,
+  countEmptyCells,
   playerHasSolvedCell,
   SUDOKU_MY_CELL_COLOR,
   SUDOKU_WRONG_PENALTY,
@@ -399,6 +400,28 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     [leaderboard]
   )
   useGameScores(rosterScores, { suffix: ' pts' })
+
+  // Live per-player detail line for the drawer scoreboard: cells left + time spent.
+  const rosterDetails = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const row of leaderboard) {
+      const claimed = submissions.filter(
+        (s) => s.player_id === row.player_id && s.is_correct && s.cell_row != null && s.cell_col != null
+      ).length
+      const cellsLeft = puzzle ? countEmptyCells(puzzle) - claimed : 0
+      const timeSecs = getPlayerTimeSpent(
+        game,
+        submissions,
+        row.player_id,
+        puzzle ? playerCompletionPercent(puzzle, submissions, row.player_id) : 0,
+        nowMs,
+        players.find((p) => p.id === row.player_id)?.joined_at
+      )
+      map[row.player_id] = `⬜ ${cellsLeft} left · ⏱ ${formatMinutesSeconds(timeSecs)}`
+    }
+    return map
+  }, [leaderboard, submissions, puzzle, game, nowMs, players])
+  useGameStats(rosterDetails)
 
   const router = useRouter()
   const me = players.find((p) => p.id === myPlayerId)

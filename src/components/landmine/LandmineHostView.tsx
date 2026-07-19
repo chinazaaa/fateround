@@ -309,7 +309,10 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
   }
 
   const hostPlays = hostMode === 'player' && !!hostPlayerId
-  const canStart = players.length >= LANDMINE_MIN_PLAYERS
+  // Spectators (incl. a host-only host, who is seated as a spectator) don't count
+  // toward the start minimum — otherwise the button enables with too few real players.
+  const activePlayerCount = players.filter((p) => !p.spectator).length
+  const canStart = activePlayerCount >= LANDMINE_MIN_PLAYERS
   const mode = game ? gameLandmineMode(game) : modeSetting
   const leaderboard = useMemo(() => tallyLandmineScores(answers, players), [answers, players])
   const winner = leaderboard.find((r) => !r.eliminated) ?? leaderboard[0]
@@ -634,7 +637,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
             startDisabledHint={
               canStart
                 ? null
-                : `Need at least ${LANDMINE_MIN_PLAYERS} players to start (${players.length}/${LANDMINE_MIN_PLAYERS})`
+                : `Need at least ${LANDMINE_MIN_PLAYERS} players to start (${activePlayerCount}/${LANDMINE_MIN_PLAYERS})`
             }
           />
         </>

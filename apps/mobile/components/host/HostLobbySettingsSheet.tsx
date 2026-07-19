@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { Game, GameType } from '@fateround/shared'
+import { FormField } from '@/components/ui/FormField'
+import { supportsCustomContent } from '@/lib/create-settings'
 import {
   POLL_ROUND_TIMER_OPTIONS,
   TRIVIA_MAX_ROUNDS,
@@ -278,6 +280,8 @@ export function HostLobbySettingsSheet({
     .sort((a, b) => a - b)
 
   const [isPublic, setIsPublic] = useState(!!game.is_public)
+  const showContentLabel = supportsCustomContent(gameType) || isWst
+  const [contentLabel, setContentLabel] = useState(game.content_label ?? '')
   const [themeId, setThemeId] = useState<ThemeId>(() => {
     const current = game.theme as ThemeId | undefined
     return current && themeOptions.some((o) => o.id === current) ? current : (themeOptions[0]?.id ?? 'default')
@@ -431,6 +435,8 @@ export function HostLobbySettingsSheet({
     // Visibility / rounds / timer / late-join go through PATCH (works for all games).
     const patch: LobbySettingsPatch = {}
     if (isPublic !== !!game.is_public) patch.is_public = isPublic
+    if (showContentLabel && contentLabel.trim() !== (game.content_label ?? '').trim())
+      patch.content_label = contentLabel.trim()
     if (showTheme && themeId !== game.theme) patch.theme = themeId
     // Codewords team-assignment mode → the two game flags (lobby-only).
     if (isCodewords) {
@@ -734,6 +740,21 @@ export function HostLobbySettingsSheet({
                 onChange={(v) => setIsPublic(v === 'public')}
               />
             </View>
+
+            {showContentLabel ? (
+              <View style={styles.field}>
+                <FormField
+                  label="Category"
+                  hint="What the questions are about — shown to players next to the room name."
+                  value={contentLabel}
+                  onChangeText={setContentLabel}
+                  placeholder="e.g. Maths, Bible, 90s Music"
+                  maxLength={40}
+                  autoCapitalize="sentences"
+                  autoCorrect={false}
+                />
+              </View>
+            ) : null}
 
             {showTheme ? <ThemePicker gameType={gameType} value={themeId} onChange={setThemeId} /> : null}
 

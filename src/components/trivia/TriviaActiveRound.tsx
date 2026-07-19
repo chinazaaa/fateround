@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
-import { useGameScores } from '@/components/roster/RosterDrawerContext'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -91,6 +91,11 @@ export function TriviaActiveRound({
   // base roster is registered by the shell; this adds "N pts" per player.
   const rosterScores = useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard])
   useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(
+    () => Object.fromEntries(leaderboard.map((row) => [row.id, `✅ ${row.correctCount} correct`])),
+    [leaderboard]
+  )
+  useGameStats(rosterDetails)
 
   const screen: PlayScreen = useMemo(() => {
     if (game.status === 'finished') return 'finished'

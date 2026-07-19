@@ -62,7 +62,7 @@ export function buildShareLinks(opts: {
   if (host && resume) {
     links.push({
       key: 'play',
-      label: 'Host + play',
+      label: 'Your host+play link',
       description: 'Manage the game and play as yourself on another device.',
       url: hostPlayerUrl(gameCode, host, resume),
       copyLabel: 'Copy host + play link',
@@ -80,7 +80,7 @@ export function buildShareLinks(opts: {
   } else if (resume) {
     links.push({
       key: 'self',
-      label: 'Continue playing',
+      label: 'Your player link',
       description: 'Pick up where you left off on your phone or another device.',
       url: playerResumeUrl(gameCode, resume),
       copyLabel: 'Copy continue link',

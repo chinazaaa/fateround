@@ -19,6 +19,7 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { GameInfoChips } from '@/components/GameInfoChips'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { WordSearchBoardView } from '@/components/games/word-search/WordSearchBoardView'
@@ -190,6 +191,27 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
     () => (metadata ? tallyWordSearchScores(metadata, found, bootstrap.players) : []),
     [metadata, found, bootstrap.players]
   )
+
+  // Feed the roster drawer scoreboard: points headline + "words · time" detail.
+  const rosterScores = useMemo(() => Object.fromEntries(standings.map((r) => [r.player_id, r.points])), [standings])
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const r of standings) {
+      const pct = metadata ? wordSearchCompletionPercent(metadata, found, r.player_id) : 0
+      const timeSecs = getPlayerTimeSpent(
+        bootstrap.game,
+        found,
+        r.player_id,
+        pct,
+        nowMs,
+        bootstrap.players.find((p) => p.id === r.player_id)?.joined_at
+      )
+      map[r.player_id] = `✅ ${r.wordsFound} words · ⏱ ${formatMinutesSeconds(timeSecs)}`
+    }
+    return map
+  }, [standings, metadata, found, bootstrap.game, bootstrap.players, nowMs])
+  useGameStats(rosterDetails)
 
   const myRank = standings.findIndex((r) => r.player_id === bootstrap.myPlayerId) + 1
   const myCompletion =
@@ -578,39 +600,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
               <Text style={styles.hintHelp}>Press a word&apos;s first letter and drag to its last letter.</Text>
             )}
 
-            {/* Live standings */}
-            {standings.length > 0 ? (
-              <View style={styles.standings}>
-                {standings.map((rowData, i) => {
-                  const pct = metadata ? wordSearchCompletionPercent(metadata, found, rowData.player_id) : 0
-                  const color = playerColors[rowData.player_id] ?? wordSearchPlayerColor(0)
-                  const timeSecs = getPlayerTimeSpent(
-                    bootstrap.game,
-                    found,
-                    rowData.player_id,
-                    pct,
-                    nowMs,
-                    activePlayers.find((p) => p.id === rowData.player_id)?.joined_at
-                  )
-                  const isMe = rowData.player_id === bootstrap.myPlayerId
-                  return (
-                    <View key={rowData.player_id} style={[styles.standRow, isMe && styles.standRowMe]}>
-                      <View style={[styles.swatchSm, { backgroundColor: color }]} />
-                      <View style={styles.standInfo}>
-                        <Text style={styles.standName} numberOfLines={1}>
-                          {rowData.name}
-                        </Text>
-                        <Text style={styles.standMeta} numberOfLines={1}>
-                          {ordinal(i + 1)} of {standings.length} · {rowData.wordsFound} words · {pct}%
-                          {bootstrap.game?.session_started_at ? ` · ⏱ ${formatMinutesSeconds(timeSecs)}` : ''}
-                        </Text>
-                      </View>
-                      <Text style={styles.standPoints}>{rowData.points} pts</Text>
-                    </View>
-                  )
-                })}
-              </View>
-            ) : null}
+            {/* Live standings removed — the roster side-drawer now shows the live leaderboard. */}
           </>
         )}
 

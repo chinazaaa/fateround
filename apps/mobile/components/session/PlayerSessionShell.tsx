@@ -25,7 +25,7 @@ import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
-  game?: Pick<Game, 'title' | 'game_type' | 'status'> | null
+  game?: Pick<Game, 'title' | 'game_type' | 'status' | 'content_label'> | null
   children: ReactNode
 }
 
@@ -172,6 +172,13 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
                         <Text style={styles.spectatorPillText}>👁 Watching</Text>
                       </View>
                     ) : null}
+                    {game?.content_label?.trim() ? (
+                      <View style={styles.labelPill}>
+                        <Text style={styles.labelPillText} numberOfLines={1}>
+                          🏷️ {game.content_label.trim()}
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
                   {game?.title ? (
                     <Text style={styles.title} numberOfLines={1}>
@@ -300,6 +307,21 @@ const makeStyles = (theme: Theme) =>
       fontWeight: '700',
       letterSpacing: 0.8,
       textTransform: 'uppercase',
+    },
+    // Content-label pill ("Maths", "Bible trivia") — tells players what the pack is about.
+    labelPill: {
+      flexShrink: 1,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+    },
+    labelPillText: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontWeight: '700',
     },
     // Spectator status pill — an amber accent so "watching" reads distinctly
     // from the game-type and mode pills without pulling primary-color focus.

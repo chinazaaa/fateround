@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import {
   MonopolyClassicBoard,
   MonopolyCurrentSpace,
@@ -76,6 +77,26 @@ export function MonopolyActiveLayout({
     .sort(([a], [b]) => Number(a) - Number(b))
     .map(([index, playerId]) => `${index}:${playerId}`)
     .join('|')
+
+  // Feed the roster drawer scoreboard: cash headline (sorts richest-first) +
+  // "N properties" detail. Property counts derive from the stable ownershipKey so
+  // the stat map keeps a steady identity between renders (no re-register churn).
+  const cashMap = useMemo(() => Object.fromEntries(states.map((s) => [s.player_id, s.cash])), [states])
+  const propertyDetail = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const entry of ownershipKey ? ownershipKey.split('|') : []) {
+      const pid = entry.split(':')[1]
+      if (pid) counts[pid] = (counts[pid] ?? 0) + 1
+    }
+    return Object.fromEntries(
+      states.map((s) => {
+        const n = counts[s.player_id] ?? 0
+        return [s.player_id, `🏠 ${n} propert${n === 1 ? 'y' : 'ies'}`]
+      })
+    )
+  }, [states, ownershipKey])
+  useGameScores(cashMap, { suffix: '' })
+  useGameStats(propertyDetail)
 
   const buildActions = board && myPlayerId ? getMonopolyBuildActionCount(board, myPlayerId) : 0
 

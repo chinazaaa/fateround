@@ -65,6 +65,8 @@ const participantItemSchema = z.union([
 
 export const createGameSchema = z.object({
   title: sanitizedString(1, 100),
+  // Player-facing content label ("Maths", "Bible trivia") for CSV/library content games.
+  content_label: z.string().max(40).optional(),
   rounds_count: z.coerce.number().int().min(1).max(100).optional(),
   timer_seconds: z.coerce.number().optional(),
   operative_timer_seconds: z.coerce.number().optional(),
@@ -182,6 +184,8 @@ export type CreateGameInput = z.infer<typeof createGameSchema>
 export const updateGameSchema = z.object({
   hostToken: hostTokenString(),
   is_public: z.boolean().optional(),
+  // Player-facing content label ("Maths", "Bible trivia"). Empty string clears it.
+  content_label: z.string().max(40).optional(),
   theme: themeEnum.optional(),
   rounds_count: z.coerce.number().int().min(1, 'rounds_count is required').optional(),
   timer_seconds: z.coerce.number().optional(),
@@ -300,6 +304,8 @@ export const boardGameLobbySettingsSchema = z.object({
   gameId: gameCodeString(),
   hostToken: hostTokenString(),
   is_public: z.boolean().optional(),
+  // Player-facing content label ("Maths", "Bible trivia"). Empty string clears it.
+  content_label: z.string().max(40).optional(),
   max_players: z.coerce.number().int().min(1).max(100).optional(),
   timer_seconds: z.coerce.number().optional(),
   game_duration_seconds: z.coerce.number().optional(),

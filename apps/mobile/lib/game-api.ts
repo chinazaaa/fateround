@@ -990,6 +990,7 @@ export function startGame(gameId: string, hostToken: string, firstTeam?: 'red' |
 
 export type LobbySettingsPatch = {
   is_public?: boolean
+  content_label?: string
   theme?: string
   rounds_count?: number
   timer_seconds?: number

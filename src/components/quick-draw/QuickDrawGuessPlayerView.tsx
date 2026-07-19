@@ -376,7 +376,13 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
       <GameJoinLobbyShell
         gameCode={gameCode}
         header={
-          <GameJoinHeader emoji={cfg.headerEmoji} title={game.title} gameType="quick_draw" subtitle="Draw & guess" />
+          <GameJoinHeader
+            emoji={cfg.headerEmoji}
+            title={game.title}
+            gameType="quick_draw"
+            contentLabel={game.content_label}
+            subtitle="Draw & guess"
+          />
         }
       >
         <GameLobbyWaitingPanel

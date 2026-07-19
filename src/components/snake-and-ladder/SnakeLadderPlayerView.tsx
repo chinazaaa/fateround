@@ -22,6 +22,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useGameScores, useGameStats, useRosterBase } from '@/components/roster/RosterDrawerContext'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
@@ -128,6 +129,23 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
+
+  // Register base rows here (the board player path skips the shared dispatcher) for
+  // the header drawer + its live square scoreboard.
+  useRosterBase(game?.status === 'active' || game?.status === 'finished' ? players : undefined, game, myPlayerId)
+  const rosterScores = useMemo(() => Object.fromEntries(states.map((s) => [s.player_id, s.position])), [states])
+  useGameScores(rosterScores, { suffix: '' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        states.map((s) => [
+          s.player_id,
+          s.position === 0 ? '📍 Start' : s.position >= 100 ? '🏁 Home!' : `📍 Square ${s.position}`,
+        ])
+      ),
+    [states]
+  )
+  useGameStats(rosterDetails)
 
   // Realtime push: reload on any change to this game's row + its tables.
   // Delta fast-path (dual-table). Screen derives from game.status, so session/state writes

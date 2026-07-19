@@ -20,6 +20,7 @@ import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
 import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
@@ -186,6 +187,21 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
     if (seen.size !== rackLength || rackOrder.some((i) => i < 0 || i >= rackLength)) return natural
     return rackOrder
   }, [rackOrder, rackLength])
+
+  // Roster drawer scoreboard: score headline + tiles-on-rack detail.
+  const rosterScores = useMemo(
+    () => Object.fromEntries(playerStates.map((s) => [s.player_id, s.score])),
+    [playerStates]
+  )
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        playerStates.map((s) => [s.player_id, `🔤 ${s.rack.length} tile${s.rack.length === 1 ? '' : 's'}`])
+      ),
+    [playerStates]
+  )
+  useGameStats(rosterDetails)
 
   const shuffleRack = () => {
     if (rackLength < 2) return
