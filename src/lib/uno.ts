@@ -1417,9 +1417,12 @@ export async function processUnoCall(
   if (session.uno_pending_player !== playerId) return { error: 'Nothing to call' }
   if (session.uno_called) return {}
 
+  const { data: playerRow } = await supabase.from('players').select('name').eq('id', playerId).maybeSingle()
+  const nm = playerRow?.name ?? 'A player'
+
   await supabase
     .from('uno_sessions')
-    .update({ uno_called: true, updated_at: new Date().toISOString() })
+    .update({ uno_called: true, status_message: `${nm} called UNO! 🎉`, updated_at: new Date().toISOString() })
     .eq('game_id', gameId)
     .eq('updated_at', session.updated_at)
   return {}

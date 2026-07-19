@@ -25,6 +25,11 @@ export function useUnoNotifications({
   const prevStatusRef = useRef<string | null>(null)
   const prevPhaseRef = useRef<string | null>(null)
   const prevHandCountRef = useRef<number | null>(null)
+  const prevUnoCallRef = useRef<string | null>(null)
+
+  // A player calling "UNO" (either as they play their 2nd-to-last card or via the button)
+  // flips uno_called → true for the pending player. Announce it to the whole room once.
+  const unoCallKey = session && session.uno_called && session.uno_pending_player ? session.uno_pending_player : null
 
   useEffect(() => {
     if (!enabled || !game) return
@@ -35,8 +40,17 @@ export function useUnoNotifications({
       prevStatusRef.current = game.status
       prevPhaseRef.current = session?.phase ?? null
       prevHandCountRef.current = myHandCount
+      prevUnoCallRef.current = unoCallKey
       return
     }
+
+    if (unoCallKey && unoCallKey !== prevUnoCallRef.current && game.status === 'active') {
+      const msg =
+        session?.status_message && session.status_message.includes('UNO') ? session.status_message : '🎉 UNO called!'
+      info(msg)
+      playRoundStartSound()
+    }
+    prevUnoCallRef.current = unoCallKey
 
     const prevStatus = prevStatusRef.current
     const prevTurnIndex = prevTurnIndexRef.current
@@ -84,7 +98,7 @@ export function useUnoNotifications({
     prevStatusRef.current = game.status
     prevPhaseRef.current = session?.phase ?? null
     prevHandCountRef.current = myHandCount
-  }, [enabled, game, info, myHandCount, myPlayerId, session])
+  }, [enabled, game, info, myHandCount, myPlayerId, session, unoCallKey])
 }
 
 export { playVoteSubmittedSound as playUnoActionSound }
