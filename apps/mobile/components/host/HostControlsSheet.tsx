@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game, Player } from '@fateround/shared'
-import { gameSupportsViewerSetting, lateJoinPolicyFromGame } from '@fateround/shared/viewers'
+import { gameAllowsLatePlayerJoin, gameSupportsViewerSetting, lateJoinPolicyFromGame } from '@fateround/shared/viewers'
 import { patchGameSettings, patchPlayerName, postFinishGame, postPlayAgain, removePlayerAsHost } from '@/lib/game-api'
 import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { SettingToggle } from '@/components/create/SettingToggle'
@@ -61,7 +61,8 @@ export function HostControlsSheet({
   const activePlayers = players.filter((p) => !p.spectator)
   const finished = game.status === 'finished'
   const active = game.status === 'active'
-  const showLateJoin = gameSupportsViewerSetting(game.game_type)
+  // View-only games have no view-vs-play choice — hide the late-join line entirely.
+  const showLateJoin = gameSupportsViewerSetting(game.game_type) && gameAllowsLatePlayerJoin(game.game_type)
 
   // Visibility + late-join are live-editable mid-game (server allows these two
   // via the game PATCH route). Other settings (rounds/time) stay lobby-only.

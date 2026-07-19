@@ -14,7 +14,12 @@ import {
   partyRoundOptions,
   questionRoundPickerOptions,
 } from '@fateround/shared/create-party-games'
-import { gameSupportsViewerSetting, lateJoinPolicyFromGame, type LateJoinPolicy } from '@fateround/shared/viewers'
+import {
+  gameAllowsLatePlayerJoin,
+  gameSupportsViewerSetting,
+  lateJoinPolicyFromGame,
+  type LateJoinPolicy,
+} from '@fateround/shared/viewers'
 import { isLobbyLimitGameType } from '@fateround/shared/lobby-limits'
 import { parseMahjongRuleOptions } from '@fateround/shared/mahjong-rulesets'
 import { RoundCountPicker } from '@/components/create/RoundCountPicker'
@@ -265,7 +270,8 @@ export function HostLobbySettingsSheet({
     !TIMERLESS_GAMES.has(gameType) &&
     game.timer_seconds != null &&
     game.timer_seconds > 0
-  const showLateJoin = gameSupportsViewerSetting(gameType)
+  // View-only games have no view-vs-play choice — hide the late-join line entirely.
+  const showLateJoin = gameSupportsViewerSetting(gameType) && gameAllowsLatePlayerJoin(gameType)
   const showMaxPlayers = isLobbyLimitGameType(gameType) && LOBBY_MAX_PLAYERS_GAMES.has(gameType)
   const themeOptions = themesForGameType(gameType)
   // Crossword / Word Search show their own word-theme picker in DurationGamesSection, so hide

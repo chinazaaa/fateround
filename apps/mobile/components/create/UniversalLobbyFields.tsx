@@ -10,7 +10,7 @@ import { ThemePicker } from '@/components/create/ThemePicker'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
-import { gameSupportsViewerSetting } from '@fateround/shared/viewers'
+import { gameAllowsLatePlayerJoin, gameSupportsViewerSetting } from '@fateround/shared/viewers'
 
 type Props = {
   state: CreateWizardState
@@ -58,7 +58,7 @@ export function UniversalLobbyFields({ state, limits, onChange }: Props) {
         </SurfaceCard>
       ) : null}
 
-      {gameSupportsViewerSetting(state.gameType) ? (
+      {gameSupportsViewerSetting(state.gameType) && gameAllowsLatePlayerJoin(state.gameType) ? (
         <SurfaceCard>
           <View style={styles.field}>
             <Text style={styles.label}>Late join</Text>
@@ -76,11 +76,11 @@ export function UniversalLobbyFields({ state, limits, onChange }: Props) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  stack: { gap: theme.space.md },
-  field: { gap: theme.space.sm },
-  label: {
-    color: theme.text,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-})
+    stack: { gap: theme.space.md },
+    field: { gap: theme.space.sm },
+    label: {
+      color: theme.text,
+      fontSize: 16,
+      fontWeight: '800',
+    },
+  })
