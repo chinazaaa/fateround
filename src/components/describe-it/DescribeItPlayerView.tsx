@@ -330,6 +330,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
             emoji={cfg.headerEmoji}
             title={game?.title ?? cfg.label}
             gameType="describe_it"
+            contentLabel={game?.content_label}
             subtitle={cfg.tagline}
           />
         }

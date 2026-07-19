@@ -151,6 +151,9 @@ function RosterRowView({
         ? `${row.score}${row.scoreSuffix ?? ''}`
         : row.score
   const statusText = row.eliminated ? 'Out' : row.viewer ? 'Watching' : (row.status ?? null)
+  // Combine the status badge (Out/Watching/team) with the game-specific stat line
+  // (card count, cash, words…) into one muted sub-line.
+  const subline = [statusText, row.detail].filter(Boolean).join(' · ') || null
   const placeLabel = placementLabel(row.placement)
 
   return (
@@ -181,7 +184,7 @@ function RosterRowView({
           ) : null}
           {row.isMe ? <span className="shrink-0 text-xs font-bold text-faint">· you</span> : null}
         </p>
-        {statusText ? <p className="text-[11px] font-semibold text-faint">{statusText}</p> : null}
+        {subline ? <p className="text-[11px] font-semibold text-faint">{subline}</p> : null}
       </div>
       {scoreText != null ? <span className="shrink-0 text-sm font-bold text-[var(--primary)]">{scoreText}</span> : null}
       {onRemove ? (

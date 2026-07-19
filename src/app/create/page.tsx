@@ -322,6 +322,7 @@ function CreateGameInner() {
   const [participantTab, setParticipantTab] = useState<ParticipantTab>('upload')
   const [settings, setSettings] = useState<Settings>({
     title: '',
+    content_label: '',
     rounds_count: 3,
     timer_seconds: 30,
     anonymous: true,
@@ -527,6 +528,10 @@ function CreateGameInner() {
     if (data.pack?.questions) {
       const qs = data.pack.questions
       setLibraryPackQuestions(qs)
+      // Auto-fill the player-facing content label with the pack name (e.g. "Bible trivia")
+      // unless the host has already typed their own.
+      if (data.pack.title && !settings.content_label.trim())
+        setSettings((s) => (s.content_label.trim() ? s : { ...s, content_label: data.pack.title }))
       if (isTriviaGame(settings.game_type)) setCustomTriviaQuestions(qs as TriviaQuestion[])
       else if (isWouldYouRather(settings.game_type) || isThisOrThat(settings.game_type))
         setCustomWyrQuestions(qs as WyrQuestion[])
@@ -795,6 +800,7 @@ function CreateGameInner() {
           if (!d.pack?.questions) return
           const gt = d.pack.game_type
           const qs = d.pack.questions
+          if (d.pack.title) setSettings((s) => (s.content_label.trim() ? s : { ...s, content_label: d.pack.title }))
           if (gt === 'describe_it' || gt === 'quick_draw') {
             const words = parseDescribeItWords((qs as string[]).join('\n')).join('\n')
             setQuestionSource('custom')
@@ -995,6 +1001,10 @@ function CreateGameInner() {
     !isMafia
   const isBingo = isBingoGame(settings.game_type)
   const isCodewords = isCodewordsGame(settings.game_type)
+  // Content games (CSV upload / library packs) can carry a player-facing "category" label
+  // so joiners know what the questions are about before they commit (e.g. "Maths").
+  const showsContentLabel =
+    isLobbyQuestions || isCrossword || isWordSearch || isWordScramble || isCodewords || isDescribeIt || isWst
   const isMessageBoard = isAnonymousRoom || isSecretMessage
   const isQuickLobby =
     isWst ||
@@ -1946,6 +1956,23 @@ function CreateGameInner() {
                 className="input-field"
               />
             </Field>
+
+            {showsContentLabel && (
+              <Field label="Category">
+                <input
+                  value={settings.content_label}
+                  onChange={(e) => setSettings({ ...settings, content_label: e.target.value })}
+                  placeholder={questionSource === 'custom' ? 'e.g. Maths, Bible, 90s Music' : 'Optional'}
+                  maxLength={40}
+                  className="input-field"
+                />
+                <p className="text-faint text-xs mt-2">
+                  {questionSource === 'library'
+                    ? 'Taken from the pack you picked — edit if you like. Shown to players before they join.'
+                    : 'What are these questions about? Shown to players before they join.'}
+                </p>
+              </Field>
+            )}
 
             <Field label="Game mode">
               <GameTypeCard type={settings.game_type} compact selected onClick={() => setShowGameTypes(true)} />

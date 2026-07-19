@@ -11,7 +11,7 @@ import {
 import { WordList } from '@/components/word-search/WordList'
 import { WordSearchGameTimerBar } from '@/components/word-search/WordSearchGameTimerBar'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
-import { useGameScores } from '@/components/roster/RosterDrawerContext'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import {
@@ -401,6 +401,24 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
     [leaderboard]
   )
   useGameScores(rosterScores, { suffix: ' pts' })
+  // Detail sub-line for the drawer scoreboard: words found + time spent.
+  const rosterDetails = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const row of leaderboard) {
+      const pct = metadata ? wordSearchCompletionPercent(metadata, found, row.player_id) : 0
+      const timeSecs = getPlayerTimeSpent(
+        game,
+        foundAsTimeRows(found),
+        row.player_id,
+        pct,
+        nowMs,
+        players.find((p) => p.id === row.player_id)?.joined_at
+      )
+      map[row.player_id] = `✅ ${row.wordsFound} words · ⏱ ${formatMinutesSeconds(timeSecs)}`
+    }
+    return map
+  }, [leaderboard, metadata, found, game, nowMs, players])
+  useGameStats(rosterDetails)
   const me = players.find((p) => p.id === myPlayerId)
   const isSpectator = me?.spectator === true
   const isViewer = !!(game && me && playerIsViewer(me, game))

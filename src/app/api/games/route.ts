@@ -383,6 +383,7 @@ export async function POST(req: NextRequest) {
 
   const {
     title,
+    content_label: rawContentLabel,
     rounds_count,
     timer_seconds,
     operative_timer_seconds: rawOperativeTimerSeconds,
@@ -863,9 +864,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Player-facing content label ("Maths", "Bible trivia") — free text, trimmed + capped, null if blank.
+  const contentLabel =
+    typeof rawContentLabel === 'string' && rawContentLabel.trim() ? rawContentLabel.trim().slice(0, 40) : null
+
   const { error: gameError } = await admin.from('games').insert({
     id: gameCode,
     title,
+    content_label: contentLabel,
     host_token: hostToken,
     rounds_count: roundsCount,
     timer_seconds: isCodewordsGame(game_type)

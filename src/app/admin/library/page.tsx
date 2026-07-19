@@ -19,6 +19,10 @@ interface QuestionPack {
 
 const GAME_TYPE_META: Record<string, { label: string; color: string }> = {
   trivia: { label: 'Trivia', color: 'text-violet-600 dark:text-violet-400 bg-violet-500/10 border-violet-500/25' },
+  who_said_this: {
+    label: 'Who Said This',
+    color: 'text-teal-600 dark:text-teal-400 bg-teal-500/10 border-teal-500/25',
+  },
   would_you_rather: {
     label: 'Would You Rather',
     color: 'text-rose-600 dark:text-rose-400 bg-rose-500/10 border-rose-500/25',

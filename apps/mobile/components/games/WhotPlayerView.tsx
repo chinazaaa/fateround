@@ -31,7 +31,7 @@ import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWait
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
-import { useGamePlacements } from '@/components/session/RosterDrawerContext'
+import { useGamePlacements, useGameStats } from '@/components/session/RosterDrawerContext'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -215,6 +215,15 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     return Object.keys(map).length ? map : null
   }, [session?.finish_order, session?.winner_player_id])
   useGamePlacements(placements)
+
+  // Live card counts in the roster drawer scoreboard (only while playing).
+  const rosterDetails = useMemo(() => {
+    if (bootstrap.game?.status !== 'active') return null
+    const out: Record<string, string> = {}
+    for (const [id, n] of Object.entries(handCounts)) out[id] = `🃏 ${n} card${n === 1 ? '' : 's'}`
+    return Object.keys(out).length ? out : null
+  }, [handCounts, bootstrap.game?.status])
+  useGameStats(rosterDetails)
 
   // Pin the whole-game countdown below the header so it stays visible as the
   // table scrolls. Falls back to inline rendering under a host shell (no slot).

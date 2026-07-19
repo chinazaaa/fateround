@@ -19,6 +19,7 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameInfoChips } from '@/components/GameInfoChips'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { WordScrambleGameTimerBar } from '@/components/games/word-scramble/WordScrambleGameTimerBar'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
@@ -183,6 +184,27 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
     () => (metadata ? tallyWordScrambleScores(metadata, solves, bootstrap.players, { hints }) : []),
     [metadata, solves, hints, bootstrap.players]
   )
+  // Feed the roster drawer scoreboard: points headline + "words · time" detail.
+  const rosterScores = useMemo(() => Object.fromEntries(standings.map((r) => [r.player_id, r.points])), [standings])
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const r of standings) {
+      const pct = metadata ? wordScrambleCompletionPercent(metadata, solves, r.player_id) : 0
+      const timeSecs = getPlayerTimeSpent(
+        bootstrap.game,
+        solvesAsTimeRows(solves),
+        r.player_id,
+        pct,
+        nowMs,
+        bootstrap.players.find((p) => p.id === r.player_id)?.joined_at
+      )
+      map[r.player_id] = `✅ ${r.solved} words · ⏱ ${formatMinutesSeconds(timeSecs)}`
+    }
+    return map
+  }, [standings, metadata, solves, bootstrap.game, bootstrap.players, nowMs])
+  useGameStats(rosterDetails)
+
   const myRank = standings.findIndex((r) => r.player_id === bootstrap.myPlayerId) + 1
   const myCompletion =
     metadata && bootstrap.myPlayerId ? wordScrambleCompletionPercent(metadata, solves, bootstrap.myPlayerId) : 0

@@ -66,6 +66,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   const {
     hostToken,
     is_public: rawIsPublic,
+    content_label: rawContentLabel,
     theme: rawTheme,
     rounds_count: rawRoundsCount,
     timer_seconds: rawTimerSeconds,
@@ -88,7 +89,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   // visibility, which just governs Browse listing). Deriving this from the provided keys
   // (rather than denylisting every other field) means any newly-added setting defaults to the
   // stricter assertHostGameSettings path instead of silently widening the weaker auth.
-  const LIVE_EDITABLE_SETTING_KEYS = new Set(['late_join_policy', 'allow_viewers', 'allow_late_players', 'is_public'])
+  const LIVE_EDITABLE_SETTING_KEYS = new Set([
+    'late_join_policy',
+    'allow_viewers',
+    'allow_late_players',
+    'is_public',
+    'content_label',
+  ])
   const providedSettingKeys = Object.entries(body)
     .filter(([key, value]) => key !== 'hostToken' && value !== undefined)
     .map(([key]) => key)
@@ -107,6 +114,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   // Applies to every game type, so it's handled up front with no per-type gating.
   if (rawIsPublic !== undefined) {
     updatePayload.is_public = rawIsPublic
+  }
+
+  // Content label ("Maths", "Bible trivia") — trimmed + capped; empty string clears it.
+  // Harmless display text, so editable even while the game is live.
+  if (rawContentLabel !== undefined) {
+    const trimmed = rawContentLabel.trim()
+    updatePayload.content_label = trimmed ? trimmed.slice(0, 40) : null
   }
 
   // Theme / Monopoly edition. Safe pre-start (board isn't generated until start),

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { WordScrambleGameTimerBar } from '@/components/word-scramble/WordScrambleGameTimerBar'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
-import { useGameScores } from '@/components/roster/RosterDrawerContext'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ShareResults } from '@/components/ShareResults'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
@@ -417,6 +417,24 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
     [leaderboard]
   )
   useGameScores(rosterScores, { suffix: ' pts' })
+  // Detail sub-line for the drawer scoreboard: words solved + time spent.
+  const rosterDetails = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const row of leaderboard) {
+      const pct = metadata ? wordScrambleCompletionPercent(metadata, solves, row.player_id) : 0
+      const timeSecs = getPlayerTimeSpent(
+        game,
+        solvesAsTimeRows(solves),
+        row.player_id,
+        pct,
+        nowMs,
+        players.find((p) => p.id === row.player_id)?.joined_at
+      )
+      map[row.player_id] = `✅ ${row.solved} words · ⏱ ${formatMinutesSeconds(timeSecs)}`
+    }
+    return map
+  }, [leaderboard, metadata, solves, game, nowMs, players])
+  useGameStats(rosterDetails)
   const myRank = leaderboard.findIndex((r) => r.player_id === myPlayerId) + 1
   const myCompletion = metadata && myPlayerId ? wordScrambleCompletionPercent(metadata, solves, myPlayerId) : 0
   const mySolvedCount = myPlayerId ? playerSolvedIndices(solves, myPlayerId).size : 0

@@ -27,6 +27,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useRosterBase } from '@/components/roster/RosterDrawerContext'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
@@ -140,6 +141,11 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
+
+  // The Monopoly player path doesn't go through the shared roster dispatcher, so
+  // register base rows here — this gives players the header roster drawer (with the
+  // live cash/properties scoreboard that MonopolyActiveLayout layers on).
+  useRosterBase(screen === 'active' || screen === 'finished' ? players : undefined, game, myPlayerId)
 
   // Realtime push: reload on any change to this game's row + its tables.
   // Delta fast-path (dual-table). Screen derives from game.status, so board/state writes only

@@ -22,6 +22,7 @@ import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { useGameScores } from '@/components/session/RosterDrawerContext'
 import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
 import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
@@ -150,6 +151,13 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
     }
     return cells
   }, [legalMoves, myState])
+
+  // Roster drawer scoreboard: pieces safely home (sorts leader first).
+  const rosterScores = useMemo(() => {
+    const standings = buildLudoStandings(states, bootstrap.players, session?.winner_player_id ?? null)
+    return Object.fromEntries(standings.map((s) => [s.playerId, s.finishedCount]))
+  }, [states, bootstrap.players, session?.winner_player_id])
+  useGameScores(rosterScores, { suffix: ' 🏠' })
 
   const roll = async () => {
     if (!bootstrap.myResumeToken || acting || !isMyTurn) return

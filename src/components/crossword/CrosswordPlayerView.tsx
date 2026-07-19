@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { CrosswordBoard, crosswordPlayerColor, CROSSWORD_MY_CELL_COLOR } from '@/components/crossword/CrosswordBoard'
 import { CrosswordGameTimerBar } from '@/components/crossword/CrosswordGameTimerBar'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
-import { useGameScores } from '@/components/roster/RosterDrawerContext'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import {
@@ -472,6 +472,24 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     [leaderboard]
   )
   useGameScores(rosterScores, { suffix: ' pts' })
+  // Detail sub-line for the drawer scoreboard: words done + time spent.
+  const rosterDetails = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const row of leaderboard) {
+      const pct = metadata ? playerCompletionPercent(metadata, submissions, row.player_id) : 0
+      const timeSecs = getPlayerTimeSpent(
+        game,
+        submissions,
+        row.player_id,
+        pct,
+        nowMs,
+        players.find((p) => p.id === row.player_id)?.joined_at
+      )
+      map[row.player_id] = `✅ ${row.wordsCompleted} words · ⏱ ${formatMinutesSeconds(timeSecs)}`
+    }
+    return map
+  }, [leaderboard, metadata, submissions, game, nowMs, players])
+  useGameStats(rosterDetails)
   const me = players.find((p) => p.id === myPlayerId)
   const isSpectator = me?.spectator === true
   const isViewer = !!(game && me && playerIsViewer(me, game))

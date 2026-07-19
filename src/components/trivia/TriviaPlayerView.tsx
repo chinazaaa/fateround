@@ -233,6 +233,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
           emoji={cfg.headerEmoji}
           title={game?.title}
           gameType="trivia"
+          contentLabel={game?.content_label}
           meta={
             game ? (
               <>

@@ -122,6 +122,9 @@ function RosterRowView({
         ? `${row.score}${row.scoreSuffix ?? ''}`
         : row.score
   const statusText = row.eliminated ? 'Out' : row.viewer ? 'Watching' : (row.status ?? null)
+  // Combine the status badge (Out/Watching/team) with the game-specific stat line
+  // (card count, cash, words…) into one muted sub-line.
+  const subline = [statusText, row.detail].filter(Boolean).join(' · ') || null
   const placeLabel = placementLabel(row.placement)
 
   return (
@@ -146,7 +149,7 @@ function RosterRowView({
             </View>
           ) : null}
         </View>
-        {statusText ? <Text style={styles.status}>{statusText}</Text> : null}
+        {subline ? <Text style={styles.status}>{subline}</Text> : null}
       </View>
       {scoreText != null ? (
         <Text style={styles.score} numberOfLines={1}>

@@ -12,6 +12,7 @@ import { parseWordSearchEntries } from '@/lib/word-search-puzzles'
 import { parseWordScrambleEntries } from '@/lib/word-scramble-puzzles'
 import type { TriviaQuestion } from '@/types'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
+import type { WstDeckEntry } from '@/lib/who-said-this'
 
 type GameType =
   | 'trivia'
@@ -26,11 +27,18 @@ type GameType =
   | 'crossword'
   | 'word_search'
   | 'word_scramble'
+  | 'who_said_this'
 
 interface ValidationResult {
   ok: boolean
   errors: string[]
-  questions: TriviaQuestion[] | WyrQuestion[] | string[] | { answer: string; clue: string }[] | { word: string }[]
+  questions:
+    | TriviaQuestion[]
+    | WyrQuestion[]
+    | string[]
+    | { answer: string; clue: string }[]
+    | { word: string }[]
+    | WstDeckEntry[]
   rowCount: number
 }
 
@@ -65,6 +73,44 @@ function validateTrivia(rows: Record<string, string>[]): ValidationResult {
       choices: [r.option_a, r.option_b, r.option_c, r.option_d],
       correctIndex: ['a', 'b', 'c', 'd'].indexOf(correctRaw),
       category: 'general',
+    })
+  }
+
+  if (questions.length < 5) errors.push('Must have at least 5 valid rows')
+  if (questions.length > 200) errors.push('Maximum 200 rows allowed')
+  return { ok: errors.length === 0, errors, questions, rowCount: rows.length }
+}
+
+function validateWhoSaidThis(rows: Record<string, string>[]): ValidationResult {
+  const required = ['quote', 'option_a', 'option_b', 'option_c', 'option_d', 'correct']
+  if (rows.length === 0) return { ok: false, errors: ['No rows found'], questions: [], rowCount: 0 }
+  const missing = required.filter((col) => !(col in rows[0]))
+  if (missing.length > 0)
+    return { ok: false, errors: [`Missing columns: ${missing.join(', ')}`], questions: [], rowCount: 0 }
+
+  const errors: string[] = []
+  const questions: WstDeckEntry[] = []
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]
+    const rowNum = i + 2
+    if (!r.quote) {
+      errors.push(`Row ${rowNum}: quote is empty`)
+      continue
+    }
+    if (!r.option_a || !r.option_b || !r.option_c || !r.option_d) {
+      errors.push(`Row ${rowNum}: all options (a–d) are required`)
+      continue
+    }
+    const correctRaw = r.correct.toLowerCase().trim()
+    if (!['a', 'b', 'c', 'd'].includes(correctRaw)) {
+      errors.push(`Row ${rowNum}: 'correct' must be a, b, c, or d`)
+      continue
+    }
+    questions.push({
+      quote: r.quote,
+      options: [r.option_a, r.option_b, r.option_c, r.option_d],
+      correctIndex: ['a', 'b', 'c', 'd'].indexOf(correctRaw),
     })
   }
 
@@ -202,6 +248,12 @@ const GAME_TYPES: { value: GameType; label: string; description: string; columns
     columns: 'question, option_a, option_b, option_c, option_d, correct',
   },
   {
+    value: 'who_said_this',
+    label: 'Who Said This',
+    description: 'Quotes with multiple-choice options for who said each one',
+    columns: 'quote, option_a, option_b, option_c, option_d, correct',
+  },
+  {
     value: 'would_you_rather',
     label: 'Would You Rather',
     description: 'Two-option dilemma questions',
@@ -320,6 +372,7 @@ export default function SubmitPackPage() {
       const text = ev.target?.result as string
       const rows = parseCsvRows(text)
       if (gameType === 'trivia') setValidation(validateTrivia(rows))
+      else if (gameType === 'who_said_this') setValidation(validateWhoSaidThis(rows))
       else if (gameType === 'would_you_rather' || gameType === 'this_or_that') setValidation(validateWyr(rows))
       else if (gameType === 'describe_it' || gameType === 'quick_draw') setValidation(validateDescribeIt(rows))
       else if (gameType === 'codewords') setValidation(validateCodewords(rows))

@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
+import { ContentLabelChip } from '@/components/game-lobby/ContentLabelChip'
 import type { Game } from '@/types'
 
 export interface WinnerStat {
@@ -28,7 +29,7 @@ export function FinishedWinnerHero({
 }: {
   /** Name of the first-place player. When absent, falls back to a neutral "Game over!". */
   winnerName?: string | null
-  game: Pick<Game, 'title' | 'game_type'>
+  game: Pick<Game, 'title' | 'game_type' | 'content_label'>
   /** Overrides the game-label subtitle line (defaults to the game type's label). */
   subtitle?: ReactNode
   /** Optional stat strip; omit for games that don't have generic stats to show. */
@@ -62,6 +63,11 @@ export function FinishedWinnerHero({
           ))}
       </h2>
       <p className="text-faint text-[11px] font-bold uppercase tracking-[0.16em]">{subtitle ?? cfg.label}</p>
+      {game.content_label?.trim() && (
+        <div className="flex justify-center pt-0.5">
+          <ContentLabelChip label={game.content_label} />
+        </div>
+      )}
 
       {stats && stats.length > 0 && (
         <div className="flex gap-2 sm:gap-3 pt-2">

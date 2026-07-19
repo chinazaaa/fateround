@@ -143,10 +143,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     puzzle_theme_id,
     puzzle_custom_questions,
     ping_pong_points_to_win,
+    content_label,
   } = parsed.data
   const gameCode = parsed.data.gameId.toUpperCase()
 
   if (
+    content_label === undefined &&
     is_public === undefined &&
     max_players === undefined &&
     timer_seconds === undefined &&
@@ -238,6 +240,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   // tied to a specific board type; any lobby-settings game can toggle it.
   if (is_public !== undefined) {
     gameUpdate.is_public = is_public
+  }
+
+  // Content label — trimmed + capped; empty string clears it.
+  if (content_label !== undefined) {
+    const trimmed = content_label.trim()
+    gameUpdate.content_label = trimmed ? trimmed.slice(0, 40) : null
   }
 
   if (max_players !== undefined) {
