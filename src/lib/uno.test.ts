@@ -10,6 +10,8 @@ import {
   activeColor,
   unoNextTurnIndex,
   hasPlayableCard,
+  parseUnoRules,
+  rotateActiveHands,
 } from './uno'
 import type { UnoCard, UnoPlayerHand, UnoSession } from '@/types'
 
@@ -218,5 +220,60 @@ describe('unoPlacementOrder / buildUnoStandings', () => {
     expect(standings[0].rank).toBe(1)
     expect(standings[1].handSum).toBe(3)
     expect(standings[2].handSum).toBe(50)
+  })
+})
+
+describe('parseUnoRules', () => {
+  it('defaults: challenge on, penalty 2, wd4 penalty 4, 0-7 off', () => {
+    const r = parseUnoRules(null)
+    expect(r).toEqual({ wd4Challenge: true, unoPenalty: 2, wd4ChallengePenalty: 4, zeroSeven: false })
+  })
+  it('reads host overrides', () => {
+    const r = parseUnoRules({
+      uno_wd4_challenge: false,
+      uno_uno_penalty: 4,
+      uno_wd4_challenge_penalty: 6,
+      uno_zero_seven: true,
+    })
+    expect(r).toEqual({ wd4Challenge: false, unoPenalty: 4, wd4ChallengePenalty: 6, zeroSeven: true })
+  })
+  it('clamps invalid penalties to the nearest legal value', () => {
+    const r = parseUnoRules({ uno_uno_penalty: 3, uno_wd4_challenge_penalty: 5 })
+    expect(r.unoPenalty).toBe(2)
+    expect(r.wd4ChallengePenalty).toBe(4)
+  })
+})
+
+describe('rotateActiveHands (0 rule)', () => {
+  const s = session({ turn_order: ['a', 'b', 'c'] })
+  const mk = () =>
+    new Map<string, UnoCard[]>([
+      ['a', [card({ id: 'ax', color: 'red', kind: 'number', value: 1 })]],
+      ['b', [card({ id: 'bx', color: 'blue', kind: 'number', value: 2 })]],
+      ['c', [card({ id: 'cx', color: 'green', kind: 'number', value: 3 })]],
+    ])
+
+  it('passes each hand to the next seat forward', () => {
+    const out = rotateActiveHands(s, mk(), 1)
+    const by = Object.fromEntries(out.map((o) => [o.playerId, o.cards[0]!.id]))
+    // a→b, b→c, c→a
+    expect(by).toEqual({ b: 'ax', c: 'bx', a: 'cx' })
+  })
+
+  it('passes each hand to the previous seat when reversed', () => {
+    const out = rotateActiveHands(s, mk(), -1)
+    const by = Object.fromEntries(out.map((o) => [o.playerId, o.cards[0]!.id]))
+    // a→c, b→a, c→b
+    expect(by).toEqual({ c: 'ax', a: 'bx', b: 'cx' })
+  })
+
+  it('skips players who are out of cards', () => {
+    const m = mk()
+    m.set('b', []) // b is out
+    const out = rotateActiveHands(s, m, 1)
+    expect(out.map((o) => o.playerId).sort()).toEqual(['a', 'c'])
+    const by = Object.fromEntries(out.map((o) => [o.playerId, o.cards[0]!.id]))
+    // active seq [a, c]: a→c, c→a
+    expect(by).toEqual({ c: 'ax', a: 'cx' })
   })
 })

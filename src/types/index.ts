@@ -690,7 +690,7 @@ export type UnoColor = 'red' | 'yellow' | 'green' | 'blue'
 /** What a card does. Number cards carry `value` 0–9; everything else is an action. */
 export type UnoCardKind = 'number' | 'skip' | 'reverse' | 'draw2' | 'wild' | 'wild_draw4'
 
-export type UnoPhase = 'playing' | 'choose_color' | 'challenge_window' | 'finished'
+export type UnoPhase = 'playing' | 'choose_color' | 'challenge_window' | 'swap_target' | 'finished'
 
 export interface UnoCard {
   id: string

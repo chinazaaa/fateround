@@ -436,6 +436,8 @@ function CreateGameInner() {
   const [unoMaxPlayers, setUnoMaxPlayers] = useState(UNO_DEFAULT_MAX_PLAYERS)
   const [unoGameDuration, setUnoGameDuration] = useState(0)
   const [unoWd4Challenge, setUnoWd4Challenge] = useState(true)
+  const [unoUnoPenalty, setUnoUnoPenalty] = useState(2)
+  const [unoZeroSeven, setUnoZeroSeven] = useState(false)
   const [ludoMaxPlayers, setLudoMaxPlayers] = useState(LUDO_DEFAULT_MAX_PLAYERS)
   const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
   const [ayoVariant, setAyoVariant] = useState<AyoVariant>('traditional')
@@ -1914,6 +1916,8 @@ function CreateGameInner() {
           crazy8_jokers: isCrazy8 ? crazy8Jokers : undefined,
           crazy8_pick2_stacking: isCrazy8 ? crazy8Pick2Stacking : undefined,
           uno_wd4_challenge: isUno ? unoWd4Challenge : undefined,
+          uno_uno_penalty: isUno ? unoUnoPenalty : undefined,
+          uno_zero_seven: isUno ? unoZeroSeven : undefined,
           ludo_variant: isLudo ? ludoVariant : undefined,
           ayo_variant: isAyo ? ayoVariant : undefined,
           mahjong_ruleset: isMahjong ? mahjongRuleset : undefined,
@@ -2941,13 +2945,31 @@ function CreateGameInner() {
                   </select>
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="uno" />
+                <Field label="Missed “UNO” penalty">
+                  <select
+                    value={unoUnoPenalty}
+                    onChange={(e) => setUnoUnoPenalty(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    <option value={2}>Draw 2 cards</option>
+                    <option value={4}>Draw 4 cards (harsher)</option>
+                  </select>
+                </Field>
                 <Field label="House rules">
-                  <Toggle
-                    label="Wild Draw Four challenge"
-                    description="Let the next player challenge a Wild Draw Four — the system reveals the hand. Off: they always draw 4."
-                    value={unoWd4Challenge}
-                    onChange={setUnoWd4Challenge}
-                  />
+                  <div className="space-y-2">
+                    <Toggle
+                      label="Wild Draw Four challenge"
+                      description="Let the next player challenge a Wild Draw Four — the system reveals the hand. Off: they always draw 4."
+                      value={unoWd4Challenge}
+                      onChange={setUnoWd4Challenge}
+                    />
+                    <Toggle
+                      label="0-7 rule"
+                      description="Play a 0 → everyone passes their whole hand in the direction of play. Play a 7 → swap hands with any player."
+                      value={unoZeroSeven}
+                      onChange={setUnoZeroSeven}
+                    />
+                  </div>
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
                   The party card classic — match the top card by colour, number, or symbol. Skip, Reverse, Draw Two, and
