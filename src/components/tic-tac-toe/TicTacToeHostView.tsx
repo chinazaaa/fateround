@@ -124,7 +124,7 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
     hostJoining,
     changeHostMode,
     hostJoinGame,
-    leaveSeatKeepHosting,
+    leaveGameRemovePlayer,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -266,11 +266,15 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
           endGameConfirmMessage="The current game will end and players will see the results screen."
         >
           {hostMode === 'player' && !!hostPlayerId && (
-            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+            <HostLeaveSeatButton
+              onLeave={leaveGameRemovePlayer}
+              variant="remove"
+              className="btn-secondary w-full py-3 text-base"
+            />
           )}
         </HostActiveSettings>
       ) : null,
-    [game?.status, gameFinished, gameCode, hostToken, load, hostMode, hostPlayerId, leaveSeatKeepHosting]
+    [game?.status, gameFinished, gameCode, hostToken, load, hostMode, hostPlayerId, leaveGameRemovePlayer]
   )
   useRegisterGameSettings(hostSettingsNode)
 

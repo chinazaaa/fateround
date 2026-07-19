@@ -117,7 +117,7 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
     hostJoining,
     changeHostMode,
     hostJoinGame,
-    leaveSeatKeepHosting,
+    leaveGameRemovePlayer,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -398,7 +398,11 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
         <div className="glass-card p-5 space-y-3">
           <p className="label-caps">Game controls</p>
           {hostMode === 'player' && !!hostPlayerId && !hostReadOnly && (
-            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+            <HostLeaveSeatButton
+              onLeave={leaveGameRemovePlayer}
+              variant="remove"
+              className="btn-secondary w-full py-3 text-base"
+            />
           )}
           <HostEndGameButton
             gameCode={gameCode}

@@ -80,9 +80,12 @@ import {
   isWordHuntGame,
   isMafiaGame,
   isMatchingPairsGame,
+  isMahjongGame,
   isQuiplashGame,
   isQuickDrawGame,
 } from '@/lib/game-types'
+import { DEFAULT_MAHJONG_RULESET, MAHJONG_RULESETS, MAHJONG_RULESET_CONFIG } from '@/lib/mahjong-rulesets'
+import type { MahjongRuleset } from '@/types'
 import { BOARD_THEMES, PIECE_SETS, useChessAppearance } from '@/lib/chess-appearance'
 import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
@@ -431,6 +434,7 @@ function CreateGameInner() {
   const [ludoMaxPlayers, setLudoMaxPlayers] = useState(LUDO_DEFAULT_MAX_PLAYERS)
   const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
   const [ayoVariant, setAyoVariant] = useState<AyoVariant>('traditional')
+  const [mahjongRuleset, setMahjongRuleset] = useState<MahjongRuleset>(DEFAULT_MAHJONG_RULESET)
   const [snakeLadderMaxPlayers, setSnakeLadderMaxPlayers] = useState(SNAKE_LADDER_DEFAULT_MAX_PLAYERS)
   const [npatMaxPlayers, setNpatMaxPlayers] = useState(NPAT_DEFAULT_MAX_PLAYERS)
   const [sudokuMaxPlayers, setSudokuMaxPlayers] = useState(20)
@@ -774,6 +778,13 @@ function CreateGameInner() {
               game_duration_seconds: 0,
             }
           : {}),
+        ...(isMahjongGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+            }
+          : {}),
         ...(isWhoSaidThis(type)
           ? {
               participant_mode: 'import' as const,
@@ -883,6 +894,7 @@ function CreateGameInner() {
   const wordScrambleDiffLock = questionSource === 'platform' ? lockedPuzzleDifficulty(wordScrambleTheme) : null
   const isWordHunt = isWordHuntGame(settings.game_type)
   const isMatchingPairs = isMatchingPairsGame(settings.game_type)
+  const isMahjong = isMahjongGame(settings.game_type)
   const showViewerToggle = gameSupportsViewerSetting(settings.game_type)
   const isWst = isWhoSaidThis(settings.game_type)
   // Who Said This host-provided deck (Platform / Library / uploaded). Players just join and
@@ -1279,6 +1291,13 @@ function CreateGameInner() {
             anonymous: true,
             rounds_count: 1,
             timer_seconds: WORD_HUNT_DEFAULT_TIMER,
+          }
+        : {}),
+      ...(isMahjongGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
           }
         : {}),
       ...(isWhoSaidThis(type)
@@ -1852,6 +1871,7 @@ function CreateGameInner() {
           crazy8_pick2_stacking: isCrazy8 ? crazy8Pick2Stacking : undefined,
           ludo_variant: isLudo ? ludoVariant : undefined,
           ayo_variant: isAyo ? ayoVariant : undefined,
+          mahjong_ruleset: isMahjong ? mahjongRuleset : undefined,
           scrabble_dictionary_id: isScrabble ? scrabbleDictionary : undefined,
           scrabble_clock_mode: isScrabble ? scrabbleClockMode : undefined,
           scrabble_clock_seconds: isScrabble && scrabbleClockMode === 'chess' ? scrabbleClockSeconds : undefined,
@@ -3078,6 +3098,25 @@ function CreateGameInner() {
                   Capture all your opponent’s pieces to win. Each player gets their own clock that only ticks on their
                   turn.
                 </p>
+              </SettingsGroup>
+            ) : isMahjong ? (
+              <SettingsGroup title="Mahjong room">
+                <p className="text-faint text-sm">Exactly 4 players — the host can join as one of them.</p>
+                <Field label="Ruleset">
+                  <select
+                    value={mahjongRuleset}
+                    onChange={(e) => setMahjongRuleset(e.target.value as MahjongRuleset)}
+                    className="input-field w-full"
+                  >
+                    {MAHJONG_RULESETS.map((id) => (
+                      <option key={id} value={id}>
+                        {MAHJONG_RULESET_CONFIG[id].label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-faint text-xs mt-2">{MAHJONG_RULESET_CONFIG[mahjongRuleset].description}</p>
+                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="mahjong" />
               </SettingsGroup>
             ) : isAyo ? (
               <SettingsGroup title="Ayo room">

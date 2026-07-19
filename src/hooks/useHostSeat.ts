@@ -96,6 +96,7 @@ export interface UseHostSeatResult {
   changeHostMode: (mode: HostSeatMode) => Promise<void>
   hostJoinGame: (nameOverride?: string) => Promise<void>
   leaveSeatKeepHosting: () => Promise<void>
+  leaveGameRemovePlayer: () => Promise<void>
   renameHost: (name: string) => Promise<void>
   handlePlayerRemoved: (playerId: string) => void
 }
@@ -303,6 +304,36 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
     }
   }, [gameCode, hostPlayerId, hostResumeToken, applyMode])
 
+  // "Leave game (keep hosting)" for turn-based / seat / role games, where a bare spectate
+  // flag-flip would strand the host in turn_order (or leave a fixed seat short). Instead it
+  // goes through the SAME destructive removal path a normal player leave uses (DELETE
+  // /api/players → the game's removeXPlayer / reconcile helper splices turn_order, discards
+  // the hand, reassigns the role, and — in a 2-player game — declares the other player the
+  // winner). The host keeps their host token, so they stay in charge and watch on; unlike
+  // the spectate path there's no row left, so re-taking the seat means a fresh join.
+  const leaveGameRemovePlayer = useCallback(async () => {
+    if (!hostPlayerId || !hostResumeToken) return
+    try {
+      const res = await fetch('/api/players', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameCode, playerId: hostPlayerId, resumeToken: hostResumeToken }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Failed to leave game')
+      // Drop the player seat + session, but KEEP the host token so the host stays in charge.
+      clearPlayerSession(gameCode)
+      setHostPlayerId(null)
+      setHostResumeToken(null)
+      setHostPlayerName('')
+      applyMode('spectator')
+      await onReloadRef.current()
+      toastRef.current.success("You've left the game — you're still hosting")
+    } catch (err) {
+      toastRef.current.error(err instanceof Error ? err.message : 'Failed to leave game')
+    }
+  }, [gameCode, hostPlayerId, hostResumeToken, applyMode])
+
   const renameHost = useCallback(
     async (name: string) => {
       const trimmed = name.trim()
@@ -428,6 +459,7 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
     changeHostMode,
     hostJoinGame,
     leaveSeatKeepHosting,
+    leaveGameRemovePlayer,
     renameHost,
     handlePlayerRemoved,
   }

@@ -165,7 +165,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     hostJoining,
     changeHostMode,
     hostJoinGame,
-    leaveSeatKeepHosting,
+    leaveGameRemovePlayer,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -517,11 +517,15 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
         <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="codewords" onEnded={load}>
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
           {hostMode === 'player' && !!hostPlayerId && (
-            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+            <HostLeaveSeatButton
+              onLeave={leaveGameRemovePlayer}
+              variant="remove"
+              className="btn-secondary w-full py-3 text-base"
+            />
           )}
         </HostActiveSettings>
       ) : null,
-    [game, gameCode, hostToken, load, hostMode, hostPlayerId, leaveSeatKeepHosting]
+    [game, gameCode, hostToken, load, hostMode, hostPlayerId, leaveGameRemovePlayer]
   )
   useRegisterGameSettings(hostSettingsNode)
 

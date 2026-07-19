@@ -163,7 +163,7 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
     hostJoining,
     changeHostMode,
     hostJoinGame,
-    leaveSeatKeepHosting,
+    leaveGameRemovePlayer,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -380,11 +380,15 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
             onExtended={() => void load()}
           />
           {hostMode === 'player' && !!hostPlayerId && (
-            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+            <HostLeaveSeatButton
+              onLeave={leaveGameRemovePlayer}
+              variant="remove"
+              className="btn-secondary w-full py-3 text-base"
+            />
           )}
         </HostActiveSettings>
       ) : null,
-    [game, gameCode, hostToken, load, gameFinished, hostMode, hostPlayerId, leaveSeatKeepHosting]
+    [game, gameCode, hostToken, load, gameFinished, hostMode, hostPlayerId, leaveGameRemovePlayer]
   )
   useRegisterGameSettings(hostSettingsNode)
 

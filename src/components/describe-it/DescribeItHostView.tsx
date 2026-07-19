@@ -196,7 +196,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     hostJoining,
     changeHostMode,
     hostJoinGame,
-    leaveSeatKeepHosting,
+    leaveGameRemovePlayer,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -398,13 +398,17 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
           </button>
         )}
         {hostMode === 'player' && !!hostPlayerId && (
-          <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+          <HostLeaveSeatButton
+            onLeave={leaveGameRemovePlayer}
+            variant="remove"
+            className="btn-secondary w-full py-3 text-base"
+          />
         )}
       </HostActiveSettings>
     )
     // advanceTurn is a stable-enough closure (reads gameCode/hostToken + setState); omitted from deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game, gameCode, hostToken, load, session?.phase, advancing, leaveSeatKeepHosting, hostMode, hostPlayerId])
+  }, [game, gameCode, hostToken, load, session?.phase, advancing, leaveGameRemovePlayer, hostMode, hostPlayerId])
   useRegisterGameSettings(hostSettingsNode)
 
   if (loading) {

@@ -165,7 +165,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
     hostJoining,
     changeHostMode,
     hostJoinGame,
-    leaveSeatKeepHosting,
+    leaveGameRemovePlayer,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -363,7 +363,11 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
       <div className="space-y-4">
         <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
         {hostMode === 'player' && !!hostPlayerId && (
-          <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+          <HostLeaveSeatButton
+            onLeave={leaveGameRemovePlayer}
+            variant="remove"
+            className="btn-secondary w-full py-3 text-base"
+          />
         )}
         <HostRulesRow gameType="crazy_eights" />
         <HostEndGameButton
@@ -378,7 +382,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
         />
       </div>
     )
-  }, [game, gameCode, hostToken, setGame, load, hostMode, hostPlayerId, leaveSeatKeepHosting])
+  }, [game, gameCode, hostToken, setGame, load, hostMode, hostPlayerId, leaveGameRemovePlayer])
   useRegisterGameSettings(hostSettingsNode)
 
   if (!game) {
