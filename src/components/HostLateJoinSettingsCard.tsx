@@ -1,7 +1,7 @@
 'use client'
 
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
-import { gameSupportsViewerSetting } from '@/lib/viewers'
+import { gameAllowsLatePlayerJoin, gameSupportsViewerSetting } from '@/lib/viewers'
 import type { Game } from '@/types'
 
 export function HostLateJoinSettingsCard({
@@ -20,6 +20,8 @@ export function HostLateJoinSettingsCard({
   bare?: boolean
 }) {
   if (!gameSupportsViewerSetting(game.game_type)) return null
+  // View-only games have no view-vs-play choice — hide the whole card.
+  if (!gameAllowsLatePlayerJoin(game.game_type)) return null
   if (game.status !== 'waiting' && game.status !== 'active') return null
 
   const content = (

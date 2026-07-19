@@ -17,6 +17,7 @@ import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { ExitIcon } from '@/components/host/host-icons'
@@ -116,6 +117,7 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveSeatKeepHosting,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -395,6 +397,9 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
       {game.status === 'active' && (
         <div className="glass-card p-5 space-y-3">
           <p className="label-caps">Game controls</p>
+          {hostMode === 'player' && !!hostPlayerId && !hostReadOnly && (
+            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+          )}
           <HostEndGameButton
             gameCode={gameCode}
             hostToken={hostToken}
