@@ -151,6 +151,9 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
   const spectatorSeatArmRef = useRef<{ name: string } | null>(null)
   const spectatorSeatFiredRef = useRef(false)
   const modeReconciledRef = useRef(false)
+  // Last mode the active-game reconcile synced from the row, so it only re-applies on an actual
+  // change (avoids re-running onModeChange / persisting on every unrelated roster update).
+  const lastSyncedModeRef = useRef<HostSeatMode | null>(null)
 
   const applyMode = useCallback(
     (mode: HostSeatMode) => {
@@ -463,18 +466,34 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
     void seatHostAsSpectator(spectatorSeatArmRef.current.name)
   }, [gameStatus, hostPlayerId, hostJoining, seatHostAsSpectator])
 
-  // One-time: once the host's own row appears, reconcile the mode from its spectator
-  // flag (a refresh adopts the session before players load, so the initial mode is a
-  // guess from the persisted value). Ref-gated so it never fights later toggles.
+  // Keep hostMode in sync with the host row's own spectator flag.
+  //  - LOBBY: reconcile ONCE (a refresh adopts the session before players load, so the initial
+  //    mode is a guess from the persisted value). Ref-gated so it never fights a deliberate
+  //    changeHostMode toggle that optimistically sets the mode before the row round-trips.
+  //  - ACTIVE: the row is the source of truth (changeHostMode is lobby-only), so sync
+  //    continuously. This is what flips the host back to 'player' after they Join-as-player from
+  //    the spectator banner — promote sets spectator=false on the row but never touches hostMode —
+  //    and back to 'spectator' after they Leave. Guarded by lastSyncedModeRef so an unrelated
+  //    roster update never reverts an in-flight leave (the row still reads its pre-change value
+  //    until the action lands, so we simply hold the current mode until then).
   useEffect(() => {
-    if (modeReconciledRef.current || !hostPlayerId) return
+    if (!hostPlayerId) return
     const row = players.find((p) => p.id === hostPlayerId)
     if (!row) return
-    modeReconciledRef.current = true
     const rowMode: HostSeatMode = row.spectator ? 'spectator' : 'player'
-    setHostMode(rowMode)
-    writePersistedMode(gameCode, rowMode)
-  }, [players, hostPlayerId, gameCode])
+    if (gameStatus !== 'active') {
+      if (modeReconciledRef.current) return
+      modeReconciledRef.current = true
+      lastSyncedModeRef.current = rowMode
+      setHostMode(rowMode)
+      writePersistedMode(gameCode, rowMode)
+      return
+    }
+    modeReconciledRef.current = true
+    if (lastSyncedModeRef.current === rowMode) return
+    lastSyncedModeRef.current = rowMode
+    applyMode(rowMode)
+  }, [players, hostPlayerId, gameCode, gameStatus, applyMode])
 
   // Clear stale host-as-player state if the host's own row is removed elsewhere.
   useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
