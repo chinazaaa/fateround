@@ -34,7 +34,7 @@ import { LobbyView } from '@/components/LobbyView'
 import { CountdownTimerBadge } from '@/components/party/CountdownTimerBadge'
 import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
-import { useGameScores } from '@/components/session/RosterDrawerContext'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -212,6 +212,15 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     return Object.fromEntries(tallyLandmineScores(answers, bootstrap.players).map((s) => [s.id, s.score]))
   }, [answers, bootstrap.players])
   useGameScores(liveScores, { suffix: ' pts' })
+  const liveDetails = useMemo(() => {
+    if (!bootstrap.players.length) return null
+    const counts: Record<string, number> = {}
+    for (const a of answers) {
+      if (a.outcome === 'valid' || a.outcome === 'original') counts[a.player_id] = (counts[a.player_id] ?? 0) + 1
+    }
+    return Object.fromEntries(bootstrap.players.map((p) => [p.id, `✅ ${counts[p.id] ?? 0} valid`]))
+  }, [answers, bootstrap.players])
+  useGameStats(liveDetails)
 
   const writingTimer = clampLandmineWritingTimer(bootstrap.game?.timer_seconds)
   const markingTimer = clampLandmineMarkingTimer(bootstrap.game?.operative_timer_seconds)
