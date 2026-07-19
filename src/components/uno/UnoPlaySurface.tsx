@@ -28,7 +28,7 @@ import {
   UnoCardFace,
   type TurnSeat,
 } from '@/components/rooms/card-table/primitives'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   canPlayCard,
   cardShortLabel,
@@ -157,6 +157,27 @@ export function UnoPlaySurface({
   onTeamLeaveDecision,
 }: UnoPlaySurfaceProps) {
   const [quickPickerOpen, setQuickPickerOpen] = useState(false)
+  // Close the quick-message picker on a click/tap anywhere outside it (or Escape) —
+  // so you can dismiss it without sending a hint.
+  const quickTriggerRef = useRef<HTMLButtonElement>(null)
+  const quickPickerRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!quickPickerOpen) return
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target as Node
+      if (quickTriggerRef.current?.contains(t) || quickPickerRef.current?.contains(t)) return
+      setQuickPickerOpen(false)
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setQuickPickerOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [quickPickerOpen])
   const turnTimeLabel =
     turnTimer?.hasTimer && turnTimer.secondsLeft > 0 ? formatCountdown(turnTimer.secondsLeft) : undefined
 
@@ -362,6 +383,7 @@ export function UnoPlaySurface({
               {quickChat && !watching && (
                 <button
                   type="button"
+                  ref={quickTriggerRef}
                   className={`uno-qm-trigger${quickPickerOpen ? ' open' : ''}`}
                   aria-expanded={quickPickerOpen}
                   aria-label="Send a quick message to your partner"
@@ -377,7 +399,7 @@ export function UnoPlaySurface({
           </div>
 
           {quickChat && quickPickerOpen && !watching && (
-            <div className="uno-qm-picker" role="menu" aria-label="Quick messages">
+            <div className="uno-qm-picker" role="menu" aria-label="Quick messages" ref={quickPickerRef}>
               {UNO_QUICK_MESSAGES.map((msg) => (
                 <button
                   key={msg.id}
