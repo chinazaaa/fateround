@@ -31,6 +31,7 @@ import {
 import { useEffect, useState } from 'react'
 import {
   canPlayCard,
+  cardShortLabel,
   multiSetGroupingOk,
   validateMultiSet,
   UNO_COLORS,
@@ -43,6 +44,26 @@ import type { UnoColor, UnoCard, UnoSession } from '@/types'
 
 /** Deck accent for the UNO card backs (classic UNO red). */
 const UNO_ACCENT = '#e2231a'
+
+/** Short glyph for the compact partner mini-cards (symbols beat long words like "Reverse"). */
+function miniGlyph(card: UnoCard): string {
+  switch (card.kind) {
+    case 'number':
+      return String(card.value ?? '')
+    case 'skip':
+      return '⊘'
+    case 'reverse':
+      return '↺'
+    case 'draw2':
+      return '+2'
+    case 'wild':
+      return '🌈'
+    case 'wild_draw4':
+      return '+4'
+    default:
+      return ''
+  }
+}
 
 type Player = { id: string; name: string; spectator?: boolean | null }
 
@@ -300,7 +321,13 @@ export function UnoPlaySurface({
           </div>
           <div className="uno-partner-cards">
             {partner.cards.map((card) => (
-              <UnoCardFace key={card.id} card={card} dim />
+              <span
+                key={card.id}
+                className={`uno-mini ${card.color === 'wild' ? 'uno-mini-wild' : `uno-mini-${card.color}`}`}
+                title={card.color === 'wild' ? cardShortLabel(card) : `${card.color} ${cardShortLabel(card)}`}
+              >
+                <span className="uno-mini-oval">{miniGlyph(card)}</span>
+              </span>
             ))}
           </div>
         </div>
