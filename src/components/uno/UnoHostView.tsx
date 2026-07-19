@@ -12,7 +12,7 @@ import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaiting
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
-import { currentPlayerId, hasPlayableCard, isDrawPileDepleted, UNO_MIN_PLAYERS } from '@/lib/uno'
+import { currentPlayerId, hasPlayableCard, isDrawPileDepleted, parseMultiPlayMode, UNO_MIN_PLAYERS } from '@/lib/uno'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT, UNO_PLAYER_HANDS_SELECT, UNO_SESSION_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
@@ -455,6 +455,8 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             onCallUno={() => void postHostAction('/api/uno/call-uno')}
             onSwap={(targetId) => void postHostAction('/api/uno/swap', { targetId })}
             onPass={() => void postHostAction('/api/uno/pass')}
+            multiPlayMode={parseMultiPlayMode(game.uno_multi_play_mode)}
+            onPlayMulti={(cardIds) => void postHostAction('/api/uno/play-multi', { cardIds })}
           />
         ) : (
           <p className="turn-status g" style={{ textAlign: 'center', padding: 24 }}>
