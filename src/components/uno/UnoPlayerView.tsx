@@ -350,7 +350,9 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
             subtitle={
               joiningAsViewer
                 ? 'Game in progress — join as a viewer (read-only).'
-                : '2–10 players · match colour or number'
+                : game?.uno_team_mode
+                  ? 'Team-Up · 4 players in 2 teams of 2'
+                  : '2–10 players · match colour or number'
             }
           />
         }

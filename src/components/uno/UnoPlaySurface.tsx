@@ -31,6 +31,7 @@ import {
 import { useEffect, useState } from 'react'
 import {
   canPlayCard,
+  cardShortLabel,
   multiSetGroupingOk,
   validateMultiSet,
   UNO_COLORS,
@@ -293,14 +294,20 @@ export function UnoPlaySurface({
       {partner && (
         <div className="uno-partner">
           <div className="uno-partner-head">
-            <span className="uno-partner-name">🤝 {partner.name} (partner)</span>
+            <span className="uno-partner-name">🤝 {partner.name}</span>
             <span className="uno-partner-count">
               {partner.cards.length} card{partner.cards.length === 1 ? '' : 's'}
             </span>
           </div>
           <div className="uno-partner-cards">
             {partner.cards.map((card) => (
-              <UnoCardFace key={card.id} card={card} dim />
+              <span
+                key={card.id}
+                className={`uno-chip ${card.color === 'wild' ? 'uno-chip-wild' : `uno-chip-${card.color}`}`}
+                title={card.color === 'wild' ? 'Wild' : `${card.color} ${cardShortLabel(card)}`}
+              >
+                {card.color === 'wild' ? (card.kind === 'wild_draw4' ? '+4' : '🌈') : cardShortLabel(card)}
+              </span>
             ))}
           </div>
         </div>

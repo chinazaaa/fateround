@@ -1148,21 +1148,38 @@
 }
 .fr-room .uno-partner-cards {
   display: flex;
-  gap: 3px;
+  gap: 4px;
   overflow-x: auto;
   padding-bottom: 2px;
 }
-/* Shrink partner cards — they're for reference, not play. */
-.fr-room .uno-partner-cards .pc {
-  width: 34px;
-  height: 49px;
-  border-radius: 6px;
+/* Compact colour chips — reference only, so they take a fraction of the height a
+   full card face would (which was clipping the draw/discard piles). */
+.fr-room .uno-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 26px;
+  padding: 0 7px;
+  border-radius: 7px;
+  font: 800 13px var(--font-display);
+  color: #fff;
   flex-shrink: 0;
+  border: 1px solid rgba(0, 0, 0, 0.18);
 }
-.fr-room .uno-partner-cards .pc.uno .mid {
-  font-size: 12px;
+.fr-room .uno-chip-red {
+  background: #e2231a;
 }
-.fr-room .uno-partner-cards .pc.uno .uno-oval {
-  width: 24px;
-  height: 24px;
+.fr-room .uno-chip-yellow {
+  background: #f5b400;
+  color: #3a2f00;
+}
+.fr-room .uno-chip-green {
+  background: #2fa317;
+}
+.fr-room .uno-chip-blue {
+  background: #1a72d6;
+}
+.fr-room .uno-chip-wild {
+  background: conic-gradient(from 0deg, #e2231a, #f5b400, #2fa317, #1a72d6, #e2231a);
 }
