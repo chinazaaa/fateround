@@ -421,7 +421,7 @@ export function HostBoardGameLobbyPanel({
           <HostLobbySettingBlock title="House rules" className="sm:col-span-2">
             <div className="space-y-3">
               <div>
-                <p className="text-xs font-semibold text-white/70 mb-1.5">Missed “UNO” penalty</p>
+                <p className="label-caps text-[10px] mb-1.5">Missed “UNO” penalty</p>
                 <HostLobbyOptionChips
                   value={unoUnoPenalty}
                   options={[
