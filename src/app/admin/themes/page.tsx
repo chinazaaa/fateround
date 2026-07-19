@@ -68,28 +68,29 @@ export default function AdminThemesPage() {
     void load()
   }, [load])
 
-  const [importing, setImporting] = useState(false)
-  const [importMsg, setImportMsg] = useState<string | null>(null)
-  const importBuiltins = async () => {
-    setImporting(true)
-    setImportMsg(null)
-    try {
-      const res = await fetch('/api/admin/puzzle-themes/import-builtins', { method: 'POST' })
-      const json = await res.json()
-      if (!res.ok) {
-        setImportMsg(json.error ?? 'Import failed')
-        return
-      }
-      setImportMsg(
-        json.inserted > 0 ? `Imported ${json.inserted} built-in theme(s).` : 'Built-in themes are already imported.'
-      )
-      load()
-    } catch {
-      setImportMsg('Network error')
-    } finally {
-      setImporting(false)
-    }
-  }
+  // Import built-in themes — already imported, hidden.
+  // const [importing, setImporting] = useState(false)
+  // const [importMsg, setImportMsg] = useState<string | null>(null)
+  // const importBuiltins = async () => {
+  //   setImporting(true)
+  //   setImportMsg(null)
+  //   try {
+  //     const res = await fetch('/api/admin/puzzle-themes/import-builtins', { method: 'POST' })
+  //     const json = await res.json()
+  //     if (!res.ok) {
+  //       setImportMsg(json.error ?? 'Import failed')
+  //       return
+  //     }
+  //     setImportMsg(
+  //       json.inserted > 0 ? `Imported ${json.inserted} built-in theme(s).` : 'Built-in themes are already imported.'
+  //     )
+  //     load()
+  //   } catch {
+  //     setImportMsg('Network error')
+  //   } finally {
+  //     setImporting(false)
+  //   }
+  // }
 
   return (
     <div className="space-y-6">
@@ -101,6 +102,7 @@ export default function AdminThemesPage() {
             &ldquo;Geography Hard&rdquo; its own theme; leave it unlocked to let the host choose.
           </p>
         </div>
+        {/* Import built-in themes — already imported, hidden.
         <div className="text-right">
           <button
             type="button"
@@ -112,6 +114,7 @@ export default function AdminThemesPage() {
           </button>
           {importMsg && <p className="mt-1 text-xs text-[var(--muted)]">{importMsg}</p>}
         </div>
+        */}
       </div>
 
       <div className="flex flex-wrap gap-2">

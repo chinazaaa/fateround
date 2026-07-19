@@ -42,6 +42,7 @@ import { buildRoundsFromDeck, wstAutoRoundCount, WST_DECK_MIN_ENTRIES } from '@/
 import { pickWyrQuestions } from '@/lib/would-you-rather-questions'
 import { pickThisOrThatQuestions, THIS_OR_THAT_QUESTION_COUNT } from '@/lib/this-or-that-questions'
 import { pickMltQuestions } from '@/lib/most-likely-to-questions'
+import { loadPlatformEntries } from '@/lib/platform-content'
 import { pickNhieQuestions } from '@/lib/never-have-i-ever-questions'
 import { pickPanQuestions, PAN_DEFAULT_POOL_SIZE, PAN_MIN_POOL } from '@/lib/pick-a-number-questions'
 import {
@@ -1551,9 +1552,15 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       questionOrder,
       playerQuestionsEnabled
     )
+    // Platform source: draw from the admin-managed bank (platform_content) when it has content,
+    // otherwise fall back to the hardcoded MLT_QUESTIONS. Read via service-role (RLS-locked table).
+    const mltPlatformUsage = mergeUsageMaps(await fetchMltQuestionUsage(supabase), customMltUsage)
+    const adminMltPool = useCustom ? [] : await loadPlatformEntries<string>(getSupabaseAdmin(), 'most_likely_to')
     const platformQuestions = useCustom
       ? pickCustomMltQuestions(customPool, poolNeeded, customMltUsage)
-      : pickMltQuestions(poolNeeded, mergeUsageMaps(await fetchMltQuestionUsage(supabase), customMltUsage))
+      : adminMltPool.length > 0
+        ? pickCustomMltQuestions(adminMltPool, poolNeeded, mltPlatformUsage)
+        : pickMltQuestions(poolNeeded, mltPlatformUsage)
 
     const aiMltQuestions: string[] =
       game.ai_questions_enabled &&

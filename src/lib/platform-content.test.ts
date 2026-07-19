@@ -1,0 +1,36 @@
+import { describe, it, expect } from 'vitest'
+import { platformGameDef, platformGameList } from './platform-content'
+import { MLT_QUESTIONS } from './most-likely-to-questions'
+
+describe('platform-content: most_likely_to', () => {
+  const def = platformGameDef('most_likely_to')!
+
+  it('is registered', () => {
+    expect(def).toBeTruthy()
+    expect(platformGameList().some((g) => g.gameType === 'most_likely_to')).toBe(true)
+  })
+
+  it('parse → toText round-trips, preserving commas in prompts', () => {
+    const text = ['Who is most likely to laugh, cry, and scream at once?', 'Who is most likely to sleep in?'].join('\n')
+    const parsed = def.parse(text)
+    expect(parsed.entries).toEqual([
+      'Who is most likely to laugh, cry, and scream at once?',
+      'Who is most likely to sleep in?',
+    ])
+    // Serializing back and re-parsing is idempotent.
+    const reparsed = def.parse(def.toText(parsed.entries))
+    expect(reparsed.entries).toEqual(parsed.entries)
+  })
+
+  it('dedupes case-insensitively and drops a header line', () => {
+    const parsed = def.parse(['question', 'Alpha prompt', 'alpha prompt', 'Beta prompt'].join('\n'))
+    expect(parsed.entries).toEqual(['Alpha prompt', 'Beta prompt'])
+    expect(parsed.duplicateRows).toBe(1)
+  })
+
+  it('the built-in batch matches the hardcoded array', () => {
+    const builtin = def.builtins.find((b) => b.key === 'default')!
+    expect(builtin.entries).toEqual(MLT_QUESTIONS)
+    expect(builtin.entries.length).toBeGreaterThanOrEqual(def.minEntries)
+  })
+})

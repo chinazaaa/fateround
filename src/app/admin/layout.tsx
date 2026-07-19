@@ -48,6 +48,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <AdminNavLink href="/admin/landmine-categories" active={pathname === '/admin/landmine-categories'}>
                 Landmine
               </AdminNavLink>
+              <AdminNavLink href="/admin/platform-content" active={pathname === '/admin/platform-content'}>
+                Platform
+              </AdminNavLink>
               <AdminNavLink href="/admin/community" active={pathname === '/admin/community'}>
                 Community
               </AdminNavLink>

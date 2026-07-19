@@ -26,7 +26,7 @@ describe('puzzleThemeEntriesToCsv round-trips through parsePuzzleThemeCsv', () =
   })
 
   it('word_scramble: preserves words and optional hints', () => {
-    const entries = [{ word: 'OCEAN', hint: 'Big blue' }, { word: 'RIVER' }]
+    const entries: Record<string, string>[] = [{ word: 'OCEAN', hint: 'Big blue' }, { word: 'RIVER' }]
     const csv = puzzleThemeEntriesToCsv('word_scramble', entries)
     const parsed = parsePuzzleThemeCsv('word_scramble', csv)
     expect(parsed.entries).toEqual(entries)
