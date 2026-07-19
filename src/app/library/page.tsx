@@ -77,6 +77,9 @@ const GAME_TYPE_META: Record<string, { label: string; color: string }> = {
   },
 }
 
+/** Neutral small-pill style for tags/types with no explicit color (keeps every pill the same size). */
+const NEUTRAL_PILL = 'text-slate-600 dark:text-slate-300 bg-slate-500/10 border-slate-500/25'
+
 const TAG_META: Record<string, { label: string; color: string }> = {
   easy: { label: 'Easy', color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/25' },
   intermediate: { label: 'Intermediate', color: 'text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/25' },
@@ -279,7 +282,7 @@ export default function LibraryPage() {
                       <p className="text-muted text-sm">by {pack.author_name}</p>
                     </div>
                     <span
-                      className={`label-caps shrink-0 rounded-full border px-2.5 py-1 text-[10px] ${meta?.color ?? 'chip'}`}
+                      className={`label-caps shrink-0 rounded-full border px-2.5 py-1 text-[10px] ${meta?.color ?? NEUTRAL_PILL}`}
                     >
                       {meta?.label ?? pack.game_type}
                     </span>
@@ -288,13 +291,13 @@ export default function LibraryPage() {
                     <p className="text-muted text-sm line-clamp-2 leading-relaxed">{pack.description}</p>
                   )}
                   {pack.tags && pack.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       {pack.tags.map((t) => {
                         const tm = TAG_META[t]
                         return (
                           <span
                             key={t}
-                            className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase ${tm?.color ?? 'chip'}`}
+                            className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase ${tm?.color ?? NEUTRAL_PILL}`}
                           >
                             {tm?.label ?? t}
                           </span>

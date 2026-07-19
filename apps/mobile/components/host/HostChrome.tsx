@@ -150,6 +150,13 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
               <View style={styles.typePill}>
                 <Text style={styles.typePillText}>{typeLabel}</Text>
               </View>
+              {game.content_label?.trim() ? (
+                <View style={styles.labelPill}>
+                  <Text style={styles.labelPillText} numberOfLines={1}>
+                    🏷️ {game.content_label.trim()}
+                  </Text>
+                </View>
+              ) : null}
             </View>
             {game.title ? (
               <Text style={styles.title} numberOfLines={2}>
@@ -288,6 +295,21 @@ const makeStyles = (theme: Theme) =>
       fontWeight: '800',
       letterSpacing: 0.8,
       textTransform: 'uppercase',
+    },
+    // Content-label pill ("Maths", "Bible trivia") — what the pack is about.
+    labelPill: {
+      flexShrink: 1,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+    },
+    labelPillText: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontWeight: '700',
     },
     title: {
       color: theme.textMuted,

@@ -64,6 +64,9 @@ export type CreateWizardStep = 'setup' | 'people'
 
 export type CreateWizardState = {
   title: string
+  /** Player-facing content label ("Maths", "Bible trivia") for CSV/library content games.
+   *  Auto-filled from the picked library pack name; typed by the host for a CSV upload. */
+  contentLabel: string
   gameType: GameType
   theme: ThemeId
   isPublic: boolean
@@ -99,6 +102,7 @@ function themeForGameType(gameType: GameType, current: ThemeId): ThemeId {
 export function createInitialState(gameType: GameType, limits: GamePlayerLimitsMap): CreateWizardState {
   return {
     title: '',
+    contentLabel: '',
     gameType,
     theme: themeForGameType(gameType, 'default'),
     isPublic: false,
@@ -186,6 +190,10 @@ export function buildCreatePayload(state: CreateWizardState, limits: GamePlayerL
   if (state.custom.source !== 'platform') delete payload.puzzle_theme_id
 
   if (maxPlayers != null) payload.max_players = maxPlayers
+
+  // Player-facing content label — explicit host input wins, else the picked library pack name.
+  const contentLabel = (state.contentLabel.trim() || state.custom.libraryPackTitle?.trim() || '').slice(0, 40)
+  if (contentLabel) payload.content_label = contentLabel
 
   if (supportsViewers) {
     payload.allow_viewers = lateJoinPolicy !== 'lobby_only'

@@ -30,6 +30,7 @@ import {
   buildCreatePayload,
   createInitialState,
   needsParticipantStep,
+  supportsCustomContent,
   validateCreateState,
   validateSetupStep,
   wizardStepsForGame,
@@ -161,6 +162,18 @@ export function CreateWizardShell() {
                 autoCapitalize="sentences"
                 autoCorrect={false}
               />
+              {supportsCustomContent(state.gameType) || isWhoSaidThis(state.gameType) ? (
+                <FormField
+                  label="Category"
+                  hint="What the questions are about — shown to players before they join (e.g. Maths, Bible)."
+                  value={state.contentLabel}
+                  onChangeText={(contentLabel) => patchState({ contentLabel })}
+                  placeholder="e.g. Maths, Bible, 90s Music"
+                  maxLength={40}
+                  autoCapitalize="sentences"
+                  autoCorrect={false}
+                />
+              ) : null}
             </SurfaceCard>
 
             <View style={styles.typeSection}>
@@ -221,7 +234,13 @@ export function CreateWizardShell() {
                       gameType={state.gameType}
                       custom={state.custom}
                       roundsCount={state.party.roundsCount}
-                      onChange={(customPatch) => patchState({ custom: { ...state.custom, ...customPatch } })}
+                      onChange={(customPatch) => {
+                        const patch: Partial<CreateWizardState> = { custom: { ...state.custom, ...customPatch } }
+                        // Auto-fill the category from the picked library pack name, unless the host typed their own.
+                        if (customPatch.libraryPackTitle && !state.contentLabel.trim())
+                          patch.contentLabel = customPatch.libraryPackTitle.slice(0, 40)
+                        patchState(patch)
+                      }}
                     />
                   )
                   return isPuzzle ? (
