@@ -85,8 +85,32 @@ describe('platform-content: word-pool games (codewords / describe_it / quick_dra
     expect(platformGameDef('quick_draw', 'guess')).not.toBe(platformGameDef('quick_draw', 'lie'))
   })
 
-  it('all 10 flat-bank defs are registered', () => {
-    expect(platformGameList().length).toBe(10)
+  it('all defs are registered', () => {
+    expect(platformGameList().length).toBe(12)
+  })
+})
+
+describe('platform-content: trivia (one bank per category)', () => {
+  it('registers tech and general as distinct variant banks', () => {
+    expect(platformGameDef('trivia', 'tech')).toBeTruthy()
+    expect(platformGameDef('trivia', 'general')).toBeTruthy()
+    expect(platformGameDef('trivia')).toBeUndefined()
+  })
+
+  it('parse → toText round-trips a trivia question (choices + correct letter)', () => {
+    const def = platformGameDef('trivia', 'tech')!
+    const csv = ['question,option_a,option_b,option_c,option_d,correct', 'What is 2+2?,3,4,5,6,b'].join('\n')
+    const parsed = def.parse(csv)
+    expect(parsed.entries).toEqual([
+      { question: 'What is 2+2?', choices: ['3', '4', '5', '6'], correctIndex: 1, category: 'tech' },
+    ])
+    const reparsed = def.parse(def.toText(parsed.entries))
+    expect(reparsed.entries).toEqual(parsed.entries)
+  })
+
+  it('builtin banks carry their category', () => {
+    const tech = platformGameDef('trivia', 'tech')!.builtins[0].entries as { category: string }[]
+    expect(tech.every((q) => q.category === 'tech')).toBe(true)
   })
 })
 

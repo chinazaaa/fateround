@@ -12,6 +12,7 @@ import { HostPingPongLobbyPanel } from '@/components/host-lobby/HostPingPongLobb
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
@@ -115,6 +116,7 @@ export function PingPongHostView({ gameCode, hostToken }: { gameCode: string; ho
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveSeatKeepHosting,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -221,9 +223,13 @@ export function PingPongHostView({ gameCode, hostToken }: { gameCode: string; ho
           endGameLabel="End game early"
           endGameConfirmTitle="End this game early?"
           endGameConfirmMessage="The current game will end and players will see the results screen."
-        />
+        >
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+          )}
+        </HostActiveSettings>
       ) : null,
-    [game?.status, gameFinished, gameCode, hostToken, load]
+    [game?.status, gameFinished, gameCode, hostToken, load, hostMode, hostPlayerId, leaveSeatKeepHosting]
   )
   useRegisterGameSettings(hostSettingsNode)
 

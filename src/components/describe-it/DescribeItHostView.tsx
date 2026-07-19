@@ -8,6 +8,7 @@ import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
@@ -195,6 +196,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     hostJoining,
     changeHostMode,
     hostJoinGame,
+    leaveSeatKeepHosting,
     renameHost,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
@@ -395,11 +397,14 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
             {advancing ? 'Starting…' : solo ? 'Next describer now →' : 'Next team now →'}
           </button>
         )}
+        {hostMode === 'player' && !!hostPlayerId && (
+          <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+        )}
       </HostActiveSettings>
     )
     // advanceTurn is a stable-enough closure (reads gameCode/hostToken + setState); omitted from deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game, gameCode, hostToken, load, session?.phase, advancing])
+  }, [game, gameCode, hostToken, load, session?.phase, advancing, leaveSeatKeepHosting, hostMode, hostPlayerId])
   useRegisterGameSettings(hostSettingsNode)
 
   if (loading) {

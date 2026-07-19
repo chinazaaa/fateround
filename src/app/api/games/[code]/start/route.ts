@@ -210,7 +210,7 @@ async function initializeEliminationLives(
   }
   return { error: null }
 }
-import type { AiGeneratedQuestions, AiQuestionsConfig } from '@/types'
+import type { AiGeneratedQuestions, AiQuestionsConfig, TriviaQuestion } from '@/types'
 
 /** Same-gender round groups for custom games with 4–5 slots. */
 function generateGenderBasedNRounds(
@@ -371,9 +371,15 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     }
 
     const triviaUsage = poolUsageToMap(poolUsage.trivia as Record<string, number> | undefined)
+    // Platform source: draw from the admin bank for this category (variant), else the built-in pool.
+    const adminTriviaPool = useCustom
+      ? []
+      : await loadPlatformEntries<TriviaQuestion>(getSupabaseAdmin(), 'trivia', category)
     const questions = useCustom
       ? pickCustomTriviaQuestions(customPool, game.rounds_count, triviaUsage)
-      : pickTriviaQuestions(game.rounds_count, category, triviaUsage)
+      : adminTriviaPool.length > 0
+        ? pickCustomTriviaQuestions(adminTriviaPool, game.rounds_count, triviaUsage)
+        : pickTriviaQuestions(game.rounds_count, category, triviaUsage)
 
     if (questions.length === 0) {
       return NextResponse.json({ error: 'No trivia questions available' }, { status: 400 })
