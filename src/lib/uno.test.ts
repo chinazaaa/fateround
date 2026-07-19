@@ -32,6 +32,7 @@ function session(partial: Partial<UnoSession>): UnoSession {
     top_card: null,
     required_color: null,
     draw_penalty: 0,
+    draw_penalty_kind: null,
     drawn_card_id: null,
     pending_wild: null,
     challenge_prev_color: null,
@@ -145,11 +146,30 @@ describe('canPlayCard', () => {
     expect(canPlayCard(card({ color: 'green', kind: 'number', value: 1 }), s)).toBe(true)
     expect(canPlayCard(card({ color: 'red', kind: 'number', value: 1 }), s)).toBe(false)
   })
-  it('blocks all plays while a draw penalty is pending (Classic: must draw)', () => {
-    const s = session({ top_card: top, draw_penalty: 2 })
+  it('blocks all plays while a draw penalty is pending with no stack kind (Classic: must draw)', () => {
+    const s = session({ top_card: top, draw_penalty: 2, draw_penalty_kind: null })
     expect(canPlayCard(card({ color: 'red', kind: 'number', value: 5 }), s)).toBe(false)
     expect(canPlayCard(card({ color: 'wild', kind: 'wild_draw4' }), s)).toBe(false)
     expect(hasPlayableCard([card({ color: 'red', kind: 'number', value: 5 })], s)).toBe(false)
+  })
+
+  it('lets a Draw Two stack onto a Draw-Two penalty (only a Draw Two)', () => {
+    const s = session({ top_card: card({ color: 'red', kind: 'draw2' }), draw_penalty: 2, draw_penalty_kind: 'draw2' })
+    expect(canPlayCard(card({ color: 'blue', kind: 'draw2' }), s)).toBe(true)
+    expect(canPlayCard(card({ color: 'red', kind: 'number', value: 5 }), s)).toBe(false)
+    expect(canPlayCard(card({ color: 'wild', kind: 'wild_draw4' }), s)).toBe(false)
+  })
+
+  it('lets a Wild Draw Four stack onto a Draw-Four penalty (only a Wild Draw Four)', () => {
+    const s = session({
+      top_card: card({ color: 'wild', kind: 'wild_draw4' }),
+      required_color: 'red',
+      draw_penalty: 4,
+      draw_penalty_kind: 'wild_draw4',
+    })
+    expect(canPlayCard(card({ color: 'wild', kind: 'wild_draw4' }), s)).toBe(true)
+    expect(canPlayCard(card({ color: 'red', kind: 'draw2' }), s)).toBe(false)
+    expect(canPlayCard(card({ color: 'red', kind: 'number', value: 1 }), s)).toBe(false)
   })
 })
 
@@ -225,9 +245,9 @@ describe('unoPlacementOrder / buildUnoStandings', () => {
 })
 
 describe('parseUnoRules', () => {
-  it('defaults: challenge on, penalty 2, wd4 penalty 6, 0-7 off', () => {
+  it('defaults: challenge on, penalty 2, wd4 penalty 6, 0-7 off, stacking off', () => {
     const r = parseUnoRules(null)
-    expect(r).toEqual({ wd4Challenge: true, unoPenalty: 2, wd4ChallengePenalty: 6, zeroSeven: false })
+    expect(r).toEqual({ wd4Challenge: true, unoPenalty: 2, wd4ChallengePenalty: 6, zeroSeven: false, stacking: false })
   })
   it('reads host overrides', () => {
     const r = parseUnoRules({
@@ -235,8 +255,9 @@ describe('parseUnoRules', () => {
       uno_uno_penalty: 4,
       uno_wd4_challenge_penalty: 6,
       uno_zero_seven: true,
+      uno_stacking: true,
     })
-    expect(r).toEqual({ wd4Challenge: false, unoPenalty: 4, wd4ChallengePenalty: 6, zeroSeven: true })
+    expect(r).toEqual({ wd4Challenge: false, unoPenalty: 4, wd4ChallengePenalty: 6, zeroSeven: true, stacking: true })
   })
   it('reads the milder wd4 penalty variant (4) and clamps junk to 6', () => {
     expect(parseUnoRules({ uno_wd4_challenge_penalty: 4 }).wd4ChallengePenalty).toBe(4)
