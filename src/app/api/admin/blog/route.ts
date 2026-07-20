@@ -46,9 +46,10 @@ export async function POST(req: NextRequest) {
       excerpt: body.excerpt,
       body: body.body,
       cover_image_url: body.coverImageUrl ?? null,
-      author: body.author ?? 'Fate Round',
+      author: body.author ?? 'FateRound',
       tags: body.tags ?? [],
       status,
+      pinned: body.pinned ?? false,
       published_at: publishedAt,
       updated_at: new Date().toISOString(),
     })
@@ -62,6 +63,9 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ error: internalErrorMessage('admin/blog', error) }, { status: 500 })
   }
+
+  // Only one post is featured at a time — if this one was pinned, clear the rest.
+  if (data.pinned) await supabase.from('blog_posts').update({ pinned: false }).neq('id', data.id)
 
   return NextResponse.json({ post: data }, { status: 201 })
 }

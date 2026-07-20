@@ -22,6 +22,7 @@ type FormState = {
   author: string
   tags: string
   status: BlogStatus
+  pinned: boolean
   publishedAt: string
 }
 
@@ -31,9 +32,10 @@ const EMPTY_FORM: FormState = {
   excerpt: '',
   body: '',
   coverImageUrl: '',
-  author: 'Fate Round',
+  author: 'FateRound',
   tags: '',
   status: 'draft',
+  pinned: false,
   publishedAt: '',
 }
 
@@ -56,6 +58,7 @@ function toFormState(post: BlogPost): FormState {
     author: post.author,
     tags: post.tags.join(', '),
     status: post.status,
+    pinned: post.pinned,
     publishedAt: isoToLocalInput(post.published_at),
   }
 }
@@ -71,9 +74,10 @@ function payloadFromForm(form: FormState) {
     excerpt: form.excerpt,
     body: form.body,
     coverImageUrl: form.coverImageUrl.trim(),
-    author: form.author.trim() || 'Fate Round',
+    author: form.author.trim() || 'FateRound',
     tags,
     status: form.status,
+    pinned: form.pinned,
     // datetime-local has no timezone; toISOString serialises it as the admin's local time.
     publishedAt: form.publishedAt ? new Date(form.publishedAt).toISOString() : null,
   }
@@ -174,6 +178,24 @@ export default function AdminBlogPage() {
       await loadPosts()
     } catch (err) {
       error(err instanceof Error ? err.message : 'Failed to delete post')
+    }
+  }
+
+  // Quick pin/unpin from a list row. The API keeps at most one post pinned, so pinning one
+  // here silently unpins whatever was featured before.
+  const togglePin = async (post: BlogPost) => {
+    try {
+      const res = await fetch(`/api/admin/blog/${post.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned: !post.pinned }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to update post')
+      success(post.pinned ? 'Unpinned' : 'Pinned — now featured on the blog')
+      await loadPosts()
+    } catch (err) {
+      error(err instanceof Error ? err.message : 'Failed to update post')
     }
   }
 
@@ -354,7 +376,7 @@ export default function AdminBlogPage() {
               value={form.author}
               onChange={(e) => setForm((prev) => ({ ...prev, author: e.target.value }))}
               className="input-field w-full"
-              placeholder="Fate Round"
+              placeholder="FateRound"
             />
           </label>
 
@@ -394,6 +416,22 @@ export default function AdminBlogPage() {
             <p className="text-faint text-xs">
               Leave blank to stamp now when you publish. A future date hides it until then.
             </p>
+          </label>
+
+          <label className="flex items-start gap-2.5 sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={form.pinned}
+              onChange={(e) => setForm((prev) => ({ ...prev, pinned: e.target.checked }))}
+              className="mt-0.5 h-4 w-4"
+            />
+            <span className="space-y-1">
+              <span className="label-caps block">📌 Feature this post</span>
+              <span className="text-faint block text-xs">
+                Pins it to the top of /blog as the highlighted post. Only one post can be featured — this replaces any
+                current one.
+              </span>
+            </span>
           </label>
         </div>
 
@@ -437,6 +475,17 @@ export default function AdminBlogPage() {
                         <span className={`chip ${post.status === 'published' ? 'chip-active' : ''}`}>
                           {BLOG_STATUS_META[post.status].label}
                         </span>
+                        {post.pinned && (
+                          <span
+                            className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+                            style={{
+                              background: 'color-mix(in srgb, var(--primary) 14%, transparent)',
+                              color: 'var(--primary)',
+                            }}
+                          >
+                            📌 Featured
+                          </span>
+                        )}
                         {post.published_at ? (
                           <span className="text-faint">{formatPostDate(post.published_at)}</span>
                         ) : (
@@ -457,6 +506,14 @@ export default function AdminBlogPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => togglePin(post)}
+                        className="btn-ghost text-sm px-3 py-1.5"
+                        title={post.pinned ? 'Remove from featured' : 'Feature on the blog'}
+                      >
+                        {post.pinned ? 'Unpin' : 'Pin'}
+                      </button>
                       <button
                         type="button"
                         onClick={() => startEdit(post)}
