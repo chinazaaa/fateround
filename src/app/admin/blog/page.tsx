@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Chip } from '@/components/ui/PageShell'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
@@ -90,6 +90,8 @@ export default function AdminBlogPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [slugTouched, setSlugTouched] = useState(false)
   const [filter, setFilter] = useState<'all' | BlogStatus>('all')
+  const [uploadingCover, setUploadingCover] = useState(false)
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
 
   const loadPosts = useCallback(async () => {
     setLoading(true)
@@ -175,6 +177,68 @@ export default function AdminBlogPage() {
     }
   }
 
+  // Upload one image file to the blog bucket, returning its public URL (or null on failure).
+  const uploadImage = async (file: File): Promise<string | null> => {
+    const data = new FormData()
+    data.append('file', file)
+    try {
+      const res = await fetch('/api/admin/blog/images', { method: 'POST', body: data })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Upload failed')
+      return json.url as string
+    } catch (err) {
+      error(err instanceof Error ? err.message : 'Image upload failed')
+      return null
+    }
+  }
+
+  // Paste/drop an image into the body: drop a placeholder at the cursor immediately, upload,
+  // then swap the placeholder for the real markdown (or remove it on failure). Using a unique
+  // token means concurrent uploads and later edits can't corrupt each other's insertion point.
+  const insertBodyImage = async (file: File) => {
+    const token = `![uploading ${Date.now()}]()`
+    const el = bodyRef.current
+    const cursor = el ? el.selectionStart : form.body.length
+    setForm((prev) => ({
+      ...prev,
+      body: `${prev.body.slice(0, cursor)}${token}${prev.body.slice(cursor)}`,
+    }))
+
+    const url = await uploadImage(file)
+    setForm((prev) => ({
+      ...prev,
+      body: prev.body.replace(token, url ? `![image](${url})` : ''),
+    }))
+    if (url) success('Image added')
+  }
+
+  const onBodyPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const image = Array.from(e.clipboardData.files).find((f) => f.type.startsWith('image/'))
+    if (!image) return // let normal text paste through
+    e.preventDefault()
+    void insertBodyImage(image)
+  }
+
+  const onBodyDrop = (e: React.DragEvent<HTMLTextAreaElement>) => {
+    const image = Array.from(e.dataTransfer.files).find((f) => f.type.startsWith('image/'))
+    if (!image) return
+    e.preventDefault()
+    void insertBodyImage(image)
+  }
+
+  const onCoverFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-picking the same file
+    if (!file) return
+    setUploadingCover(true)
+    const url = await uploadImage(file)
+    setUploadingCover(false)
+    if (url) {
+      setForm((prev) => ({ ...prev, coverImageUrl: url }))
+      success('Cover image uploaded')
+    }
+  }
+
   const visiblePosts = filter === 'all' ? posts : posts.filter((p) => p.status === filter)
   const canSave = !saving && form.title.trim() && form.excerpt.trim() && form.body.trim() && form.slug.trim()
 
@@ -240,27 +304,49 @@ export default function AdminBlogPage() {
           <label className="block space-y-2 sm:col-span-2">
             <span className="label-caps">Body (Markdown)</span>
             <textarea
+              ref={bodyRef}
               value={form.body}
               onChange={(e) => setForm((prev) => ({ ...prev, body: e.target.value }))}
+              onPaste={onBodyPaste}
+              onDrop={onBodyDrop}
               className="input-field w-full min-h-64 resize-y font-mono text-sm"
               placeholder={'## A heading\n\nA paragraph with a [link](/games).\n\n- a list item\n- another'}
             />
             <p className="text-faint text-xs">
-              Supports Markdown: ## headings, **bold**, [links](/games), ![images](https://…/photo.jpg), lists, quotes,
-              tables. Images take a URL (host it elsewhere first — pasting a file won&rsquo;t upload it). Raw HTML is
-              ignored.
+              Supports Markdown: ## headings, **bold**, [links](/games), ![images](url), lists, quotes, tables. Raw HTML
+              is ignored. <strong>Paste or drag an image straight in</strong> and it uploads automatically.
             </p>
           </label>
 
-          <label className="block space-y-2 sm:col-span-2">
-            <span className="label-caps">Cover image URL (optional)</span>
-            <input
-              value={form.coverImageUrl}
-              onChange={(e) => setForm((prev) => ({ ...prev, coverImageUrl: e.target.value }))}
-              className="input-field w-full"
-              placeholder="https://… or /og/whot.png"
-            />
-          </label>
+          <div className="block space-y-2 sm:col-span-2">
+            <span className="label-caps">Cover image (optional)</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                value={form.coverImageUrl}
+                onChange={(e) => setForm((prev) => ({ ...prev, coverImageUrl: e.target.value }))}
+                className="input-field min-w-0 flex-1"
+                placeholder="Paste a URL, or upload →"
+              />
+              <label className="btn-secondary shrink-0 cursor-pointer text-sm px-3 py-2">
+                {uploadingCover ? 'Uploading…' : 'Upload'}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  onChange={onCoverFile}
+                  disabled={uploadingCover}
+                  className="hidden"
+                />
+              </label>
+            </div>
+            {form.coverImageUrl && (
+              <img
+                src={form.coverImageUrl}
+                alt=""
+                className="mt-1 h-24 w-full max-w-xs rounded-lg object-cover"
+                style={{ border: '1px solid var(--border)' }}
+              />
+            )}
+          </div>
 
           <label className="block space-y-2">
             <span className="label-caps">Author</span>
