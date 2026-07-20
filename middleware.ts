@@ -16,7 +16,13 @@ function isProductionHost(host: string | null): boolean {
   return PRODUCTION_HOSTS.has(bare)
 }
 
-const DISALLOW_ALL_ROBOTS = 'User-agent: *\nDisallow: /\n'
+// Deliberately crawl-permissive, with NO sitemap line. Dev pages are already
+// indexed, so they must stay crawlable — a blanket `Disallow: /` would stop
+// Google re-fetching them, and it would never see the `noindex` header below,
+// leaving them stuck in the index. Letting bots crawl + serving `noindex` is the
+// fast path to getting the dev URLs removed. (Omitting the sitemap avoids
+// actively feeding dev URLs to crawlers in the meantime.)
+const NONPROD_ROBOTS = 'User-agent: *\nAllow: /\n'
 
 function isAdminRoute(pathname: string): boolean {
   return pathname === '/admin' || pathname.startsWith('/admin/')
@@ -41,7 +47,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   // apply exactly as before, with no X-Robots-Tag added.
   if (!isProductionHost(request.headers.get('host'))) {
     if (pathname === '/robots.txt') {
-      return new NextResponse(DISALLOW_ALL_ROBOTS, {
+      return new NextResponse(NONPROD_ROBOTS, {
         headers: {
           'content-type': 'text/plain; charset=utf-8',
           'cache-control': 'public, max-age=3600, s-maxage=86400',
