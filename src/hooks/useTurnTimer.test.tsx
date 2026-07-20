@@ -130,4 +130,80 @@ describe('useTurnTimer', () => {
     })
     expect(fetchMock.mock.calls.length).toBeGreaterThan(afterFirst)
   })
+
+  it('backs off exponentially while the server keeps answering { skipped: true }', async () => {
+    // The runaway this guards: server judges the turn not expirable (finished session, or
+    // client clock ahead), so it returns skipped. Without back-off the client re-POSTs
+    // every cooldown forever — every connected client, each call a full game-state read.
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ ok: true, skipped: true }) } as unknown as Response)
+    renderTimer({ deadlineAt: inSeconds(1), cooldownMs: 1000, maxBackoffMs: 60000 })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    // Re-arm is now 2s (1000 * 2^1), so at +1.5s it must NOT have fired again.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    // Past the 2s re-arm it fires a second time, which pushes the next re-arm to 4s
+    // (1000 * 2^2) — so 3s of ticks is deliberately not enough to earn a third call.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    // Only once the 4s re-arm elapses does the third call go out.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+
+    // Compare against the old behaviour: a flat 1s cooldown over this same ~9s window
+    // would have fired ~9 times instead of 3, and the gap keeps widening from here.
+    expect(fetchMock.mock.calls.length).toBeLessThan(5)
+  })
+
+  it('does not back off while the server is actually acting on the expire', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ ok: true, skipped: false }) } as unknown as Response)
+    renderTimer({ deadlineAt: inSeconds(1), cooldownMs: 1000 })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    // Flat cooldown retained (no back-off), so the next tick past 1s fires again.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('backs off on a 4xx too, so a dead game code cannot be hammered forever', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({ error: 'Game not found' }),
+    } as unknown as Response)
+    renderTimer({ deadlineAt: inSeconds(1), cooldownMs: 1000 })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
 })
