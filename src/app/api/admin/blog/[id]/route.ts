@@ -41,6 +41,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   if (body.coverImageUrl !== undefined) payload.cover_image_url = body.coverImageUrl ?? null
   if (body.author !== undefined) payload.author = body.author
   if (body.tags !== undefined) payload.tags = body.tags
+  if (body.pinned !== undefined) payload.pinned = body.pinned
 
   const nextStatus = body.status ?? existing.status
   if (body.status !== undefined) payload.status = body.status
@@ -62,6 +63,9 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: internalErrorMessage('admin/blog/id', error) }, { status: 500 })
   }
   if (!data) return NextResponse.json({ error: 'Post not found' }, { status: 404 })
+
+  // Only one post is featured at a time — if this one was just pinned, clear the rest.
+  if (data.pinned) await supabase.from('blog_posts').update({ pinned: false }).neq('id', id)
 
   return NextResponse.json({ post: data })
 }
