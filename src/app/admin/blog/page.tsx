@@ -246,7 +246,9 @@ export default function AdminBlogPage() {
               placeholder={'## A heading\n\nA paragraph with a [link](/games).\n\n- a list item\n- another'}
             />
             <p className="text-faint text-xs">
-              Supports Markdown: ## headings, **bold**, [links](/games), lists, quotes, tables. Raw HTML is ignored.
+              Supports Markdown: ## headings, **bold**, [links](/games), ![images](https://…/photo.jpg), lists, quotes,
+              tables. Images take a URL (host it elsewhere first — pasting a file won&rsquo;t upload it). Raw HTML is
+              ignored.
             </p>
           </label>
 

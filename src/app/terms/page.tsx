@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ContentPage, Section, MailLink } from '@/components/content/ContentPage'
 import { SITE_NAME } from '@/lib/seo'
-import { LEGAL_EMAIL, SUPPORT_EMAIL } from '@/lib/contact'
+import { LEGAL_EMAIL, SUPPORT_EMAIL, TERMS_EMAIL } from '@/lib/contact'
 
 const LAST_UPDATED = 'July 20, 2026'
 
@@ -126,7 +126,7 @@ export default function TermsPage() {
 
       <Section title="Contact">
         <p>
-          Questions about these terms: <MailLink address={LEGAL_EMAIL} />. General support:{' '}
+          Questions about these terms: <MailLink address={TERMS_EMAIL} />. General support:{' '}
           <MailLink address={SUPPORT_EMAIL} />, or see our{' '}
           <Link href="/contact" className="font-semibold text-[var(--primary)] underline">
             contact page

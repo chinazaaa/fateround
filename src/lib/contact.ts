@@ -7,7 +7,9 @@
  */
 export const SUPPORT_EMAIL = 'hello@fateround.com'
 export const PRIVACY_EMAIL = 'privacy@fateround.com'
-/** Legal/ToS enquiries and content reports. Shares the general inbox for now. */
+/** Questions about the Terms of Service. */
+export const TERMS_EMAIL = 'terms@fateround.com'
+/** Content reports / abuse. Shares the general inbox for now. */
 export const LEGAL_EMAIL = SUPPORT_EMAIL
 
 export const SOCIAL_LINKS = {
