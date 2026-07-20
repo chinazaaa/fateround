@@ -67,6 +67,12 @@ export function useTurnTimer({
     // accrued against the previous one.
     skipStreakRef.current = 0
 
+    // `firingRef` outlives this effect, and the re-arm below is now up to `maxBackoffMs`
+    // away. Without tracking these, a teardown mid-back-off would leave the gate stuck
+    // true and block the *next* deadline for up to a minute. Cleanup clears both.
+    let effectActive = true
+    let rearmTimeoutId: number | undefined
+
     const tick = async () => {
       const left = secondsUntil(deadlineAt)
       setSecondsLeft(left)
@@ -105,16 +111,28 @@ export function useTurnTimer({
           // (network blip, 5xx) must not surface as an unhandled promise rejection.
           // The cooldown below still re-arms so a later tick retries the expire.
         } finally {
-          setTimeout(() => {
-            firingRef.current = false
-          }, rearmMs)
+          // If this effect was torn down while the fetch was in flight, don't touch the
+          // gate — the new effect owns it now, and un-gating here could double-fire it.
+          // The cleanup already reset the gate for the new effect.
+          if (effectActive) {
+            rearmTimeoutId = window.setTimeout(() => {
+              firingRef.current = false
+            }, rearmMs)
+          }
         }
       }
     }
 
     void tick()
     const id = window.setInterval(() => void tick(), intervalMs)
-    return () => window.clearInterval(id)
+    return () => {
+      window.clearInterval(id)
+      effectActive = false
+      // Drop a pending re-arm and un-gate now, so a teardown mid-back-off can't leave the
+      // next deadline blocked for up to `maxBackoffMs`.
+      if (rearmTimeoutId !== undefined) window.clearTimeout(rearmTimeoutId)
+      firingRef.current = false
+    }
     // resetKey re-arms the interval on a caller-significant change (e.g. phase) that
     // leaves deadlineAt untouched, matching the original per-game effect deps.
   }, [active, mayExpire, deadlineAt, gameCode, endpoint, intervalMs, cooldownMs, maxBackoffMs, resetKey])

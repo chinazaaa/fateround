@@ -188,6 +188,61 @@ describe('useTurnTimer', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
+  it('clears the firing gate on unmount so a pending back-off cannot fire late', async () => {
+    // Regression guard: firingRef outlives the effect and the re-arm can be up to
+    // maxBackoffMs away. If cleanup did not clear it, the stale setTimeout would flip the
+    // gate long after unmount (and, on a remount, block the next deadline for up to a minute).
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ ok: true, skipped: true }) } as unknown as Response)
+    const { unmount } = renderTimer({ deadlineAt: inSeconds(1), cooldownMs: 1000, maxBackoffMs: 60000 })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    // Tear down while a ~2s back-off re-arm is pending, then let all timers drain.
+    act(() => unmount())
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000)
+    })
+    // No further fetches, and crucially no lingering timer flipping the shared ref.
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('a fresh deadline after a backed-off run fires promptly (gate not stuck)', async () => {
+    // First deadline gets skipped and backs off; a re-render with a NEW deadline must not
+    // inherit the stale gate/back-off — it should fire on its own schedule.
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ ok: true, skipped: true }) } as unknown as Response)
+    const first = inSeconds(1)
+    const { rerender } = renderHook(
+      (p: { deadlineAt: string }) =>
+        useTurnTimer({
+          gameCode: 'ABCD',
+          endpoint: '/api/x/expire-turn',
+          deadlineAt: p.deadlineAt,
+          hasTimer: true,
+          cooldownMs: 1000,
+          maxBackoffMs: 60000,
+        }),
+      { initialProps: { deadlineAt: first } }
+    )
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    // New deadline arrives (server advanced the turn); now server acts on it.
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ ok: true, skipped: false }) } as unknown as Response)
+    act(() => rerender({ deadlineAt: inSeconds(1) }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    // Fired for the new deadline despite the previous run's back-off — gate was not stuck.
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('backs off on a 4xx too, so a dead game code cannot be hammered forever', async () => {
     fetchMock.mockResolvedValue({
       ok: false,
