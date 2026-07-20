@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
       excerpt: body.excerpt,
       body: body.body,
       cover_image_url: body.coverImageUrl ?? null,
-      author: body.author ?? 'Fate Round',
+      author: body.author ?? 'FateRound',
       tags: body.tags ?? [],
       status,
       published_at: publishedAt,

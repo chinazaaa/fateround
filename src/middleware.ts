@@ -13,7 +13,13 @@ function isProductionHost(host: string | null): boolean {
   return PRODUCTION_HOSTS.has(bare)
 }
 
-const DISALLOW_ALL_ROBOTS = 'User-agent: *\nDisallow: /\n'
+// Deliberately crawl-permissive, with NO sitemap line. Dev pages are already
+// indexed, so we must keep them crawlable — a blanket `Disallow: /` would stop
+// Google re-fetching them and it would never see the `noindex` header below,
+// leaving them stuck in the index. Letting bots crawl + serving `noindex` is the
+// fast path to getting the dev URLs removed. (Omitting the sitemap avoids
+// actively feeding dev URLs to crawlers in the meantime.)
+const NONPROD_ROBOTS = 'User-agent: *\nAllow: /\n'
 
 export function middleware(req: NextRequest): NextResponse {
   // Production is untouched — the static /robots.txt route and normal metadata
@@ -22,21 +28,18 @@ export function middleware(req: NextRequest): NextResponse {
     return NextResponse.next()
   }
 
-  // Non-production host: serve a blanket "block everything" robots.txt instead
-  // of the crawl-friendly one so bots that respect robots never enumerate pages.
   if (req.nextUrl.pathname === '/robots.txt') {
-    return new NextResponse(DISALLOW_ALL_ROBOTS, {
+    return new NextResponse(NONPROD_ROBOTS, {
       headers: {
         'content-type': 'text/plain; charset=utf-8',
         'cache-control': 'public, max-age=3600, s-maxage=86400',
-        // Belt-and-suspenders: also tag the robots response itself.
         'x-robots-tag': 'noindex, nofollow',
       },
     })
   }
 
-  // And set X-Robots-Tag on every other response so anything already indexed
-  // (or crawled despite robots.txt) is dropped from the index.
+  // The real de-indexing signal: tag every non-production response `noindex` so
+  // crawlers drop anything they've already indexed once they re-crawl it.
   const res = NextResponse.next()
   res.headers.set('x-robots-tag', 'noindex, nofollow')
   return res
