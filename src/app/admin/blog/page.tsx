@@ -32,7 +32,7 @@ const EMPTY_FORM: FormState = {
   excerpt: '',
   body: '',
   coverImageUrl: '',
-  author: 'Fate Round',
+  author: 'FateRound',
   tags: '',
   status: 'draft',
   pinned: false,
@@ -74,7 +74,7 @@ function payloadFromForm(form: FormState) {
     excerpt: form.excerpt,
     body: form.body,
     coverImageUrl: form.coverImageUrl.trim(),
-    author: form.author.trim() || 'Fate Round',
+    author: form.author.trim() || 'FateRound',
     tags,
     status: form.status,
     pinned: form.pinned,
@@ -376,7 +376,7 @@ export default function AdminBlogPage() {
               value={form.author}
               onChange={(e) => setForm((prev) => ({ ...prev, author: e.target.value }))}
               className="input-field w-full"
-              placeholder="Fate Round"
+              placeholder="FateRound"
             />
           </label>
 
