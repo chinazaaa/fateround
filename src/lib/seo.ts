@@ -263,6 +263,37 @@ export function faqPageJsonLd(faqs: GameLandingFaq[]): string {
   })
 }
 
+/** BlogPosting structured data for a single article. */
+export function blogPostingJsonLd(post: {
+  slug: string
+  title: string
+  excerpt: string
+  author: string
+  coverImageUrl?: string | null
+  publishedAt: string | null
+  updatedAt: string
+}): string {
+  const origin = appOrigin()
+  const image = post.coverImageUrl
+    ? post.coverImageUrl.startsWith('http')
+      ? post.coverImageUrl
+      : `${origin}${post.coverImageUrl}`
+    : `${origin}${OG_IMAGE.url}`
+
+  return JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    headline: post.title,
+    description: post.excerpt,
+    image,
+    author: { '@type': 'Organization', name: post.author },
+    publisher: { '@type': 'Organization', name: SITE_NAME, url: origin },
+    datePublished: post.publishedAt ?? undefined,
+    dateModified: post.updatedAt,
+    mainEntityOfPage: `${origin}/blog/${post.slug}`,
+  })
+}
+
 /** BreadcrumbList structured data — helps Google render breadcrumb trails and helps AI models understand page hierarchy. */
 export function breadcrumbJsonLd(items: { name: string; path: string }[]): string {
   const origin = appOrigin()

@@ -7,7 +7,7 @@ const CONTACT_EMAIL = 'privacy@fateround.com'
 const LAST_UPDATED = 'July 11, 2026'
 
 export const metadata: Metadata = {
-  title: `Privacy Policy — ${SITE_NAME}`,
+  title: 'Privacy Policy',
   description: `How ${SITE_NAME} handles your data when you play our online multiplayer party games.`,
   alternates: { canonical: '/privacy' },
 }

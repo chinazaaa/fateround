@@ -1,6 +1,21 @@
 'use client'
 import type { GameType } from '@/types'
 import { gameTypeConfig } from '@/lib/game-types'
+import { isMatureGame, MATURE_BADGE_LABEL } from '@/lib/game-maturity'
+
+function MatureBadge({ className = '' }: { className?: string }) {
+  return (
+    <span
+      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${className}`}
+      style={{
+        background: 'color-mix(in srgb, var(--danger, #dc2626) 14%, transparent)',
+        color: 'var(--danger, #dc2626)',
+      }}
+    >
+      {MATURE_BADGE_LABEL}
+    </span>
+  )
+}
 
 interface GameTypeCardProps {
   type: GameType
@@ -30,7 +45,10 @@ export function GameTypeCard({ type, selected, compact, onClick }: GameTypeCardP
             {card.emoji}
           </span>
           <div className="min-w-0 flex-1 text-left">
-            <p className="font-semibold truncate">{cfg.label}</p>
+            <p className="flex items-center gap-1.5 font-semibold">
+              <span className="truncate">{cfg.label}</span>
+              {isMatureGame(type) && <MatureBadge />}
+            </p>
             <p className="text-faint text-xs truncate">{cfg.tagline}</p>
           </div>
           <span className="text-faint text-lg shrink-0">→</span>
@@ -55,14 +73,17 @@ export function GameTypeCard({ type, selected, compact, onClick }: GameTypeCardP
           >
             {card.emoji}
           </span>
-          {card.featured && (
-            <span
-              className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-              style={{ background: card.accentSoft, color: card.accent }}
-            >
-              Popular
-            </span>
-          )}
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            {isMatureGame(type) && <MatureBadge />}
+            {card.featured && (
+              <span
+                className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+                style={{ background: card.accentSoft, color: card.accent }}
+              >
+                Popular
+              </span>
+            )}
+          </div>
         </div>
         <div>
           <h3 className="font-bold text-lg tracking-tight">{cfg.label}</h3>
