@@ -51,9 +51,13 @@ describe('middleware — crawler blocking', () => {
     }
   })
 
-  it('serves a disallow-all robots.txt on non-production hosts', async () => {
+  it('serves a crawl-permissive, sitemap-free robots.txt on non-production hosts', async () => {
+    // Crawlable on purpose so bots re-fetch and see the noindex header; no
+    // sitemap line so we don't actively feed dev URLs to crawlers.
     const res = await middleware(req('dev.fateround.com', '/robots.txt'))
-    expect(await res.text()).toBe('User-agent: *\nDisallow: /\n')
+    const body = await res.text()
+    expect(body).toBe('User-agent: *\nAllow: /\n')
+    expect(body).not.toContain('Sitemap')
     expect(res.headers.get('x-robots-tag')).toBe('noindex, nofollow')
   })
 
