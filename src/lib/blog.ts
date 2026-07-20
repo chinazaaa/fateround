@@ -10,6 +10,7 @@ export interface BlogPost {
   author: string
   tags: string[]
   status: BlogStatus
+  pinned: boolean
   published_at: string | null
   created_at: string
   updated_at: string
@@ -41,6 +42,17 @@ export function isPublicPost(post: BlogPost, now: number = Date.now()): boolean 
   if (post.status !== 'published') return false
   if (!post.published_at) return false
   return new Date(post.published_at).getTime() <= now
+}
+
+/**
+ * The public index features one post: the pinned one if an admin set it, otherwise the newest.
+ * Expects `posts` already sorted newest-first, and relies on the API keeping at most one row
+ * pinned — but `find` degrades gracefully to the most-recent pinned if that ever slips.
+ */
+export function partitionFeatured(posts: BlogPost[]): { featured: BlogPost | null; rest: BlogPost[] } {
+  if (posts.length === 0) return { featured: null, rest: [] }
+  const featured = posts.find((post) => post.pinned) ?? posts[0]
+  return { featured, rest: posts.filter((post) => post.id !== featured.id) }
 }
 
 /** Newest published first; used by both the public list and the API response. */

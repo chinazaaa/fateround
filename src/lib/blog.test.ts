@@ -4,6 +4,7 @@ import {
   isPublicPost,
   sortPostsByPublished,
   sortPostsForAdmin,
+  partitionFeatured,
   readingMinutes,
   type BlogPost,
 } from '@/lib/blog'
@@ -19,6 +20,7 @@ function post(overrides: Partial<BlogPost>): BlogPost {
     author: 'Fate Round',
     tags: [],
     status: 'published',
+    pinned: false,
     published_at: '2026-07-01T00:00:00.000Z',
     created_at: '2026-06-01T00:00:00.000Z',
     updated_at: '2026-06-01T00:00:00.000Z',
@@ -71,6 +73,28 @@ describe('sorting', () => {
     const a = post({ id: 'a', updated_at: '2026-06-01T00:00:00.000Z' })
     const b = post({ id: 'b', updated_at: '2026-07-01T00:00:00.000Z' })
     expect(sortPostsForAdmin([a, b]).map((p) => p.id)).toEqual(['b', 'a'])
+  })
+})
+
+describe('partitionFeatured', () => {
+  it('features the pinned post even when it is not the newest', () => {
+    const newest = post({ id: 'newest', published_at: '2026-07-10T00:00:00.000Z' })
+    const pinned = post({ id: 'pinned', published_at: '2026-06-01T00:00:00.000Z', pinned: true })
+    const { featured, rest } = partitionFeatured([newest, pinned])
+    expect(featured?.id).toBe('pinned')
+    expect(rest.map((p) => p.id)).toEqual(['newest'])
+  })
+
+  it('falls back to the newest (first) post when none is pinned', () => {
+    const a = post({ id: 'a' })
+    const b = post({ id: 'b' })
+    const { featured, rest } = partitionFeatured([a, b])
+    expect(featured?.id).toBe('a')
+    expect(rest.map((p) => p.id)).toEqual(['b'])
+  })
+
+  it('returns null featured for an empty list', () => {
+    expect(partitionFeatured([])).toEqual({ featured: null, rest: [] })
   })
 })
 

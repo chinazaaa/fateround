@@ -27,6 +27,7 @@ export const createBlogPostSchema = z.object({
   author: sanitizedString(1, 80).optional(),
   tags: tagsSchema,
   status: statusSchema.optional(),
+  pinned: z.boolean().optional(),
   // ISO string; omitted means "use now when publishing". Validated as a date.
   publishedAt: z.string().datetime({ offset: true }).nullish(),
 })
