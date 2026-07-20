@@ -4,6 +4,10 @@ import { ALL_MARKETING_SLUGS } from '@/lib/marketing-landing'
 import { appOrigin } from '@/lib/site'
 import { fetchPublishedPosts } from '@/lib/blog-server'
 
+// Regenerate periodically so admin-published blog posts appear in the sitemap without a
+// redeploy. Matches the 5-minute revalidate on the /blog pages themselves.
+export const revalidate = 300
+
 /** Indexable marketing/app pages (exclude noindex routes: /game, /host, /history, /admin). */
 const STATIC_INDEXABLE_ROUTES: {
   path: string
