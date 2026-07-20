@@ -10,6 +10,8 @@ import {
   gameTypeConfig,
   type GameCategory,
 } from '@/lib/game-types'
+import { matchesGameSearch } from '@/lib/game-search'
+import { isMatureGame, MATURE_BADGE_LABEL } from '@/lib/game-maturity'
 
 interface Props {
   open: boolean
@@ -18,14 +20,6 @@ interface Props {
 }
 
 type CategoryFilter = GameCategory | 'all'
-
-function matches(type: GameType, query: string): boolean {
-  const cfg = gameTypeConfig(type)
-  return [cfg.label, cfg.tagline, cfg.card.vibe, cfg.card.players, type.replace(/_/g, ' ')]
-    .join(' ')
-    .toLowerCase()
-    .includes(query)
-}
 
 /**
  * Homepage game picker, styled with the Fate Round design system (`.fr-modal`).
@@ -97,7 +91,7 @@ export function MarketingGameTypeModal({ open, onClose, onSelect }: Props) {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return GAME_TYPE_DISPLAY_ORDER.filter((type) => {
-      if (q) return matches(type, q)
+      if (q) return matchesGameSearch(type, q)
       if (category === 'all') return true
       return gameTypeCategory(type) === category
     })
@@ -221,7 +215,20 @@ export function MarketingGameTypeModal({ open, onClose, onSelect }: Props) {
                     }}
                   >
                     <span className="fr-gamecard__emoji">{cfg.card.emoji}</span>
-                    <h3 className="fr-gamecard__title">{cfg.label}</h3>
+                    <h3 className="fr-gamecard__title">
+                      {cfg.label}
+                      {isMatureGame(type) && (
+                        <span
+                          className="ml-1.5 inline-block rounded-full px-1.5 py-px align-middle text-[10px] font-bold tracking-wide"
+                          style={{
+                            background: 'color-mix(in srgb, var(--danger, #dc2626) 14%, transparent)',
+                            color: 'var(--danger, #dc2626)',
+                          }}
+                        >
+                          {MATURE_BADGE_LABEL}
+                        </span>
+                      )}
+                    </h3>
                     <p className="fr-gamecard__tagline line-clamp-2">{cfg.tagline}</p>
                     <div className="fr-gamecard__meta">
                       <span className="fr-gamecard__players">{cfg.card.players}</span>

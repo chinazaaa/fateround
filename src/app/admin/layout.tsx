@@ -8,6 +8,7 @@ const NAV: { href: string; label: string; icon: string; exact?: boolean }[] = [
   { href: '/admin', label: 'Statistics', icon: '📊', exact: true },
   { href: '/admin/feedback', label: 'Feedback', icon: '💬' },
   { href: '/admin/updates', label: "What's new", icon: '📣' },
+  { href: '/admin/blog', label: 'Blog', icon: '✍️' },
   { href: '/admin/settings', label: 'Game limits', icon: '🎚️' },
   { href: '/admin/library', label: 'Library', icon: '📚' },
   { href: '/admin/themes', label: 'Themes', icon: '🎨' },

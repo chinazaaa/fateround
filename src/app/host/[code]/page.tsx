@@ -14,6 +14,7 @@ import { readNominee, rememberNominee } from '@/lib/host-transfer'
 import { rememberHostToken, clearHostToken } from '@/lib/host-session'
 import { useHostToken } from '@/hooks/useHostToken'
 import { useHostIdentity, useHostDisplayName } from '@/hooks/useHostVoiceIdentity'
+import { MatureGameGate } from '@/components/MatureGameGate'
 import type { Game } from '@/types'
 
 /**
@@ -243,6 +244,7 @@ export default function HostPage() {
         )}
         {/* Floating DJ panel — persists across lobby + active play for every game type. */}
         {/* <HostMusicControl gameCode={gameCode} hostToken={hostToken} /> */}
+        <MatureGameGate gameType={game.game_type} />
       </>
     )
   }
