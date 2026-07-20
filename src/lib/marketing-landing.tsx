@@ -96,7 +96,7 @@ const JACKBOX: MarketingPageContent = {
   steps: [
     {
       title: 'Pick a game',
-      description: "Smash Marry Kill, Would You Rather, Trivia, Monopoly — whatever the group's in the mood for.",
+      description: "Monopoly, Whot, Trivia, Would You Rather — whatever the group's in the mood for.",
     },
     {
       title: 'Share the code',
@@ -117,11 +117,12 @@ const JACKBOX: MarketingPageContent = {
         in the same room.
       </p>
       <p>
-        And Fate Round isn&apos;t just party trivia. The same room that runs <GameLink type="smash_marry_kill" /> and{' '}
-        <GameLink type="would_you_rather" /> also runs <GameLink type="monopoly" />, <GameLink type="yahtzee" />,{' '}
-        <GameLink type="whot" />, <GameLink type="ludo" />, <GameLink type="chess" />, <GameLink type="codewords" />,
-        and <GameLink type="trivia" />. It&apos;s the whole game night behind one link — not one pack at a time. Perfect
-        over a Discord or Zoom call, on a couch, or across the country.
+        And Fate Round isn&apos;t just party trivia. The same room runs <GameLink type="monopoly" />,{' '}
+        <GameLink type="yahtzee" />, <GameLink type="whot" />, <GameLink type="uno" />, <GameLink type="ludo" />,{' '}
+        <GameLink type="scrabble" />, and <GameLink type="chess" /> — plus quick word and voting games like{' '}
+        <GameLink type="codewords" />, <GameLink type="would_you_rather" />, and <GameLink type="trivia" />. It&apos;s
+        the whole game night behind one link — not one pack at a time. Perfect over a Discord or Zoom call, on a couch,
+        or across the country.
       </p>
     </>
   ),
