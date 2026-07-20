@@ -32,8 +32,9 @@ with alerts to a channel we actually watch. Single-EC2 = no redundancy, so an ea
   lower-frequency monitor so a Supabase outage is distinguishable from an app outage. Keep it
   cheap and abuse-resistant (hard timeout, no query params echoed).
 
-Wire `commit` from the image build (the CI already stamps `GITHUB_SHA`; expose it as an env/build
-arg, mirroring the existing `NEXT_PUBLIC_*` plumbing).
+`commit` is stamped into the image at build time — the Dockerfile takes `ARG GIT_SHA` (CI passes
+`github.sha`) and exposes it as `ENV GIT_SHA`, which the route reads via `process.env.GIT_SHA`
+(falling back to `unknown`). ✅ done.
 
 ### 1b. Configure monitors (UptimeRobot dashboard or API/Terraform)
 
