@@ -3,6 +3,7 @@ import { GAME_LANDING_CONTENT, gameLandingSlug, getGameBodyParagraph } from '@/l
 import { MARKETING_PAGES } from '@/lib/marketing-landing'
 import { appOrigin } from '@/lib/site'
 import { SITE_NAME } from '@/lib/seo'
+import { MATURE_GAME_TYPES } from '@/lib/game-maturity'
 
 // Served as a static file so AI crawlers and assistants can fetch it cheaply.
 export const dynamic = 'force-static'
@@ -16,6 +17,8 @@ export const dynamic = 'force-static'
  */
 export function GET(): Response {
   const origin = appOrigin()
+
+  const MATURE_GAME_LABELS = [...MATURE_GAME_TYPES].map((type) => gameTypeConfig(type).label).join(', ')
 
   const gameLines = GAME_TYPE_DISPLAY_ORDER.map((type) => {
     const cfg = gameTypeConfig(type)
@@ -44,12 +47,19 @@ ${SITE_NAME} hosts ${GAME_TYPE_DISPLAY_ORDER.length}+ multiplayer game modes in 
 
 Best for: friend groups, Discord and video calls, birthday parties, icebreakers, team socials, family game night, and late-night group chats.
 
+Content ratings: most modes are family-friendly and are used in classrooms and school championships. A small number of party games are for adults only and are labelled 18+ across the site (${MATURE_GAME_LABELS}); they show a content warning before play and are not suitable for school or family use.
+
 ## Key pages
 
 - [Home](${origin}/): Overview and quick game creation.
 - [All games](${origin}/games): Browse every game mode.
 - [Create a game](${origin}/create): Start a room and share the code.
 - [Product updates](${origin}/updates): What's new on ${SITE_NAME}.
+- [Blog](${origin}/blog): Guides and game rules — game nights, school championships, video-call games, Whot rules.
+- [FAQ & help](${origin}/faq): Common questions about accounts, rooms, spectators, custom questions, and content ratings.
+- [Contact](${origin}/contact): How to reach the team for support, content reports, and press.
+- [Terms of Service](${origin}/terms): Rules for using ${SITE_NAME}, including age requirements.
+- [Privacy Policy](${origin}/privacy): What data is collected and how it is handled.
 
 ## Games
 

@@ -3,6 +3,7 @@ import { MarketingHeader } from '@/components/MarketingHeader'
 import { SiteFooter } from '@/components/SiteFooter'
 import { faqPageJsonLd, breadcrumbJsonLd } from '@/lib/seo'
 import type { MarketingPageContent } from '@/lib/marketing-landing'
+import { FaqList } from '@/components/marketing/FaqList'
 
 function PrimaryCtas({ primary }: { primary?: { href: string; label: string } }) {
   return (
@@ -231,20 +232,7 @@ export function MarketingLanding({ content }: { content: MarketingPageContent })
             {/* FAQ */}
             <section>
               <h2 className="sec-title-fr">Frequently asked questions</h2>
-              {content.faqs.map((faq) => (
-                <dl
-                  key={faq.question}
-                  className="mb-3 rounded-[var(--radius-lg)] px-[22px] py-[18px]"
-                  style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-                >
-                  <dt className="mb-[5px] text-[15px] font-bold" style={{ color: 'var(--text)' }}>
-                    {faq.question}
-                  </dt>
-                  <dd className="m-0 text-sm leading-[1.55]" style={{ color: 'var(--text-muted)' }}>
-                    {faq.answer}
-                  </dd>
-                </dl>
-              ))}
+              <FaqList faqs={content.faqs} />
             </section>
 
             {/* Final CTA */}

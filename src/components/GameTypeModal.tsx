@@ -1,13 +1,8 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import type { GameType } from '@/types'
-import {
-  GAME_TYPE_DISPLAY_ORDER,
-  GAME_CATEGORIES,
-  gameTypeCategory,
-  gameTypeConfig,
-  type GameCategory,
-} from '@/lib/game-types'
+import { GAME_TYPE_DISPLAY_ORDER, GAME_CATEGORIES, gameTypeCategory, type GameCategory } from '@/lib/game-types'
+import { matchesGameSearch } from '@/lib/game-search'
 import { Modal } from '@/components/ui/Modal'
 import { GameTypeCard } from '@/components/GameTypeCard'
 
@@ -19,14 +14,6 @@ interface GameTypeModalProps {
 }
 
 type CategoryFilter = GameCategory | 'all'
-
-function matchesGameSearch(type: GameType, query: string): boolean {
-  const cfg = gameTypeConfig(type)
-  const haystack = [cfg.label, cfg.tagline, cfg.card.vibe, cfg.card.players, type.replace(/_/g, ' ')]
-    .join(' ')
-    .toLowerCase()
-  return haystack.includes(query)
-}
 
 export function GameTypeModal({ open, onClose, selected, onSelect }: GameTypeModalProps) {
   const [search, setSearch] = useState('')

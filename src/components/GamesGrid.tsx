@@ -4,7 +4,9 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import type { GameType } from '@/types'
 import type { GameLandingContent } from '@/lib/game-landing'
-import type { GameTypeConfig } from '@/lib/game-types'
+import { GAME_CATEGORIES, gameTypeCategory, type GameCategory, type GameTypeConfig } from '@/lib/game-types'
+import { matchesGameSearch } from '@/lib/game-search'
+import { isMatureGame, MATURE_BADGE_LABEL } from '@/lib/game-maturity'
 
 export type GamesGridItem = {
   type: GameType
@@ -13,19 +15,46 @@ export type GamesGridItem = {
   cfg: GameTypeConfig
 }
 
+type CategoryFilter = GameCategory | 'all'
+type SortKey = 'featured' | 'az'
+
+const SORTS: { key: SortKey; label: string }[] = [
+  { key: 'featured', label: 'Popular' },
+  { key: 'az', label: 'A–Z' },
+]
+
 export function GamesGrid({ games }: { games: GamesGridItem[] }) {
   const [query, setQuery] = useState('')
+  const [category, setCategory] = useState<CategoryFilter>('all')
+  const [sort, setSort] = useState<SortKey>('featured')
+
+  // Searching spans every category, so an active query overrides the category chips —
+  // otherwise a hit in a different tab looks like "no results".
+  const searching = query.trim().length > 0
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return games
-    return games.filter(
-      ({ content, cfg }) =>
-        content.heroTitle.toLowerCase().includes(q) ||
-        cfg.card.vibe.toLowerCase().includes(q) ||
-        content.heroSubtitle.toLowerCase().includes(q)
-    )
-  }, [query, games])
+    const result = games.filter(({ type, content }) => {
+      if (searching) {
+        return matchesGameSearch(type, query, [content.heroTitle, content.heroSubtitle])
+      }
+      if (category === 'all') return true
+      return gameTypeCategory(type) === category
+    })
+
+    if (sort === 'az') {
+      return [...result].sort((a, b) => a.content.heroTitle.localeCompare(b.content.heroTitle))
+    }
+    // 'featured' keeps the curated order the page passes in (pinned games first).
+    return result
+  }, [games, query, searching, category, sort])
+
+  const tabs: { key: CategoryFilter; label: string }[] = [
+    { key: 'all', label: 'All' },
+    ...GAME_CATEGORIES.map((c) => ({ key: c.key as CategoryFilter, label: c.label })),
+  ]
+
+  const countFor = (key: CategoryFilter) =>
+    key === 'all' ? games.length : games.filter(({ type }) => gameTypeCategory(type) === key).length
 
   return (
     <div className="mx-auto w-full max-w-[760px] space-y-5">
@@ -63,13 +92,72 @@ export function GamesGrid({ games }: { games: GamesGridItem[] }) {
         />
       </div>
 
+      {/* Category filter */}
+      <div
+        role="tablist"
+        aria-label="Filter games by category"
+        className="flex flex-wrap items-center justify-center gap-2"
+      >
+        {tabs.map((tab) => {
+          const active = !searching && category === tab.key
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => {
+                setQuery('')
+                setCategory(tab.key)
+              }}
+              className="fr-chip shrink-0 !text-[13px]"
+              style={
+                active
+                  ? {
+                      background: 'var(--primary)',
+                      borderColor: 'var(--primary)',
+                      color: 'var(--primary-contrast)',
+                    }
+                  : undefined
+              }
+            >
+              {tab.label}
+              <span className="opacity-60">{countFor(tab.key)}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Sort */}
+      <div className="flex items-center justify-center gap-2 text-[12.5px]">
+        <span style={{ color: 'var(--text-faint)' }}>Sort</span>
+        {SORTS.map((option) => {
+          const active = sort === option.key
+          return (
+            <button
+              key={option.key}
+              type="button"
+              aria-pressed={active}
+              onClick={() => setSort(option.key)}
+              className="rounded-full px-2.5 py-1 font-semibold"
+              style={{
+                color: active ? 'var(--primary)' : 'var(--text-faint)',
+                background: active ? 'color-mix(in srgb, var(--primary) 12%, transparent)' : 'transparent',
+              }}
+            >
+              {option.label}
+            </button>
+          )
+        })}
+      </div>
+
       {filtered.length === 0 ? (
         <p className="py-8 text-center text-sm" style={{ color: 'var(--text-faint)' }}>
           No games match &ldquo;{query.trim()}&rdquo;
         </p>
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {filtered.map(({ slug, content, cfg }) => (
+          {filtered.map(({ type, slug, content, cfg }) => (
             <Link
               key={slug}
               href={`/games/${slug}`}
@@ -84,7 +172,20 @@ export function GamesGrid({ games }: { games: GamesGridItem[] }) {
                   {cfg.card.emoji}
                 </span>
                 <div className="min-w-0">
-                  <h2 className="fr-gamecard__title !text-[15.5px]">{content.heroTitle}</h2>
+                  <h2 className="fr-gamecard__title !text-[15.5px]">
+                    {content.heroTitle}
+                    {isMatureGame(type) && (
+                      <span
+                        className="ml-1.5 inline-block rounded-full px-1.5 py-px align-middle text-[10px] font-bold tracking-wide"
+                        style={{
+                          background: 'color-mix(in srgb, var(--danger, #dc2626) 14%, transparent)',
+                          color: 'var(--danger, #dc2626)',
+                        }}
+                      >
+                        {MATURE_BADGE_LABEL}
+                      </span>
+                    )}
+                  </h2>
                   <p className="mt-0.5 text-xs" style={{ color: 'var(--text-faint)' }}>
                     {cfg.card.players} · {cfg.card.vibe}
                   </p>
@@ -99,7 +200,9 @@ export function GamesGrid({ games }: { games: GamesGridItem[] }) {
       )}
 
       <p className="text-center text-[12.5px]" style={{ color: 'var(--text-faint)' }}>
-        {games.length} modes · free forever · no sign-up
+        {searching || category !== 'all'
+          ? `${filtered.length} of ${games.length} modes`
+          : `${games.length} modes · free forever · no sign-up`}
       </p>
     </div>
   )

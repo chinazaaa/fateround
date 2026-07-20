@@ -34,6 +34,30 @@ export const gameCodeString = () =>
         .regex(/^[A-Z0-9]+$/, 'Game code must be alphanumeric')
     )
 
+/**
+ * Long-form Markdown body. Unlike `sanitizedString`, this does NOT strip HTML tags — that
+ * would eat autolinks (`<https://…>`) and any `<`/`>` in prose or code blocks. Safety instead
+ * comes at render time: react-markdown ignores raw HTML by default. We still strip bidi
+ * control characters, which have no legitimate use in a blog body.
+ */
+export const markdownBody = (min: number, max: number) =>
+  z
+    .string()
+    .transform((s) => stripBidiControls(s.trim()))
+    .pipe(z.string().min(min, `Must be at least ${min} character(s)`).max(max, `Must be at most ${max} characters`))
+
+/** URL or root-relative path (e.g. a cover image). Empty string normalises to undefined. */
+export const optionalUrlOrPath = (max: number = 500) =>
+  z
+    .string()
+    .trim()
+    .max(max, `Must be at most ${max} characters`)
+    .refine((s) => s === '' || s.startsWith('/') || /^https?:\/\//i.test(s), {
+      message: 'Must be a URL (https://…) or a path starting with /',
+    })
+    .transform((s) => (s === '' ? undefined : s))
+    .optional()
+
 export const hostTokenString = () => z.string().min(1, 'hostToken is required')
 
 export const uuidString = (label: string = 'ID') => z.string().uuid(`${label} must be a valid UUID`)

@@ -7,6 +7,7 @@ import { PollGamePlayerExperience } from '@/components/poll-game/PollGamePlayerE
 // import { NowPlayingBar } from '@/components/music/NowPlayingBar'
 import { AudioChat } from '@/components/AudioChat'
 import { IosInstallPushNudge } from '@/components/IosInstallPushNudge'
+import { MatureGameGate } from '@/components/MatureGameGate'
 import { getPlayerSession } from '@/lib/utils'
 import { gameHasHeaderVoice } from '@/lib/game-types'
 
@@ -152,6 +153,9 @@ export default function GamePage() {
   return (
     <>
       <PollGamePlayerExperience gameCode={gameCode} initialName={initialName} autoJoinAsViewer={watch} />
+      {/* Content warning for the adult party games. Sits on the shared game route so it
+          reaches joiners too — a gate on /create would only ever stop the host. */}
+      <MatureGameGate gameType={gameType} />
       {/* Floating "Join voice" pill. Skipped for games with the header voice rail
           (Whot) so they don't get two voice controls. Voice chat is disabled for
           tournament players (unstable across the lobby/match tabs) — but spectators
