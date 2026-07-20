@@ -1589,7 +1589,7 @@ const WHOT_UNO: MarketingPageContent = {
   breadcrumbName: 'Whot vs Uno',
   seoTitle: 'Whot vs Uno — Differences, and Where to Play Both Free',
   seoDescription:
-    'Whot vs Uno: how the two card classics compare, and where to play both free online. Whot uses shapes and WHOT wilds; Uno-style Crazy Eights uses colours. No app, no sign-up.',
+    'Whot vs Uno: how the two card classics compare, and where to play both free online. Whot uses shapes and WHOT wilds; Uno uses colours and Wild cards. Play both free on Fate Round — no app, no sign-up.',
   keywords: [
     'whot vs uno',
     'is whot like uno',
@@ -1604,12 +1604,7 @@ const WHOT_UNO: MarketingPageContent = {
   heroTitle: 'Whot vs Uno — cousins, not twins (and you can play both)',
   heroSubtitle:
     'Whot and Uno are close cousins: match, shed your hand, and use wild cards to bend the game. Here’s how they differ — and how to play both free in your browser, no app, no sign-up.',
-  highlights: [
-    'Whot: shapes + WHOT wilds',
-    'Uno-style: colours + wilds',
-    'Play both free online',
-    'No app, no sign-up',
-  ],
+  highlights: ['Whot: shapes + WHOT wilds', 'Uno: colours + wilds', 'Play both free online', 'No app, no sign-up'],
   featureCards: [
     {
       emoji: '🃏',
@@ -1629,7 +1624,8 @@ const WHOT_UNO: MarketingPageContent = {
     {
       emoji: '🎮',
       title: 'Play both here',
-      description: 'Fate Round has Whot and Crazy Eights (the worldwide Uno-style classic) — free, in the browser.',
+      description:
+        'Fate Round has real Whot and real Uno — plus Crazy Eights, the classic where 8s are wild — free, in the browser.',
     },
   ],
   stepsHeading: 'How they compare',
@@ -1637,11 +1633,11 @@ const WHOT_UNO: MarketingPageContent = {
     { title: 'The goal is the same', description: 'Empty your hand first by matching the top card and playing wilds.' },
     {
       title: 'The look differs',
-      description: 'Whot uses shapes (circle, cross, triangle, square, star); Uno-style uses colours.',
+      description: 'Whot uses shapes (circle, cross, triangle, square, star); Uno uses colours.',
     },
     {
       title: 'Try each free',
-      description: 'Play Whot or Crazy Eights on Fate Round — share a link and your crew joins.',
+      description: 'Play Whot or Uno on Fate Round — share a link and your crew joins.',
     },
   ],
   body: (
@@ -1654,10 +1650,10 @@ const WHOT_UNO: MarketingPageContent = {
         General Market for extra chaos.
       </p>
       <p>
-        The best part: you don’t have to choose. Fate Round has proper Naija <GameLink type="whot" /> and{' '}
-        <GameLink type="crazy_eights">Crazy Eights</GameLink> — the worldwide Uno-style classic where 8s are wild — both
-        free, both in the browser, no app to download. Share a link and your crew joins from any phone. Part of the{' '}
-        <HubLink>Naija game night</HubLink> lineup.
+        The best part: you don’t have to choose. Fate Round has proper Naija <GameLink type="whot" /> and real{' '}
+        <GameLink type="uno">Uno</GameLink> — plus <GameLink type="crazy_eights">Crazy Eights</GameLink>, the classic
+        where 8s are wild — all free, all in the browser, no app to download. Share a link and your crew joins from any
+        phone. Part of the <HubLink>Naija game night</HubLink> lineup.
       </p>
     </>
   ),
@@ -1670,7 +1666,7 @@ const WHOT_UNO: MarketingPageContent = {
       { label: 'Wild card', a: 'WHOT (20) — call the next shape', b: 'Wild — call the next colour' },
       { label: 'Draw cards', a: 'Pick 2, Pick 3', b: 'Draw 2, Draw 4' },
       { label: 'Extra cards', a: 'Hold On, Suspension, General Market', b: 'Skip, Reverse' },
-      { label: 'Play free online', a: 'Yes — on Fate Round', b: 'Crazy Eights (Uno-style) on Fate Round' },
+      { label: 'Play free online', a: 'Yes — on Fate Round', b: 'Yes — on Fate Round (plus Crazy Eights)' },
     ],
   },
   faqs: [
@@ -1687,15 +1683,15 @@ const WHOT_UNO: MarketingPageContent = {
     {
       question: 'Can I play Whot and Uno online free?',
       answer:
-        'You can play Whot free on Fate Round, and Crazy Eights — the worldwide Uno-style game where 8s are wild — free as well. Both run in the browser with no app and no sign-up.',
+        'Yes — both Whot and Uno are free on Fate Round, plus Crazy Eights (the classic where 8s are wild). They all run in the browser with no app and no sign-up.',
     },
     {
       question: 'Which should I play?',
       answer:
-        'If you want the Naija classic with shapes and General Market, play Whot. If you want the colour-matching game most people call Uno, play Crazy Eights. On Fate Round you can jump between both in the same session.',
+        'If you want the Naija classic with shapes and General Market, play Whot. If you want the colour-matching game, play Uno (or Crazy Eights, the 8s-are-wild variant). On Fate Round you can jump between all three in the same session.',
     },
   ],
-  ctaHeading: 'Play Whot or Crazy Eights',
+  ctaHeading: 'Play Whot or Uno',
   ctaSubtext: 'Free forever. Share one link — your crew is in.',
   accent: '#15803d',
 }
