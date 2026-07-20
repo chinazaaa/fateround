@@ -210,6 +210,41 @@ describe('useTurnTimer', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
+  it('unmounting while the fetch is still in flight schedules no re-arm (effectActive guard)', async () => {
+    // The previous test unmounts after the mocked fetch already resolved, so the re-arm
+    // setTimeout is already scheduled and only the cleanup's clearTimeout is exercised.
+    // This one holds the fetch pending across unmount, so tick()'s `finally` runs *after*
+    // teardown — the path where the `effectActive` guard, not clearTimeout, must stop the
+    // stale re-arm from ever being scheduled.
+    let resolveFetch!: (r: unknown) => void
+    fetchMock.mockReturnValue(
+      new Promise((res) => {
+        resolveFetch = res
+      })
+    )
+    const { unmount } = renderTimer({ deadlineAt: inSeconds(1), cooldownMs: 1000, maxBackoffMs: 60000 })
+
+    // Deadline passes → tick() fires the fetch and awaits it (still pending here).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const timersWhilePending = vi.getTimerCount()
+
+    // Tear down while the request is unresolved, then let it resolve.
+    act(() => unmount())
+    await act(async () => {
+      resolveFetch({ ok: true, json: async () => ({ ok: true, skipped: true }) })
+      await Promise.resolve()
+      await vi.advanceTimersByTimeAsync(5000)
+    })
+
+    // The resolving fetch must NOT have scheduled a re-arm timeout after teardown.
+    expect(vi.getTimerCount()).toBeLessThanOrEqual(timersWhilePending)
+    expect(vi.getTimerCount()).toBe(0)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it('a fresh deadline after a backed-off run fires promptly (gate not stuck)', async () => {
     // First deadline gets skipped and backs off; a re-render with a NEW deadline must not
     // inherit the stale gate/back-off — it should fire on its own schedule.
