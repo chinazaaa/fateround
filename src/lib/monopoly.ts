@@ -2364,9 +2364,10 @@ async function clearMonopolyPendingTrade(
   gameId: string,
   board: MonopolyBoard,
   trade: MonopolyPendingTrade,
-  statusMessage: string
+  statusMessage: string,
+  outcome: 'declined' | 'cancelled' = 'declined'
 ): Promise<void> {
-  const lastTradeEvent = nextTradeEvent(board, trade.from_player_id, trade.to_player_id, 'declined')
+  const lastTradeEvent = nextTradeEvent(board, trade.from_player_id, trade.to_player_id, outcome)
   await persistBoard(
     supabase,
     gameId,
@@ -2419,7 +2420,14 @@ export async function processMonopolyTradeCancel(
 
   const names = await playerNamesById(supabase, gameId, [trade.from_player_id, trade.to_player_id])
   const toName = names[trade.to_player_id] ?? 'player'
-  await clearMonopolyPendingTrade(supabase, gameId, board, trade, `Trade offer to ${toName} was cancelled.`)
+  await clearMonopolyPendingTrade(
+    supabase,
+    gameId,
+    board,
+    trade,
+    `Trade offer to ${toName} was cancelled.`,
+    'cancelled'
+  )
   return {}
 }
 

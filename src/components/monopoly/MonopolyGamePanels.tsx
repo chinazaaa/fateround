@@ -205,6 +205,9 @@ export function MonopolyTurnModals({
   colorBarClass?: (color?: MonopolyColorGroup) => string
   themeId?: string | null
 }) {
+  const [tradeMinimized, setTradeMinimized] = useState(false)
+  const previousTradeRef = useRef<string | null>(null)
+
   const trade = board?.pending_trade ? normalizePendingTrade(board.pending_trade) : null
   const tradeFrom = trade ? players.find((p) => p.id === trade.from_player_id) : null
   const tradeTo = trade ? players.find((p) => p.id === trade.to_player_id) : null
@@ -216,53 +219,117 @@ export function MonopolyTurnModals({
     ? buildTradeSideItems(trade.request_cash, trade.request_properties, trade.request_get_out_cards ?? 0).length
     : 0
 
+  const tradeSig = trade ? JSON.stringify(trade) : null
+
+  useEffect(() => {
+    if (showTradeModal && tradeSig !== previousTradeRef.current) {
+      setTradeMinimized(false)
+      previousTradeRef.current = tradeSig
+    }
+  }, [showTradeModal, tradeSig])
+
   return (
     <>
-      {showTradeModal && trade && (
-        <MonopolyModal
-          open
-          subtitle="Review every item before you accept"
-          title={`Trade from ${tradeFrom?.name ?? 'player'}`}
-        >
-          <p className="text-sm text-muted leading-relaxed">
-            If you accept, everything listed below happens immediately. Decline if the count or items look wrong.
-          </p>
-          {receiveCount > 0 && (
-            <p className="text-sm font-semibold text-[var(--foreground)]">
-              You receive {receiveCount} item{receiveCount === 1 ? '' : 's'} in this trade.
-            </p>
-          )}
-          {payCount > 0 && (
-            <p className="text-sm font-semibold text-[var(--foreground)]">
-              You pay {payCount} item{payCount === 1 ? '' : 's'} in this trade.
-            </p>
-          )}
-          <div className="pt-2 max-h-[min(50vh,18rem)] overflow-y-auto">
-            <TradeExchangeReview
-              giveLabel="You pay"
-              getLabel="You receive"
-              giveCash={trade.request_cash}
-              giveProps={trade.request_properties}
-              giveJailCards={trade.request_get_out_cards ?? 0}
-              getCash={trade.offer_cash}
-              getProps={trade.offer_properties}
-              getJailCards={trade.offer_get_out_cards}
-              themeId={themeId}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-2 pt-3">
-            <MonopolyPrimaryButton onClick={() => postAction('/api/monopoly/trade', { accept: true })} loading={acting}>
-              Accept trade
-            </MonopolyPrimaryButton>
-            <MonopolySecondaryButton
-              onClick={() => postAction('/api/monopoly/trade', { accept: false })}
-              disabled={acting}
+      {showTradeModal &&
+        trade &&
+        (tradeMinimized ? (
+          <div
+            className="fr-portal animate-in fade-in slide-in-from-bottom-4 duration-200"
+            style={{
+              position: 'fixed',
+              bottom: 'calc(11.5rem + env(safe-area-inset-bottom))',
+              right: '1rem',
+              zIndex: 9999,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setTradeMinimized(false)}
+              className="flex items-center gap-2 rounded-full border border-[color-mix(in_srgb,var(--marry)_35%,var(--border-strong))] bg-[var(--surface)] p-1.5 pr-4 shadow-[var(--card-shadow-strong)] transition-transform hover:scale-105 active:scale-95 animate-intermittent-shake"
             >
-              Decline
-            </MonopolySecondaryButton>
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--marry)] text-[var(--background)] shadow-[0_2px_8px_color-mix(in_srgb,var(--marry)_40%,transparent)]">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M16 3h5v5" />
+                  <path d="M8 3H3v5" />
+                  <path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3" />
+                  <path d="m15 9 6-6" />
+                </svg>
+              </span>
+              <span className="text-sm font-bold text-[var(--foreground)]">Incoming trade</span>
+            </button>
           </div>
-        </MonopolyModal>
-      )}
+        ) : (
+          <MonopolyModal
+            open
+            subtitle="Review every item before you accept"
+            title={`Trade from ${tradeFrom?.name ?? 'player'}`}
+            headerAction={
+              <button
+                type="button"
+                onClick={() => setTradeMinimized(true)}
+                className="group flex h-10 items-center justify-center rounded-full border-2 border-[var(--border-strong)] bg-[var(--card)] px-4 text-sm font-bold text-[var(--foreground)] shadow-[var(--card-shadow-strong)] transition-all hover:scale-105 hover:border-[var(--primary)] hover:text-[var(--primary)] active:scale-95"
+                title="Minimize trade offer"
+                aria-label="Minimize trade offer"
+              >
+                <span>Hide</span>
+              </button>
+            }
+          >
+            <p className="text-sm text-muted leading-relaxed">
+              If you accept, everything listed below happens immediately. Decline if the count or items look wrong.
+            </p>
+            {receiveCount > 0 && (
+              <p className="text-sm font-semibold text-[var(--foreground)]">
+                You receive {receiveCount} item{receiveCount === 1 ? '' : 's'} in this trade.
+              </p>
+            )}
+            {payCount > 0 && (
+              <p className="text-sm font-semibold text-[var(--foreground)]">
+                You pay {payCount} item{payCount === 1 ? '' : 's'} in this trade.
+              </p>
+            )}
+            <div className="pt-2 max-h-[min(50vh,18rem)] overflow-y-auto">
+              <TradeExchangeReview
+                giveLabel="You pay"
+                getLabel="You receive"
+                giveCash={trade.request_cash}
+                giveProps={trade.request_properties}
+                giveJailCards={trade.request_get_out_cards ?? 0}
+                getCash={trade.offer_cash}
+                getProps={trade.offer_properties}
+                getJailCards={trade.offer_get_out_cards}
+                themeId={themeId}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-3">
+              <button
+                type="button"
+                className="btn-primary w-full py-2.5 text-sm"
+                onClick={() => postAction('/api/monopoly/trade', { accept: true })}
+                disabled={acting}
+              >
+                {acting ? '…' : 'Accept'}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary w-full py-2.5 text-sm"
+                onClick={() => postAction('/api/monopoly/trade', { accept: false })}
+                disabled={acting}
+              >
+                Decline
+              </button>
+            </div>
+          </MonopolyModal>
+        ))}
     </>
   )
 }
@@ -472,7 +539,7 @@ export function MonopolyManagePanel({
               setTradeConfirmOpen(false)
               setConfirmOneWayGift(false)
             }}
-            className="input-field w-full text-sm"
+            className="btn-secondary w-full text-sm text-left"
           >
             <option value="">Trade with…</option>
             {players
