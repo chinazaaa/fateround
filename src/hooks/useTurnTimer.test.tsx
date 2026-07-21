@@ -136,7 +136,9 @@ describe('useTurnTimer', () => {
     // client clock ahead), so it returns skipped. Without back-off the client re-POSTs
     // every cooldown forever — every connected client, each call a full game-state read.
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ ok: true, skipped: true }) } as unknown as Response)
-    renderTimer({ deadlineAt: inSeconds(1), cooldownMs: 1000, maxBackoffMs: 60000 })
+    // graceSkips: 0 exercises the pure terminal path (no skew grace window) — the runaway
+    // guard proper. The grace window's own behaviour is covered by the skew test below.
+    renderTimer({ deadlineAt: inSeconds(1), cooldownMs: 1000, maxBackoffMs: 60000, graceSkips: 0 })
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1500)
@@ -170,6 +172,35 @@ describe('useTurnTimer', () => {
     // Compare against the old behaviour: a flat 1s cooldown over this same ~9s window
     // would have fired ~9 times instead of 3, and the gap keeps widening from here.
     expect(fetchMock.mock.calls.length).toBeLessThan(5)
+  })
+
+  it('does NOT back off during the grace window, so a skewed-but-live deadline is not stranded', async () => {
+    // Regression guard for the freeze from #654: a `skipped` verdict is often just clock
+    // skew — the countdown hit 0 a beat before the server agrees the deadline passed, but
+    // the turn IS about to expire. Exponential back-off there froze the game until refresh.
+    // With the grace window the client keeps retrying at the flat cooldown, so it recovers
+    // the instant the server's clock catches up — no long freeze, no refresh needed.
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ ok: true, skipped: true }) } as unknown as Response)
+    renderTimer({ deadlineAt: inSeconds(1), cooldownMs: 1000, maxBackoffMs: 60000, graceSkips: 3 })
+
+    // Deadline passes → first fire (skipped) at ~t=1s; the flat 1s re-arm clears the gate
+    // at ~t=2s, so the next 1s interval tick re-fires at ~t=3s.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    // Flat cooldown throughout the window: another attempt at ~t=3s, and again at ~t=5s.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    // Under the old exponential-from-first-skip behaviour the re-arms would be 2s then 4s,
+    // so this same ~5s window would have earned only 2 calls — the turn would have sat idle.
   })
 
   it('does not back off while the server is actually acting on the expire', async () => {
