@@ -377,6 +377,7 @@ export function MonopolyModal({
   children,
   colorBar,
   timerSecondsLeft,
+  headerAction,
 }: {
   open: boolean
   onClose?: () => void
@@ -385,6 +386,7 @@ export function MonopolyModal({
   children: ReactNode
   colorBar?: string
   timerSecondsLeft?: number
+  headerAction?: ReactNode
 }) {
   if (!open) return null
 
@@ -400,33 +402,38 @@ export function MonopolyModal({
         onClick={onClose}
       />
       <div
-        className={[
-          'relative w-full max-w-sm max-h-[min(92vh,720px)] overflow-y-auto rounded-2xl border border-[var(--border-strong)]',
-          'bg-[var(--card-strong)] shadow-[var(--card-shadow-strong)]',
-          'animate-in fade-in slide-in-from-bottom-4 duration-200',
-        ].join(' ')}
+        className="relative w-full max-w-sm flex flex-col items-end gap-3 animate-in fade-in slide-in-from-bottom-4 duration-200"
         role="dialog"
         aria-modal="true"
+        aria-label={title}
       >
-        {colorBar && <div className={['h-2 w-full', colorBar].join(' ')} />}
-        <div className="p-5 sm:p-6 space-y-4">
-          <div className="text-center">
-            {subtitle && <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">{subtitle}</p>}
-            <h2 className="text-xl sm:text-2xl font-black text-[var(--foreground)] mt-1">{title}</h2>
-            {timerSecondsLeft != null && timerSecondsLeft > 0 && (
-              <p
-                className={[
-                  'mt-2 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums',
-                  urgent
-                    ? 'bg-[color-mix(in_srgb,var(--marry)_20%,transparent)] text-[var(--marry)] animate-pulse'
-                    : 'bg-[var(--surface-inset-bg)] text-muted',
-                ].join(' ')}
-              >
-                {timerSecondsLeft}s left
-              </p>
-            )}
+        {headerAction}
+        <div
+          className={[
+            'relative w-full max-h-[min(92vh,720px)] overflow-y-auto rounded-2xl border border-[var(--border-strong)]',
+            'bg-[var(--card-strong)] shadow-[var(--card-shadow-strong)]',
+          ].join(' ')}
+        >
+          {colorBar && <div className={['h-2 w-full', colorBar].join(' ')} />}
+          <div className="p-5 sm:p-6 space-y-4">
+            <div className="text-center">
+              {subtitle && <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">{subtitle}</p>}
+              <h2 className="text-xl sm:text-2xl font-black text-[var(--foreground)] mt-1">{title}</h2>
+              {timerSecondsLeft != null && timerSecondsLeft > 0 && (
+                <p
+                  className={[
+                    'mt-2 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums',
+                    urgent
+                      ? 'bg-[color-mix(in_srgb,var(--marry)_20%,transparent)] text-[var(--marry)] animate-pulse'
+                      : 'bg-[var(--surface-inset-bg)] text-muted',
+                  ].join(' ')}
+                >
+                  {timerSecondsLeft}s left
+                </p>
+              )}
+            </div>
+            {children}
           </div>
-          {children}
         </div>
       </div>
     </div>

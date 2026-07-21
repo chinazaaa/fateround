@@ -145,6 +145,14 @@ export function formatTradeMessageForPlayer(
     } else {
       msg = `${to} declined ${from}'s trade offer.`
     }
+  } else if (event.outcome === 'cancelled') {
+    if (myPlayerId === event.from_player_id) {
+      msg = `You cancelled your trade offer to ${to}.`
+    } else if (myPlayerId === event.to_player_id) {
+      msg = `${from} cancelled their trade offer.`
+    } else {
+      msg = `${from} cancelled their trade offer to ${to}.`
+    }
   } else if (event.outcome === 'accepted') {
     if (myPlayerId === event.from_player_id) {
       msg = `${to} accepted your trade offer.`

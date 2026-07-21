@@ -29,7 +29,7 @@ export interface MonopolyLastTradeEvent {
   seq: number
   from_player_id: string
   to_player_id: string
-  outcome: 'proposed' | 'declined' | 'accepted'
+  outcome: 'proposed' | 'declined' | 'accepted' | 'cancelled'
 }
 
 type NamedPlayer = { id: string; name: string }
@@ -206,9 +206,7 @@ export function monopolyEventBanner(
   const { myPlayerId, players, themeId } = args
   if (kind === 'cash') {
     const e = parseCashEvent(args.lastCashEvent)
-    return e && e.player_id === myPlayerId
-      ? { message: formatCashMessageForPlayer(e, themeId), personal: true }
-      : null
+    return e && e.player_id === myPlayerId ? { message: formatCashMessageForPlayer(e, themeId), personal: true } : null
   }
   if (kind === 'trade') {
     const e = parseTradeEvent(args.lastTradeEvent)

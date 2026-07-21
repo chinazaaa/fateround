@@ -514,7 +514,7 @@ export interface MonopolyLastTradeEvent {
   seq: number
   from_player_id: string
   to_player_id: string
-  outcome: 'proposed' | 'declined' | 'accepted'
+  outcome: 'proposed' | 'declined' | 'accepted' | 'cancelled'
 }
 
 export interface MonopolyBoard {
