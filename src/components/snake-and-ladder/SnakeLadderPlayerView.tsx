@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   SnakeLadderCard,
@@ -22,6 +22,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useGameScores, useGameStats, useRosterBase } from '@/components/roster/RosterDrawerContext'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
@@ -29,7 +30,9 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
@@ -61,6 +64,8 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
   const [session, setSession] = useState<SnakeLadderSession | null>(null)
+  const sessionRef = useRef<SnakeLadderSession | null>(null)
+  sessionRef.current = session
   const [states, setStates] = useState<SnakeLadderPlayerState[]>([])
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
@@ -110,6 +115,7 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, void>({
     gameCode,
@@ -124,14 +130,63 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
+  // Register base rows here (the board player path skips the shared dispatcher) for
+  // the header drawer + its live square scoreboard.
+  useRosterBase(game?.status === 'active' || game?.status === 'finished' ? players : undefined, game, myPlayerId)
+  const rosterScores = useMemo(() => Object.fromEntries(states.map((s) => [s.player_id, s.position])), [states])
+  useGameScores(rosterScores, { suffix: '' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        states.map((s) => [
+          s.player_id,
+          s.position === 0 ? '📍 Start' : s.position >= 100 ? '🏁 Home!' : `📍 Square ${s.position}`,
+        ])
+      ),
+    [states]
+  )
+  useGameStats(rosterDetails)
+
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(
+  // Delta fast-path (dual-table). Screen derives from game.status, so session/state writes
+  // only update the board — patch locally and skip the reload; active→finished rides the
+  // games-row event, and the fallback poll reconciles.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as SnakeLadderSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null
+  }, [])
+  const applyStateRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as SnakeLadderPlayerState
+    setStates((prev) => {
+      const i = prev.findIndex((s) => s.id === next.id)
+      if (i === -1) return [...prev, next]
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true
+  }, [])
+
+  const connected = useGameTableSync(
     gameCode,
-    [{ table: 'games', column: 'id' }, 'players', 'snake_ladder_sessions', 'snake_ladder_player_state'],
+    [
+      { table: 'games', column: 'id' },
+      'players',
+      { table: 'snake_ladder_sessions', apply: applySessionRow },
+      { table: 'snake_ladder_player_state', apply: applyStateRow },
+    ],
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
   // Ready-up ring: readiness = holding a seat, so this reuses /players/ready (which
   // toggles the spectator flag). `ready:false` sits the player back out.
@@ -263,6 +318,34 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
   // While holding, keep rendering the active board instead of the leaderboard.
   const effectiveScreen = holdWin && screen === 'finished' && session && states.length > 0 ? 'active' : screen
 
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it. Purely additive — the in-page PlayerSessionControls stays as-is.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={activePlayer?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, activePlayer?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
   if (screen === 'loading') return <SnakeLadderLoadingScreen />
 
   if (screen === 'not_found') {
@@ -302,6 +385,8 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="snake_and_ladder"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
@@ -334,6 +419,7 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={SNAKE_LADDER_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -348,6 +434,7 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myName}
@@ -409,17 +496,6 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
             roundKey={session?.id}
           />
         )}
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby
-            spectating={isViewer}
-          />
-        )}
       </SnakeLadderShell>
     )
   }
@@ -447,16 +523,6 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
           acting={acting}
           rolling={rolling}
           displayRoll={displayRoll}
-        />
-      )}
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isViewer}
         />
       )}
     </SnakeLadderShell>

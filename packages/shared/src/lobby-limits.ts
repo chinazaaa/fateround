@@ -1,15 +1,26 @@
 import { ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS } from './anonymous-messages'
 import { BINGO_DEFAULT_MAX_PLAYERS, BINGO_MAX_PLAYERS, BINGO_MIN_PLAYERS } from './bingo'
 import { CODEWORDS_MAX_PLAYERS, CODEWORDS_MIN_PLAYERS } from './codewords'
+import { CROSSWORD_DEFAULT_MAX_PLAYERS, CROSSWORD_MAX_PLAYERS, CROSSWORD_MIN_PLAYERS } from './crossword'
+import { WORD_SEARCH_DEFAULT_MAX_PLAYERS, WORD_SEARCH_MAX_PLAYERS, WORD_SEARCH_MIN_PLAYERS } from './word-search'
 import { CRAZY8_DEFAULT_MAX_PLAYERS, CRAZY8_MAX_PLAYERS, CRAZY8_MIN_PLAYERS } from './crazy-eights'
-import { DESCRIBE_IT_DEFAULT_MAX_PLAYERS, DESCRIBE_IT_MAX_PLAYERS, DESCRIBE_IT_MIN_PLAYERS } from './describe-it'
+import {
+  DESCRIBE_IT_DEFAULT_MAX_PLAYERS,
+  DESCRIBE_IT_MAX_PLAYERS,
+  DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
+} from './describe-it'
+import { LANDMINE_DEFAULT_MAX_PLAYERS, LANDMINE_MAX_PLAYERS, LANDMINE_MIN_PLAYERS } from './landmine'
 import { LUDO_DEFAULT_MAX_PLAYERS, LUDO_MAX_PLAYERS, LUDO_MIN_PLAYERS } from './ludo'
 import { MAFIA_MAX_PLAYERS, MAFIA_MIN_PLAYERS } from './mafia'
 import { MONOPOLY_DEFAULT_MAX_PLAYERS, MONOPOLY_MAX_PLAYERS, MONOPOLY_MIN_PLAYERS } from './monopoly-board'
 import { NPAT_DEFAULT_MAX_PLAYERS, NPAT_MAX_PLAYERS, NPAT_MIN_PLAYERS } from './npat'
 import { QUICK_DRAW_MIN_PLAYERS } from './quick-draw-lie'
 import { QUIPLASH_DEFAULT_MAX_PLAYERS, QUIPLASH_MAX_PLAYERS, QUIPLASH_MIN_PLAYERS } from './quiplash'
-import { SNAKE_LADDER_DEFAULT_MAX_PLAYERS, SNAKE_LADDER_MAX_PLAYERS, SNAKE_LADDER_MIN_PLAYERS } from './snake-and-ladder'
+import {
+  SNAKE_LADDER_DEFAULT_MAX_PLAYERS,
+  SNAKE_LADDER_MAX_PLAYERS,
+  SNAKE_LADDER_MIN_PLAYERS,
+} from './snake-and-ladder'
 import { TTL_DEFAULT_MAX_PLAYERS, TTL_MAX_PLAYERS, TTL_MIN_PLAYERS } from './two-truths'
 import { WHOT_DEFAULT_MAX_PLAYERS, WHOT_MAX_PLAYERS, WHOT_MIN_PLAYERS } from './whot'
 import { WORD_HUNT_DEFAULT_MAX_PLAYERS, WORD_HUNT_MAX_PLAYERS, WORD_HUNT_MIN_PLAYERS } from './word-hunt'
@@ -26,6 +37,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'yahtzee',
   'whot',
   'crazy_eights',
+  'landmine',
   'ludo',
   'mahjong',
   'i_call_on',
@@ -43,6 +55,9 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'quick_draw',
   'word_rush',
   'ayo',
+  'crossword',
+  'word_search',
+  'ping_pong',
 ] as const
 
 export type LobbyLimitGameType = (typeof LOBBY_LIMIT_GAME_TYPES)[number]
@@ -78,6 +93,10 @@ const SUDOKU_MAX_PLAYERS = 30
 const TIC_TAC_TOE_MIN_PLAYERS = 2
 const TIC_TAC_TOE_MAX_PLAYERS = 2
 const TIC_TAC_TOE_DEFAULT_MAX_PLAYERS = 2
+
+const PING_PONG_MIN_PLAYERS = 2
+const PING_PONG_MAX_PLAYERS = 2
+const PING_PONG_DEFAULT_MAX_PLAYERS = 2
 
 const CHESS_MIN_PLAYERS = 2
 const CHESS_MAX_PLAYERS = 2
@@ -118,6 +137,7 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
   yahtzee: { min: YAHTZEE_MIN_PLAYERS, max: YAHTZEE_MAX_PLAYERS, default: YAHTZEE_DEFAULT_MAX_PLAYERS },
   whot: { min: WHOT_MIN_PLAYERS, max: WHOT_MAX_PLAYERS, default: WHOT_DEFAULT_MAX_PLAYERS },
   crazy_eights: { min: CRAZY8_MIN_PLAYERS, max: CRAZY8_MAX_PLAYERS, default: CRAZY8_DEFAULT_MAX_PLAYERS },
+  landmine: { min: LANDMINE_MIN_PLAYERS, max: LANDMINE_MAX_PLAYERS, default: LANDMINE_DEFAULT_MAX_PLAYERS },
   ludo: { min: LUDO_MIN_PLAYERS, max: LUDO_MAX_PLAYERS, default: LUDO_DEFAULT_MAX_PLAYERS },
   mahjong: { min: MAHJONG_MIN_PLAYERS, max: MAHJONG_MAX_PLAYERS, default: MAHJONG_DEFAULT_MAX_PLAYERS },
   i_call_on: { min: NPAT_MIN_PLAYERS, max: NPAT_MAX_PLAYERS, default: NPAT_DEFAULT_MAX_PLAYERS },
@@ -133,7 +153,9 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
   ayo: { min: AYO_MIN_PLAYERS, max: AYO_MAX_PLAYERS, default: AYO_DEFAULT_MAX_PLAYERS },
   scrabble: { min: SCRABBLE_MIN_PLAYERS, max: SCRABBLE_MAX_PLAYERS, default: SCRABBLE_MAX_PLAYERS },
   describe_it: {
-    min: DESCRIBE_IT_MIN_PLAYERS,
+    // Absolute floor for the max-players cap; individual mode can run with 2.
+    // Team mode's higher start minimum is enforced server-side at game start.
+    min: DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
     max: DESCRIBE_IT_MAX_PLAYERS,
     default: DESCRIBE_IT_DEFAULT_MAX_PLAYERS,
   },
@@ -148,6 +170,13 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     min: MATCHING_PAIRS_MIN_PLAYERS,
     max: MATCHING_PAIRS_MAX_PLAYERS,
     default: MATCHING_PAIRS_DEFAULT_MAX_PLAYERS,
+  },
+  crossword: { min: CROSSWORD_MIN_PLAYERS, max: CROSSWORD_MAX_PLAYERS, default: CROSSWORD_DEFAULT_MAX_PLAYERS },
+  word_search: { min: WORD_SEARCH_MIN_PLAYERS, max: WORD_SEARCH_MAX_PLAYERS, default: WORD_SEARCH_DEFAULT_MAX_PLAYERS },
+  ping_pong: {
+    min: PING_PONG_MIN_PLAYERS,
+    max: PING_PONG_MAX_PLAYERS,
+    default: PING_PONG_DEFAULT_MAX_PLAYERS,
   },
 }
 
@@ -165,11 +194,7 @@ export function playerCountOptions(min: number, max: number): number[] {
   return Array.from({ length: max - min + 1 }, (_, index) => index + min)
 }
 
-export function clampLobbyMaxPlayers(
-  gameType: LobbyLimitGameType,
-  value: number,
-  limits: GamePlayerLimitsMap
-): number {
+export function clampLobbyMaxPlayers(gameType: LobbyLimitGameType, value: number, limits: GamePlayerLimitsMap): number {
   const cfg = limits[gameType]
   return Math.min(cfg.max, Math.max(cfg.min, Math.floor(value)))
 }

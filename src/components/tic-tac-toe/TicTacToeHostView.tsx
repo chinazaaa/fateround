@@ -1,20 +1,28 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
+import { HostDuelLobbyPanel } from '@/components/host-lobby/HostDuelLobbyPanel'
+import { TransferHostControl } from '@/components/TransferHostControl'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { gameTypeConfig } from '@/lib/game-types'
 import { currentTurnPlayerId, TIC_TAC_TOE_MIN_PLAYERS, isTicTacToeResultsPhase } from '@/lib/tic-tac-toe'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT, TIC_TAC_TOE_SESSION_SELECT } from '@/lib/supabase-selects'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
-import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import type { Game, Player, TicTacToeSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -30,19 +38,6 @@ import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 
 type HostTab = 'play' | 'manage'
-type TicTacToeHostMode = 'spectator' | 'player'
-
-const HOST_MODE_KEY = 'tic_tac_toe_host_mode'
-
-function getHostMode(gameCode: string): TicTacToeHostMode {
-  if (typeof window === 'undefined') return 'player'
-  return (localStorage.getItem(`${HOST_MODE_KEY}_${gameCode}`) as TicTacToeHostMode) ?? 'player'
-}
-
-function setHostMode(gameCode: string, mode: TicTacToeHostMode): void {
-  if (typeof window === 'undefined') return
-  localStorage.setItem(`${HOST_MODE_KEY}_${gameCode}`, mode)
-}
 
 export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError, success } = useToast()
@@ -50,14 +45,10 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<TicTacToeSession | null>(null)
+  const sessionRef = useRef<TicTacToeSession | null>(null)
+  sessionRef.current = session
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
-  const [hostMode, setHostModeState] = useState<TicTacToeHostMode>('player')
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
   const [hostActing, setHostActing] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
   const [loading, setLoading] = useState(true)
@@ -89,13 +80,6 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
 
   useEffect(() => {
     load()
-    setHostModeState(getHostMode(gameCode))
-    const stored = getPlayerSession(gameCode)
-    if (stored) {
-      setHostPlayerId(stored.playerId)
-      setHostResumeToken(stored.resumeToken ?? null)
-      setHostPlayerName(stored.playerName)
-    }
   }, [gameCode, load])
 
   // Land on the primary (Play/Watch) tab when the game starts, and on Manage at results.
@@ -105,96 +89,64 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
   }, [game?.status, session])
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(gameCode, ['players', { table: 'games', column: 'id' }, 'tic_tac_toe_sessions'], load)
+  // Delta fast-path: patch the session locally on an ordinary move and skip the full reload;
+  // a status change (→ finished) or the first row still reloads so the results screen resolves.
+  // See useGameTableSync's `apply` contract (mirrors TicTacToePlayerView).
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as TicTacToeSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null && prev.status === 'active' && next.status === 'active'
+  }, [])
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  const connected = useGameTableSync(
+    gameCode,
+    ['players', { table: 'games', column: 'id' }, { table: 'tic_tac_toe_sessions', apply: applySessionRow }],
+    load
+  )
+
+  // Safety-net poll only while realtime is disconnected — no redundant reloads when healthy.
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
+
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    leaveGameRemovePlayer,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostPlayerName('')
-        clearPlayerSession(gameCode)
-      }
+      onHostSeatRemoved(playerId)
       setPlayers((prev) => prev.filter((p) => p.id !== playerId))
     },
-    [gameCode, hostPlayerId]
+    [onHostSeatRemoved]
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
 
-  // Clear stale host-as-player state if the host's own row is removed elsewhere.
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
-
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
-
-  const changeHostMode = async (mode: TicTacToeHostMode) => {
-    const prev = hostMode
-    setHostModeState(mode)
-    setHostMode(gameCode, mode)
-    // Switching to "Host only" while holding a seat → give up the seat so the host
-    // drops out of the players list.
-    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
-      try {
-        const res = await fetch('/api/players', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error ?? 'Failed to leave seat')
-        }
-        handlePlayerRemoved(hostPlayerId)
-        await load()
-      } catch (err) {
-        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
-      }
-    }
-  }
-
-  const renameHost = async (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed || !hostPlayerId) return
-    try {
-      const res = await fetch('/api/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
-      setHostPlayerName(data.playerName)
-      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
-      await load()
-      success('Name updated!')
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to update name')
-    }
-  }
-
-  const hostJoinGame = async () => {
-    if (!hostJoinName.trim()) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: hostJoinName.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostResumeToken(data.resumeToken ?? null)
-      setHostPlayerName(data.playerName)
-      await load()
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }
 
   const movePiece = async (cellIndex: number) => {
     if (!hostPlayerId) return
@@ -299,12 +251,35 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
     isMyTurn: hostPlayerId ? isHostTurn : null,
   })
 
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer): How-to-play + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' && !gameFinished ? (
+        <HostActiveSettings
+          gameCode={gameCode}
+          hostToken={hostToken}
+          gameType="tic_tac_toe"
+          onEnded={load}
+          endGameLabel="End game early"
+          endGameConfirmTitle="End this game early?"
+          endGameConfirmMessage="The current game will end and players will see the results screen."
+        >
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton
+              onLeave={leaveGameRemovePlayer}
+              variant="remove"
+              className="btn-secondary w-full py-3 text-base"
+            />
+          )}
+        </HostActiveSettings>
+      ) : null,
+    [game?.status, gameFinished, gameCode, hostToken, load, hostMode, hostPlayerId, leaveGameRemovePlayer]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
   if (!game) {
@@ -419,6 +394,7 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={TIC_TAC_TOE_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}
@@ -435,18 +411,81 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
     )
   }
 
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={gameTypeConfig('tic_tac_toe').label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('tic_tac_toe', game) ?? game.max_players}
+        playCard={
+          <HostModeSelector
+            mode={hostMode}
+            onChange={changeHostMode}
+            joinedPlayerId={hostPlayerId}
+            joinedPlayerName={hostPlayerName}
+            joinName={hostJoinName}
+            onJoinNameChange={setHostJoinName}
+            onJoin={() => void hostJoinGame()}
+            joining={hostJoining}
+            onEditName={renameHost}
+            spectatorHint="Spectate once it starts"
+            playerHint="Take a seat and play"
+          />
+        }
+        settingsChildren={
+          <>
+            <HostDuelLobbyPanel
+              gameCode={gameCode}
+              hostToken={hostToken}
+              game={game}
+              duelType="tic_tac_toe"
+              onGameUpdate={setGame}
+            />
+            <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+          </>
+        }
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : readyPlayers.length < players.length
+              ? `Waiting for players to tap ready (${readyPlayers.length}/${TIC_TAC_TOE_MIN_PLAYERS})`
+              : `Need exactly ${TIC_TAC_TOE_MIN_PLAYERS} players to start (${players.length}/${TIC_TAC_TOE_MIN_PLAYERS})`
+        }
+        startLabel="Start game"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      />
+    )
+  }
+
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={gameFinished ? 'finished' : game.status}
       tab={tab}
       onTabChange={setTab}
       primaryKind={primaryKind}
+      game={game}
+      players={players}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={load}
       showTabs={showTabs}
       gameStarted={gameStarted}
       header={gameFinished ? undefined : <HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : watchBoard}
       manage={manage}
+      noManageTab
       finished={
         <>
           <TicTacToeFinalResultsShareBlock

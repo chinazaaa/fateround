@@ -1,10 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { lobbyMaxPlayersFromGame, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { formatSudokuGameDuration, SUDOKU_GAME_DURATION_OPTIONS } from '@/lib/sudoku'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
-import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
@@ -18,11 +17,27 @@ type Props = {
   game: Game
   playerCount: number
   onGameUpdate: (game: Game) => void
+  /** Timer choices (seconds) + label formatter. Defaults to Sudoku's; Crossword and Word
+   *  Search pass their own so their extra options (e.g. 2m/3m) show in the lobby edit too. */
+  durationChoices?: readonly number[]
+  formatDuration?: (seconds: number) => string
+  /** Puzzle theme/difficulty editor. When provided (Crossword/Word Search) it replaces the
+   *  generic visual-theme picker, which those games don't use. */
+  puzzleSettings?: ReactNode
 }
 
 type SaveState = 'idle' | 'saving' | 'saved'
 
-export function HostSudokuLobbyPanel({ gameCode, hostToken, game, playerCount, onGameUpdate }: Props) {
+export function HostSudokuLobbyPanel({
+  gameCode,
+  hostToken,
+  game,
+  playerCount,
+  onGameUpdate,
+  durationChoices = SUDOKU_GAME_DURATION_OPTIONS,
+  formatDuration = formatSudokuGameDuration,
+  puzzleSettings,
+}: Props) {
   const { error: toastError } = useToast()
   const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
   const [maxPlayers, setMaxPlayers] = useState(20)
@@ -121,20 +136,17 @@ export function HostSudokuLobbyPanel({ gameCode, hostToken, game, playerCount, o
 
   const durationOptions = useMemo(
     () =>
-      SUDOKU_GAME_DURATION_OPTIONS.map((s) => ({
+      durationChoices.map((s) => ({
         value: s,
         label: s === 0 ? 'Off' : `${s / 60}m`,
       })),
-    []
+    [durationChoices]
   )
 
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 
   return (
-    <HostLobbySettingsSection
-      status={statusLabel}
-      summary={`${maxPlayers} max · ${formatSudokuGameDuration(gameDuration)}`}
-    >
+    <HostLobbySettingsSection status={statusLabel} summary={`${maxPlayers} max · ${formatDuration(gameDuration)}`}>
       <HostLobbySettingBlock title={`Max players · ${playerCount} joined`}>
         <HostLobbyOptionChips value={maxPlayers} options={maxPlayerOptions} onChange={onMaxPlayersChange} />
       </HostLobbySettingBlock>
@@ -143,19 +155,7 @@ export function HostSudokuLobbyPanel({ gameCode, hostToken, game, playerCount, o
         <HostLobbyOptionChips value={gameDuration} options={durationOptions} onChange={onGameDurationChange} />
       </HostLobbySettingBlock>
 
-      <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={onGameUpdate} />
-      {gameSupportsViewerSetting(game.game_type) && game.status === 'waiting' && (
-        <HostLobbySettingBlock title="Late joiners">
-          <HostAllowViewersField
-            embedded
-            hideHeader
-            gameCode={gameCode}
-            hostToken={hostToken}
-            game={game}
-            onGameUpdate={onGameUpdate}
-          />
-        </HostLobbySettingBlock>
-      )}
+      {puzzleSettings}
     </HostLobbySettingsSection>
   )
 }

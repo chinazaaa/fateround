@@ -15,16 +15,19 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
-import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
-import { TimerBadge } from '@/components/ui/TimerBadge'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
+import { CountdownTimerBadge } from '@/components/party/CountdownTimerBadge'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { TwoTruthsSubmitterBadge } from '@/components/games/TwoTruthsSubmitterBadge'
-import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
+import { useDeadlineExpiry } from '@/hooks/useDeadlineExpiry'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useAdvancePolling } from '@/hooks/useAdvancePolling'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { postTtlGuess, postTtlStatements } from '@/lib/game-api'
 import { playSound } from '@/lib/sounds'
@@ -35,7 +38,16 @@ import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
-type Screen = 'loading' | 'join' | 'late_join_choice' | 'waiting' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'late_join_choice'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   const [statements, setStatements] = useState<TtlStatement[]>([])
@@ -69,14 +81,19 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   const computeScreen = useCallback((game: Game, playerId: string | null): Screen => {
-    if (game.status === 'finished') return 'finished'
+    // Resolve the no-identity case BEFORE 'finished' so a non-participant opening a
+    // finished game gets the game_ended screen instead of a results view that
+    // assumes a seated player.
     if (!playerId) {
+      const pre = preJoinScreen(game, false)
+      if (pre === 'game_ended') return 'game_ended'
+      // Viewers disabled mid-game → "game in progress, wait for the next lobby".
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
       // Late opener with viewers allowed: offer watch-or-play instead of a bare join.
-      if (game.status === 'active' && preJoinScreen(game, false) === 'late_join_choice') {
-        return 'late_join_choice'
-      }
+      if (pre === 'late_join_choice') return 'late_join_choice'
       return 'join'
     }
+    if (game.status === 'finished') return 'finished'
     if (game.status === 'waiting') return 'waiting'
     return 'playing'
   }, [])
@@ -102,6 +119,18 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     !!bootstrap.game
   )
 
+  // Deadline-driven round changes (incl. the last reveal → finished) need a
+  // client to nudge the server — web polls /api/two-truths/advance; mobile had no
+  // poller, so a round could stall and never reach the finished screen. Poll while
+  // active and reload on advance (matches Quiplash/Trivia).
+  useAdvancePolling({
+    endpoint: '/api/two-truths/advance',
+    gameCode,
+    game: bootstrap.game,
+    enabled: !!bootstrap.game,
+    onAdvanced: () => bootstrap.load(),
+  })
+
   const myStatement = bootstrap.myPlayerId ? statements.find((s) => s.player_id === bootstrap.myPlayerId) : undefined
 
   const me = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
@@ -123,10 +152,20 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     : undefined
   const revealSeconds = currentRound?.status === 'finished' ? revealCountdownSeconds(currentRound.ended_at) : null
 
-  // Running standings shown throughout play (mirrors web's live PaginatedLeaderboard).
+  // Running standings feed the roster drawer scoreboard (points + correct-guesses detail).
   const liveScores = useMemo(
     () => tallyTtlScores(guesses, bootstrap.players, rounds),
     [guesses, bootstrap.players, rounds]
+  )
+  useGameScores(
+    useMemo(() => Object.fromEntries(liveScores.map((row) => [row.id, row.score])), [liveScores]),
+    { suffix: ' pts' }
+  )
+  useGameStats(
+    useMemo(
+      () => Object.fromEntries(liveScores.map((row) => [row.id, `✅ ${row.correctGuesses} correct`])),
+      [liveScores]
+    )
   )
 
   // Next player whose statements are coming up (for the between-round preview).
@@ -135,19 +174,28 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     return rounds.filter((r) => r.status === 'pending').sort((a, b) => a.round_number - b.round_number)[0] ?? null
   }, [rounds, bootstrap.game?.status])
 
-  // Round countdown + auto-lock when the guessing time runs out.
+  // Round countdown + auto-lock when the guessing time runs out. The countdown
+  // itself lives in a self-ticking leaf (badge); here we only need the expiry
+  // edge, so a one-shot timeout drives it instead of a 2Hz tick (M1).
   const timerSeconds = bootstrap.game?.timer_seconds ?? 0
   const timerActive = !!currentRound && currentRound.status === 'active' && !isFeatured && timerSeconds > 0
-  const secondsLeft = useDeadlineCountdown(currentRound?.started_at, timerSeconds, timerActive)
 
   // Reset the per-round expiry flag whenever the round changes.
   useEffect(() => {
     setTimeExpired(false)
   }, [currentRound?.id])
 
-  useEffect(() => {
-    if (timerActive && !myGuess && secondsLeft <= 0) setTimeExpired(true)
-  }, [timerActive, myGuess, secondsLeft])
+  useDeadlineExpiry(currentRound?.started_at, timerSeconds, timerActive && !myGuess, () => setTimeExpired(true))
+
+  // Pinned countdown — visible under the header while the guessing body scrolls.
+  const ttlTimer = (
+    <CountdownTimerBadge
+      anchorTime={currentRound?.started_at}
+      delaySeconds={timerSeconds}
+      active={timerActive && !myGuess && !timeExpired}
+    />
+  )
+  const ttlTimerPinned = useStickyTimer(ttlTimer, [currentRound, timerSeconds, timerActive, myGuess, timeExpired])
 
   const canSubmitStatements = !!stmtA.trim() && !!stmtB.trim() && !!stmtC.trim() && lieIndex != null
 
@@ -193,6 +241,16 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
     return (
       <JoinScreen
@@ -202,6 +260,8 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
       />
     )
   }
@@ -344,35 +404,17 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  const viewerBanner =
-    isViewer && bootstrap.myPlayerId && me ? (
-      <ViewerModeBanner
-        gameCode={bootstrap.code}
-        playerId={bootstrap.myPlayerId}
-        game={bootstrap.game}
-        player={me}
-        players={bootstrap.players}
-        onPromoted={bootstrap.load}
-      />
-    ) : null
-
   // Mirrors web's <EliminationBanner> on the live-play screen: an eliminated
   // player gets a clear "you're out, keep watching" message instead of only the
   // generic Spectating banner (whose late-join copy is wrong for elimination).
-  const eliminationBanner = me?.is_eliminated ? (
+  // The spectator banner itself is rendered centrally by GameShell, so we only
+  // prepend the elimination notice here.
+  const liveBanners = me?.is_eliminated ? (
     <View style={styles.elimBanner}>
       <Text style={styles.elimTitle}>You have been eliminated</Text>
       <Text style={styles.elimBody}>You can still watch and chat</Text>
     </View>
   ) : null
-
-  // Render order matches web: elimination notice first, then spectator banner.
-  const liveBanners = (
-    <>
-      {eliminationBanner}
-      {viewerBanner}
-    </>
-  )
 
   if (!currentRound || currentRound.status === 'pending') {
     const upcomingName = upcomingRound ? playerDisplayName(upcomingRound.submitter_player_id, bootstrap.players) : null
@@ -409,20 +451,6 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     </View>
   )
 
-  const liveBoard = (
-    <LeaderboardPanel
-      embedded
-      title="Leaderboard"
-      rows={liveScores.map((row) => ({
-        id: row.id,
-        name: row.name,
-        score: row.score,
-        highlight: row.id === bootstrap.myPlayerId,
-      }))}
-      highlightId={bootstrap.myPlayerId}
-    />
-  )
-
   if (currentRound.status === 'finished') {
     return (
       <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={roundSubtitle}>
@@ -454,7 +482,6 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
           <Text style={styles.waiting}>
             {revealSeconds && revealSeconds > 0 ? `Next round in ${revealSeconds}s…` : 'Waiting for next round…'}
           </Text>
-          {liveBoard}
         </ScrollView>
       </GameShell>
     )
@@ -477,7 +504,6 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
               ))}
             </View>
           ) : null}
-          {liveBoard}
         </ScrollView>
       </GameShell>
     )
@@ -491,7 +517,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
         {liveBanners}
         {submitterBadge}
         <Text style={styles.featured}>Which is {featuredName}&apos;s lie?</Text>
-        {timerActive && !myGuess && !timeExpired ? <TimerBadge seconds={secondsLeft} /> : null}
+        {ttlTimerPinned ? null : ttlTimer}
         {metadata ? (
           <View style={styles.choices}>
             {metadata.statements.map((text, index) => {
@@ -517,7 +543,6 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
         ) : lockedOut ? (
           <Text style={styles.locked}>Time&apos;s up — waiting for results…</Text>
         ) : null}
-        {liveBoard}
       </ScrollView>
     </GameShell>
   )

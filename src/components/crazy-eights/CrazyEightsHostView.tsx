@@ -1,34 +1,31 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   currentPlayerId,
-  getCrazyEightsHostMode,
   hasPlayableCard,
   getNormalizedPenalties,
   isDrawPileDepleted,
   parseCrazyEightsRules,
-  setCrazyEightsHostMode,
   CRAZY8_MIN_PLAYERS,
-  CRAZY8_DEFAULT_MAX_PLAYERS,
-  type CrazyEightsHostMode,
 } from '@/lib/crazy-eights'
 import { supabase } from '@/lib/supabase'
 import { CRAZY8_SESSION_SELECT, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
-import { useHostAdmitPlayer } from '@/hooks/useHostAdmitPlayer'
-import { lobbyMaxPlayersFromGame, type GamePlayerLimitsMap } from '@/lib/game-limits'
-import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import type { Game, Player, CrazyEightsPlayerHand, CrazyEightsSession, CrazyEightsCalledSuit } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
@@ -38,6 +35,7 @@ import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { ExitIcon } from '@/components/host/host-icons'
 import { useCrazyEightsTurnTimer } from '@/hooks/useCrazyEightsTurnTimer'
+import { useCrazyEightsGameTimer } from '@/hooks/useCrazyEightsGameTimer'
 import { useCrazyEightsNotifications, playCrazyEightsActionSound } from '@/hooks/useCrazyEightsNotifications'
 import {
   CrazyEightsChoosePanel,
@@ -45,6 +43,19 @@ import {
   CrazyEightsStandings,
   CrazyEightsTable,
 } from '@/components/crazy-eights/CrazyEightsBoard'
+import { CrazyEightsPlaySurface } from '@/components/crazy-eights/CrazyEightsPlaySurface'
+import { HostRoomShell } from '@/components/host/HostRoomShell'
+import {
+  useGamePlacements,
+  useGameStats,
+  useRosterBase,
+  useRosterManage,
+} from '@/components/roster/RosterDrawerContext'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { HostRulesRow } from '@/components/host/HostRulesRow'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
+import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { playerIsViewer } from '@/lib/viewers'
 import { CrazyEightsGameTimerBar } from '@/components/crazy-eights/CrazyEightsGameTimerBar'
 import { CrazyEightsFinalResultsShareBlock } from '@/components/crazy-eights/CrazyEightsFinalResultsShareBlock'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
@@ -63,35 +74,16 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<CrazyEightsSession | null>(null)
+  const sessionRef = useRef<CrazyEightsSession | null>(null)
+  sessionRef.current = session
   const [hands, setHands] = useState<CrazyEightsPlayerHand[]>([])
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
-  const [hostMode, setHostMode] = useState<CrazyEightsHostMode>('player')
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
   const [hostActing, setHostActing] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
-  const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
 
   useApplyGameTheme(game?.theme)
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
-
-  // Effective seat cap, clamped against game_player_limits — mirrors the server's
-  // lobbyMaxPlayersFromGame so the "Deal in" gate agrees with what admitCrazyEightsPlayer accepts.
-  useEffect(() => {
-    void fetch('/api/game-limits')
-      .then((res) => res.json())
-      .then((data: { limits?: GamePlayerLimitsMap }) => {
-        if (data.limits) setLimits(data.limits)
-      })
-      .catch(() => {})
-  }, [])
-  const maxPlayers = limits
-    ? lobbyMaxPlayersFromGame('crazy_eights', game ?? {}, limits)
-    : (game?.max_players ?? CRAZY8_DEFAULT_MAX_PLAYERS)
 
   const load = useCallback(async (): Promise<boolean> => {
     const [gameRes, plrsRes, sessionRes, handsRes] = await Promise.all([
@@ -114,13 +106,6 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
 
   useEffect(() => {
     load()
-    setHostMode(getCrazyEightsHostMode(gameCode))
-    const stored = getPlayerSession(gameCode)
-    if (stored) {
-      setHostPlayerId(stored.playerId)
-      setHostResumeToken(stored.resumeToken ?? null)
-      setHostPlayerName(stored.playerName)
-    }
   }, [gameCode, load])
 
   // Land on the primary (Play/Watch) tab when the game starts, and on Manage when it ends.
@@ -130,101 +115,77 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
   }, [game?.status])
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(
+  // Delta fast-path (dual-table). Tab/screen derive from game.status, so session/hand writes
+  // only update the board UI — patch locally and skip the reload; active→finished rides the
+  // games-row event, and the fallback poll reconciles.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as CrazyEightsSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null
+  }, [])
+  const applyHandRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as CrazyEightsPlayerHand
+    setHands((prev) => {
+      const i = prev.findIndex((h) => h.id === next.id)
+      if (i === -1) return [...prev, next].sort((a, b) => a.player_order - b.player_order)
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true
+  }, [])
+
+  const connected = useGameTableSync(
     gameCode,
-    ['players', { table: 'games', column: 'id' }, 'crazy_eights_sessions', 'crazy_eights_player_hands'],
+    [
+      'players',
+      { table: 'games', column: 'id' },
+      { table: 'crazy_eights_sessions', apply: applySessionRow },
+      { table: 'crazy_eights_player_hands', apply: applyHandRow },
+    ],
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
+
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    leaveGameRemovePlayer,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostPlayerName('')
-        clearPlayerSession(gameCode)
-      }
+      onHostSeatRemoved(playerId)
       setPlayers((prev) => prev.filter((p) => p.id !== playerId))
     },
-    [gameCode, hostPlayerId]
+    [onHostSeatRemoved]
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
-  const { admitPlayer, admittingPlayerId } = useHostAdmitPlayer(gameCode, hostToken, load, 'crazy-eights-admit')
-
-  // Clear stale host-as-player state if the host's own row is removed elsewhere.
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
-
-  const changeHostMode = async (mode: CrazyEightsHostMode) => {
-    const prev = hostMode
-    setHostMode(mode)
-    setCrazyEightsHostMode(gameCode, mode)
-    // Switching to "Host only" while holding a seat → give up the seat so the host
-    // drops out of the players list.
-    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
-      try {
-        const res = await fetch('/api/players', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error ?? 'Failed to leave seat')
-        }
-        handlePlayerRemoved(hostPlayerId)
-        await load()
-      } catch (err) {
-        setHostMode(prev)
-        setCrazyEightsHostMode(gameCode, prev)
-        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
-      }
-    }
-  }
-
-  const renameHost = async (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed || !hostPlayerId) return
-    try {
-      const res = await fetch('/api/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
-      setHostPlayerName(data.playerName)
-      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
-      await load()
-      success('Name updated!')
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to update name')
-    }
-  }
-
-  const hostJoinGame = async () => {
-    if (!hostJoinName.trim()) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: hostJoinName.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostResumeToken(data.resumeToken ?? null)
-      setHostPlayerName(data.playerName)
-      await load()
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }
 
   const postHostAction = async (path: string, body: Record<string, unknown> = {}) => {
     if (!hostPlayerId) return
@@ -321,6 +282,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
   const isHostTurn = turnPlayerId === hostPlayerId
 
   const { secondsLeft, hasTimer, urgent } = useCrazyEightsTurnTimer(gameCode, session, game?.status === 'active')
+  const gameTimer = useCrazyEightsGameTimer(gameCode, game)
 
   const myHand = useMemo(() => {
     const row = hands.find((h) => h.player_id === hostPlayerId)
@@ -358,12 +320,73 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
-  if (!game) {
+  // Feed the shared roster side-drawer (opened from the header's people button)
+  // while the game is active — the host sees the same who's-here list as players,
+  // with a per-row Remove. The active card-table room renders via HostRoomShell
+  // (below) instead of HostGameLayout, so — like Whot — register the roster here.
+  useRosterBase(game?.status === 'active' || game?.status === 'finished' ? players : undefined, game, hostPlayerId)
+  const rosterRemove = useMemo(
+    () => (row: { id: string; name: string }) => removePlayer(row.id, row.name),
+    [removePlayer]
+  )
+  useRosterManage(game?.status === 'active' ? { hostPlayerId: hostPlayerId ?? null, onRemove: rosterRemove } : null)
+
+  // Winner/runner-up medal pills on the roster drawer. finish_order lists players
+  // in the order they emptied their hands (first out = winner); make sure the
+  // declared winner is 1st even if they aren't in finish_order yet.
+  const placements = useMemo(() => {
+    const map: Record<string, number> = {}
+    ;(session?.finish_order ?? []).forEach((id, i) => {
+      map[id] = i + 1
+    })
+    const winnerId = session?.winner_player_id
+    if (winnerId && !(winnerId in map)) map[winnerId] = 1
+    return Object.keys(map).length ? map : null
+  }, [session?.finish_order, session?.winner_player_id])
+  useGamePlacements(placements)
+
+  // Live card counts in the roster drawer scoreboard (only while playing).
+  const rosterDetails = useMemo(() => {
+    if (game?.status !== 'active') return null
+    const out: Record<string, string> = {}
+    for (const [id, n] of Object.entries(handCounts)) out[id] = `🃏 ${n} card${n === 1 ? '' : 's'}`
+    return Object.keys(out).length ? out : null
+  }, [handCounts, game?.status])
+  useGameStats(rosterDetails)
+
+  // Host game settings for the active room live behind the main chrome's ⚙ gear
+  // (top header, beside Share). Register the body (late-join rules · How to play ·
+  // End game) while the game is active; players are managed from the roster drawer.
+  const hostSettingsNode = useMemo(() => {
+    if (game?.status !== 'active') return null
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
+      <div className="space-y-4">
+        <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        {hostMode === 'player' && !!hostPlayerId && (
+          <HostLeaveSeatButton
+            onLeave={leaveGameRemovePlayer}
+            variant="remove"
+            className="btn-secondary w-full py-3 text-base"
+          />
+        )}
+        <HostRulesRow gameType="crazy_eights" />
+        <HostEndGameButton
+          gameCode={gameCode}
+          hostToken={hostToken}
+          onEnded={load}
+          label="End game"
+          icon={<ExitIcon size={16} />}
+          confirmTitle="End this game?"
+          confirmMessage="Everyone sees the final results. You can start a new game from the room afterward."
+          className="btn-danger-soft w-full"
+        />
       </div>
     )
+  }, [game, gameCode, hostToken, setGame, load, hostMode, hostPlayerId, leaveGameRemovePlayer])
+  useRegisterGameSettings(hostSettingsNode)
+
+  if (!game) {
+    return <HostLobbySkeleton />
   }
 
   const showTabs = game.status !== 'finished'
@@ -444,16 +467,6 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
       highlightPlayerId={hostPlayerId}
       removingPlayerId={removingPlayerId}
       onRemovePlayer={removePlayer}
-      onAdmitPlayer={
-        game.status === 'active' && (session?.turn_order?.length ?? 0) < maxPlayers ? admitPlayer : undefined
-      }
-      admittingPlayerId={admittingPlayerId}
-      canAdmitPlayer={(id) =>
-        !(session?.turn_order ?? []).includes(id) && !players.find((p) => p.id === id)?.is_eliminated
-      }
-      playersLabel={
-        game.status === 'active' ? `Players · ${session?.turn_order?.length ?? 0}/${maxPlayers}` : undefined
-      }
       gameType="crazy_eights"
       top={
         game.status === 'waiting' ? (
@@ -520,6 +533,62 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
     />
   )
 
+  // Active game → design-system room frame + the same play surface players see.
+  // The room chrome is the app's fixed top header (logo · roster · Share · ⚙) plus
+  // the shared floating Join-voice pill. The host runs the room from the header's ⚙
+  // gear (late-join rules · How to play · End game, registered above) and manages
+  // players from the roster side-drawer. Mirrors WhotHostView.
+  if (game.status === 'active') {
+    return (
+      <HostRoomShell>
+        {/* Crazy Eights' active state renders here instead of HostGameLayout, so
+            mirror its host-rejoin banner: a host flipped to spectator mid-game
+            (e.g. a play-again reset re-seats everyone) can promote back to a player. */}
+        {(() => {
+          const hostPlayer = hostPlayerId ? (players.find((p) => p.id === hostPlayerId) ?? null) : null
+          return hostPlayer && playerIsViewer(hostPlayer, game) ? (
+            <ViewerModeBanner
+              gameCode={gameCode}
+              playerId={hostPlayerId}
+              game={game}
+              player={hostPlayer}
+              players={players}
+              onPromoted={load}
+            />
+          ) : null
+        })()}
+        {session ? (
+          <CrazyEightsPlaySurface
+            session={session}
+            players={players}
+            myPlayerId={hostPlayerId}
+            myHand={myHand}
+            handCounts={handCounts}
+            rules={crazyEightsRules}
+            turnPlayerId={turnPlayerId}
+            isMyTurn={hostPlays && isHostTurn}
+            watching={!hostPlays}
+            acting={hostActing}
+            drawCount={session.draw_pile?.length ?? 0}
+            drawDepleted={drawDepleted}
+            myCanPlay={hostCanPlay}
+            suitCallActive={session.required_suit != null}
+            penalties={penalties}
+            turnTimer={{ secondsLeft, hasTimer, urgent }}
+            gameTimer={gameTimer}
+            onPlay={(cardId) => void postHostAction('/api/crazy-eights/play', { cardId })}
+            onDraw={() => void postHostAction('/api/crazy-eights/draw')}
+            onChooseSuit={(suit) => void postHostAction('/api/crazy-eights/choose', { suit })}
+          />
+        ) : (
+          <p className="turn-status g" style={{ textAlign: 'center', padding: 24 }}>
+            Waiting for the round to begin…
+          </p>
+        )}
+      </HostRoomShell>
+    )
+  }
+
   // "Play again · same settings" reopened the game as an open lobby flagged for the
   // ready-up ring — the host sees the ring + a "Start game" button instead of the lobby.
   if (game.status === 'waiting' && game.replay_pending) {
@@ -532,6 +601,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={CRAZY8_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}
@@ -548,18 +618,80 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
     )
   }
 
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={cfg.label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('crazy_eights', game) ?? game.max_players}
+        playCard={
+          <HostModeSelector
+            mode={hostMode}
+            onChange={changeHostMode}
+            joinedPlayerId={hostPlayerId}
+            joinedPlayerName={hostPlayerName}
+            joinName={hostJoinName}
+            onJoinNameChange={setHostJoinName}
+            onJoin={() => void hostJoinGame()}
+            joining={hostJoining}
+            onEditName={renameHost}
+            spectatorHint="Spectate once it starts"
+            playerHint="Take a seat and play"
+          />
+        }
+        settingsChildren={
+          <>
+            <HostBoardGameLobbyPanel
+              gameCode={gameCode}
+              hostToken={hostToken}
+              game={game}
+              boardGameType="crazy_eights"
+              playerCount={players.length}
+              onGameUpdate={setGame}
+            />
+            <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+          </>
+        }
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : `Need at least ${CRAZY8_MIN_PLAYERS} players to start (${players.length}/${CRAZY8_MIN_PLAYERS})`
+        }
+        startLabel="Start game"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      />
+    )
+  }
+
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={game.status}
       tab={tab}
       onTabChange={setTab}
       primaryKind={primaryKind}
+      game={game}
+      players={players}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={load}
       showTabs={showTabs}
       gameStarted={gameStarted}
       header={<HostGameHeader game={game} />}
-      primary={hostPlays ? interactivePlay : watchBoard}
+      primary={<div className="max-w-lg mx-auto w-full">{hostPlays ? interactivePlay : watchBoard}</div>}
       manage={manage}
+      noManageTab
       finished={
         <>
           <CrazyEightsFinalResultsShareBlock

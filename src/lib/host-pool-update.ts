@@ -9,6 +9,7 @@ import {
   isThisOrThat,
   isCodewordsGame,
   isPickANumber,
+  isWhoSaidThis,
 } from '@/lib/game-types'
 import { usesHostParticipantList } from '@/lib/participant-mode'
 import { normalizeGender, participantsNeedGenderForGame, type ParticipantInput } from '@/lib/participants'
@@ -17,8 +18,10 @@ import {
   parseStoredWyrQuestions,
   parseStoredTriviaQuestions,
   parseStoredCodewordsWords,
+  parseStoredWstDeck,
   questionPoolCap,
 } from '@/lib/custom-questions'
+import { WST_DECK_MIN_ENTRIES, wstAutoRoundCount, type WstDeckEntry } from '@/lib/who-said-this'
 import { codewordPoolKey } from '@/lib/codewords-pool'
 import { wyrQuestionKey } from '@/lib/would-you-rather-questions'
 import { triviaQuestionKey } from '@/lib/trivia-questions'
@@ -60,7 +63,7 @@ export function parseHostPoolParticipants(
 export function parseHostPoolCustomQuestions(
   raw: unknown,
   gameType: ReturnType<typeof parseGameType>
-): WyrQuestion[] | string[] | null {
+): WyrQuestion[] | string[] | WstDeckEntry[] | null {
   if (!Array.isArray(raw)) return null
   if (isBinaryChoiceGame(gameType) || isThisOrThat(gameType)) {
     const parsed = parseStoredWyrQuestions(raw)
@@ -72,6 +75,10 @@ export function parseHostPoolCustomQuestions(
   }
   if (isCodewordsGame(gameType)) {
     const parsed = parseStoredCodewordsWords(raw)
+    return parsed.length > 0 ? parsed : null
+  }
+  if (isWhoSaidThis(gameType)) {
+    const parsed = parseStoredWstDeck(raw)
     return parsed.length > 0 ? parsed : null
   }
   return null
@@ -151,6 +158,35 @@ export function applyCustomQuestionsUpdate(
 
   gameUpdate.pool_usage = poolUsage
   return { gameUpdate, poolUsage }
+}
+
+/**
+ * Who Said This lobby question-source change. `'player'` clears any host deck and reverts to
+ * lobby-submitted quotes; `'deck'` stores the provided deck (Platform / Library / uploaded CSV)
+ * and auto-sizes the round count to the deck. Mirrors the create-flow WST payload so replays can
+ * swap decks without recreating the game.
+ */
+export function applyWstQuoteSourceUpdate(
+  game: Game,
+  input: { source: 'player'; deck?: undefined } | { source: 'deck'; deck: WstDeckEntry[] }
+): { gameUpdate: Record<string, unknown> } {
+  if (input.source === 'player') {
+    return {
+      gameUpdate: {
+        wst_quote_source: 'player',
+        question_source: 'platform',
+        custom_questions: null,
+      },
+    }
+  }
+  return {
+    gameUpdate: {
+      wst_quote_source: 'deck',
+      question_source: 'custom',
+      custom_questions: input.deck,
+      rounds_count: wstAutoRoundCount(input.deck.length),
+    },
+  }
 }
 
 export function applyTriviaCustomQuestionsUpdate(

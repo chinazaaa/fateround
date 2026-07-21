@@ -3,6 +3,7 @@
 import { canSwitchViewerToPlayer } from '@/lib/viewers'
 import { lobbyHasOpenPlayerSeat } from '@/lib/game-limits'
 import { usePromoteToPlayer } from '@/hooks/usePromoteToPlayer'
+import { PlayIcon } from '@/components/host/host-icons'
 import type { Game, Player } from '@/types'
 
 type Props = {
@@ -39,29 +40,36 @@ export function ViewerModeBanner({
   const canPromote = !!(game && player && canSwitchViewerToPlayer(player, game, players))
   const { promote, promoting } = usePromoteToPlayer(gameCode ?? '', playerId, onPromoted)
 
+  // When joining as a player is allowed, the CTA lives in a small persistent pill pinned
+  // just under the header rather than a one-time inline banner — so a spectator always has
+  // a way in, even after the initial "join or watch" prompt is gone or the page has scrolled.
+  if (canPromote && gameCode && playerId) {
+    return (
+      <button
+        type="button"
+        onClick={() => void promote()}
+        disabled={promoting}
+        aria-label="Join as player"
+        className="fixed left-1/2 top-[4.25rem] z-40 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-[color-mix(in_srgb,var(--primary)_45%,transparent)] bg-[var(--primary)] px-3.5 py-2 text-[0.8125rem] font-bold text-white shadow-[0_6px_20px_var(--primary-glow)] transition-[filter,transform] duration-150 hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
+      >
+        <PlayIcon size={13} />
+        {promoting ? 'Joining…' : 'Join as player'}
+      </button>
+    )
+  }
+
+  // Not promotable (viewers-only game, full lobby, or joining not allowed): a quiet inline
+  // "you're watching" note — no join CTA, since there's nothing to promote into.
   return (
     <div
-      className={`rounded-xl border border-[color-mix(in_srgb,var(--primary)_35%,transparent)] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] px-4 py-3 text-center text-sm text-body ${className}`}
+      className={`mb-3 rounded-xl border border-[color-mix(in_srgb,var(--primary)_35%,transparent)] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] px-4 py-3 text-center text-sm text-body ${className}`}
     >
       <p className="font-semibold">Spectating</p>
       <p className="text-muted text-xs mt-1">
-        {canPromote
-          ? 'You joined after the game started — watch live or switch to playing now.'
-          : players && game && !lobbyHasOpenPlayerSeat(game, players)
-            ? 'This game is full — you can watch but there are no player seats left.'
-            : 'You joined after the game started — watch only until the next lobby.'}
+        {players && game && !lobbyHasOpenPlayerSeat(game, players)
+          ? 'This game is full — you can watch, but there are no open player seats.'
+          : "You're spectating. If you want to play, join when the lobby opens."}
       </p>
-      {canPromote && gameCode && playerId && (
-        <button
-          type="button"
-          onClick={() => void promote()}
-          disabled={promoting}
-          className="btn-primary mt-3 w-full py-2.5 text-sm font-bold"
-        >
-          {promoting ? 'Joining…' : 'Join as player'}
-        </button>
-      )}
-      {canPromote && playerDetail && <p className="text-faint text-[11px] mt-2 leading-snug">{playerDetail}</p>}
     </div>
   )
 }

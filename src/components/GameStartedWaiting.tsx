@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
-import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
+import { PlayerResumeEntry } from '@/components/PlayerResumeEntry'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { supabase } from '@/lib/supabase'
@@ -57,7 +57,7 @@ export function GameStartedWaiting({ gameCode, game, onLobbyOpen }: Props) {
           <span className="inline-block h-2 w-2 rounded-full bg-[var(--primary)] animate-pulse" />
           Waiting for lobby…
         </div>
-        <ShareGameLinkCard gameCode={gameCode} />
+        <PlayerResumeEntry gameCode={gameCode} onResumed={() => window.location.reload()} />
       </div>
     </div>
   )

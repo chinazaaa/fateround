@@ -10,16 +10,23 @@ import {
   parseLudoVariant,
   resolveLudoMovesForTurn,
   resolveRemainingDice,
+  START_POS,
+  TRACK_LENGTH,
 } from '@fateround/shared/ludo'
-import { moveDestinationCell } from '@fateround/shared/ludo-board-layout'
+import { moveDestinationCell, trackCellsAlongSteps } from '@fateround/shared/ludo-board-layout'
 import { LudoBoard } from '@/components/games/ludo/LudoBoard'
 import { LudoDicePair, LudoRemainingDice } from '@/components/games/ludo/LudoDice'
 import { LudoMoveList } from '@/components/games/ludo/LudoMoveList'
 import { LudoTurnBar } from '@/components/games/ludo/LudoTurnBar'
+import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { useGameScores } from '@/components/session/RosterDrawerContext'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -31,7 +38,15 @@ import { LUDO_PLAYER_STATE_SELECT, LUDO_SESSION_SELECT } from '@/lib/supabase-se
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { ludoLeaderboard } from '@/lib/finish-leaderboards'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 const ROLL_MIN_MS = 700
 
@@ -46,7 +61,11 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
 
   const loadGameState = useCallback(async (): Promise<{ state: null; ok: boolean }> => {
     const [sessionRes, statesRes] = await Promise.all([
-      getSupabase().from('ludo_sessions').select(LUDO_SESSION_SELECT).eq('game_id', gameCode.toUpperCase()).maybeSingle(),
+      getSupabase()
+        .from('ludo_sessions')
+        .select(LUDO_SESSION_SELECT)
+        .eq('game_id', gameCode.toUpperCase())
+        .maybeSingle(),
       getSupabase()
         .from('ludo_player_state')
         .select(LUDO_PLAYER_STATE_SELECT)
@@ -67,7 +86,15 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
     waitingScreen: 'waiting',
     loadGameState,
     computeScreen: (game, playerId) => {
-      if (!playerId) return 'join'
+      if (!playerId) {
+        // No session yet. Ludo never seats late joiners as players (viewers-only),
+        // so route to the platform pre-join gates: watch as a viewer if the host
+        // allows it, otherwise wait for the next lobby / show the ended screen.
+        const pre = preJoinScreen(game, false)
+        if (pre === 'game_started_waiting') return 'game_started_waiting'
+        if (pre === 'game_ended') return 'game_ended'
+        return 'join'
+      }
       if (game.status === 'waiting') return 'waiting'
       if (game.status === 'active') return 'playing'
       return 'finished'
@@ -93,7 +120,11 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
   })
 
   const myState = states.find((s) => s.player_id === bootstrap.myPlayerId)
+  const me = bootstrap.myPlayerId ? (bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) ?? null) : null
+  const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
   const variant = parseLudoVariant(bootstrap.game?.ludo_variant)
+  // Surface the chosen variant as the header mode pill on every Ludo screen.
+  useHeaderBadge(bootstrap.game ? (variant === 'traditional' ? 'Traditional' : 'Modern') : null)
   const remainingDice = session ? resolveRemainingDice(session) : []
 
   const legalMoves = useMemo(() => {
@@ -109,9 +140,24 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
     for (const move of legalMoves) {
       const dest = moveDestinationCell(myState.color, move.to)
       if (dest) cells.add(`${Math.round(dest.row)},${Math.round(dest.col)}`)
+      // Web parity: highlight the whole trail a track→track move travels, not just
+      // the landing cell, so the player can see the path the piece will take.
+      if (move.from.zone === 'track' && move.to.zone === 'track') {
+        const steps = (move.from.pos - START_POS[myState.color] + TRACK_LENGTH) % TRACK_LENGTH
+        for (const cell of trackCellsAlongSteps(myState.color, steps, move.diceValue)) {
+          cells.add(`${Math.round(cell.row)},${Math.round(cell.col)}`)
+        }
+      }
     }
     return cells
   }, [legalMoves, myState])
+
+  // Roster drawer scoreboard: pieces safely home (sorts leader first).
+  const rosterScores = useMemo(() => {
+    const standings = buildLudoStandings(states, bootstrap.players, session?.winner_player_id ?? null)
+    return Object.fromEntries(standings.map((s) => [s.playerId, s.finishedCount]))
+  }, [states, bootstrap.players, session?.winner_player_id])
+  useGameScores(rosterScores, { suffix: ' 🏠' })
 
   const roll = async () => {
     if (!bootstrap.myResumeToken || acting || !isMyTurn) return
@@ -146,7 +192,21 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
+    // Mid-game the only way in is as a read-only viewer (Ludo never seats late
+    // joiners as players). Present the join form as a "watch" flow so the intent
+    // is clear before submitting.
+    const joiningAsViewer = bootstrap.game.status === 'active'
     return (
       <JoinScreen
         gameCode={bootstrap.code}
@@ -154,14 +214,21 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
         joining={bootstrap.joining}
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
-        onJoin={() => void bootstrap.join()}
+        onJoin={() => void bootstrap.join(undefined, joiningAsViewer ? { joinAsViewer: true } : undefined)}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        kicker={joiningAsViewer ? 'Watch game' : 'Join game'}
+        hint={
+          joiningAsViewer
+            ? 'Game in progress — enter a name to watch as a viewer (read-only).'
+            : 'No account needed — enter a display name and play.'
+        }
+        submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
       />
     )
   }
   if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
-    return (
-      <LobbyView {...lobbyProps!} onLeft={onLeft} />
-    )
+    return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (!bootstrap.game || !session) return <GameLoading />
 
@@ -204,6 +271,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
         turnPlayerName={turnName}
         isMyTurn={isMyTurn}
         active={bootstrap.game.status === 'active'}
+        isViewer={isViewer}
       />
 
       {/* Only the (tall) board scrolls. */}
@@ -229,10 +297,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
           {session.phase === 'move' && remainingDice.length > 0 ? (
             <LudoRemainingDice remaining={remainingDice} />
           ) : (
-            <LudoDicePair
-              dice={rolling ? null : (displayDice ?? parseLudoDice(session.last_dice))}
-              rolling={rolling}
-            />
+            <LudoDicePair dice={rolling ? null : (displayDice ?? parseLudoDice(session.last_dice))} rolling={rolling} />
           )}
           {session.consecutive_sixes > 0 ? (
             <Text style={styles.bonus}>Bonus: {session.consecutive_sixes}/3</Text>
@@ -245,9 +310,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
               <Text style={styles.btnText}>{acting ? 'Rolling…' : '🎲 Roll dice'}</Text>
             </Pressable>
             {!rolling ? (
-              <Text style={styles.rollHint}>
-                Roll a 6 on either die to leave your yard onto your ★ start square.
-              </Text>
+              <Text style={styles.rollHint}>Roll a 6 on either die to leave your yard onto your ★ start square.</Text>
             ) : null}
           </>
         ) : null}
@@ -265,10 +328,12 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
         ) : null}
 
         {isMyTurn && session.phase === 'move' && legalMoves.length === 0 ? (
-          <Text style={styles.noMoves}>No legal moves for this roll — the turn will pass.</Text>
+          <Text style={styles.noMoves}>No legal moves for this roll — wait for the turn to pass.</Text>
         ) : null}
 
-        {!isMyTurn ? <Text style={styles.hint}>Waiting for {turnName}…</Text> : null}
+        {!isMyTurn ? (
+          <Text style={styles.hint}>{isViewer ? `Spectating — ${turnName}'s turn` : `Waiting for ${turnName}…`}</Text>
+        ) : null}
       </View>
     </GameShell>
   )
@@ -276,30 +341,30 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  boardScroll: { flex: 1 },
-  boardScrollContent: { gap: 12, paddingVertical: 8, alignItems: 'center' },
-  footer: {
-    gap: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: theme.surfaceHover,
-  },
-  status: { color: theme.textMuted, textAlign: 'center' },
-  diceCard: {
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 12,
-    paddingVertical: 12,
-  },
-  bonus: { color: '#fcd34d', fontWeight: '800', fontSize: 12, fontVariant: ['tabular-nums'] },
-  btn: { backgroundColor: theme.primary, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
-  btnDisabled: { opacity: 0.45 },
-  // White on the solid primary button — intentional (case 2).
-  btnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
-  noMoves: { color: '#fcd34d', textAlign: 'center', fontWeight: '600', fontSize: 13 },
-  rollHint: { color: theme.textMuted, textAlign: 'center', fontSize: 12 },
-  hint: { color: theme.textMuted, textAlign: 'center' },
-})
+    boardScroll: { flex: 1 },
+    boardScrollContent: { gap: 12, paddingVertical: 8, alignItems: 'center' },
+    footer: {
+      gap: 10,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: theme.surfaceHover,
+    },
+    status: { color: theme.textMuted, textAlign: 'center' },
+    diceCard: {
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 12,
+      paddingVertical: 12,
+    },
+    bonus: { color: '#fcd34d', fontWeight: '800', fontSize: 12, fontVariant: ['tabular-nums'] },
+    btn: { backgroundColor: theme.primary, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+    btnDisabled: { opacity: 0.45 },
+    // White on the solid primary button — intentional (case 2).
+    btnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+    noMoves: { color: '#fcd34d', textAlign: 'center', fontWeight: '600', fontSize: 13 },
+    rollHint: { color: theme.textMuted, textAlign: 'center', fontSize: 12 },
+    hint: { color: theme.textMuted, textAlign: 'center' },
+  })

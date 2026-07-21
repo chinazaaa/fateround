@@ -425,6 +425,418 @@ body:has(.fr-site) .app-fixed-theme-toggle {
   --modal-backdrop: rgba(11, 31, 22, 0.75);
 }
 
+/* ── Neon Theme (Light Mode - Daylight Circuit) ──────── */
+:root[data-game-theme='neon']:not([data-theme='dark']),
+[data-game-theme='neon']:not([data-theme='dark']) {
+  --background: #f2fdff;
+  --background-soft: #ffffff;
+  --foreground: #08121c;
+  --muted: #3a5560;
+  --faint: #7793a0;
+
+  --card: rgba(255, 255, 255, 0.85);
+  --card-strong: rgba(255, 255, 255, 0.95);
+  --card-hover: rgba(238, 252, 255, 0.9);
+  --surface-inset-bg: rgba(0, 200, 220, 0.05);
+
+  --border: rgba(0, 180, 200, 0.18);
+  --border-strong: rgba(0, 180, 200, 0.32);
+
+  --card-shadow: 0 1px 3px rgba(0, 80, 90, 0.08), 0 4px 16px rgba(0, 200, 220, 0.1);
+  --card-shadow-strong: 0 8px 32px rgba(0, 80, 90, 0.14), 0 2px 8px rgba(0, 200, 220, 0.1);
+  --card-shadow-glow: 0 0 0 1px rgba(0, 200, 220, 0.25), 0 8px 32px rgba(0, 200, 220, 0.18);
+
+  --bg-gradient:
+    radial-gradient(ellipse 90% 60% at 50% -20%, rgba(0, 200, 220, 0.14) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 80%, rgba(200, 0, 255, 0.08) 0%, transparent 50%);
+
+  --primary: #00b3c7;
+  --primary-strong: #0092a3;
+  --primary-glow: rgba(0, 200, 220, 0.35);
+
+  --kiss: #c026d3;
+  --marry: #16a34a;
+  --kill: #e11d48;
+  --slot-kiss-text: #a21caf;
+  --slot-marry-text: #15803d;
+  --slot-kill-text: #be123c;
+  --slot-pass-text: #475569;
+
+  --chip-active-text: #0e7490;
+  --chip-active-bg: rgba(0, 200, 220, 0.1);
+  --chip-active-border: rgba(0, 200, 220, 0.4);
+
+  --avatar-bg: rgba(0, 200, 220, 0.12);
+  --avatar-border: rgba(0, 200, 220, 0.3);
+  --avatar-color: #0092a3;
+
+  --gradient-title-start: #08121c;
+  --gradient-title-end: #00b3c7;
+
+  --modal-backdrop: rgba(6, 20, 26, 0.5);
+}
+
+/* ── Neon Theme (Dark Mode - Midnight Circuit) ───────── */
+[data-theme='dark'][data-game-theme='neon']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-theme='neon']:not([data-theme='light']),
+[data-theme='dark'] [data-game-theme='neon']:not([data-theme='light']) {
+  --background: #0a0a14;
+  --background-soft: #0e0e1a;
+  --foreground: #e0ffe0;
+  --muted: #8cf0c0;
+  --faint: #4a8a6a;
+
+  --card: rgba(10, 20, 30, 0.78);
+  --card-strong: rgba(14, 24, 34, 0.92);
+  --card-hover: rgba(20, 34, 48, 0.85);
+  --surface-inset-bg: rgba(0, 255, 200, 0.04);
+
+  --border: rgba(0, 255, 255, 0.1);
+  --border-strong: rgba(0, 255, 255, 0.18);
+
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 20px rgba(0, 229, 255, 0.08);
+  --card-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.55), 0 0 24px rgba(0, 229, 255, 0.12);
+  --card-shadow-glow: 0 0 0 1px rgba(0, 229, 255, 0.2), 0 8px 40px rgba(0, 229, 255, 0.15);
+
+  --bg-gradient:
+    radial-gradient(ellipse 90% 55% at 50% -10%, rgba(0, 229, 255, 0.14) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 35% at 85% 90%, rgba(200, 0, 255, 0.1) 0%, transparent 50%);
+
+  --primary: #00e5ff;
+  --primary-strong: #00bcd4;
+  --primary-glow: rgba(0, 229, 255, 0.4);
+
+  --kiss: #e040fb;
+  --marry: #76ff03;
+  --kill: #ff1744;
+  --slot-kiss-text: #ea80fc;
+  --slot-marry-text: #c6ff00;
+  --slot-kill-text: #ff8a80;
+  --slot-pass-text: #80cbc4;
+
+  --chip-active-text: #b2ebf2;
+  --chip-active-bg: rgba(0, 229, 255, 0.12);
+  --chip-active-border: rgba(0, 229, 255, 0.4);
+
+  --avatar-bg: rgba(0, 229, 255, 0.12);
+  --avatar-border: rgba(0, 229, 255, 0.25);
+  --avatar-color: #80deea;
+
+  --gradient-title-start: #e0ffe0;
+  --gradient-title-end: #00e5ff;
+
+  --modal-backdrop: rgba(0, 0, 0, 0.78);
+}
+
+/* ── Retro Theme (Light Mode - Sun-faded Print) ──────── */
+:root[data-game-theme='retro']:not([data-theme='dark']),
+[data-game-theme='retro']:not([data-theme='dark']) {
+  --background: #faf3e6;
+  --background-soft: #fff8ee;
+  --foreground: #3d2b1f;
+  --muted: #7a6352;
+  --faint: #a99582;
+
+  --card: rgba(255, 248, 238, 0.82);
+  --card-strong: rgba(255, 252, 245, 0.94);
+  --card-hover: rgba(255, 245, 230, 0.9);
+  --surface-inset-bg: rgba(180, 120, 60, 0.05);
+
+  --border: rgba(180, 120, 60, 0.12);
+  --border-strong: rgba(180, 120, 60, 0.2);
+
+  --card-shadow: 0 1px 2px rgba(120, 80, 30, 0.06), 0 4px 16px rgba(120, 80, 30, 0.08);
+  --card-shadow-strong: 0 8px 40px rgba(120, 80, 30, 0.12), 0 2px 8px rgba(120, 80, 30, 0.06);
+  --card-shadow-glow: 0 0 0 1px rgba(217, 119, 6, 0.15), 0 8px 32px rgba(217, 119, 6, 0.1);
+
+  --bg-gradient:
+    radial-gradient(ellipse 90% 60% at 50% -20%, rgba(217, 119, 6, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 80%, rgba(180, 80, 20, 0.05) 0%, transparent 50%);
+
+  --primary: #d97706;
+  --primary-strong: #b45309;
+  --primary-glow: rgba(217, 119, 6, 0.3);
+
+  --kiss: #ea580c;
+  --marry: #ca8a04;
+  --kill: #991b1b;
+  --slot-kiss-text: #c2410c;
+  --slot-marry-text: #a16207;
+  --slot-kill-text: #7f1d1d;
+  --slot-pass-text: #78716c;
+
+  --chip-active-text: #92400e;
+  --chip-active-bg: rgba(217, 119, 6, 0.1);
+  --chip-active-border: rgba(217, 119, 6, 0.35);
+
+  --avatar-bg: rgba(217, 119, 6, 0.1);
+  --avatar-border: rgba(217, 119, 6, 0.2);
+  --avatar-color: #b45309;
+
+  --gradient-title-start: #3d2b1f;
+  --gradient-title-end: #d97706;
+
+  --modal-backdrop: rgba(60, 40, 20, 0.5);
+}
+
+/* ── Retro Theme (Dark Mode - Warm Tube Glow) ────────── */
+[data-theme='dark'][data-game-theme='retro']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-theme='retro']:not([data-theme='light']),
+[data-theme='dark'] [data-game-theme='retro']:not([data-theme='light']) {
+  --background: #241a12;
+  --background-soft: #2f2318;
+  --foreground: #f2e4cd;
+  --muted: #c1a684;
+  --faint: #8a7157;
+
+  --card: rgba(47, 35, 24, 0.85);
+  --card-strong: rgba(58, 44, 30, 0.95);
+  --card-hover: rgba(68, 51, 36, 0.9);
+  --surface-inset-bg: rgba(232, 145, 43, 0.06);
+
+  --border: rgba(217, 119, 6, 0.22);
+  --border-strong: rgba(217, 119, 6, 0.38);
+
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 20px rgba(0, 0, 0, 0.3);
+  --card-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.55), 0 0 20px rgba(232, 145, 43, 0.1);
+  --card-shadow-glow: 0 0 0 1px rgba(232, 145, 43, 0.3), 0 8px 40px rgba(232, 145, 43, 0.15);
+
+  --bg-gradient:
+    radial-gradient(ellipse 90% 55% at 50% -10%, rgba(232, 145, 43, 0.16) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 35% at 85% 90%, rgba(153, 27, 27, 0.14) 0%, transparent 50%);
+
+  --primary: #e8912b;
+  --primary-strong: #d97706;
+  --primary-glow: rgba(232, 145, 43, 0.4);
+
+  --kiss: #f97316;
+  --marry: #e0b528;
+  --kill: #dc4c3f;
+  --slot-kiss-text: #fb923c;
+  --slot-marry-text: #ecc94b;
+  --slot-kill-text: #f0897c;
+  --slot-pass-text: #bda88a;
+
+  --chip-active-text: #fcd9a0;
+  --chip-active-bg: rgba(232, 145, 43, 0.15);
+  --chip-active-border: rgba(232, 145, 43, 0.5);
+
+  --avatar-bg: rgba(232, 145, 43, 0.15);
+  --avatar-border: rgba(232, 145, 43, 0.35);
+  --avatar-color: #e8912b;
+
+  --gradient-title-start: #f2e4cd;
+  --gradient-title-end: #e8912b;
+
+  --modal-backdrop: rgba(20, 14, 8, 0.78);
+}
+
+/* ── Elegant Theme (Light Mode - Ivory & Gold) ───────── */
+:root[data-game-theme='elegant']:not([data-theme='dark']),
+[data-game-theme='elegant']:not([data-theme='dark']) {
+  --background: #f4f0e6;
+  --background-soft: #fbf8f0;
+  --foreground: #1a1c26;
+  --muted: #5c5646;
+  --faint: #8c8470;
+
+  --card: rgba(251, 248, 240, 0.85);
+  --card-strong: rgba(255, 253, 247, 0.95);
+  --card-hover: rgba(244, 240, 230, 0.9);
+  --surface-inset-bg: rgba(184, 146, 46, 0.05);
+
+  --border: rgba(184, 146, 46, 0.22);
+  --border-strong: rgba(184, 146, 46, 0.38);
+
+  --card-shadow: 0 1px 3px rgba(60, 50, 20, 0.08), 0 4px 16px rgba(184, 146, 46, 0.1);
+  --card-shadow-strong: 0 8px 32px rgba(60, 50, 20, 0.14), 0 2px 8px rgba(184, 146, 46, 0.1);
+  --card-shadow-glow: 0 0 0 1px rgba(184, 146, 46, 0.28), 0 8px 32px rgba(184, 146, 46, 0.15);
+
+  --bg-gradient:
+    radial-gradient(ellipse 90% 60% at 50% -20%, rgba(184, 146, 46, 0.1) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 80%, rgba(140, 110, 40, 0.06) 0%, transparent 50%);
+
+  --primary: #b8922e;
+  --primary-strong: #96751d;
+  --primary-glow: rgba(184, 146, 46, 0.3);
+
+  --kiss: #c2872a;
+  --marry: #a67c00;
+  --kill: #b03030;
+  --slot-kiss-text: #9a6c12;
+  --slot-marry-text: #856500;
+  --slot-kill-text: #8f2222;
+  --slot-pass-text: #5c5646;
+
+  --chip-active-text: #7a5e14;
+  --chip-active-bg: rgba(184, 146, 46, 0.12);
+  --chip-active-border: rgba(184, 146, 46, 0.45);
+
+  --avatar-bg: rgba(184, 146, 46, 0.12);
+  --avatar-border: rgba(184, 146, 46, 0.3);
+  --avatar-color: #96751d;
+
+  --gradient-title-start: #1a1c26;
+  --gradient-title-end: #b8922e;
+
+  --modal-backdrop: rgba(26, 22, 10, 0.5);
+}
+
+/* ── Elegant Theme (Dark Mode - Midnight & Gold) ─────── */
+[data-theme='dark'][data-game-theme='elegant']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-theme='elegant']:not([data-theme='light']),
+[data-theme='dark'] [data-game-theme='elegant']:not([data-theme='light']) {
+  --background: #0c0f1a;
+  --background-soft: #111627;
+  --foreground: #f0ead6;
+  --muted: #b8a88a;
+  --faint: #6e6350;
+
+  --card: rgba(16, 20, 36, 0.8);
+  --card-strong: rgba(20, 24, 42, 0.92);
+  --card-hover: rgba(26, 30, 50, 0.88);
+  --surface-inset-bg: rgba(212, 168, 67, 0.04);
+
+  --border: rgba(212, 168, 67, 0.1);
+  --border-strong: rgba(212, 168, 67, 0.18);
+
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 20px rgba(0, 0, 0, 0.3);
+  --card-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.55), 0 0 20px rgba(212, 168, 67, 0.06);
+  --card-shadow-glow: 0 0 0 1px rgba(212, 168, 67, 0.2), 0 8px 40px rgba(212, 168, 67, 0.1);
+
+  --bg-gradient:
+    radial-gradient(ellipse 90% 55% at 50% -10%, rgba(212, 168, 67, 0.1) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 35% at 85% 90%, rgba(180, 140, 50, 0.06) 0%, transparent 50%);
+
+  --primary: #d4a843;
+  --primary-strong: #b8922e;
+  --primary-glow: rgba(212, 168, 67, 0.35);
+
+  --kiss: #e5a832;
+  --marry: #f0d060;
+  --kill: #c53030;
+  --slot-kiss-text: #f0c060;
+  --slot-marry-text: #f0d060;
+  --slot-kill-text: #fc8181;
+  --slot-pass-text: #a0aec0;
+
+  --chip-active-text: #f0dca0;
+  --chip-active-bg: rgba(212, 168, 67, 0.12);
+  --chip-active-border: rgba(212, 168, 67, 0.4);
+
+  --avatar-bg: rgba(212, 168, 67, 0.12);
+  --avatar-border: rgba(212, 168, 67, 0.25);
+  --avatar-color: #e5c76a;
+
+  --gradient-title-start: #f0ead6;
+  --gradient-title-end: #d4a843;
+
+  --modal-backdrop: rgba(6, 8, 14, 0.75);
+}
+
+/* ── Tropical Theme (Light Mode - Beach Day) ─────────── */
+:root[data-game-theme='tropical']:not([data-theme='dark']),
+[data-game-theme='tropical']:not([data-theme='dark']) {
+  --background: #e6f7f4;
+  --background-soft: #f2fbfa;
+  --foreground: #103330;
+  --muted: #4a7a74;
+  --faint: #7fa8a2;
+
+  --card: rgba(242, 251, 250, 0.85);
+  --card-strong: rgba(255, 255, 255, 0.95);
+  --card-hover: rgba(230, 247, 244, 0.9);
+  --surface-inset-bg: rgba(0, 180, 165, 0.05);
+
+  --border: rgba(0, 180, 165, 0.2);
+  --border-strong: rgba(0, 180, 165, 0.34);
+
+  --card-shadow: 0 1px 3px rgba(0, 60, 55, 0.08), 0 4px 16px rgba(255, 107, 107, 0.1);
+  --card-shadow-strong: 0 8px 32px rgba(0, 60, 55, 0.12), 0 2px 8px rgba(255, 107, 107, 0.1);
+  --card-shadow-glow: 0 0 0 1px rgba(255, 107, 107, 0.25), 0 8px 32px rgba(255, 107, 107, 0.15);
+
+  --bg-gradient:
+    radial-gradient(ellipse 90% 60% at 50% -20%, rgba(242, 84, 91, 0.1) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 80%, rgba(0, 180, 165, 0.1) 0%, transparent 50%);
+
+  --primary: #f2545b;
+  --primary-strong: #d83a48;
+  --primary-glow: rgba(242, 84, 91, 0.3);
+
+  --kiss: #f0862e;
+  --marry: #00999a;
+  --kill: #e0491f;
+  --slot-kiss-text: #c26414;
+  --slot-marry-text: #007a7b;
+  --slot-kill-text: #c23f18;
+  --slot-pass-text: #4a7a74;
+
+  --chip-active-text: #c23540;
+  --chip-active-bg: rgba(242, 84, 91, 0.1);
+  --chip-active-border: rgba(242, 84, 91, 0.4);
+
+  --avatar-bg: rgba(242, 84, 91, 0.12);
+  --avatar-border: rgba(242, 84, 91, 0.3);
+  --avatar-color: #d83a48;
+
+  --gradient-title-start: #103330;
+  --gradient-title-end: #f2545b;
+
+  --modal-backdrop: rgba(5, 30, 28, 0.5);
+}
+
+/* ── Tropical Theme (Dark Mode - Moonlit Lagoon) ─────── */
+[data-theme='dark'][data-game-theme='tropical']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-theme='tropical']:not([data-theme='light']),
+[data-theme='dark'] [data-game-theme='tropical']:not([data-theme='light']) {
+  --background: #0a1a1a;
+  --background-soft: #0f2222;
+  --foreground: #e0f7f4;
+  --muted: #80cbc4;
+  --faint: #4a8a82;
+
+  --card: rgba(12, 28, 28, 0.78);
+  --card-strong: rgba(16, 34, 34, 0.92);
+  --card-hover: rgba(22, 42, 42, 0.88);
+  --surface-inset-bg: rgba(0, 200, 180, 0.04);
+
+  --border: rgba(0, 200, 180, 0.1);
+  --border-strong: rgba(0, 200, 180, 0.18);
+
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 20px rgba(0, 0, 0, 0.3);
+  --card-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.5), 0 0 20px rgba(255, 107, 107, 0.08);
+  --card-shadow-glow: 0 0 0 1px rgba(255, 107, 107, 0.2), 0 8px 40px rgba(255, 107, 107, 0.12);
+
+  --bg-gradient:
+    radial-gradient(ellipse 90% 55% at 50% -10%, rgba(255, 107, 107, 0.12) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 35% at 85% 90%, rgba(0, 200, 180, 0.1) 0%, transparent 50%);
+
+  --primary: #ff6b6b;
+  --primary-strong: #e05555;
+  --primary-glow: rgba(255, 107, 107, 0.4);
+
+  --kiss: #ff9f43;
+  --marry: #00d2d3;
+  --kill: #ee5a24;
+  --slot-kiss-text: #ffc078;
+  --slot-marry-text: #63e6e7;
+  --slot-kill-text: #ff8a70;
+  --slot-pass-text: #80cbc4;
+
+  --chip-active-text: #ffc0c0;
+  --chip-active-bg: rgba(255, 107, 107, 0.12);
+  --chip-active-border: rgba(255, 107, 107, 0.4);
+
+  --avatar-bg: rgba(255, 107, 107, 0.12);
+  --avatar-border: rgba(255, 107, 107, 0.25);
+  --avatar-color: #ff9090;
+
+  --gradient-title-start: #e0f7f4;
+  --gradient-title-end: #ff6b6b;
+
+  --modal-backdrop: rgba(5, 12, 12, 0.75);
+}
+
 /* ── Base ───────────────────────────────────────────────────────── */
 html {
   background: var(--background);
@@ -1031,6 +1443,16 @@ body {
   }
 }
 
+/* Fill mode: keep a consistent height regardless of content so a short result
+   list doesn't leave the sheet collapsed behind the on-screen keyboard. The
+   header stays pinned and the body scrolls internally. */
+.modal-panel--fill {
+  height: min(90vh, 100%);
+  overflow-y: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -1385,3 +1807,86 @@ body {
     font-family: var(--font-geist-sans), system-ui, sans-serif;
   }
 }
+
+/* Host lobby (waiting state) owns its own chrome. While the mobile-parity HostLobby
+   overlay is mounted it sets data-host-lobby="active" on <html>; hide the app's marketing
+   host header (the global fixed theme toggle stays as the single light/dark control — the
+   lobby's pinned header leaves room for it), and lift the floating voice control above the
+   lobby's pinned footer (height measured into --lobby-footer-h) so it never overlaps Start. */
+:root[data-host-lobby='active'] .game-host-chrome {
+  display: none !important;
+}
+:root[data-host-lobby='active'] .voice-fab {
+  bottom: calc(var(--lobby-footer-h, 5rem) + 1rem);
+}
+
+/* ── Ping Pong theme (tied to game type) ───────────────────────── */
+:root[data-game-type='ping_pong']:not([data-theme='dark']),
+[data-game-type='ping_pong']:not([data-theme='dark']) {
+  --background: #064e3b;
+  --background-soft: #047857;
+  --foreground: #ecfdf5;
+  --muted: #a7f3d0;
+  --faint: #6ee7b7;
+
+  --card: rgba(6, 95, 70, 0.72);
+  --card-strong: rgba(6, 95, 70, 0.92);
+  --card-hover: rgba(6, 95, 70, 0.85);
+  --surface-inset-bg: rgba(4, 120, 87, 0.5);
+
+  --border: rgba(16, 185, 129, 0.2);
+  --border-strong: rgba(16, 185, 129, 0.4);
+
+  --primary: #f43f5e;
+  --primary-strong: #e11d48;
+  --primary-glow: rgba(244, 63, 94, 0.35);
+
+  --bg-gradient:
+    radial-gradient(ellipse 90% 60% at 50% -20%, rgba(244, 63, 94, 0.15) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 80%, rgba(16, 185, 129, 0.1) 0%, transparent 50%);
+}
+
+[data-theme='dark'][data-game-type='ping_pong']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-type='ping_pong']:not([data-theme='light']),
+[data-theme='dark'] [data-game-type='ping_pong']:not([data-theme='light']) {
+  --background: #022c22;
+  --background-soft: #064e3b;
+  --foreground: #ecfdf5;
+  --muted: #6ee7b7;
+  --faint: #34d399;
+
+  --card: rgba(6, 78, 59, 0.75);
+  --card-strong: rgba(4, 120, 87, 0.92);
+  --card-hover: rgba(6, 95, 70, 0.85);
+  --surface-inset-bg: rgba(255, 255, 255, 0.04);
+
+  --border: rgba(16, 185, 129, 0.15);
+  --border-strong: rgba(16, 185, 129, 0.3);
+
+  --primary: #fb7185;
+  --primary-strong: #f43f5e;
+  --primary-glow: rgba(244, 63, 94, 0.25);
+
+  --bg-gradient:
+    radial-gradient(ellipse 90% 55% at 50% -10%, rgba(244, 63, 94, 0.2) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 35% at 85% 90%, rgba(16, 185, 129, 0.15) 0%, transparent 50%);
+}
+
+/* ── Custom Utilities ───────────────────────────────────────────── */
+@theme {
+  --animate-intermittent-shake: intermittent-shake 5s cubic-bezier(.36,.07,.19,.97) infinite;
+  @keyframes intermittent-shake {
+    0%, 80% { transform: translateX(0); }
+    82% { transform: translateX(-4px) rotate(-3deg); }
+    84% { transform: translateX(4px) rotate(3deg); }
+    86% { transform: translateX(-4px) rotate(-3deg); }
+    88% { transform: translateX(4px) rotate(3deg); }
+    90%, 100% { transform: translateX(0); }
+  }
+}
+
+select option {
+  background-color: var(--card-strong) !important;
+  color: var(--foreground) !important;
+}
+

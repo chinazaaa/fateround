@@ -1,14 +1,32 @@
-import { useState } from 'react'
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useState } from 'react'
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game, Player } from '@fateround/shared'
-import { gameSupportsViewerSetting, lateJoinPolicyFromGame } from '@fateround/shared/viewers'
-import { patchGameSettings, postFinishGame, postPlayAgain, removePlayerAsHost } from '@/lib/game-api'
+import {
+  gameAllowsLatePlayerJoin,
+  gameSupportsInPlaceSpectate,
+  gameSupportsViewerSetting,
+  lateJoinPolicyFromGame,
+  playerIsViewer,
+} from '@fateround/shared/viewers'
+import {
+  leaveGame,
+  patchGameSettings,
+  patchPlayerName,
+  postFinishGame,
+  postPlayAgain,
+  postPlayerSpectate,
+  removePlayerAsHost,
+} from '@/lib/game-api'
+import { joinGame } from '@/lib/api'
+import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/secure-session'
+import { notifyPlayerSessionChanged } from '@/lib/session-events'
 import { SettingToggle } from '@/components/create/SettingToggle'
 import { LateJoinPolicyPicker } from '@/components/create/LateJoinPolicyPicker'
 import { WordRushHostRoundControl } from '@/components/games/WordRushHostRoundControl'
 import { QuickDrawHostAdvanceControl } from '@/components/games/QuickDrawHostAdvanceControl'
 import { AddGameTimeControl } from '@/components/host/AddGameTimeControl'
+import { RotatePlayerCodeRow } from '@/components/session/RotatePlayerCodeRow'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
@@ -20,6 +38,8 @@ type Props = {
   game: Game
   players: Player[]
   hostPlayerId: string | null
+  /** Host's own resume token — enables renaming their seated player. */
+  hostResumeToken: string | null
   onReload: () => void | Promise<unknown>
   /** Opens the host-transfer flow (pick a player to take over). */
   onTransfer: () => void
@@ -38,6 +58,7 @@ export function HostControlsSheet({
   game,
   players,
   hostPlayerId,
+  hostResumeToken,
   onReload,
   onTransfer,
 }: Props) {
@@ -45,11 +66,23 @@ export function HostControlsSheet({
   const styles = useThemedStyles(makeStyles)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState(false)
+  const [nameDraft, setNameDraft] = useState('')
+
+  // Drop any in-progress rename when the sheet is dismissed.
+  useEffect(() => {
+    if (!visible) setEditingName(false)
+  }, [visible])
 
   const activePlayers = players.filter((p) => !p.spectator)
   const finished = game.status === 'finished'
   const active = game.status === 'active'
-  const showLateJoin = gameSupportsViewerSetting(game.game_type)
+  // The host can "leave (keep hosting)" only while actively holding a PLAYING seat (not already
+  // watching). hostPlayerId + resumeToken = they hold a seat; not a viewer row = still playing.
+  const hostRow = hostPlayerId ? players.find((p) => p.id === hostPlayerId) : null
+  const hostIsPlaying = !!hostRow && !!hostResumeToken && !playerIsViewer(hostRow, game)
+  // View-only games have no view-vs-play choice — hide the late-join line entirely.
+  const showLateJoin = gameSupportsViewerSetting(game.game_type) && gameAllowsLatePlayerJoin(game.game_type)
 
   // Visibility + late-join are live-editable mid-game (server allows these two
   // via the game PATCH route). Other settings (rounds/time) stay lobby-only.
@@ -81,6 +114,74 @@ export function HostControlsSheet({
     ])
   }
 
+  const startEditName = (currentName: string) => {
+    setError(null)
+    setNameDraft(currentName)
+    setEditingName(true)
+  }
+
+  const saveName = () => {
+    const trimmed = nameDraft.trim()
+    if (!trimmed || !hostPlayerId || !hostResumeToken || busy) return
+    void run('rename', async () => {
+      await patchPlayerName(gameCode, hostPlayerId, trimmed, hostResumeToken)
+      // Keep the on-device session name in sync so it persists across reloads.
+      const s = await getPlayerSession(gameCode)
+      if (s) await setPlayerSession(gameCode, s.playerId, trimmed, s.playerGender, s.resumeToken)
+      setEditingName(false)
+    })
+  }
+
+  // "Leave game (keep hosting)" — the host stops playing but keeps the host token and watches.
+  // Two paths (see gameSupportsInPlaceSpectate): independent games flip the row to spectator in
+  // place (keeps score, can retake the seat); turn/seat/role games go through the destructive
+  // removal that cleans up turn_order (2-player → the other player wins) then re-seat as a viewer
+  // so the host still shows as watching in the roster.
+  const doLeaveGame = (inPlace: boolean) =>
+    run(
+      'leave',
+      async () => {
+        if (!hostPlayerId || !hostResumeToken) return
+        if (inPlace) {
+          await postPlayerSpectate(gameCode, hostResumeToken)
+          // Same player row/id — just tell the chrome to re-read (it's now a viewer seat).
+          notifyPlayerSessionChanged(gameCode)
+          return
+        }
+        const name = (await getPlayerSession(gameCode))?.playerName ?? 'Host'
+        await leaveGame(gameCode, hostPlayerId, hostResumeToken)
+        try {
+          const viewer = await joinGame({ gameCode, playerName: name, joinAsViewer: true })
+          await setPlayerSession(
+            gameCode,
+            viewer.playerId,
+            viewer.playerName,
+            viewer.playerGender ?? 'both',
+            viewer.resumeToken
+          )
+        } catch {
+          // Game may have just ended (2-player) or viewers disabled — stay fully removed.
+          await clearPlayerSession(gameCode)
+        }
+        notifyPlayerSessionChanged(gameCode)
+      },
+      true
+    )
+
+  const confirmLeaveGame = () => {
+    const inPlace = gameSupportsInPlaceSpectate(game.game_type)
+    const canRejoin = gameAllowsLatePlayerJoin(game.game_type)
+    const message = !inPlace
+      ? "You'll stop playing and watch as the host — the game keeps going for everyone else. If too few players are left it ends (in a 2-player game the other player wins). You can't take your seat back in this game."
+      : canRejoin
+        ? "You'll stop playing and watch instead — the game keeps going and you stay the host. You can rejoin as a player at any time."
+        : "You'll stop playing and watch instead — the game keeps going and you stay the host. You can play again once this game finishes."
+    Alert.alert('Leave the game?', message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Leave game', style: 'destructive', onPress: () => void doLeaveGame(inPlace) },
+    ])
+  }
+
   const confirmEndGame = () => {
     Alert.alert('End game', 'End the game for everyone now?', [
       { text: 'Cancel', style: 'cancel' },
@@ -109,13 +210,46 @@ export function HostControlsSheet({
           ) : (
             activePlayers.map((p) => {
               const isHost = p.id === hostPlayerId
+              const canEditSelf = isHost && !!hostResumeToken
+              if (isHost && editingName) {
+                return (
+                  <View key={p.id} style={styles.playerRow}>
+                    <TextInput
+                      style={styles.nameInput}
+                      value={nameDraft}
+                      onChangeText={setNameDraft}
+                      placeholder="Your name"
+                      placeholderTextColor={theme.textFaint}
+                      autoCapitalize="words"
+                      autoFocus
+                      maxLength={24}
+                      returnKeyType="done"
+                      onSubmitEditing={saveName}
+                    />
+                    <Pressable onPress={saveName} disabled={busy === 'rename' || !nameDraft.trim()} hitSlop={8}>
+                      {busy === 'rename' ? (
+                        <ActivityIndicator color={theme.primaryMuted} />
+                      ) : (
+                        <Text style={[styles.editText, !nameDraft.trim() && styles.editDisabled]}>Save</Text>
+                      )}
+                    </Pressable>
+                    <Pressable onPress={() => setEditingName(false)} disabled={busy === 'rename'} hitSlop={8}>
+                      <Text style={styles.cancelText}>Cancel</Text>
+                    </Pressable>
+                  </View>
+                )
+              }
               return (
                 <View key={p.id} style={styles.playerRow}>
                   <Text style={styles.playerName} numberOfLines={1}>
                     {p.name}
-                    {isHost ? <Text style={styles.hostTag}>  · host</Text> : null}
+                    {isHost ? <Text style={styles.hostTag}> · you</Text> : null}
                   </Text>
-                  {!isHost ? (
+                  {canEditSelf ? (
+                    <Pressable onPress={() => startEditName(p.name)} hitSlop={8}>
+                      <Text style={styles.editText}>Edit name</Text>
+                    </Pressable>
+                  ) : !isHost ? (
                     <Pressable onPress={() => confirmRemove(p)} disabled={busy === `remove-${p.id}`}>
                       {busy === `remove-${p.id}` ? (
                         <ActivityIndicator color={theme.error} />
@@ -182,6 +316,15 @@ export function HostControlsSheet({
             <Text style={styles.secondaryBtnText}>Transfer host to another player</Text>
           </Pressable>
 
+          {hostResumeToken ? (
+            <RotatePlayerCodeRow
+              gameCode={gameCode}
+              style={styles.secondaryBtn}
+              textStyle={styles.secondaryBtnText}
+              spinnerColor={theme.text}
+            />
+          ) : null}
+
           {active && game.game_type === 'word_rush' ? (
             <WordRushHostRoundControl gameCode={gameCode} hostToken={hostToken} onReload={onReload} />
           ) : null}
@@ -191,6 +334,20 @@ export function HostControlsSheet({
           ) : null}
 
           <AddGameTimeControl gameCode={gameCode} hostToken={hostToken} game={game} onExtended={onReload} />
+
+          {active && hostIsPlaying ? (
+            <Pressable
+              style={[styles.secondaryBtn, busy === 'leave' && styles.btnDisabled]}
+              disabled={!!busy}
+              onPress={confirmLeaveGame}
+            >
+              {busy === 'leave' ? (
+                <ActivityIndicator color={theme.text} />
+              ) : (
+                <Text style={styles.secondaryBtnText}>Leave game (keep hosting)</Text>
+              )}
+            </Pressable>
+          ) : null}
 
           {active ? (
             <Pressable
@@ -211,69 +368,80 @@ export function HostControlsSheet({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  sheet: { flex: 1, backgroundColor: theme.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: theme.space.lg,
-    paddingVertical: theme.space.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.border,
-  },
-  title: { color: theme.text, fontSize: 20, fontWeight: '800' },
-  close: { color: theme.primaryMuted, fontSize: 16, fontWeight: '700' },
-  body: { padding: theme.space.lg, gap: theme.space.sm, paddingBottom: 40 },
-  sectionLabel: {
-    color: theme.textMuted,
-    fontSize: 12,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  sectionSpacer: { marginTop: theme.space.md },
-  muted: { color: theme.textMuted, fontSize: 14 },
-  playerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: theme.bgElevated,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingHorizontal: theme.space.md,
-    paddingVertical: 12,
-  },
-  playerName: { color: theme.text, fontSize: 16, fontWeight: '600', flex: 1 },
-  hostTag: { color: theme.textFaint, fontSize: 13, fontWeight: '700' },
-  removeText: { color: theme.error, fontSize: 14, fontWeight: '700' },
-  settingBlock: { gap: theme.space.xs },
-  settingTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
-  note: { color: theme.textFaint, fontSize: 12, lineHeight: 17, paddingHorizontal: 2 },
-  primaryBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: theme.radius.md,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  secondaryBtn: {
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  secondaryBtnText: { color: theme.text, fontWeight: '700', fontSize: 15 },
-  dangerBtn: {
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.error,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: theme.space.sm,
-  },
-  dangerBtnText: { color: theme.error, fontWeight: '700', fontSize: 15 },
-  btnDisabled: { opacity: 0.5 },
-  error: { color: theme.error, fontSize: 14, textAlign: 'center', marginTop: theme.space.sm },
-})
+    sheet: { flex: 1, backgroundColor: theme.bg },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: theme.space.lg,
+      paddingVertical: theme.space.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.border,
+    },
+    title: { color: theme.text, fontSize: 20, fontWeight: '800' },
+    close: { color: theme.primaryMuted, fontSize: 16, fontWeight: '700' },
+    body: { padding: theme.space.lg, gap: theme.space.sm, paddingBottom: 40 },
+    sectionLabel: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+    sectionSpacer: { marginTop: theme.space.md },
+    muted: { color: theme.textMuted, fontSize: 14 },
+    playerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: theme.space.md,
+      backgroundColor: theme.bgElevated,
+      borderRadius: theme.radius.md,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingHorizontal: theme.space.md,
+      paddingVertical: 12,
+    },
+    playerName: { color: theme.text, fontSize: 16, fontWeight: '600', flex: 1 },
+    hostTag: { color: theme.textFaint, fontSize: 13, fontWeight: '700' },
+    removeText: { color: theme.error, fontSize: 14, fontWeight: '700' },
+    editText: { color: theme.primaryMuted, fontSize: 14, fontWeight: '700' },
+    editDisabled: { opacity: 0.5 },
+    cancelText: { color: theme.textMuted, fontSize: 14, fontWeight: '700' },
+    nameInput: {
+      flex: 1,
+      color: theme.text,
+      fontSize: 16,
+      fontWeight: '600',
+      paddingVertical: 0,
+    },
+    settingBlock: { gap: theme.space.xs },
+    settingTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
+    note: { color: theme.textFaint, fontSize: 12, lineHeight: 17, paddingHorizontal: 2 },
+    primaryBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: theme.radius.md,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+    secondaryBtn: {
+      borderRadius: theme.radius.md,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    secondaryBtnText: { color: theme.text, fontWeight: '700', fontSize: 15 },
+    dangerBtn: {
+      borderRadius: theme.radius.md,
+      borderWidth: 1,
+      borderColor: theme.error,
+      paddingVertical: 14,
+      alignItems: 'center',
+      marginTop: theme.space.sm,
+    },
+    dangerBtnText: { color: theme.error, fontWeight: '700', fontSize: 15 },
+    btnDisabled: { opacity: 0.5 },
+    error: { color: theme.error, fontSize: 14, textAlign: 'center', marginTop: theme.space.sm },
+  })

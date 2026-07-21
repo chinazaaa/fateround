@@ -1,29 +1,25 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
-import {
-  currentPlayerId,
-  getLudoHostMode,
-  LUDO_MIN_PLAYERS,
-  parseLudoDice,
-  parseLudoVariant,
-  setLudoHostMode,
-  type LudoHostMode,
-} from '@/lib/ludo'
+import { currentPlayerId, finishedPieceCount, LUDO_MIN_PLAYERS, parseLudoDice, parseLudoVariant } from '@/lib/ludo'
+import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, LUDO_PLAYER_STATE_SELECT, LUDO_SESSION_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
-import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import type { Game, LudoDiceRoll, LudoPlayerState, LudoSession, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
@@ -32,6 +28,9 @@ import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
 import { useLudoTurnTimer } from '@/hooks/useLudoTurnTimer'
 import { useLudoNotifications, playLudoActionSound, playLudoRollSound } from '@/hooks/useLudoNotifications'
@@ -51,15 +50,11 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<LudoSession | null>(null)
+  const sessionRef = useRef<LudoSession | null>(null)
+  sessionRef.current = session
   const [states, setStates] = useState<LudoPlayerState[]>([])
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
-  const [hostMode, setHostModeState] = useState<LudoHostMode>('player')
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
   const [hostActing, setHostActing] = useState(false)
   const [rolling, setRolling] = useState(false)
   const [displayDice, setDisplayDice] = useState<LudoDiceRoll | null>(null)
@@ -86,13 +81,6 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
 
   useEffect(() => {
     load()
-    setHostModeState(getLudoHostMode(gameCode))
-    const stored = getPlayerSession(gameCode)
-    if (stored) {
-      setHostPlayerId(stored.playerId)
-      setHostResumeToken(stored.resumeToken ?? null)
-      setHostPlayerName(stored.playerName)
-    }
   }, [gameCode, load])
 
   // Land on the primary (Play/Watch) tab when the game starts, and on Manage when it ends.
@@ -102,94 +90,79 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   }, [game?.status])
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(gameCode, ['players', { table: 'games', column: 'id' }, 'ludo_sessions', 'ludo_player_state'], load)
+  // Delta fast-path (dual-table). Screen derives from game.status, so session/state writes
+  // only update the board — patch locally and skip the reload; active→finished rides the
+  // games-row event, and the fallback poll reconciles.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as LudoSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null
+  }, [])
+  const applyStateRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as LudoPlayerState
+    setStates((prev) => {
+      const i = prev.findIndex((s) => s.id === next.id)
+      // Keep rows ordered by player_order so a row inserted mid-game via realtime
+      // (e.g. a late-admitted player) doesn't land out of order on the board.
+      if (i === -1) return [...prev, next].sort((a, b) => a.player_order - b.player_order)
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true
+  }, [])
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  const connected = useGameTableSync(
+    gameCode,
+    [
+      'players',
+      { table: 'games', column: 'id' },
+      { table: 'ludo_sessions', apply: applySessionRow },
+      { table: 'ludo_player_state', apply: applyStateRow },
+    ],
+    load
+  )
+
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
+
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    leaveGameRemovePlayer,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostPlayerName('')
-        clearPlayerSession(gameCode)
-      }
+      onHostSeatRemoved(playerId)
       setPlayers((prev) => prev.filter((p) => p.id !== playerId))
     },
-    [gameCode, hostPlayerId]
+    [onHostSeatRemoved]
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
-
-  // Clear stale host-as-player state if the host's own row is removed elsewhere.
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
-
-  const changeHostMode = async (mode: LudoHostMode) => {
-    const prev = hostMode
-    setHostModeState(mode)
-    setLudoHostMode(gameCode, mode)
-    // Switching to "Host only" while holding a seat → give up the seat so the host
-    // drops out of the players list.
-    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
-      try {
-        const res = await fetch('/api/players', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error ?? 'Failed to leave seat')
-        }
-        handlePlayerRemoved(hostPlayerId)
-        await load()
-      } catch (err) {
-        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
-      }
-    }
-  }
-
-  const renameHost = async (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed || !hostPlayerId) return
-    try {
-      const res = await fetch('/api/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
-      setHostPlayerName(data.playerName)
-      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
-      await load()
-      success('Name updated!')
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to update name')
-    }
-  }
-
-  const hostJoinGame = async () => {
-    if (!hostJoinName.trim()) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: hostJoinName.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostResumeToken(data.resumeToken ?? null)
-      setHostPlayerName(data.playerName)
-      await load()
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }
 
   const postHostAction = async (path: string, body: Record<string, unknown> = {}) => {
     if (!hostPlayerId) return
@@ -296,9 +269,13 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const hostPlays = hostMode === 'player' && !!hostPlayerId
   const isHostTurn = turnPlayerId === hostPlayerId
 
+  // Countdown shows whenever the game is active (so the host sees it during other
+  // players' turns too); the existing play-tab / watch gate only decides whether the
+  // host *drives* expiry, matching how players and spectators now work.
   const { secondsLeft, hasTimer, urgent } = useLudoTurnTimer(
     gameCode,
     session,
+    game?.status === 'active',
     game?.status === 'active' && (tab === 'play' ? isHostTurn : true)
   )
 
@@ -312,12 +289,44 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
+  // Roster drawer scoreboard: pieces safely home (sorts leader first).
+  const rosterScores = useMemo(
+    () => Object.fromEntries(states.map((s) => [s.player_id, finishedPieceCount(s.pieces)])),
+    [states]
+  )
+  useGameScores(rosterScores, { suffix: ' 🏠' })
+
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer): late-join rules + How-to-play
+  // + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings
+          gameCode={gameCode}
+          hostToken={hostToken}
+          gameType="ludo"
+          onEnded={load}
+          endGameLabel="End game early"
+          endGameConfirmTitle="End this game early?"
+          endGameConfirmMessage="The current game will end and players will see the results screen."
+        >
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton
+              onLeave={leaveGameRemovePlayer}
+              variant="remove"
+              className="btn-secondary w-full py-3 text-base"
+            />
+          )}
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load, setGame, hostMode, hostPlayerId, leaveGameRemovePlayer]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
   const showTabs = game.status !== 'finished'
@@ -447,6 +456,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={LUDO_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}
@@ -463,18 +473,78 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     )
   }
 
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={cfg.label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('ludo', game) ?? game.max_players}
+        playCard={
+          <HostModeSelector
+            mode={hostMode}
+            onChange={changeHostMode}
+            joinedPlayerId={hostPlayerId}
+            joinedPlayerName={hostPlayerName}
+            joinName={hostJoinName}
+            onJoinNameChange={setHostJoinName}
+            onJoin={() => void hostJoinGame()}
+            joining={hostJoining}
+            onEditName={renameHost}
+            spectatorHint="Spectate once it starts"
+            playerHint="Take a seat and play"
+          />
+        }
+        settingsChildren={
+          <>
+            <HostBoardGameLobbyPanel
+              gameCode={gameCode}
+              hostToken={hostToken}
+              game={game}
+              boardGameType="ludo"
+              playerCount={players.length}
+              onGameUpdate={setGame}
+            />
+            <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+          </>
+        }
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart ? null : `Need at least ${LUDO_MIN_PLAYERS} players to start (${players.length}/${LUDO_MIN_PLAYERS})`
+        }
+        startLabel="Start game"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      />
+    )
+  }
+
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={game.status}
       tab={tab}
       onTabChange={setTab}
       primaryKind={primaryKind}
+      game={game}
+      players={players}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={load}
       showTabs={showTabs}
       gameStarted={gameStarted}
       header={<HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : watchBoard}
       manage={manage}
+      noManageTab
       finished={
         <>
           <LudoFinalResultsShareBlock

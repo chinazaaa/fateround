@@ -4,6 +4,7 @@ import type { GamePlayerLimitsMap } from '@fateround/shared/lobby-limits'
 import { getCodeDefaultLimits } from '@fateround/shared/lobby-limits'
 import type { MafiaStateResponse } from '@fateround/shared/mafia'
 import type { MahjongStateResponse } from '@fateround/shared/mahjong'
+import type { WordSearchPlacement } from '@fateround/shared'
 
 async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(apiUrl(path), {
@@ -14,6 +15,50 @@ async function postJson<T>(path: string, body: Record<string, unknown>): Promise
   const data = (await res.json()) as T & { error?: string }
   if (!res.ok) throw new Error(data.error ?? 'Request failed')
   return data
+}
+
+// Per-turn / per-phase expiry poke helpers. All take only `{ gameId }` (the routes
+// upper-case it, re-check the deadline, and no-op unless the game is active), so
+// any active client may fire them to advance a stalled/AFK turn.
+export function postWhotExpireTurn(gameId: string) {
+  return postJson<{ ok?: boolean; skipped?: boolean }>('/api/whot/expire-turn', { gameId })
+}
+
+export function postCrazyEightsExpireTurn(gameId: string) {
+  return postJson<{ ok?: boolean; skipped?: boolean }>('/api/crazy-eights/expire-turn', { gameId })
+}
+
+export function postMahjongExpireTurn(gameId: string) {
+  return postJson<{ success?: boolean; skipped?: boolean }>('/api/mahjong/expire-turn', { gameId })
+}
+
+export function postSnakeLadderExpireTurn(gameId: string) {
+  return postJson<{ success?: boolean; skipped?: boolean }>('/api/snake-and-ladder/expire-turn', { gameId })
+}
+
+export function postMonopolyExpireTurn(gameId: string) {
+  return postJson<{ success?: boolean; skipped?: boolean }>('/api/monopoly/expire-turn', { gameId })
+}
+
+export function postDescribeItExpireTurn(gameId: string) {
+  return postJson<{ success?: boolean }>('/api/describe-it/expire-turn', { gameId })
+}
+
+export function postDescribeItAdvance(gameId: string) {
+  return postJson<{ success?: boolean }>('/api/describe-it/advance', { gameId })
+}
+
+export function postWordRushExpireTurn(gameId: string) {
+  return postJson<{ success?: boolean }>('/api/word-rush/expire-turn', { gameId })
+}
+
+export function postWordRushAdvance(gameId: string) {
+  return postJson<{ success?: boolean }>('/api/word-rush/advance', { gameId })
+}
+
+/** Ends an Anonymous Messages room once its 15-minute session window elapses. */
+export function postExpireSession(gameCode: string) {
+  return postJson<{ expired?: boolean; finished?: boolean }>(`/api/games/${gameCode.toUpperCase()}/expire-session`, {})
 }
 
 export function postTicTacToeMove(gameId: string, resumeToken: string, cellIndex: number) {
@@ -76,12 +121,7 @@ export function postPlayerReady(gameId: string, resumeToken: string, ready: bool
   return postJson<{ success: boolean }>('/api/players/ready', { gameId, resumeToken, ready })
 }
 
-export function postPlayAgain(
-  gameCode: string,
-  hostToken: string,
-  sameSettings = true,
-  hostPlayerId?: string | null
-) {
+export function postPlayAgain(gameCode: string, hostToken: string, sameSettings = true, hostPlayerId?: string | null) {
   return postJson<{ success: boolean }>(`/api/games/${gameCode.toUpperCase()}/play-again`, {
     hostToken,
     same_settings: sameSettings,
@@ -94,6 +134,13 @@ export function postPlayerPromote(gameCode: string, resumeToken: string) {
   return postJson<{ success: boolean }>('/api/players/promote', { gameCode: gameCode.toUpperCase(), resumeToken })
 }
 
+/** In-place sit-out (player → spectator) during active play — the inverse of promote. Sets
+ *  spectator=true on the caller's own row without deleting it (keeps the seat id + score). Only
+ *  valid for games where `gameSupportsInPlaceSpectate` is true (no turn_order coupling). */
+export function postPlayerSpectate(gameCode: string, resumeToken: string) {
+  return postJson<{ isViewer: boolean }>('/api/players/spectate', { gameCode: gameCode.toUpperCase(), resumeToken })
+}
+
 export function postVote(gameId: string, resumeToken: string, roundId: string, body: Record<string, unknown>) {
   return postJson<{ success: boolean; revealedQuestion?: string; pickedNumber?: number }>('/api/votes', {
     gameId,
@@ -103,12 +150,7 @@ export function postVote(gameId: string, resumeToken: string, roundId: string, b
   })
 }
 
-export function postMatchingPairsFlip(
-  gameId: string,
-  resumeToken: string,
-  pairIndex: number,
-  isMatch: boolean
-) {
+export function postMatchingPairsFlip(gameId: string, resumeToken: string, pairIndex: number, isMatch: boolean) {
   return postJson<{ success: boolean; pointsAfter: number; finished?: boolean }>('/api/matching-pairs/flip', {
     gameId,
     resumeToken,
@@ -117,13 +159,7 @@ export function postMatchingPairsFlip(
   })
 }
 
-export function postSudokuSubmit(
-  gameId: string,
-  resumeToken: string,
-  row: number,
-  col: number,
-  value: number
-) {
+export function postSudokuSubmit(gameId: string, resumeToken: string, row: number, col: number, value: number) {
   return postJson<{ success: boolean; isCorrect: boolean; pointsAwarded: number }>('/api/sudoku/submit', {
     gameId,
     resumeToken,
@@ -131,6 +167,118 @@ export function postSudokuSubmit(
     col,
     value,
   })
+}
+
+export function postCrosswordSubmit(
+  gameId: string,
+  resumeToken: string,
+  row: number,
+  col: number,
+  letter: string,
+  hint?: boolean
+) {
+  return postJson<{ success: boolean; isCorrect: boolean; letter?: string; hint?: boolean; alreadySolved?: boolean }>(
+    '/api/crossword/submit',
+    {
+      gameId,
+      resumeToken,
+      row,
+      col,
+      letter,
+      hint,
+    }
+  )
+}
+
+export function postWordSearchFound(
+  gameId: string,
+  resumeToken: string,
+  startRow: number,
+  startCol: number,
+  endRow: number,
+  endCol: number,
+  hint?: boolean
+) {
+  return postJson<{
+    found: boolean
+    word?: string
+    alreadyFound?: boolean
+    hint?: boolean
+    complete?: boolean
+    start?: [number, number]
+    end?: [number, number]
+  }>('/api/word-search/found', {
+    gameId,
+    resumeToken,
+    startRow,
+    startCol,
+    endRow,
+    endCol,
+    hint,
+  })
+}
+
+// Answer keys — only populated once the game is finished (the routes gate on status
+// and read the RLS-protected solution tables with the service role). Return null
+// while the game is still live or if the fetch fails, so callers just hide the panel.
+export async function fetchCrosswordSolution(gameId: string): Promise<string[][] | null> {
+  try {
+    const res = await fetch(apiUrl(`/api/crossword/solution?gameId=${encodeURIComponent(gameId)}`), {
+      cache: 'no-store',
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { solution?: string[][] | null }
+    return Array.isArray(data.solution) ? data.solution : null
+  } catch {
+    return null
+  }
+}
+
+export async function fetchWordSearchSolution(gameId: string): Promise<WordSearchPlacement[] | null> {
+  try {
+    const res = await fetch(apiUrl(`/api/word-search/solution?gameId=${encodeURIComponent(gameId)}`), {
+      cache: 'no-store',
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { placements?: WordSearchPlacement[] | null }
+    return Array.isArray(data.placements) ? data.placements : null
+  } catch {
+    return null
+  }
+}
+
+export function postWordScrambleSubmit(
+  gameId: string,
+  resumeToken: string,
+  scrambleIndex: number,
+  guess: string,
+  hint?: boolean
+) {
+  return postJson<{ correct: boolean; word?: string; alreadySolved?: boolean; hint?: boolean; finished?: boolean }>(
+    '/api/word-scramble/submit',
+    { gameId, resumeToken, scrambleIndex, guess, hint }
+  )
+}
+
+export function postWordScrambleHint(gameId: string, resumeToken: string, scrambleIndex: number) {
+  return postJson<{ available: boolean; clue: string; letters?: number }>('/api/word-scramble/hint', {
+    gameId,
+    resumeToken,
+    scrambleIndex,
+  })
+}
+
+export async function fetchWordScrambleSolution(gameId: string): Promise<string[] | null> {
+  try {
+    const res = await fetch(apiUrl(`/api/word-scramble/solution?gameId=${encodeURIComponent(gameId)}`), {
+      cache: 'no-store',
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { answers?: string[] | null }
+    return Array.isArray(data.answers) ? data.answers : null
+  } catch {
+    return null
+  }
 }
 
 export function postYahtzeeRoll(gameId: string, resumeToken: string) {
@@ -246,12 +394,7 @@ export function deletePlayerQuestion(resumeToken: string, questionId: string) {
 }
 
 /** Voters-mode name submission (players add candidates to be voted on). */
-export function postPlayerParticipant(
-  gameCode: string,
-  resumeToken: string,
-  name: string,
-  gender?: 'male' | 'female'
-) {
+export function postPlayerParticipant(gameCode: string, resumeToken: string, name: string, gender?: 'male' | 'female') {
   return postJson<{ success?: boolean }>('/api/player-participants', {
     gameId: gameCode.toUpperCase(),
     resumeToken,
@@ -358,10 +501,11 @@ export function postWordRushTeam(gameId: string, resumeToken: string, team: numb
 }
 
 export function postWordRushSubmit(gameId: string, resumeToken: string, text: string) {
-  return postJson<{ success: boolean; correct?: boolean; points?: number; message?: string }>(
-    '/api/word-rush/submit',
-    { gameId, resumeToken, text }
-  )
+  return postJson<{ success: boolean; correct?: boolean; points?: number; message?: string }>('/api/word-rush/submit', {
+    gameId,
+    resumeToken,
+    text,
+  })
 }
 
 export function postWordRushPrompt(
@@ -393,10 +537,7 @@ export function postWordHuntSubmit(gameId: string, resumeToken: string, word: st
 // the route re-verifies the deadline server-side before ending the game.
 // Route: src/app/api/games/[code]/expire-word-hunt/route.ts
 export function postExpireWordHunt(gameCode: string) {
-  return postJson<{ expired: boolean; finished: boolean }>(
-    `/api/games/${gameCode.toUpperCase()}/expire-word-hunt`,
-    {}
-  )
+  return postJson<{ expired: boolean; finished: boolean }>(`/api/games/${gameCode.toUpperCase()}/expire-word-hunt`, {})
 }
 
 export function postNpatLetter(gameId: string, resumeToken: string, roundId: string, letter: string) {
@@ -434,6 +575,53 @@ export function postNpatCallerApprove(gameId: string, resumeToken: string, round
     roundId,
     overrides: [],
   })
+}
+
+// ── Landmine ──────────────────────────────────────────────────────────────────
+export async function fetchLandmineCategories(): Promise<{
+  categories: { id: string; name: string; entryCount: number }[]
+}> {
+  const res = await fetch(apiUrl('/api/landmine/categories'), { method: 'GET' })
+  const data = (await res.json()) as { categories?: { id: string; name: string; entryCount: number }[]; error?: string }
+  if (!res.ok) throw new Error(data.error ?? 'Request failed')
+  return { categories: data.categories ?? [] }
+}
+
+export function postLandmineCategory(gameId: string, resumeToken: string, roundId: string, categoryId: string) {
+  return postJson<{ success: boolean }>('/api/landmine/category', { gameId, resumeToken, roundId, categoryId })
+}
+
+export function postLandmineSubmit(gameId: string, resumeToken: string, roundId: string, answer: string) {
+  return postJson<{ success: boolean }>('/api/landmine/submit', { gameId, resumeToken, roundId, answer })
+}
+
+// Manual mode: the setter submits the category + mine word(s) for their round.
+export function postLandmineSetup(
+  gameId: string,
+  resumeToken: string,
+  roundId: string,
+  category: string,
+  mines: string[]
+) {
+  return postJson<{ success: boolean }>('/api/landmine/setup', { gameId, resumeToken, roundId, category, mines })
+}
+
+export function postLandmineDraft(gameId: string, resumeToken: string, roundId: string, answer: string) {
+  return postJson<{ success: boolean }>('/api/landmine/draft', { gameId, resumeToken, roundId, answer })
+}
+
+export function postLandmineMark(gameId: string, resumeToken: string, roundId: string, valid: boolean) {
+  return postJson<{ success: boolean }>('/api/landmine/mark', { gameId, resumeToken, roundId, valid })
+}
+
+// MANUAL mode: the round's setter judges every answer at once.
+export function postLandmineSetterMark(
+  gameId: string,
+  resumeToken: string,
+  roundId: string,
+  verdicts: { playerId: string; valid: boolean }[]
+) {
+  return postJson<{ success: boolean }>('/api/landmine/setter-mark', { gameId, resumeToken, roundId, verdicts })
 }
 
 export function postChessMove(
@@ -553,11 +741,7 @@ export function postMonopolyRoll(gameId: string, resumeToken: string) {
   return postJson<{ success: boolean }>('/api/monopoly/roll', { gameId, resumeToken })
 }
 
-export function postMonopolyBuy(
-  gameId: string,
-  resumeToken: string,
-  decision: 'buy' | 'auction' | 'pass'
-) {
+export function postMonopolyBuy(gameId: string, resumeToken: string, decision: 'buy' | 'auction' | 'pass') {
   return postJson<{ success: boolean }>('/api/monopoly/buy', { gameId, resumeToken, decision })
 }
 
@@ -569,12 +753,7 @@ export function postMonopolyJail(gameId: string, resumeToken: string, method: 'p
   return postJson<{ success: boolean }>('/api/monopoly/jail', { gameId, resumeToken, method })
 }
 
-export function postMonopolyAuction(
-  gameId: string,
-  resumeToken: string,
-  action: 'pass' | 'bid',
-  amount?: number
-) {
+export function postMonopolyAuction(gameId: string, resumeToken: string, action: 'pass' | 'bid', amount?: number) {
   return postJson<{ success: boolean }>('/api/monopoly/auction', { gameId, resumeToken, action, amount })
 }
 
@@ -625,18 +804,18 @@ export function postMonopolyTrade(
 
 /** Host adds time to a timed Monopoly game (extensionSeconds ∈ {600,900,1800}). */
 export function postExtendMonopolyTime(gameCode: string, hostToken: string, extensionSeconds: number) {
-  return postJson<{ ok?: boolean; success?: boolean }>(
-    `/api/games/${gameCode.toUpperCase()}/extend-monopoly-time`,
-    { hostToken, extensionSeconds }
-  )
+  return postJson<{ ok?: boolean; success?: boolean }>(`/api/games/${gameCode.toUpperCase()}/extend-monopoly-time`, {
+    hostToken,
+    extensionSeconds,
+  })
 }
 
 /** Host adds time to a timed Scrabble game (extensionSeconds ∈ {600,900,1800}). */
 export function postExtendScrabbleTime(gameCode: string, hostToken: string, extensionSeconds: number) {
-  return postJson<{ ok?: boolean; success?: boolean }>(
-    `/api/games/${gameCode.toUpperCase()}/extend-scrabble-time`,
-    { hostToken, extensionSeconds }
-  )
+  return postJson<{ ok?: boolean; success?: boolean }>(`/api/games/${gameCode.toUpperCase()}/extend-scrabble-time`, {
+    hostToken,
+    extensionSeconds,
+  })
 }
 
 export async function getMahjongState(
@@ -692,12 +871,7 @@ export function postQuickDrawGuessTeam(gameId: string, resumeToken: string, team
   return postJson<{ success: boolean }>('/api/quick-draw/guess-team', { gameId, resumeToken, team })
 }
 
-export function postAnonymousMessage(
-  gameId: string,
-  playerId: string,
-  text: string,
-  replyToId?: string | null
-) {
+export function postAnonymousMessage(gameId: string, playerId: string, text: string, replyToId?: string | null) {
   return postJson<{ success: boolean }>('/api/anonymous-messages', {
     gameId,
     playerId,
@@ -708,12 +882,7 @@ export function postAnonymousMessage(
 }
 
 /** Send a GIF/sticker (message_type 'gif', media_url = the Klipy URL). */
-export function postAnonymousGif(
-  gameId: string,
-  playerId: string,
-  mediaUrl: string,
-  replyToId?: string | null
-) {
+export function postAnonymousGif(gameId: string, playerId: string, mediaUrl: string, replyToId?: string | null) {
   return postJson<{ success: boolean }>('/api/anonymous-messages', {
     gameId,
     playerId,
@@ -734,12 +903,7 @@ export function deleteAnonymousMessage(gameId: string, messageId: string, hostTo
 }
 
 /** Host mutes a player in an anonymous room for the given number of minutes. */
-export function muteAnonymousPlayer(
-  gameId: string,
-  playerId: string,
-  hostToken: string,
-  durationMinutes: number
-) {
+export function muteAnonymousPlayer(gameId: string, playerId: string, hostToken: string, durationMinutes: number) {
   return postJson<{ success: boolean }>('/api/anonymous-room/bans', {
     gameId: gameId.toUpperCase(),
     playerId,
@@ -805,18 +969,16 @@ export function postTransferHost(gameCode: string, hostToken: string, playerId: 
 
 /** Nominee accepts — mints & returns a fresh host token. Auth: nominee's resume token. */
 export function postClaimHost(gameCode: string, resumeToken: string) {
-  return postJson<{ ok: boolean; hostToken: string }>(
-    `/api/games/${gameCode.toUpperCase()}/claim-host`,
-    { resumeToken }
-  )
+  return postJson<{ ok: boolean; hostToken: string }>(`/api/games/${gameCode.toUpperCase()}/claim-host`, {
+    resumeToken,
+  })
 }
 
 /** Nominee declines — clears the nomination without rotating the token. */
 export function postDeclineHost(gameCode: string, resumeToken: string) {
-  return postJson<{ ok: boolean; declined: boolean }>(
-    `/api/games/${gameCode.toUpperCase()}/decline-host`,
-    { resumeToken }
-  )
+  return postJson<{ ok: boolean; declined: boolean }>(`/api/games/${gameCode.toUpperCase()}/decline-host`, {
+    resumeToken,
+  })
 }
 
 /**
@@ -824,12 +986,18 @@ export function postDeclineHost(gameCode: string, resumeToken: string) {
  * enforces per-game minimum-player rules and throws (via postJson) with the
  * server's message when they aren't met — the caller surfaces that verbatim.
  */
-export function startGame(gameId: string, hostToken: string) {
-  return postJson<{ ok?: boolean }>(`/api/games/${gameId.toUpperCase()}/start`, { hostToken })
+export function startGame(gameId: string, hostToken: string, firstTeam?: 'red' | 'blue') {
+  // firstTeam is a Codewords "goes first" preference read by the start route
+  // (omit for random). The route ignores it for non-Codewords games.
+  return postJson<{ ok?: boolean }>(`/api/games/${gameId.toUpperCase()}/start`, {
+    hostToken,
+    ...(firstTeam ? { firstTeam } : {}),
+  })
 }
 
 export type LobbySettingsPatch = {
   is_public?: boolean
+  content_label?: string
   theme?: string
   rounds_count?: number
   timer_seconds?: number
@@ -839,7 +1007,10 @@ export type LobbySettingsPatch = {
   scrabble_dictionary_id?: string
   scrabble_clock_mode?: 'standard' | 'chess'
   scrabble_clock_seconds?: number
+  codewords_player_picks?: boolean
+  codewords_randomize_teams?: boolean
   pair_vote_mode?: 'one_each' | 'any'
+  participant_filter?: 'all' | 'joined'
   player_questions_enabled?: boolean
   player_questions_order?: 'players_first' | 'uploaded_first' | 'mixed'
   ai_questions_enabled?: boolean
@@ -881,12 +1052,25 @@ export type BoardLobbyPatch = {
   mafia_doctor_enabled?: boolean
   mafia_detective_enabled?: boolean
   mafia_anonymous_votes?: boolean
+  monopoly_double_go_salary?: boolean
+  monopoly_forced_auctions?: boolean
+  monopoly_no_rent_in_jail?: boolean
   operative_timer_seconds?: number
   quick_draw_variant?: 'lie' | 'guess'
   quick_draw_play_mode?: 'team' | 'individual'
   quick_draw_num_teams?: number
   mahjong_ruleset?: string
   mahjong_rule_options?: Record<string, unknown>
+  crossword_theme?: string
+  crossword_difficulty?: 'easy' | 'medium' | 'hard'
+  word_search_theme?: string
+  word_search_difficulty?: 'easy' | 'medium' | 'hard'
+  word_scramble_theme?: string
+  word_scramble_difficulty?: 'easy' | 'medium' | 'hard'
+  /** Admin-authored theme (puzzle_themes.id); server folds its word pool + locked difficulty. */
+  puzzle_theme_id?: string
+  /** Host-supplied puzzle pool (a Library pack or "Your own" upload); server re-validates + normalises. */
+  puzzle_custom_questions?: unknown[]
 }
 
 export function postLobbySettings(gameCode: string, hostToken: string, patch: BoardLobbyPatch) {
@@ -968,7 +1152,7 @@ export function postTriviaLobbySettings(
 export function postLobbyPool(
   gameCode: string,
   hostToken: string,
-  patch: { question_source?: string; custom_questions?: unknown[] }
+  patch: { question_source?: string; custom_questions?: unknown[]; wst_quote_source?: 'player' | 'deck' }
 ) {
   return postJson<{ ok?: boolean }>(`/api/games/${gameCode.toUpperCase()}/lobby-pool`, {
     hostToken,
@@ -1064,10 +1248,18 @@ export function postTwoTruthsAdvance(gameId: string, opts?: { hostToken?: string
   })
 }
 
-export function postQuickDrawGuessAdvance(gameId: string, hostToken: string) {
+export function postQuickDrawGuessAdvance(gameId: string, hostToken?: string) {
+  // hostToken is only for the host "skip ahead" button; the auto-timer advance
+  // (any active client) omits it — the route's break-deadline check gates it.
   return postJson<{ ok?: boolean }>('/api/quick-draw/guess-advance', {
     gameId: gameId.toUpperCase(),
-    hostToken,
+    ...(hostToken ? { hostToken } : {}),
+  })
+}
+
+export function postQuickDrawGuessExpireTurn(gameId: string) {
+  return postJson<{ ok?: boolean; skipped?: boolean }>('/api/quick-draw/guess-expire-turn', {
+    gameId: gameId.toUpperCase(),
   })
 }
 
@@ -1161,16 +1353,34 @@ async function jsonRequest<T>(path: string, method: string, body: Record<string,
   return data
 }
 
-export function patchPlayerName(
-  gameCode: string,
-  playerId: string,
-  playerName: string,
-  resumeToken: string
-) {
+export function patchPlayerName(gameCode: string, playerId: string, playerName: string, resumeToken: string) {
   return jsonRequest<{ playerName: string }>('/api/players', 'PATCH', {
     gameCode: gameCode.toUpperCase(),
     playerId,
     playerName,
+    resumeToken,
+  })
+}
+
+/** Monopoly: swap your board token from the lobby (before the game starts). */
+export function patchPlayerMonopolyToken(
+  gameCode: string,
+  playerId: string,
+  monopolyToken: string,
+  resumeToken: string
+) {
+  return jsonRequest<{ playerId: string }>('/api/players', 'PATCH', {
+    gameCode: gameCode.toUpperCase(),
+    playerId,
+    monopolyToken,
+    resumeToken,
+  })
+}
+
+/** Issue a fresh player code, invalidating the old one and any link that carries it. */
+export function rotatePlayerResumeToken(gameCode: string, resumeToken: string) {
+  return postJson<{ newToken: string }>('/api/players/resume/rotate', {
+    gameCode: gameCode.toUpperCase(),
     resumeToken,
   })
 }

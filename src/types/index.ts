@@ -48,6 +48,12 @@ export type GameType =
   | 'word_rush'
   | 'quick_draw'
   | 'ayo'
+  | 'crossword'
+  | 'word_search'
+  | 'word_scramble'
+  | 'landmine'
+  | 'ping_pong'
+  | 'uno'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'
@@ -102,6 +108,60 @@ export interface NpatMark {
   valid_place: boolean
   valid_thing: boolean
   valid_food: boolean
+  marked_at: string | null
+}
+
+// ---------------------------------------------------------------------------
+// Landmine — party word game. The system shows a category, secretly picks one
+// (or a few) common answers as the "mine"; players type a blind answer; answers
+// are peer-marked Valid/Void BEFORE the mine is revealed; then the mine is shown
+// and hitters are zeroed (zero_points) or knocked out (elimination).
+// Structurally a single-answer variant of NPAT (I Call On) with a secret mine.
+// ---------------------------------------------------------------------------
+export type LandminePhase = 'category_pick' | 'writing' | 'marking' | 'review' | 'reveal'
+export type LandmineMode = 'zero_points' | 'elimination'
+/** Who plants the mine: 'system' (server draws it) or 'manual' (a rotating player sets it). */
+export type LandmineMineSource = 'system' | 'manual'
+
+export interface LandmineMetadata {
+  phase: LandminePhase
+  phase_started_at: string | null
+  /** Category shown to the room once the caller picks it. */
+  category: string | null
+  /** Rotating "caller" who picks the category each round (reused from NPAT). */
+  caller_order: string[]
+  caller_index: number
+  /** markerId -> targetId ring; each player marks one other, never themselves. */
+  reviewer_assignments: Record<string, string>
+  /** The mine word(s) — populated ONLY at reveal (secret until then). */
+  revealed_mines?: string[]
+  mine_count: number
+  scores_computed?: boolean
+}
+
+/** 'setter' marks the manual-mode setter's mirror-payout row (blank answer, points = round total). */
+export type LandmineOutcome = 'valid' | 'original' | 'void' | 'mine' | 'empty' | 'setter'
+
+export interface LandmineAnswer {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  answer: string
+  submitted_at: string | null
+  points: number | null
+  outcome: LandmineOutcome | null
+  mine_hit: boolean | null
+  is_original: boolean | null
+}
+
+export interface LandmineMark {
+  id: string
+  game_id: string
+  round_id: string
+  marker_player_id: string
+  target_player_id: string
+  valid: boolean
   marked_at: string | null
 }
 
@@ -177,7 +237,16 @@ export interface CodewordsMessage {
   created_at: string
   player_name?: string
 }
-export type ThemeId = 'default' | 'neon' | 'retro' | 'elegant' | 'tropical' | 'pirate' | 'arctic' | 'naija'
+export type ThemeId =
+  | 'default'
+  | 'neon'
+  | 'retro'
+  | 'elegant'
+  | 'tropical'
+  | 'pirate'
+  | 'arctic'
+  | 'naija'
+  | 'grass_court'
 export type WyrChoice = 'a' | 'b'
 
 export type ParticipantGender = 'male' | 'female'
@@ -212,6 +281,11 @@ export type AiGeneratedQuestions =
 export interface Game {
   id: string
   title: string
+  /** Player-facing content label ("what's this pack about") for CSV/library content games —
+   *  e.g. "Maths", "Bible trivia". Distinct from `title` (room name) and `theme` (cosmetic).
+   *  Auto-filled from the library pack name, or typed by the host for a CSV upload; editable
+   *  from the host lobby. Shown next to the room name on join, gameplay, and finished screens. */
+  content_label?: string | null
   /** Secret host credential. Only present on server-side (service-role) reads; never
    *  exposed to clients (migration 0122), so optional on this shared type. */
   host_token?: string
@@ -220,6 +294,10 @@ export interface Game {
   /** Claim-based host transfer: player id the current host has nominated to take over.
    *  Non-secret (just a player id); the nominee claims via /api/games/[code]/claim-host. */
   pending_host_player_id?: string | null
+  /** The host's own player row id, so every client can badge the host in the roster
+   *  drawer. Non-secret (just a player id, like pending_host_player_id). Populated by
+   *  migration 20260718140000 + host-seat writes; undefined until added to GAME_SELECT. */
+  host_player_id?: string | null
   rounds_count: number
   timer_seconds: number
   /** Scrabble — which word list to validate plays against (default 'enable'). */
@@ -236,6 +314,10 @@ export interface Game {
   mafia_doctor_enabled?: boolean
   mafia_detective_enabled?: boolean
   mafia_anonymous_votes?: boolean
+  monopoly_double_go_salary?: boolean
+  monopoly_forced_auctions?: boolean
+  monopoly_no_rent_in_jail?: boolean
+  monopoly_estate_dividend?: boolean
   anonymous: boolean
   auto_reveal: boolean
   auto_submit_behavior: AutoSubmitBehavior
@@ -326,6 +408,22 @@ export interface Game {
   crazy8_jokers?: boolean
   /** Crazy Eights — allow stacking/defending a Pick Two (2) instead of forcing the draw. */
   crazy8_pick2_stacking?: boolean
+  /** UNO — allow challenging a Wild Draw Four (default on). */
+  uno_wd4_challenge?: boolean
+  /** UNO — cards drawn for a missed "UNO" call (2 or 4). */
+  uno_uno_penalty?: number
+  /** UNO — cards a failed challenger draws (4 base, 6 variant). */
+  uno_wd4_challenge_penalty?: number
+  /** UNO — 0 rotates all hands, 7 swaps hands (deferred toggle). */
+  uno_zero_seven?: boolean
+  /** UNO — allow stacking Draw Two on Draw Two / Draw Four on Draw Four (deferred toggle). */
+  uno_stacking?: boolean
+  /** UNO — allow laying multiple same-colour cards in one turn (deferred toggle). */
+  uno_multi_play?: boolean
+  /** UNO — Multi-Play grouping rule: 'off' | 'same_color' | 'same_number' | 'same_color_or_number'. */
+  uno_multi_play_mode?: string
+  /** UNO — 2v2 Team-Up mode (exactly 4 players). */
+  uno_team_mode?: boolean
   /** Ludo — 'modern' (start + mid-arm safe stars) or 'traditional' (no track safe squares). */
   ludo_variant?: LudoVariant
   /** Ayo — 'traditional' (capture on 4, houses, match rounds) or 'oware' (2/3 seeds). */
@@ -334,6 +432,22 @@ export interface Game {
   mahjong_ruleset?: MahjongRuleset | null
   /** Mahjong — house rules and match-settlement options. */
   mahjong_rule_options?: MahjongRuleOptions | null
+  /** Landmine — 'zero_points' (mine scores 0, all rounds) or 'elimination' (mine knocks you out). */
+  landmine_mode?: LandmineMode | null
+  /** Landmine — number of mines per round (1–3). */
+  landmine_mine_count?: number | null
+  /** Landmine — award +5 when nobody else gave your answer. */
+  landmine_originality_bonus?: boolean | null
+  /** Landmine — 'system' (server draws the mine) or 'manual' (a rotating player sets it). */
+  landmine_mine_source?: LandmineMineSource | null
+  /** Landmine — elimination time limit in seconds (game ends when the clock runs out). */
+  landmine_elim_seconds?: number | null
+  /** Landmine — whether the reviewer (round caller) checks verdicts before reveal. Default true. */
+  landmine_review?: boolean | null
+  /** Landmine — the review-window length in seconds (15/20/30/45/60). */
+  landmine_review_seconds?: number | null
+  /** Ping Pong — points required to win the match (3, 5, 7, 11, 15, or 21). */
+  ping_pong_points_to_win?: number | null
 }
 
 export type MonopolyPhase = 'roll' | 'buy' | 'jail' | 'pay_rent' | 'auction' | 'raise_funds' | 'finished'
@@ -345,6 +459,7 @@ export interface MonopolyPendingDebt {
   reason: string
   debt_type: 'rent' | 'tax' | 'card' | 'jail' | 'other'
   space_index?: number | null
+  next_debts?: MonopolyPendingDebt[]
 }
 
 export interface MonopolyAuctionState {
@@ -399,7 +514,7 @@ export interface MonopolyLastTradeEvent {
   seq: number
   from_player_id: string
   to_player_id: string
-  outcome: 'proposed' | 'declined' | 'accepted'
+  outcome: 'proposed' | 'declined' | 'accepted' | 'cancelled'
 }
 
 export interface MonopolyBoard {
@@ -566,6 +681,82 @@ export interface CrazyEightsPlayerHand {
   game_id: string
   player_id: string
   cards: CrazyEightsCard[]
+  player_order: number
+  created_at: string
+}
+
+/** A playable UNO colour ('wild' is the colourless slot for Wild / Wild Draw Four cards). */
+export type UnoCardColor = 'red' | 'yellow' | 'green' | 'blue' | 'wild'
+
+/** A demandable colour — what a Wild / Wild Draw Four names for the next player. */
+export type UnoColor = 'red' | 'yellow' | 'green' | 'blue'
+
+/** What a card does. Number cards carry `value` 0–9; everything else is an action. */
+export type UnoCardKind = 'number' | 'skip' | 'reverse' | 'draw2' | 'wild' | 'wild_draw4'
+
+export type UnoPhase =
+  | 'playing'
+  | 'choose_color'
+  | 'challenge_window'
+  | 'swap_target'
+  | 'team_leave_decision'
+  | 'finished'
+
+export interface UnoCard {
+  id: string
+  color: UnoCardColor
+  kind: UnoCardKind
+  /** 0–9 for number cards; omitted for action / wild cards. */
+  value?: number
+}
+
+export interface UnoSession {
+  id: string
+  game_id: string
+  turn_order: string[]
+  current_turn_index: number
+  /** 1 = forward through turn_order, -1 = reversed (Reverse flips it). */
+  direction: number
+  phase: UnoPhase
+  draw_pile: UnoCard[]
+  discard_pile: UnoCard[]
+  top_card: UnoCard | null
+  /** Colour demanded by a played Wild / Wild Draw Four. */
+  required_color: UnoColor | null
+  /** Pending forced draw the current player must take (Draw Two / Draw Four target). */
+  draw_penalty: number
+  /** Which card can stack onto the pending penalty ('draw2' | 'wild_draw4'); null = must draw it. */
+  draw_penalty_kind: 'draw2' | 'wild_draw4' | null
+  /** Set to the card the current player just drew while they may still play it or keep it (pass). */
+  drawn_card_id: string | null
+  /** During `choose_color`, which wild is being coloured. */
+  pending_wild: 'wild' | 'wild_draw4' | null
+  /** Colour in effect immediately before a Wild Draw Four (for challenge reveal). */
+  challenge_prev_color: UnoColor | null
+  /** Who played the Wild Draw Four currently in `challenge_window`. */
+  wd4_player_id: string | null
+  /** Player who dropped to one card and still owes an "UNO" call. */
+  uno_pending_player: string | null
+  /** Whether `uno_pending_player` has satisfied their UNO call. */
+  uno_called: boolean
+  status_message: string | null
+  winner_player_id: string | null
+  /** Player ids in the order they emptied their hands. Drives final placement. */
+  finish_order: string[]
+  /** Team-Up: players who left mid-round — kept in turn_order (parity) but skipped by play + placement. */
+  left_player_ids?: string[]
+  /** Team-Up: the remaining teammate who must choose continue-solo vs forfeit (phase team_leave_decision). */
+  team_decider_id?: string | null
+  turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface UnoPlayerHand {
+  id: string
+  game_id: string
+  player_id: string
+  cards: UnoCard[]
   player_order: number
   created_at: string
 }
@@ -828,6 +1019,21 @@ export interface TicTacToeSession {
   is_draw: boolean
   status_message: string | null
   turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PingPongSession {
+  id: string
+  game_id: string
+  player_x_id: string
+  player_o_id: string
+  score_x: number
+  score_o: number
+  points_to_win: number
+  status: 'active' | 'finished'
+  winner_player_id: string | null
+  status_message: string | null
   created_at: string
   updated_at: string
 }
@@ -1431,6 +1637,7 @@ export interface Round {
   trivia_metadata?: TriviaMetadata | null
   ttl_metadata?: TtlMetadata | null
   npat_metadata?: NpatMetadata | null
+  landmine_metadata?: LandmineMetadata | null
   quiplash_metadata?: QuiplashMetadata | null
   quick_draw_metadata?: QuickDrawMetadata | null
 }
@@ -1452,6 +1659,9 @@ export interface Vote {
   target_participant_id: string | null
   anime_choice?: string | null
   picked_number?: number | null
+  /** Who Said This speed scoring: how quickly the answer came in, and the points it earned. */
+  response_ms?: number | null
+  points?: number | null
   created_at: string
 }
 
@@ -1496,13 +1706,26 @@ export interface WstQuotePoolEntry {
   game_id: string
   player_id: string | null
   quote_text: string
-  author_participant_id: string
+  /** Trivia-style answer options the submitter supplied (2–4). */
+  options: string[] | null
+  /** Index into `options` of the correct answer. */
+  correct_index: number | null
+  /** Legacy (name-list model) — unused by the current players-submit flow. */
+  author_participant_id: string | null
   created_at: string
   updated_at: string
 }
 
+/**
+ * Choice-round metadata for Who Said This: a quote whose author is guessed from a fixed
+ * set of string `choices` (rather than from the players in the room). `source: 'anime'` is
+ * the legacy auto-fetched pool; `source: 'deck'` is a host-provided Pre-set roster deck
+ * (Platform / Library / uploaded CSV). `anime_name` doubles as the deck's optional category
+ * label (e.g. "Harry Potter"). A round with this metadata present is a choice round
+ * (see `isAnimeRound`), regardless of source.
+ */
 export interface AnimeMetadata {
-  source: 'anime'
+  source: 'anime' | 'deck'
   anime_name: string
   correct_character: string
   choices: string[]
@@ -1519,7 +1742,11 @@ export interface AnimeQuotePoolEntry {
   created_at: string
 }
 
-export type WstQuoteSource = 'player' | 'anime' | 'both'
+// 'player' = Join & play (players submit quotes about themselves; guess who in the room).
+// 'deck' = Pre-set roster (host-provided quote+answer deck; guess the character from choices).
+// 'anime'/'both' are the legacy auto-fetch sources, retained for back-compat while that path
+// is migrated into Library decks.
+export type WstQuoteSource = 'player' | 'anime' | 'both' | 'deck'
 
 export interface BingoCard {
   id: string

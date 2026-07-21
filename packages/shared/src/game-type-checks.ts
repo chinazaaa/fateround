@@ -100,10 +100,30 @@ export function isSudokuGame(gameType: GameType | string | undefined): boolean {
   return eq(gameType, 'sudoku')
 }
 
+export function isCrosswordGame(gameType: GameType | string | undefined): boolean {
+  return eq(gameType, 'crossword')
+}
+
+export function isWordSearchGame(gameType: GameType | string | undefined): boolean {
+  return eq(gameType, 'word_search')
+}
+
+export function isWordScrambleGame(gameType: GameType | string | undefined): boolean {
+  return eq(gameType, 'word_scramble')
+}
+
+export function isLandmineGame(gameType: GameType | string | undefined): boolean {
+  return eq(gameType, 'landmine')
+}
+
 export function isQuiplashGame(gameType: GameType | string | undefined): boolean {
   return eq(gameType, 'quiplash')
 }
 
 export function isQuickDrawGame(gameType: GameType | string | undefined): boolean {
   return eq(gameType, 'quick_draw')
+}
+
+export function isPingPongGame(gameType: GameType | string | undefined): boolean {
+  return eq(gameType, 'ping_pong')
 }

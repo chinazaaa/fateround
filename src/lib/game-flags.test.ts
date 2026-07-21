@@ -39,6 +39,12 @@ const NAME_ONLY_PLAYER_JOIN_EXPECTED = new Set<GameType>([
   'matching_pairs',
   'quiplash',
   'quick_draw',
+  'crossword',
+  'word_search',
+  'word_scramble',
+  'landmine',
+  'ping_pong',
+  'uno',
 ])
 
 const LOBBY_GAMES_EXPECTED = new Set<GameType>([
@@ -55,7 +61,7 @@ describe('game join-style flags (registry-backed, behaviour-preserving)', () => 
     // Exact count, not a floor: adding or removing a GameType must update this test + the
     // maps below in lockstep. (A swap is also caught per-game by the assertions below and by
     // the canonical-list guard in game-type-coverage.test.ts.)
-    expect(ALL_GAME_TYPES.length).toBe(39)
+    expect(ALL_GAME_TYPES.length).toBe(45)
   })
 
   it('isNameOnlyPlayerJoin matches the original OR-list for every game', () => {

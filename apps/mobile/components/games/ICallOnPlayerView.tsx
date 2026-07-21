@@ -14,7 +14,6 @@ import {
   NPAT_CATEGORY_LABELS,
   NPAT_CATEGORY_POINTS,
   NPAT_LETTER_PICK_SECONDS,
-  NPAT_REVEAL_SECONDS,
   answerTotal,
   availableLettersForPick,
   clampNpatMarkingTimer,
@@ -29,15 +28,19 @@ import {
   trimNpatAnswerFields,
   validateNpatAnswerFields,
 } from '@fateround/shared/npat'
-import { playerIsViewer } from '@fateround/shared/viewers'
+import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
+import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
+import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
-import { TimerBadge } from '@/components/ui/TimerBadge'
-import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
+import { useAdvancePolling } from '@/hooks/useAdvancePolling'
 import { postNpatLetter, postNpatMark, postNpatSubmit } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { NPAT_ANSWER_SELECT, NPAT_MARK_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
@@ -45,11 +48,15 @@ import { usePlayerSessionActions } from '@/lib/player-session'
 import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { ICallOnScoreboard } from '@/components/games/i_call_on/ICallOnScoreboard'
 import { ICallOnGameTimerBar } from '@/components/games/i_call_on/ICallOnGameTimerBar'
-import { ICallOnLiveLeaderboard } from '@/components/games/i_call_on/ICallOnLiveLeaderboard'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { ICallOnRoundHeader } from '@/components/games/i_call_on/ICallOnRoundHeader'
+import {
+  ICallOnAutoSendHint,
+  ICallOnPhaseCountdown,
+  ICallOnRevealCountdown,
+} from '@/components/games/i_call_on/ICallOnCountdowns'
 import { isInCatalogue } from '@/components/games/i_call_on/npat-catalogue'
 import { postNpatCallerApproveOverrides, postNpatDispute, postNpatDraft } from '@/components/games/i_call_on/npat-api'
 import {
@@ -62,7 +69,16 @@ import {
   suggestedHostReviewValidity,
 } from '@/components/games/i_call_on/npat-helpers'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'late_join_choice'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 const EMPTY_FORM: Record<NpatCategory, string> = { name: '', animal: '', place: '', thing: '', food: '' }
 const DEFAULT_FLAGS: Record<NpatCategory, boolean> = {
@@ -116,8 +132,17 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   const computeScreen = useCallback((game: Game, playerId: string | null): Screen => {
+    // Resolve the no-identity case BEFORE 'finished' so a non-participant opening
+    // a finished game gets the game_ended screen rather than a results view that
+    // assumes a seated player.
+    if (!playerId) {
+      const pre = preJoinScreen(game, false)
+      if (pre === 'game_ended') return 'game_ended'
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
+      if (pre === 'late_join_choice') return 'late_join_choice'
+      return 'join'
+    }
     if (game.status === 'finished') return 'finished'
-    if (!playerId) return 'join'
     if (game.status === 'waiting') return 'waiting'
     return 'playing'
   }, [])
@@ -132,6 +157,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     computeScreen,
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
+  const lateJoin = useLateJoinContext(gameCode, bootstrap.game, bootstrap.screen === 'late_join_choice')
 
   useGameTableSync(
     gameCode,
@@ -139,6 +165,18 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     () => bootstrap.load(),
     !!bootstrap.game
   )
+
+  // Phase deadlines (letter_pick/writing/marking/reveal → next round → finished)
+  // only advance when a client pokes the server — web polls /api/npat/advance; the
+  // mobile view had no poller, so phases could stall and the finished screen never
+  // appear. The route is deadline-gated (safe for any client). Poll while active.
+  useAdvancePolling({
+    endpoint: '/api/npat/advance',
+    gameCode,
+    game: bootstrap.game,
+    enabled: !!bootstrap.game,
+    onAdvanced: () => bootstrap.load(),
+  })
 
   const currentRound = useMemo(() => {
     if (!bootstrap.game) return null
@@ -170,6 +208,23 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   const isViewer = !!(bootstrap.game && me && playerIsViewer(me, bootstrap.game))
 
   const liveScores = useMemo(() => tallyNpatScores(answers, bootstrap.players), [answers, bootstrap.players])
+  // Feed the roster drawer scoreboard (replaces the inline leaderboard): points + answers.
+  useGameScores(
+    useMemo(() => Object.fromEntries(liveScores.map((row) => [row.id, row.score])), [liveScores]),
+    { suffix: ' pts' }
+  )
+  useGameStats(
+    useMemo(() => {
+      const counts: Record<string, number> = {}
+      for (const a of answers) {
+        const scored = [a.score_name, a.score_animal, a.score_place, a.score_thing, a.score_food].filter(
+          (s) => (s ?? 0) > 0
+        ).length
+        counts[a.player_id] = (counts[a.player_id] ?? 0) + scored
+      }
+      return Object.fromEntries(liveScores.map((row) => [row.id, `✅ ${counts[row.id] ?? 0} answers`]))
+    }, [liveScores, answers])
+  )
   const callerName = playerDisplayName(callerId, bootstrap.players)
   const callerIndex = useMemo(() => {
     const order = metadata?.caller_order
@@ -198,16 +253,6 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
       : metadata?.phase === 'marking'
         ? markingTimer
         : NPAT_LETTER_PICK_SECONDS
-  const secondsLeft = useDeadlineCountdown(
-    metadata?.phase_started_at ?? null,
-    phaseDelay,
-    !!(timedPhase && metadata?.phase_started_at)
-  )
-  const revealSecondsLeft = useDeadlineCountdown(
-    currentRound?.ended_at ?? null,
-    NPAT_REVEAL_SECONDS,
-    metadata?.phase === 'reveal'
-  )
 
   // ---- reset per-round local state ------------------------------------------
   useEffect(() => {
@@ -433,8 +478,43 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     void act(() => postNpatDispute(bootstrap.code, bootstrap.myResumeToken!, currentRound.id, targetId, category))
   }
 
+  // Pin the whole-game "time left" bar below the header so it stays visible as
+  // the round scrolls. Gated to a timed, active session so the slot stays empty
+  // in the untimed (all-26-letters) mode and on non-active screens.
+  const iCallOnGameTimer =
+    (bootstrap.game?.game_duration_seconds ?? 0) > 0 && bootstrap.game?.status === 'active' ? (
+      <ICallOnGameTimerBar game={bootstrap.game} />
+    ) : null
+  const iCallOnGameTimerPinned = useStickyTimer(iCallOnGameTimer, [bootstrap.game])
+
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
+  if (bootstrap.screen === 'late_join_choice' && bootstrap.game) {
+    return (
+      <LateJoinChoiceScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        context={lateJoin.context}
+        contextLoading={lateJoin.loading}
+        nameInput={bootstrap.joinName}
+        onNameChange={bootstrap.setJoinName}
+        joining={bootstrap.joining}
+        error={bootstrap.error}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        onJoinAsPlayer={() => void bootstrap.join(undefined, { joinAsViewer: false })}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
     return (
       <JoinScreen
@@ -444,6 +524,8 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
       />
     )
   }
@@ -455,14 +537,24 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   if (bootstrap.screen === 'finished') {
     const scores = tallyNpatScores(answers, bootstrap.players)
     const top = scores[0]
-    const winnerId = top && top.score > 0 ? top.id : null
+    // Everyone sharing the top score ties for first (parity with web's npatWinnerLabel).
+    // Only a round where nobody scored anything falls back to "Game over".
+    const topScore = top?.score ?? 0
+    const winners = topScore > 0 ? scores.filter((s) => s.score === topScore) : []
+    const winnerId = winners.length === 1 ? winners[0]!.id : null
+    const title =
+      winners.length === 0
+        ? 'Game over'
+        : winners.length === 1
+          ? `${winners[0]!.name} wins!`
+          : `${winners.map((w) => w.name).join(' & ')} tie for first!`
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={bootstrap.code}>
         <GameFinishPanel
           bootstrap={bootstrap}
-          title={winnerId ? `${top.name} wins!` : 'Game over'}
+          title={title}
           subtitle="Final standings"
-          detail={top ? `${top.name} — ${top.score} pts` : undefined}
+          detail={winners.length === 1 ? `${winners[0]!.name} — ${winners[0]!.score} pts` : undefined}
           leaderboard={scoreListLeaderboard(scores)}
           winnerPlayerId={winnerId}
           roundKey={bootstrap.game?.session_started_at ?? null}
@@ -511,26 +603,15 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     />
   )
 
-  const phaseTimer =
-    timedPhase && metadata.phase_started_at ? (
-      <View style={styles.timerWrap}>
-        <TimerBadge seconds={secondsLeft} urgentAt={10} />
-        <Text style={styles.timerLabel}>{secondsLeft}s left</Text>
-      </View>
-    ) : null
+  const phaseTimer = (
+    <ICallOnPhaseCountdown
+      anchorTime={metadata.phase_started_at}
+      delaySeconds={phaseDelay}
+      active={!!(timedPhase && metadata.phase_started_at)}
+    />
+  )
 
   const gameTimerBar = <ICallOnGameTimerBar game={bootstrap.game} />
-  const viewerBanner =
-    bootstrap.myPlayerId && me ? (
-      <ViewerModeBanner
-        gameCode={bootstrap.code}
-        playerId={bootstrap.myPlayerId}
-        game={bootstrap.game}
-        player={me}
-        players={bootstrap.players}
-        onPromoted={() => void bootstrap.load()}
-      />
-    ) : null
   const roundHeaderCard = (
     <ICallOnRoundHeader
       roundNumber={currentRound.round_number}
@@ -539,13 +620,14 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
       callerName={callerName}
       callerIndex={callerIndex}
       callerCount={metadata.caller_order?.length ?? 0}
-      secondsLeft={secondsLeft}
+      secondsLeft={null}
       showSeconds={false}
-      revealSecondsLeft={revealSecondsLeft}
+      revealSecondsLeft={null}
       showReveal={false}
     />
   )
-  const liveLeaderboard = <ICallOnLiveLeaderboard rows={liveScores} myPlayerId={bootstrap.myPlayerId} />
+  // Leaderboard now lives in the roster side-drawer (see useGameScores/useGameStats above).
+  const liveLeaderboard = null
 
   if (metadata.phase === 'letter_pick') {
     return (
@@ -555,8 +637,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
         subtitle={`Round ${currentRound.round_number}`}
       >
         <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
-          {gameTimerBar}
-          {viewerBanner}
+          {iCallOnGameTimerPinned ? null : gameTimerBar}
           {roundHeaderCard}
           {phaseTimer}
           {isCaller && !isViewer ? (
@@ -599,8 +680,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
         subtitle={`Letter ${metadata.letter ?? '?'}`}
       >
         <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
-          {gameTimerBar}
-          {viewerBanner}
+          {iCallOnGameTimerPinned ? null : gameTimerBar}
           {roundHeaderCard}
           {phaseTimer}
           {isViewer ? (
@@ -625,9 +705,11 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
                 <Text style={styles.primaryText}>Submit answers</Text>
               </Pressable>
               {submitError ? <Text style={styles.submitError}>{submitError}</Text> : null}
-              {secondsLeft <= 10 ? (
-                <Text style={styles.autoSendHint}>Unsubmitted answers are sent automatically when time runs out.</Text>
-              ) : null}
+              <ICallOnAutoSendHint
+                anchorTime={metadata.phase_started_at}
+                delaySeconds={phaseDelay}
+                active={metadata.phase === 'writing'}
+              />
             </>
           )}
           {scoreboard(false, true)}
@@ -644,8 +726,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Mark ${targetName}'s answers`}>
         <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
-          {gameTimerBar}
-          {viewerBanner}
+          {iCallOnGameTimerPinned ? null : gameTimerBar}
           {roundHeaderCard}
           {phaseTimer}
           {!reviewTargetAnswer ? (
@@ -724,8 +805,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
         subtitle={`Letter ${metadata.letter ?? '?'}`}
       >
         <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
-          {gameTimerBar}
-          {viewerBanner}
+          {iCallOnGameTimerPinned ? null : gameTimerBar}
           {roundHeaderCard}
           {isCaller && !isViewer ? (
             <>
@@ -766,15 +846,10 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Letter ${metadata.letter ?? '?'}`}>
       <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
-        {gameTimerBar}
-        {viewerBanner}
+        {iCallOnGameTimerPinned ? null : gameTimerBar}
         <View style={styles.revealHead}>
           <Text style={styles.revealTitle}>Round {currentRound.round_number} scores</Text>
-          {currentRound.ended_at ? (
-            <Text style={styles.revealCountdown}>Next letter in {revealSecondsLeft}s…</Text>
-          ) : (
-            <Text style={styles.revealCountdown}>Next letter coming up…</Text>
-          )}
+          <ICallOnRevealCountdown endedAt={currentRound.ended_at} />
         </View>
         {myRoundTotal != null && !isViewer ? (
           <View style={styles.scoredCard}>

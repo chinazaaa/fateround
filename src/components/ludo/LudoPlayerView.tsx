@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   LudoCard,
@@ -14,7 +14,8 @@ import { LudoFinalResultsShareBlock } from '@/components/ludo/LudoFinalResultsSh
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { gameTypeConfig } from '@/lib/game-types'
-import { currentPlayerId, parseLudoDice, parseLudoVariant, LUDO_MIN_PLAYERS } from '@/lib/ludo'
+import { currentPlayerId, finishedPieceCount, parseLudoDice, parseLudoVariant, LUDO_MIN_PLAYERS } from '@/lib/ludo'
+import { useGameScores, useRosterBase } from '@/components/roster/RosterDrawerContext'
 import { supabase } from '@/lib/supabase'
 import { LUDO_PLAYER_STATE_SELECT, LUDO_SESSION_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
@@ -30,7 +31,9 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
@@ -55,6 +58,8 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
   const [session, setSession] = useState<LudoSession | null>(null)
+  const sessionRef = useRef<LudoSession | null>(null)
+  sessionRef.current = session
   const [states, setStates] = useState<LudoPlayerState[]>([])
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
@@ -97,6 +102,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, void>({
     gameCode,
@@ -111,10 +117,57 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
-  // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(gameCode, ['players', { table: 'games', column: 'id' }, 'ludo_sessions', 'ludo_player_state'], load)
+  // The Ludo player path skips the shared roster dispatcher, so register base rows
+  // here for the header drawer + its live "pieces home" scoreboard.
+  useRosterBase(game?.status === 'active' || game?.status === 'finished' ? players : undefined, game, myPlayerId)
+  const rosterScores = useMemo(
+    () => Object.fromEntries(states.map((s) => [s.player_id, finishedPieceCount(s.pieces)])),
+    [states]
+  )
+  useGameScores(rosterScores, { suffix: ' 🏠' })
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  // Realtime push: reload on any change to this game's row + its tables.
+  // Delta fast-path (dual-table). Screen derives from game.status, so session/state writes
+  // only update the board — patch locally and skip the reload; active→finished rides the
+  // games-row event, and the fallback poll reconciles.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as LudoSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null
+  }, [])
+  const applyStateRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as LudoPlayerState
+    setStates((prev) => {
+      const i = prev.findIndex((s) => s.id === next.id)
+      // Keep rows ordered by player_order so a row inserted mid-game via realtime
+      // (e.g. a late-admitted player) doesn't land out of order on the board.
+      if (i === -1) return [...prev, next].sort((a, b) => a.player_order - b.player_order)
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true
+  }, [])
+
+  const connected = useGameTableSync(
+    gameCode,
+    [
+      'players',
+      { table: 'games', column: 'id' },
+      { table: 'ludo_sessions', apply: applySessionRow },
+      { table: 'ludo_player_state', apply: applyStateRow },
+    ],
+    load
+  )
+
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
   // Ready-up ring: readiness = holding a seat, so this reuses /players/ready (which
   // toggles the spectator flag). `ready:false` sits the player back out.
@@ -210,7 +263,13 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
   const isViewer = !!(game && activePlayer && playerIsViewer(activePlayer, game))
   const myName = activePlayer?.name ?? ''
 
-  const { secondsLeft, hasTimer, urgent } = useLudoTurnTimer(gameCode, session, game?.status === 'active' && !isViewer)
+  // Viewers see the countdown (enabled) but never fire the expire call (canExpire).
+  const { secondsLeft, hasTimer, urgent } = useLudoTurnTimer(
+    gameCode,
+    session,
+    game?.status === 'active',
+    game?.status === 'active' && !isViewer
+  )
 
   useLudoNotifications({
     game,
@@ -219,6 +278,34 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
     players,
     enabled: screen === 'active' && !isViewer,
   })
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it. Purely additive — the in-page PlayerSessionControls stays as-is.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={activePlayer?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, activePlayer?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') return <LudoLoadingScreen />
 
@@ -259,6 +346,8 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="ludo"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
@@ -291,6 +380,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={LUDO_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -305,6 +395,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myName}
@@ -353,17 +444,6 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
         {iWon && game && (
           <PostWinToCommunity gameType="ludo" gameCode={gameCode} winnerName={myName ?? ''} roundKey={session?.id} />
         )}
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby
-            spectating={isViewer}
-          />
-        )}
       </LudoShell>
     )
   }
@@ -391,16 +471,6 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
           rolling={rolling}
           displayDice={displayDice}
           variant={parseLudoVariant(game?.ludo_variant)}
-        />
-      )}
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isViewer}
         />
       )}
     </LudoShell>

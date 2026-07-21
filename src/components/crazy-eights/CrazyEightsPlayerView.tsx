@@ -1,29 +1,21 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   CrazyEightsCard,
   CrazyEightsLoadingScreen,
-  CrazyEightsPrimaryButton,
   CrazyEightsSecondaryButton,
   CrazyEightsShell,
 } from '@/components/crazy-eights/CrazyEightsChrome'
-import {
-  CrazyEightsChoosePanel,
-  CrazyEightsHand,
-  CrazyEightsStandings,
-  CrazyEightsTable,
-} from '@/components/crazy-eights/CrazyEightsBoard'
-import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
-import { CrazyEightsGameTimerBar } from '@/components/crazy-eights/CrazyEightsGameTimerBar'
+import { CrazyEightsPlaySurface } from '@/components/crazy-eights/CrazyEightsPlaySurface'
+import { PlayerRoomShell } from '@/components/rooms/PlayerRoomShell'
 import { CrazyEightsFinalResultsShareBlock } from '@/components/crazy-eights/CrazyEightsFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   currentPlayerId,
   getNormalizedPenalties,
-  hasActiveSuitCall,
   hasPlayableCard,
   isDrawPileDepleted,
   parseCrazyEightsRules,
@@ -32,7 +24,7 @@ import {
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
 import { clearPlayerSession } from '@/lib/utils'
-import type { Game, CrazyEightsPlayerHand, CrazyEightsSession, CrazyEightsCalledSuit } from '@/types'
+import type { Game, CrazyEightsPlayerHand, CrazyEightsSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
@@ -44,14 +36,17 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
-import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useCrazyEightsTurnTimer } from '@/hooks/useCrazyEightsTurnTimer'
+import { useCrazyEightsGameTimer } from '@/hooks/useCrazyEightsGameTimer'
 import { useCrazyEightsNotifications, playCrazyEightsActionSound } from '@/hooks/useCrazyEightsNotifications'
+import { useGamePlacements, useGameStats } from '@/components/roster/RosterDrawerContext'
 
 const CRAZY8_SESSION_SELECT =
   'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at,created_at,updated_at'
@@ -71,6 +66,8 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
   const [session, setSession] = useState<CrazyEightsSession | null>(null)
+  const sessionRef = useRef<CrazyEightsSession | null>(null)
+  sessionRef.current = session
   const [hands, setHands] = useState<CrazyEightsPlayerHand[]>([])
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
@@ -115,6 +112,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, CrazyEightsSession | null>({
     gameCode,
@@ -130,13 +128,45 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(
+  // Delta fast-path (dual-table). Screen derives from game.status, so session/hand writes
+  // only update the board UI — patch locally and skip the reload; the active→finished
+  // transition rides the games-row event, and the fallback poll reconciles.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as CrazyEightsSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null
+  }, [])
+  const applyHandRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as CrazyEightsPlayerHand
+    setHands((prev) => {
+      const i = prev.findIndex((h) => h.id === next.id)
+      if (i === -1) return [...prev, next].sort((a, b) => a.player_order - b.player_order)
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true
+  }, [])
+
+  const connected = useGameTableSync(
     gameCode,
-    ['players', { table: 'games', column: 'id' }, 'crazy_eights_sessions', 'crazy_eights_player_hands'],
+    [
+      'players',
+      { table: 'games', column: 'id' },
+      { table: 'crazy_eights_sessions', apply: applySessionRow },
+      { table: 'crazy_eights_player_hands', apply: applyHandRow },
+    ],
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
   // Ready-up ring: readiness = holding a seat, so this reuses /players/ready (which
   // toggles the spectator flag). `ready:false` sits the player back out.
@@ -222,10 +252,30 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     return counts
   }, [hands])
 
+  // Winner/runner-up medal pills on the roster drawer (mirrors the host view).
+  const placements = useMemo(() => {
+    const map: Record<string, number> = {}
+    ;(session?.finish_order ?? []).forEach((id, i) => {
+      map[id] = i + 1
+    })
+    const winnerId = session?.winner_player_id
+    if (winnerId && !(winnerId in map)) map[winnerId] = 1
+    return Object.keys(map).length ? map : null
+  }, [session?.finish_order, session?.winner_player_id])
+  useGamePlacements(placements)
+
+  // Live card counts in the roster drawer scoreboard (only while playing).
+  const rosterDetails = useMemo(() => {
+    if (game?.status !== 'active') return null
+    const out: Record<string, string> = {}
+    for (const [id, n] of Object.entries(handCounts)) out[id] = `🃏 ${n} card${n === 1 ? '' : 's'}`
+    return Object.keys(out).length ? out : null
+  }, [handCounts, game?.status])
+  useGameStats(rosterDetails)
+
   const cfg = gameTypeConfig('crazy_eights')
   const winner = players.find((p) => p.id === session?.winner_player_id)
   const turnPlayerId = session ? currentPlayerId(session) : null
-  const turnPlayer = players.find((p) => p.id === turnPlayerId)
   const isMyTurn = myPlayerId != null && turnPlayerId === myPlayerId
   const activePlayer = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const isViewer = !!(game && activePlayer && playerIsViewer(activePlayer, game))
@@ -236,11 +286,11 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   const isOut = !!myHandRow && myHand.length === 0 && game?.status === 'active'
   const isWatching = isViewer || isOut
 
-  const { secondsLeft, hasTimer, urgent } = useCrazyEightsTurnTimer(
-    gameCode,
-    session,
-    game?.status === 'active' && screen === 'active'
-  )
+  // Turn timer (per-player countdown) + game timer (overall duration). Both hooks
+  // also drive side effects (deadline sync, auto-expire); their values render as
+  // the seat countdown chip + the top game-time bar in the play surface.
+  const turnTimer = useCrazyEightsTurnTimer(gameCode, session, game?.status === 'active' && screen === 'active')
+  const gameTimer = useCrazyEightsGameTimer(gameCode, game)
 
   useCrazyEightsNotifications({
     game,
@@ -250,19 +300,39 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     enabled: game?.status === 'active' && screen === 'active',
   })
 
-  const tableTimerProps = {
-    turnPlayerName: turnPlayer?.name,
-    isMyTurn: isMyTurn && !isWatching,
-    secondsLeft,
-    hasTimer,
-    urgent,
-  }
-
   const drawDepleted = session ? isDrawPileDepleted(session) : false
   const crazyEightsRules = useMemo(() => parseCrazyEightsRules(game), [game])
   const myCanPlay = session ? hasPlayableCard(myHand, session, crazyEightsRules) : false
-  const suitCallActive = session ? hasActiveSuitCall(session) : false
   const penalties = session ? getNormalizedPenalties(session) : { pickTwo: 0, jokerPenalty: 0 }
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it. Purely additive — the in-page PlayerSessionControls stays as-is.
+  // Card game: "spectating" folds in the played-out watcher state (isWatching), like Whot.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={activePlayer?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isWatching}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, activePlayer?.name, isWatching, load, router])
+  useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') return <CrazyEightsLoadingScreen />
 
@@ -313,6 +383,8 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="crazy_eights"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
@@ -338,6 +410,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={CRAZY8_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -352,6 +425,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={me?.name ?? ''}
@@ -406,133 +480,35 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (!session) return <CrazyEightsLoadingScreen />
 
-  const myPlayer = activePlayer
-  const myName = myPlayer?.name ?? ''
-
-  if (isWatching) {
-    return (
-      <CrazyEightsShell title={game?.title} wide compact>
-        {isOut && !isViewer ? (
-          <div className="rounded-xl border border-[color-mix(in_srgb,var(--primary)_35%,transparent)] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] px-4 py-3 text-center text-sm text-body">
-            <p className="font-semibold">You&apos;re out</p>
-            <p className="text-muted text-xs mt-1">You played all your cards — watch until the game ends.</p>
-          </div>
-        ) : (
-          <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={myPlayer} />
-        )}
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            spectating={isWatching}
-          />
-        )}
-        <CrazyEightsGameTimerBar gameCode={gameCode} game={game} />
-        <CrazyEightsTable
-          session={session}
-          players={players}
-          myPlayerId={myPlayerId}
-          handCounts={handCounts}
-          {...tableTimerProps}
-          isMyTurn={false}
-        />
-      </CrazyEightsShell>
-    )
-  }
-
-  return (
-    <CrazyEightsShell title={game?.title} wide compact>
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isWatching}
-        />
-      )}
-
-      <CrazyEightsGameTimerBar gameCode={gameCode} game={game} />
-
-      {/* Play area on the left; the roster sits on the right on desktop (sm+) and
-          stacks below the hand on mobile — matching the trivia leaderboard layout. */}
-      <LiveLeaderboardLayout
-        sidebar={
-          <CrazyEightsCard className="p-4">
-            <CrazyEightsStandings
-              session={session}
-              players={players}
-              myPlayerId={myPlayerId}
-              handCounts={handCounts}
-              gridClassName="grid-cols-2 sm:grid-cols-1"
-            />
-          </CrazyEightsCard>
-        }
-      >
-        <CrazyEightsTable
-          session={session}
-          players={players}
-          myPlayerId={myPlayerId}
-          handCounts={handCounts}
-          showStandings={false}
-          {...tableTimerProps}
-        />
-
-        {isMyTurn && session.phase === 'choose_suit' && (
-          <CrazyEightsChoosePanel
-            acting={acting}
-            onChooseSuit={(suit: CrazyEightsCalledSuit) => void postAction('/api/crazy-eights/choose', { suit })}
-          />
-        )}
-
-        {session.phase === 'playing' && (
-          <>
-            {isMyTurn && (
-              <p className="text-center text-xs text-muted px-2">
-                {drawDepleted && myCanPlay
-                  ? 'Draw pile empty — play a highlighted card.'
-                  : drawDepleted && !myCanPlay
-                    ? 'Draw pile empty — pass your turn if you cannot play.'
-                    : penalties.pickTwo > 0
-                      ? 'Pick 2 active — play a 2 or draw the penalty.'
-                      : penalties.jokerPenalty > 0
-                        ? 'Joker — draw the penalty, no defending.'
-                        : suitCallActive
-                          ? 'Match the called suit, play an 8 / Joker to name a new one, or draw from the pile.'
-                          : 'Tap a highlighted card to play, or draw from the pile.'}
-              </p>
-            )}
-            <CrazyEightsHand
-              cards={myHand}
-              session={session}
-              acting={acting}
-              rules={crazyEightsRules}
-              onPlay={(cardId) => void postAction('/api/crazy-eights/play', { cardId })}
-            />
-            {isMyTurn && !(drawDepleted && myCanPlay) && (
-              <CrazyEightsPrimaryButton onClick={() => void postAction('/api/crazy-eights/draw', {})} loading={acting}>
-                {drawDepleted
-                  ? 'Pass turn'
-                  : penalties.pickTwo > 0
-                    ? `Draw ${penalties.pickTwo} (Pick 2)`
-                    : penalties.jokerPenalty > 0
-                      ? `Draw ${penalties.jokerPenalty} (Joker)`
-                      : 'Draw 1 card'}
-              </CrazyEightsPrimaryButton>
-            )}
-          </>
-        )}
-
-        {!isMyTurn && session.phase === 'playing' && (
-          <CrazyEightsCard className="p-3 text-center text-sm text-muted">
-            Waiting for {players.find((p) => p.id === turnPlayerId)?.name ?? 'next player'}…
-          </CrazyEightsCard>
-        )}
-      </LiveLeaderboardLayout>
-    </CrazyEightsShell>
+  // The active play surface mounts inside the design-system room frame, which
+  // supplies the `.fr-room-poll` → `.pr-main` → `.pr-stage` layout the `.ct-surface`
+  // needs. The room chrome is the app's fixed top header + the floating Join-voice
+  // pill; the roster side-drawer is fed centrally by the dispatcher (see comment
+  // above). Watching (spectator / played-out) reuses the same surface read-only.
+  const surface = (
+    <CrazyEightsPlaySurface
+      session={session}
+      players={players}
+      myPlayerId={myPlayerId}
+      myHand={myHand}
+      handCounts={handCounts}
+      rules={crazyEightsRules}
+      turnPlayerId={turnPlayerId}
+      isMyTurn={isMyTurn && !isWatching}
+      watching={isWatching}
+      acting={acting}
+      drawCount={session.draw_pile?.length ?? 0}
+      drawDepleted={drawDepleted}
+      myCanPlay={myCanPlay}
+      suitCallActive={session.required_suit != null}
+      penalties={penalties}
+      turnTimer={turnTimer}
+      gameTimer={gameTimer}
+      onPlay={(cardId) => void postAction('/api/crazy-eights/play', { cardId })}
+      onDraw={() => void postAction('/api/crazy-eights/draw', {})}
+      onChooseSuit={(suit) => void postAction('/api/crazy-eights/choose', { suit })}
+    />
   )
+
+  return <PlayerRoomShell>{surface}</PlayerRoomShell>
 }

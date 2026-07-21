@@ -1,0 +1,668 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { markGameFinished } from '@/lib/game-finish'
+import { isLandmineGame, parseGameType } from '@/lib/game-types'
+import {
+  buildLandmineNextRound,
+  clampLandmineMarkingTimer,
+  clampLandmineMineCount,
+  clampLandmineWritingTimer,
+  computeRoundResults,
+  ensureBlankAnswers,
+  ensureDefaultMarks,
+  finalizeUnsubmittedAnswers,
+  gameLandmineElimSeconds,
+  gameLandmineMineSource,
+  gameLandmineMode,
+  gameLandmineCategoryTimer,
+  landmineAnsweringPlayerIds,
+  landmineReviewEnabled,
+  landmineReviewSeconds,
+  LANDMINE_ELIM_MAX_CYCLES,
+  LANDMINE_MAX_ANSWER_LENGTH,
+  LANDMINE_REVEAL_SECONDS,
+  normalizeAnswer,
+  parseLandmineMetadata,
+  pickMines,
+  roundCallerPlayerId,
+} from '@/lib/landmine'
+import { mergeUsageRecords, parsePoolUsage } from '@/lib/pool-usage'
+import type { Game, LandmineMetadata, Round } from '@/types'
+
+export type LandmineAdvanceCode =
+  | 'round_active'
+  | 'phase_advanced'
+  | 'synced_pointer'
+  | 'advanced_next'
+  | 'advanced_finish'
+  | 'already_done'
+  | 'game_not_found'
+  | 'not_landmine'
+  | 'not_active'
+  | 'reveal_pending'
+  | 'not_finished'
+
+export type LandmineAdvanceResult = {
+  ok: boolean
+  code: LandmineAdvanceCode
+  nextRound?: number
+}
+
+async function countActivePlayers(supabase: SupabaseClient, gameId: string): Promise<string[]> {
+  const { data } = await supabase
+    .from('players')
+    .select('id')
+    .eq('game_id', gameId)
+    .eq('spectator', false)
+    .eq('is_eliminated', false)
+  return (data ?? []).map((p) => p.id)
+}
+
+async function countRoundAnswers(supabase: SupabaseClient, roundId: string, playerIds: string[]): Promise<number> {
+  if (playerIds.length === 0) return 0
+  const { count } = await supabase
+    .from('landmine_answers')
+    .select('id', { count: 'exact', head: true })
+    .eq('round_id', roundId)
+    .in('player_id', playerIds)
+    .not('submitted_at', 'is', null)
+  return count ?? 0
+}
+
+async function countRoundMarks(supabase: SupabaseClient, roundId: string, playerIds: string[]): Promise<number> {
+  if (playerIds.length === 0) return 0
+  const { count } = await supabase
+    .from('landmine_marks')
+    .select('id', { count: 'exact', head: true })
+    .eq('round_id', roundId)
+    .in('marker_player_id', playerIds)
+    .not('marked_at', 'is', null)
+  return count ?? 0
+}
+
+function writingTimer(game: Game): number {
+  return clampLandmineWritingTimer(game.timer_seconds)
+}
+function markingTimer(game: Game): number {
+  return clampLandmineMarkingTimer(game.operative_timer_seconds)
+}
+
+function phaseExpired(metadata: LandmineMetadata, game: Game): boolean {
+  if (!metadata.phase_started_at) return false
+  const start = new Date(metadata.phase_started_at).getTime()
+  const now = Date.now()
+  // The category-pick timer doubles as the manual-mode setup timer (the setter types a category +
+  // mine there); its options run up to 30s so setup has enough time.
+  if (metadata.phase === 'category_pick') return now >= start + gameLandmineCategoryTimer(game) * 1000
+  if (metadata.phase === 'writing') return now >= start + writingTimer(game) * 1000
+  if (metadata.phase === 'marking') return now >= start + markingTimer(game) * 1000
+  if (metadata.phase === 'review') return now >= start + landmineReviewSeconds(game) * 1000
+  return false
+}
+
+function revealPending(round: Round): boolean {
+  if (!round.ended_at) return false
+  return Date.now() < new Date(round.ended_at).getTime() + LANDMINE_REVEAL_SECONDS * 1000
+}
+
+async function updateRoundMetadata(
+  supabase: SupabaseClient,
+  roundId: string,
+  metadata: LandmineMetadata
+): Promise<boolean> {
+  const { error } = await supabase.from('rounds').update({ landmine_metadata: metadata }).eq('id', roundId)
+  return !error
+}
+
+type CategoryRow = { id: string; name: string; entries: unknown }
+
+function categoryEntryList(row: CategoryRow): string[] {
+  if (!Array.isArray(row.entries)) return []
+  return row.entries
+    .map((e) => {
+      if (typeof e === 'string') return e
+      if (e && typeof e === 'object' && typeof (e as { answer?: unknown }).answer === 'string') {
+        return (e as { answer: string }).answer
+      }
+      return ''
+    })
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+async function randomCategory(supabase: SupabaseClient): Promise<CategoryRow | null> {
+  const { data } = await supabase.from('landmine_categories').select('id, name, entries').eq('is_active', true)
+  const rows = (data as CategoryRow[]) ?? []
+  if (rows.length === 0) return null
+  return rows[Math.floor(Math.random() * rows.length)]
+}
+
+/**
+ * The caller (or an auto-pick on timeout) picks a category. We secretly draw the mine(s)
+ * from the pool, store them in the RLS-protected landmine_round_mines, set the (public)
+ * category on the round metadata, and open the writing phase. Conditioned on the round
+ * still being in category_pick so a stale poll can't reopen a category mid-round.
+ */
+export async function applyCategoryPick(
+  supabase: SupabaseClient,
+  gameId: string,
+  round: Round,
+  category: CategoryRow,
+  playerIds: string[]
+): Promise<boolean> {
+  const metadata = parseLandmineMetadata(round.landmine_metadata)
+  if (!metadata || metadata.phase !== 'category_pick') return false
+
+  // Bias the mine away from words already used as mines in this room (games.pool_usage), so it
+  // isn't the same obvious answer every game / replay. Persists across play-again like other games.
+  const { data: g } = await supabase.from('games').select('pool_usage').eq('id', gameId).maybeSingle()
+  const priorUsage = parsePoolUsage(g?.pool_usage).landmine ?? {}
+  const mines = pickMines(categoryEntryList(category), metadata.mine_count, { usage: priorUsage })
+  const now = new Date().toISOString()
+
+  const { data: updated, error } = await supabase
+    .from('rounds')
+    .update({
+      landmine_metadata: {
+        ...metadata,
+        category: category.name,
+        phase: 'writing',
+        phase_started_at: now,
+      } satisfies LandmineMetadata,
+    })
+    .eq('id', round.id)
+    .eq('landmine_metadata->>phase', 'category_pick')
+    .select('id')
+    .maybeSingle()
+
+  if (error) {
+    console.error('Failed to pick Landmine category:', error.message)
+    return false
+  }
+  if (!updated) return false
+
+  // Store the secret mine(s) for this round (server-only table).
+  await supabase.from('landmine_round_mines').upsert({ round_id: round.id, words: mines }, { onConflict: 'round_id' })
+  await ensureBlankAnswers(supabase, gameId, round.id, playerIds)
+
+  // Record the chosen mine(s) in pool_usage so the next pick prefers fresher words. Best-effort:
+  // a failure here only reduces variety, so it must not fail the round.
+  const bump = new Map<string, number>()
+  for (const word of mines) {
+    const key = normalizeAnswer(word)
+    if (key) bump.set(key, (bump.get(key) ?? 0) + 1)
+  }
+  if (bump.size > 0) {
+    const rawUsage = (g?.pool_usage ?? {}) as Record<string, unknown>
+    const nextLandmine = mergeUsageRecords(priorUsage, bump)
+    await supabase
+      .from('games')
+      .update({ pool_usage: { ...rawUsage, landmine: nextLandmine } })
+      .eq('id', gameId)
+  }
+  return true
+}
+
+async function autoPickCategory(
+  supabase: SupabaseClient,
+  gameId: string,
+  round: Round,
+  playerIds: string[]
+): Promise<boolean> {
+  const category = await randomCategory(supabase)
+  if (!category) return false
+  return applyCategoryPick(supabase, gameId, round, category, playerIds)
+}
+
+/**
+ * MANUAL mode: the setter typed the category AND the mine word(s). We store their mines in the
+ * RLS-protected landmine_round_mines, set the (public) category on the metadata, seed blank
+ * answers for the ANSWERING players (the setter sits out), and open the writing phase. No pool
+ * draw and no pool_usage bump — the mine is human-chosen, not from an admin category.
+ * Conditioned on category_pick so a stale poll can't reopen setup mid-round.
+ */
+export async function applyManualSetup(
+  supabase: SupabaseClient,
+  gameId: string,
+  round: Round,
+  categoryName: string,
+  mineWords: string[],
+  answeringIds: string[]
+): Promise<boolean> {
+  const metadata = parseLandmineMetadata(round.landmine_metadata)
+  if (!metadata || metadata.phase !== 'category_pick') return false
+
+  const category = categoryName.trim().slice(0, 80)
+  if (!category) return false
+
+  // Dedupe + clamp the mines to the room's configured mine_count.
+  const seen = new Set<string>()
+  const mines: string[] = []
+  for (const raw of mineWords) {
+    const word = (raw ?? '').trim().slice(0, LANDMINE_MAX_ANSWER_LENGTH)
+    const key = normalizeAnswer(word)
+    if (!word || !key || seen.has(key)) continue
+    seen.add(key)
+    mines.push(word)
+    if (mines.length >= clampLandmineMineCount(metadata.mine_count)) break
+  }
+  if (mines.length === 0) return false
+
+  const now = new Date().toISOString()
+  const { data: updated, error } = await supabase
+    .from('rounds')
+    .update({
+      landmine_metadata: {
+        ...metadata,
+        category,
+        phase: 'writing',
+        phase_started_at: now,
+      } satisfies LandmineMetadata,
+    })
+    .eq('id', round.id)
+    .eq('landmine_metadata->>phase', 'category_pick')
+    .select('id')
+    .maybeSingle()
+
+  if (error) {
+    console.error('Failed to apply Landmine manual setup:', error.message)
+    return false
+  }
+  if (!updated) return false
+
+  await supabase.from('landmine_round_mines').upsert({ round_id: round.id, words: mines }, { onConflict: 'round_id' })
+  await ensureBlankAnswers(supabase, gameId, round.id, answeringIds)
+  return true
+}
+
+async function startMarkingPhase(
+  supabase: SupabaseClient,
+  gameId: string,
+  round: Round,
+  playerIds: string[]
+): Promise<boolean> {
+  const metadata = parseLandmineMetadata(round.landmine_metadata)
+  if (!metadata || metadata.phase !== 'writing') return false
+  await finalizeUnsubmittedAnswers(supabase, gameId, round.id, playerIds)
+  await ensureDefaultMarks(supabase, gameId, round, playerIds)
+  const now = new Date().toISOString()
+  return updateRoundMetadata(supabase, round.id, { ...metadata, phase: 'marking', phase_started_at: now })
+}
+
+/**
+ * MANUAL mode: after peer marking, hand the round to the setter to review/override every verdict
+ * before scores reveal (mirrors I Call On's caller review). Peer marks already sit in the table
+ * keyed by target; the setter's approve simply overrides them. A timeout falls straight through to
+ * scoring, keeping the peer verdicts.
+ */
+async function startReviewPhase(supabase: SupabaseClient, round: Round): Promise<boolean> {
+  const metadata = parseLandmineMetadata(round.landmine_metadata)
+  if (!metadata || metadata.phase !== 'marking') return false
+  const now = new Date().toISOString()
+  return updateRoundMetadata(supabase, round.id, { ...metadata, phase: 'review', phase_started_at: now })
+}
+
+async function getRoundMines(supabase: SupabaseClient, roundId: string): Promise<string[]> {
+  const { data } = await supabase.from('landmine_round_mines').select('words').eq('round_id', roundId).maybeSingle()
+  const words = (data as { words?: unknown } | null)?.words
+  return Array.isArray(words) ? words.filter((w): w is string => typeof w === 'string') : []
+}
+
+/**
+ * Reveal: compute per-player results, persist points/outcome, reveal the mine into the
+ * (now public) metadata, eliminate mine-hitters in elimination mode, and finish the round.
+ */
+export async function computeAndFinishRound(supabase: SupabaseClient, game: Game, round: Round): Promise<boolean> {
+  const metadata = parseLandmineMetadata(round.landmine_metadata)
+  if (!metadata || metadata.scores_computed) return false
+  // System mode finishes straight from marking; manual mode finishes from the setter's review.
+  if (metadata.phase !== 'marking' && metadata.phase !== 'review') return false
+
+  const [{ data: answers }, { data: marks }, mines] = await Promise.all([
+    supabase.from('landmine_answers').select('*').eq('round_id', round.id),
+    supabase.from('landmine_marks').select('*').eq('round_id', round.id),
+    getRoundMines(supabase, round.id),
+  ])
+
+  const results = computeRoundResults(answers ?? [], marks ?? [], mines, {
+    originalityBonus: game.landmine_originality_bonus !== false,
+  })
+
+  for (const row of results) {
+    await supabase
+      .from('landmine_answers')
+      .update({ points: row.points, outcome: row.outcome, mine_hit: row.mine_hit, is_original: row.is_original })
+      .eq('round_id', round.id)
+      .eq('player_id', row.player_id)
+  }
+
+  // Elimination mode: knock out everyone who hit the mine.
+  if (gameLandmineMode(game) === 'elimination') {
+    const hitters = results.filter((r) => r.mine_hit).map((r) => r.player_id)
+    if (hitters.length > 0) {
+      await supabase.from('players').update({ is_eliminated: true }).in('id', hitters)
+    }
+  }
+
+  const now = new Date().toISOString()
+
+  // Manual mode: pay the sitting-out setter the mirror of the round — the sum of every point the
+  // answering players scored (Describe It's individual-mode payout). Recorded as a synthetic
+  // answer row so tallyLandmineScores rolls it into their running total with no special-casing.
+  if (gameLandmineMineSource(game) === 'manual') {
+    const setterId = roundCallerPlayerId(round, metadata)
+    if (setterId) {
+      const mirror = results.reduce((sum, r) => sum + r.points, 0)
+      await supabase.from('landmine_answers').upsert(
+        {
+          game_id: game.id,
+          round_id: round.id,
+          player_id: setterId,
+          answer: '',
+          submitted_at: now,
+          points: mirror,
+          outcome: 'setter',
+          mine_hit: false,
+          is_original: false,
+        },
+        { onConflict: 'player_id,round_id' }
+      )
+    }
+  }
+  await updateRoundMetadata(supabase, round.id, {
+    ...metadata,
+    phase: 'reveal',
+    phase_started_at: now,
+    revealed_mines: mines,
+    scores_computed: true,
+  })
+
+  const { error } = await supabase
+    .from('rounds')
+    .update({ status: 'finished', ended_at: now })
+    .eq('id', round.id)
+    .eq('status', 'active')
+  return !error
+}
+
+async function syncGamePointer(supabase: SupabaseClient, gameId: string, roundNumber: number): Promise<boolean> {
+  const { error } = await supabase.from('games').update({ current_round_number: roundNumber }).eq('id', gameId)
+  return !error
+}
+
+async function activateRound(supabase: SupabaseClient, roundId: string): Promise<boolean> {
+  const now = new Date().toISOString()
+  const { data: round } = await supabase
+    .from('rounds')
+    .select('submitter_player_id, landmine_metadata, status')
+    .eq('id', roundId)
+    .maybeSingle()
+  if (!round) return false
+  if (round.status === 'active') return true
+  if (round.status !== 'pending') return false
+
+  const metadata = parseLandmineMetadata(round.landmine_metadata)
+  if (!metadata) return false
+
+  const { data, error } = await supabase
+    .from('rounds')
+    .update({
+      status: 'active',
+      started_at: now,
+      ended_at: null,
+      landmine_metadata: { ...metadata, phase: 'category_pick', phase_started_at: now },
+    })
+    .eq('id', roundId)
+    .eq('status', 'pending')
+    .select('id')
+    .maybeSingle()
+  return !error && !!data
+}
+
+async function findExistingNextRound(
+  supabase: SupabaseClient,
+  gameId: string,
+  nextRoundNumber: number
+): Promise<{ active: Round | null; pending: Round | null }> {
+  const { data } = await supabase.from('rounds').select('*').eq('game_id', gameId).eq('round_number', nextRoundNumber)
+  const rows = (data ?? []) as Round[]
+  return {
+    active: rows.find((r) => r.status === 'active') ?? null,
+    pending: rows.find((r) => r.status === 'pending') ?? null,
+  }
+}
+
+async function activateNextRound(
+  supabase: SupabaseClient,
+  gameId: string,
+  roundNumber: number,
+  roundId: string
+): Promise<LandmineAdvanceResult | null> {
+  const activated = await activateRound(supabase, roundId)
+  if (!activated) return null
+  await syncGamePointer(supabase, gameId, roundNumber)
+  return { ok: true, code: 'advanced_next', nextRound: roundNumber }
+}
+
+async function advanceActiveRoundPhase(
+  supabase: SupabaseClient,
+  game: Game,
+  round: Round,
+  playerIds: string[]
+): Promise<LandmineAdvanceCode> {
+  const metadata = parseLandmineMetadata(round.landmine_metadata)
+  if (!metadata) return 'round_active'
+
+  // Manual mode: the rotating setter sits out, so the answering ring excludes them.
+  const manual = gameLandmineMineSource(game) === 'manual'
+  const setterId = manual ? roundCallerPlayerId(round, metadata) : null
+  const answeringIds = landmineAnsweringPlayerIds(playerIds, setterId, manual)
+
+  if (metadata.phase === 'category_pick') {
+    // System mode auto-picks on timeout; manual mode falls back to a system-drawn mine so a setter
+    // who never submits can't stall the room (the setter still sits out that round).
+    if (metadata.category == null && phaseExpired(metadata, game)) {
+      const ok = await autoPickCategory(supabase, game.id, round, answeringIds)
+      return ok ? 'phase_advanced' : 'round_active'
+    }
+    return 'round_active'
+  }
+
+  if (metadata.phase === 'writing') {
+    const submitted = await countRoundAnswers(supabase, round.id, answeringIds)
+    const allIn = answeringIds.length > 0 && submitted >= answeringIds.length
+    if (allIn || phaseExpired(metadata, game)) {
+      const ok = await startMarkingPhase(supabase, game.id, round, answeringIds)
+      return ok ? 'phase_advanced' : 'round_active'
+    }
+    return 'round_active'
+  }
+
+  if (metadata.phase === 'marking') {
+    const marked = await countRoundMarks(supabase, round.id, answeringIds)
+    const allMarked = answeringIds.length > 0 && marked >= answeringIds.length
+    if (allMarked || phaseExpired(metadata, game)) {
+      // With review on, hand off to the review phase — the setter (manual) or the host (auto) can
+      // check/override the verdicts before scores reveal. With it off, score straight away.
+      const ok = landmineReviewEnabled(game)
+        ? await startReviewPhase(supabase, round)
+        : await computeAndFinishRound(supabase, game, round)
+      return ok ? 'phase_advanced' : 'round_active'
+    }
+    return 'round_active'
+  }
+
+  if (metadata.phase === 'review') {
+    // Only the reviewer's approve (via /api/landmine/setter-mark) finishes early; otherwise the
+    // review window expires and we score with the peer verdicts as they stand.
+    if (phaseExpired(metadata, game)) {
+      const ok = await computeAndFinishRound(supabase, game, round)
+      return ok ? 'phase_advanced' : 'round_active'
+    }
+    return 'round_active'
+  }
+
+  return 'round_active'
+}
+
+/** True when the game should end after this round (mode-driven). */
+async function shouldFinishSession(
+  supabase: SupabaseClient,
+  game: Game,
+  finishedRound: Round,
+  activePlayerIds: string[]
+): Promise<boolean> {
+  const meta = parseLandmineMetadata(finishedRound.landmine_metadata)
+  const roster = Math.max(1, meta?.caller_order.length ?? activePlayerIds.length)
+
+  if (gameLandmineMode(game) === 'elimination') {
+    // Last player standing (or nobody left). Elimination governs length even in manual mode.
+    if (activePlayerIds.length <= 1) return true
+    // Time limit: if nobody's hitting mines the last-standing rule never triggers, so the game ends
+    // when the wall clock (from session start) runs out — survivors are then ranked by score.
+    if (game.session_started_at) {
+      const elapsed = (Date.now() - new Date(game.session_started_at).getTime()) / 1000
+      if (elapsed >= gameLandmineElimSeconds(game)) return true
+    }
+    // Absolute backstop in case the timer is ever missing/unevaluated.
+    return finishedRound.round_number >= roster * LANDMINE_ELIM_MAX_CYCLES
+  }
+  // Manual (zero-points): "rounds" are full cycles — one round = every player sets once. A game of
+  // R rounds with N players runs R×N setter-turns (each setter-turn is one internal round).
+  if (gameLandmineMineSource(game) === 'manual') {
+    const cycles = Math.max(1, game.rounds_count ?? 1)
+    return finishedRound.round_number >= cycles * roster
+  }
+  // Zero Points (system): fixed round count.
+  return finishedRound.round_number >= (game.rounds_count ?? 1)
+}
+
+async function startNextRound(
+  supabase: SupabaseClient,
+  game: Game,
+  finishedRound: Round,
+  playerIds: string[]
+): Promise<LandmineAdvanceResult> {
+  const code = game.id
+  const metadata = parseLandmineMetadata(finishedRound.landmine_metadata)
+  if (!metadata) return { ok: false, code: 'not_finished' }
+
+  const { data: freshGame } = await supabase.from('games').select('*').eq('id', code).maybeSingle()
+  const liveGame = (freshGame ?? game) as Game
+  const activePlayerIds = await countActivePlayers(supabase, code)
+
+  if (await shouldFinishSession(supabase, liveGame, finishedRound, activePlayerIds)) {
+    const { error: finishError } = await markGameFinished(supabase, code)
+    if (finishError) console.error('Failed to mark Landmine game finished:', finishError)
+    return { ok: true, code: 'advanced_finish' }
+  }
+
+  const nextRoundNumber = finishedRound.round_number + 1
+  const nextRow = buildLandmineNextRound({
+    gameId: code,
+    roundNumber: nextRoundNumber,
+    previousMetadata: metadata,
+    previousCallerId: finishedRound.submitter_player_id ?? null,
+    playerIds: activePlayerIds,
+    mineCount: metadata.mine_count,
+    now: new Date().toISOString(),
+    manual: gameLandmineMineSource(liveGame) === 'manual',
+  })
+  if (!nextRow) {
+    const { error: finishError } = await markGameFinished(supabase, code)
+    if (finishError) console.error('Failed to mark Landmine game finished:', finishError)
+    return { ok: true, code: 'advanced_finish' }
+  }
+
+  const existing = await findExistingNextRound(supabase, code, nextRoundNumber)
+  if (existing.active) {
+    await syncGamePointer(supabase, code, nextRoundNumber)
+    return { ok: true, code: 'advanced_next', nextRound: nextRoundNumber }
+  }
+  if (existing.pending) {
+    const advanced = await activateNextRound(supabase, code, nextRoundNumber, existing.pending.id)
+    if (advanced) return advanced
+    return { ok: false, code: 'not_finished' }
+  }
+
+  const { data: inserted, error: insertError } = await supabase
+    .from('rounds')
+    .insert(nextRow)
+    .select('id')
+    .maybeSingle()
+  if (insertError || !inserted) {
+    const retry = await findExistingNextRound(supabase, code, nextRoundNumber)
+    if (retry.pending) {
+      const advanced = await activateNextRound(supabase, code, nextRoundNumber, retry.pending.id)
+      if (advanced) return advanced
+    }
+    if (retry.active) {
+      await syncGamePointer(supabase, code, nextRoundNumber)
+      return { ok: true, code: 'advanced_next', nextRound: nextRoundNumber }
+    }
+    return { ok: false, code: 'not_finished' }
+  }
+
+  const advanced = await activateNextRound(supabase, code, nextRoundNumber, inserted.id)
+  if (advanced) return advanced
+  return { ok: false, code: 'not_finished' }
+}
+
+export async function syncLandmineGameState(supabase: SupabaseClient, gameId: string): Promise<LandmineAdvanceResult> {
+  const code = gameId.toUpperCase()
+  const { data: game } = await supabase.from('games').select('*').eq('id', code).maybeSingle()
+  if (!game) return { ok: false, code: 'game_not_found' }
+  if (!isLandmineGame(parseGameType(game.game_type))) return { ok: false, code: 'not_landmine' }
+  if (game.status === 'finished') return { ok: true, code: 'already_done' }
+  if (game.status !== 'active') return { ok: false, code: 'not_active' }
+
+  const { data: rounds } = await supabase.from('rounds').select('*').eq('game_id', code).order('round_number')
+  const roundList = (rounds ?? []) as Round[]
+  const activeRound = roundList.find((r) => r.status === 'active') ?? null
+  const pointerRound = roundList.find((r) => r.round_number === game.current_round_number) ?? null
+  const playerIds = await countActivePlayers(supabase, code)
+
+  if (pointerRound && pointerRound.status === 'finished' && revealPending(pointerRound)) {
+    return { ok: true, code: 'reveal_pending' }
+  }
+
+  if (activeRound) {
+    const phaseCode = await advanceActiveRoundPhase(supabase, game as Game, activeRound, playerIds)
+    if (phaseCode === 'phase_advanced') return { ok: true, code: 'phase_advanced' }
+    return { ok: true, code: 'round_active' }
+  }
+
+  const lastFinished = [...roundList].reverse().find((r) => r.status === 'finished') ?? null
+  if (lastFinished && revealPending(lastFinished)) {
+    return { ok: true, code: 'reveal_pending' }
+  }
+
+  const pendingAhead = roundList.filter((r) => r.status === 'pending').sort((a, b) => a.round_number - b.round_number)
+  const orphanedPending =
+    lastFinished != null
+      ? (pendingAhead.find((r) => r.round_number === lastFinished.round_number + 1) ??
+        pendingAhead.find((r) => r.round_number > lastFinished.round_number))
+      : pendingAhead[0]
+
+  if (!activeRound && orphanedPending) {
+    const advanced = await activateNextRound(supabase, code, orphanedPending.round_number, orphanedPending.id)
+    if (advanced) return { ok: true, code: 'synced_pointer', nextRound: orphanedPending.round_number }
+  }
+
+  const cycleAnchor = pointerRound?.status === 'finished' ? pointerRound : lastFinished
+  if (cycleAnchor && !revealPending(cycleAnchor)) {
+    if (game.current_round_number !== cycleAnchor.round_number) {
+      await syncGamePointer(supabase, code, cycleAnchor.round_number)
+    }
+    return startNextRound(supabase, game as Game, cycleAnchor, playerIds)
+  }
+
+  if (pointerRound && pointerRound.status === 'pending') {
+    const activated = await activateRound(supabase, pointerRound.id)
+    if (activated) {
+      await syncGamePointer(supabase, code, pointerRound.round_number)
+      return { ok: true, code: 'synced_pointer', nextRound: pointerRound.round_number }
+    }
+  }
+
+  return { ok: true, code: 'not_finished' }
+}

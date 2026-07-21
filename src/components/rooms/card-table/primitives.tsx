@@ -20,7 +20,8 @@ import type { CSSProperties, KeyboardEvent, ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { WhotShapeIcon } from '@/components/whot/WhotShapeIcon'
 import { CRAZY8_SUIT_SYMBOLS } from '@/lib/crazy-eights'
-import type { CrazyEightsCard, WhotCard as WhotCardType } from '@/types'
+import { cardShortLabel } from '@/lib/uno'
+import type { CrazyEightsCard, UnoCard, WhotCard as WhotCardType } from '@/types'
 
 /**
  * Button semantics for a clickable card face so keyboard-only players can
@@ -155,6 +156,49 @@ export function CrazyCardFace({ card, sel, dim, big, playable, onClick }: CrazyC
         {label}
         <small>{glyph}</small>
       </span>
+    </div>
+  )
+}
+
+/* ─── UNO card face ─────────────────────────────────────────────── */
+
+export type UnoCardFaceProps = {
+  card: UnoCard
+  sel?: boolean
+  dim?: boolean
+  big?: boolean
+  playable?: boolean
+  onClick?: () => void
+}
+
+/**
+ * A single UNO `.pc` face. Number/action cards render a solid colour face with a
+ * white centre oval carrying the value or symbol; Wild / Wild Draw Four get the
+ * dark rainbow-ring treatment (`.uno-wild`).
+ */
+export function UnoCardFace({ card, sel, dim, big, playable, onClick }: UnoCardFaceProps) {
+  const wild = card.color === 'wild'
+  const colorClass = wild ? 'uno-wild' : `uno-${card.color}`
+  const glyph = cardShortLabel(card)
+  const cornerGlyph = wild ? (card.kind === 'wild_draw4' ? '+4' : 'W') : glyph
+  const cls =
+    'pc uno ' +
+    colorClass +
+    (big ? ' lg' : '') +
+    (sel ? ' sel' : '') +
+    (dim ? ' dim' : '') +
+    (playable ? ' playable' : '')
+
+  const interactiveProps = cardInteractiveProps(onClick)
+  return (
+    <div className={cls} onClick={onClick} {...interactiveProps}>
+      <span className="c tl">{cornerGlyph}</span>
+      <div className="mid">
+        <span className="uno-oval">
+          <span>{wild ? (card.kind === 'wild_draw4' ? '+4' : '🌈') : glyph}</span>
+        </span>
+      </div>
+      <span className="c br">{cornerGlyph}</span>
     </div>
   )
 }

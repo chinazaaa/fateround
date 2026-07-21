@@ -22,7 +22,11 @@ import {
   QUICK_DRAW_GUESS_MIN_PLAYERS_TEAM,
   QUICK_DRAW_GUESS_MIN_PLAYERS_INDIVIDUAL,
 } from '@fateround/shared/quick-draw-guess'
-import { playerIsViewer } from '@fateround/shared/viewers'
+import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
+import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
+import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { emptyStrokeData, normalizeStrokeData } from '@fateround/shared/quick-draw-strokes'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
@@ -31,25 +35,26 @@ import { QuickDrawLiePlayerView } from '@/components/games/QuickDrawLiePlayerVie
 import { QuickDrawShareCard } from '@/components/games/QuickDrawShareCard'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { ActivityFeed } from '@/components/party/ActivityFeed'
 import { RoundBreakCard } from '@/components/party/RoundBreakCard'
 import { TeamBadge } from '@/components/party/TeamBadge'
 import { TeamPickerGrid } from '@/components/party/TeamPickerGrid'
 import { TeamScoreGrid } from '@/components/party/TeamScoreGrid'
-import { useAbsoluteDeadline } from '@/components/party/useAbsoluteDeadline'
 import { LiveDrawingCanvas } from '@/components/quick-draw/DrawingCanvas'
 import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
-import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
-import { TimerBadge } from '@/components/ui/TimerBadge'
+import { useGameScores } from '@/components/session/RosterDrawerContext'
+import { DeadlineTimerBadge } from '@/components/ui/DeadlineTimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import {
   postQuickDrawGuess,
+  postQuickDrawGuessAdvance,
+  postQuickDrawGuessExpireTurn,
   postQuickDrawGuessSkip,
   postQuickDrawGuessStrokes,
   postQuickDrawGuessTeam,
 } from '@/lib/game-api'
+import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { getSupabase } from '@/lib/supabase'
 import {
   QUICK_DRAW_GUESS_GUESS_SELECT,
@@ -62,7 +67,16 @@ import { scoreListLeaderboard, toLeaderboardRows } from '@/lib/finish-leaderboar
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'late_join_choice'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 /** Team that plays turn `turnIndex` (mirrors web `teamForTurn`). */
 const teamForTurn = (turnIndex: number, numTeams: number): number => (turnIndex % numTeams) + 1
@@ -136,7 +150,13 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
     loadGameState,
     computeScreen: (game, playerId, sessionData) => {
       if (!isQuickDrawGuessVariant(game.quick_draw_variant)) return 'playing'
-      if (!playerId) return 'join'
+      if (!playerId) {
+        const pre = preJoinScreen(game, false)
+        if (pre === 'game_ended') return 'game_ended'
+        if (pre === 'game_started_waiting') return 'game_started_waiting'
+        if (pre === 'late_join_choice') return 'late_join_choice'
+        return 'join'
+      }
       if (game.status === 'waiting') return 'waiting'
       if (isQuickDrawGuessResultsPhase(game.status, sessionData)) return 'finished'
       if (game.status === 'active') return 'playing'
@@ -144,6 +164,7 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
     },
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
+  const lateJoin = useLateJoinContext(gameCode, bootstrap.game, bootstrap.screen === 'late_join_choice')
 
   useGameTableSync(
     gameCode,
@@ -162,13 +183,16 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
 
   const mode = clampQuickDrawPlayMode(bootstrap.game?.quick_draw_play_mode ?? session?.mode)
   const numTeams = clampQuickDrawNumTeams(bootstrap.game?.quick_draw_num_teams ?? session?.num_teams)
-  // Surface the mode (or active team) as a header pill during play instead of a
-  // floating "Individual" subtitle. Only in guess mode — the lie variant renders
-  // its own view below.
+  // Surface the mode as a header pill on every screen (join, lobby, play) so
+  // players see "Individual" / "N teams" up front — and the active team while a
+  // team turn is in progress. Only in guess mode — the lie variant renders its
+  // own view below.
   useHeaderBadge(
-    isGuessMode && bootstrap.screen === 'playing' && session
+    isGuessMode && bootstrap.game
       ? mode === 'team'
-        ? teamLabel(session.active_team)
+        ? bootstrap.screen === 'playing' && session
+          ? teamLabel(session.active_team)
+          : `${numTeams} teams`
         : 'Individual'
       : null
   )
@@ -224,6 +248,15 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
     () => quickDrawGuessIndividualLeaderboard(teamRows, bootstrap.players),
     [teamRows, bootstrap.players]
   )
+  // Individual scores feed the roster drawer; team mode keeps its scores on the
+  // board (TeamScoreGrid) and contributes nothing here → plain roster fallback.
+  useGameScores(
+    useMemo(
+      () => (mode === 'team' ? null : Object.fromEntries(liveIndividualScores.map((row) => [row.id, row.score]))),
+      [mode, liveIndividualScores]
+    ),
+    { suffix: ' pts' }
+  )
 
   const guessFeed = useMemo(() => {
     const nameById = new Map(bootstrap.players.map((p) => [p.id, p.name]))
@@ -247,8 +280,20 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
       })
   }, [guesses, bootstrap.players, bootstrap.myPlayerId, mode, session?.turn_index])
 
-  const turnSecondsLeft = useAbsoluteDeadline(session?.turn_deadline_at, session?.phase === 'turn')
-  const breakSecondsLeft = useAbsoluteDeadline(session?.break_deadline_at, session?.phase === 'break')
+  // Drive the guess game forward when a phase timer runs out — any active
+  // non-viewer client fires (idempotent + deadline-gated server-side), matching
+  // web. Without this an all-mobile guess table's turn/break hangs at 0.
+  const canDriveTimers = isGuessMode && bootstrap.game?.status === 'active' && !isViewer
+  useTurnExpiryTimer({
+    deadlineAt: session?.phase === 'turn' ? session?.turn_deadline_at : null,
+    enabled: canDriveTimers,
+    onExpire: () => postQuickDrawGuessExpireTurn(bootstrap.code).then(() => bootstrap.load()),
+  })
+  useTurnExpiryTimer({
+    deadlineAt: session?.phase === 'break' ? session?.break_deadline_at : null,
+    enabled: canDriveTimers,
+    onExpire: () => postQuickDrawGuessAdvance(bootstrap.code).then(() => bootstrap.load()),
+  })
 
   const strokeData = normalizeStrokeData(session?.current_stroke_data ?? emptyStrokeData())
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -277,6 +322,32 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
     return <QuickDrawLiePlayerView gameCode={gameCode} />
   }
 
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
+  if (bootstrap.screen === 'late_join_choice' && bootstrap.game) {
+    return (
+      <LateJoinChoiceScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        context={lateJoin.context}
+        contextLoading={lateJoin.loading}
+        nameInput={bootstrap.joinName}
+        onNameChange={bootstrap.setJoinName}
+        joining={bootstrap.joining}
+        error={bootstrap.error}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        onJoinAsPlayer={() => void bootstrap.join(undefined, { joinAsViewer: false })}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
     return (
       <JoinScreen
@@ -286,6 +357,8 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
       />
     )
   }
@@ -409,17 +482,6 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
       <KeyboardAwareGameScroll ref={scrollRef} contentContainerStyle={styles.content} scrollEnabled={scrollEnabled}>
         <TurnBanner text={statusText} isMyTurn={isDrawer || canGuess} />
 
-        {isViewer && mePlayer && bootstrap.myPlayerId ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId}
-            game={bootstrap.game}
-            player={mePlayer}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
-
         {mode === 'team' && myTeamRow?.team ? (
           <View style={styles.teamRow}>
             <Text style={styles.teamRowLabel}>You're on</Text>
@@ -427,7 +489,7 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
           </View>
         ) : null}
 
-        {turnSecondsLeft > 0 && session.phase === 'turn' ? <TimerBadge seconds={turnSecondsLeft} /> : null}
+        <DeadlineTimerBadge deadlineAt={session?.turn_deadline_at} active={session.phase === 'turn'} />
 
         {mode === 'team' ? (
           <TeamScoreGrid
@@ -437,25 +499,14 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
             round={session.current_round}
             totalRounds={session.total_rounds}
           />
-        ) : (
-          <LeaderboardPanel
-            embedded
-            title="Leaderboard"
-            rows={liveIndividualScores.map((row) => ({
-              id: row.id,
-              name: row.name,
-              score: row.score,
-              highlight: row.id === bootstrap.myPlayerId,
-            }))}
-            highlightId={bootstrap.myPlayerId}
-          />
-        )}
+        ) : null}
 
         {session.phase === 'break' ? (
           <RoundBreakCard
             title={isLastTurn ? 'Last turn done' : 'Round break'}
             message={session.status_message ?? 'Next turn starting soon…'}
-            secondsLeft={breakSecondsLeft}
+            deadlineAt={session?.break_deadline_at}
+            active={session.phase === 'break'}
             detail={breakDetail}
           />
         ) : null}

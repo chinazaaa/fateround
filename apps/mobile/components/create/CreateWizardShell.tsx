@@ -3,7 +3,11 @@ import { Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { GameType } from '@fateround/shared'
+import { isCrosswordGame, isWordSearchGame, isWordScrambleGame } from '@fateround/shared/game-type-checks'
+import { isWhoSaidThis } from '@fateround/shared/poll-games'
+import { isLandmineGame } from '@fateround/shared/game-type-checks'
 import { GameTypePickerField } from '@/components/create/GameTypePickerField'
+import { LandmineCreatePanel } from '@/components/create/LandmineCreatePanel'
 import { ParticipantListEditor } from '@/components/create/ParticipantListEditor'
 import { StepIndicator } from '@/components/create/StepIndicator'
 import { UniversalLobbyFields } from '@/components/create/UniversalLobbyFields'
@@ -12,6 +16,7 @@ import { PartyRoomSettingsPanel } from '@/components/create/PartyRoomSettingsPan
 import { CustomContentPanel } from '@/components/create/CustomContentPanel'
 import { CustomSlotBuilderPanel } from '@/components/create/CustomSlotBuilderPanel'
 import { PlayerModePanel } from '@/components/create/PlayerModePanel'
+import { WhoSaidThisCreatePanel } from '@/components/create/WhoSaidThisCreatePanel'
 import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
 import { FormField } from '@/components/ui/FormField'
@@ -61,6 +66,21 @@ export function CreateWizardShell() {
     setError(null)
   }
 
+  // Player-facing content label, asked directly under a "Your own" CSV upload (for a Library
+  // pack we auto-fill from the pack name instead). Rendered by the custom-content + WST paths.
+  const categoryField = (
+    <FormField
+      label="Category"
+      hint="What is this CSV theme? Shown to players before they join."
+      value={state.contentLabel}
+      onChangeText={(contentLabel) => patchState({ contentLabel })}
+      placeholder="Maths, Countries, Mixed"
+      maxLength={40}
+      autoCapitalize="sentences"
+      autoCorrect={false}
+    />
+  )
+
   const onGameTypeChange = (gameType: GameType) => {
     setState((prev) => applyGameTypeChange(prev, gameType, limits))
     setStep('setup')
@@ -98,8 +118,7 @@ export function CreateWizardShell() {
     }
   }
 
-  const primaryLabel =
-    step === 'setup' && showPeopleStep ? 'Next: People' : creating ? 'Creating…' : 'Create & host'
+  const primaryLabel = step === 'setup' && showPeopleStep ? 'Next: People' : creating ? 'Creating…' : 'Create & host'
 
   const primaryDisabled = creating || (step === 'setup' && !state.title.trim())
 
@@ -176,18 +195,81 @@ export function CreateWizardShell() {
               onChange={(roomPatch) => patchState({ room: { ...state.room, ...roomPatch } })}
             />
 
-            <PartyRoomSettingsPanel
-              gameType={state.gameType}
-              party={state.party}
-              onChange={(partyPatch) => patchState({ party: { ...state.party, ...partyPatch } })}
-            />
+            {/* Who Said This is a single-step quick create: players just join and answer, so it
+                shows only its Questions source picker (no rounds/name-list/content panels). */}
+            {isWhoSaidThis(state.gameType) ? (
+              <>
+                <WhoSaidThisCreatePanel
+                  wst={state.wst}
+                  onChange={(wstPatch) => {
+                    const patch: Partial<CreateWizardState> = { wst: { ...state.wst, ...wstPatch } }
+                    // Auto-fill the category from a picked library deck name, unless the host typed their own.
+                    if (wstPatch.libraryPackTitle && !state.contentLabel.trim())
+                      patch.contentLabel = wstPatch.libraryPackTitle.slice(0, 40)
+                    patchState(patch)
+                  }}
+                />
+                {state.wst.source === 'custom' ? categoryField : null}
+              </>
+            ) : null}
 
-            <CustomContentPanel
-              gameType={state.gameType}
-              custom={state.custom}
-              roundsCount={state.party.roundsCount}
-              onChange={(customPatch) => patchState({ custom: { ...state.custom, ...customPatch } })}
-            />
+            {/* Landmine owns a dedicated settings panel (mine source, mode, elimination timer, phase
+                timers) instead of the generic party-room settings. */}
+            {isLandmineGame(state.gameType) ? (
+              <LandmineCreatePanel
+                value={state.landmine}
+                onChange={(landminePatch) => patchState({ landmine: { ...state.landmine, ...landminePatch } })}
+              />
+            ) : null}
+
+            {/* Puzzle games (crossword/word_search/word_scramble) show the content SOURCE first —
+                players pick Platform/Library/Your own, then the theme + difficulty (which depend on
+                that choice) appear below. Other games keep source last. */}
+            {isWhoSaidThis(state.gameType) || isLandmineGame(state.gameType)
+              ? null
+              : (() => {
+                  const isPuzzle =
+                    isCrosswordGame(state.gameType) ||
+                    isWordSearchGame(state.gameType) ||
+                    isWordScrambleGame(state.gameType)
+                  const party = (
+                    <PartyRoomSettingsPanel
+                      gameType={state.gameType}
+                      party={state.party}
+                      contentSource={state.custom.source}
+                      onChange={(partyPatch) => patchState({ party: { ...state.party, ...partyPatch } })}
+                    />
+                  )
+                  const content = (
+                    <>
+                      <CustomContentPanel
+                        gameType={state.gameType}
+                        custom={state.custom}
+                        roundsCount={state.party.roundsCount}
+                        onChange={(customPatch) => {
+                          const patch: Partial<CreateWizardState> = { custom: { ...state.custom, ...customPatch } }
+                          // Auto-fill the category from the picked library pack name, unless the host typed their own.
+                          if (customPatch.libraryPackTitle && !state.contentLabel.trim())
+                            patch.contentLabel = customPatch.libraryPackTitle.slice(0, 40)
+                          patchState(patch)
+                        }}
+                      />
+                      {/* Ask for the category right under a "Your own" CSV upload. */}
+                      {state.custom.source === 'custom' ? categoryField : null}
+                    </>
+                  )
+                  return isPuzzle ? (
+                    <>
+                      {content}
+                      {party}
+                    </>
+                  ) : (
+                    <>
+                      {party}
+                      {content}
+                    </>
+                  )
+                })()}
 
             <CustomSlotBuilderPanel
               gameType={state.gameType}
@@ -222,70 +304,70 @@ export function CreateWizardShell() {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.bg },
-  container: {
-    paddingHorizontal: theme.space.lg,
-    paddingBottom: 40,
-    gap: theme.space.lg,
-  },
-  back: { alignSelf: 'flex-start', marginTop: theme.space.xs },
-  backText: { color: theme.primaryMuted, fontSize: 16, fontWeight: '700' },
-  hero: {
-    gap: theme.space.xs,
-    paddingBottom: theme.space.xs,
-  },
-  kicker: {
-    color: theme.primaryMuted,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-  },
-  heading: {
-    color: theme.text,
-    fontSize: 32,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-  subtitle: {
-    color: theme.textMuted,
-    fontSize: 16,
-    lineHeight: 24,
-    maxWidth: 340,
-  },
-  typeSection: { gap: theme.space.sm },
-  typeHeading: {
-    color: theme.text,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  footer: {
-    paddingHorizontal: theme.space.lg,
-    paddingTop: theme.space.sm,
-    paddingBottom: theme.space.sm,
-    gap: theme.space.sm,
-    borderTopWidth: 1,
-    borderTopColor: theme.border,
-    backgroundColor: theme.bg,
-  },
-  error: {
-    color: theme.error,
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  webLink: {
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: theme.space.sm,
-  },
-  webLinkText: {
-    color: theme.textFaint,
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  webLinkAction: {
-    color: theme.primaryMuted,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-})
+    safe: { flex: 1, backgroundColor: theme.bg },
+    container: {
+      paddingHorizontal: theme.space.lg,
+      paddingBottom: 40,
+      gap: theme.space.lg,
+    },
+    back: { alignSelf: 'flex-start', marginTop: theme.space.xs },
+    backText: { color: theme.primaryMuted, fontSize: 16, fontWeight: '700' },
+    hero: {
+      gap: theme.space.xs,
+      paddingBottom: theme.space.xs,
+    },
+    kicker: {
+      color: theme.primaryMuted,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 2,
+      textTransform: 'uppercase',
+    },
+    heading: {
+      color: theme.text,
+      fontSize: 32,
+      fontWeight: '800',
+      letterSpacing: -0.3,
+    },
+    subtitle: {
+      color: theme.textMuted,
+      fontSize: 16,
+      lineHeight: 24,
+      maxWidth: 340,
+    },
+    typeSection: { gap: theme.space.sm },
+    typeHeading: {
+      color: theme.text,
+      fontSize: 18,
+      fontWeight: '800',
+    },
+    footer: {
+      paddingHorizontal: theme.space.lg,
+      paddingTop: theme.space.sm,
+      paddingBottom: theme.space.sm,
+      gap: theme.space.sm,
+      borderTopWidth: 1,
+      borderTopColor: theme.border,
+      backgroundColor: theme.bg,
+    },
+    error: {
+      color: theme.error,
+      fontSize: 14,
+      textAlign: 'center',
+    },
+    webLink: {
+      alignItems: 'center',
+      gap: 4,
+      paddingVertical: theme.space.sm,
+    },
+    webLinkText: {
+      color: theme.textFaint,
+      fontSize: 13,
+      textAlign: 'center',
+    },
+    webLinkAction: {
+      color: theme.primaryMuted,
+      fontSize: 14,
+      fontWeight: '700',
+    },
+  })

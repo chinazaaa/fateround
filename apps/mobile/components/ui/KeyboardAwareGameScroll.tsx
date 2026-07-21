@@ -1,27 +1,37 @@
 import { forwardRef } from 'react'
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, type ScrollViewProps } from 'react-native'
+import { Platform, ScrollView, StyleSheet, type ScrollViewProps } from 'react-native'
 
 /**
- * Drop-in replacement for the `<ScrollView>` that wraps a game's player view when
- * it contains a text input. It lifts the content above the software keyboard so
- * the focused field stays visible (the keyboard used to cover inputs that sit
- * low on the screen — e.g. the Quick Draw guess box, Text Charades description).
+ * Drop-in `<ScrollView>` for a game player view that contains a text input. It
+ * keeps the focused field visible above the software keyboard.
  *
- * - `KeyboardAvoidingView` shrinks the scroll area above the keyboard (iOS).
- * - `keyboardShouldPersistTaps="handled"` keeps the submit button tappable on the
- *   first tap while the keyboard is open (otherwise the first tap only dismisses it).
+ * iOS: `automaticallyAdjustKeyboardInsets` lets the native scroll view add a
+ * bottom inset the size of the keyboard and scroll the focused field into view.
+ * This replaces a hand-rolled `KeyboardAvoidingView`, whose `padding` behavior
+ * was miscomputed here — the scroll sits below the session header, so without an
+ * exact `keyboardVerticalOffset` (the header height) the lift was too small and
+ * low inputs stayed covered.
  *
- * Forwards a ref to the inner ScrollView so callers can `scrollToEnd()` on focus
- * when the input sits at the bottom of the content.
+ * Android: relies on `windowSoftInputMode=adjustResize` (Expo's default
+ * `softwareKeyboardLayoutMode: "resize"`), which resizes the window so the scroll
+ * area shrinks above the keyboard and the focused input scrolls into view.
+ *
+ * `keyboardShouldPersistTaps="handled"` keeps the submit button tappable on the
+ * first tap while the keyboard is open. Forwards a ref to the ScrollView so
+ * callers can also `scrollToEnd()` on focus for inputs at the very bottom.
  */
 export const KeyboardAwareGameScroll = forwardRef<ScrollView, ScrollViewProps>(function KeyboardAwareGameScroll(
   { style, ...props },
   ref
 ) {
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView ref={ref} style={[styles.flex, style]} keyboardShouldPersistTaps="handled" {...props} />
-    </KeyboardAvoidingView>
+    <ScrollView
+      ref={ref}
+      style={[styles.flex, style]}
+      keyboardShouldPersistTaps="handled"
+      automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+      {...props}
+    />
   )
 })
 

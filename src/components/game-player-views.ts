@@ -7,15 +7,18 @@ import { BingoPlayerView } from '@/components/bingo/BingoPlayerView'
 import { TriviaPlayerView } from '@/components/trivia/TriviaPlayerView'
 import { TwoTruthsPlayerView } from '@/components/two-truths/TwoTruthsPlayerView'
 import { NpatPlayerView } from '@/components/npat/NpatPlayerView'
+import { LandminePlayerView } from '@/components/landmine/LandminePlayerView'
 import { CodewordsPlayerView } from '@/components/codewords/CodewordsPlayerView'
 import { MonopolyPlayerView } from '@/components/monopoly/MonopolyPlayerView'
 import { YahtzeePlayerView } from '@/components/yahtzee/YahtzeePlayerView'
 import { WhotPlayerView } from '@/components/whot/WhotPlayerView'
 import { CrazyEightsPlayerView } from '@/components/crazy-eights/CrazyEightsPlayerView'
+import { UnoPlayerView } from '@/components/uno/UnoPlayerView'
 import { LudoPlayerView } from '@/components/ludo/LudoPlayerView'
 import { MahjongPlayerView } from '@/components/mahjong/MahjongPlayerView'
 import { SnakeLadderPlayerView } from '@/components/snake-and-ladder/SnakeLadderPlayerView'
 import { TicTacToePlayerView } from '@/components/tic-tac-toe/TicTacToePlayerView'
+import { PingPongPlayerView } from '@/components/ping-pong/PingPongPlayerView'
 import { ChessPlayerView } from '@/components/chess/ChessPlayerView'
 import { CheckersPlayerView } from '@/components/checkers/CheckersPlayerView'
 import { AyoPlayerView } from '@/components/ayo/AyoPlayerView'
@@ -28,6 +31,9 @@ import { MatchingPairsPlayerView } from '@/components/matching-pairs/MatchingPai
 import { QuiplashPlayerView } from '@/components/quiplash/QuiplashPlayerView'
 import { QuickDrawPlayerView } from '@/components/quick-draw/QuickDrawPlayerView'
 import { WordRushPlayerView } from '@/components/word-rush/WordRushPlayerView'
+import { CrosswordPlayerView } from '@/components/crossword/CrosswordPlayerView'
+import { WordSearchPlayerView } from '@/components/word-search/WordSearchPlayerView'
+import { WordScramblePlayerView } from '@/components/word-scramble/WordScramblePlayerView'
 
 export type GamePlayerView = ComponentType<{ gameCode: string }>
 
@@ -45,14 +51,17 @@ export const PLAYER_VIEW_REGISTRY: Partial<Record<GameType, GamePlayerView>> = {
   trivia: TriviaPlayerView,
   two_truths: TwoTruthsPlayerView,
   i_call_on: NpatPlayerView,
+  landmine: LandminePlayerView,
   monopoly: MonopolyPlayerView,
   yahtzee: YahtzeePlayerView,
   whot: WhotPlayerView,
   crazy_eights: CrazyEightsPlayerView,
+  uno: UnoPlayerView,
   ludo: LudoPlayerView,
   mahjong: MahjongPlayerView,
   snake_and_ladder: SnakeLadderPlayerView,
   tic_tac_toe: TicTacToePlayerView,
+  ping_pong: PingPongPlayerView,
   chess: ChessPlayerView,
   checkers: CheckersPlayerView,
   ayo: AyoPlayerView,
@@ -66,4 +75,7 @@ export const PLAYER_VIEW_REGISTRY: Partial<Record<GameType, GamePlayerView>> = {
   quiplash: QuiplashPlayerView,
   quick_draw: QuickDrawPlayerView,
   word_rush: WordRushPlayerView,
+  crossword: CrosswordPlayerView,
+  word_search: WordSearchPlayerView,
+  word_scramble: WordScramblePlayerView,
 }

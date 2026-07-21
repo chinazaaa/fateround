@@ -14,9 +14,11 @@ import {
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { MahjongTableView } from '@/components/games/mahjong/MahjongTableView'
-import { MahjongResultsCard } from '@/components/games/mahjong/MahjongResultsCard'
+import { MahjongShareCard } from '@/components/games/mahjong/MahjongShareCard'
 import { MahjongTileFace } from '@/components/games/mahjong/MahjongTileFace'
 import { DraggableHandTile, type PondRect } from '@/components/games/mahjong/DraggableHandTile'
 import {
@@ -26,8 +28,8 @@ import {
   mahjongSelfKongOptions,
   type MahjongSelfKongOption,
 } from '@/components/games/mahjong/mahjong-self-actions'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
-import { playerIsViewer } from '@fateround/shared/viewers'
+import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -36,16 +38,26 @@ import {
   getMahjongState,
   postMahjongClaim,
   postMahjongDiscard,
+  postMahjongExpireTurn,
   postMahjongPass,
   postMahjongRiichi,
 } from '@/lib/game-api'
+import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { mahjongLeaderboard } from '@/lib/finish-leaderboards'
 import { mahjongMeldClaims, isSeatAfterDiscarder, type MeldClaim } from '@/lib/mahjong-claims'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
   const [mahjongState, setMahjongState] = useState<MahjongStateResponse | null>(null)
@@ -88,7 +100,12 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
     waitingScreen: 'waiting',
     loadGameState,
     computeScreen: (game, playerId, stateData) => {
-      if (!playerId) return 'join'
+      if (!playerId) {
+        const pre = preJoinScreen(game, false)
+        if (pre === 'game_started_waiting') return 'game_started_waiting'
+        if (pre === 'game_ended') return 'game_ended'
+        return 'join'
+      }
       if (game.status === 'waiting') return 'waiting'
       if (game.status === 'finished' || stateData?.session?.phase === 'finished') return 'finished'
       if (game.status === 'active') return 'playing'
@@ -126,6 +143,17 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
   void timerTick
   const secondsLeft = mahjongSecondsLeft(session?.turn_deadline_at)
 
+  // Advance a stalled turn when the per-turn timer runs out (current player, plus
+  // any seat during the claim window — matches web). Server is idempotent.
+  useTurnExpiryTimer({
+    deadlineAt: session?.turn_deadline_at,
+    enabled: bootstrap.screen === 'playing' && (isMyTurn || session?.phase === 'claim'),
+    onExpire: () => postMahjongExpireTurn(bootstrap.code).then(() => bootstrap.load()),
+  })
+
+  const mahjongTimer = secondsLeft > 0 ? <TimerBadge seconds={secondsLeft} /> : null
+  const mahjongTimerPinned = useStickyTimer(mahjongTimer, [secondsLeft])
+
   const act = async (fn: () => Promise<unknown>) => {
     if (!bootstrap.myPlayerId || !bootstrap.myResumeToken || acting) return
     setActing(true)
@@ -138,47 +166,39 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   const discard = (tile: string) =>
-    void act(() =>
-      postMahjongDiscard(gameCode.toUpperCase(), bootstrap.myPlayerId!, bootstrap.myResumeToken!, tile)
-    )
+    void act(() => postMahjongDiscard(gameCode.toUpperCase(), bootstrap.myPlayerId!, bootstrap.myResumeToken!, tile))
 
   const passClaim = () =>
     void act(() => postMahjongPass(gameCode.toUpperCase(), bootstrap.myPlayerId!, bootstrap.myResumeToken!))
 
   const claimMahjong = () =>
-    void act(() =>
-      postMahjongClaim(gameCode.toUpperCase(), bootstrap.myPlayerId!, bootstrap.myResumeToken!, 'mahjong')
-    )
+    void act(() => postMahjongClaim(gameCode.toUpperCase(), bootstrap.myPlayerId!, bootstrap.myResumeToken!, 'mahjong'))
 
   const claimMeld = (meld: MeldClaim) =>
     void act(() =>
-      postMahjongClaim(
-        gameCode.toUpperCase(),
-        bootstrap.myPlayerId!,
-        bootstrap.myResumeToken!,
-        meld.type,
-        meld.tiles
-      )
+      postMahjongClaim(gameCode.toUpperCase(), bootstrap.myPlayerId!, bootstrap.myResumeToken!, meld.type, meld.tiles)
     )
 
   const declareSelfKong = (option: MahjongSelfKongOption) =>
     void act(() =>
-      postMahjongClaim(
-        gameCode.toUpperCase(),
-        bootstrap.myPlayerId!,
-        bootstrap.myResumeToken!,
-        'kong',
-        [option.tile]
-      )
+      postMahjongClaim(gameCode.toUpperCase(), bootstrap.myPlayerId!, bootstrap.myResumeToken!, 'kong', [option.tile])
     )
 
   const declareRiichi = () =>
-    void act(() =>
-      postMahjongRiichi(gameCode.toUpperCase(), bootstrap.myPlayerId!, bootstrap.myResumeToken!)
-    )
+    void act(() => postMahjongRiichi(gameCode.toUpperCase(), bootstrap.myPlayerId!, bootstrap.myResumeToken!))
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
     return (
       <JoinScreen
@@ -188,11 +208,10 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() =>
-          void bootstrap.join(
-            undefined,
-            bootstrap.game?.status === 'active' ? { joinAsViewer: true } : undefined
-          )
+          void bootstrap.join(undefined, bootstrap.game?.status === 'active' ? { joinAsViewer: true } : undefined)
         }
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
       />
     )
   }
@@ -210,9 +229,7 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
       .map((id) => bootstrap.players.find((p) => p.id === id)?.name)
       .filter((n): n is string => !!n)
     const title =
-      winnerNames.length > 0
-        ? `${winnerNames.join(' & ')} calls Mahjong!`
-        : session?.status_message ?? 'Wall draw'
+      winnerNames.length > 0 ? `${winnerNames.join(' & ')} calls Mahjong!` : (session?.status_message ?? 'Wall draw')
     return (
       <GameFinishPanel
         bootstrap={bootstrap}
@@ -227,7 +244,17 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
         )}
         winnerPlayerId={winnerIds[0] ?? null}
         roundKey={session?.id}
-        notice={<MahjongResultsCard session={session} />}
+        hideDefaultHeader
+        notice={
+          <MahjongShareCard
+            gameTitle={bootstrap.game.title}
+            winnerName={winnerNames[0] ?? null}
+            isDraw={winnerIds.length === 0}
+            session={session}
+            players={bootstrap.players}
+            highlightPlayerId={bootstrap.myPlayerId}
+          />
+        }
       />
     )
   }
@@ -279,17 +306,6 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title={batch8GameLabel('mahjong')} subtitle={mahjongPhaseLabel(session.phase)}>
       <ScrollView contentContainerStyle={styles.content}>
-        {isViewer && me && bootstrap.myPlayerId ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId}
-            game={bootstrap.game}
-            player={me}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
-
         <TurnBanner
           isMyTurn={isMyTurn || canClaim}
           text={
@@ -303,7 +319,7 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
 
         {session.status_message ? <Text style={styles.status}>{session.status_message}</Text> : null}
 
-        {secondsLeft > 0 ? <TimerBadge seconds={secondsLeft} /> : null}
+        {mahjongTimerPinned ? null : mahjongTimer}
 
         <MahjongTableView
           session={session}
@@ -380,11 +396,19 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
             ) : null}
             <View style={styles.actionRow}>
               {canRon ? (
-                <Pressable style={[styles.primaryBtn, styles.flexBtn, acting && styles.btnDisabled]} disabled={acting} onPress={claimMahjong}>
+                <Pressable
+                  style={[styles.primaryBtn, styles.flexBtn, acting && styles.btnDisabled]}
+                  disabled={acting}
+                  onPress={claimMahjong}
+                >
                   <Text style={styles.primaryBtnText}>Mahjong</Text>
                 </Pressable>
               ) : null}
-              <Pressable style={[styles.secondaryBtn, styles.flexBtn, acting && styles.btnDisabled]} disabled={acting} onPress={passClaim}>
+              <Pressable
+                style={[styles.secondaryBtn, styles.flexBtn, acting && styles.btnDisabled]}
+                disabled={acting}
+                onPress={passClaim}
+              >
                 <Text style={styles.secondaryBtnText}>Pass</Text>
               </Pressable>
             </View>
@@ -429,7 +453,6 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
             <Text style={styles.secondaryBtnText}>Declare riichi</Text>
           </Pressable>
         ) : null}
-
       </ScrollView>
     </GameShell>
   )
@@ -437,42 +460,42 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  content: { paddingBottom: 32, gap: 12 },
-  status: { color: theme.textSecondary, fontSize: 14 },
-  viewerNote: { color: theme.textFaint, fontSize: 13, textAlign: 'center', marginTop: 4 },
-  section: { color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 4 },
-  tileRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  meldBtn: {
-    backgroundColor: theme.primarySoft,
-    borderWidth: 1,
-    borderColor: theme.primary,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-  },
-  meldBtnText: { color: theme.primaryMuted, fontWeight: '800', fontSize: 14 },
-  meldRow: { gap: 6, marginBottom: 8 },
-  meldType: { color: theme.primaryMuted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
-  meldTiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
-  actionPanel: { backgroundColor: theme.surface, borderRadius: 12, padding: 14, gap: 10 },
-  actionTitle: { color: theme.text, fontSize: 16, fontWeight: '700' },
-  actionRow: { flexDirection: 'row', gap: 8 },
-  flexBtn: { flex: 1 },
-  primaryBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  // white on the solid rose button — intentional
-  primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  secondaryBtn: {
-    backgroundColor: theme.border,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  secondaryBtnText: { color: theme.text, fontWeight: '600', fontSize: 15 },
-  btnDisabled: { opacity: 0.5 },
-})
+    content: { paddingBottom: 32, gap: 12 },
+    status: { color: theme.textSecondary, fontSize: 14 },
+    viewerNote: { color: theme.textFaint, fontSize: 13, textAlign: 'center', marginTop: 4 },
+    section: { color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 4 },
+    tileRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    meldBtn: {
+      backgroundColor: theme.primarySoft,
+      borderWidth: 1,
+      borderColor: theme.primary,
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      alignItems: 'center',
+    },
+    meldBtnText: { color: theme.primaryMuted, fontWeight: '800', fontSize: 14 },
+    meldRow: { gap: 6, marginBottom: 8 },
+    meldType: { color: theme.primaryMuted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
+    meldTiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
+    actionPanel: { backgroundColor: theme.surface, borderRadius: 12, padding: 14, gap: 10 },
+    actionTitle: { color: theme.text, fontSize: 16, fontWeight: '700' },
+    actionRow: { flexDirection: 'row', gap: 8 },
+    flexBtn: { flex: 1 },
+    primaryBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 10,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    // white on the solid rose button — intentional
+    primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+    secondaryBtn: {
+      backgroundColor: theme.border,
+      borderRadius: 10,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    secondaryBtnText: { color: theme.text, fontWeight: '600', fontSize: 15 },
+    btnDisabled: { opacity: 0.5 },
+  })

@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from 'react'
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import {
   type Game,
   type Player,
@@ -19,13 +19,17 @@ import {
   teamLabel,
   wordRushMinLengthForRound,
 } from '@fateround/shared/word-rush'
-import { playerIsViewer } from '@fateround/shared/viewers'
+import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
+import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
+import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { ActivityFeed } from '@/components/party/ActivityFeed'
@@ -33,18 +37,33 @@ import { RoundBreakCard } from '@/components/party/RoundBreakCard'
 import { TeamBadge } from '@/components/party/TeamBadge'
 import { TeamPickerGrid } from '@/components/party/TeamPickerGrid'
 import { TeamScoreGrid } from '@/components/party/TeamScoreGrid'
-import { useAbsoluteDeadline } from '@/components/party/useAbsoluteDeadline'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
-import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
-import { TimerBadge } from '@/components/ui/TimerBadge'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
+import { DeadlineTimerBadge } from '@/components/ui/DeadlineTimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { postWordRushPrompt, postWordRushSubmit, postWordRushTeam } from '@/lib/game-api'
+import {
+  postWordRushAdvance,
+  postWordRushExpireTurn,
+  postWordRushPrompt,
+  postWordRushSubmit,
+  postWordRushTeam,
+} from '@/lib/game-api'
+import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { getSupabase } from '@/lib/supabase'
 import { WORD_RUSH_ANSWER_SELECT, WORD_RUSH_PLAYER_SELECT, WORD_RUSH_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'late_join_choice'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
@@ -59,6 +78,9 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
   const [acting, setActing] = useState(false)
   const [lastMessage, setLastMessage] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const scrollRef = useRef<ScrollView>(null)
+  // Lift a focused input above the keyboard (it sits low in the content).
+  const scrollInputIntoView = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: WordRushSession | null; ok: boolean }> => {
@@ -85,7 +107,13 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
 
   const computeScreen = useCallback(
     (game: Game, playerId: string | null, sessionData: WordRushSession | null): Screen => {
-      if (!playerId) return 'join'
+      if (!playerId) {
+        const pre = preJoinScreen(game, false)
+        if (pre === 'game_ended') return 'game_ended'
+        if (pre === 'game_started_waiting') return 'game_started_waiting'
+        if (pre === 'late_join_choice') return 'late_join_choice'
+        return 'join'
+      }
       if (game.status === 'waiting') return 'waiting'
       if (isWordRushResultsPhase(game.status, sessionData)) return 'finished'
       if (game.status === 'active') return 'playing'
@@ -104,6 +132,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     computeScreen,
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
+  const lateJoin = useLateJoinContext(gameCode, bootstrap.game, bootstrap.screen === 'late_join_choice')
 
   useGameTableSync(
     gameCode,
@@ -114,6 +143,8 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
 
   const mode = clampWordRushMode(bootstrap.game?.word_rush_mode)
   const numTeams = clampWordRushTeams(bootstrap.game?.word_rush_num_teams)
+  // Surface the mode (N teams / Individual) as the header pill on every screen.
+  useHeaderBadge(bootstrap.game ? (mode === 'team' ? `${numTeams} teams` : 'Individual') : null)
   const myTeamRow = teamRows.find((r) => r.player_id === bootstrap.myPlayerId)
   const isPromptSetter = session?.prompt_setter_player_id === bootstrap.myPlayerId
   const onMyTeam = mode === 'individual' || myTeamRow?.team === session?.active_team
@@ -162,6 +193,21 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     () => computeWordRushPlayerScores(bootstrap.players, teamRows),
     [bootstrap.players, teamRows]
   )
+  useGameScores(
+    useMemo(
+      () => (mode === 'team' ? null : Object.fromEntries(livePlayerScores.map((row) => [row.id, row.score]))),
+      [mode, livePlayerScores]
+    ),
+    { suffix: ' pts' }
+  )
+  useGameStats(
+    useMemo(() => {
+      if (mode === 'team') return null
+      const counts: Record<string, number> = {}
+      for (const a of answers) if (a.correct) counts[a.player_id] = (counts[a.player_id] ?? 0) + 1
+      return Object.fromEntries(livePlayerScores.map((row) => [row.id, `✅ ${counts[row.id] ?? 0} words`]))
+    }, [mode, livePlayerScores, answers])
+  )
 
   const recentCorrect = useMemo(() => {
     const nameById = new Map(bootstrap.players.map((p) => [p.id, p.name]))
@@ -178,14 +224,49 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
       }))
   }, [answers, bootstrap.players, mode])
 
-  const turnSecondsLeft = useAbsoluteDeadline(session?.turn_deadline_at, session?.phase === 'playing')
-  const intermissionSecondsLeft = useAbsoluteDeadline(
-    session?.intermission_deadline_at,
-    session?.phase === 'intermission'
-  )
+  // Drive the round forward when a phase timer runs out — any active non-viewer
+  // client fires (idempotent + deadline-gated server-side), matching web. The turn
+  // deadline covers both the playing and awaiting-prompt phases.
+  const canDriveTimers = bootstrap.game?.status === 'active' && !isViewer
+  useTurnExpiryTimer({
+    deadlineAt: session?.phase === 'playing' || session?.phase === 'awaiting_prompt' ? session?.turn_deadline_at : null,
+    enabled: canDriveTimers,
+    onExpire: () => postWordRushExpireTurn(bootstrap.code).then(() => bootstrap.load()),
+  })
+  useTurnExpiryTimer({
+    deadlineAt: session?.phase === 'intermission' ? session?.intermission_deadline_at : null,
+    enabled: canDriveTimers,
+    onExpire: () => postWordRushAdvance(bootstrap.code).then(() => bootstrap.load()),
+  })
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
+  if (bootstrap.screen === 'late_join_choice' && bootstrap.game) {
+    return (
+      <LateJoinChoiceScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        context={lateJoin.context}
+        contextLoading={lateJoin.loading}
+        nameInput={bootstrap.joinName}
+        onNameChange={bootstrap.setJoinName}
+        joining={bootstrap.joining}
+        error={bootstrap.error}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        onJoinAsPlayer={() => void bootstrap.join(undefined, { joinAsViewer: false })}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
     return (
       <JoinScreen
@@ -195,6 +276,8 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
       />
     )
   }
@@ -278,7 +361,9 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
 
   const submitWord = async () => {
     const text = wordText.trim()
-    if (!text || !bootstrap.myResumeToken) return
+    // `acting` guard: the keyboard "Go" path can re-fire while the first submit
+    // is still in flight (blurOnSubmit=false keeps focus), so block re-entry.
+    if (!text || !bootstrap.myResumeToken || acting) return
     setLastMessage(null)
     setSubmitError(null)
     setActing(true)
@@ -290,9 +375,16 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
         setSubmitError(result.message ?? `"${text}" isn't in the dictionary for this letter pair`)
       } else {
         setWordText('')
-        setLastMessage(`+${result.points ?? 0} pts`)
+        // Team mode scores +1 to the team and returns no per-word points, so
+        // "+0 pts" was misleading — show a plain "Correct!" unless we have a real
+        // individual-mode point value.
+        setLastMessage(result.points && result.points > 0 ? `+${result.points} pts` : 'Correct! ✓')
       }
       await bootstrap.load()
+    } catch (err) {
+      // Without this a thrown request (e.g. a 4xx like "not your team's turn")
+      // vanished silently — surface it in the same red field message.
+      setSubmitError(err instanceof Error ? err.message : 'Could not submit your word')
     } finally {
       setActing(false)
     }
@@ -332,19 +424,11 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     <GameShell
       bootstrap={bootstrap}
       title={batch5GameLabel('word_rush')}
-      subtitle={session.status_message ?? bootstrap.code}
+      // Just the code here — the round/team/letters (status_message) is already
+      // shown in the middle (turn banner + score grid), so it read as a duplicate.
+      subtitle={bootstrap.code}
     >
-      <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
-        {isViewer && bootstrap.game && me && bootstrap.myPlayerId ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId}
-            game={bootstrap.game}
-            player={me}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
+      <KeyboardAwareGameScroll ref={scrollRef} contentContainerStyle={styles.content}>
         <TurnBanner
           text={
             session.phase === 'intermission'
@@ -365,7 +449,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
           </View>
         ) : null}
 
-        {turnSecondsLeft > 0 && session.phase === 'playing' ? <TimerBadge seconds={turnSecondsLeft} /> : null}
+        <DeadlineTimerBadge deadlineAt={session?.turn_deadline_at} active={session.phase === 'playing'} />
 
         {mode === 'team' ? (
           <TeamScoreGrid
@@ -375,25 +459,14 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
             round={teamRound}
             totalRounds={session.total_rounds}
           />
-        ) : (
-          <LeaderboardPanel
-            embedded
-            title="Leaderboard"
-            rows={livePlayerScores.map((row) => ({
-              id: row.id,
-              name: row.name,
-              score: row.score,
-              highlight: row.id === bootstrap.myPlayerId,
-            }))}
-            highlightId={bootstrap.myPlayerId}
-          />
-        )}
+        ) : null}
 
         {session.phase === 'intermission' ? (
           <RoundBreakCard
             title="Round break"
             message={session.status_message ?? 'Next round starting soon…'}
-            secondsLeft={intermissionSecondsLeft}
+            deadlineAt={session?.intermission_deadline_at}
+            active={session.phase === 'intermission'}
             detail={mode === 'team' ? `Up next: ${teamLabel(session.active_team)}` : undefined}
           />
         ) : null}
@@ -423,6 +496,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
                 placeholderTextColor={theme.textFaint}
                 maxLength={1}
                 autoCapitalize="characters"
+                onFocus={scrollInputIntoView}
               />
               <Text style={styles.arrow}>→</Text>
               <TextInput
@@ -433,6 +507,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
                 placeholderTextColor={theme.textFaint}
                 maxLength={1}
                 autoCapitalize="characters"
+                onFocus={scrollInputIntoView}
               />
             </View>
             <Text style={styles.hint}>Min letters (at least {minLength})</Text>
@@ -444,6 +519,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
               placeholderTextColor={theme.textFaint}
               keyboardType="number-pad"
               maxLength={2}
+              onFocus={scrollInputIntoView}
             />
             <Pressable style={styles.primaryBtn} disabled={acting} onPress={() => void setPrompt()}>
               <Text style={styles.primaryText}>Set prompt</Text>
@@ -465,7 +541,14 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
               }}
               placeholder="Type a word"
               placeholderTextColor={theme.textFaint}
+              // Submit straight from the keyboard's "Go" key — reliable on the
+              // first press (the Submit button can sit behind the keyboard, where a
+              // first tap only dismisses it). blurOnSubmit=false keeps the keyboard
+              // up so team mode can fire off several words in a row.
+              returnKeyType="go"
+              blurOnSubmit={false}
               onSubmitEditing={() => void submitWord()}
+              onFocus={scrollInputIntoView}
             />
             <Pressable style={styles.primaryBtn} disabled={acting} onPress={() => void submitWord()}>
               <Text style={styles.primaryText}>Submit</Text>

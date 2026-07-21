@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -14,7 +14,9 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useRoomMemberJoin, useRoomMemberNamePrefill, useRoomMemberAutoJoin } from '@/hooks/useRoomMemberJoin'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
@@ -96,6 +98,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, MafiaStateResponse | null>({
     gameCode,
@@ -110,12 +113,16 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(game?.theme)
 
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
-    [{ table: 'games', column: 'id' }, 'mafia_sessions', 'mafia_player_states', 'mafia_chat_messages'],
+    [{ table: 'games', column: 'id' }, 'players', 'mafia_sessions', 'mafia_player_states', 'mafia_chat_messages'],
     load
   )
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()
   })
@@ -244,6 +251,34 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   const activePlayer = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const isViewer = !!(game && activePlayer && playerIsViewer(activePlayer, game))
 
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it. Purely additive — the in-page PlayerSessionControls stays as-is.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={activePlayer?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, activePlayer?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
   // ── Screens ──────────────────────────────────────────────────────────────────
 
   if (screen === 'loading') {
@@ -300,6 +335,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="mafia"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
@@ -332,6 +369,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               meId={myPlayerId}
               isHost={false}
               minPlayers={MAFIA_MIN_PLAYERS}
+              capacityGame={game}
               onToggleReady={(ready) => void toggleReplayReady(ready)}
               onStart={() => {}}
               pending={replayReadyPending}
@@ -347,6 +385,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myName}
@@ -399,13 +438,6 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           </div>
           <div className="flex items-center gap-2">
             <GameRulesLink gameType="mafia" />
-            <PlayerSessionControls
-              gameCode={gameCode}
-              playerId={myPlayerId!}
-              currentName={myName}
-              onRenamed={() => void load()}
-              onLeft={handlePlayerLeft}
-            />
           </div>
         </header>
 

@@ -1,8 +1,12 @@
 'use client'
 
+import { useMemo } from 'react'
 import { HostPageShell, hostPlayLayoutFlags } from '@/components/host/HostPageShell'
 import { EyeIcon, PlayIcon, SlidersIcon } from '@/components/host/host-icons'
-import type { GameStatus } from '@/types'
+import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { useRosterBase, useRosterManage } from '@/components/roster/RosterDrawerContext'
+import { playerIsViewer } from '@/lib/viewers'
+import type { Game, GameStatus, Player } from '@/types'
 
 export type HostTab = 'play' | 'manage'
 
@@ -29,6 +33,12 @@ export function HostGameLayout({
   primary,
   manage,
   finished,
+  game,
+  players,
+  hostPlayerId,
+  onHostRejoined,
+  onRemovePlayer,
+  noManageTab = false,
 }: {
   gameCode: string
   status: GameStatus | undefined
@@ -47,14 +57,62 @@ export function HostGameLayout({
   manage: React.ReactNode
   /** Results screen for finished games. Falls back to `manage` when omitted. */
   finished?: React.ReactNode
+  /** Current game — enables the mid-game "Join as player" banner when the host is dropped to spectator. */
+  game?: Game | null
+  /** Full roster — used to detect the host's own player row and open-seat availability. */
+  players?: ReadonlyArray<Player>
+  /** The host's own player row id (when the host joined to play along). */
+  hostPlayerId?: string | null
+  /** Called after the host promotes back to a player, to re-fetch game state. */
+  onHostRejoined?: () => void | Promise<unknown>
+  /** When set, the roster drawer gets a per-row Remove for the host. */
+  onRemovePlayer?: (playerId: string, playerName: string) => void
+  /**
+   * Drop the Manage tab: gameplay is always the body (no tabs). Host controls live in
+   * the header ⚙ gear (game settings + End game, registered via GameSettingsContext)
+   * and the roster drawer (players + Remove). `manage` is then only used as the
+   * finished-screen fallback. The mobile-parity target for in-game host UI.
+   */
+  noManageTab?: boolean
 }) {
   const isFinished = status === 'finished'
   const layout = hostPlayLayoutFlags(tab, showTabs, status)
   const primaryLabel = primaryKind === 'play' ? 'Play' : 'Watch'
 
+  // Feed the shared roster drawer (opened from the header) while the game is being
+  // played AND once it's finished — the finished roster carries winner/runner-up
+  // medal pills (useGamePlacements), matching mobile. In the lobby/waiting the
+  // roster lives in the lobby UI, so the header button stays hidden there. The
+  // host's own row is marked "you" via hostPlayerId; scores are layered on by each
+  // game view via useGameScores. Remove is enabled only when the view wires it.
+  useRosterBase(status === 'active' || status === 'finished' ? players : undefined, game, hostPlayerId)
+  const manageRemove = useMemo(
+    () => (onRemovePlayer ? (row: { id: string; name: string }) => onRemovePlayer(row.id, row.name) : undefined),
+    [onRemovePlayer]
+  )
+  useRosterManage(manageRemove ? { hostPlayerId: hostPlayerId ?? null, onRemove: manageRemove } : null)
+
+  // A host who joined to play can be flipped to spectator mid-game (e.g. a play-again lobby
+  // reset re-seats everyone). Unlike the player views, the host scaffold never surfaced a way
+  // back in — so mirror the player-side ViewerModeBanner here, gated to an active game where
+  // the host actually holds a (now-spectating) player row.
+  const hostPlayer = hostPlayerId && players ? (players.find((p) => p.id === hostPlayerId) ?? null) : null
+  const showHostRejoin = !!(
+    !isFinished &&
+    game &&
+    game.status === 'active' &&
+    hostPlayer &&
+    playerIsViewer(hostPlayer, game)
+  )
+
+  const tabsShown = showTabs && !isFinished && !noManageTab
+
   let body: React.ReactNode
   if (isFinished) {
     body = finished ?? manage
+  } else if (noManageTab) {
+    // No tabs — gameplay is always the body; host controls live in the ⚙ gear + drawer.
+    body = primary
   } else if (!showTabs) {
     body = manage
   } else if (tab === 'play') {
@@ -74,7 +132,18 @@ export function HostGameLayout({
       {!isFinished && header}
       {!isFinished && aboveTabs}
 
-      {showTabs && !isFinished && (
+      {showHostRejoin && game && hostPlayer && (
+        <ViewerModeBanner
+          gameCode={gameCode}
+          playerId={hostPlayerId}
+          game={game}
+          player={hostPlayer}
+          players={players}
+          onPromoted={onHostRejoined}
+        />
+      )}
+
+      {tabsShown && (
         <div className="grid grid-cols-2 gap-1.5 p-1.5 rounded-2xl bg-[var(--surface-inset-bg)] border border-[var(--border)]">
           <HostTabButton
             active={tab === 'play'}
@@ -91,7 +160,7 @@ export function HostGameLayout({
         </div>
       )}
 
-      {body}
+      {isFinished ? <div className="mx-auto w-full max-w-lg space-y-2">{body}</div> : body}
     </HostPageShell>
   )
 }

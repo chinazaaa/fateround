@@ -2,13 +2,15 @@ import { useCallback, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { boardInPlay, checkOverallWinner, markForPlayer, subBoardCells } from '@fateround/shared/tic-tac-toe'
 import { currentTurnPlayerId } from '@fateround/shared/tic-tac-toe'
-import { playerIsViewer } from '@fateround/shared/viewers'
+import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import type { Game, Player, TicTacToeBoardResult, TicTacToeMark, TicTacToeSession } from '@fateround/shared'
 import { useTicTacToeTurnTimer } from './tic-tac-toe/useTicTacToeTurnTimer'
-import { TicTacToeFinalBoardRecap } from './tic-tac-toe/TicTacToeFinalBoardRecap'
+import { TicTacToeShareCard } from './tic-tac-toe/TicTacToeShareCard'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -21,7 +23,15 @@ import { TIC_TAC_TOE_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'active'
+  | 'finished'
+  | 'not_found'
 
 function markGlyph(value: TicTacToeMark | null): string {
   return value === 'X' ? '✕' : value === 'O' ? '○' : ''
@@ -48,7 +58,12 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
 
   const computeScreen = useCallback(
     (game: Game, playerId: string | null, sessionData: TicTacToeSession | null): Screen => {
-      if (!playerId) return game.status === 'waiting' ? 'join' : 'join'
+      if (!playerId) {
+        const pre = preJoinScreen(game, false)
+        if (pre === 'game_started_waiting') return 'game_started_waiting'
+        if (pre === 'game_ended') return 'game_ended'
+        return 'join'
+      }
       if (game.status === 'waiting') return 'waiting'
       if (game.status === 'active' && sessionData?.status !== 'finished') return 'active'
       if (game.status === 'finished' || sessionData?.status === 'finished') return 'finished'
@@ -116,6 +131,16 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
     // Joining while the game is already running seats you as a read-only viewer,
     // so relabel the form to set that expectation (mirrors web + sibling games).
@@ -127,7 +152,9 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
         joining={bootstrap.joining}
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
-        onJoin={() => void bootstrap.join()}
+        onJoin={() => void bootstrap.join(undefined, joiningAsViewer ? { joinAsViewer: true } : undefined)}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
         kicker={joiningAsViewer ? 'Watch game' : 'Join game'}
         hint={
           joiningAsViewer
@@ -168,8 +195,12 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
           }
           winnerPlayerId={activeSession.winner_player_id}
           roundKey={activeSession.id}
+          hideDefaultHeader
           notice={
-            <TicTacToeFinalBoardRecap
+            <TicTacToeShareCard
+              gameTitle={bootstrap.game.title}
+              winnerName={winner ? winner.name : null}
+              isDraw={activeSession.is_draw}
               session={activeSession}
               players={bootstrap.players}
               myPlayerId={bootstrap.myPlayerId}

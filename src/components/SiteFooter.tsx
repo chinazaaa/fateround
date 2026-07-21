@@ -34,6 +34,9 @@ const PRIMARY_LINKS: FooterLink[] = [
   { href: '/tournament', label: 'Tournaments' },
   { href: '/rooms', label: 'Rooms' },
   { href: '/leaderboard', label: 'Leaderboard' },
+  { href: '/blog', label: 'Blog' },
+  { href: '/faq', label: 'FAQ & help' },
+  { href: '/contact', label: 'Contact us' },
 ]
 
 /** Curated order for the two marketing columns. Unlisted marketing pages simply don't appear here. */
@@ -117,6 +120,8 @@ export function SiteFooter() {
 
         <p className="foot-legal">
           <Link href="/privacy">Privacy Policy</Link>
+          {' · '}
+          <Link href="/terms">Terms of Service</Link>
         </p>
 
         <p className="foot-legal">

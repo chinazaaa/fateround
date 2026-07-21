@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import {
-  type SnakeLadderPlayerState,
-  type SnakeLadderSession,
-} from '@fateround/shared'
+import { type SnakeLadderPlayerState, type SnakeLadderSession } from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import { buildSnakeLadderStandings, currentPlayerId } from '@fateround/shared/snake-and-ladder'
+import { preJoinScreen } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { postSnakeLadderRoll } from '@/lib/game-api'
+import { postSnakeLadderExpireTurn, postSnakeLadderRoll } from '@/lib/game-api'
+import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { SNAKE_LADDER_PLAYER_STATE_SELECT, SNAKE_LADDER_SESSION_SELECT } from '@/lib/supabase-selects'
@@ -23,9 +25,16 @@ import { SnakeLadderBoard } from '@/components/games/snake-ladder/SnakeLadderBoa
 import { SnakeLadderDie } from '@/components/games/snake-ladder/SnakeLadderDie'
 import { SnakeLadderTurnBar } from '@/components/games/snake-ladder/SnakeLadderTurnBar'
 import { SnakeLadderShareCard } from '@/components/games/snake-ladder/SnakeLadderShareCard'
-import { useAbsoluteDeadline } from '@/components/party/useAbsoluteDeadline'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 /** Minimum time the die keeps spinning after a roll, so the moment reads as tactile. */
 const ROLL_MIN_MS = 700
@@ -80,7 +89,14 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
     waitingScreen: 'waiting',
     loadGameState,
     computeScreen: (game, playerId) => {
-      if (!playerId) return 'join'
+      if (!playerId) {
+        // Viewers-only for board games: route to the pre-join gates (watch, wait
+        // for lobby, or ended) instead of a player join the server would reject.
+        const pre = preJoinScreen(game, false)
+        if (pre === 'game_started_waiting') return 'game_started_waiting'
+        if (pre === 'game_ended') return 'game_ended'
+        return 'join'
+      }
       if (game.status === 'waiting') return 'waiting'
       if (game.status === 'active') return 'playing'
       return 'finished'
@@ -101,7 +117,14 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
 
   const timerActive = bootstrap.screen === 'playing' && session?.phase !== 'finished'
   const hasTimer = timerActive && !!session?.turn_deadline_at
-  const secondsLeft = useAbsoluteDeadline(session?.turn_deadline_at, hasTimer)
+
+  // Advance a stalled turn when its timer runs out. Any active client fires it
+  // (idempotent + deadline-gated server-side) — matches web.
+  useTurnExpiryTimer({
+    deadlineAt: session?.turn_deadline_at,
+    enabled: hasTimer,
+    onExpire: () => postSnakeLadderExpireTurn(bootstrap.code).then(() => bootstrap.load()),
+  })
 
   useGameTurnAlerts({
     gameCode: bootstrap.code,
@@ -131,6 +154,21 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
         position: s.position,
       }))
   }, [states, turnPlayerId, bootstrap.players])
+
+  // Roster drawer scoreboard: current square (sorts furthest-ahead first).
+  const rosterScores = useMemo(() => Object.fromEntries(states.map((s) => [s.player_id, s.position])), [states])
+  useGameScores(rosterScores, { suffix: '' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        states.map((s) => [
+          s.player_id,
+          s.position === 0 ? '📍 Start' : s.position >= 100 ? '🏁 Home!' : `📍 Square ${s.position}`,
+        ])
+      ),
+    [states]
+  )
+  useGameStats(rosterDetails)
 
   // Hold on the finished board for a few seconds so the winning move is visible
   // before switching to the final leaderboard. Only triggers when we witnessed live
@@ -172,7 +210,19 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
+    // Mid-game the only way in is as a read-only viewer.
+    const joiningAsViewer = bootstrap.game.status === 'active'
     return (
       <JoinScreen
         gameCode={bootstrap.code}
@@ -180,7 +230,16 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
         joining={bootstrap.joining}
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
-        onJoin={() => void bootstrap.join()}
+        onJoin={() => void bootstrap.join(undefined, joiningAsViewer ? { joinAsViewer: true } : undefined)}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        kicker={joiningAsViewer ? 'Watch game' : 'Join game'}
+        hint={
+          joiningAsViewer
+            ? 'Game in progress — enter a name to watch as a viewer (read-only).'
+            : 'No account needed — enter a display name and play.'
+        }
+        submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
       />
     )
   }
@@ -190,8 +249,7 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
   if (!bootstrap.game || !session) return <GameLoading />
 
   // While holding, keep rendering the active board (with a winner banner) instead of the leaderboard.
-  const effectiveScreen =
-    holdWin && bootstrap.screen === 'finished' && states.length > 0 ? 'playing' : bootstrap.screen
+  const effectiveScreen = holdWin && bootstrap.screen === 'finished' && states.length > 0 ? 'playing' : bootstrap.screen
 
   if (effectiveScreen === 'finished') {
     const winner = bootstrap.players.find((p) => p.id === session.winner_player_id)
@@ -221,7 +279,11 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
   const holdWinner = holdWin ? bootstrap.players.find((p) => p.id === session.winner_player_id) : null
 
   return (
-    <GameShell bootstrap={bootstrap} title={batch3GameLabel('snake_and_ladder')} subtitle={session.status_message ?? bootstrap.code}>
+    <GameShell
+      bootstrap={bootstrap}
+      title={batch3GameLabel('snake_and_ladder')}
+      subtitle={session.status_message ?? bootstrap.code}
+    >
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
@@ -237,8 +299,8 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
             <SnakeLadderTurnBar
               turnPlayerName={turnPlayerName}
               isMyTurn={isMyTurn}
-              secondsLeft={secondsLeft}
-              hasTimer={hasTimer}
+              deadlineAt={session?.turn_deadline_at}
+              active={timerActive}
             />
           </View>
         )}
@@ -256,7 +318,9 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
                   {row.name}
                   {isMe ? ' (you)' : ''}
                 </Text>
-                <Text style={styles.pos}>{row.position === 0 ? 'Start' : row.position >= 100 ? 'Home!' : `Sq ${row.position}`}</Text>
+                <Text style={styles.pos}>
+                  {row.position === 0 ? 'Start' : row.position >= 100 ? 'Home!' : `Sq ${row.position}`}
+                </Text>
               </View>
             )
           })}
@@ -267,15 +331,23 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
           {session.last_roll && !rolling ? (
             <Text style={styles.rollInfo}>
               Last roll: {session.last_roll}
-              {session.last_from != null && session.last_to != null ? `\n${session.last_from} → ${session.last_to}` : ''}
+              {session.last_from != null && session.last_to != null
+                ? `\n${session.last_from} → ${session.last_to}`
+                : ''}
             </Text>
           ) : null}
         </View>
       </ScrollView>
 
       {holdWin ? null : (
-        <Pressable style={[styles.btn, (!isMyTurn || acting || rolling) && styles.btnDisabled]} disabled={!isMyTurn || acting || rolling} onPress={() => void roll()}>
-          <Text style={styles.btnText}>{isMyTurn ? (acting || rolling ? 'Rolling…' : '🎲 Roll dice') : 'Waiting for turn…'}</Text>
+        <Pressable
+          style={[styles.btn, (!isMyTurn || acting || rolling) && styles.btnDisabled]}
+          disabled={!isMyTurn || acting || rolling}
+          onPress={() => void roll()}
+        >
+          <Text style={styles.btnText}>
+            {isMyTurn ? (acting || rolling ? 'Rolling…' : '🎲 Roll dice') : 'Waiting for turn…'}
+          </Text>
         </Pressable>
       )}
     </GameShell>
@@ -284,22 +356,39 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  scroll: { flex: 1, marginHorizontal: -16 },
-  scrollContent: { paddingHorizontal: 16, paddingBottom: 8 },
-  list: { gap: 8, marginTop: 12 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, backgroundColor: theme.surface, borderRadius: 12, borderWidth: 1, borderColor: 'transparent' },
-  rowTurn: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
-  dot: { width: 14, height: 14, borderRadius: 7 },
-  name: { color: theme.text, flex: 1, fontWeight: '600' },
-  pos: { color: '#fcd34d', fontWeight: '700' },
-  turnBarWrap: { marginBottom: 12 },
-  winBanner: { marginBottom: 12, padding: 12, borderRadius: 12, alignItems: 'center', backgroundColor: theme.primarySoft, borderWidth: 1, borderColor: theme.primary },
-  winBannerTitle: { color: theme.text, fontWeight: '900', fontSize: 18 },
-  winBannerSub: { color: theme.textMuted, fontSize: 12, marginTop: 2 },
-  dieRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14, marginVertical: 12 },
-  rollInfo: { color: theme.textMuted, textAlign: 'center' },
-  btn: { backgroundColor: theme.primary, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
-  btnDisabled: { opacity: 0.45 },
-  // white on the solid rose button — intentional
-  btnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
-})
+    scroll: { flex: 1, marginHorizontal: -16 },
+    scrollContent: { paddingHorizontal: 16, paddingBottom: 8 },
+    list: { gap: 8, marginTop: 12 },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      padding: 12,
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: 'transparent',
+    },
+    rowTurn: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+    dot: { width: 14, height: 14, borderRadius: 7 },
+    name: { color: theme.text, flex: 1, fontWeight: '600' },
+    pos: { color: '#fcd34d', fontWeight: '700' },
+    turnBarWrap: { marginBottom: 12 },
+    winBanner: {
+      marginBottom: 12,
+      padding: 12,
+      borderRadius: 12,
+      alignItems: 'center',
+      backgroundColor: theme.primarySoft,
+      borderWidth: 1,
+      borderColor: theme.primary,
+    },
+    winBannerTitle: { color: theme.text, fontWeight: '900', fontSize: 18 },
+    winBannerSub: { color: theme.textMuted, fontSize: 12, marginTop: 2 },
+    dieRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14, marginVertical: 12 },
+    rollInfo: { color: theme.textMuted, textAlign: 'center' },
+    btn: { backgroundColor: theme.primary, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
+    btnDisabled: { opacity: 0.45 },
+    // white on the solid rose button — intentional
+    btnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  })

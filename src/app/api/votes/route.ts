@@ -4,6 +4,7 @@ import { isVoterOnlyMode } from '@/lib/participant-mode'
 import { createVoteSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { computeTriviaPoints } from '@/lib/trivia'
 import { canPlayerVoteInRound, getRoundParticipantGender, playerVoteGenderForRound } from '@/lib/participants'
 import {
   isAssignmentComplete,
@@ -69,14 +70,14 @@ export async function POST(req: NextRequest) {
     // Scope the round to the authorized game so a known roundId from another game is rejected.
     supabase
       .from('rounds')
-      .select('participant_ids, submitter_player_id, quote_text')
+      .select('participant_ids, submitter_player_id, quote_text, started_at, quote_submitted_at')
       .eq('id', roundId)
       .eq('game_id', gameId.toUpperCase())
       .maybeSingle(),
     supabase
       .from('games')
       .select(
-        'game_type, participant_mode, pair_vote_mode, custom_slots, gender_based, status, session_started_at, custom_questions'
+        'game_type, participant_mode, pair_vote_mode, custom_slots, gender_based, status, session_started_at, custom_questions, timer_seconds'
       )
       .eq('id', gameId.toUpperCase())
       .maybeSingle(),
@@ -102,6 +103,8 @@ export async function POST(req: NextRequest) {
     target_participant_id: string | null
     anime_choice?: string | null
     picked_number?: number | null
+    response_ms?: number | null
+    points?: number | null
   }
 
   if (isWhoSaidThis(gameType)) {
@@ -123,6 +126,25 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Invalid pick — not one of the choices' }, { status: 400 })
       }
 
+      // Speed scoring ("fastest correct wins"): points reward a correct answer weighted by how
+      // quickly it came in, with a bonus for the first correct answerer — same formula as trivia.
+      const isCorrect = animeChoice === animeMetadata.correct_character
+      const roundStart = round.quote_submitted_at ?? round.started_at
+      const startMs = roundStart ? Date.parse(roundStart) : Date.now()
+      const timerMs = Math.max(1, (game.timer_seconds ?? 30) * 1000)
+      const responseMs = Math.max(0, Math.min(timerMs, Date.now() - startMs))
+      let isFirstCorrect = false
+      if (isCorrect) {
+        const { count: priorCorrect } = await supabase
+          .from('votes')
+          .select('id', { count: 'exact', head: true })
+          .eq('round_id', roundId)
+          .eq('anime_choice', animeMetadata.correct_character)
+          .neq('player_id', playerId)
+        isFirstCorrect = (priorCorrect ?? 0) === 0
+      }
+      const points = computeTriviaPoints({ isCorrect, responseMs, timerMs, isFirstCorrect })
+
       row = {
         kiss_participant_id: null,
         marry_participant_id: null,
@@ -132,6 +154,8 @@ export async function POST(req: NextRequest) {
         target_player_id: null,
         target_participant_id: null,
         anime_choice: animeChoice,
+        response_ms: responseMs,
+        points,
       }
     } else {
       // Player round: existing logic

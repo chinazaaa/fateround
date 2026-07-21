@@ -1,10 +1,16 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { GamePlayerChrome } from '@/components/GamePlayerChrome'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
+import { ShareResults } from '@/components/ShareResults'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import {
   MatchingPairsStatDetails,
   MatchingPairsFinalBreakdown,
@@ -127,6 +133,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
   // Flash feedback
   const [lastFlashType, setLastFlashType] = useState<'match' | 'miss' | 'streak' | null>(null)
+  const finishedCaptureRef = useRef<HTMLDivElement>(null)
   const flashRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const flipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -208,7 +215,17 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             // Start memorization phase for fresh rounds (no submissions yet)
             if (subs.length === 0 && gameData.status === 'active' && memorizeRoundRef.current !== roundData.id) {
               memorizeRoundRef.current = roundData.id
-              setMemorizeCountdown(getMemorizeSeconds(parsedMeta.gridSizePairs))
+              const memorizeDuration = getMemorizeSeconds(parsedMeta.gridSizePairs)
+              if (roundData.started_at) {
+                const elapsedSeconds = (Date.now() - new Date(roundData.started_at).getTime()) / 1000
+                if (elapsedSeconds < memorizeDuration) {
+                  setMemorizeCountdown(Math.max(1, Math.ceil(memorizeDuration - elapsedSeconds)))
+                } else {
+                  setMemorizeCountdown(null)
+                }
+              } else {
+                setMemorizeCountdown(memorizeDuration)
+              }
             }
 
             // Reconstruct streak & points from last submission
@@ -300,6 +317,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, MatchingPairsGameState>({
     gameCode,
@@ -525,11 +543,14 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           } else {
             const d = await res.json()
             if (d.finishRank) setFinishRank(d.finishRank)
+            if (d.currentStreak !== undefined) setCurrentStreak(d.currentStreak)
+            if (d.pointsAfter !== undefined) setTotalPoints(d.pointsAfter)
             // Bug #2 fix: call load() after a finishing flip so computeScreen
             // transitions to 'waiting_for_others' immediately. Without this,
             // setFinished(true) updates local state but screen stays on 'playing'
             // because computeScreen only reads state.ownFinished (set inside load).
-            if (justFinished) {
+            if (d.finished || justFinished) {
+              setFinished(true)
               void load()
             } else {
               // Non-finishing match: just refresh submission counts.
@@ -575,6 +596,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             const d = await res.json()
             toastError(d.error ?? 'Submit error')
           } else {
+            const d = await res.json()
+            if (d.currentStreak !== undefined) setCurrentStreak(d.currentStreak)
+            if (d.pointsAfter !== undefined) setTotalPoints(d.pointsAfter)
             // Refresh submissions to keep local state in sync
             const { data } = await supabase
               .from('memory_match_submissions')
@@ -606,8 +630,38 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
   // ── Derived values ─────────────────────────────────────────────────────────
 
+  const router = useRouter()
   const me = players.find((p) => p.id === myPlayerId)
   const isViewer = !!(game && me && playerIsViewer(me, game))
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it. Purely additive.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={me?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
   const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
     gameCode,
     game,
@@ -679,6 +733,21 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     game?.timer_seconds
   )
 
+  // Live scores feed the shared roster drawer (opened from the header).
+  const rosterScores = useMemo(
+    () => Object.fromEntries(leaderboard.map((row) => [row.playerId, row.finalScore])),
+    [leaderboard]
+  )
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        leaderboard.map((row) => [row.playerId, `🃏 ${row.pairsMatched} pair${row.pairsMatched === 1 ? '' : 's'}`])
+      ),
+    [leaderboard]
+  )
+  useGameStats(rosterDetails)
+
   // Per-round leaderboard for the round_results screen — uses tallyMatchingPairsScore
   // directly (not the cumulative builder) so per-round stats (streak, penalty, placement
   // bonus) display correctly in the stat accordion.
@@ -732,6 +801,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="matching_pairs"
           submitLabel="Join game"
@@ -778,6 +849,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={MATCHING_PAIRS_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -792,6 +864,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={me?.name ?? ''}
@@ -811,43 +884,62 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     const iWon = leaderboard.length > 1 && leaderboard[0]?.playerId === myPlayerId && leaderboard[0]?.finalScore > 0
     return (
       <MatchingPairsPlayShell>
-        <div className="glass-card-strong p-8 text-center space-y-2">
-          <p className="text-4xl">🏆</p>
-          <p className="text-2xl font-black">Puzzle complete!</p>
-          {leaderboard[0] && (
-            <p className="text-muted text-base">
-              {iWon
-                ? 'You won! 🎉'
-                : `${leaderboard[0].name} wins with ${leaderboard[0].finalScore.toLocaleString()} pts`}
-            </p>
-          )}
+        <div ref={finishedCaptureRef} className="space-y-4">
+          <div className="glass-card-strong p-8 text-center space-y-2">
+            <p className="text-4xl">🏆</p>
+            <p className="text-2xl font-black">Puzzle complete!</p>
+            {leaderboard[0] && (
+              <p className="text-muted text-base">
+                {iWon
+                  ? 'You won! 🎉'
+                  : `${leaderboard[0].name} wins with ${leaderboard[0].finalScore.toLocaleString()} pts`}
+              </p>
+            )}
+          </div>
+          <PaginatedLeaderboard
+            title="Final leaderboard"
+            rows={leaderboard.map((row, i) => ({
+              id: row.playerId,
+              rank: i + 1,
+              name: row.name,
+              score: row.finalScore,
+              correctCount: row.pairsMatched,
+              expandDetails: (
+                <MatchingPairsFinalBreakdown
+                  playerId={row.playerId}
+                  allSubmissions={allSubmissions}
+                  allProgress={allProgress}
+                  gridSizePairs={meta?.gridSizePairs ?? 8}
+                  sessionStartedAt={game?.session_started_at ?? null}
+                  roundStartedAtMap={roundStartedAtMap}
+                  totalRounds={game?.rounds_count ?? 1}
+                  timerSeconds={game?.timer_seconds ?? null}
+                />
+              ),
+            }))}
+            totalQuestions={meta ? meta.gridSizePairs * (game?.rounds_count ?? 1) : undefined}
+            highlightId={myPlayerId ?? undefined}
+            scoreLabel={(n) => `${n} pts`}
+            emphasizeLeader
+          />
         </div>
-        <PaginatedLeaderboard
-          title="Final leaderboard"
-          rows={leaderboard.map((row, i) => ({
-            id: row.playerId,
-            rank: i + 1,
-            name: row.name,
-            score: row.finalScore,
-            correctCount: row.pairsMatched,
-            expandDetails: (
-              <MatchingPairsFinalBreakdown
-                playerId={row.playerId}
-                allSubmissions={allSubmissions}
-                allProgress={allProgress}
-                gridSizePairs={meta?.gridSizePairs ?? 8}
-                sessionStartedAt={game?.session_started_at ?? null}
-                roundStartedAtMap={roundStartedAtMap}
-                totalRounds={game?.rounds_count ?? 1}
-                timerSeconds={game?.timer_seconds ?? null}
+        {game && (
+          <HostGameFinishedActions
+            variant="winner"
+            gameCode={game.id}
+            shareButton={
+              <ShareResults
+                captureRef={finishedCaptureRef}
+                game={game}
+                participants={[]}
+                votes={[]}
+                rounds={[]}
+                players={players}
+                primary
               />
-            ),
-          }))}
-          totalQuestions={meta ? meta.gridSizePairs * (game?.rounds_count ?? 1) : undefined}
-          highlightId={myPlayerId ?? undefined}
-          scoreLabel={(n) => `${n} pts`}
-          emphasizeLeader
-        />
+            }
+          />
+        )}
         {iWon && (
           <PostWinToCommunity
             gameType="matching_pairs"
@@ -1082,7 +1174,6 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 function MatchingPairsPlayShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col">
-      <GamePlayerChrome />
       <main className="pt-16 flex-1 px-4 py-8 max-w-lg mx-auto w-full space-y-6">{children}</main>
     </div>
   )

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 
 const cap = vi.hoisted(() => ({
   ons: [] as Array<{
@@ -11,6 +11,7 @@ const cap = vi.hoisted(() => ({
   subscribed: false,
   removed: false,
   channelName: '',
+  statusCb: undefined as ((status: string) => void) | undefined,
 }))
 
 vi.mock('@/lib/supabase', () => {
@@ -19,8 +20,9 @@ vi.mock('@/lib/supabase', () => {
       cap.ons.push({ event, config, cb })
       return channel
     },
-    subscribe() {
+    subscribe(cb?: (status: string) => void) {
       cap.subscribed = true
+      cap.statusCb = cb
       return channel
     },
   }
@@ -44,6 +46,7 @@ beforeEach(() => {
   cap.subscribed = false
   cap.removed = false
   cap.channelName = ''
+  cap.statusCb = undefined
   vi.useFakeTimers()
 })
 afterEach(() => vi.useRealTimers())
@@ -88,6 +91,30 @@ describe('useGameTableSync', () => {
     expect(reload).toHaveBeenCalledTimes(1) // reconciliation still runs
   })
 
+  it('skips the reconciliation reload when apply returns true (the W1 delta fast-path)', async () => {
+    const reload = vi.fn()
+    const apply = vi.fn(() => true) // "row fully absorbed — no refetch needed"
+    renderHook(() => useGameTableSync('ABCD', [{ table: 'tic_tac_toe_sessions', apply }], reload))
+
+    const row = { id: 's1', updated_at: '2026-01-01T00:00:01Z', status: 'active' }
+    cap.ons[0].cb({ eventType: 'UPDATE', new: row })
+    expect(apply).toHaveBeenCalledExactlyOnceWith(row)
+    await vi.advanceTimersByTimeAsync(150)
+    expect(reload).not.toHaveBeenCalled() // the whole point: no full multi-table refetch
+  })
+
+  it('still reloads when apply returns false (a status change that must reconcile)', async () => {
+    const reload = vi.fn()
+    // Mimics a view that skips ordinary moves but reloads on the finishing row.
+    const apply = vi.fn((row: Record<string, unknown>) => row.status === 'active')
+    renderHook(() => useGameTableSync('ABCD', [{ table: 'tic_tac_toe_sessions', apply }], reload))
+
+    cap.ons[0].cb({ eventType: 'UPDATE', new: { id: 's1', status: 'active' } }) // move → skip
+    cap.ons[0].cb({ eventType: 'UPDATE', new: { id: 's1', status: 'finished' } }) // finish → reload
+    await vi.advanceTimersByTimeAsync(150)
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
   it('skips apply for DELETEs and payloads without a row, but always reloads', async () => {
     const reload = vi.fn()
     const apply = vi.fn()
@@ -111,6 +138,15 @@ describe('useGameTableSync', () => {
     expect(apply).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(150)
     expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns connected only while the channel reports SUBSCRIBED (gates the safety-net poll)', () => {
+    const { result } = renderHook(() => useGameTableSync('ABCD', ['scrabble_sessions'], () => {}))
+    expect(result.current).toBe(false) // not connected until the channel confirms
+    act(() => cap.statusCb?.('SUBSCRIBED'))
+    expect(result.current).toBe(true)
+    act(() => cap.statusCb?.('CHANNEL_ERROR')) // socket dropped → poll should resume
+    expect(result.current).toBe(false)
   })
 
   it('does not subscribe when disabled or missing gameCode', () => {

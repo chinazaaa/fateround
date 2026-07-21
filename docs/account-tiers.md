@@ -81,6 +81,9 @@ People sign up to **not lose things**, not to play.
 **What only an account gives:**
 
 - **A self that persists** — profile, avatar, stats, game + tournament history.
+- **Frictionless join** — never re-type your name or re-pick your avatar. Guests fill the name
+  field on every join; a logged-in player joins/hosts in one tap as themselves, using the name,
+  avatar, and preferences saved on their profile. (Small everyday payoff that makes signup worth it.)
 - **Trophies & Trophy Level** — synced across devices. Full spec:
   [`trophies-and-streaks.md`](./trophies-and-streaks.md).
 - **The streak** 🔥 — any game or Daily Challenge today keeps it alive (not Daily-only).
@@ -88,7 +91,7 @@ People sign up to **not lose things**, not to play.
 - **Owning cosmetics** — themes, skins, frames. **No Pro required.**
 - **Friends + rematch** — "play again with the same crew."
 - **Clubs** — persistent teams (see below).
-- **Claim guest history** — 30-day window; signup feels like *claiming*, not starting over.
+- **Claim guest history** — 90-day window; signup feels like *claiming*, not starting over.
 - **Come-back notifications** — streak nudge, new Daily, seasonal drop live.
 
 **Signup prompts (moment-of-value):**
@@ -240,7 +243,8 @@ Nobody is forced up a tier. Each step is opt-in at the moment of earned value.
 1. **Free club size cap = 20 members.**
 2. **Hosting is identical for Guest and Account until Pro.** Account = identity; Pro = power.
 3. **Streak = any game played today** (not Daily-only).
-4. **Guest-history claim window = 30 days.**
+4. **Guest-history claim / anonymous-retention window = 90 days** (revised up from 30 on
+   2026-07-17 to unify with the trophies anon-retention window — one number, not two).
 5. **Clubs free now; monetize crests/seasons later.**
 6. **Premium themes are cosmetics, not Pro.** Free tier keeps 2–3 good themes.
 7. **Tournaments free to play; Pro = host power only.**

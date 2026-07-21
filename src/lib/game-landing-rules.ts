@@ -722,6 +722,113 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     },
   ],
 
+  uno: [
+    {
+      title: 'Objective',
+      points: [
+        'Be the first player to get rid of all the cards in your hand.',
+        'Match the top of the discard pile by colour, number, or symbol — or play a Wild to name the colour opponents must follow.',
+      ],
+    },
+    {
+      title: 'Setup',
+      points: [
+        '2–10 players join a room. Each player is dealt 7 cards from the 108-card deck.',
+        'The rest form the draw pile, with one number card turned face-up to start the discard pile.',
+      ],
+    },
+    {
+      title: 'How to play',
+      points: [
+        "On your turn, play a card matching the top card's colour, number, or symbol.",
+        'If you cannot (or choose not to) play, draw a card — if it can be played you may play it or keep it; otherwise your turn ends.',
+        'When the draw pile runs out, played cards (except the current top card) are shuffled back in as a new draw pile.',
+        'If nobody can play and no cards can be drawn, the game ends — lowest hand total wins.',
+      ],
+    },
+    {
+      title: 'Special cards',
+      points: [
+        'Skip — the next player loses their turn.',
+        'Reverse — the direction of play flips (acts as a Skip in a 2-player game).',
+        'Draw Two — the next player draws 2 cards and is skipped.',
+        'Wild — play on anything and name the colour the next player must follow.',
+        'Wild Draw Four — name the colour and the next player draws 4. Playable anytime, but can be challenged.',
+      ],
+    },
+    {
+      title: 'Calling UNO',
+      points: [
+        'When you play your second-to-last card, call "UNO" — leaving you with one card.',
+        'If you forget before the next player takes their turn, you draw a penalty (2 cards by default; the host can raise it to 4).',
+      ],
+    },
+    {
+      title: '0-7 rule (optional)',
+      points: [
+        'A host toggle for a spicier game — off by default.',
+        'Play a 0 — every player passes their entire hand to the next player in the current direction of play.',
+        'Play a 7 — swap your whole hand with any player you choose.',
+      ],
+    },
+    {
+      title: 'Stacking (optional)',
+      points: [
+        'A host toggle — off by default.',
+        'When you are hit with a Draw Two you may play your own Draw Two instead of drawing; the penalty grows by 2 and passes to the next player. Draw Four stacks the same way on Draw Four (+4).',
+        'The stack keeps growing until someone can’t (or won’t) add to it — that player draws the whole pile and loses their turn.',
+        'You can only stack like-for-like: a Draw Two on a Draw Two, a Draw Four on a Draw Four.',
+        'When stacking and the Wild Draw Four challenge are both on, the player who would have to draw the whole pile can still challenge — they challenge the most recent Wild Draw Four (the last person to stack one).',
+      ],
+    },
+    {
+      title: 'Multi-Play (optional)',
+      points: [
+        'A host setting — Off, Same colour, Same number, or Same colour or number (off by default).',
+        'On your turn, tap “Play multiple”, then tap the cards you want to lay down together and confirm — so you can dump all your reds, or all your 6s, in one turn.',
+        'The first card must legally match the top of the discard pile, and every card in the set must fit the chosen grouping rule.',
+        'Action cards can be included; their effects apply and the last card you place decides what the next player must match.',
+      ],
+    },
+    {
+      title: 'Team-Up 2v2 (optional)',
+      points: [
+        'A host setting chosen when creating the room — exactly 4 players in 2 teams of 2.',
+        'Teams are drawn at random and seated alternating, so teammates always sit across the table and play in strict order (you never skip to your partner).',
+        'You can see your teammate’s hand at all times (shown as a read-only “Partner” panel) — a digital-only edge; opponents still can’t see either of your hands.',
+        'The round ends the moment either member of a team empties their hand — that team wins, no matter how many cards their partner is still holding.',
+        'Penalties still hit only the targeted player; with Stacking on, the target can play their own matching Draw card on their turn to pass it to an opponent. Everyone still calls “UNO” for themselves.',
+      ],
+    },
+    {
+      title: 'Wild Draw Four challenge',
+      points: [
+        'A Wild Draw Four is only meant to be played when you have no card of the current colour.',
+        'The next player can accept the draw, or challenge: the system reveals the hand.',
+        'If the player was bluffing (held the colour), they draw 4 instead — the challenger is safe.',
+        'If the challenge is wrong, the challenger draws 6 (the 4 they refused plus a 2 penalty) and is skipped.',
+        'Hosts can turn the challenge off, in which case a Wild Draw Four always makes the next player draw 4.',
+      ],
+    },
+    {
+      title: 'Card values (for scoring)',
+      points: [
+        'Values only matter when a timed game ends before someone empties their hand — lowest hand total wins.',
+        'Number cards — worth their face value (0–9).',
+        'Skip, Reverse, Draw Two — 20 points each.',
+        'Wild and Wild Draw Four — 50 points each, so avoid getting stuck holding them.',
+      ],
+    },
+    {
+      title: 'Game length',
+      points: [
+        'The host can set a game length (10, 15, 30 minutes, etc.) or play with no limit.',
+        'First to empty their hand wins during normal play (no game clock).',
+        'With a game clock, time running out ends the game — lowest hand total wins.',
+      ],
+    },
+  ],
+
   ludo: [
     {
       title: 'Objective',
@@ -921,6 +1028,31 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'Get three small boards in a row, column, or diagonal to win the game immediately.',
         'A small board that fills with no winner counts as a draw and helps neither player.',
         'Play again resets every board for a fresh rematch — marks stay the same.',
+      ],
+    },
+  ],
+
+  ping_pong: [
+    {
+      title: 'Objective',
+      points: [
+        "Hit the ball back and forth. Don't miss.",
+        'Score when your opponent whiffs it or hits it out of bounds.',
+        'First to the target score wins — but you have to win by two.',
+      ],
+    },
+    {
+      title: 'Setup',
+      points: [
+        'Two players join. The host picks the winning score (3 to 21).',
+        'One player takes the top paddle, the other takes the bottom.',
+      ],
+    },
+    {
+      title: 'How to play',
+      points: [
+        'Drag your paddle to block and return the ball.',
+        'If you tie at match point (like 6-6 in a game to 7), you enter overtime. Play continues until someone takes a 2-point lead.',
       ],
     },
   ],
@@ -1401,6 +1533,122 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'Stick to simple shapes — teammates guess from your sketch, not your art degree.',
         'Use the eraser and undo if you mess up; speed matters more than polish.',
         'In team mode, only players on the active team can score guesses during that turn.',
+      ],
+    },
+  ],
+  crossword: [
+    {
+      title: 'Objective',
+      points: [
+        'Everyone races on the same crossword grid.',
+        'Fill every white cell with the correct letters from the Across and Down clues.',
+        'First player to complete the whole grid correctly wins — or the highest score when the timer ends.',
+      ],
+    },
+    {
+      title: 'How it works',
+      points: [
+        '1 to 20 players join with their name; the host picks a theme, difficulty, and optional time limit.',
+        'Tap a cell to highlight its word, then type the answer. Correct letters lock in your colour.',
+        'Each completed word scores 10 points, plus a 5-point speed bonus for finishing that word first.',
+        'Need a nudge? Reveal a letter as a hint — but each revealed letter costs 3 points.',
+      ],
+    },
+    {
+      title: 'Tips',
+      points: [
+        'Start with the clues you’re sure of — crossing letters unlock the harder ones.',
+        'Finishing a word first is worth extra, so keep moving.',
+        'Spectators can watch the grid fill in but can’t enter letters.',
+      ],
+    },
+  ],
+  word_search: [
+    {
+      title: 'Objective',
+      points: [
+        'Everyone hunts the same grid of scattered letters for the same list of hidden words.',
+        'Words run horizontally, vertically, or diagonally — and on harder puzzles, backwards too.',
+        'First player to find every listed word wins — or the highest score when the timer ends.',
+      ],
+    },
+    {
+      title: 'How it works',
+      points: [
+        '1 to 20 players join with their name; the host picks a theme, difficulty, and optional time limit.',
+        'Drag from a word’s first letter to its last to select it. Correct finds lock in your colour and strike off the list.',
+        'Each word found scores 10 points, plus a 5-point speed bonus for finding that word first.',
+        'Stuck? Reveal one of the remaining words — but each reveal costs 10 points.',
+      ],
+    },
+    {
+      title: 'Tips',
+      points: [
+        'Scan row by row for a word’s first letter, then check all directions from it.',
+        'Finding a word first is worth extra, so keep moving.',
+        'On harder puzzles, don’t forget words can read backwards and diagonally.',
+      ],
+    },
+  ],
+  word_scramble: [
+    {
+      title: 'Objective',
+      points: [
+        'Everyone gets the same jumbled words and races to type the unscrambled answer.',
+        'Correct answers lock in and score; wrong guesses just clear so you can try again.',
+        'First player to unscramble every word wins — or the highest score when the timer ends.',
+      ],
+    },
+    {
+      title: 'How it works',
+      points: [
+        '1 to 20 players join with their name; the host picks a theme, difficulty, and optional time limit.',
+        'Type your guess for the current scramble. Correct answers score and reveal the next scramble.',
+        'Each solve scores 10 points, plus a 5-point speed bonus for solving that scramble first; harder puzzles add a per-letter bonus.',
+        'Stuck? Reveal a letter for a small penalty.',
+      ],
+    },
+    {
+      title: 'Tips',
+      points: [
+        'Look for common prefixes and suffixes (RE-, -ING, -TION) to crack longer words fast.',
+        'Solving first is worth extra, so trust your first instinct and keep moving.',
+        'Sound the letters out — saying them aloud often reveals the word.',
+      ],
+    },
+  ],
+  landmine: [
+    {
+      title: 'Objective',
+      points: [
+        'A category is shown and the system secretly plants a “mine” — one of the most obvious answers.',
+        'Everyone types one answer blind, without knowing which one is the mine.',
+        'Play a valid answer that isn’t the mine to score; hit the mine and you’re zeroed (Zero Points mode) or knocked out (Elimination mode — last player standing wins).',
+      ],
+    },
+    {
+      title: 'How it works',
+      points: [
+        '3 to 20 players join with their name (Elimination mode plays best with 5 or more).',
+        'Each round a player picks a category and the system secretly picks the mine; everyone submits one answer before the timer ends.',
+        'Answers are shuffled and each is assigned to a different player to mark Valid or Void — this happens before the mine is revealed, so nobody can mark strategically.',
+        'The mine is revealed and scored: a valid, non-mine answer scores 10 (+5 if nobody else gave the same answer); a voided answer scores 0.',
+      ],
+    },
+    {
+      title: 'Modes, timers & options',
+      points: [
+        'Zero Points: hitting the mine scores 0 for that round; everyone plays a set number of rounds. Softer, better for casual groups.',
+        'Elimination: hitting the mine knocks you out; the last player standing wins.',
+        'The host sets the writing and marking timers, the number of mines per round (1, or 2–3 for more carnage), the originality bonus, and whether the host can overturn a contested mark.',
+      ],
+    },
+    {
+      title: 'Tips',
+      points: [
+        'The most obvious answer is the most likely mine — a slightly less common but still valid answer is the safe play.',
+        'Nobody else giving your answer earns a bonus, so avoid the crowd where you safely can.',
+        'When marking, judge only whether the answer fits the category — you won’t know the mine yet.',
       ],
     },
   ],

@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import {
   MonopolyClassicBoard,
   MonopolyCurrentSpace,
@@ -40,7 +41,7 @@ export function MonopolyActiveLayout({
   themeId,
 }: {
   gameCode: string
-  game: Pick<Game, 'status' | 'session_started_at' | 'game_duration_seconds'> | null
+  game: Pick<Game, 'status' | 'session_started_at' | 'game_duration_seconds' | 'monopoly_forced_auctions'> | null
   board: MonopolyBoard
   states: MonopolyPlayerState[]
   players: Player[]
@@ -77,6 +78,26 @@ export function MonopolyActiveLayout({
     .map(([index, playerId]) => `${index}:${playerId}`)
     .join('|')
 
+  // Feed the roster drawer scoreboard: cash headline (sorts richest-first) +
+  // "N properties" detail. Property counts derive from the stable ownershipKey so
+  // the stat map keeps a steady identity between renders (no re-register churn).
+  const cashMap = useMemo(() => Object.fromEntries(states.map((s) => [s.player_id, s.cash])), [states])
+  const propertyDetail = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const entry of ownershipKey ? ownershipKey.split('|') : []) {
+      const pid = entry.split(':')[1]
+      if (pid) counts[pid] = (counts[pid] ?? 0) + 1
+    }
+    return Object.fromEntries(
+      states.map((s) => {
+        const n = counts[s.player_id] ?? 0
+        return [s.player_id, `🏠 ${n} propert${n === 1 ? 'y' : 'ies'}`]
+      })
+    )
+  }, [states, ownershipKey])
+  useGameScores(cashMap, { suffix: '' })
+  useGameStats(propertyDetail)
+
   const buildActions = board && myPlayerId ? getMonopolyBuildActionCount(board, myPlayerId) : 0
 
   const { secondsLeft, hasTimer, urgent } = useMonopolyTurnTimer(gameCode, board, true)
@@ -88,7 +109,9 @@ export function MonopolyActiveLayout({
 
   const personalTradeMessage =
     board.last_trade_event &&
-    (board.last_trade_event.outcome === 'declined' || board.last_trade_event.outcome === 'accepted') &&
+    (board.last_trade_event.outcome === 'declined' ||
+      board.last_trade_event.outcome === 'accepted' ||
+      board.last_trade_event.outcome === 'cancelled') &&
     (board.last_trade_event.from_player_id === myPlayerId || board.last_trade_event.to_player_id === myPlayerId)
       ? formatTradeMessageForPlayer(board.last_trade_event, myPlayerId, players)
       : null
@@ -249,8 +272,12 @@ export function MonopolyActiveLayout({
               themeId={themeId}
               center={
                 spectator ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-2 px-2 text-center">
+                  <div className="flex flex-col items-center justify-center h-full gap-1.5 px-2 text-center">
                     <MonopolyDiceRoll dice={board.last_dice} />
+                    <p className="text-[13px] font-black text-white leading-tight">
+                      {turnPlayer?.name ?? '—'}
+                      <span className="font-semibold text-white/60">’s turn</span>
+                    </p>
                     <p className="text-[10px] uppercase tracking-widest text-faint">Watching live</p>
                     {board.status_message ? (
                       <p className="text-[11px] text-muted leading-snug line-clamp-4">
@@ -269,6 +296,7 @@ export function MonopolyActiveLayout({
                     colorBarClass={colorBarClass}
                     layout="board"
                     themeId={themeId}
+                    forcedAuctions={game?.monopoly_forced_auctions === true}
                   />
                 )
               }

@@ -6,6 +6,9 @@ import { HostPlayerSessionBootstrap } from '@/components/HostPlayerSessionBootst
 import { GameRulesLoader } from '@/components/GameRulesLoader'
 import { GameThemeFonts } from '@/components/GameThemeFonts'
 import { GameRulesProvider } from '@/contexts/GameRulesContext'
+import { RosterDrawerProvider } from '@/components/roster/RosterDrawerContext'
+import { RosterDrawer } from '@/components/roster/RosterDrawer'
+import { GameSettingsProvider } from '@/components/GameSettingsContext'
 import { noIndexMetadata } from '@/lib/seo'
 
 export const metadata: Metadata = noIndexMetadata('Host Panel')
@@ -14,13 +17,18 @@ export default function HostLayout({ children }: { children: React.ReactNode }) 
   return (
     <GameThemeFonts>
       <GameRulesProvider>
-        <GameRulesLoader />
-        <Suspense fallback={null}>
-          <HostScrollToTop />
-          <HostPlayerSessionBootstrap />
-          <GameHostChrome />
-        </Suspense>
-        <main className="pt-[3.75rem]">{children}</main>
+        <RosterDrawerProvider>
+          <GameSettingsProvider>
+            <GameRulesLoader />
+            <Suspense fallback={null}>
+              <HostScrollToTop />
+              <HostPlayerSessionBootstrap />
+              <GameHostChrome />
+            </Suspense>
+            <main className="pt-[3.75rem]">{children}</main>
+            <RosterDrawer />
+          </GameSettingsProvider>
+        </RosterDrawerProvider>
       </GameRulesProvider>
     </GameThemeFonts>
   )

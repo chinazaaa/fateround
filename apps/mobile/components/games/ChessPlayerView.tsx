@@ -10,11 +10,12 @@ import {
   formatChessClock,
   liveChessClockMs,
 } from '@fateround/shared/chess'
-import { playerIsViewer } from '@fateround/shared/viewers'
+import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
@@ -32,14 +33,18 @@ import { ChessPieceGlyph } from './chess/ChessPieceGlyph'
 import { ChessAppearancePicker } from './chess/ChessAppearancePicker'
 import { CapturedTray, computeMaterial, KingGlyph } from './chess/ChessCapturedTray'
 import { ChessResultsExtras } from './chess/ChessResultsExtras'
-import {
-  type Premove,
-  premoveNeedsPromotion,
-  premoveTargets,
-  type PremovePiece,
-} from './chess/chess-premove'
+import { ChessShareCard } from './chess/ChessShareCard'
+import { type Premove, premoveNeedsPromotion, premoveTargets, type PremovePiece } from './chess/chess-premove'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'active'
+  | 'finished'
+  | 'not_found'
 type Promotion = 'q' | 'r' | 'b' | 'n'
 
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const
@@ -75,16 +80,18 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
     [gameCode]
   )
 
-  const computeScreen = useCallback(
-    (game: Game, playerId: string | null, sessionData: ChessSession | null): Screen => {
-      if (!playerId) return 'join'
-      if (game.status === 'waiting') return 'waiting'
-      if (game.status === 'active' && sessionData?.status !== 'finished') return 'active'
-      if (game.status === 'finished' || sessionData?.status === 'finished') return 'finished'
-      return 'waiting'
-    },
-    []
-  )
+  const computeScreen = useCallback((game: Game, playerId: string | null, sessionData: ChessSession | null): Screen => {
+    if (!playerId) {
+      const pre = preJoinScreen(game, false)
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
+      if (pre === 'game_ended') return 'game_ended'
+      return 'join'
+    }
+    if (game.status === 'waiting') return 'waiting'
+    if (game.status === 'active' && sessionData?.status !== 'finished') return 'active'
+    if (game.status === 'finished' || sessionData?.status === 'finished') return 'finished'
+    return 'waiting'
+  }, [])
 
   const bootstrap = useGameViewBootstrap<Screen, ChessSession | null>({
     gameCode,
@@ -193,7 +200,9 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
     if (!activeSession || activeSession.status !== 'active' || !timed) return
     const ms = liveChessClockMs(activeSession, activeSession.current_turn)
     if (ms > 0) return
-    void postChessExpireTurn(bootstrap.code).then(() => bootstrap.load()).catch(() => {})
+    void postChessExpireTurn(bootstrap.code)
+      .then(() => bootstrap.load())
+      .catch(() => {})
   }, [activeSession, timed, clockTick, bootstrap.code, bootstrap.load])
 
   const submitMove = useCallback(
@@ -319,6 +328,16 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
     // A match already in progress → the newcomer can only watch (chess has no
     // late-player seats), so present the join as a read-only viewer entry.
@@ -330,7 +349,9 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
         joining={bootstrap.joining}
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
-        onJoin={() => void bootstrap.join()}
+        onJoin={() => void bootstrap.join(undefined, joiningAsViewer ? { joinAsViewer: true } : undefined)}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
         kicker={joiningAsViewer ? 'Watch game' : 'Join game'}
         hint={
           joiningAsViewer
@@ -348,10 +369,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'finished') {
     const winner = bootstrap.players.find((p) => p.id === activeSession.winner_player_id)
-    const detail = [
-      activeSession.status_message,
-      chessResultDetail(activeSession.result_reason),
-    ]
+    const detail = [activeSession.status_message, chessResultDetail(activeSession.result_reason)]
       .filter(Boolean)
       .join(' · ')
     const title = activeSession.is_draw ? 'Draw!' : winner ? `${winner.name} wins!` : 'Game over'
@@ -359,21 +377,28 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       <GameShell bootstrap={bootstrap} title="Chess" subtitle={bootstrap.code}>
         <GameFinishPanel
           bootstrap={bootstrap}
+          hideDefaultHeader
           title={title}
           subtitle="Final standings"
           detail={detail || undefined}
-          leaderboard={activeSession.is_draw ? undefined : winnerLeaderboard(activeSession.winner_player_id, bootstrap.players, bootstrap.myPlayerId)}
+          leaderboard={
+            activeSession.is_draw
+              ? undefined
+              : winnerLeaderboard(activeSession.winner_player_id, bootstrap.players, bootstrap.myPlayerId)
+          }
           winnerPlayerId={activeSession.winner_player_id}
           roundKey={activeSession.id}
           notice={
-            bootstrap.game ? (
-              <ChessResultsExtras
-                game={bootstrap.game}
-                players={bootstrap.players}
-                session={activeSession}
-                highlightPlayerId={bootstrap.myPlayerId}
-              />
-            ) : undefined
+            <ChessShareCard
+              gameTitle={bootstrap.game.title}
+              winnerName={winner ? winner.name : null}
+              isDraw={activeSession.is_draw}
+              reasonSubtitle={chessResultDetail(activeSession.result_reason)}
+              game={bootstrap.game}
+              players={bootstrap.players}
+              session={activeSession}
+              highlightPlayerId={bootstrap.myPlayerId}
+            />
           }
         />
       </GameShell>
@@ -405,134 +430,117 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-      {isViewer && bootstrap.myPlayerId && me && bootstrap.game ? (
-        <ViewerModeBanner
-          gameCode={bootstrap.code}
-          playerId={bootstrap.myPlayerId}
-          game={bootstrap.game}
-          player={me}
-          players={bootstrap.players}
-          onPromoted={() => void bootstrap.load()}
+        <TurnBanner
+          text={
+            activeSession.in_check && isMyTurn
+              ? 'Check! Your move'
+              : selected
+                ? `Selected ${selected} — tap destination`
+                : isMyTurn
+                  ? 'Your turn'
+                  : premove
+                    ? `Premove ${premove.from}→${premove.to} queued — tap the board to cancel`
+                    : canPremove
+                      ? `${turnPlayer?.name ?? 'Opponent'}'s turn — tap a piece to queue a premove`
+                      : `${turnPlayer?.name ?? 'Opponent'}'s turn`
+          }
+          isMyTurn={isMyTurn}
         />
-      ) : null}
 
-      <TurnBanner
-        text={
-          activeSession.in_check && isMyTurn
-            ? 'Check! Your move'
-            : selected
-              ? `Selected ${selected} — tap destination`
-              : isMyTurn
-                ? 'Your turn'
-                : premove
-                  ? `Premove ${premove.from}→${premove.to} queued — tap the board to cancel`
-                  : canPremove
-                    ? `${turnPlayer?.name ?? 'Opponent'}'s turn — tap a piece to queue a premove`
-                    : `${turnPlayer?.name ?? 'Opponent'}'s turn`
-        }
-        isMyTurn={isMyTurn}
-      />
+        {timed ? (
+          <>
+            <View style={styles.clocks}>
+              <ClockChip
+                label={white?.name ?? 'White'}
+                ms={liveChessClockMs(activeSession, 'w')}
+                active={activeSession.current_turn === 'w'}
+              />
+              <ClockChip
+                label={black?.name ?? 'Black'}
+                ms={liveChessClockMs(activeSession, 'b')}
+                active={activeSession.current_turn === 'b'}
+              />
+            </View>
+            {timeControlSeconds > 0 ? (
+              <Text style={styles.timeNote}>
+                ⏱ {Math.round(timeControlSeconds / 60)} min each — your clock only counts down on your turn
+              </Text>
+            ) : null}
+          </>
+        ) : null}
 
-      {timed ? (
-        <>
-          <View style={styles.clocks}>
-            <ClockChip
-              label={white?.name ?? 'White'}
-              ms={liveChessClockMs(activeSession, 'w')}
-              active={activeSession.current_turn === 'w'}
-            />
-            <ClockChip
-              label={black?.name ?? 'Black'}
-              ms={liveChessClockMs(activeSession, 'b')}
-              active={activeSession.current_turn === 'b'}
-            />
-          </View>
-          {timeControlSeconds > 0 ? (
-            <Text style={styles.timeNote}>
-              ⏱ {Math.round(timeControlSeconds / 60)} min each — your clock only counts down on your turn
-            </Text>
-          ) : null}
-        </>
-      ) : null}
+        <CapturedTray {...trayFor(topColor)} set={pieceSet} />
 
-      <CapturedTray {...trayFor(topColor)} set={pieceSet} />
+        <View style={styles.board}>
+          {displayRanks.map((rank, rankIdx) => (
+            <View key={rank} style={styles.row}>
+              {displayFiles.map((file, fileIdx) => {
+                const square = `${file}${rank}`
+                const isLight = (file.charCodeAt(0) - 97 + rank) % 2 === 0
+                const piece = chess.get(square as Square)
+                const isSelected = selected === square
+                const isTarget = legalTargets.has(square)
+                const isLastMove = activeSession.last_move_from === square || activeSession.last_move_to === square
+                const isKingInCheck = square === inCheckSquare
+                const isPremove = premove?.from === square || premove?.to === square
+                // Coordinates hug the board edges (chess.com style): ranks down the
+                // left column, files along the bottom row, tinted the opposite
+                // square colour so each label reads against its own square.
+                const showRank = fileIdx === 0
+                const showFile = rankIdx === displayRanks.length - 1
+                const coordColor = isLight ? boardTheme.dark : boardTheme.light
+                return (
+                  <Pressable
+                    key={square}
+                    style={[styles.square, { backgroundColor: isLight ? boardTheme.light : boardTheme.dark }]}
+                    disabled={acting || (!isMyTurn && !canPremove)}
+                    onPress={() => onSquarePress(square)}
+                  >
+                    {isLastMove ? <View style={[styles.overlay, styles.lastMoveOverlay]} /> : null}
+                    {isKingInCheck ? <View style={[styles.overlay, styles.checkOverlay]} /> : null}
+                    {isPremove ? <View style={[styles.overlay, styles.premoveOverlay]} /> : null}
+                    {isSelected ? <View style={[styles.overlay, styles.selectedOverlay]} /> : null}
+                    {showRank ? <Text style={[styles.coordRank, { color: coordColor }]}>{rank}</Text> : null}
+                    {showFile ? <Text style={[styles.coordFile, { color: coordColor }]}>{file}</Text> : null}
+                    {piece ? (
+                      <ChessPieceGlyph
+                        set={pieceSet}
+                        color={piece.color}
+                        type={piece.type as ChessPieceType}
+                        size={36}
+                      />
+                    ) : null}
+                    {isTarget ? piece ? <View style={styles.captureRing} /> : <View style={styles.moveDot} /> : null}
+                  </Pressable>
+                )
+              })}
+            </View>
+          ))}
+        </View>
 
-      <View style={styles.board}>
-        {displayRanks.map((rank, rankIdx) => (
-          <View key={rank} style={styles.row}>
-            {displayFiles.map((file, fileIdx) => {
-              const square = `${file}${rank}`
-              const isLight = (file.charCodeAt(0) - 97 + rank) % 2 === 0
-              const piece = chess.get(square as Square)
-              const isSelected = selected === square
-              const isTarget = legalTargets.has(square)
-              const isLastMove = activeSession.last_move_from === square || activeSession.last_move_to === square
-              const isKingInCheck = square === inCheckSquare
-              const isPremove = premove?.from === square || premove?.to === square
-              // Coordinates hug the board edges (chess.com style): ranks down the
-              // left column, files along the bottom row, tinted the opposite
-              // square colour so each label reads against its own square.
-              const showRank = fileIdx === 0
-              const showFile = rankIdx === displayRanks.length - 1
-              const coordColor = isLight ? boardTheme.dark : boardTheme.light
-              return (
-                <Pressable
-                  key={square}
-                  style={[styles.square, { backgroundColor: isLight ? boardTheme.light : boardTheme.dark }]}
-                  disabled={acting || (!isMyTurn && !canPremove)}
-                  onPress={() => onSquarePress(square)}
-                >
-                  {isLastMove ? <View style={[styles.overlay, styles.lastMoveOverlay]} /> : null}
-                  {isKingInCheck ? <View style={[styles.overlay, styles.checkOverlay]} /> : null}
-                  {isPremove ? <View style={[styles.overlay, styles.premoveOverlay]} /> : null}
-                  {isSelected ? <View style={[styles.overlay, styles.selectedOverlay]} /> : null}
-                  {showRank ? (
-                    <Text style={[styles.coordRank, { color: coordColor }]}>{rank}</Text>
-                  ) : null}
-                  {showFile ? (
-                    <Text style={[styles.coordFile, { color: coordColor }]}>{file}</Text>
-                  ) : null}
-                  {piece ? (
-                    <ChessPieceGlyph
-                      set={pieceSet}
-                      color={piece.color}
-                      type={piece.type as ChessPieceType}
-                      size={36}
-                    />
-                  ) : null}
-                  {isTarget ? (
-                    piece ? <View style={styles.captureRing} /> : <View style={styles.moveDot} />
-                  ) : null}
-                </Pressable>
-              )
-            })}
-          </View>
-        ))}
-      </View>
+        <CapturedTray {...trayFor(bottomColor)} set={pieceSet} />
 
-      <CapturedTray {...trayFor(bottomColor)} set={pieceSet} />
+        {myColor && activeSession.status === 'active' ? (
+          <Text style={styles.identity}>
+            You are <KingGlyph color={myColor} size={13} />{' '}
+            <Text style={styles.identityStrong}>{myColor === 'w' ? 'White' : 'Black'}</Text>
+            {isMyTurn
+              ? ' · tap a piece, then its destination'
+              : premove
+                ? ` · premove ${premove.from}→${premove.to} queued — tap the board to cancel`
+                : canPremove
+                  ? ' · waiting for your opponent — tap a piece to queue a premove'
+                  : ' · waiting for your opponent'}
+          </Text>
+        ) : null}
 
-      {myColor && activeSession.status === 'active' ? (
-        <Text style={styles.identity}>
-          You are <KingGlyph color={myColor} size={13} />{' '}
-          <Text style={styles.identityStrong}>{myColor === 'w' ? 'White' : 'Black'}</Text>
-          {isMyTurn
-            ? ' · tap a piece, then its destination'
-            : premove
-              ? ` · premove ${premove.from}→${premove.to} queued — tap the board to cancel`
-              : canPremove
-                ? ' · waiting for your opponent — tap a piece to queue a premove'
-                : ' · waiting for your opponent'}
-        </Text>
-      ) : null}
+        <ChessAppearancePicker defaults={appearanceDefaults} />
 
-      <ChessAppearancePicker defaults={appearanceDefaults} />
-
-      {myColor ? (
-        <Pressable style={styles.resignBtn} disabled={acting} onPress={resign}>
-          <Text style={styles.resignText}>Resign</Text>
-        </Pressable>
-      ) : null}
+        {myColor ? (
+          <Pressable style={styles.resignBtn} disabled={acting} onPress={resign}>
+            <Text style={styles.resignText}>Resign</Text>
+          </Pressable>
+        ) : null}
       </ScrollView>
 
       <Modal visible={!!promotionMove} transparent animationType="fade">
@@ -606,60 +614,60 @@ function ClockChip({ label, ms, active }: { label: string; ms: number; active: b
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  scroll: { flex: 1, marginHorizontal: -16 },
-  scrollContent: { paddingHorizontal: 16, paddingBottom: 24, gap: 14 },
-  board: { alignSelf: 'center', borderWidth: 2, borderColor: theme.border, borderRadius: 8, overflow: 'hidden' },
-  row: { flexDirection: 'row' },
-  square: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-  lastMoveOverlay: { backgroundColor: 'rgba(250,204,21,0.4)' },
-  checkOverlay: { backgroundColor: 'rgba(244,63,94,0.5)' },
-  premoveOverlay: { backgroundColor: 'rgba(14,165,233,0.45)' },
-  selectedOverlay: { borderWidth: 3, borderColor: theme.primary },
-  moveDot: { position: 'absolute', width: 12, height: 12, borderRadius: 6, backgroundColor: 'rgba(0,0,0,0.35)' },
-  captureRing: {
-    position: 'absolute',
-    top: 3,
-    left: 3,
-    right: 3,
-    bottom: 3,
-    borderRadius: 20,
-    borderWidth: 4,
-    borderColor: 'rgba(0,0,0,0.3)',
-  },
-  clocks: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginBottom: 8 },
-  clockChip: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: theme.surface,
-  },
-  clockActive: { borderWidth: 1, borderColor: theme.primary },
-  clockLow: { backgroundColor: 'rgba(244,63,94,0.18)', borderWidth: 1, borderColor: '#f43f5e' },
-  clockLowText: { color: '#fb7185' },
-  clockLabel: { color: theme.textMuted, fontWeight: '600', flexShrink: 1, marginRight: 6 },
-  clockValue: { color: theme.text, fontWeight: '800', fontVariant: ['tabular-nums'], flexShrink: 0 },
-  timeNote: { color: theme.textFaint, fontSize: 11, textAlign: 'center', marginTop: -2, marginBottom: 6 },
-  coordRank: { position: 'absolute', top: 1, left: 2, fontSize: 8, fontWeight: '700' },
-  coordFile: { position: 'absolute', bottom: 1, right: 2, fontSize: 8, fontWeight: '700' },
-  identity: { color: theme.textMuted, fontSize: 12, textAlign: 'center', marginTop: 10 },
-  identityStrong: { color: theme.text, fontWeight: '700' },
-  resignBtn: {
-    alignSelf: 'center',
-    marginTop: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#3f1515',
-  },
-  resignText: { color: '#fca5a5', fontWeight: '700' },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 24 },
-  modalCard: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 8 },
-  modalTitle: { color: theme.text, fontSize: 18, fontWeight: '800', marginBottom: 4 },
-  promoBtn: { padding: 12, borderRadius: 8, backgroundColor: theme.border },
-  promoBtnText: { color: theme.text, fontWeight: '700', textAlign: 'center' },
-  promoCancel: { padding: 8 },
-  promoCancelText: { color: theme.textMuted, textAlign: 'center' },
-})
+    scroll: { flex: 1, marginHorizontal: -16 },
+    scrollContent: { paddingHorizontal: 16, paddingBottom: 24, gap: 14 },
+    board: { alignSelf: 'center', borderWidth: 2, borderColor: theme.border, borderRadius: 8, overflow: 'hidden' },
+    row: { flexDirection: 'row' },
+    square: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+    overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+    lastMoveOverlay: { backgroundColor: 'rgba(250,204,21,0.4)' },
+    checkOverlay: { backgroundColor: 'rgba(244,63,94,0.5)' },
+    premoveOverlay: { backgroundColor: 'rgba(14,165,233,0.45)' },
+    selectedOverlay: { borderWidth: 3, borderColor: theme.primary },
+    moveDot: { position: 'absolute', width: 12, height: 12, borderRadius: 6, backgroundColor: 'rgba(0,0,0,0.35)' },
+    captureRing: {
+      position: 'absolute',
+      top: 3,
+      left: 3,
+      right: 3,
+      bottom: 3,
+      borderRadius: 20,
+      borderWidth: 4,
+      borderColor: 'rgba(0,0,0,0.3)',
+    },
+    clocks: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginBottom: 8 },
+    clockChip: {
+      flex: 1,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      padding: 8,
+      borderRadius: 8,
+      backgroundColor: theme.surface,
+    },
+    clockActive: { borderWidth: 1, borderColor: theme.primary },
+    clockLow: { backgroundColor: 'rgba(244,63,94,0.18)', borderWidth: 1, borderColor: '#f43f5e' },
+    clockLowText: { color: '#fb7185' },
+    clockLabel: { color: theme.textMuted, fontWeight: '600', flexShrink: 1, marginRight: 6 },
+    clockValue: { color: theme.text, fontWeight: '800', fontVariant: ['tabular-nums'], flexShrink: 0 },
+    timeNote: { color: theme.textFaint, fontSize: 11, textAlign: 'center', marginTop: -2, marginBottom: 6 },
+    coordRank: { position: 'absolute', top: 1, left: 2, fontSize: 8, fontWeight: '700' },
+    coordFile: { position: 'absolute', bottom: 1, right: 2, fontSize: 8, fontWeight: '700' },
+    identity: { color: theme.textMuted, fontSize: 12, textAlign: 'center', marginTop: 10 },
+    identityStrong: { color: theme.text, fontWeight: '700' },
+    resignBtn: {
+      alignSelf: 'center',
+      marginTop: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 8,
+      backgroundColor: '#3f1515',
+    },
+    resignText: { color: '#fca5a5', fontWeight: '700' },
+    modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 24 },
+    modalCard: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 8 },
+    modalTitle: { color: theme.text, fontSize: 18, fontWeight: '800', marginBottom: 4 },
+    promoBtn: { padding: 12, borderRadius: 8, backgroundColor: theme.border },
+    promoBtnText: { color: theme.text, fontWeight: '700', textAlign: 'center' },
+    promoCancel: { padding: 8 },
+    promoCancelText: { color: theme.textMuted, textAlign: 'center' },
+  })

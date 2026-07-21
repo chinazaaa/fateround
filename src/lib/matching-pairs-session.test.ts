@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from './utils'
 
 // ── Group 6: Session & Identity ─────────────────────────────────────────────
@@ -9,12 +9,27 @@ const PLAYER_ID = 'p1'
 const PLAYER_NAME = 'Alice'
 const RESUME_TOKEN = 'tk_abc123'
 
+const store: Record<string, string> = {}
+const mockLocalStorage = {
+  getItem: (key: string) => store[key] ?? null,
+  setItem: (key: string, val: string) => {
+    store[key] = val
+  },
+  removeItem: (key: string) => {
+    delete store[key]
+  },
+  clear: () => {
+    for (const k in store) delete store[k]
+  },
+}
+
 beforeEach(() => {
-  localStorage.clear()
+  vi.stubGlobal('localStorage', mockLocalStorage)
+  mockLocalStorage.clear()
 })
 
 afterEach(() => {
-  localStorage.clear()
+  mockLocalStorage.clear()
 })
 
 describe('getPlayerSession / setPlayerSession / clearPlayerSession', () => {

@@ -1,12 +1,4 @@
-import type {
-  Game,
-  NpatAnswer,
-  NpatCategory,
-  NpatMark,
-  NpatMetadata,
-  Player,
-  Round,
-} from './types'
+import type { Game, NpatAnswer, NpatCategory, NpatMark, NpatMetadata, Player, Round } from './types'
 
 function secondsUntilDeadline(sessionStartedAt: string, durationSeconds: number): number {
   return Math.max(0, Math.ceil((new Date(sessionStartedAt).getTime() + durationSeconds * 1000 - Date.now()) / 1000))
@@ -230,14 +222,27 @@ export function tallyNpatScores(
   players: Player[]
 ): { id: string; name: string; score: number }[] {
   const totals = new Map<string, number>()
+  // Latest answer-submission time per player — the earlier finisher outranks the slower
+  // one, so a score tie breaks by speed rather than alphabetically. submitted_at can be
+  // null on an unscored/skipped round; those simply don't advance the finish time.
+  const lastSubmit = new Map<string, number>()
   for (const player of players) totals.set(player.id, 0)
   for (const row of answers) {
     if (row.score_name == null) continue
     totals.set(row.player_id, (totals.get(row.player_id) ?? 0) + answerTotal(row))
+    if (row.submitted_at) {
+      const when = new Date(row.submitted_at).getTime()
+      if (when > (lastSubmit.get(row.player_id) ?? -Infinity)) lastSubmit.set(row.player_id, when)
+    }
   }
   return players
     .map((p) => ({ id: p.id, name: p.name, score: totals.get(p.id) ?? 0 }))
-    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        (lastSubmit.get(a.id) ?? Infinity) - (lastSubmit.get(b.id) ?? Infinity) ||
+        a.name.localeCompare(b.name)
+    )
 }
 
 export function npatWinnerLabel(leaderboard: { name: string; score: number }[]): string {

@@ -15,6 +15,14 @@ import { SITE_NAME, faqPageJsonLd, gameJsonLd, gameLandingOgPath, breadcrumbJson
 import { getGameLandingCustomContentHints } from '@/lib/custom-content-hints'
 import { CustomContentAiTip } from '@/components/ui/CustomContentAiTip'
 import { SiteFooter } from '@/components/SiteFooter'
+import {
+  isMatureGame,
+  matureGameReason,
+  MATURE_BADGE_LABEL,
+  MATURE_NOTICE_BODY,
+  MATURE_NOTICE_TITLE,
+} from '@/lib/game-maturity'
+import { FaqList } from '@/components/marketing/FaqList'
 
 type Props = { params: Promise<{ slug: string }> }
 
@@ -112,6 +120,23 @@ export default async function GameLandingRoute({ params }: Props) {
                 <span className="opacity-80">{cfg.card.players}</span>
               </span>
 
+              {isMatureGame(content.gameType) && (
+                <div
+                  className="mx-auto mt-4 max-w-[30rem] rounded-[14px] px-4 py-3 text-left"
+                  style={{
+                    background: 'color-mix(in srgb, var(--danger, #dc2626) 8%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--danger, #dc2626) 25%, transparent)',
+                  }}
+                >
+                  <p className="text-[13px] font-bold" style={{ color: 'var(--danger, #dc2626)' }}>
+                    <span aria-hidden>🔞</span> {MATURE_BADGE_LABEL} · {MATURE_NOTICE_TITLE}
+                  </p>
+                  <p className="mt-1 text-[13px] leading-[1.5]" style={{ color: 'var(--text-muted)' }}>
+                    {matureGameReason(content.gameType)} {MATURE_NOTICE_BODY}
+                  </p>
+                </div>
+              )}
+
               <h1
                 className="mx-0 mb-3 mt-4 text-[2.375rem] leading-[1.02] tracking-[-0.035em] sm:text-[2.875rem]"
                 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--text)' }}
@@ -139,7 +164,6 @@ export default async function GameLandingRoute({ params }: Props) {
               </div>
 
               <p className="text-[12.5px]" style={{ color: 'var(--text-faint)' }}>
-                Free forever · No sign-up · Real-time · Phone &amp; desktop &nbsp;·&nbsp;{' '}
                 <a href="#rules" className="font-semibold no-underline" style={{ color: 'var(--accent)' }}>
                   Read game rules ↓
                 </a>
@@ -289,20 +313,13 @@ export default async function GameLandingRoute({ params }: Props) {
             {/* FAQ */}
             <section>
               <h2 className="sec-title-fr">Frequently asked questions</h2>
-              {faqs.map((faq) => (
-                <dl
-                  key={faq.question}
-                  className="mb-3 rounded-[var(--radius-lg)] px-[22px] py-[18px]"
-                  style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-                >
-                  <dt className="mb-[5px] text-[15px] font-bold" style={{ color: 'var(--text)' }}>
-                    {faq.question}
-                  </dt>
-                  <dd className="m-0 text-sm leading-[1.55]" style={{ color: 'var(--text-muted)' }}>
-                    {faq.answer}
-                  </dd>
-                </dl>
-              ))}
+              <FaqList faqs={faqs} />
+              <p className="mt-4 text-center text-[13px]" style={{ color: 'var(--text-faint)' }}>
+                More questions?{' '}
+                <Link href="/faq" className="font-semibold no-underline" style={{ color: 'var(--accent)' }}>
+                  Read the full FAQ
+                </Link>
+              </p>
             </section>
 
             {/* Final CTA */}

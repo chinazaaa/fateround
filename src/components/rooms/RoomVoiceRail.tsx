@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { LiveKitRoom, RoomAudioRenderer, useLocalParticipant, useParticipants } from '@livekit/components-react'
+import type { DisconnectReason } from 'livekit-client'
+import { voiceDisconnectMessage } from '@/lib/voice-errors'
 import { useToast } from '@/components/ui/Toast'
 import { RoomVoiceBar, type VoiceParticipant } from '@/components/rooms/RoomVoiceBar'
 import type { AudioAuth } from '@/components/AudioChat'
@@ -94,6 +96,10 @@ export function RoomVoiceRail({
 
   const serverUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL
   const joinAudioRef = useRef<() => Promise<void>>(null)
+  // See AudioChat: we tear the room down by unmounting <LiveKitRoom> rather than
+  // flipping `connect` to false, so LiveKit's own shouldConnect guard never
+  // clears and our own Leave reaches `onError` looking like a failed connect.
+  const leavingRef = useRef(false)
   const authRef = useRef(auth)
   authRef.current = auth
 
@@ -163,6 +169,7 @@ export function RoomVoiceRail({
         throw new Error(errData.error || 'Failed to fetch audio token')
       }
       const data = await res.json()
+      leavingRef.current = false
       setToken(data.token)
       localStorage.setItem(
         `fateround_voice_${resolvedRoomCode.toUpperCase()}`,
@@ -173,14 +180,30 @@ export function RoomVoiceRail({
       bc.close()
       setActiveTabId(myTabId)
     } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join voice chat')
+      // Log the raw reason (server error / network) for debugging; players get a
+      // plain message, never a leaked config string like "LIVEKIT_API_KEY not set".
+      console.error('[voice] join failed', err)
+      toastError('Could not join voice chat. Please try again.')
     } finally {
       setIsConnecting(false)
     }
   }
   joinAudioRef.current = joinAudio
 
+  // LiveKit fires onDisconnected on any terminal disconnect — an early/failed
+  // media negotiation (common on phones), a same-identity takeover, or a network
+  // drop. Clearing the token then silently flips the bar back to "Join voice",
+  // which reads as an instant self-kick right after tapping Join. Tear the dead
+  // room down (correct) but make the reason visible so it's clearly a disconnect,
+  // not an untoggle — except CLIENT_INITIATED, which is just our own Leave.
+  const handleDisconnected = (reason?: DisconnectReason) => {
+    leaveAudio(false)
+    const message = voiceDisconnectMessage(reason)
+    if (message) toastError(message)
+  }
+
   const leaveAudio = (manual = true) => {
+    leavingRef.current = true
     setToken(null)
     if (manual) {
       localStorage.removeItem(`fateround_voice_${resolvedRoomCode.toUpperCase()}`)
@@ -292,7 +315,17 @@ export function RoomVoiceRail({
       token={token}
       serverUrl={serverUrl}
       connect
-      onDisconnected={() => leaveAudio(false)}
+      onDisconnected={handleDisconnected}
+      onError={(err) => {
+        // Our own teardown rejects the in-flight connect — not a connection
+        // failure, so it must never surface as one.
+        if (leavingRef.current) return
+        // Keep LiveKit's raw reason in the console for debugging, but never show
+        // it to players — surface a plain, friendly message instead.
+        console.error('[voice] LiveKit connection error', err)
+        leaveAudio(false)
+        toastError('Could not connect to voice chat. Please try again.')
+      }}
       style={{ display: 'contents' }}
     >
       <RoomAudioRenderer />

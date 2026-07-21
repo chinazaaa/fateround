@@ -1,7 +1,7 @@
 import type { DescribeItGuess, DescribeItMode, DescribeItSession, DescribeItWord } from './types'
 
 export const DESCRIBE_IT_MIN_PLAYERS = 4
-export const DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL = 3
+export const DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL = 2
 export const DESCRIBE_IT_MAX_PLAYERS = 20
 export const DESCRIBE_IT_DEFAULT_MAX_PLAYERS = 12
 export const DESCRIBE_IT_TEAM_OPTIONS = [2, 3, 4] as const

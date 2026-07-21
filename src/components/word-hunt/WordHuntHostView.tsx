@@ -1,9 +1,14 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { ExitIcon } from '@/components/host/host-icons'
@@ -11,6 +16,9 @@ import { HostWordHuntLobbyPanel } from '@/components/host-lobby/HostWordHuntLobb
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { gameTypeConfig } from '@/lib/game-types'
 import { WordHuntBoard } from '@/components/word-hunt/WordHuntBoard'
 import { WordHuntPlayerView } from '@/components/word-hunt/WordHuntPlayerView'
 import { WordHuntFinalResultsShareBlock } from '@/components/word-hunt/WordHuntFinalResultsShareBlock'
@@ -22,29 +30,18 @@ import { parseWordHuntMetadata, tallyWordHuntScores, WORD_HUNT_MIN_PLAYERS } fro
 import { validWordsSetFromMetadata } from '@/lib/word-hunt-client'
 import { useWordHuntGameTimer } from '@/hooks/useWordHuntGameTimer'
 import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
-import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import type { Game, Player } from '@/types'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useToast } from '@/components/ui/Toast'
 
 const WORD_HUNT_SUBMISSION_SELECT = 'id,game_id,round_id,player_id,word,path,points_awarded,submitted_at'
 
-type WordHuntHostMode = 'spectator' | 'player'
 type HostTab = 'manage' | 'play'
-
-const HOST_MODE_KEY = (code: string) => `word_hunt_host_mode_${code.toUpperCase()}`
-
-function getWordHuntHostMode(gameCode: string): WordHuntHostMode {
-  if (typeof window === 'undefined') return 'player'
-  return (localStorage.getItem(HOST_MODE_KEY(gameCode)) as WordHuntHostMode) ?? 'player'
-}
-function setWordHuntHostMode(gameCode: string, mode: WordHuntHostMode) {
-  localStorage.setItem(HOST_MODE_KEY(gameCode), mode)
-}
 
 interface WordHuntSubmission {
   id: string
@@ -58,7 +55,7 @@ interface WordHuntSubmission {
 }
 
 export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
-  const { error: toastError } = useToast()
+  const { error: toastError, success } = useToast()
   const { confirm } = useConfirm()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
@@ -68,12 +65,6 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [submissions, setSubmissions] = useState<WordHuntSubmission[]>([])
   const [playingAgain, setPlayingAgain] = useState(false)
   const [starting, setStarting] = useState(false)
-
-  const [hostMode, setHostModeState] = useState<WordHuntHostMode>('player')
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
 
   useTurnNotifications({ status: game?.status })
@@ -127,29 +118,44 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
 
   const { label: timeLabel, timeUp, secondsLeft } = useWordHuntGameTimer(gameCode, game, load)
 
-  const clearHostPlayer = () => {
-    clearPlayerSession(gameCode)
-    setHostPlayerId(null)
-    setHostPlayerName('')
-    setHostJoinName('')
-  }
-
-  const { removingPlayerId, removePlayer } = useHostRemovePlayer(gameCode, hostToken, async (playerId) => {
-    if (playerId === hostPlayerId) clearHostPlayer()
-    await load()
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    leaveSeatKeepHosting,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+    onModeChange: (mode) => {
+      if (mode === 'spectator') setTab('manage')
+    },
   })
 
-  // Clear stale host-as-player state if the host's own row is removed elsewhere.
-  useHostPlayerReconciliation(players, hostPlayerId, clearHostPlayer)
+  const handlePlayerRemoved = useCallback(
+    (playerId: string) => {
+      onHostSeatRemoved(playerId)
+      setHostJoinName('')
+      setPlayers((prev) => prev.filter((p) => p.id !== playerId))
+    },
+    [onHostSeatRemoved, setHostJoinName]
+  )
+
+  const { removingPlayerId, removePlayer } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
 
   useEffect(() => {
     load()
-    setHostModeState(getWordHuntHostMode(gameCode))
-    const stored = getPlayerSession(gameCode)
-    if (stored) {
-      setHostPlayerId(stored.playerId)
-      setHostPlayerName(stored.playerName)
-    }
   }, [gameCode, load])
 
   // Land on the primary (Play/Watch) tab when the game starts, and on Manage when it ends.
@@ -159,6 +165,24 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
   }, [game?.status])
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
+
+  // Roster drawer scoreboard: points headline + words-found detail.
+  const rosterScores = useMemo(
+    () => Object.fromEntries(tallyWordHuntScores(submissions, players).map((r) => [r.player_id, r.points])),
+    [submissions, players]
+  )
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        tallyWordHuntScores(submissions, players).map((r) => [
+          r.player_id,
+          `✅ ${r.word_count} word${r.word_count === 1 ? '' : 's'}`,
+        ])
+      ),
+    [submissions, players]
+  )
+  useGameStats(rosterDetails)
 
   // Realtime-fallback poll: keeps the lobby roster fresh (and catches missed
   // status transitions) when a players/games realtime event is dropped.
@@ -224,83 +248,6 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
     }
   }, [gameCode])
 
-  const changeHostMode = async (mode: WordHuntHostMode) => {
-    const prev = hostMode
-    if (game?.status !== 'waiting') return
-    setHostModeState(mode)
-    setWordHuntHostMode(gameCode, mode)
-    if (mode === 'spectator') setTab('manage')
-    // Switching to "Host only" while holding a seat → give up the seat so the host
-    // drops out of the players list.
-    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
-      try {
-        const res = await fetch('/api/players', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error ?? 'Failed to leave seat')
-        }
-        clearHostPlayer()
-        await load()
-      } catch (err) {
-        setHostModeState(prev)
-        setWordHuntHostMode(gameCode, prev)
-        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
-      }
-    }
-  }
-
-  const renameHost = async (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed || !hostPlayerId) return
-    try {
-      const res = await fetch('/api/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
-      setHostPlayerName(data.playerName)
-      const stored = getPlayerSession(gameCode)
-      setPlayerSession(
-        gameCode,
-        hostPlayerId,
-        data.playerName,
-        stored?.playerGender ?? 'both',
-        stored?.resumeToken ?? null
-      )
-      await load()
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to update name')
-    }
-  }
-
-  const hostJoinGame = async () => {
-    if (!hostJoinName.trim()) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: hostJoinName.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostPlayerName(data.playerName)
-      await load()
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }
-
   async function startGame() {
     if (starting) return
     if (hostMode === 'player' && !hostPlayerId) {
@@ -331,11 +278,6 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
   async function resetGame(sameSettings: boolean) {
     if (playingAgain) return
     setPlayingAgain(true)
-    const keepHostSession = hostMode === 'player' && hostPlayerId && hostPlayerName
-    const savedPlayerId = hostPlayerId
-    const savedPlayerName = hostPlayerName
-    const savedSession = getPlayerSession(gameCode)
-
     try {
       const res = await fetch(`/api/games/${gameCode}/play-again`, {
         method: 'POST',
@@ -347,23 +289,7 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
         toastError(data.error ?? 'Failed to reset game')
         return
       }
-
-      if (keepHostSession && savedPlayerId && savedPlayerName) {
-        setPlayerSession(
-          gameCode,
-          savedPlayerId,
-          savedPlayerName,
-          savedSession?.playerGender ?? 'both',
-          savedSession?.resumeToken ?? null
-        )
-        setHostPlayerId(savedPlayerId)
-        setHostPlayerName(savedPlayerName)
-      } else {
-        clearPlayerSession(gameCode)
-        setHostPlayerId(null)
-        setHostPlayerName('')
-        setHostJoinName('')
-      }
+      if (!sameSettings) setHostJoinName('')
       setTab('manage')
       await load()
     } finally {
@@ -400,13 +326,34 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
   const hostPlays = hostMode === 'player' && !!hostPlayerId
   const totalWords = submissions.length
 
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer): late-join rules + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings
+          gameCode={gameCode}
+          hostToken={hostToken}
+          gameType="word_hunt"
+          onEnded={load}
+          endGameConfirmTitle="End this hunt early?"
+          endGameConfirmMessage="The round will end and players will see the final scores."
+        >
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+          )}
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load, hostMode, hostPlayerId, leaveSeatKeepHosting]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
+
+  const cfg = gameTypeConfig('word_hunt')
 
   const showTabs = game.status !== 'finished'
   const gameStarted = game.status === 'active'
@@ -469,8 +416,7 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
           spectatorHint="Watch the game from the Watch tab"
           playingNote={
             <p className="text-sm text-muted">
-              Playing as <strong className="text-body">{hostPlayerName}</strong> — play from the Play tab once you
-              start.
+              Playing as <strong className="text-body">{hostPlayerName}</strong> — play once you start.
             </p>
           }
         />
@@ -544,7 +490,7 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
     !!hostWordHuntRow &&
     leaderboard.length > 1 &&
     leaderboard[0] != null &&
-    hostWordHuntRow.points === leaderboard[0].points &&
+    hostWordHuntRow === leaderboard[0] &&
     leaderboard[0].points > 0
 
   const finished = (
@@ -604,6 +550,7 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={WORD_HUNT_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}
@@ -620,18 +567,90 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
     )
   }
 
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+
+  const lobbyModeCard = (
+    <HostModeSelector
+      mode={hostMode}
+      onChange={changeHostMode}
+      onEditName={renameHost}
+      joinedPlayerId={hostPlayerId}
+      joinedPlayerName={hostPlayerName}
+      joinName={hostJoinName}
+      onJoinNameChange={setHostJoinName}
+      onJoin={() => void hostJoinGame()}
+      joining={hostJoining}
+      spectatorHint="Watch the game once it starts"
+      playerHint="Play the hunt with everyone"
+      playingNote={
+        <p className="text-sm text-muted">
+          Playing as <strong className="text-body">{hostPlayerName}</strong> — play once you start.
+        </p>
+      }
+    />
+  )
+
+  const lobbySettings = (
+    <>
+      <HostWordHuntLobbyPanel
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        playerCount={players.length}
+        onGameUpdate={setGame}
+      />
+      <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+    </>
+  )
+
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={cfg.label}
+        resumeToken={hostResumeToken}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('word_hunt', game) ?? game.max_players}
+        playCard={lobbyModeCard}
+        settingsChildren={lobbySettings}
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : `Need at least ${WORD_HUNT_MIN_PLAYERS} players to start (${readyPlayers.length}/${WORD_HUNT_MIN_PLAYERS})`
+        }
+        startLabel="Start hunt"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      />
+    )
+  }
+
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={game.status}
       tab={tab}
       onTabChange={setTab}
       primaryKind={primaryKind}
+      game={game}
+      players={players}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={load}
       showTabs={showTabs}
       gameStarted={gameStarted}
       header={<HostGameHeader game={game} />}
-      primary={hostPlays ? interactivePlay : watchRound}
+      primary={<div className="max-w-2xl mx-auto w-full">{hostPlays ? interactivePlay : watchRound}</div>}
       manage={manage}
+      noManageTab={game?.status === 'active'}
       finished={finished}
     />
   )

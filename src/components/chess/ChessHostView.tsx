@@ -1,21 +1,29 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Chess } from 'chess.js'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
+import { HostDuelLobbyPanel } from '@/components/host-lobby/HostDuelLobbyPanel'
+import { TransferHostControl } from '@/components/TransferHostControl'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { gameTypeConfig } from '@/lib/game-types'
 import { currentTurnPlayerId, CHESS_MIN_PLAYERS, isChessResultsPhase } from '@/lib/chess'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT, CHESS_SESSION_SELECT } from '@/lib/supabase-selects'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
-import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import type { Game, Player, ChessSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -30,19 +38,6 @@ import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 
 type HostTab = 'play' | 'manage'
-type ChessHostMode = 'spectator' | 'player'
-
-const HOST_MODE_KEY = 'chess_host_mode'
-
-function getHostMode(gameCode: string): ChessHostMode {
-  if (typeof window === 'undefined') return 'player'
-  return (localStorage.getItem(`${HOST_MODE_KEY}_${gameCode}`) as ChessHostMode) ?? 'player'
-}
-
-function setHostMode(gameCode: string, mode: ChessHostMode): void {
-  if (typeof window === 'undefined') return
-  localStorage.setItem(`${HOST_MODE_KEY}_${gameCode}`, mode)
-}
 
 export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError, success } = useToast()
@@ -50,14 +45,10 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<ChessSession | null>(null)
+  const sessionRef = useRef<ChessSession | null>(null)
+  sessionRef.current = session
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
-  const [hostMode, setHostModeState] = useState<ChessHostMode>('player')
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
   const [hostActing, setHostActing] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
   const [loading, setLoading] = useState(true)
@@ -94,13 +85,6 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   useEffect(() => {
     load()
-    setHostModeState(getHostMode(gameCode))
-    const stored = getPlayerSession(gameCode)
-    if (stored) {
-      setHostPlayerId(stored.playerId)
-      setHostResumeToken(stored.resumeToken ?? null)
-      setHostPlayerName(stored.playerName)
-    }
   }, [gameCode, load])
 
   // Land on the primary (Play/Watch) tab when the game starts, and on Manage at results.
@@ -113,113 +97,72 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
   // reconciles everything else. Skip rows older than what we're already showing (a late
   // event must not roll the board back); an optimistic local move keeps the previous
   // updated_at, so the authoritative row for that same move still lands.
-  const applySessionRow = useCallback((row: Record<string, unknown>) => {
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
     const next = row as unknown as ChessSession
-    setSession((cur) => (cur && Date.parse(next.updated_at) < Date.parse(cur.updated_at) ? cur : next))
+    const prev = sessionRef.current
+    // Late/reordered event: keep what we already show and skip the reload (we have newer).
+    if (prev && Date.parse(next.updated_at) < Date.parse(prev.updated_at)) return true
+    setSession(next)
+    sessionRef.current = next
+    // Skip the reconciliation reload for an ordinary in-progress move; reload on the first
+    // row and any status transition (→ finished) so the result screen resolves.
+    return prev != null && prev.status === 'active' && next.status === 'active'
   }, [])
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     ['players', { table: 'games', column: 'id' }, { table: 'chess_sessions', apply: applySessionRow }],
     load
   )
 
   // Fallback poll: tighter while the match is live, so a dropped realtime channel
-  // costs seconds of move lag instead of most of a minute.
+  // costs seconds of move lag instead of most of a minute. Only runs while the
+  // channel is down — no redundant reloads alongside healthy realtime.
   usePolling(() => load(), [gameCode, load], {
     intervalMs:
-      game?.status === 'active' && session?.status === 'active'
-        ? POLL_INTERVALS.duelFallback
-        : POLL_INTERVALS.realtimeFallback,
+      game?.status === 'waiting'
+        ? POLL_INTERVALS.lobby
+        : game?.status === 'active' && session?.status === 'active'
+          ? POLL_INTERVALS.duelFallback
+          : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
+
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    leaveGameRemovePlayer,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
   })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostPlayerName('')
-        clearPlayerSession(gameCode)
-      }
+      onHostSeatRemoved(playerId)
       setPlayers((prev) => prev.filter((p) => p.id !== playerId))
     },
-    [gameCode, hostPlayerId]
+    [onHostSeatRemoved]
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
 
-  // Clear stale host-as-player state if the host's own row is removed elsewhere.
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
-
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
-
-  const changeHostMode = async (mode: ChessHostMode) => {
-    const prev = hostMode
-    setHostModeState(mode)
-    setHostMode(gameCode, mode)
-    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
-      try {
-        const res = await fetch('/api/players', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error ?? 'Failed to leave seat')
-        }
-        handlePlayerRemoved(hostPlayerId)
-        await load()
-      } catch (err) {
-        setHostModeState(prev)
-        setHostMode(gameCode, prev)
-        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
-      }
-    }
-  }
-
-  const renameHost = async (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed || !hostPlayerId) return
-    try {
-      const res = await fetch('/api/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
-      setHostPlayerName(data.playerName)
-      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
-      await load()
-      success('Name updated!')
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to update name')
-    }
-  }
-
-  const hostJoinGame = async () => {
-    if (!hostJoinName.trim()) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: hostJoinName.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostResumeToken(data.resumeToken ?? null)
-      setHostPlayerName(data.playerName)
-      await load()
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }
 
   const movePiece = async (from: string, to: string, promotion?: 'q' | 'r' | 'b' | 'n') => {
     if (!hostPlayerId || !session) return
@@ -373,12 +316,36 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   useChessClockExpiry(gameCode, session, game?.status === 'active')
 
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer). Chess has no in-game settings,
+  // so this is just How-to-play + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' && !gameFinished ? (
+        <HostActiveSettings
+          gameCode={gameCode}
+          hostToken={hostToken}
+          gameType="chess"
+          onEnded={load}
+          endGameLabel="End game early"
+          endGameConfirmTitle="End this game early?"
+          endGameConfirmMessage="The current game will end and players will see the results screen."
+        >
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton
+              onLeave={leaveGameRemovePlayer}
+              variant="remove"
+              className="btn-secondary w-full py-3 text-base"
+            />
+          )}
+        </HostActiveSettings>
+      ) : null,
+    [game?.status, gameFinished, gameCode, hostToken, load, hostMode, hostPlayerId, leaveGameRemovePlayer]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
   if (!game) {
@@ -500,6 +467,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={CHESS_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}
@@ -516,18 +484,81 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
     )
   }
 
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={gameTypeConfig('chess').label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('chess', game) ?? game.max_players}
+        playCard={
+          <HostModeSelector
+            mode={hostMode}
+            onChange={changeHostMode}
+            joinedPlayerId={hostPlayerId}
+            joinedPlayerName={hostPlayerName}
+            joinName={hostJoinName}
+            onJoinNameChange={setHostJoinName}
+            onJoin={() => void hostJoinGame()}
+            onEditName={renameHost}
+            joining={hostJoining}
+            spectatorHint="Spectate once it starts"
+            playerHint="Take a seat and play"
+          />
+        }
+        settingsChildren={
+          <>
+            <HostDuelLobbyPanel
+              gameCode={gameCode}
+              hostToken={hostToken}
+              game={game}
+              duelType="chess"
+              onGameUpdate={setGame}
+            />
+            <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+          </>
+        }
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : readyPlayers.length < players.length
+              ? `Waiting for players to tap ready (${readyPlayers.length}/${CHESS_MIN_PLAYERS})`
+              : `Need exactly ${CHESS_MIN_PLAYERS} players to start (${players.length}/${CHESS_MIN_PLAYERS})`
+        }
+        startLabel="Start game"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      />
+    )
+  }
+
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={gameFinished ? 'finished' : game.status}
       tab={tab}
       onTabChange={setTab}
       primaryKind={primaryKind}
+      game={game}
+      players={players}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={load}
       showTabs={showTabs}
       gameStarted={gameStarted}
       header={gameFinished ? undefined : <HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : watchBoard}
       manage={manage}
+      noManageTab
       finished={
         <>
           <ChessFinalResultsShareBlock
@@ -541,7 +572,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
                 type="button"
                 onClick={() => void confirmPlayAgain()}
                 disabled={playingAgain}
-                className="btn-secondary w-full py-3 text-base disabled:opacity-60"
+                className="btn-secondary w-full py-3 text-sm disabled:opacity-60"
               >
                 {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
               </button>
@@ -551,12 +582,11 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
                 type="button"
                 onClick={() => void confirmReturnToLobby()}
                 disabled={playingAgain}
-                className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
+                className="btn-secondary w-full py-3 text-sm disabled:opacity-60"
               >
-                Return to lobby
+                Return to lobby · different settings
               </button>
             }
-            lobbyNote="Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak settings first."
           />
           {hostPlayerId && session?.winner_player_id === hostPlayerId && (
             <PostWinToCommunity

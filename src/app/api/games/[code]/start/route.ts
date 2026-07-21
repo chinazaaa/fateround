@@ -29,15 +29,20 @@ import {
   isMatchingPairsGame,
   isQuiplashGame,
   isQuickDrawGame,
+  isCrosswordGame,
+  isWordSearchGame,
+  isWordScrambleGame,
+  isLandmineGame,
 } from '@/lib/game-types'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { getCustomSlotCount } from '@/lib/custom-game'
 import { buildHotSeatRoundRows } from '@/lib/hot-seat'
 import { buildPickANumberRoundRows } from '@/lib/pick-a-number'
-import { buildRoundsFromQuotePool, buildRoundsFromAnimePool, wstAutoRoundCount } from '@/lib/who-said-this'
+import { buildRoundsFromDeck, wstAutoRoundCount, WST_DECK_MIN_ENTRIES } from '@/lib/who-said-this'
 import { pickWyrQuestions } from '@/lib/would-you-rather-questions'
 import { pickThisOrThatQuestions, THIS_OR_THAT_QUESTION_COUNT } from '@/lib/this-or-that-questions'
 import { pickMltQuestions } from '@/lib/most-likely-to-questions'
+import { loadPlatformEntries } from '@/lib/platform-content'
 import { pickNhieQuestions } from '@/lib/never-have-i-ever-questions'
 import { pickPanQuestions, PAN_DEFAULT_POOL_SIZE, PAN_MIN_POOL } from '@/lib/pick-a-number-questions'
 import {
@@ -55,6 +60,7 @@ import {
   pickCustomTriviaQuestions,
   questionPoolCap,
   parseStoredTriviaQuestions,
+  parseStoredWstDeck,
 } from '@/lib/custom-questions'
 import {
   combineLobbyQuestions,
@@ -99,7 +105,56 @@ import {
 import { WORD_RUSH_MIN_PLAYERS, WORD_RUSH_MIN_PLAYERS_INDIVIDUAL } from '@/lib/word-rush'
 import { initializeWordRushGame } from '@/lib/word-rush-server'
 import { buildNpatInitialRound, NPAT_MIN_PLAYERS, shufflePlayerOrder as npatShufflePlayerOrder } from '@/lib/npat'
+import {
+  buildLandmineInitialRound,
+  clampLandmineMineCount,
+  gameLandmineMineSource,
+  LANDMINE_MIN_PLAYERS,
+  shufflePlayerOrder as landmineShufflePlayerOrder,
+} from '@/lib/landmine'
 import { buildSudokuRoundRow, SUDOKU_MIN_PLAYERS } from '@/lib/sudoku'
+import {
+  buildCrosswordRoundRow,
+  CROSSWORD_MIN_PLAYERS,
+  generateCrossword,
+  CROSSWORD_DIFFICULTY_SPECS,
+  parseCrosswordDifficulty,
+} from '@/lib/crossword'
+import type { CrosswordMetadata } from '@/lib/crossword'
+import {
+  buildCrosswordPuzzle,
+  parseCrosswordEntries,
+  findCrosswordTheme,
+  crosswordThemeOptions,
+} from '@/lib/crossword-puzzles'
+import {
+  buildWordSearchRoundRow,
+  WORD_SEARCH_MIN_PLAYERS,
+  generateWordSearch,
+  WORD_SEARCH_DIFFICULTY_SPECS,
+  parseWordSearchDifficulty,
+} from '@/lib/word-search'
+import type { WordSearchMetadata, WordSearchPlacement } from '@/lib/word-search'
+import {
+  buildWordSearchPuzzle,
+  parseWordSearchEntries,
+  findWordSearchTheme,
+  wordSearchThemeOptions,
+} from '@/lib/word-search-puzzles'
+import {
+  WORD_SCRAMBLE_MIN_PLAYERS,
+  WORD_SCRAMBLE_DIFFICULTY_SPECS,
+  parseWordScrambleDifficulty,
+  buildWordScrambleRoundRow,
+  type WordScrambleMetadata,
+} from '@/lib/word-scramble'
+import {
+  buildWordScramblePuzzle,
+  buildWordScrambleFromEntries,
+  parseWordScrambleEntries,
+  findWordScrambleTheme,
+  wordScrambleThemeOptions,
+} from '@/lib/word-scramble-puzzles'
 import { buildWordHuntRoundRow, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
 import { buildWordHuntMetadata } from '@/lib/word-hunt-dictionary'
 import {
@@ -155,7 +210,7 @@ async function initializeEliminationLives(
   }
   return { error: null }
 }
-import type { AiGeneratedQuestions, AiQuestionsConfig } from '@/types'
+import type { AiGeneratedQuestions, AiQuestionsConfig, TriviaQuestion } from '@/types'
 
 /** Same-gender round groups for custom games with 4–5 slots. */
 function generateGenderBasedNRounds(
@@ -316,9 +371,15 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     }
 
     const triviaUsage = poolUsageToMap(poolUsage.trivia as Record<string, number> | undefined)
+    // Platform source: draw from the admin bank for this category (variant), else the built-in pool.
+    const adminTriviaPool = useCustom
+      ? []
+      : await loadPlatformEntries<TriviaQuestion>(getSupabaseAdmin(), 'trivia', category)
     const questions = useCustom
       ? pickCustomTriviaQuestions(customPool, game.rounds_count, triviaUsage)
-      : pickTriviaQuestions(game.rounds_count, category, triviaUsage)
+      : adminTriviaPool.length > 0
+        ? pickCustomTriviaQuestions(adminTriviaPool, game.rounds_count, triviaUsage)
+        : pickTriviaQuestions(game.rounds_count, category, triviaUsage)
 
     if (questions.length === 0) {
       return NextResponse.json({ error: 'No trivia questions available' }, { status: 400 })
@@ -518,7 +579,14 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       }
     }
     const wordUsage = poolUsageToMap(poolUsage.codewords)
-    const words = pickBoardWords(customPool ?? undefined, wordUsage)
+    // Platform source: draw the board from the admin bank when present, else the built-in pool
+    // (pickBoardWords falls back to CODEWORDS_WORD_POOL when given an empty/undefined pool).
+    const adminCwPool =
+      parseQuestionSource(game.question_source, gameType) === 'custom'
+        ? []
+        : await loadPlatformEntries<string>(getSupabaseAdmin(), 'codewords')
+    const boardPool = customPool ?? (adminCwPool.length > 0 ? adminCwPool : undefined)
+    const words = pickBoardWords(boardPool, wordUsage)
     const key = generateKey(startingTeam)
     const spymasterTimer = clampCodewordsTimer(game.timer_seconds ?? CODEWORDS_DEFAULT_SPYMASTER_TIMER)
     const operativeTimer = clampCodewordsTimer(game.operative_timer_seconds ?? CODEWORDS_DEFAULT_OPERATIVE_TIMER)
@@ -663,6 +731,40 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     return NextResponse.json({ success: true })
   }
 
+  if (isLandmineGame(gameType)) {
+    const playerIds = playersData.filter((p) => p.spectator !== true).map((p) => p.id)
+    if (playerIds.length < LANDMINE_MIN_PLAYERS) {
+      return NextResponse.json({ error: `Need at least ${LANDMINE_MIN_PLAYERS} players to start` }, { status: 400 })
+    }
+
+    const playerOrder = landmineShufflePlayerOrder(playerIds)
+    const roundRow = buildLandmineInitialRound({
+      gameId: code.toUpperCase(),
+      playerOrder,
+      mineCount: clampLandmineMineCount(game.landmine_mine_count),
+      now,
+      manual: gameLandmineMineSource(game) === 'manual',
+    })
+
+    const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRow)
+    if (roundError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', roundError) }, { status: 500 })
+
+    const { error: gameError } = await getSupabaseAdmin()
+      .from('games')
+      .update({
+        status: 'active',
+        session_started_at: sessionStartedAt,
+        current_round_number: 1,
+      })
+      .eq('id', code.toUpperCase())
+
+    if (gameError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
+
+    return NextResponse.json({ success: true })
+  }
+
   if (isSudokuGame(gameType)) {
     const playingPlayers = playersData.filter((p) => p.spectator !== true)
     if (playingPlayers.length < SUDOKU_MIN_PLAYERS) {
@@ -695,6 +797,290 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
         session_started_at: sessionStartedAt,
         current_round_number: 1,
         rounds_count: 1,
+      })
+      .eq('id', code.toUpperCase())
+
+    if (gameError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isCrosswordGame(gameType)) {
+    const playingPlayers = playersData.filter((p) => p.spectator !== true)
+    if (playingPlayers.length < CROSSWORD_MIN_PLAYERS) {
+      return NextResponse.json({ error: `Need at least ${CROSSWORD_MIN_PLAYERS} players to start` }, { status: 400 })
+    }
+
+    const seed = Date.now() ^ Math.floor(Math.random() * 0xffffffff)
+
+    // Custom content pool (a stored answer/clue list) overrides the platform theme; the
+    // same generator packs both. Falls back to the platform theme if custom is empty.
+    // Replay variety for BOTH custom pools and built-in themes: exclude answers used in earlier
+    // games of this room (tracked in pool_usage), resetting the cycle once the bank runs low.
+    const poolUsage = parsePoolUsage(game.pool_usage)
+    const crosswordUsed = { ...(poolUsage.crossword ?? {}) }
+    let built: { metadata: CrosswordMetadata; solution: string[][] } | null = null
+    let nextCrosswordUsage: Record<string, number> | undefined
+    const customRows = Array.isArray(game.custom_questions) ? (game.custom_questions as Record<string, string>[]) : []
+    // A stale custom pool (e.g. from a replay, or before the host switched back to a built-in
+    // theme in the lobby) must NOT override a built-in platform theme. Only use the pool when the
+    // game is NOT on a built-in theme: a custom/library upload (question_source != platform) or an
+    // admin theme (platform, but *_theme holds the theme NAME, not a built-in id).
+    const onBuiltinTheme =
+      parseQuestionSource(game.question_source, gameType) === 'platform' &&
+      crosswordThemeOptions().some((t) => t.id === game.crossword_theme)
+    if (!onBuiltinTheme && customRows.length > 0) {
+      const entries = parseCrosswordEntries(customRows)
+      if (entries.length >= 4) {
+        let used = new Set(Object.keys(crosswordUsed).map((w) => w.toUpperCase()))
+        if (entries.filter((e) => !used.has(e.answer.toUpperCase())).length < 12) used = new Set()
+        const fresh = entries.filter((e) => !used.has(e.answer.toUpperCase()))
+        built = generateCrossword(fresh.length >= 4 ? fresh : entries, { size: 12, seed, targetWords: 12, minWords: 4 })
+        if (built) {
+          const clueTexts = new Set(built.metadata.clues.map((c) => c.clue))
+          const usedAnswers = entries.filter((e) => clueTexts.has(e.clue)).map((e) => e.answer.toUpperCase())
+          const base = used.size === 0 ? {} : crosswordUsed
+          for (const a of usedAnswers) base[a] = (base[a] ?? 0) + 1
+          nextCrosswordUsage = base
+        }
+      }
+    }
+    let puzzle: { metadata: CrosswordMetadata; solution: string[][] }
+    if (built) {
+      puzzle = built
+    } else {
+      const theme = findCrosswordTheme(game.crossword_theme)
+      const spec = CROSSWORD_DIFFICULTY_SPECS[parseCrosswordDifficulty(game.crossword_difficulty)]
+      let used = new Set(Object.keys(crosswordUsed).map((w) => w.toUpperCase()))
+      if (theme.entries.filter((e) => !used.has(e.answer.toUpperCase())).length < spec.targetWords) {
+        used = new Set() // cycle exhausted — start fresh
+      }
+      puzzle = buildCrosswordPuzzle(theme.id, game.crossword_difficulty, seed, [...used])
+      const clueTexts = new Set(puzzle.metadata.clues.map((c) => c.clue))
+      const usedAnswers = theme.entries.filter((e) => clueTexts.has(e.clue)).map((e) => e.answer.toUpperCase())
+      const base = used.size === 0 ? {} : crosswordUsed
+      for (const a of usedAnswers) base[a] = (base[a] ?? 0) + 1
+      nextCrosswordUsage = base
+    }
+
+    const { roundRow, solution } = buildCrosswordRoundRow(code.toUpperCase(), puzzle.metadata, puzzle.solution)
+
+    const { data: insertedRound, error: roundError } = await getSupabaseAdmin()
+      .from('rounds')
+      .insert(roundRow)
+      .select('id')
+      .single()
+    if (roundError || !insertedRound) {
+      return NextResponse.json({ error: roundError?.message ?? 'Failed to create round' }, { status: 500 })
+    }
+
+    // Solution letters are stored separately (RLS hides them from players).
+    const { error: solutionError } = await supabase
+      .from('crossword_solutions')
+      .insert({ round_id: insertedRound.id, solution })
+    if (solutionError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', solutionError) }, { status: 500 })
+
+    const { error: gameError } = await getSupabaseAdmin()
+      .from('games')
+      .update({
+        status: 'active',
+        session_started_at: sessionStartedAt,
+        current_round_number: 1,
+        rounds_count: 1,
+        ...(nextCrosswordUsage
+          ? { pool_usage: { ...parsePoolUsage(game.pool_usage), crossword: nextCrosswordUsage } }
+          : {}),
+      })
+      .eq('id', code.toUpperCase())
+
+    if (gameError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isWordSearchGame(gameType)) {
+    const playingPlayers = playersData.filter((p) => p.spectator !== true)
+    if (playingPlayers.length < WORD_SEARCH_MIN_PLAYERS) {
+      return NextResponse.json({ error: `Need at least ${WORD_SEARCH_MIN_PLAYERS} players to start` }, { status: 400 })
+    }
+
+    const seed = Date.now() ^ Math.floor(Math.random() * 0xffffffff)
+
+    // A custom word pool (stored word list) overrides the platform theme; both feed the same
+    // generator. Falls back to the platform theme if custom is empty or too small.
+    // Replay variety for BOTH custom pools and built-in themes (tracked in pool_usage).
+    const poolUsage = parsePoolUsage(game.pool_usage)
+    const wsUsed = { ...(poolUsage.word_search ?? {}) }
+    let built: { metadata: WordSearchMetadata; solution: WordSearchPlacement[] } | null = null
+    let nextWordSearchUsage: Record<string, number> | undefined
+    const customRows = Array.isArray(game.custom_questions) ? (game.custom_questions as Record<string, string>[]) : []
+    // See crossword note: a stale pool must not override a built-in platform theme.
+    const onBuiltinTheme =
+      parseQuestionSource(game.question_source, gameType) === 'platform' &&
+      wordSearchThemeOptions().some((t) => t.id === game.word_search_theme)
+    if (!onBuiltinTheme && customRows.length > 0) {
+      const entries = parseWordSearchEntries(customRows)
+      if (entries.length >= 4) {
+        const spec = WORD_SEARCH_DIFFICULTY_SPECS[parseWordSearchDifficulty(game.word_search_difficulty)]
+        const words = entries.map((e) => e.word)
+        let used = new Set(Object.keys(wsUsed).map((w) => w.toUpperCase()))
+        if (words.filter((w) => !used.has(w.toUpperCase())).length < spec.targetWords) used = new Set()
+        const fresh = words.filter((w) => !used.has(w.toUpperCase()))
+        built = generateWordSearch(fresh.length >= 4 ? fresh : words, {
+          size: spec.size,
+          seed,
+          targetWords: spec.targetWords,
+          directions: spec.directions,
+          minWords: 4,
+        })
+        if (built) {
+          built.metadata.difficulty = parseWordSearchDifficulty(game.word_search_difficulty)
+          const base = used.size === 0 ? {} : wsUsed
+          for (const w of built.metadata.words) base[w.toUpperCase()] = (base[w.toUpperCase()] ?? 0) + 1
+          nextWordSearchUsage = base
+        }
+      }
+    }
+    let puzzle: { metadata: WordSearchMetadata; solution: WordSearchPlacement[] }
+    if (built) {
+      puzzle = built
+    } else {
+      const theme = findWordSearchTheme(game.word_search_theme)
+      const spec = WORD_SEARCH_DIFFICULTY_SPECS[parseWordSearchDifficulty(game.word_search_difficulty)]
+      let used = new Set(Object.keys(wsUsed).map((w) => w.toUpperCase()))
+      if (theme.words.filter((w) => !used.has(w.toUpperCase())).length < spec.targetWords) {
+        used = new Set() // cycle exhausted — start fresh
+      }
+      puzzle = buildWordSearchPuzzle(theme.id, game.word_search_difficulty, seed, [...used])
+      const base = used.size === 0 ? {} : wsUsed
+      for (const w of puzzle.metadata.words) base[w.toUpperCase()] = (base[w.toUpperCase()] ?? 0) + 1
+      nextWordSearchUsage = base
+    }
+
+    const { roundRow, solution } = buildWordSearchRoundRow(code.toUpperCase(), puzzle.metadata, puzzle.solution)
+
+    const { data: insertedRound, error: roundError } = await getSupabaseAdmin()
+      .from('rounds')
+      .insert(roundRow)
+      .select('id')
+      .single()
+    if (roundError || !insertedRound) {
+      return NextResponse.json({ error: roundError?.message ?? 'Failed to create round' }, { status: 500 })
+    }
+
+    // Word placements are stored separately (RLS hides them from players).
+    const { error: solutionError } = await supabase
+      .from('word_search_solutions')
+      .insert({ round_id: insertedRound.id, solution })
+    if (solutionError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', solutionError) }, { status: 500 })
+
+    const { error: gameError } = await getSupabaseAdmin()
+      .from('games')
+      .update({
+        status: 'active',
+        session_started_at: sessionStartedAt,
+        current_round_number: 1,
+        rounds_count: 1,
+        ...(nextWordSearchUsage
+          ? { pool_usage: { ...parsePoolUsage(game.pool_usage), word_search: nextWordSearchUsage } }
+          : {}),
+      })
+      .eq('id', code.toUpperCase())
+
+    if (gameError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isWordScrambleGame(gameType)) {
+    const playingPlayers = playersData.filter((p) => p.spectator !== true)
+    if (playingPlayers.length < WORD_SCRAMBLE_MIN_PLAYERS) {
+      return NextResponse.json(
+        { error: `Need at least ${WORD_SCRAMBLE_MIN_PLAYERS} players to start` },
+        { status: 400 }
+      )
+    }
+
+    const seed = Date.now() ^ Math.floor(Math.random() * 0xffffffff)
+
+    // A custom word pool (stored word[,hint] list) overrides the platform theme; both feed the
+    // same builder. Falls back to the platform theme if custom is empty or too small.
+    // Replay variety for BOTH custom pools and built-in themes (tracked in pool_usage).
+    const poolUsage = parsePoolUsage(game.pool_usage)
+    const scrambleUsed = { ...(poolUsage.word_scramble ?? {}) }
+    const spec = WORD_SCRAMBLE_DIFFICULTY_SPECS[parseWordScrambleDifficulty(game.word_scramble_difficulty)]
+    let built: { metadata: WordScrambleMetadata; solution: string[] } | null = null
+    let nextUsage: Record<string, number> | undefined
+    const customRows = Array.isArray(game.custom_questions) ? (game.custom_questions as Record<string, string>[]) : []
+    // See crossword note: a stale pool must not override a built-in platform theme.
+    const onBuiltinTheme =
+      parseQuestionSource(game.question_source, gameType) === 'platform' &&
+      wordScrambleThemeOptions().some((t) => t.id === game.word_scramble_theme)
+    if (!onBuiltinTheme && customRows.length > 0) {
+      const entries = parseWordScrambleEntries(customRows)
+      if (entries.length >= 4) {
+        let used = new Set(Object.keys(scrambleUsed).map((w) => w.toUpperCase()))
+        const freshInWindow = entries.filter(
+          (e) => e.word.length >= spec.minLen && e.word.length <= spec.maxLen && !used.has(e.word.toUpperCase())
+        )
+        if (freshInWindow.length < spec.count) used = new Set() // cycle exhausted — start fresh
+        const poolEntries = entries.filter((e) => !used.has(e.word.toUpperCase()))
+        built = buildWordScrambleFromEntries(
+          poolEntries.length >= 4 ? poolEntries : entries,
+          game.word_scramble_difficulty,
+          seed
+        )
+        if (built) {
+          built.metadata.difficulty = parseWordScrambleDifficulty(game.word_scramble_difficulty)
+          const base = used.size === 0 ? {} : scrambleUsed
+          for (const w of built.solution) base[w.toUpperCase()] = (base[w.toUpperCase()] ?? 0) + 1
+          nextUsage = base
+        }
+      }
+    }
+    let puzzle: { metadata: WordScrambleMetadata; solution: string[] }
+    if (built) {
+      puzzle = built
+    } else {
+      const theme = findWordScrambleTheme(game.word_scramble_theme)
+      let used = new Set(Object.keys(scrambleUsed).map((w) => w.toUpperCase()))
+      const fresh = theme.entries
+        .map((e) => e.word)
+        .filter((w) => w.length >= spec.minLen && w.length <= spec.maxLen && !used.has(w.toUpperCase()))
+      if (fresh.length < spec.count) used = new Set() // cycle exhausted — start fresh
+      puzzle = buildWordScramblePuzzle(theme.id, game.word_scramble_difficulty, seed, [...used])
+      const base = used.size === 0 ? {} : scrambleUsed
+      for (const w of puzzle.solution) base[w.toUpperCase()] = (base[w.toUpperCase()] ?? 0) + 1
+      nextUsage = base
+    }
+
+    const roundRow = buildWordScrambleRoundRow(code.toUpperCase(), puzzle.metadata)
+    const { data: insertedRound, error: roundError } = await getSupabaseAdmin()
+      .from('rounds')
+      .insert(roundRow)
+      .select('id')
+      .single()
+    if (roundError || !insertedRound) {
+      return NextResponse.json({ error: roundError?.message ?? 'Failed to create round' }, { status: 500 })
+    }
+
+    // Answers are stored separately (RLS hides them from players).
+    const { error: solutionError } = await supabase
+      .from('word_scramble_solutions')
+      .insert({ round_id: insertedRound.id, solution: puzzle.solution })
+    if (solutionError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', solutionError) }, { status: 500 })
+
+    const { error: gameError } = await getSupabaseAdmin()
+      .from('games')
+      .update({
+        status: 'active',
+        session_started_at: sessionStartedAt,
+        current_round_number: 1,
+        rounds_count: 1,
+        ...(nextUsage ? { pool_usage: { ...parsePoolUsage(game.pool_usage), word_scramble: nextUsage } } : {}),
       })
       .eq('id', code.toUpperCase())
 
@@ -815,9 +1201,12 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     }
 
     const quiplashUsage = poolUsageToMap(poolUsage.quiplash as Record<string, number> | undefined)
+    const adminQuiplashPool = useCustom ? [] : await loadPlatformEntries<string>(getSupabaseAdmin(), 'quiplash')
     const prompts = useCustom
       ? pickCustomQuiplashPrompts(customPool, game.rounds_count, quiplashUsage)
-      : pickQuiplashPrompts(game.rounds_count, quiplashUsage)
+      : adminQuiplashPool.length > 0
+        ? pickCustomQuiplashPrompts(adminQuiplashPool, game.rounds_count, quiplashUsage)
+        : pickQuiplashPrompts(game.rounds_count, quiplashUsage)
 
     if (prompts.length === 0) {
       return NextResponse.json({ error: 'No prompts available' }, { status: 400 })
@@ -915,9 +1304,12 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     }
 
     const quickDrawUsage = poolUsageToMap(poolUsage.quick_draw as Record<string, number> | undefined)
+    const adminQdPool = useCustom ? [] : await loadPlatformEntries<string>(getSupabaseAdmin(), 'quick_draw', 'lie')
     const prompts = useCustom
       ? pickCustomQuickDrawPrompts(customPool, promptsNeeded, quickDrawUsage)
-      : pickQuickDrawPrompts(promptsNeeded, quickDrawUsage)
+      : adminQdPool.length > 0
+        ? pickCustomQuickDrawPrompts(adminQdPool, promptsNeeded, quickDrawUsage)
+        : pickQuickDrawPrompts(promptsNeeded, quickDrawUsage)
 
     if (prompts.length < promptsNeeded) {
       return NextResponse.json({ error: 'Not enough prompts available' }, { status: 400 })
@@ -1040,83 +1432,56 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
 
     const participantIds = (participantsData ?? []).map((p) => p.id)
 
-    let playerRoundRows: ReturnType<typeof buildRoundsFromQuotePool> = []
-    let animeRoundRows: ReturnType<typeof buildRoundsFromAnimePool> = []
+    let playerRoundRows: ReturnType<typeof buildRoundsFromDeck> = []
+    let deckRoundRows: ReturnType<typeof buildRoundsFromDeck> = []
+    const joinedPlayerIds = playersData.filter((p) => p.spectator !== true).map((p) => p.id)
 
-    if (wstQuoteSource === 'player' || wstQuoteSource === 'both') {
-      if (wstQuoteSource === 'player') {
-        if (participantIds.length < 2) {
-          return NextResponse.json({ error: 'Need at least 2 names on the list' }, { status: 400 })
-        }
-        const submitters = playersData.filter((p) => p.participant_id)
-        if (submitters.length < 2) {
-          return NextResponse.json(
-            {
-              error: 'Need at least 2 players who claimed a name from the list',
-            },
-            { status: 400 }
-          )
-        }
+    // Pre-set roster: build choice-rounds from the host deck stored in games.custom_questions
+    // (Platform / Library / uploaded CSV). Players just join and guess the author from choices —
+    // no name list or player submissions needed.
+    if (wstQuoteSource === 'deck') {
+      const deck = parseStoredWstDeck(game.custom_questions)
+      if (deck.length < WST_DECK_MIN_ENTRIES) {
+        return NextResponse.json(
+          { error: `Add at least ${WST_DECK_MIN_ENTRIES} quotes to the deck before starting` },
+          { status: 400 }
+        )
       }
+      deckRoundRows = buildRoundsFromDeck({
+        gameId: code.toUpperCase(),
+        participantIds: joinedPlayerIds,
+        deck: deck.slice(0, wstAutoRoundCount(deck.length)),
+        startIndex: 0,
+        now,
+      })
+    }
 
+    // Players submit: each player-authored question (quote + options + correct) is a round.
+    if (wstQuoteSource === 'player') {
       const { data: poolEntries } = await supabase.from('wst_quote_pool').select('*').eq('game_id', code.toUpperCase())
-
-      const quotes = poolEntries ?? []
-      if (wstQuoteSource === 'player' && quotes.length < 2) {
+      const deck = (poolEntries ?? [])
+        .map((e) => ({
+          quote: typeof e.quote_text === 'string' ? e.quote_text.trim() : '',
+          options: Array.isArray(e.options) ? e.options.map((o: unknown) => String(o).trim()).filter(Boolean) : [],
+          correctIndex: typeof e.correct_index === 'number' ? e.correct_index : -1,
+        }))
+        .filter((q) => q.quote && q.options.length >= 2 && q.correctIndex >= 0 && q.correctIndex < q.options.length)
+      if (deck.length < WST_DECK_MIN_ENTRIES) {
         return NextResponse.json(
-          {
-            error: 'Need at least 2 quotes in the pool before starting — players submit quotes in the lobby',
-          },
+          { error: 'Need at least 2 questions submitted in the lobby before starting' },
           { status: 400 }
         )
       }
-
-      if (quotes.length > 0) {
-        const count = wstAutoRoundCount(quotes.length)
-        playerRoundRows = buildRoundsFromQuotePool({
-          gameId: code.toUpperCase(),
-          participantIds,
-          poolEntries: quotes.slice(0, count),
-          now,
-        })
-      }
+      playerRoundRows = buildRoundsFromDeck({
+        gameId: code.toUpperCase(),
+        participantIds: joinedPlayerIds,
+        deck: deck.slice(0, wstAutoRoundCount(deck.length)),
+        startIndex: 0,
+        now,
+      })
     }
 
-    if (wstQuoteSource === 'anime' || wstQuoteSource === 'both') {
-      const { data: animePool } = await supabase
-        .from('anime_quote_pool')
-        .select('*')
-        .eq('game_id', code.toUpperCase())
-        .eq('removed', false)
-        .order('created_at')
-
-      const animeQuotes = animePool ?? []
-      if (wstQuoteSource === 'anime' && animeQuotes.length < 2) {
-        return NextResponse.json(
-          {
-            error: 'Need at least 2 anime quotes before starting — fetch quotes in the lobby',
-          },
-          { status: 400 }
-        )
-      }
-
-      if (animeQuotes.length > 0) {
-        animeRoundRows = buildRoundsFromAnimePool({
-          gameId: code.toUpperCase(),
-          participantIds,
-          animeQuotes: animeQuotes.map((q) => ({
-            quote_text: q.quote_text,
-            anime_name: q.anime_name,
-            correct_character: q.correct_character,
-            choices: q.choices as string[],
-          })),
-          startIndex: playerRoundRows.length,
-          now,
-        })
-      }
-    }
-
-    const allRoundRows = [...playerRoundRows, ...animeRoundRows]
+    const allRoundRows = [...deckRoundRows, ...playerRoundRows]
     if (allRoundRows.length < 2) {
       return NextResponse.json({ error: 'Need at least 2 total quotes to start' }, { status: 400 })
     }
@@ -1206,9 +1571,15 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       questionOrder,
       playerQuestionsEnabled
     )
+    // Platform source: draw from the admin-managed bank (platform_content) when it has content,
+    // otherwise fall back to the hardcoded MLT_QUESTIONS. Read via service-role (RLS-locked table).
+    const mltPlatformUsage = mergeUsageMaps(await fetchMltQuestionUsage(supabase), customMltUsage)
+    const adminMltPool = useCustom ? [] : await loadPlatformEntries<string>(getSupabaseAdmin(), 'most_likely_to')
     const platformQuestions = useCustom
       ? pickCustomMltQuestions(customPool, poolNeeded, customMltUsage)
-      : pickMltQuestions(poolNeeded, mergeUsageMaps(await fetchMltQuestionUsage(supabase), customMltUsage))
+      : adminMltPool.length > 0
+        ? pickCustomMltQuestions(adminMltPool, poolNeeded, mltPlatformUsage)
+        : pickMltQuestions(poolNeeded, mltPlatformUsage)
 
     const aiMltQuestions: string[] =
       game.ai_questions_enabled &&
@@ -1301,9 +1672,14 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       questionOrder,
       playerQuestionsEnabled
     )
+    // Platform source: draw from the admin bank (platform_content) when present, else the hardcoded array.
+    const nhiePlatformUsage = mergeUsageMaps(await fetchNhieQuestionUsage(supabase), customMltUsage)
+    const adminNhiePool = useCustom ? [] : await loadPlatformEntries<string>(getSupabaseAdmin(), 'never_have_i_ever')
     const platformQuestions = useCustom
       ? pickCustomMltQuestions(customPool, poolNeeded, customMltUsage)
-      : pickNhieQuestions(poolNeeded, mergeUsageMaps(await fetchNhieQuestionUsage(supabase), customMltUsage))
+      : adminNhiePool.length > 0
+        ? pickCustomMltQuestions(adminNhiePool, poolNeeded, nhiePlatformUsage)
+        : pickNhieQuestions(poolNeeded, nhiePlatformUsage)
 
     const aiNhieQuestions: string[] =
       game.ai_questions_enabled &&
@@ -1387,9 +1763,13 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
         ? customPool.length + (playerQuestionsEnabled ? effectivePlayerCount : 0)
         : PAN_DEFAULT_POOL_SIZE + (playerQuestionsEnabled ? effectivePlayerCount : 0)
     )
+    const panPlatformUsage = mergeUsageMaps(await fetchPanQuestionUsage(supabase), customMltUsage)
+    const adminPanPool = useCustom ? [] : await loadPlatformEntries<string>(getSupabaseAdmin(), 'pick_a_number')
     const platformQuestions = useCustom
       ? pickCustomMltQuestions(customPool, poolNeeded, customMltUsage)
-      : pickPanQuestions(poolNeeded, mergeUsageMaps(await fetchPanQuestionUsage(supabase), customMltUsage))
+      : adminPanPool.length > 0
+        ? pickCustomMltQuestions(adminPanPool, poolNeeded, panPlatformUsage)
+        : pickPanQuestions(poolNeeded, panPlatformUsage)
     const questionPool = combineLobbyQuestions(
       playerQuestionsEnabled ? playerPanQuestions : [],
       platformQuestions,
@@ -1490,9 +1870,14 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       questionOrder,
       playerQuestionsEnabled
     )
+    const adminTotPool = useCustom
+      ? []
+      : await loadPlatformEntries<{ optionA: string; optionB: string }>(getSupabaseAdmin(), 'this_or_that')
     const poolQuestions = useCustom
       ? pickCustomWyrQuestions(customPool, poolNeeded, customWyrUsage)
-      : pickThisOrThatQuestions(poolNeeded)
+      : adminTotPool.length > 0
+        ? pickCustomWyrQuestions(adminTotPool, poolNeeded)
+        : pickThisOrThatQuestions(poolNeeded)
     const questions = combineLobbyQuestions(
       playerQuestionsEnabled ? playerTotQuestions : [],
       poolQuestions,
@@ -1557,9 +1942,15 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       questionOrder,
       playerQuestionsEnabled
     )
+    const wyrPlatformUsage = mergeUsageMaps(await fetchWyrQuestionUsage(supabase), customWyrUsage)
+    const adminWyrPool = useCustom
+      ? []
+      : await loadPlatformEntries<{ optionA: string; optionB: string }>(getSupabaseAdmin(), 'would_you_rather')
     const platformQuestions = useCustom
       ? pickCustomWyrQuestions(customPool, poolNeeded, customWyrUsage)
-      : pickWyrQuestions(poolNeeded, mergeUsageMaps(await fetchWyrQuestionUsage(supabase), customWyrUsage))
+      : adminWyrPool.length > 0
+        ? pickCustomWyrQuestions(adminWyrPool, poolNeeded, wyrPlatformUsage)
+        : pickWyrQuestions(poolNeeded, wyrPlatformUsage)
 
     const aiWyrQuestions: { optionA: string; optionB: string }[] =
       game.ai_questions_enabled &&

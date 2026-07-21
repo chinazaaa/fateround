@@ -5,6 +5,7 @@ import { getPlayerSession } from '@/lib/secure-session'
 import { subscribePlayerSession } from '@/lib/session-events'
 import type { AudioAuth } from '@/lib/voice-types'
 import { useHostVoiceDisplayName, useHostVoiceIdentity } from '@/hooks/useHostVoiceIdentity'
+import { useAppActive } from '@/hooks/useAppActive'
 
 export type VoiceMode = 'player' | 'host'
 
@@ -25,7 +26,18 @@ export function useVoiceRoom({ gameCode, mode, hostToken }: Options) {
   const [resolvedRoomCode, setResolvedRoomCode] = useState(gameCode.toUpperCase())
   const [token, setToken] = useState<string | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
+  // Silent-reconnect grace window: after an unexpected drop we keep trying to
+  // re-establish for RECONNECT_WINDOW_MS before showing the Join button.
+  const [reconnecting, setReconnecting] = useState(false)
+  const reconnectingRef = useRef(false)
+  const reconnectRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reconnectDeadlineRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [presenceCount, setPresenceCount] = useState(0)
+  // The rail now mounts on every game (matching web), so this 12s presence POST
+  // runs for every player of every game. Pause it while backgrounded — same M3
+  // rule the other network pollers follow; a resume re-runs the effect, which
+  // polls once immediately.
+  const appActive = useAppActive()
   const [error, setError] = useState<string | null>(null)
 
   const authRef = useRef<AudioAuth | null>(null)
@@ -61,8 +73,7 @@ export function useVoiceRoom({ gameCode, mode, hostToken }: Options) {
 
   authRef.current = auth
 
-  const ready =
-    mode === 'host' ? !!hostToken && !!hostIdentity : playerReady && !!playerIdentity
+  const ready = mode === 'host' ? !!hostToken && !!hostIdentity : playerReady && !!playerIdentity
 
   useEffect(() => {
     let active = true
@@ -76,7 +87,7 @@ export function useVoiceRoom({ gameCode, mode, hostToken }: Options) {
   }, [gameCode])
 
   useEffect(() => {
-    if (token || !resolvedRoomCode || !identity || !auth) {
+    if (token || !resolvedRoomCode || !identity || !auth || !appActive) {
       setPresenceCount(0)
       return
     }
@@ -101,10 +112,37 @@ export function useVoiceRoom({ gameCode, mode, hostToken }: Options) {
       active = false
       clearInterval(interval)
     }
-  }, [token, resolvedRoomCode, identity, auth])
+  }, [token, resolvedRoomCode, identity, auth, appActive])
+
+  // Fetch a fresh LiveKit token for the current identity. Shared by the
+  // user-driven join() and the silent reconnect loop.
+  const requestToken = useCallback(async () => {
+    if (!identity || !auth || !resolvedRoomCode) throw new Error('voice not ready')
+    let name = displayName
+    if (mode === 'host') {
+      const session = await getPlayerSession(gameCode)
+      name = session?.playerName?.trim() || 'Host'
+    }
+    const data = await postAudioToken({ roomName: resolvedRoomCode, identity, name, auth })
+    return data.token
+  }, [auth, displayName, gameCode, identity, mode, resolvedRoomCode])
+
+  const clearReconnect = useCallback(() => {
+    reconnectingRef.current = false
+    setReconnecting(false)
+    if (reconnectRetryRef.current) {
+      clearTimeout(reconnectRetryRef.current)
+      reconnectRetryRef.current = null
+    }
+    if (reconnectDeadlineRef.current) {
+      clearTimeout(reconnectDeadlineRef.current)
+      reconnectDeadlineRef.current = null
+    }
+  }, [])
 
   const join = useCallback(async () => {
     if (!identity || !auth || !displayName || !resolvedRoomCode) return
+    clearReconnect()
     setError(null)
     setIsConnecting(true)
     try {
@@ -113,30 +151,68 @@ export function useVoiceRoom({ gameCode, mode, hostToken }: Options) {
         setError('Microphone permission is required for voice chat')
         return
       }
-
-      let name = displayName
-      if (mode === 'host') {
-        const session = await getPlayerSession(gameCode)
-        name = session?.playerName?.trim() || 'Host'
-      }
-
-      const data = await postAudioToken({
-        roomName: resolvedRoomCode,
-        identity,
-        name,
-        auth,
-      })
-      setToken(data.token)
+      setToken(await requestToken())
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to join voice chat')
+      // Log the raw reason for debugging; players get a plain message, never a
+      // leaked server/config string.
+      console.error('[voice] join failed', err)
+      setError('Could not join voice chat. Please try again.')
     } finally {
       setIsConnecting(false)
     }
-  }, [auth, displayName, gameCode, identity, mode, resolvedRoomCode])
+  }, [auth, clearReconnect, displayName, identity, requestToken, resolvedRoomCode])
+
+  const giveUpReconnect = useCallback(() => {
+    clearReconnect()
+    setToken(null)
+    setError('Voice chat disconnected. Tap Join voice to reconnect.')
+  }, [clearReconnect])
+
+  // One reconnect attempt: fetch a fresh token and remount the room. Success is
+  // detected by the room firing onConnected (→ reconnected()); a fresh failure
+  // re-enters via beginReconnect(). Only schedule the next try when the fetch
+  // itself fails, so we don't hammer the token endpoint.
+  const attemptReconnect = useCallback(async () => {
+    if (!reconnectingRef.current) return
+    try {
+      const t = await requestToken()
+      if (reconnectingRef.current) setToken(t)
+    } catch {
+      if (!reconnectingRef.current) return
+      reconnectRetryRef.current = setTimeout(() => void attemptReconnect(), 2000)
+    }
+  }, [requestToken])
+
+  const beginReconnect = useCallback(() => {
+    if (!identity || !auth) {
+      giveUpReconnect()
+      return
+    }
+    setToken(null) // drop the dead room before re-fetching
+    if (reconnectingRef.current) {
+      // The remounted room dropped again — retry shortly, still inside the window.
+      if (reconnectRetryRef.current) clearTimeout(reconnectRetryRef.current)
+      reconnectRetryRef.current = setTimeout(() => void attemptReconnect(), 2000)
+      return
+    }
+    reconnectingRef.current = true
+    setReconnecting(true)
+    // Hard stop: give up if we haven't reconnected within the window (covers a
+    // room that hangs mid-connect without firing onConnected/onDisconnected).
+    reconnectDeadlineRef.current = setTimeout(giveUpReconnect, 8000)
+    void attemptReconnect()
+  }, [attemptReconnect, auth, giveUpReconnect, identity])
+
+  const reconnected = useCallback(() => {
+    if (reconnectingRef.current) clearReconnect()
+  }, [clearReconnect])
 
   const leave = useCallback(() => {
+    clearReconnect()
     setToken(null)
-  }, [])
+  }, [clearReconnect])
+
+  useEffect(() => () => clearReconnect(), [clearReconnect])
 
   return {
     ready,
@@ -145,10 +221,13 @@ export function useVoiceRoom({ gameCode, mode, hostToken }: Options) {
     auth,
     token,
     isConnecting,
+    reconnecting,
     presenceCount,
     error,
     join,
     leave,
+    beginReconnect,
+    reconnected,
     inVoice: !!token,
     isHost: mode === 'host',
   }

@@ -1,47 +1,52 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MonopolyClassicBoard, MonopolyDiceRoll, MonopolyPlayerList } from '@/components/monopoly/MonopolyBoard'
 import { MonopolyActiveLayout } from '@/components/monopoly/MonopolyActiveLayout'
 import { MonopolyHostTimeExtension } from '@/components/monopoly/MonopolyHostTimeExtension'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { MonopolyFinalResultsShareBlock } from '@/components/monopoly/MonopolyFinalResultsShareBlock'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { ExitIcon } from '@/components/host/host-icons'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { gameTypeConfig } from '@/lib/game-types'
 import { formatRentMessageForPlayer } from '@/lib/monopoly-rent-messages'
 import { formatThemedText } from '@/components/monopoly/monopoly-themes'
 import {
   buildMonopolyStandings,
   currentPlayerId,
-  getMonopolyHostMode,
   MONOPOLY_COLOR_CLASSES,
   MONOPOLY_MIN_PLAYERS,
   parsePropertyOwners,
-  setMonopolyHostMode,
   type MonopolyColorGroup,
-  type MonopolyHostMode,
 } from '@/lib/monopoly'
 import { supabase } from '@/lib/supabase'
-import { GAME_SELECT, MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
-import { useHostAutoReady } from '@/hooks/useHostAutoReady'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
-import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import {
-  clearPlayerSession,
-  getPlayerSession,
-  isFetchNetworkError,
-  messageFromFetchActionError,
-  setPlayerSession,
-} from '@/lib/utils'
+  GAME_SELECT,
+  MONOPOLY_BOARD_SELECT,
+  MONOPOLY_PLAYER_STATE_SELECT,
+  PLAYER_SELECT,
+  isCompleteMonopolyBoardRow,
+} from '@/lib/supabase-selects'
+import { useHostAutoReady } from '@/hooks/useHostAutoReady'
+import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostSeat } from '@/hooks/useHostSeat'
+import { isFetchNetworkError, messageFromFetchActionError } from '@/lib/utils'
 import type { Game, MonopolyBoard, MonopolyPlayerState, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
@@ -50,6 +55,7 @@ import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useMonopolyNotifications } from '@/hooks/useMonopolyNotifications'
 import { MonopolyJoinForm } from '@/components/monopoly/MonopolyJoinForm'
+import { MonopolyChangeTokenControl } from '@/components/monopoly/MonopolyChangeTokenControl'
 import { type MonopolyTokenId } from '@/lib/monopoly-tokens'
 
 type HostTab = 'play' | 'manage'
@@ -65,17 +71,13 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [board, setBoard] = useState<MonopolyBoard | null>(null)
+  const boardRef = useRef<MonopolyBoard | null>(null)
+  boardRef.current = board
   const [states, setStates] = useState<MonopolyPlayerState[]>([])
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
 
-  const [hostMode, setHostMode] = useState<MonopolyHostMode>('player')
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
-  const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoinToken, setHostJoinToken] = useState<MonopolyTokenId | null>(null)
-  const [hostJoining, setHostJoining] = useState(false)
   const [hostActing, setHostActing] = useState(false)
   const hostActingRef = useRef(false)
   const [tab, setTab] = useState<HostTab>('manage')
@@ -104,13 +106,6 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
 
   useEffect(() => {
     load()
-    setHostMode(getMonopolyHostMode(gameCode))
-    const session = getPlayerSession(gameCode)
-    if (session) {
-      setHostPlayerId(session.playerId)
-      setHostPlayerName(session.playerName)
-      setHostResumeToken(session.resumeToken ?? null)
-    }
   }, [gameCode, load])
 
   // Land on the primary (Play/Watch) tab when the game starts, and on Manage when it ends.
@@ -120,106 +115,87 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
   }, [game?.status])
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(
+  // Delta fast-path (dual-table). Screen derives from game.status, so board/state writes only
+  // update the UI — patch locally and skip the reload; active→finished rides the games-row
+  // event, and the fallback poll reconciles.
+  const applyBoardRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as MonopolyBoard
+    const prev = boardRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    // Realtime UPDATE payloads drop unchanged TOAST-ed columns (large jsonb such as
+    // property_owners) — they arrive as null once a game has enough owned properties. Applying
+    // such a partial row would wipe ownership/buildings on screen. Discard it and let the
+    // debounced full reload refetch the complete row.
+    if (!isCompleteMonopolyBoardRow(row)) return false
+    setBoard(next)
+    boardRef.current = next
+    return prev != null
+  }, [])
+  const applyStateRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as MonopolyPlayerState
+    setStates((prev) => {
+      const i = prev.findIndex((s) => s.id === next.id)
+      if (i === -1) return [...prev, next]
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true
+  }, [])
+
+  const connected = useGameTableSync(
     gameCode,
-    [{ table: 'games', column: 'id' }, 'players', 'monopoly_boards', 'monopoly_player_state'],
+    [
+      { table: 'games', column: 'id' },
+      'players',
+      { table: 'monopoly_boards', apply: applyBoardRow },
+      { table: 'monopoly_player_state', apply: applyStateRow },
+    ],
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
+
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    leaveGameRemovePlayer,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+    buildJoinBody: () => ({ monopolyToken: hostJoinToken }),
+    // Monopoly needs a token chosen before joining — don't auto-seat from the
+    // create intent (it would POST monopolyToken: null and fail validation).
+    autoJoinEnabled: false,
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostPlayerName('')
-        setHostResumeToken(null)
-        clearPlayerSession(gameCode)
-      }
+      onHostSeatRemoved(playerId)
       setPlayers((prev) => prev.filter((p) => p.id !== playerId))
       setStates((prev) => prev.filter((s) => s.player_id !== playerId))
     },
-    [gameCode, hostPlayerId]
+    [onHostSeatRemoved]
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
-
-  // Clear stale host-as-player state if the host's own row is removed elsewhere.
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
-
-  const changeHostMode = async (mode: MonopolyHostMode) => {
-    if (game?.status !== 'waiting') return
-    const prev = hostMode
-    setHostMode(mode)
-    setMonopolyHostMode(gameCode, mode)
-    // Switching to "Host only" while holding a seat → give up the seat so the host
-    // drops out of the players list.
-    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
-      try {
-        const res = await fetch('/api/players', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error ?? 'Failed to leave seat')
-        }
-        handlePlayerRemoved(hostPlayerId)
-        await load()
-      } catch (err) {
-        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
-      }
-    }
-  }
-
-  const renameHost = async (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed || !hostPlayerId) return
-    try {
-      const res = await fetch('/api/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
-      setHostPlayerName(data.playerName)
-      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
-      await load()
-      success('Name updated!')
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to update name')
-    }
-  }
-
-  const hostJoinGame = async () => {
-    const name = hostJoinName.trim()
-    if (!name || !hostJoinToken) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: name, monopolyToken: hostJoinToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostPlayerName(data.playerName)
-      setHostResumeToken(data.resumeToken ?? null)
-      setHostMode('player')
-      setMonopolyHostMode(gameCode, 'player')
-      await load()
-      success(`Joined as ${data.playerName}`)
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-      await load()
-    } finally {
-      setHostJoining(false)
-    }
-  }
 
   const postHostAction = async (url: string, body: Record<string, unknown> = {}) => {
     if (!hostPlayerId || hostActingRef.current) return
@@ -343,12 +319,36 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
+  // Host controls for the active game live in the main-header ⚙ gear (no Manage tab —
+  // the board is the body, roster + Remove in the drawer): late-join + How-to-play + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings
+          gameCode={gameCode}
+          hostToken={hostToken}
+          gameType="monopoly"
+          onEnded={load}
+          endGameLabel="End game early"
+          endGameConfirmTitle="End this game early?"
+          endGameConfirmMessage="The current game will end and players will see the results screen."
+        >
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton
+              onLeave={leaveGameRemovePlayer}
+              variant="remove"
+              className="btn-secondary w-full py-3 text-base"
+            />
+          )}
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load, setGame, hostMode, hostPlayerId, leaveGameRemovePlayer]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
   const showTabs = game.status !== 'finished'
@@ -454,9 +454,21 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
             onEditName={renameHost}
             spectatorHint="Spectate from the Watch tab"
             playingNote={
-              <p className="text-sm text-muted">
-                Playing as <strong className="text-body">{hostPlayerName}</strong> — switch to Play after you start.
-              </p>
+              <div className="space-y-3">
+                <p className="text-sm text-muted">
+                  Playing as <strong className="text-body">{hostPlayerName}</strong> — switch to Play after you start.
+                </p>
+                {hostPlayerId && (
+                  <MonopolyChangeTokenControl
+                    gameCode={gameCode}
+                    playerId={hostPlayerId}
+                    currentTokenId={players.find((p) => p.id === hostPlayerId)?.monopoly_token}
+                    players={players}
+                    hostToken={hostToken}
+                    onChanged={() => void load()}
+                  />
+                )}
+              </div>
             }
             renderJoinForm={
               <MonopolyJoinForm
@@ -551,6 +563,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={MONOPOLY_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}
@@ -567,6 +580,91 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
     )
   }
 
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={gameTypeConfig('monopoly').label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('monopoly', game) ?? game.max_players}
+        resumeToken={hostResumeToken}
+        playCard={
+          <HostModeSelector
+            mode={hostMode}
+            onChange={changeHostMode}
+            joinedPlayerId={hostPlayerId}
+            joinedPlayerName={hostPlayerName}
+            joinName={hostJoinName}
+            onJoinNameChange={setHostJoinName}
+            onJoin={() => void hostJoinGame()}
+            joining={hostJoining}
+            onEditName={renameHost}
+            spectatorHint="Spectate once it starts"
+            playingNote={
+              <div className="space-y-3">
+                <p className="text-sm text-muted">
+                  Playing as <strong className="text-body">{hostPlayerName}</strong> — switch to Play after you start.
+                </p>
+                {hostPlayerId && (
+                  <MonopolyChangeTokenControl
+                    gameCode={gameCode}
+                    playerId={hostPlayerId}
+                    currentTokenId={players.find((p) => p.id === hostPlayerId)?.monopoly_token}
+                    players={players}
+                    hostToken={hostToken}
+                    onChanged={() => void load()}
+                  />
+                )}
+              </div>
+            }
+            renderJoinForm={
+              <MonopolyJoinForm
+                name={hostJoinName}
+                onNameChange={setHostJoinName}
+                tokenId={hostJoinToken}
+                onTokenChange={setHostJoinToken}
+                players={players}
+                joining={hostJoining}
+                submitLabel="Join as player"
+                onSubmit={() => void hostJoinGame()}
+              />
+            }
+          />
+        }
+        settingsChildren={
+          <>
+            <HostBoardGameLobbyPanel
+              gameCode={gameCode}
+              hostToken={hostToken}
+              game={game}
+              boardGameType="monopoly"
+              playerCount={players.length}
+              onGameUpdate={setGame}
+            />
+            <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+          </>
+        }
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : `Need at least ${MONOPOLY_MIN_PLAYERS} players to start (${players.length}/${MONOPOLY_MIN_PLAYERS})`
+        }
+        startLabel="Start game"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      />
+    )
+  }
+
   return (
     <HostGameLayout
       gameCode={gameCode}
@@ -574,11 +672,16 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
       tab={tab}
       onTabChange={setTab}
       primaryKind={primaryKind}
+      game={game}
+      players={players}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={load}
       showTabs={showTabs}
       gameStarted={gameStarted}
       header={<HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : watchBoard}
       manage={manage}
+      noManageTab
       finished={
         <>
           <MonopolyFinalResultsShareBlock

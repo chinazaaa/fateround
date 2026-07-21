@@ -4,6 +4,7 @@ import { initializeMonopolyGame, MONOPOLY_MIN_PLAYERS } from '@/lib/monopoly'
 import { initializeYahtzeeGame, YAHTZEE_MIN_PLAYERS } from '@/lib/yahtzee'
 import { initializeWhotGame, WHOT_MIN_PLAYERS } from '@/lib/whot'
 import { initializeCrazyEightsGame, CRAZY8_MIN_PLAYERS } from '@/lib/crazy-eights'
+import { initializeUnoGame, UNO_MIN_PLAYERS, UNO_MAX_PLAYERS } from '@/lib/uno'
 import { initializeLudoGame, LUDO_MIN_PLAYERS, LUDO_MAX_PLAYERS } from '@/lib/ludo'
 import { initializeMahjongGame, MAHJONG_MIN_PLAYERS, MAHJONG_MAX_PLAYERS } from '@/lib/mahjong'
 import {
@@ -17,6 +18,7 @@ import { initializeCheckersGame, CHECKERS_MIN_PLAYERS } from '@/lib/checkers'
 import { initializeAyoGame, AYO_MIN_PLAYERS } from '@/lib/ayo'
 import { initializeScrabbleGame, SCRABBLE_MIN_PLAYERS, SCRABBLE_MAX_PLAYERS } from '@/lib/scrabble'
 import { initializeMafiaGame, MAFIA_MIN_PLAYERS, MAFIA_MAX_PLAYERS } from '@/lib/mafia'
+import { initializePingPongGame, PING_PONG_MIN_PLAYERS } from '@/lib/ping-pong'
 
 /** The slice of the game row a start initializer may need. */
 type StartGame = { timer_seconds?: number | null }
@@ -64,6 +66,11 @@ export const GAME_START_SPECS: Partial<Record<GameType, StartSpec>> = {
     minPlayers: CRAZY8_MIN_PLAYERS,
     initialize: (admin, code, ids) => initializeCrazyEightsGame(admin, code, ids),
   },
+  uno: {
+    minPlayers: UNO_MIN_PLAYERS,
+    maxPlayers: UNO_MAX_PLAYERS,
+    initialize: (admin, code, ids) => initializeUnoGame(admin, code, ids),
+  },
   ludo: {
     minPlayers: LUDO_MIN_PLAYERS,
     maxPlayers: LUDO_MAX_PLAYERS,
@@ -108,6 +115,11 @@ export const GAME_START_SPECS: Partial<Record<GameType, StartSpec>> = {
     minPlayers: MAFIA_MIN_PLAYERS,
     maxPlayers: MAFIA_MAX_PLAYERS,
     initialize: (admin, code, ids) => initializeMafiaGame(admin, code, ids),
+  },
+  ping_pong: {
+    minPlayers: PING_PONG_MIN_PLAYERS,
+    exact: true,
+    initialize: (admin, code, ids) => initializePingPongGame(admin, code, ids),
   },
 }
 

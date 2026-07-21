@@ -27,19 +27,24 @@ export function postConfession(gameId: string, resumeToken: string, roundId: str
   })
 }
 
-/** Add or edit a Who Said This quote-pool entry (player path). */
+/**
+ * Add or edit a Who Said This question (player path): a quote plus 2–4 answer options and the
+ * index of the correct one. Trivia-style — mirrors web `useWstQuotePool.handleSubmitPoolQuote`.
+ */
 export function postWstQuote(
   gameId: string,
   resumeToken: string,
   quoteText: string,
-  authorParticipantId: string,
+  options: string[],
+  correctIndex: number,
   quoteId?: string
 ) {
   return send<{ success: boolean; entry?: WstQuotePoolEntry }>('/api/wst-quotes', 'POST', {
     resumeToken,
     gameId: gameId.toUpperCase(),
     quoteText,
-    authorParticipantId,
+    options,
+    correctIndex,
     ...(quoteId ? { quoteId } : {}),
   })
 }

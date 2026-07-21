@@ -14,12 +14,12 @@ export function useRoomMemberJoin(gameCode: string) {
 
   useEffect(() => {
     if (!memberCode) {
-      setResolving(false)
+      setTimeout(() => setResolving(false), 0)
       return
     }
 
     let cancelled = false
-    setResolving(true)
+    setTimeout(() => setResolving(true), 0)
     fetch(`/api/games/${encodeURIComponent(gameCode)}/room-member?member=${encodeURIComponent(memberCode)}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {

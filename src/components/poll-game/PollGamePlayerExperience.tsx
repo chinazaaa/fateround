@@ -94,6 +94,7 @@ import {
   wstSubmitterName,
   tallyWstVotes,
   tallyWstPlayerScores,
+  wstScoreLabel,
   mergeActiveRound,
   dedupeWstPool,
   mergeWstPoolEntry,
@@ -135,6 +136,7 @@ import { RoundResultsShareBlock } from '@/components/RoundResultsShareBlock'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { ConfessionsTicker } from '@/components/ConfessionsTicker'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
+import { ContentLabelChip } from '@/components/game-lobby/ContentLabelChip'
 import { GameLobbySummary } from '@/components/GameLobbySummary'
 import ReactionBar from '@/components/ReactionBar'
 import { useToast } from '@/components/ui/Toast'
@@ -145,6 +147,7 @@ import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { useRosterBase } from '@/components/roster/RosterDrawerContext'
 import { PlayerSessionBar } from '@/components/ui/PlayerSessionBar'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
@@ -256,7 +259,6 @@ export function PollGamePlayerExperience({
   const setWstPoolRef = useRef<React.Dispatch<React.SetStateAction<WstQuotePoolEntry[]>>>(() => {})
   const fetchWstPoolRef = useRef<() => Promise<WstQuotePoolEntry[]>>(() => Promise.resolve([]))
   const setQuoteInputRef = useRef<React.Dispatch<React.SetStateAction<string>>>(() => {})
-  const setQuoteAuthorParticipantIdRef = useRef<React.Dispatch<React.SetStateAction<string | null>>>(() => {})
   const setWyrChoiceRef = useRef<React.Dispatch<React.SetStateAction<WyrChoice | null>>>(() => {})
   const setPickedNumberRef = useRef<React.Dispatch<React.SetStateAction<number | null>>>(() => {})
   const setMltTargetPlayerIdRef = useRef<React.Dispatch<React.SetStateAction<string | null>>>(() => {})
@@ -289,7 +291,6 @@ export function PollGamePlayerExperience({
     setAssignment: (action) => setAssignmentRef.current(action),
     setSubmitted: (action) => setSubmittedRef.current(action),
     setQuoteInput: (action) => setQuoteInputRef.current(action),
-    setQuoteAuthorParticipantId: (action) => setQuoteAuthorParticipantIdRef.current(action),
     autoSubmitRefs,
     triggerAutoSubmit,
   })
@@ -330,13 +331,16 @@ export function PollGamePlayerExperience({
   const {
     wstPool,
     quoteInput,
-    quoteAuthorParticipantId,
+    optionInputs,
+    correctIndex,
     quoteSubmitting,
     editingQuoteId,
     setWstPool,
     setQuoteInput,
-    setQuoteAuthorParticipantId,
-    setEditingQuoteId,
+    setOptionInputs,
+    setCorrectIndex,
+    startEditingQuote,
+    resetQuoteForm,
     handleSubmitPoolQuote,
     handleDeletePoolQuote,
     fetchWstPool,
@@ -345,6 +349,19 @@ export function PollGamePlayerExperience({
 
   const myPlayer = useMemo(() => players.find((p) => p.id === myPlayerId) ?? null, [players, myPlayerId])
   const isViewer = !!(game && myPlayer && playerIsViewer(myPlayer, game))
+
+  // Feed the shared roster drawer (opened from the player header) — only while the
+  // game is actively being played (not the lobby/join/waiting screen, not once it
+  // has finished). This dispatcher stays mounted with a live roster subscription
+  // even after a dedicated game view takes over, so every game gets the roster for
+  // free. Dedicated views layer per-player scores on top via useGameScores.
+  //
+  // Self-contained views with their own bootstrap (Whot) can OVERRIDE these rows
+  // (via useRosterRowsOverride) so the spectator's own row is marked "· you" — this
+  // dispatcher's session id can lag theirs. Override wins over this base, so no fight.
+  // Keep the roster through 'finished' too, so end-of-game winner/runner-up medal
+  // pills (useGamePlacements) stay visible — matching mobile.
+  useRosterBase(game?.status === 'active' || game?.status === 'finished' ? players : undefined, game, myPlayerId)
 
   const {
     assignment,
@@ -437,7 +454,6 @@ export function PollGamePlayerExperience({
   setWstPoolRef.current = setWstPool
   fetchWstPoolRef.current = fetchWstPool
   setQuoteInputRef.current = setQuoteInput
-  setQuoteAuthorParticipantIdRef.current = setQuoteAuthorParticipantId
   setWyrChoiceRef.current = setWyrChoice
   setPickedNumberRef.current = setPickedNumber
   setMltTargetPlayerIdRef.current = setMltTargetPlayerId
@@ -571,7 +587,10 @@ export function PollGamePlayerExperience({
         <div className="text-center space-y-1">
           <div className="text-4xl">{gameTypeConfig(game?.game_type).headerEmoji}</div>
           <h1 className="text-2xl font-black tracking-tight gradient-title">{game?.title}</h1>
-          <GameTypeBadge gameType={game?.game_type} />
+          <div className="flex flex-wrap items-center justify-center gap-1.5">
+            <GameTypeBadge gameType={game?.game_type} />
+            <ContentLabelChip label={game?.content_label} />
+          </div>
           <p className="text-muted text-sm">
             {game?.rounds_count} rounds · {game?.timer_seconds}s each
           </p>
@@ -583,13 +602,15 @@ export function PollGamePlayerExperience({
               ? isNameOnlyJoin || !joinNeedsGender
                 ? 'Update your name'
                 : 'Update your name or vote preference'
-              : isNameOnlyJoin
-                ? 'Enter your name to join'
-                : isJoinersMode
-                  ? 'Join the game — your name goes in the poll'
-                  : isVoterOnly
-                    ? 'Enter your name to vote — names on the list appear in rounds'
-                    : 'Select your name from the list'}
+              : isWhoSaidThis(game?.game_type)
+                ? 'Enter your name to join — answer the quotes to score'
+                : isNameOnlyJoin
+                  ? 'Enter your name to join'
+                  : isJoinersMode
+                    ? 'Join the game — your name goes in the poll'
+                    : isVoterOnly
+                      ? 'Enter your name to vote — names on the list appear in rounds'
+                      : 'Select your name from the list'}
           </p>
           {useFreeNameJoin ? (
             <input
@@ -693,14 +714,15 @@ export function PollGamePlayerExperience({
   // WAITING
   if (view === 'waiting') {
     const isWst = isWhoSaidThis(game?.game_type)
-    const wstTargets = isWst ? wstVoteTargets(participants) : []
+    const isWstDeck = game?.wst_quote_source === 'deck'
     const me = myPlayerId ? players.find((p) => p.id === myPlayerId) : null
     const isSpectatorInLobby = me?.spectator === true
     const myQuotes =
       isWst && myPlayerId
         ? wstPool.filter((e) => e.player_id === myPlayerId).sort((a, b) => a.created_at.localeCompare(b.created_at))
         : []
-    const canSubmitPoolQuote = !!me?.participant_id
+    // Any joined (non-spectator) player can author questions — no name-list claim needed.
+    const canSubmitPoolQuote = !!me && !isSpectatorInLobby
     const isPeopleMode =
       !isBinaryChoiceGame(game?.game_type) &&
       !isNeverHaveIEver(game?.game_type) &&
@@ -754,21 +776,23 @@ export function PollGamePlayerExperience({
         </div>
 
         {isWst &&
-          (game?.wst_quote_source === 'anime' ? (
+          (isWstDeck ? (
             <div className="glass-card px-4 py-8 text-center space-y-2">
-              <p className="text-body text-lg font-semibold">Anime Quote Mode</p>
-              <p className="text-muted text-sm">The host is loading anime quotes — sit tight!</p>
+              <p className="text-body text-lg font-semibold">You&apos;re in!</p>
+              <p className="text-muted text-sm">
+                The host loaded the questions — wait for them to start, then answer as fast as you can.
+              </p>
             </div>
           ) : (
             <div className="space-y-4">
               <div className="surface-inset border border-theme rounded-2xl p-4 space-y-2">
                 <div className="flex items-center justify-between">
-                  <p className="text-muted text-xs uppercase tracking-wider">Quote pool</p>
+                  <p className="text-muted text-xs uppercase tracking-wider">Question pool</p>
                   <span className="text-sm font-bold text-body">{wstPool.length} submitted</span>
                 </div>
                 <p className="text-faint text-xs">
-                  Add as many quotes as you like — each one becomes a round. Pick who said each quote before the host
-                  starts.
+                  Add as many questions as you like — each is a quote with four options and one right answer. Fastest
+                  correct answer wins.
                 </p>
               </div>
 
@@ -776,10 +800,11 @@ export function PollGamePlayerExperience({
                 <div className="glass-card p-5 space-y-4">
                   {myQuotes.length > 0 && (
                     <div className="space-y-2">
-                      <p className="text-faint text-[10px] uppercase tracking-wider">Your quotes ({myQuotes.length})</p>
+                      <p className="text-faint text-[10px] uppercase tracking-wider">
+                        Your questions ({myQuotes.length})
+                      </p>
                       {myQuotes.map((entry) => {
-                        const authorName =
-                          participants.find((p) => p.id === entry.author_participant_id)?.name ?? 'Unknown'
+                        const answer = entry.options?.[entry.correct_index ?? -1] ?? '—'
                         return (
                           <div
                             key={entry.id}
@@ -787,18 +812,14 @@ export function PollGamePlayerExperience({
                           >
                             <div className="flex-1 min-w-0 space-y-0.5">
                               <p className="text-sm text-body-muted line-clamp-2">&ldquo;{entry.quote_text}&rdquo;</p>
-                              <p className="text-faint text-[10px]">— {authorName}</p>
+                              <p className="text-faint text-[10px]">Answer: {answer}</p>
                             </div>
                             <div className="flex shrink-0 gap-1">
                               <button
                                 type="button"
                                 className="text-faint hover:text-body text-xs px-1"
                                 disabled={quoteSubmitting}
-                                onClick={() => {
-                                  setEditingQuoteId(entry.id)
-                                  setQuoteInput(entry.quote_text)
-                                  setQuoteAuthorParticipantId(entry.author_participant_id)
-                                }}
+                                onClick={() => startEditingQuote(entry)}
                               >
                                 Edit
                               </button>
@@ -817,52 +838,75 @@ export function PollGamePlayerExperience({
                     </div>
                   )}
                   <p className="font-semibold text-body text-center">
-                    {editingQuoteId
-                      ? 'Edit quote'
-                      : myQuotes.length > 0
-                        ? 'Add another quote'
-                        : 'Add your quote to the pool'}
+                    {editingQuoteId ? 'Edit question' : myQuotes.length > 0 ? 'Add another question' : 'Add a question'}
                   </p>
                   <textarea
                     value={quoteInput}
                     onChange={(e) => setQuoteInput(e.target.value)}
-                    placeholder="e.g. Roses are red"
+                    placeholder="The quote — e.g. “I am your father.”"
                     maxLength={500}
-                    rows={3}
+                    rows={2}
                     className="input-field resize-none"
                     disabled={quoteSubmitting}
                   />
                   <div className="space-y-2">
-                    <p className="text-faint text-xs uppercase tracking-wider text-center">Who said this?</p>
-                    <NameSearchPicker
-                      options={wstTargets.map((p) => ({ id: p.id, name: p.name }))}
-                      valueId={quoteAuthorParticipantId}
-                      onChange={setQuoteAuthorParticipantId}
-                      searchPlaceholder="Search names…"
-                      emptyMessage="No names match"
-                      disabled={quoteSubmitting}
-                    />
+                    <p className="text-faint text-xs uppercase tracking-wider">Options — tap the correct one</p>
+                    {optionInputs.map((opt, i) => {
+                      const isCorrect = correctIndex === i
+                      return (
+                        <div key={i} className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            aria-label={`Mark option ${String.fromCharCode(65 + i)} correct`}
+                            aria-pressed={isCorrect}
+                            disabled={quoteSubmitting || !opt.trim()}
+                            onClick={() => setCorrectIndex(i)}
+                            className={[
+                              'shrink-0 h-6 w-6 rounded-full border-2 grid place-items-center text-[11px] font-bold transition-colors',
+                              isCorrect
+                                ? 'border-[var(--primary)] bg-[var(--primary)] text-white'
+                                : 'border-[var(--border-strong)] text-muted',
+                              !opt.trim() ? 'opacity-40' : '',
+                            ].join(' ')}
+                          >
+                            {isCorrect ? '✓' : String.fromCharCode(65 + i)}
+                          </button>
+                          <input
+                            value={opt}
+                            onChange={(e) => {
+                              const next = [...optionInputs]
+                              next[i] = e.target.value
+                              setOptionInputs(next)
+                              // Clearing the option that was marked correct drops the mark.
+                              if (correctIndex === i && !e.target.value.trim()) setCorrectIndex(null)
+                            }}
+                            placeholder={`Option ${String.fromCharCode(65 + i)}`}
+                            maxLength={200}
+                            className="input-field flex-1"
+                            disabled={quoteSubmitting}
+                          />
+                        </div>
+                      )
+                    })}
                   </div>
                   <div className="flex flex-col gap-2">
                     <button
                       onClick={handleSubmitPoolQuote}
-                      disabled={!quoteInput.trim() || !quoteAuthorParticipantId || quoteSubmitting}
-                      className={
-                        quoteInput.trim() && quoteAuthorParticipantId
-                          ? 'btn-primary w-full'
-                          : 'btn-secondary w-full opacity-60 cursor-not-allowed'
+                      disabled={
+                        !quoteInput.trim() ||
+                        optionInputs.filter((o) => o.trim()).length < 2 ||
+                        correctIndex == null ||
+                        !optionInputs[correctIndex]?.trim() ||
+                        quoteSubmitting
                       }
+                      className="btn-primary w-full disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      {quoteSubmitting ? 'Saving…' : editingQuoteId ? 'Save changes' : 'Add to Pool →'}
+                      {quoteSubmitting ? 'Saving…' : editingQuoteId ? 'Save changes' : 'Add to pool →'}
                     </button>
                     {editingQuoteId && (
                       <button
                         type="button"
-                        onClick={() => {
-                          setEditingQuoteId(null)
-                          setQuoteInput('')
-                          setQuoteAuthorParticipantId(null)
-                        }}
+                        onClick={resetQuoteForm}
                         className="btn-secondary text-sm w-full"
                         disabled={quoteSubmitting}
                       >
@@ -872,7 +916,7 @@ export function PollGamePlayerExperience({
                   </div>
                 </div>
               ) : (
-                <p className="text-faint text-xs text-center">Claim your name when joining to submit a quote.</p>
+                <p className="text-faint text-xs text-center">Join the game to submit questions.</p>
               )}
             </div>
           ))}
@@ -2320,6 +2364,18 @@ export function PollGamePlayerExperience({
           ? (participants.find((p) => p.id === myVote.target_participant_id)?.name ?? null)
           : null
       const isLastRound = lastFinishedRound.round_number >= (game?.rounds_count ?? 0)
+      // Running leaderboard through the just-finished round — mirrors trivia's between-round
+      // standings so players see the score after every question, not just at the end.
+      const runningScores = tallyWstPlayerScores(allRounds, allVotes, players)
+      const wstRunningLeaderboard =
+        runningScores.length > 0 ? (
+          <PaginatedLeaderboard
+            title="Leaderboard"
+            rows={runningScores.map((row, i) => ({ id: row.playerId, name: row.name, score: row.points, rank: i + 1 }))}
+            highlightId={myPlayerId}
+            scoreLabel={wstScoreLabel}
+          />
+        ) : null
 
       if (isAnimeRound(lastFinishedRound)) {
         const meta = lastFinishedRound.anime_metadata as {
@@ -2357,6 +2413,7 @@ export function PollGamePlayerExperience({
                 myPickName={myPickName}
               />
             </RoundResultsShareBlock>
+            {wstRunningLeaderboard}
             <p className="text-faint text-sm text-center">
               {roundResultsWaitMessage({
                 isLastRound,
@@ -2402,6 +2459,7 @@ export function PollGamePlayerExperience({
               myPickName={myPickName}
             />
           </RoundResultsShareBlock>
+          {wstRunningLeaderboard}
           <ConfessionsTicker confessions={allConfessions.filter((c) => c.round_id === lastFinishedRound.id)} />
           <ReactionBar className="pt-1" gameCode={gameCode} playerId={myPlayerId} />
           <p className="text-faint text-sm text-center">
@@ -2774,14 +2832,15 @@ function FinalResultsView({
         <FinalResultsShareBlock game={game} participants={participants} votes={votes} rounds={rounds} players={players}>
           {isWst && wstScores.length > 0 && (
             <PaginatedLeaderboard
-              title="Best guessers"
+              title="Leaderboard"
               rows={wstScores.map((row, i) => ({
                 id: row.playerId,
                 name: row.name,
-                score: row.correctGuesses,
+                score: row.points,
                 rank: i + 1,
               }))}
               highlightId={myPlayerId}
+              scoreLabel={wstScoreLabel}
             />
           )}
 

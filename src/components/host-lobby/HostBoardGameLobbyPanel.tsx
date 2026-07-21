@@ -10,6 +10,7 @@ import {
 import { formatMonopolyGameDuration, MONOPOLY_GAME_DURATION_OPTIONS } from '@/lib/monopoly'
 import { formatWhotGameDuration, WHOT_GAME_DURATION_OPTIONS } from '@/lib/whot'
 import { formatCrazyEightsGameDuration, CRAZY8_GAME_DURATION_OPTIONS } from '@/lib/crazy-eights'
+import { formatUnoGameDuration, UNO_GAME_DURATION_OPTIONS } from '@/lib/uno'
 import { lobbyMaxPlayersFromGame, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { MAHJONG_RULESET_CONFIG, parseMahjongRuleOptions, parseMahjongRuleset } from '@/lib/mahjong-rulesets'
 import { gameSupportsViewerSetting, lateJoinPolicyFromGame } from '@/lib/viewers'
@@ -17,7 +18,6 @@ import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
-import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostMahjongLobbySettings } from '@/components/host-lobby/HostMahjongLobbySettings'
 import { Chip, Toggle } from '@/components/ui/PageShell'
 import { useToast } from '@/components/ui/Toast'
@@ -61,6 +61,10 @@ export function HostBoardGameLobbyPanel({
   const [maxPlayers, setMaxPlayers] = useState(6)
   const [turnTimer, setTurnTimer] = useState(0)
   const [gameDuration, setGameDuration] = useState(0)
+  const [monopolyDoubleGoSalary, setMonopolyDoubleGoSalary] = useState(false)
+  const [monopolyForcedAuctions, setMonopolyForcedAuctions] = useState(false)
+  const [monopolyNoRentInJail, setMonopolyNoRentInJail] = useState(false)
+  const [monopolyEstateDividend, setMonopolyEstateDividend] = useState(false)
   const [whotPick3Enabled, setWhotPick3Enabled] = useState(true)
   const [whotPick2Stacking, setWhotPick2Stacking] = useState(true)
   const [whotCardsEnabled, setWhotCardsEnabled] = useState(true)
@@ -68,6 +72,12 @@ export function HostBoardGameLobbyPanel({
   const [crazy8ActionCards, setCrazy8ActionCards] = useState(true)
   const [crazy8Jokers, setCrazy8Jokers] = useState(false)
   const [crazy8Pick2Stacking, setCrazy8Pick2Stacking] = useState(true)
+  const [unoWd4Challenge, setUnoWd4Challenge] = useState(true)
+  const [unoUnoPenalty, setUnoUnoPenalty] = useState(2)
+  const [unoZeroSeven, setUnoZeroSeven] = useState(false)
+  const [unoStacking, setUnoStacking] = useState(false)
+  const [unoMultiPlayMode, setUnoMultiPlayMode] = useState('off')
+  const [unoTeamMode, setUnoTeamMode] = useState(false)
   const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -92,6 +102,12 @@ export function HostBoardGameLobbyPanel({
     setMaxPlayers(lobbyMaxPlayersFromGame(boardGameToLobbyLimitType(boardGameType), game, limits))
     setTurnTimer(game.timer_seconds ?? 0)
     setGameDuration(game.game_duration_seconds ?? 0)
+    if (boardGameType === 'monopoly') {
+      setMonopolyDoubleGoSalary(game.monopoly_double_go_salary === true)
+      setMonopolyForcedAuctions(game.monopoly_forced_auctions === true)
+      setMonopolyNoRentInJail(game.monopoly_no_rent_in_jail === true)
+      setMonopolyEstateDividend(game.monopoly_estate_dividend === true)
+    }
     if (boardGameType === 'whot') {
       setWhotPick3Enabled(game.whot_pick3_enabled !== false)
       setWhotPick2Stacking(game.whot_pick2_stacking !== false)
@@ -102,6 +118,14 @@ export function HostBoardGameLobbyPanel({
       setCrazy8ActionCards(game.crazy8_action_cards !== false)
       setCrazy8Jokers(game.crazy8_jokers === true)
       setCrazy8Pick2Stacking(game.crazy8_pick2_stacking !== false)
+    }
+    if (boardGameType === 'uno') {
+      setUnoWd4Challenge(game.uno_wd4_challenge !== false)
+      setUnoUnoPenalty(Number(game.uno_uno_penalty) === 4 ? 4 : 2)
+      setUnoZeroSeven(game.uno_zero_seven === true)
+      setUnoStacking(game.uno_stacking === true)
+      setUnoMultiPlayMode(game.uno_multi_play_mode ?? 'off')
+      setUnoTeamMode(game.uno_team_mode === true)
     }
     if (boardGameType === 'ludo') {
       setLudoVariant(game.ludo_variant === 'traditional' ? 'traditional' : 'modern')
@@ -145,11 +169,6 @@ export function HostBoardGameLobbyPanel({
     [gameCode, hostToken, markSaved, onGameUpdate, toastError]
   )
 
-  const onVisibilityChange = (next: boolean) => {
-    setIsPublic(next)
-    void patchSettings({ is_public: next })
-  }
-
   const onMaxPlayersChange = (next: number) => {
     if (next < playerCount) {
       toastError(`Already have ${playerCount} players — remove someone first`)
@@ -184,6 +203,16 @@ export function HostBoardGameLobbyPanel({
     void patchSettings(patch)
   }
 
+  const onUnoRuleChange = (patch: Record<string, boolean | number | string>) => {
+    if (patch.uno_wd4_challenge !== undefined) setUnoWd4Challenge(patch.uno_wd4_challenge as boolean)
+    if (patch.uno_uno_penalty !== undefined) setUnoUnoPenalty(patch.uno_uno_penalty as number)
+    if (patch.uno_zero_seven !== undefined) setUnoZeroSeven(patch.uno_zero_seven as boolean)
+    if (patch.uno_stacking !== undefined) setUnoStacking(patch.uno_stacking as boolean)
+    if (patch.uno_multi_play_mode !== undefined) setUnoMultiPlayMode(patch.uno_multi_play_mode as string)
+    if (patch.uno_team_mode !== undefined) setUnoTeamMode(patch.uno_team_mode as boolean)
+    void patchSettings(patch)
+  }
+
   const onLudoVariantChange = (next: LudoVariant) => {
     if (next === ludoVariant) return
     setLudoVariant(next)
@@ -213,13 +242,17 @@ export function HostBoardGameLobbyPanel({
       ? formatWhotGameDuration
       : boardGameType === 'crazy_eights'
         ? formatCrazyEightsGameDuration
-        : formatMonopolyGameDuration
+        : boardGameType === 'uno'
+          ? formatUnoGameDuration
+          : formatMonopolyGameDuration
   const durationOptionsSource =
     boardGameType === 'whot'
       ? WHOT_GAME_DURATION_OPTIONS
       : boardGameType === 'crazy_eights'
         ? CRAZY8_GAME_DURATION_OPTIONS
-        : MONOPOLY_GAME_DURATION_OPTIONS
+        : boardGameType === 'uno'
+          ? UNO_GAME_DURATION_OPTIONS
+          : MONOPOLY_GAME_DURATION_OPTIONS
 
   const durationOptions = useMemo(
     () =>
@@ -234,7 +267,12 @@ export function HostBoardGameLobbyPanel({
     // Max players is shown always-visible above, so the collapsed summary describes the
     // settings that ARE hidden (visibility / timer / length / rules) rather than the cap.
     const parts = [isPublic ? 'Public' : 'Private', formatBoardGameTurnTimer(turnTimer)]
-    if (boardGameType === 'monopoly' || boardGameType === 'whot' || boardGameType === 'crazy_eights') {
+    if (
+      boardGameType === 'monopoly' ||
+      boardGameType === 'whot' ||
+      boardGameType === 'crazy_eights' ||
+      boardGameType === 'uno'
+    ) {
       parts.push(durationFormatter(gameDuration))
     }
     if (boardGameType === 'ludo') {
@@ -269,22 +307,59 @@ export function HostBoardGameLobbyPanel({
       }
     >
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
-        <HostLobbySettingBlock title="Visibility" className="sm:col-span-2">
-          <Toggle
-            label="Public game"
-            description="List in Browse so anyone can find and join. Off keeps it invite-only via the share link."
-            value={isPublic}
-            onChange={onVisibilityChange}
-          />
-        </HostLobbySettingBlock>
-        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={onGameUpdate} />
         <HostLobbySettingBlock title="Turn timer">
           <HostLobbyOptionChips value={turnTimer} options={turnTimerOptions} onChange={onTurnTimerChange} />
         </HostLobbySettingBlock>
 
-        {(boardGameType === 'monopoly' || boardGameType === 'whot' || boardGameType === 'crazy_eights') && (
+        {(boardGameType === 'monopoly' ||
+          boardGameType === 'whot' ||
+          boardGameType === 'crazy_eights' ||
+          boardGameType === 'uno') && (
           <HostLobbySettingBlock title="Game length" className="sm:col-span-2">
             <HostLobbyOptionChips value={gameDuration} options={durationOptions} onChange={onGameDurationChange} />
+          </HostLobbySettingBlock>
+        )}
+
+        {boardGameType === 'monopoly' && (
+          <HostLobbySettingBlock title="House rules" className="sm:col-span-2">
+            <div className="space-y-4">
+              <Toggle
+                label="Double GO Salary"
+                description="Collect $400 (instead of $200) when landing exactly on GO."
+                value={monopolyDoubleGoSalary}
+                onChange={(v: boolean) => {
+                  setMonopolyDoubleGoSalary(v)
+                  void patchSettings({ monopoly_double_go_salary: v })
+                }}
+              />
+              <Toggle
+                label="Forced Auctions"
+                description="If a player declines to buy an unowned property, it must go to auction."
+                value={monopolyForcedAuctions}
+                onChange={(v: boolean) => {
+                  setMonopolyForcedAuctions(v)
+                  void patchSettings({ monopoly_forced_auctions: v })
+                }}
+              />
+              <Toggle
+                label="No Rent in Jail"
+                description="Prevent players in jail from collecting rent on their properties."
+                value={monopolyNoRentInJail}
+                onChange={(v: boolean) => {
+                  setMonopolyNoRentInJail(v)
+                  void patchSettings({ monopoly_no_rent_in_jail: v })
+                }}
+              />
+              <Toggle
+                label="Robin Hood Estate Dividend"
+                description="When a player leaves mid-game, their estate is liquidated and split equally among remaining players."
+                value={monopolyEstateDividend}
+                onChange={(v: boolean) => {
+                  setMonopolyEstateDividend(v)
+                  void patchSettings({ monopoly_estate_dividend: v })
+                }}
+              />
+            </div>
           </HostLobbySettingBlock>
         )}
 
@@ -348,6 +423,66 @@ export function HostBoardGameLobbyPanel({
           </HostLobbySettingBlock>
         )}
 
+        {boardGameType === 'uno' && (
+          <HostLobbySettingBlock title="House rules" className="sm:col-span-2">
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Toggle
+                  label="Team-Up (2v2)"
+                  description="Play as 2 teams of 2 — partners see each other's hands and share the win. Needs exactly 4 players; caps the room at 4."
+                  value={unoTeamMode}
+                  onChange={(v) => onUnoRuleChange({ uno_team_mode: v })}
+                />
+              </div>
+              <div>
+                <p className="label-caps text-[10px] mb-1.5">Missed “UNO” penalty</p>
+                <HostLobbyOptionChips
+                  value={unoUnoPenalty}
+                  options={[
+                    { value: 2, label: 'Draw 2' },
+                    { value: 4, label: 'Draw 4' },
+                  ]}
+                  onChange={(v) => onUnoRuleChange({ uno_uno_penalty: v })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Toggle
+                  label="Wild Draw Four challenge"
+                  description="Let the next player challenge a Wild Draw Four. Off: they always draw 4."
+                  value={unoWd4Challenge}
+                  onChange={(v) => onUnoRuleChange({ uno_wd4_challenge: v })}
+                />
+                <Toggle
+                  label="0-7 rule"
+                  description="Play a 0 → everyone passes their hand in play direction. Play a 7 → swap hands with any player."
+                  value={unoZeroSeven}
+                  onChange={(v) => onUnoRuleChange({ uno_zero_seven: v })}
+                />
+                <Toggle
+                  label="Stacking"
+                  description="Stack Draw Two on Draw Two and Draw Four on Draw Four — the penalty piles up and passes on."
+                  value={unoStacking}
+                  onChange={(v) => onUnoRuleChange({ uno_stacking: v })}
+                />
+              </div>
+              <div>
+                <p className="label-caps text-[10px] mb-1.5">Multi-Play</p>
+                <HostLobbyOptionChips
+                  value={unoMultiPlayMode}
+                  options={[
+                    { value: 'off', label: 'Off' },
+                    { value: 'same_color_or_number', label: 'Colour or №' },
+                    { value: 'same_color', label: 'Colour' },
+                    { value: 'same_number', label: 'Number' },
+                  ]}
+                  onChange={(v) => onUnoRuleChange({ uno_multi_play_mode: v })}
+                />
+                <p className="mt-1 text-xs text-faint">Lay several matching cards in one turn.</p>
+              </div>
+            </div>
+          </HostLobbySettingBlock>
+        )}
+
         {boardGameType === 'ludo' && (
           <HostLobbySettingBlock title="Rules" className="sm:col-span-2">
             <div className="flex flex-wrap gap-1.5">
@@ -375,19 +510,6 @@ export function HostBoardGameLobbyPanel({
         )}
 
         {boardGameType === 'mahjong' && <HostMahjongLobbySettings game={game} onPatchSettings={patchSettings} />}
-
-        {gameSupportsViewerSetting(game.game_type) && game.status === 'waiting' && (
-          <HostLobbySettingBlock title="Late joiners" className="sm:col-span-2">
-            <HostAllowViewersField
-              embedded
-              hideHeader
-              gameCode={gameCode}
-              hostToken={hostToken}
-              game={game}
-              onGameUpdate={onGameUpdate}
-            />
-          </HostLobbySettingBlock>
-        )}
       </div>
     </HostLobbySettingsSection>
   )

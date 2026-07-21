@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { GamePlayerChrome } from '@/components/GamePlayerChrome'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
@@ -16,6 +16,9 @@ import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   parseWordHuntMetadata,
@@ -30,6 +33,7 @@ import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useGameScores, useGameStats, useRosterBase } from '@/components/roster/RosterDrawerContext'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { PLAYER_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
@@ -175,6 +179,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, null>({
     gameCode,
@@ -199,6 +204,36 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
 
   const me = players.find((p) => p.id === myPlayerId)
   const isViewer = !!(game && me && playerIsViewer(me, game))
+  const router = useRouter()
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it. Purely additive.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={me?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
   const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
     gameCode,
     game,
@@ -445,6 +480,27 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   const myFoundWords = mySubmissions.map((s) => s.word)
   const myPoints = mySubmissions.reduce((sum, s) => sum + s.points_awarded, 0)
   const leaderboard = tallyWordHuntScores(submissions, players)
+
+  // The Word Hunt player path skips the shared roster dispatcher, so register base
+  // rows here + feed the drawer scoreboard: points headline + words-found detail.
+  useRosterBase(game?.status === 'active' || game?.status === 'finished' ? players : undefined, game, myPlayerId)
+  const rosterScores = useMemo(
+    () => Object.fromEntries(tallyWordHuntScores(submissions, players).map((r) => [r.player_id, r.points])),
+    [submissions, players]
+  )
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        tallyWordHuntScores(submissions, players).map((r) => [
+          r.player_id,
+          `✅ ${r.word_count} word${r.word_count === 1 ? '' : 's'}`,
+        ])
+      ),
+    [submissions, players]
+  )
+  useGameStats(rosterDetails)
+
   const displayName = me?.name || 'Player'
 
   // Viewers watch one player's hunt at a time — the shared grid is static, so the
@@ -500,6 +556,8 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="word_hunt"
           footer={
@@ -548,6 +606,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={WORD_HUNT_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -562,6 +621,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={displayName}
@@ -596,11 +656,10 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
       !!myWordHuntRow &&
       leaderboard.length > 1 &&
       leaderboard[0] != null &&
-      myWordHuntRow.points === leaderboard[0].points &&
+      myWordHuntRow === leaderboard[0] &&
       leaderboard[0].points > 0
     return (
       <div className="min-h-screen flex flex-col">
-        <GamePlayerChrome />
         <main className="pt-16 flex-1 px-4 py-8 max-w-lg mx-auto w-full space-y-4">
           <WordHuntFinalResultsShareBlock
             game={game}
@@ -627,7 +686,6 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--background)]">
-      <GamePlayerChrome />
       {toast && (
         <div
           className={`fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full text-sm font-semibold shadow-lg ${toast.ok ? 'bg-[var(--primary)] text-white' : 'bg-[var(--kill)] text-white'}`}
@@ -692,32 +750,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
             disabled={timeUp || isViewer}
           />
         )}
-
-        <details className="glass-card p-4 group open:pb-4">
-          <summary className="cursor-pointer list-none flex items-center justify-between gap-3">
-            <div>
-              <p className="label-caps text-xs">Live standings</p>
-              <p className="text-faint text-[11px] mt-0.5 group-open:hidden">See who&apos;s ahead</p>
-            </div>
-            <span className="text-muted text-lg leading-none group-open:rotate-180 transition-transform">▾</span>
-          </summary>
-          <div className="mt-3 space-y-2 border-t border-[var(--border-strong)] pt-3">
-            {leaderboard.slice(0, 8).map((row, i) => (
-              <div
-                key={row.player_id}
-                className={`flex items-center justify-between text-sm ${row.player_id === myPlayerId ? 'font-bold text-[var(--foreground)]' : 'text-muted'}`}
-              >
-                <span className="flex items-center gap-2 min-w-0">
-                  <span className="w-5 text-faint tabular-nums shrink-0">{i + 1}</span>
-                  <span className="truncate">{row.name}</span>
-                </span>
-                <span className="shrink-0 tabular-nums text-xs">
-                  {row.points} pts · {row.word_count}w
-                </span>
-              </div>
-            ))}
-          </div>
-        </details>
+        {/* Live standings removed — the roster side-drawer now shows the live leaderboard. */}
       </main>
     </div>
   )

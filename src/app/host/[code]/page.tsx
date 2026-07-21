@@ -14,6 +14,7 @@ import { readNominee, rememberNominee } from '@/lib/host-transfer'
 import { rememberHostToken, clearHostToken } from '@/lib/host-session'
 import { useHostToken } from '@/hooks/useHostToken'
 import { useHostIdentity, useHostDisplayName } from '@/hooks/useHostVoiceIdentity'
+import { MatureGameGate } from '@/components/MatureGameGate'
 import type { Game } from '@/types'
 
 /**
@@ -164,8 +165,10 @@ export default function HostPage() {
   }, [transferred, gameCode])
 
   if (loading) {
+    // Full-screen cover over the fixed host header so a reload doesn't briefly show the
+    // header/tabbed chrome before the per-game view (e.g. the lobby overlay) mounts.
     return (
-      <div className="page-wrap flex items-center justify-center">
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-[var(--background)]">
         <div className="w-11 h-11 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin" />
       </div>
     )
@@ -241,6 +244,7 @@ export default function HostPage() {
         )}
         {/* Floating DJ panel — persists across lobby + active play for every game type. */}
         {/* <HostMusicControl gameCode={gameCode} hostToken={hostToken} /> */}
+        <MatureGameGate gameType={game.game_type} />
       </>
     )
   }

@@ -1,12 +1,4 @@
-import type {
-  LudoColor,
-  LudoDiceRoll,
-  LudoPiece,
-  LudoPlayerState,
-  LudoSession,
-  LudoVariant,
-  Player,
-} from './types'
+import type { LudoColor, LudoDiceRoll, LudoPiece, LudoPlayerState, LudoSession, LudoVariant, Player } from './types'
 
 export const LUDO_MIN_PLAYERS = 2
 export const LUDO_MAX_PLAYERS = 4
@@ -296,12 +288,17 @@ export function getLegalMovesForSteps(
       const start = START_POS[color]
       // Bringing a piece out always lands it on the colour's own start square;
       // any pieces already there simply share the square.
-      const captures = wouldCaptureAt(allStates, start, color, playerId, piece.id, variant)
+      //
+      // Emerging from the yard never captures an opponent parked on the start
+      // square — you can't "chase them home" just by stepping out of your house.
+      // A capture must be earned by counting a die and moving onto them on the
+      // track. (In the `modern` variant the start square is safe anyway; this
+      // also covers the `traditional` variant where it isn't.)
       moves.push({
         pieceId: piece.id,
         from: piece,
         to: { id: piece.id, zone: 'track', pos: start },
-        captures,
+        captures: false,
       })
       continue
     }
@@ -415,7 +412,9 @@ export function applyMoveLocally(
   variant: LudoVariant
 ): LudoPlayerState[] {
   const captureVictims =
-    move.to.zone === 'track' && wouldCaptureAt(states, move.to.pos, color, playerId, move.pieceId, variant)
+    move.from.zone !== 'base' &&
+    move.to.zone === 'track' &&
+    wouldCaptureAt(states, move.to.pos, color, playerId, move.pieceId, variant)
       ? victimsAtTrackPos(states, move.to.pos, color)
       : []
   const victimKeys = new Set(captureVictims.map((v) => `${v.playerId}:${v.pieceId}`))

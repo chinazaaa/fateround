@@ -1,11 +1,7 @@
 import type { GameType } from '@fateround/shared'
 import type { ThemeId } from '@fateround/shared/create-themes'
 import type { GamePlayerLimitsMap } from '@fateround/shared/lobby-limits'
-import {
-  clampLobbyMaxPlayers,
-  isLobbyLimitGameType,
-  lobbyDefaultMaxPlayers,
-} from '@fateround/shared/lobby-limits'
+import { clampLobbyMaxPlayers, isLobbyLimitGameType, lobbyDefaultMaxPlayers } from '@fateround/shared/lobby-limits'
 import { isCodewordsGame } from '@fateround/shared/game-type-checks'
 import type { LateJoinPolicy } from '@fateround/shared/viewers'
 import {
@@ -39,6 +35,19 @@ import {
   validateParticipants,
   type PeopleSettings,
 } from '@/lib/create-settings/people'
+import {
+  defaultWstCreateState,
+  validateWstCreate,
+  wstCreatePayload,
+  type WstCreateState,
+} from '@/lib/create-settings/who-said-this'
+import {
+  defaultLandmineCreateState,
+  landmineCreatePayload,
+  type LandmineCreateState,
+} from '@/lib/create-settings/landmine'
+import { isWhoSaidThis } from '@fateround/shared/poll-games'
+import { isLandmineGame } from '@fateround/shared/game-type-checks'
 
 export type { GameRoomSettings } from '@/lib/create-settings/board-games'
 export { hasGameRoomSettings, BATCH_19_BOARD_GAMES } from '@/lib/create-settings/board-games'
@@ -47,17 +56,17 @@ export { hasPartyRoomSettings, BATCH_20_PARTY_GAMES, isPollPartyGame } from '@/l
 export type { CustomContentState } from '@/lib/create-settings/custom-content'
 export { supportsCustomContent } from '@/lib/create-settings/custom-content'
 export type { PeopleSettings } from '@/lib/create-settings/people'
-export {
-  supportsImportMode,
-  participantModeOptions,
-  isCustomGame,
-  minParticipants,
-} from '@/lib/create-settings/people'
+export { supportsImportMode, participantModeOptions, isCustomGame, minParticipants } from '@/lib/create-settings/people'
+export type { WstCreateState, WstSource } from '@/lib/create-settings/who-said-this'
+export type { LandmineCreateState } from '@/lib/create-settings/landmine'
 
 export type CreateWizardStep = 'setup' | 'people'
 
 export type CreateWizardState = {
   title: string
+  /** Player-facing content label ("Maths", "Bible trivia") for CSV/library content games.
+   *  Auto-filled from the picked library pack name; typed by the host for a CSV upload. */
+  contentLabel: string
   gameType: GameType
   theme: ThemeId
   isPublic: boolean
@@ -67,6 +76,8 @@ export type CreateWizardState = {
   party: PartyRoomSettings
   custom: CustomContentState
   people: PeopleSettings
+  wst: WstCreateState
+  landmine: LandmineCreateState
 }
 
 export type CreateSettingsRegistryEntry = {
@@ -88,12 +99,10 @@ function themeForGameType(gameType: GameType, current: ThemeId): ThemeId {
   return allowed[0]?.id ?? 'default'
 }
 
-export function createInitialState(
-  gameType: GameType,
-  limits: GamePlayerLimitsMap
-): CreateWizardState {
+export function createInitialState(gameType: GameType, limits: GamePlayerLimitsMap): CreateWizardState {
   return {
     title: '',
+    contentLabel: '',
     gameType,
     theme: themeForGameType(gameType, 'default'),
     isPublic: false,
@@ -103,6 +112,8 @@ export function createInitialState(
     party: defaultPartyRoomSettings(gameType),
     custom: defaultCustomContentState(),
     people: defaultPeopleSettings(gameType),
+    wst: defaultWstCreateState(),
+    landmine: defaultLandmineCreateState(),
   }
 }
 
@@ -116,22 +127,24 @@ export function applyGameTypeChange(
     gameType,
     theme: themeForGameType(gameType, prev.theme),
     maxPlayers: isLobbyLimitGameType(gameType) ? lobbyDefaultMaxPlayers(gameType, limits) : null,
-    lateJoinPolicy: clampLateJoinPolicyForGameType(
-      defaultLateJoinPolicyForGameType(gameType),
-      gameType
-    ),
+    lateJoinPolicy: clampLateJoinPolicyForGameType(defaultLateJoinPolicyForGameType(gameType), gameType),
     room: defaultGameRoomSettings(gameType),
     party: defaultPartyRoomSettings(gameType),
     custom: defaultCustomContentState(),
     people: defaultPeopleSettings(gameType),
+    wst: defaultWstCreateState(),
+    landmine: defaultLandmineCreateState(),
   }
 }
 
-export const CREATE_SETTINGS_REGISTRY: Partial<Record<GameType, CreateSettingsRegistryEntry>> = {}
+export const CREATE_SETTINGS_REGISTRY: Partial<Record<GameType, CreateSettingsRegistryEntry>> = {
+  landmine: { extraPayload: (state) => landmineCreatePayload(state.landmine) },
+}
 
 /** Everything the host must get right on the Setup step before the People step. */
 export function validateSetupStep(state: CreateWizardState): string | null {
   if (!state.title.trim()) return 'Enter a game title'
+  if (isWhoSaidThis(state.gameType)) return validateWstCreate(state.wst)
   const customError = validateCustomContent(state.gameType, state.custom, state.party.roundsCount)
   if (customError) return customError
   const slotError = validateCustomSlots(state.gameType, state.people)
@@ -168,9 +181,25 @@ export function buildCreatePayload(state: CreateWizardState, limits: GamePlayerL
     ...peoplePayload(gameType, state.people, state.party.anonymous, isPollPartyGame(gameType)),
     ...gameRoomSettingsPayload(gameType, state.room),
     ...partyRoomSettingsPayload(gameType, state.party),
+    // Who Said This overrides the question/participant fields with its own source model.
+    ...(isWhoSaidThis(gameType) ? wstCreatePayload(state.wst) : {}),
   }
 
+  // A stale admin theme (`pt:<id>`) left in party state must not fold its pool when the host has
+  // switched to a Library/Your-own source — that would override the custom pool and difficulty.
+  if (state.custom.source !== 'platform') delete payload.puzzle_theme_id
+
   if (maxPlayers != null) payload.max_players = maxPlayers
+
+  // Player-facing content label — explicit host input wins, else the picked library pack name
+  // (custom-content or Who Said This deck).
+  const contentLabel = (
+    state.contentLabel.trim() ||
+    state.custom.libraryPackTitle?.trim() ||
+    state.wst.libraryPackTitle?.trim() ||
+    ''
+  ).slice(0, 40)
+  if (contentLabel) payload.content_label = contentLabel
 
   if (supportsViewers) {
     payload.allow_viewers = lateJoinPolicy !== 'lobby_only'

@@ -14,6 +14,8 @@ type Props = {
   onLeft: () => void
   inLobby?: boolean
   spectating?: boolean
+  /** Forwarded to EditNameInline so a scrollable parent can lift the field above the keyboard. */
+  onEditStart?: () => void
 }
 
 export function PlayerSessionControls({
@@ -25,6 +27,7 @@ export function PlayerSessionControls({
   onLeft,
   inLobby = false,
   spectating = false,
+  onEditStart,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   return (
@@ -35,6 +38,7 @@ export function PlayerSessionControls({
         currentName={currentName}
         onRenamed={onRenamed}
         spectating={spectating}
+        onEditStart={onEditStart}
       />
       <PlayerResumeCard gameCode={gameCode} resumeToken={resumeToken} compact={!inLobby} />
       <LeaveGameButton gameCode={gameCode} playerId={playerId} onLeft={onLeft} inLobby={inLobby} />
@@ -44,5 +48,5 @@ export function PlayerSessionControls({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  wrap: { gap: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: theme.border },
-})
+    wrap: { gap: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: theme.border },
+  })

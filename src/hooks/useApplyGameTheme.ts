@@ -1,48 +1,37 @@
 'use client'
 
 import { useEffect } from 'react'
-import { ALL_THEME_CSS_VAR_KEYS, parseThemeId, THEME_MAP } from '@/lib/themes'
+import { parseThemeId } from '@/lib/themes'
 
-function clearThemeVars(root: HTMLElement) {
-  ALL_THEME_CSS_VAR_KEYS.forEach((k) => root.style.removeProperty(k))
-  root.style.removeProperty('background')
-}
-
-/** Apply the selected game theme CSS variables to the document root. */
-export function useApplyGameTheme(theme: string | null | undefined) {
+/**
+ * Apply the selected game theme to the document root.
+ *
+ * Every theme's palette (light + dark variants) lives in globals.css under
+ * `[data-game-theme='<id>']`, so all this does is set/clear the attribute and
+ * let CSS resolve the correct colors for the active `data-theme` (light/dark).
+ * No inline CSS variables are written — inline styles on `<html>` would beat
+ * the `[data-theme='dark']` rules and break dark mode for themed games.
+ */
+export function useApplyGameTheme(theme: string | null | undefined, gameType?: string | null) {
   useEffect(() => {
     const themeId = parseThemeId(theme)
-    const vars = THEME_MAP[themeId]?.cssVars ?? {}
     const root = document.documentElement
 
-    clearThemeVars(root)
+    if (gameType) {
+      root.setAttribute('data-game-type', gameType)
+    } else {
+      root.removeAttribute('data-game-type')
+    }
 
     if (themeId === 'default') {
       root.removeAttribute('data-game-theme')
-      return () => {
-        clearThemeVars(root)
-        root.removeAttribute('data-game-theme')
-      }
+    } else {
+      root.setAttribute('data-game-theme', themeId)
     }
 
-    root.setAttribute('data-game-theme', themeId)
-
-    if (themeId === 'pirate' || themeId === 'arctic' || themeId === 'naija') {
-      // For Pirate, Arctic, and Naija themes, styles are defined in globals.css under data-game-theme
-      // to support both Light and Dark modes without inline style interference.
-      return () => {
-        root.removeAttribute('data-game-theme')
-        clearThemeVars(root)
-      }
-    }
-
-    const keys = Object.keys(vars)
-    keys.forEach((k) => root.style.setProperty(k, vars[k]))
-    root.style.setProperty('background', vars['--background'] ?? '')
     return () => {
       root.removeAttribute('data-game-theme')
-      keys.forEach((k) => root.style.removeProperty(k))
-      root.style.removeProperty('background')
+      root.removeAttribute('data-game-type')
     }
-  }, [theme])
+  }, [theme, gameType])
 }

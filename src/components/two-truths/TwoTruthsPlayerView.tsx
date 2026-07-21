@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
@@ -25,7 +26,9 @@ import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { EliminationBanner } from '@/components/EliminationBanner'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 
 type Screen =
@@ -84,6 +87,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, null>({
     gameCode,
@@ -101,9 +105,17 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   useTurnNotifications({ status: game?.status })
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'rounds', 'ttl_statements', 'ttl_guesses'], load)
+  const connected = useGameTableSync(
+    gameCode,
+    [{ table: 'games', column: 'id' }, 'players', 'rounds', 'ttl_statements', 'ttl_guesses'],
+    load
+  )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
   const openLobbyJoin = useCallback(() => {
     setScreen('join')
@@ -114,6 +126,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     if (screen === 'game_started_waiting' || screen === 'playing') void load()
   })
 
+  const router = useRouter()
   const me = players.find((p) => p.id === myPlayerId)
   const myPlayerName = me?.name ?? ''
   // In the lobby, everyone can participate regardless of spectator flag (gets cleared on reset)
@@ -153,6 +166,34 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     if (!prevMyStatement.current && myStatement) setEditingStatements(false)
     prevMyStatement.current = myStatement
   }, [myStatement])
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it. Purely additive — the in-page PlayerSessionControls stays as-is.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={me?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') {
     return (
@@ -212,6 +253,8 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="two_truths_guesser"
         />
@@ -225,6 +268,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myPlayerName}
@@ -295,14 +339,6 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
           {isViewer && (
             <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={me} onPromoted={load} />
           )}
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myPlayerName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            spectating={isViewer}
-          />
           <TwoTruthsActiveRound
             gameCode={gameCode}
             game={game}

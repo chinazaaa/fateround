@@ -33,10 +33,10 @@ import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { DrawingCanvas, DrawingPreview } from '@/components/quick-draw/DrawingCanvas'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
-import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useQuickDrawAutoAdvance } from '@/hooks/useQuickDrawAutoAdvance'
@@ -175,7 +175,23 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
     readOnly: cannotParticipate,
   })
   const canVote = canPlayerVoteOnDrawing(activeDrawing, bootstrap.myPlayerId ?? '', { readOnly: cannotParticipate })
-  const leaderboard = tallyQuickDrawScores(state.titles, state.votes, state.drawings, bootstrap.players)
+  const leaderboard = useMemo(
+    () => tallyQuickDrawScores(state.titles, state.votes, state.drawings, bootstrap.players),
+    [state.titles, state.votes, state.drawings, bootstrap.players]
+  )
+  useGameScores(
+    useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard]),
+    { suffix: ' pts' }
+  )
+  useGameStats(
+    useMemo(() => {
+      const realTitleIds = new Set(state.titles.filter((t) => t.is_real).map((t) => t.id))
+      const counts: Record<string, number> = {}
+      for (const v of state.votes)
+        if (realTitleIds.has(v.chosen_title_id)) counts[v.player_id] = (counts[v.player_id] ?? 0) + 1
+      return Object.fromEntries(leaderboard.map((row) => [row.id, `✏️ ${counts[row.id] ?? 0} guessed`]))
+    }, [leaderboard, state.titles, state.votes])
+  )
 
   const countdown = session?.turn_deadline_at ? phaseDeadlineCountdown(session.turn_deadline_at) : 0
 
@@ -186,6 +202,9 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
     advancedDeadlineRef.current = key
     void bootstrap.load()
   }, [countdown, session, bootstrap])
+
+  const drawTimer = session && countdown > 0 && session.phase !== 'reveal' ? <TimerBadge seconds={countdown} /> : null
+  const drawTimerPinned = useStickyTimer(drawTimer, [countdown, session?.phase])
 
   const act = async (fn: () => Promise<unknown>) => {
     if (!bootstrap.myResumeToken || submitting) return
@@ -209,6 +228,8 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
       />
     )
   }
@@ -289,30 +310,7 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
           }
         />
 
-        {isViewer && mePlayer && bootstrap.myPlayerId ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId}
-            game={bootstrap.game}
-            player={mePlayer}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
-
-        {countdown > 0 && session.phase !== 'reveal' ? <TimerBadge seconds={countdown} /> : null}
-
-        <LeaderboardPanel
-          embedded
-          title="Leaderboard"
-          rows={leaderboard.map((row) => ({
-            id: row.id,
-            name: row.name,
-            score: row.score,
-            highlight: row.id === bootstrap.myPlayerId,
-          }))}
-          highlightId={bootstrap.myPlayerId}
-        />
+        {drawTimerPinned ? null : drawTimer}
 
         {session.phase !== 'drawing' && activeDrawing ? <Text style={styles.sub}>Drawing by {artistName}</Text> : null}
 

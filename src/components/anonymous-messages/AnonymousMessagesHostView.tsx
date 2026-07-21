@@ -5,9 +5,14 @@ import { AnonymousMessageFeed } from '@/components/anonymous-messages/AnonymousM
 import { AnonymousRoomSessionSummary } from '@/components/anonymous-messages/AnonymousRoomSessionSummary'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { ExitIcon } from '@/components/host/host-icons'
 import { HostLobbyStartButton } from '@/components/host-lobby/HostLobbyStartButton'
 import { HostVisibilityToggle } from '@/components/host-lobby/HostVisibilityToggle'
+import { HostMaxPlayersLobbyPanel } from '@/components/host-lobby/HostMaxPlayersLobbyPanel'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { ResultsPagination, usePagination } from '@/components/ui/ResultsPagination'
 import { useAnonymousMessageTrim } from '@/hooks/useAnonymousMessageTrim'
 import { useAnonymousMessages } from '@/hooks/useAnonymousMessages'
@@ -226,13 +231,10 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
   }
 
   if (!game) {
-    return (
-      <div className="page-wrap flex items-center justify-center">
-        <div className="w-11 h-11 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
+  const cfg = gameTypeConfig('anonymous_messages')
   const playerLink = `${appOrigin()}/game/${gameCode}`
   const canStart = players.length >= ANONYMOUS_ROOM_MIN_PLAYERS
   const roomCapacity = anonymousRoomMaxPlayers(game)
@@ -434,8 +436,55 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
     </>
   )
 
+  // Fresh lobby (not the play-again ready-up flow).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={cfg.label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('anonymous_messages', game) ?? roomCapacity}
+        playCard={
+          <p className="surface-inset rounded-xl px-4 py-3 text-sm text-muted">
+            You&apos;re hosting this anonymous room — players post under auto-assigned names once you open it. Open it
+            below when enough people have joined.
+          </p>
+        }
+        settingsChildren={
+          <>
+            <HostMaxPlayersLobbyPanel
+              gameCode={gameCode}
+              hostToken={hostToken}
+              game={game}
+              limitType="anonymous_messages"
+              playerCount={players.length}
+              onGameUpdate={setGame}
+            />
+            <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+          </>
+        }
+        onStart={() => void startSession()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : `Need at least ${ANONYMOUS_ROOM_MIN_PLAYERS} players to start (${players.length}/${ANONYMOUS_ROOM_MIN_PLAYERS})`
+        }
+        startLabel="Open room"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        onEnded={load}
+      />
+    )
+  }
+
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={game.status}
       tab={tab}

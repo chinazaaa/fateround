@@ -1,18 +1,38 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import type { GameType } from '@fateround/shared'
-import { CODEWORDS_TIMER_OPTIONS, formatPollRoundTimer } from '@fateround/shared/create-party-games'
+import {
+  CODEWORDS_TIMER_OPTIONS,
+  formatPollRoundTimer,
+  type CodewordsTeamAssignment,
+} from '@fateround/shared/create-party-games'
 import { TimerPicker } from '@/components/create/TimerPicker'
+import { SegmentedControl } from '@/components/create/SegmentedControl'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
 export type CodewordsLobbyState = {
   spymasterTimer: number
   operativeTimer: number
+  teamAssignment: CodewordsTeamAssignment
 }
+
+const TEAM_ASSIGNMENT_OPTIONS: { value: CodewordsTeamAssignment; label: string }[] = [
+  { value: 'players', label: 'Players pick' },
+  { value: 'host', label: 'Host assigns' },
+  { value: 'randomize', label: 'Random' },
+]
 
 export function isCodewordsLobbyGame(gameType: GameType): boolean {
   return gameType === 'codewords'
 }
+
+type FirstTeam = 'random' | 'red' | 'blue'
+
+const FIRST_TEAM_OPTIONS: { value: FirstTeam; label: string }[] = [
+  { value: 'random', label: '🎲 Random' },
+  { value: 'red', label: '🔴 Red' },
+  { value: 'blue', label: '🔵 Blue' },
+]
 
 type Props = {
   value: CodewordsLobbyState
@@ -20,12 +40,37 @@ type Props = {
   canShuffle: boolean
   shuffling: boolean
   onShuffle: () => void
+  firstTeam?: FirstTeam
+  onFirstTeamChange?: (team: FirstTeam) => void
 }
 
-export function CodewordsLobbySection({ value, onChange, canShuffle, shuffling, onShuffle }: Props) {
+export function CodewordsLobbySection({
+  value,
+  onChange,
+  canShuffle,
+  shuffling,
+  onShuffle,
+  firstTeam = 'random',
+  onFirstTeamChange,
+}: Props) {
   const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.wrap}>
+      <View style={styles.field}>
+        <Text style={styles.label}>Team assignment</Text>
+        <SegmentedControl
+          value={value.teamAssignment}
+          options={TEAM_ASSIGNMENT_OPTIONS}
+          onChange={(teamAssignment) => onChange({ teamAssignment })}
+        />
+      </View>
+
+      {onFirstTeamChange ? (
+        <View style={styles.field}>
+          <Text style={styles.label}>Goes first</Text>
+          <SegmentedControl value={firstTeam} options={FIRST_TEAM_OPTIONS} onChange={onFirstTeamChange} />
+        </View>
+      ) : null}
       <TimerPicker
         label="Spymaster timer"
         value={value.spymasterTimer}
@@ -52,6 +97,8 @@ export function CodewordsLobbySection({ value, onChange, canShuffle, shuffling, 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
   wrap: { gap: theme.space.md },
+  field: { gap: 6 },
+  label: { color: theme.text, fontSize: 15, fontWeight: '600' },
   shuffle: {
     backgroundColor: theme.bgElevated,
     borderWidth: 1,

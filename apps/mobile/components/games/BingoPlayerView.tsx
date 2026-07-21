@@ -2,7 +2,11 @@ import { useCallback, useMemo, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { BingoCalledNumber, BingoCard, Game, Player } from '@fateround/shared'
 import { BINGO_MIN_PLAYERS, formatBingoNumber, hasBingoWin } from '@fateround/shared/bingo'
-import { playerIsViewer } from '@fateround/shared/viewers'
+import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
+import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
+import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { BingoCardGrid } from '@/components/games/bingo/BingoCardGrid'
 import { BingoCardLegend } from '@/components/games/bingo/BingoCardLegend'
 import { CalledNumbersBoard } from '@/components/games/bingo/CalledNumbersBoard'
@@ -12,7 +16,6 @@ import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 import { postBingoClaim, postBingoMark } from '@/lib/game-api'
@@ -23,7 +26,16 @@ import { usePlayerSessionActions } from '@/lib/player-session'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'late_join_choice'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'active'
+  | 'finished'
+  | 'not_found'
 
 type BingoClaim = { id: string; player_id: string; status: string }
 
@@ -87,7 +99,13 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   const computeScreen = useCallback((game: Game, playerId: string | null): Screen => {
-    if (!playerId) return 'join'
+    if (!playerId) {
+      const pre = preJoinScreen(game, false)
+      if (pre === 'game_ended') return 'game_ended'
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
+      if (pre === 'late_join_choice') return 'late_join_choice'
+      return 'join'
+    }
     if (game.status === 'waiting') return 'waiting'
     if (game.status === 'active') return 'active'
     return 'finished'
@@ -104,6 +122,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     afterResolve,
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
+  const lateJoin = useLateJoinContext(gameCode, bootstrap.game, bootstrap.screen === 'late_join_choice')
 
   useGameTableSync(
     gameCode,
@@ -157,6 +176,32 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
+  if (bootstrap.screen === 'late_join_choice' && bootstrap.game) {
+    return (
+      <LateJoinChoiceScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        context={lateJoin.context}
+        contextLoading={lateJoin.loading}
+        nameInput={bootstrap.joinName}
+        onNameChange={bootstrap.setJoinName}
+        joining={bootstrap.joining}
+        error={bootstrap.error}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        onJoinAsPlayer={() => void bootstrap.join(undefined, { joinAsViewer: false })}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
     return (
       <JoinScreen
@@ -166,6 +211,8 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
         submitLabel="Join Bingo"
         hint="You'll get a random card when the host starts. Called numbers turn blue on your card — tap them to mark them green."
         footer={<BingoCardLegend />}
@@ -229,17 +276,6 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title="Bingo" subtitle={`Code ${bootstrap.code}`}>
       <ScrollView contentContainerStyle={styles.content}>
-        {isViewer && bootstrap.myPlayerId && me && bootstrap.game ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId}
-            game={bootstrap.game}
-            player={me}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
-
         {lastCalled ? (
           <View style={styles.latestCall}>
             <Text style={styles.latestLabel}>Latest call</Text>

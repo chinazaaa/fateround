@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { createPlayerSchema, updatePlayerSchema, deletePlayerSchema } from '@/lib/validation'
+import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
 import { normalizeResumeToken } from '@/lib/utils'
@@ -8,6 +9,7 @@ import { removeMonopolyPlayer } from '@/lib/monopoly'
 import { removeScrabblePlayer } from '@/lib/scrabble'
 import { removeWhotPlayer } from '@/lib/whot'
 import { removeCrazyEightsPlayer } from '@/lib/crazy-eights'
+import { removeUnoPlayer } from '@/lib/uno'
 import { removeLudoPlayer } from '@/lib/ludo'
 import { removeMahjongPlayer } from '@/lib/mahjong'
 import { removeSnakeAndLadderPlayer } from '@/lib/snake-and-ladder'
@@ -16,13 +18,20 @@ import { removeChessPlayer } from '@/lib/chess'
 import { removeCheckersPlayer } from '@/lib/checkers'
 import { removeAyoPlayer } from '@/lib/ayo'
 import { removeTicTacToePlayer } from '@/lib/tic-tac-toe'
+import { removePingPongPlayer } from '@/lib/ping-pong'
 import { isMonopolyTokenId } from '@/lib/monopoly-tokens'
 import { generateAnonymousDisplayName } from '@/lib/anonymous-names'
 import { anonymousPlayerCanChat } from '@/lib/anonymous-messages'
 import { createBingoCardForPlayer } from '@/lib/bingo'
-import { assignCodewordsLateJoinOperative, codewordsAllowsPlayerChanges, removeCodewordsPlayer } from '@/lib/codewords'
-import { assignDescribeItLateJoinTeam } from '@/lib/describe-it'
+import {
+  assignCodewordsLateJoinOperative,
+  codewordsAllowsPlayerChanges,
+  reconcileCodewordsTeamAfterRemoval,
+  removeCodewordsPlayer,
+} from '@/lib/codewords'
+import { assignDescribeItLateJoinTeam, reconcileDescribeItAfterRemoval } from '@/lib/describe-it'
 import { registerQuickDrawLateJoinPlayer } from '@/lib/quick-draw'
+import { reconcileQuickDrawGuessAfterRemoval } from '@/lib/quick-draw-guess'
 import {
   assignWordRushLateJoinTeam,
   revertWordRushRosterAfterFailedPlayerDelete,
@@ -40,6 +49,7 @@ import {
   isYahtzeeGame,
   isWhotGame,
   isCrazyEightsGame,
+  isUnoGame,
   isLudoGame,
   isMahjongGame,
   isSnakeAndLadderGame,
@@ -53,6 +63,7 @@ import {
   isQuickDrawGame,
   isSudokuGame,
   isTwoTruthsGame,
+  isPingPongGame,
 } from '@/lib/game-types'
 import { fetchGamePlayerLimits, isLobbyLimitGameType, lobbyMaxPlayersFromGame } from '@/lib/game-limits'
 import { isGenderFreeImportJoin, isGenderFreeJoinersJoin, isGenderFreeVotersJoin } from '@/lib/gender-based'
@@ -175,6 +186,18 @@ function spectatorOnJoin(game: Game, joinAsViewer: boolean | undefined): boolean
   return spectatorForActiveJoin(game, joinAsViewer)
 }
 
+// Decide what to do when a waiting lobby has no open seats. Returns a NextResponse to
+// return immediately, or `null` to admit the joiner as a spectator ("watch instead").
+// The watch fallback is only offered when the game allows viewers — a game with viewers
+// turned off still turns a full lobby away with a plain "full" error (no `full` flag, so
+// the client shows no "watch instead" affordance).
+function seatFullGate(game: Game, seatsFull: boolean, joinAsViewer: boolean | undefined, message: string) {
+  if (!seatsFull) return null
+  const canWatch = allowLateJoin(game)
+  if (joinAsViewer === true && canWatch) return null
+  return NextResponse.json(canWatch ? { error: message, full: true } : { error: message }, { status: 400 })
+}
+
 async function nameTaken(gameId: string, name: string, excludePlayerId?: string) {
   let query = supabase.from('players').select('id').eq('game_id', gameId).ilike('name', name)
   if (excludePlayerId) query = query.neq('id', excludePlayerId)
@@ -201,6 +224,9 @@ function resolveIdentityGender(
 }
 
 export async function POST(req: NextRequest) {
+  const limited = await enforceRateLimit(req, RATE_LIMITS.join)
+  if (limited) return limited
+
   const { data: body, error: bodyError } = await parseJsonBody(req, createPlayerSchema)
   if (bodyError) return bodyError
 
@@ -337,6 +363,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
     if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
       return NextResponse.json({ error: 'This room is full' }, { status: 400 })
@@ -426,10 +453,11 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
-    if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
-      return NextResponse.json({ error: 'This bingo room is full' }, { status: 400 })
-    }
+    const seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This bingo room is full')
+    if (seatFullResp) return seatFullResp
 
     if (await nameTaken(gameId, name)) {
       return NextResponse.json({ error: 'That name is already taken' }, { status: 400 })
@@ -452,7 +480,7 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
 
-    if (gameRow.status === 'waiting' || (gameRow.status === 'active' && !isSpectator)) {
+    if (!isSpectator && (gameRow.status === 'waiting' || gameRow.status === 'active')) {
       const { error: cardError } = await createBingoCardForPlayer(getSupabaseAdmin(), gameId, player.id)
       if (cardError) return NextResponse.json({ error: cardError }, { status: 500 })
     }
@@ -475,16 +503,18 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
-    if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
-      return NextResponse.json({ error: 'This game is full' }, { status: 400 })
-    }
+    const seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
+    if (seatFullResp) return seatFullResp
 
     if (await nameTaken(gameId, name)) {
       return NextResponse.json({ error: 'That name is already taken' }, { status: 400 })
     }
 
-    const isSpectator = gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false
+    const isSpectator =
+      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     if (!isSpectator) {
       if (!rawMonopolyToken || !isMonopolyTokenId(rawMonopolyToken)) {
@@ -540,16 +570,18 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
-    if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
-      return NextResponse.json({ error: 'This game is full' }, { status: 400 })
-    }
+    const seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
+    if (seatFullResp) return seatFullResp
 
     if (await nameTaken(gameId, name)) {
       return NextResponse.json({ error: 'That name is already taken' }, { status: 400 })
     }
 
-    const isSpectator = gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false
+    const isSpectator =
+      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     const { data: player, error } = await getSupabaseAdmin()
       .from('players')
@@ -569,7 +601,7 @@ export async function POST(req: NextRequest) {
     return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
   }
 
-  if (isWhotGame(rowGameType) || isCrazyEightsGame(rowGameType)) {
+  if (isWhotGame(rowGameType) || isCrazyEightsGame(rowGameType) || isUnoGame(rowGameType)) {
     const joinCheck = canJoinGame(gameRow as Game)
     if (!joinCheck.ok) {
       return NextResponse.json({ error: joinCheck.error }, { status: 400 })
@@ -579,22 +611,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'playerName is required' }, { status: 400 })
     }
 
-    const limitKey = isCrazyEightsGame(rowGameType) ? 'crazy_eights' : 'whot'
+    const limitKey = isCrazyEightsGame(rowGameType) ? 'crazy_eights' : isUnoGame(rowGameType) ? 'uno' : 'whot'
     const maxPlayers = lobbyMaxPlayersFromGame(limitKey, gameRow, lobbyLimits)
     const { count: playerCount } = await supabase
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
-    if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
-      return NextResponse.json({ error: 'This game is full' }, { status: 400 })
-    }
+    const seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
+    if (seatFullResp) return seatFullResp
 
     if (await nameTaken(gameId, name)) {
       return NextResponse.json({ error: 'That name is already taken' }, { status: 400 })
     }
 
-    const isSpectator = gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false
+    const isSpectator =
+      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     const { data: player, error } = await getSupabaseAdmin()
       .from('players')
@@ -634,16 +668,18 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
-    if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
-      return NextResponse.json({ error: 'This game is full' }, { status: 400 })
-    }
+    const seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
+    if (seatFullResp) return seatFullResp
 
     if (await nameTaken(gameId, name)) {
       return NextResponse.json({ error: 'That name is already taken' }, { status: 400 })
     }
 
-    const isSpectator = gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false
+    const isSpectator =
+      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     const { data: player, error } = await getSupabaseAdmin()
       .from('players')
@@ -668,7 +704,8 @@ export async function POST(req: NextRequest) {
     isChessGame(rowGameType) ||
     isCheckersGame(rowGameType) ||
     isAyoGame(rowGameType) ||
-    isScrabbleGame(rowGameType)
+    isScrabbleGame(rowGameType) ||
+    isPingPongGame(rowGameType)
   ) {
     const joinCheck = canJoinGame(gameRow as Game)
     if (!joinCheck.ok) {
@@ -687,22 +724,26 @@ export async function POST(req: NextRequest) {
           ? 'ayo'
           : isScrabbleGame(rowGameType)
             ? 'scrabble'
-            : 'tic_tac_toe'
+            : isPingPongGame(rowGameType)
+              ? 'ping_pong'
+              : 'tic_tac_toe'
     const maxPlayers = lobbyMaxPlayersFromGame(limitKey, gameRow, lobbyLimits)
     const { count: playerCount } = await supabase
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
-    if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
-      return NextResponse.json({ error: 'This game is full' }, { status: 400 })
-    }
+    const seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
+    if (seatFullResp) return seatFullResp
 
     if (await nameTaken(gameId, name)) {
       return NextResponse.json({ error: 'That name is already taken' }, { status: 400 })
     }
 
-    const isSpectator = gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false
+    const isSpectator =
+      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     const { data: player, error } = await getSupabaseAdmin()
       .from('players')
@@ -739,10 +780,11 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
+      .eq('spectator', false)
 
-    if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
-      return NextResponse.json({ error: 'This game is full' }, { status: 400 })
-    }
+    const seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
+    if (seatFullResp) return seatFullResp
 
     if (gameRow.status === 'active' && (playerCount ?? 0) >= maxPlayers) {
       return NextResponse.json({ error: 'This game is full' }, { status: 400 })
@@ -798,9 +840,10 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
-    if ((playerCount ?? 0) >= maxPlayers) {
-      return NextResponse.json({ error: 'This game is full' }, { status: 400 })
-    }
+      .eq('spectator', false)
+    const seatsFull = (playerCount ?? 0) >= maxPlayers
+    const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
+    if (seatFullResp) return seatFullResp
 
     if (await nameTaken(gameId, name)) {
       return NextResponse.json({ error: 'That name is already taken' }, { status: 400 })
@@ -850,9 +893,10 @@ export async function POST(req: NextRequest) {
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
-    if ((playerCount ?? 0) >= maxPlayers) {
-      return NextResponse.json({ error: 'This game is full' }, { status: 400 })
-    }
+      .eq('spectator', false)
+    const seatsFull = (playerCount ?? 0) >= maxPlayers
+    const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
+    if (seatFullResp) return seatFullResp
 
     if (await nameTaken(gameId, name)) {
       return NextResponse.json({ error: 'That name is already taken' }, { status: 400 })
@@ -906,10 +950,11 @@ export async function POST(req: NextRequest) {
         .from('players')
         .select('id', { count: 'exact', head: true })
         .eq('game_id', id)
+        .eq('spectator', false)
 
-      if (game.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
-        return NextResponse.json({ error: 'This room is full' }, { status: 400 })
-      }
+      const seatsFull = game.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+      const seatFullResp = seatFullGate(game as Game, seatsFull, rawJoinAsViewer, 'This room is full')
+      if (seatFullResp) return seatFullResp
     }
 
     if (await nameTaken(id, name)) {
@@ -1211,6 +1256,7 @@ export async function PATCH(req: NextRequest) {
     gameCode,
     playerId,
     playerName: rawName,
+    monopolyToken: rawMonopolyTokenUpdate,
     gender: rawGender,
     pollGender: rawPollGender,
     identityGender: rawIdentityGender,
@@ -1246,6 +1292,49 @@ export async function PATCH(req: NextRequest) {
     .maybeSingle()
 
   if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
+
+  // Monopoly: swap your board token from the lobby. Isolated single-field update —
+  // only fires when a token is sent (name/gender edits never carry one).
+  if (rawMonopolyTokenUpdate !== undefined) {
+    const token = String(rawMonopolyTokenUpdate)
+    if (!isMonopolyTokenId(token)) {
+      return NextResponse.json({ error: 'Pick a valid token' }, { status: 400 })
+    }
+    const { data: gameRow } = await getSupabaseAdmin().from('games').select('status').eq('id', id).maybeSingle()
+    if (gameRow?.status !== 'waiting') {
+      return NextResponse.json({ error: 'Tokens lock once the game starts' }, { status: 400 })
+    }
+    if (player.spectator) {
+      return NextResponse.json({ error: 'Watchers don’t use a board token' }, { status: 400 })
+    }
+    const { data: clash } = await getSupabaseAdmin()
+      .from('players')
+      .select('id')
+      .eq('game_id', id)
+      .eq('monopoly_token', token)
+      .neq('id', playerId)
+      .maybeSingle()
+    if (clash) {
+      return NextResponse.json({ error: 'That token was just taken — pick another' }, { status: 400 })
+    }
+    const { data: updatedPlayer, error } = await getSupabaseAdmin()
+      .from('players')
+      .update({ monopoly_token: token })
+      .eq('id', playerId)
+      .select()
+      .single()
+    if (error) {
+      if (error.code === '23505') {
+        return NextResponse.json({ error: 'That token was just taken — pick another' }, { status: 400 })
+      }
+      return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    }
+    return NextResponse.json({
+      playerId: updatedPlayer.id,
+      playerName: updatedPlayer.name,
+      playerGender: updatedPlayer.gender,
+    })
+  }
 
   const gameType = parseGameType((game as { game_type?: string }).game_type)
 
@@ -1600,9 +1689,27 @@ export async function DELETE(req: NextRequest) {
   const gameType = parseGameType((game as { game_type?: string }).game_type)
 
   if (isCodewordsGame(gameType)) {
+    // Capture the team before deletion — the role row is FK-cascaded away with the player.
+    const { data: roleRow } = await getSupabaseAdmin()
+      .from('codewords_player_roles')
+      .select('team')
+      .eq('game_id', id)
+      .eq('player_id', playerId)
+      .maybeSingle()
+    const removedTeam = (roleRow?.team as 'red' | 'blue' | undefined) ?? null
+
     const { error } = await removeCodewordsPlayer(getSupabaseAdmin(), id, playerId)
     if (error) return NextResponse.json({ error }, { status: 500 })
-    return NextResponse.json({ success: true })
+
+    // Keep the round playable (or end it) when the departure breaks a team's roster.
+    const { error: reconcileError, outcome } = await reconcileCodewordsTeamAfterRemoval(
+      getSupabaseAdmin(),
+      id,
+      removedTeam
+    )
+    if (reconcileError) return NextResponse.json({ error: reconcileError }, { status: 500 })
+
+    return NextResponse.json({ success: true, ...outcome })
   }
 
   if (isMonopolyGame(gameType)) {
@@ -1625,6 +1732,12 @@ export async function DELETE(req: NextRequest) {
 
   if (isCrazyEightsGame(gameType)) {
     const { error } = await removeCrazyEightsPlayer(getSupabaseAdmin(), id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isUnoGame(gameType)) {
+    const { error } = await removeUnoPlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }
@@ -1681,6 +1794,12 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ success: true })
   }
 
+  if (isPingPongGame(gameType)) {
+    const { error } = await removePingPongPlayer(getSupabaseAdmin(), id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
   let wordRushRollback: { roster: string[]; prompt_setter_player_id: string | null } | undefined
   if (isWordRushGame(gameType)) {
     const admin = getSupabaseAdmin()
@@ -1710,6 +1829,18 @@ export async function DELETE(req: NextRequest) {
     // everyone remaining may already be done, and no further submission would
     // ever re-trigger the completion check. Best-effort: never block the leave.
     await finishSudokuIfAllPlayersDone(getSupabaseAdmin(), id)
+  }
+
+  if (isDescribeItGame(gameType)) {
+    // A team may have dropped below the minimum to field a turn — skip it, or
+    // end the match if only one team can still play. Best-effort: never block.
+    await reconcileDescribeItAfterRemoval(getSupabaseAdmin(), id)
+  }
+
+  if (isQuickDrawGame(gameType)) {
+    // Same team-collapse handling for Quick Draw's team mode (no-op for the
+    // individual "telephone" variant, which has no guess session).
+    await reconcileQuickDrawGuessAfterRemoval(getSupabaseAdmin(), id)
   }
 
   return NextResponse.json({ success: true })

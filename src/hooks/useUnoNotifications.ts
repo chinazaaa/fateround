@@ -1,0 +1,129 @@
+'use client'
+
+import { useEffect, useRef } from 'react'
+import { playRoundStartSound, playRoundEndSound, playVoteSubmittedSound, playGameFinishedSound } from '@/lib/sounds'
+import { useToast } from '@/components/ui/Toast'
+import type { Game, UnoSession } from '@/types'
+import { currentPlayerId } from '@/lib/uno'
+
+export function useUnoNotifications({
+  game,
+  session,
+  myPlayerId,
+  myHandCount = 0,
+  enabled = true,
+}: {
+  game: Game | null
+  session: UnoSession | null
+  myPlayerId: string | null | undefined
+  myHandCount?: number
+  enabled?: boolean
+}) {
+  const { info } = useToast()
+  const readyRef = useRef(false)
+  const prevTurnIndexRef = useRef<number | null>(null)
+  const prevStatusRef = useRef<string | null>(null)
+  const prevPhaseRef = useRef<string | null>(null)
+  const prevHandCountRef = useRef<number | null>(null)
+  const prevUnoCallRef = useRef<string | null>(null)
+  // The round whose opening deal we've already accounted for. The initial deal fills your hand
+  // (0 → 7, or leftover → 7 on play-again) and must NOT be announced as a draw; only increases
+  // AFTER the deal are real draws. Keyed on the session id (recreated each round).
+  const dealtRoundRef = useRef<string | null>(null)
+
+  // A player calling "UNO" (either as they play their 2nd-to-last card or via the button)
+  // flips uno_called → true for the pending player. Announce it to the whole room once.
+  const unoCallKey = session && session.uno_called && session.uno_pending_player ? session.uno_pending_player : null
+
+  useEffect(() => {
+    if (!enabled || !game) return
+
+    const activeRoundKey = game.status === 'active' ? (session?.id ?? null) : null
+
+    if (!readyRef.current) {
+      readyRef.current = true
+      prevTurnIndexRef.current = session?.current_turn_index ?? null
+      prevStatusRef.current = game.status
+      prevPhaseRef.current = session?.phase ?? null
+      prevHandCountRef.current = myHandCount
+      prevUnoCallRef.current = unoCallKey
+      // Mounting into an already-dealt active round: treat its deal as done so the player's
+      // first real draw still notifies (only a fresh 0 → 7 deal should ever be suppressed).
+      if (activeRoundKey !== null && myHandCount > 0) dealtRoundRef.current = activeRoundKey
+      return
+    }
+
+    // Has this round's opening deal already landed? Computed BEFORE we (re)mark it below.
+    const dealtThisRound = activeRoundKey !== null && dealtRoundRef.current === activeRoundKey
+
+    if (unoCallKey && unoCallKey !== prevUnoCallRef.current && game.status === 'active') {
+      const msg =
+        session?.status_message && session.status_message.includes('UNO') ? session.status_message : '🎉 UNO called!'
+      info(msg)
+      playRoundStartSound()
+    }
+    prevUnoCallRef.current = unoCallKey
+
+    const prevStatus = prevStatusRef.current
+    const prevTurnIndex = prevTurnIndexRef.current
+    const prevPhase = prevPhaseRef.current
+    const prevHandCount = prevHandCountRef.current
+    const currentTurnIndex = session?.current_turn_index ?? null
+
+    // A 0 (pass all hands) or 7 (swap hands) also changes your hand size, but it isn't a draw —
+    // don't mislabel it. The server writes the descriptive status before the hand rows, so it's
+    // current here; announce that instead. (Either direction of size change, not just a gain.)
+    const statusMsg = session?.status_message ?? ''
+    const isZeroSeven = /played a 0|swapped hands with/i.test(statusMsg)
+    if (prevHandCount !== null && myHandCount !== prevHandCount && isZeroSeven) {
+      info(statusMsg)
+      playVoteSubmittedSound()
+    } else if (prevHandCount !== null && myHandCount > prevHandCount && dealtThisRound) {
+      // Only a genuine draw (after the round's opening deal has settled) — never the deal itself.
+      const gained = myHandCount - prevHandCount
+      info(`You drew ${gained} card${gained === 1 ? '' : 's'} 🃏`)
+      playVoteSubmittedSound()
+    }
+
+    // Mark this active round's deal accounted-for once the hand is populated, so the very first
+    // fill (this render or an earlier one) is never mistaken for a draw on subsequent updates.
+    if (activeRoundKey !== null && myHandCount > 0) dealtRoundRef.current = activeRoundKey
+
+    if (prevStatus === 'waiting' && game.status === 'active') {
+      info('Game started! 🃏')
+      playRoundStartSound()
+    }
+
+    if (prevStatus === 'active' && (game.status === 'finished' || session?.phase === 'finished')) {
+      playGameFinishedSound()
+    }
+
+    if (prevPhase !== 'finished' && session?.phase === 'finished') {
+      playGameFinishedSound()
+    }
+
+    if (
+      session &&
+      currentTurnIndex !== null &&
+      prevTurnIndex !== null &&
+      currentTurnIndex !== prevTurnIndex &&
+      game.status === 'active' &&
+      session.phase !== 'finished'
+    ) {
+      const nowMyTurn = myPlayerId && currentPlayerId(session) === myPlayerId
+      if (nowMyTurn) {
+        info('Your turn! 🃏')
+        playRoundStartSound()
+      } else {
+        playRoundEndSound()
+      }
+    }
+
+    prevTurnIndexRef.current = currentTurnIndex
+    prevStatusRef.current = game.status
+    prevPhaseRef.current = session?.phase ?? null
+    prevHandCountRef.current = myHandCount
+  }, [enabled, game, info, myHandCount, myPlayerId, session, unoCallKey])
+}
+
+export { playVoteSubmittedSound as playUnoActionSound }

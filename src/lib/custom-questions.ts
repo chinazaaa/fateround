@@ -17,8 +17,17 @@ import {
   isCodewordsGame,
   isDescribeItGame,
   isQuickDrawGame,
+  isCrosswordGame,
+  isWordSearchGame,
+  isWordScrambleGame,
+  isWhoSaidThis,
   parseGameType,
 } from '@/lib/game-types'
+import { parseCsvRows } from '@/lib/csv-parse'
+import type { WstDeckEntry } from '@/lib/who-said-this'
+import { parseCrosswordEntries } from '@/lib/crossword-puzzles'
+import { parseWordSearchEntries } from '@/lib/word-search-puzzles'
+import { parseWordScrambleEntries } from '@/lib/word-scramble-puzzles'
 import { pickLeastUsed } from '@/lib/question-picker'
 import {
   CODEWORDS_MIN_CUSTOM_POOL,
@@ -319,6 +328,225 @@ export function parseTriviaQuestionRows(text: string, defaultCategory: TriviaCat
   return parseTriviaQuestionImport(text, defaultCategory).questions
 }
 
+// ── Crossword / Word Search custom pools ──────────────────────────────────────
+// Both store their pool in games.custom_questions and the start route packs a grid from it:
+// Crossword needs {answer, clue} rows; Word Search needs {word} rows. A library pack's
+// `questions` JSONB uses the same shapes, so it folds straight into custom_questions.
+
+export type EntryImportResult<T> = {
+  questions: T[]
+  totalRows: number
+  skippedRows: number
+  duplicateRows: number
+}
+
+export type CrosswordEntry = { answer: string; clue: string }
+export type WordSearchEntry = { word: string }
+export type WordScrambleEntry = { word: string; hint?: string }
+
+/** Parse a crossword CSV (answer,clue header) into deduped {answer, clue} entries + counts. */
+export function parseCrosswordEntryImport(text: string): EntryImportResult<CrosswordEntry> {
+  const rows = parseCsvRows(text)
+  const parsed = parseCrosswordEntries(rows)
+  const seen = new Set<string>()
+  const questions: CrosswordEntry[] = []
+  let duplicateRows = 0
+  for (const e of parsed) {
+    const key = e.answer.trim().toUpperCase()
+    if (seen.has(key)) {
+      duplicateRows++
+      continue
+    }
+    seen.add(key)
+    questions.push({ answer: e.answer.trim(), clue: e.clue.trim() })
+  }
+  return { questions, totalRows: rows.length, skippedRows: rows.length - parsed.length, duplicateRows }
+}
+
+/** Parse a word-search CSV (word header) into deduped {word} entries + counts. */
+export function parseWordSearchEntryImport(text: string): EntryImportResult<WordSearchEntry> {
+  const rows = parseCsvRows(text)
+  const parsed = parseWordSearchEntries(rows)
+  const seen = new Set<string>()
+  const questions: WordSearchEntry[] = []
+  let duplicateRows = 0
+  for (const e of parsed) {
+    const word = e.word.trim().toUpperCase()
+    if (!word) continue
+    if (seen.has(word)) {
+      duplicateRows++
+      continue
+    }
+    seen.add(word)
+    questions.push({ word })
+  }
+  return { questions, totalRows: rows.length, skippedRows: rows.length - parsed.length, duplicateRows }
+}
+
+/** Parse a word-scramble CSV (word[,hint] header) into deduped {word, hint?} entries + counts. */
+export function parseWordScrambleEntryImport(text: string): EntryImportResult<WordScrambleEntry> {
+  const rows = parseCsvRows(text)
+  const parsed = parseWordScrambleEntries(rows)
+  const seen = new Set<string>()
+  const questions: WordScrambleEntry[] = []
+  let duplicateRows = 0
+  for (const e of parsed) {
+    const word = e.word.trim().toUpperCase()
+    if (!word) continue
+    if (seen.has(word)) {
+      duplicateRows++
+      continue
+    }
+    seen.add(word)
+    questions.push(e.hint ? { word, hint: e.hint } : { word })
+  }
+  return { questions, totalRows: rows.length, skippedRows: rows.length - parsed.length, duplicateRows }
+}
+
+/** Restore a stored word-scramble pool (from custom_questions or a library pack). */
+export function parseStoredWordScrambleEntries(raw: unknown): WordScrambleEntry[] {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<string>()
+  const out: WordScrambleEntry[] = []
+  for (const e of parseWordScrambleEntries(raw as Record<string, string>[])) {
+    const word = e.word.trim().toUpperCase()
+    if (word && !seen.has(word)) {
+      seen.add(word)
+      out.push(e.hint ? { word, hint: e.hint } : { word })
+    }
+  }
+  return out
+}
+
+/** Restore a stored crossword pool (from custom_questions or a library pack). */
+export function parseStoredCrosswordEntries(raw: unknown): CrosswordEntry[] {
+  if (!Array.isArray(raw)) return []
+  return parseCrosswordEntries(raw as Record<string, string>[]).map((e) => ({
+    answer: e.answer.trim(),
+    clue: e.clue.trim(),
+  }))
+}
+
+/** Restore a stored word-search pool (from custom_questions or a library pack). */
+export function parseStoredWordSearchEntries(raw: unknown): WordSearchEntry[] {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<string>()
+  const out: WordSearchEntry[] = []
+  for (const e of parseWordSearchEntries(raw as Record<string, string>[])) {
+    const word = e.word.trim().toUpperCase()
+    if (word && !seen.has(word)) {
+      seen.add(word)
+      out.push({ word })
+    }
+  }
+  return out
+}
+
+// ---------------------------------------------------------------------------
+// Who Said This — trivia-style quote questions (quote + A/B/C/D options + correct)
+// ---------------------------------------------------------------------------
+
+/** Resolve the correct option from a CSV `correct` cell: a letter (A–D), a 1/0-based index,
+ *  or the exact option text. Returns the 0-based index, or null if unresolved. */
+function parseWstCorrectIndex(raw: string, options: string[]): number | null {
+  const v = (raw ?? '').trim()
+  if (!v) return null
+  const letter = v.toUpperCase()
+  const letterIdx = ['A', 'B', 'C', 'D'].indexOf(letter)
+  if (letterIdx >= 0 && letterIdx < options.length) return letterIdx
+  const num = Number.parseInt(v, 10)
+  if (!Number.isNaN(num)) {
+    // Accept 1-based (1–4) or 0-based (0–3) numbering.
+    if (num >= 1 && num <= options.length) return num - 1
+    if (num >= 0 && num < options.length) return num
+  }
+  const match = options.findIndex((o) => o.toLowerCase() === v.toLowerCase())
+  return match >= 0 ? match : null
+}
+
+/** Map CSV/stored rows to {quote, options, correctIndex}. Quote column: quote/question/text;
+ *  options: option_a..d (or a/b/c/d, or option1..4); correct: correct/answer/correct_answer. */
+export function parseWstDeckRows(rows: Record<string, string>[]): WstDeckEntry[] {
+  const out: WstDeckEntry[] = []
+  for (const r of rows) {
+    const quote = (r.quote ?? r.question ?? r.text ?? r.line ?? '').trim()
+    const options = [
+      r.option_a ?? r.a ?? r.option1 ?? r.option_1 ?? '',
+      r.option_b ?? r.b ?? r.option2 ?? r.option_2 ?? '',
+      r.option_c ?? r.c ?? r.option3 ?? r.option_3 ?? '',
+      r.option_d ?? r.d ?? r.option4 ?? r.option_4 ?? '',
+    ]
+      .map((o) => o.trim())
+      .filter(Boolean)
+      .slice(0, 4)
+    const correctIndex = parseWstCorrectIndex(r.correct ?? r.answer ?? r.correct_answer ?? '', options)
+    if (!quote || options.length < 2 || correctIndex == null) continue
+    out.push({ quote, options, correctIndex })
+  }
+  return out
+}
+
+function dedupeWstDeck(entries: WstDeckEntry[]): WstDeckEntry[] {
+  const seen = new Set<string>()
+  const out: WstDeckEntry[] = []
+  for (const e of entries) {
+    const key = `${e.quote.toLowerCase()}|${e.options.map((o) => o.toLowerCase()).join('|')}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(e)
+  }
+  return out
+}
+
+/** Parse a WST deck CSV (quote,option_a,option_b,option_c,option_d,correct) into deduped
+ *  questions + counts. */
+export function parseWstDeckImport(text: string): EntryImportResult<WstDeckEntry> {
+  const rows = parseCsvRows(text)
+  const parsed = parseWstDeckRows(rows)
+  const deduped = dedupeWstDeck(parsed)
+  return {
+    questions: deduped,
+    totalRows: rows.length,
+    skippedRows: rows.length - parsed.length,
+    duplicateRows: parsed.length - deduped.length,
+  }
+}
+
+/** Parse a WST deck from an uploaded .xlsx/.xls workbook. */
+export async function parseExcelWstDeckImport(buffer: ArrayBuffer): Promise<EntryImportResult<WstDeckEntry>> {
+  return parseWstDeckImport(await sheetBufferToText(buffer))
+}
+
+/** Restore a stored WST deck (from games.custom_questions or a library pack). */
+export function parseStoredWstDeck(raw: unknown): WstDeckEntry[] {
+  if (!Array.isArray(raw)) return []
+  // Stored rows keep native arrays for `options` + numeric `correctIndex`; normalise loosely.
+  const normalised: Record<string, string>[] = []
+  const direct: WstDeckEntry[] = []
+  for (const item of raw as unknown[]) {
+    const obj = item as { quote?: unknown; options?: unknown; correctIndex?: unknown }
+    if (typeof obj?.quote === 'string' && Array.isArray(obj.options) && typeof obj.correctIndex === 'number') {
+      const options = obj.options.map((o) => String(o).trim()).filter(Boolean)
+      if (obj.quote.trim() && options.length >= 2 && obj.correctIndex >= 0 && obj.correctIndex < options.length) {
+        direct.push({ quote: obj.quote.trim(), options, correctIndex: obj.correctIndex })
+      }
+      continue
+    }
+    normalised.push(item as Record<string, string>)
+  }
+  return dedupeWstDeck([...direct, ...parseWstDeckRows(normalised)])
+}
+
+/** Shared "N skipped · M duplicates removed" summary for the entry importers above. */
+export function formatEntryImportSummary(result: { skippedRows: number; duplicateRows: number }): string | null {
+  const parts: string[] = []
+  if (result.skippedRows > 0) parts.push(`${result.skippedRows} row${result.skippedRows === 1 ? '' : 's'} skipped`)
+  if (result.duplicateRows > 0) {
+    parts.push(`${result.duplicateRows} duplicate${result.duplicateRows === 1 ? '' : 's'} removed`)
+  }
+  return parts.length ? parts.join(' · ') : null
+}
+
 export async function parseExcelTriviaQuestions(
   buffer: ArrayBuffer,
   defaultCategory: TriviaCategory = 'general'
@@ -393,6 +621,13 @@ export function parseQuestionSource(raw: unknown, gameType?: GameType | string):
   // Describe It supports uploaded ('custom') words only — it has no library tier,
   // so never persist 'library' (gameplay would silently fall back to the platform pool).
   if (isDescribeItGame(gameType)) return raw === 'custom' ? 'custom' : 'platform'
+  // Crossword / Word Search / Word Scramble: library is folded into 'custom' at create (the
+  // start route just checks custom_questions), so only 'platform'/'custom' persist.
+  if (isCrosswordGame(gameType) || isWordSearchGame(gameType) || isWordScrambleGame(gameType))
+    return raw === 'custom' ? 'custom' : 'platform'
+  // Who Said This Pre-set roster decks: Library folds into 'custom' (start reads the deck from
+  // custom_questions); 'platform' is a seeded deck. The player-quote mode ignores this.
+  if (isWhoSaidThis(gameType)) return raw === 'custom' || raw === 'library' ? 'custom' : 'platform'
   return 'platform'
 }
 
@@ -522,6 +757,15 @@ export function questionSampleFile(gameType?: GameType | string): { href: string
   if (isMostLikelyTo(gameType)) {
     return { href: '/mlt-questions-sample.csv', download: 'mlt-questions-sample.csv' }
   }
+  if (isCrosswordGame(gameType)) {
+    return { href: '/crossword-answers-sample.csv', download: 'crossword-answers-sample.csv' }
+  }
+  if (isWordSearchGame(gameType)) {
+    return { href: '/word-search-words-sample.csv', download: 'word-search-words-sample.csv' }
+  }
+  if (isWordScrambleGame(gameType)) {
+    return { href: '/word-scramble-words-sample.csv', download: 'word-scramble-words-sample.csv' }
+  }
   return { href: '/wyr-questions-sample.csv', download: 'wyr-questions-sample.csv' }
 }
 
@@ -549,6 +793,15 @@ export function questionUploadHint(gameType?: GameType | string): string {
   }
   if (isMostLikelyTo(gameType)) {
     return '.csv or .xlsx — one question per row (question column)'
+  }
+  if (isCrosswordGame(gameType)) {
+    return '.csv — answer and clue columns (header row required). 4+ answers.'
+  }
+  if (isWordSearchGame(gameType)) {
+    return '.csv — one word per row under a "word" header. 4+ words.'
+  }
+  if (isWordScrambleGame(gameType)) {
+    return '.csv — word and optional hint columns (header row). 4+ words.'
   }
   return '.csv or .xlsx — option_a and option_b columns'
 }
@@ -731,6 +984,27 @@ export function questionSourceOptions(gameType: GameType | string): {
         label: 'Your own',
         hint: 'Upload a CSV or add your own words and prompts.',
       },
+    ]
+  }
+  if (isCrosswordGame(gameType)) {
+    return [
+      { value: 'platform', label: 'Platform', hint: 'Use our built-in themed word banks.' },
+      { value: 'library', label: 'Library', hint: 'Pick a community answer/clue pack.' },
+      { value: 'custom', label: 'Your own', hint: 'Upload a CSV of answer + clue rows (4+ answers).' },
+    ]
+  }
+  if (isWordSearchGame(gameType)) {
+    return [
+      { value: 'platform', label: 'Platform', hint: 'Use our built-in themed word banks.' },
+      { value: 'library', label: 'Library', hint: 'Pick a community word pack.' },
+      { value: 'custom', label: 'Your own', hint: 'Upload a CSV of words (4+ words).' },
+    ]
+  }
+  if (isWordScrambleGame(gameType)) {
+    return [
+      { value: 'platform', label: 'Platform', hint: 'Use our built-in themed word banks.' },
+      { value: 'library', label: 'Library', hint: 'Pick a community word pack.' },
+      { value: 'custom', label: 'Your own', hint: 'Upload a CSV of words + optional hints (4+ words).' },
     ]
   }
   const platformCount = isTriviaGame(gameType)

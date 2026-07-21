@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   WordRushCard,
@@ -35,7 +35,9 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { preJoinScreen, playerIsViewer, allowLatePlayers } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
@@ -107,7 +109,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     []
   )
 
-  const { screen, game, players, myPlayerId, myResumeToken, joinName, setJoinName, joining, load, join } =
+  const { screen, game, players, myPlayerId, myResumeToken, joinName, setJoinName, joining, load, lobbyFull, join } =
     useGameViewBootstrap<Screen, WordRushSession | null>({
       gameCode,
       loadingScreen: 'loading',
@@ -120,13 +122,17 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
   useTurnNotifications({ status: game?.status })
 
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [{ table: 'games', column: 'id' }, 'players', 'word_rush_sessions', 'word_rush_players', 'word_rush_answers'],
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
   const pickTeam = async (team: number) => {
     if (!myResumeToken) {
@@ -199,6 +205,33 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     game?.status === 'active' && !isViewer
   )
 
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙ gear
+  // (top header). Registered while the game is active; GameChromeSettings renders it in the sheet.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={activePlayer?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, activePlayer?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
   if (screen === 'loading') return <WordRushLoadingScreen />
 
   if (screen === 'not_found') {
@@ -231,6 +264,8 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="word_rush"
           footer={
@@ -276,6 +311,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={minPlayers}
+            capacityGame={game}
             onToggleReady={async (ready) => {
               if (!myResumeToken) return
               await fetch('/api/players/ready', {
@@ -298,6 +334,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myName}
@@ -355,17 +392,6 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
           answers={answers}
           highlightPlayerId={myPlayerId}
         />
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby
-            spectating={isViewer}
-          />
-        )}
       </WordRushShell>
     )
   }
@@ -396,16 +422,6 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
           }
           acting={acting}
           readOnly={isViewer}
-        />
-      )}
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isViewer}
         />
       )}
     </WordRushShell>

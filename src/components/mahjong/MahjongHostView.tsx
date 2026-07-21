@@ -1,22 +1,31 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostPageShell, hostPlayLayoutFlags } from '@/components/host/HostPageShell'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
+import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
+import { TransferHostControl } from '@/components/TransferHostControl'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { gameTypeConfig } from '@/lib/game-types'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useRosterBase, useRosterManage } from '@/components/roster/RosterDrawerContext'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import { useMahjongTurnTimer } from '@/hooks/useMahjongTurnTimer'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
-import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
+import { getPlayerSession } from '@/lib/utils'
 import { currentMahjongPlayerId, MAHJONG_MIN_PLAYERS } from '@/lib/mahjong'
 import type { Game, MahjongClaimType, MahjongPlayerState, MahjongSession, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -27,20 +36,8 @@ import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 
 type HostTab = 'play' | 'manage'
-type MahjongHostMode = 'spectator' | 'player'
 
-const HOST_MODE_KEY = 'mahjong_host_mode'
 const MAHJONG_POLL_INTERVAL_MS = 1500
-
-function getHostMode(gameCode: string): MahjongHostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return (localStorage.getItem(`${HOST_MODE_KEY}_${gameCode}`) as MahjongHostMode) ?? 'spectator'
-}
-
-function setHostMode(gameCode: string, mode: MahjongHostMode): void {
-  if (typeof window === 'undefined') return
-  localStorage.setItem(`${HOST_MODE_KEY}_${gameCode}`, mode)
-}
 
 export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError, success } = useToast()
@@ -52,14 +49,6 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [startingNextHand, setStartingNextHand] = useState(false)
-  const [hostMode, setHostModeState] = useState<MahjongHostMode>(() => getHostMode(gameCode))
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(() => getPlayerSession(gameCode)?.playerId ?? null)
-  const [hostPlayerName, setHostPlayerName] = useState(() => getPlayerSession(gameCode)?.playerName ?? '')
-  const [hostResumeToken, setHostResumeToken] = useState<string | null>(
-    () => getPlayerSession(gameCode)?.resumeToken ?? null
-  )
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
   const [hostActing, setHostActing] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
 
@@ -100,19 +89,7 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
 
   useEffect(() => {
     const loadId = window.setTimeout(() => void load(), 0)
-    const setupId = window.setTimeout(() => {
-      setHostModeState(getHostMode(gameCode))
-      const stored = getPlayerSession(gameCode)
-      if (stored) {
-        setHostPlayerId(stored.playerId)
-        setHostPlayerName(stored.playerName)
-        setHostResumeToken(stored.resumeToken)
-      }
-    }, 0)
-    return () => {
-      window.clearTimeout(loadId)
-      window.clearTimeout(setupId)
-    }
+    return () => window.clearTimeout(loadId)
   }, [gameCode, load])
 
   useEffect(() => {
@@ -120,12 +97,6 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
     const id = window.setTimeout(() => setTab('manage'), 0)
     return () => window.clearTimeout(id)
   }, [game?.status])
-
-  useEffect(() => {
-    if (hostMode !== 'player' || !hostPlayerId || game?.status !== 'active') return
-    const id = window.setTimeout(() => setTab('play'), 0)
-    return () => window.clearTimeout(id)
-  }, [hostMode, hostPlayerId, game?.status])
 
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scheduleLoad = useCallback(() => {
@@ -155,49 +126,44 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
 
   usePolling(() => load(), [gameCode, load], { intervalMs: MAHJONG_POLL_INTERVAL_MS })
 
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    leaveGameRemovePlayer,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+  })
+
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostPlayerName('')
-        setHostResumeToken(null)
-        clearPlayerSession(gameCode)
-      }
+      onHostSeatRemoved(playerId)
       setPlayers((prev) => prev.filter((p) => p.id !== playerId))
     },
-    [gameCode, hostPlayerId]
+    [onHostSeatRemoved]
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
-  const changeHostMode = (mode: MahjongHostMode) => {
-    setHostModeState(mode)
-    setHostMode(gameCode, mode)
-  }
-
-  const hostJoinGame = async () => {
-    if (!hostJoinName.trim()) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: hostJoinName.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostPlayerName(data.playerName)
-      setHostResumeToken(data.resumeToken ?? null)
-      await load()
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }
+  useEffect(() => {
+    if (hostMode !== 'player' || !hostPlayerId || game?.status !== 'active') return
+    const id = window.setTimeout(() => setTab('play'), 0)
+    return () => window.clearTimeout(id)
+  }, [hostMode, hostPlayerId, game?.status])
 
   const postAction = async (path: string, body: Record<string, unknown> = {}) => {
     if (!hostPlayerId || !hostResumeToken) return
@@ -333,12 +299,17 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
     game?.status === 'active' && (tab === 'play' ? isHostTurn || session?.phase === 'claim' : true)
   )
 
+  // Feed the shared roster side-drawer (opened from the header people button) while
+  // active — the host sees who's here + can Remove, same as every game.
+  useRosterBase(game?.status === 'active' ? players : undefined, game, hostPlayerId)
+  const rosterRemove = useMemo(
+    () => (row: { id: string; name: string }) => removePlayer(row.id, row.name),
+    [removePlayer]
+  )
+  useRosterManage(game?.status === 'active' ? { hostPlayerId: hostPlayerId ?? null, onRemove: rosterRemove } : null)
+
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading...</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
   const layout = hostPlayLayoutFlags(tab, showPlayTab, game.status)
@@ -353,6 +324,7 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
           meId={hostPlayerId}
           isHost
           minPlayers={MAHJONG_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}
@@ -368,6 +340,63 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
           Return to lobby instead
         </button>
       </div>
+    )
+  }
+
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={gameTypeConfig('mahjong').label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('mahjong', game) ?? game.max_players}
+        resumeToken={hostResumeToken}
+        playCard={
+          <HostModeSelector
+            mode={hostMode}
+            onChange={changeHostMode}
+            joinedPlayerId={hostPlayerId}
+            joinedPlayerName={hostPlayerName}
+            joinName={hostJoinName}
+            onJoinNameChange={setHostJoinName}
+            onJoin={() => void hostJoinGame()}
+            joining={hostJoining}
+            onEditName={renameHost}
+            spectatorHint="Manage the table"
+            playerHint="Take one of the four seats"
+          />
+        }
+        settingsChildren={
+          <>
+            <HostBoardGameLobbyPanel
+              gameCode={gameCode}
+              hostToken={hostToken}
+              game={game}
+              boardGameType="mahjong"
+              playerCount={readyPlayers.length}
+              onGameUpdate={setGame}
+            />
+            <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+          </>
+        }
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : `Need exactly ${MAHJONG_MIN_PLAYERS} ready players (${readyPlayers.length}/${MAHJONG_MIN_PLAYERS})`
+        }
+        startLabel="Start table"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      />
     )
   }
 
@@ -599,6 +628,14 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
                   : `Need exactly ${MAHJONG_MIN_PLAYERS} ready players (${readyPlayers.length}/${MAHJONG_MIN_PLAYERS})`
               }
               className="space-y-3"
+            />
+          )}
+
+          {game.status === 'active' && !gameFinished && hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton
+              onLeave={leaveGameRemovePlayer}
+              variant="remove"
+              className="btn-secondary w-full py-3 text-base"
             />
           )}
 

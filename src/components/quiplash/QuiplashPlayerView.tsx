@@ -1,7 +1,10 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
@@ -31,7 +34,6 @@ import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } fr
 import { playerIsViewer, preJoinScreen, allowLatePlayers } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { QUIPLASH_MIN_PLAYERS } from '@/lib/quiplash'
 
@@ -96,6 +98,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, null>({
     gameCode,
@@ -109,10 +112,11 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
 
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [
       { table: 'games', column: 'id' },
+      'players',
       'rounds',
       'quiplash_sessions',
       'quiplash_answers',
@@ -122,7 +126,11 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
   const openLobbyJoin = useCallback(() => {
     setScreen('join')
@@ -142,6 +150,35 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
   const me = players.find((p) => p.id === myPlayerId)
   const myPlayerName = me?.name ?? ''
   const isViewer = !!(game && me && playerIsViewer(me, game))
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it. Purely additive — the in-page PlayerSessionControls stays as-is.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={me?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
   const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
     gameCode,
     game,
@@ -266,6 +303,8 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="quiplash"
         />
@@ -283,6 +322,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
           meId={myPlayerId}
           isHost={false}
           minPlayers={QUIPLASH_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={(ready) => void toggleReplayReady(ready)}
           onStart={() => {}}
           pending={replayReadyPending}
@@ -299,6 +339,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myPlayerName}
@@ -354,17 +395,6 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
             player={me}
             players={players}
             onPromoted={load}
-          />
-        )}
-        {!isFinished && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myPlayerName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby={false}
-            spectating={isViewer}
           />
         )}
         <QuiplashActiveRound

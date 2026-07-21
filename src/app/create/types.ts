@@ -13,6 +13,9 @@ import type {
 
 export interface Settings {
   title: string
+  /** Player-facing content label for CSV/library games ("Maths", "Bible trivia").
+   *  Auto-filled from the selected library pack name; typed by the host for a CSV upload. */
+  content_label: string
   rounds_count: number
   timer_seconds: number
   anonymous: boolean
@@ -40,6 +43,7 @@ export interface Settings {
   mafia_doctor_enabled?: boolean
   mafia_detective_enabled?: boolean
   mafia_anonymous_votes?: boolean
+  ping_pong_points_to_win?: number
 }
 
 export type Step = 'settings' | 'participants' | 'done'

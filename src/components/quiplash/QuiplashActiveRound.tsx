@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
-import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { QuiplashFinishedResults } from '@/components/quiplash/QuiplashFinishedResults'
 import {
   answerAuthorName,
@@ -20,6 +19,7 @@ import {
 } from '@/lib/quiplash'
 import { playerIsViewer } from '@/lib/viewers'
 import { useQuiplashAdvance } from '@/hooks/useQuiplashAdvance'
+import { isAdvanceDriver } from '@/lib/advance-driver'
 import { playVoteSubmittedSound } from '@/lib/sounds'
 import { useToast } from '@/components/ui/Toast'
 import type { Game, Player, QuiplashAnswer, QuiplashBattle, QuiplashSession, QuiplashVote, Round } from '@/types'
@@ -131,6 +131,21 @@ export function QuiplashActiveRound({
     [battles, answers, players, votes]
   )
 
+  // Live scores feed the shared roster drawer (opened from the header).
+  const rosterScores = useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard])
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(() => {
+    const authorOf: Record<string, string> = {}
+    for (const a of answers) authorOf[a.id] = a.player_id
+    const counts: Record<string, number> = {}
+    for (const v of votes) {
+      const author = authorOf[v.chosen_answer_id]
+      if (author) counts[author] = (counts[author] ?? 0) + 1
+    }
+    return Object.fromEntries(leaderboard.map((row) => [row.id, `🗳 ${counts[row.id] ?? 0} votes`]))
+  }, [leaderboard, answers, votes])
+  useGameStats(rosterDetails)
+
   const canSubmitAnswer = !cannotParticipate
 
   const screen: PlayScreen = useMemo(() => {
@@ -160,15 +175,18 @@ export function QuiplashActiveRound({
     return () => window.clearInterval(id)
   }, [session?.turn_deadline_at, session?.phase])
 
+  // W5: only an elected quorum of clients drives auto-advance (see isAdvanceDriver).
+  const isDriver = useMemo(() => isAdvanceDriver(players, myPlayerId), [players, myPlayerId])
+
   useQuiplashAdvance({
     gameCode,
     game,
-    enabled: !skipGameSync && game.status === 'active',
+    enabled: !skipGameSync && game.status === 'active' && isDriver,
     onAdvanced: onReload,
   })
 
   useEffect(() => {
-    if (skipGameSync || game.status !== 'active' || !session?.turn_deadline_at || countdown > 0) return
+    if (skipGameSync || !isDriver || game.status !== 'active' || !session?.turn_deadline_at || countdown > 0) return
     const key = `${session.phase}:${session.turn_deadline_at}`
     if (advancedDeadlineRef.current === key) return
     advancedDeadlineRef.current = key
@@ -177,7 +195,7 @@ export function QuiplashActiveRound({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ gameId: gameCode }),
     }).then(() => onReload?.())
-  }, [countdown, game.status, gameCode, onReload, session?.phase, session?.turn_deadline_at, skipGameSync])
+  }, [countdown, game.status, gameCode, isDriver, onReload, session?.phase, session?.turn_deadline_at, skipGameSync])
 
   const submitAnswer = async () => {
     if (!currentRound || !canSubmitAnswer || submitting || myAnswer) return
@@ -276,16 +294,7 @@ export function QuiplashActiveRound({
   })
 
   return (
-    <LiveLeaderboardLayout
-      sidebar={
-        <PaginatedLeaderboard
-          title="Leaderboard"
-          rows={leaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
-          highlightId={myPlayerId}
-          scoreLabel={(score) => `${score} pts`}
-        />
-      }
-    >
+    <div className="mx-auto w-full max-w-2xl">
       <div className="glass-card p-5 text-center space-y-3">
         <p className="label-caps text-xs">
           Round {currentRound.round_number} of {game.rounds_count}
@@ -380,7 +389,10 @@ export function QuiplashActiveRound({
                   disabled={!canTapVote}
                   onClick={() => void submitVote(answer.id)}
                   className={[
-                    'relative min-h-[8rem] rounded-2xl border-2 p-4 text-left transition-all',
+                    // transition-colors (not transition-all) so selecting an answer
+                    // recolours the box without animating its size/position — the
+                    // boxes stay put while voting.
+                    'relative min-h-[8rem] rounded-2xl border-2 p-4 text-left transition-colors',
                     isPicked
                       ? 'border-[var(--primary)] bg-[var(--primary)]/10 shadow-[var(--card-shadow-glow)]'
                       : 'border-[var(--border-strong)] bg-[var(--card-strong)]',
@@ -393,7 +405,11 @@ export function QuiplashActiveRound({
                     {label}
                   </span>
                   <p className="mt-3 text-base font-semibold leading-snug">{answer.text}</p>
-                  {isPicked && <p className="mt-2 text-xs font-semibold text-[var(--primary-strong)]">Your pick</p>}
+                  {isPicked && (
+                    <span className="absolute right-3 top-3 rounded-full bg-[var(--primary)]/15 px-2 py-0.5 text-[11px] font-bold text-[var(--primary-strong)]">
+                      Your pick
+                    </span>
+                  )}
                 </button>
               )
             })}
@@ -452,6 +468,6 @@ export function QuiplashActiveRound({
           })}
         </div>
       )}
-    </LiveLeaderboardLayout>
+    </div>
   )
 }

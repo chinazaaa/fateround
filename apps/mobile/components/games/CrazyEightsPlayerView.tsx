@@ -22,12 +22,16 @@ import {
   parseCrazyEightsRules,
   specialCardShortLabel,
 } from '@fateround/shared/crazy-eights'
-import { playerIsViewer } from '@fateround/shared/viewers'
+import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { CardTableArea } from '@/components/games/cards/CardTableArea'
 import { CrazyEightsRoster } from '@/components/games/cards/CrazyEightsRoster'
 import { GameTimerBar } from '@/components/games/cards/GameTimerBar'
+import { useGameExpiryTimer } from '@/hooks/useGameExpiryTimer'
+import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { PlayingCardFace } from '@/components/games/cards/PlayingCardFace'
+import { CardHand } from '@/components/games/cards/CardHand'
 import { useTurnDeadlineSeconds } from '@/components/games/cards/useTurnDeadlineSeconds'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { JoinScreen } from '@/components/JoinScreen'
@@ -39,10 +43,18 @@ import {
   TurnBanner,
   type FinishedLeaderboardRow,
 } from '@/components/game/GameChrome'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { useGamePlacements, useGameStats } from '@/components/session/RosterDrawerContext'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { postCrazyEightsChoose, postCrazyEightsDraw, postCrazyEightsPlay } from '@/lib/game-api'
+import {
+  postCrazyEightsChoose,
+  postCrazyEightsDraw,
+  postCrazyEightsExpireTurn,
+  postCrazyEightsPlay,
+} from '@/lib/game-api'
 import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { CRAZY8_PLAYER_HANDS_SELECT, CRAZY8_SESSION_SELECT } from '@/lib/supabase-selects'
@@ -50,7 +62,15 @@ import { usePlayerSessionActions } from '@/lib/player-session'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 const SUITS: CrazyEightsCalledSuit[] = ['spades', 'clubs', 'hearts', 'diamonds']
 
@@ -81,7 +101,12 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   const computeScreen = useCallback((game: Game, playerId: string | null): Screen => {
-    if (!playerId) return 'join'
+    if (!playerId) {
+      const pre = preJoinScreen(game, false)
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
+      if (pre === 'game_ended') return 'game_ended'
+      return 'join'
+    }
     if (game.status === 'waiting') return 'waiting'
     if (game.status === 'finished') return 'finished'
     return 'playing'
@@ -130,6 +155,14 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   const isOut = !!myHand && myHand.cards.length === 0 && bootstrap.game?.status === 'active'
   const isWatching = isViewer || isOut
 
+  // Desync guard: the hands table loaded (others' rows present) but none is ours,
+  // so our session player id doesn't match the id the game dealt a hand to (seen
+  // after a rejoin mints a new player id with no dealt hand). Without this the
+  // hand section renders a misleading "Your hand (0)" as if we'd gone out. Show a
+  // recovery state instead.
+  const handMissing =
+    !isWatching && !myHand && hands.length > 0 && bootstrap.game?.status === 'active' && bootstrap.screen === 'playing'
+
   const playableIds = useMemo(() => {
     if (!session || !myHand) return new Set<string>()
     return new Set(myHand.cards.filter((c) => canPlayCard(c, session, rules)).map((c) => c.id))
@@ -155,20 +188,68 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     !!gameDeadlineAt && bootstrap.game?.status === 'active'
   )
 
+  // End the game when the whole-game duration runs out (the timer bar otherwise
+  // just drains to 0:00 with nothing telling the server to finish). Matches web.
+  useGameExpiryTimer({
+    endpoint: `/api/games/${gameCode}/expire-crazy-eights`,
+    game: bootstrap.game,
+    onExpired: () => void bootstrap.load(),
+  })
+
+  // Advance a stalled turn when its per-turn timer runs out. Any active client
+  // fires it (idempotent + deadline-gated server-side) — matches web.
+  useTurnExpiryTimer({
+    deadlineAt: session?.turn_deadline_at,
+    enabled: bootstrap.game?.status === 'active' && session?.phase === 'playing',
+    onExpire: () => postCrazyEightsExpireTurn(bootstrap.code).then(() => bootstrap.load()),
+  })
+
+  const gameTimer =
+    gameDurationSeconds > 0 && gameSecondsLeft > 0 ? (
+      <GameTimerBar secondsLeft={gameSecondsLeft} durationSeconds={gameDurationSeconds} />
+    ) : null
+  const gameTimerPinned = useStickyTimer(gameTimer, [gameSecondsLeft, gameDurationSeconds])
+
   const handCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const hand of hands) counts[hand.player_id] = hand.cards.length
     return counts
   }, [hands])
 
+  // Feed winner/runner-up medal pills into the roster drawer. finish_order lists
+  // players in the order they emptied their hands (first out = winner); ensure the
+  // declared winner is 1st even if they aren't in finish_order yet.
+  const placements = useMemo(() => {
+    const map: Record<string, number> = {}
+    ;(session?.finish_order ?? []).forEach((id, i) => {
+      map[id] = i + 1
+    })
+    const winnerId = session?.winner_player_id
+    if (winnerId && !(winnerId in map)) map[winnerId] = 1
+    return Object.keys(map).length ? map : null
+  }, [session?.finish_order, session?.winner_player_id])
+  useGamePlacements(placements)
+
+  // Live card counts in the roster drawer scoreboard (only while playing).
+  const rosterDetails = useMemo(() => {
+    if (bootstrap.game?.status !== 'active') return null
+    const out: Record<string, string> = {}
+    for (const [id, n] of Object.entries(handCounts)) out[id] = `🃏 ${n} card${n === 1 ? '' : 's'}`
+    return Object.keys(out).length ? out : null
+  }, [handCounts, bootstrap.game?.status])
+  useGameStats(rosterDetails)
+
   const act = async (fn: () => Promise<unknown>) => {
     if (!bootstrap.myResumeToken || acting) return
     setActing(true)
     try {
       await fn()
-      await bootstrap.load()
     } finally {
+      // Unblock input as soon as the action lands — don't hold the hand frozen
+      // through a second round-trip. The refresh runs in the background (and the
+      // realtime subscription reloads on the server write anyway; load() de-dupes).
       setActing(false)
+      void bootstrap.load()
     }
   }
 
@@ -187,6 +268,16 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
     // Mid-game: the only way in is as a read-only viewer (late joiners are seated as
     // spectators). Present the form as a viewer flow so the intent is clear.
@@ -199,6 +290,8 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join(undefined, joiningAsViewer ? { joinAsViewer: true } : undefined)}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
         kicker={joiningAsViewer ? 'Watch game' : 'Join game'}
         hint={
           joiningAsViewer
@@ -309,23 +402,20 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title={batch4GameLabel('crazy_eights')} subtitle={bootstrap.code}>
       <ScrollView contentContainerStyle={styles.content}>
-        {gameDurationSeconds > 0 && gameSecondsLeft > 0 ? (
-          <GameTimerBar secondsLeft={gameSecondsLeft} durationSeconds={gameDurationSeconds} />
-        ) : null}
+        {gameTimerPinned ? null : gameTimer}
         <TurnBanner
           text={isWatching ? `Spectating — ${turnName}'s turn` : (session.status_message ?? `${turnName}'s turn`)}
           isMyTurn={isMyTurn && !isWatching}
         />
         {timerSeconds > 0 ? <TimerBadge seconds={timerSeconds} /> : null}
 
-        {isWatching ? (
+        {/* Pure spectators get the central ViewerModeBanner + the TurnBanner's
+            "Spectating" text, so their screen matches a player's minus the hand.
+            This banner only covers the distinct "You're out" finished state. */}
+        {isOut ? (
           <View style={styles.outBanner}>
-            <Text style={styles.outTitle}>{isOut ? "You're out" : 'Watching'}</Text>
-            <Text style={styles.outSub}>
-              {isOut
-                ? 'You played all your cards — watch until the game ends.'
-                : 'Read-only spectator — follow the game until it ends.'}
-            </Text>
+            <Text style={styles.outTitle}>You&apos;re out</Text>
+            <Text style={styles.outSub}>You played all your cards — watch until the game ends.</Text>
           </View>
         ) : null}
 
@@ -371,12 +461,21 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
           </View>
         ) : null}
 
-        {isWatching ? null : (
+        {isWatching ? null : handMissing ? (
+          <View style={styles.handSyncCard}>
+            <Text style={styles.handSyncTitle}>Syncing your hand…</Text>
+            <Text style={styles.handSyncSub}>
+              Your cards didn&apos;t come through. This can happen after reconnecting — tap refresh.
+            </Text>
+            <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void bootstrap.load()}>
+              <Text style={styles.drawText}>Refresh</Text>
+            </Pressable>
+          </View>
+        ) : (
           <>
             {isMyTurn && session.phase === 'playing' ? <Text style={styles.turnHint}>{turnHint}</Text> : null}
 
-            <Text style={styles.section}>Your hand ({myHand?.cards.length ?? 0})</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hand}>
+            <CardHand count={myHand?.cards.length ?? 0} many={(myHand?.cards.length ?? 0) >= 8}>
               {(myHand?.cards ?? []).map((card) => {
                 const playable = playableIds.has(card.id)
                 return (
@@ -393,7 +492,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
                   </Pressable>
                 )
               })}
-            </ScrollView>
+            </CardHand>
 
             {canDraw ? (
               <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void drawCard()}>
@@ -411,7 +510,6 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     content: { paddingBottom: 32, gap: 12 },
     emptyTop: { color: theme.text, fontSize: 28, fontWeight: '800' },
-    section: { color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 4 },
     turnHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center', paddingHorizontal: 8, marginTop: 2 },
     dirChip: {
       flexDirection: 'row',
@@ -439,7 +537,6 @@ const makeStyles = (theme: Theme) =>
     },
     outTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
     outSub: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
-    hand: { gap: 8, paddingVertical: 8 },
     reshuffleNote: { color: theme.textMuted, fontSize: 12, textAlign: 'center', marginTop: -4 },
     choosePanel: {
       alignSelf: 'stretch',
@@ -475,4 +572,15 @@ const makeStyles = (theme: Theme) =>
       borderColor: theme.border,
     },
     drawText: { color: theme.text, fontSize: 16, fontWeight: '600' },
+    handSyncCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 16,
+      gap: 10,
+      alignItems: 'center',
+    },
+    handSyncTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
+    handSyncSub: { color: theme.textMuted, fontSize: 13, textAlign: 'center', lineHeight: 18 },
   })

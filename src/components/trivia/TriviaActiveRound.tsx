@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
-import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -16,6 +16,7 @@ import {
 } from '@/lib/trivia'
 import { useRoundTimer } from '@/hooks/useRoundTimer'
 import { useTriviaRevealAdvance } from '@/hooks/useTriviaRevealAdvance'
+import { isAdvanceDriver } from '@/lib/advance-driver'
 import { useTriviaNotifications } from '@/hooks/useTriviaNotifications'
 import { playVoteSubmittedSound } from '@/lib/sounds'
 import { useToast } from '@/components/ui/Toast'
@@ -86,6 +87,16 @@ export function TriviaActiveRound({
   const leaderboard = useMemo(() => tallyTriviaPlayerScores(answers, players), [answers, players])
   const isLastRound = (game.current_round_number ?? 0) >= (game.rounds_count ?? 0)
 
+  // Layer live scores onto the shared roster drawer (opened from the header). The
+  // base roster is registered by the shell; this adds "N pts" per player.
+  const rosterScores = useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard])
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(
+    () => Object.fromEntries(leaderboard.map((row) => [row.id, `✅ ${row.correctCount} correct`])),
+    [leaderboard]
+  )
+  useGameStats(rosterDetails)
+
   const screen: PlayScreen = useMemo(() => {
     if (game.status === 'finished') return 'finished'
     if (!currentRound || currentRound.status === 'pending') return 'waiting'
@@ -143,11 +154,14 @@ export function TriviaActiveRound({
 
   const correct = myAnswer?.is_correct ?? lastResult?.isCorrect
 
+  // W5: only an elected quorum of clients drives auto-advance (see isAdvanceDriver).
+  const isDriver = useMemo(() => isAdvanceDriver(players, myPlayerId), [players, myPlayerId])
+
   useTriviaRevealAdvance({
     gameCode,
     game,
     rounds,
-    enabled: !skipGameSync && game.status === 'active',
+    enabled: !skipGameSync && game.status === 'active' && isDriver,
     onAdvanced: onReload,
   })
 
@@ -205,20 +219,10 @@ export function TriviaActiveRound({
   const inRevealCountdown =
     showCorrectAnswer && game.status === 'active' && (revealCountdown > 0 || !currentRound?.ended_at)
 
-  const liveLeaderboard = (
-    <PaginatedLeaderboard
-      title="Leaderboard"
-      rows={leaderboard.map((row, i) => ({ ...row, rank: i + 1 }))}
-      highlightId={myPlayerId}
-      scoreLabel={(n) => `${n} pts`}
-      totalQuestions={game.rounds_count ?? undefined}
-    />
-  )
-
   if (screen === 'finished') {
     const myTriviaRow = leaderboard.find((row) => row.id === myPlayerId)
     const iWonTrivia =
-      !!myTriviaRow && leaderboard[0] != null && myTriviaRow.score === leaderboard[0].score && leaderboard[0].score > 0
+      !!myTriviaRow && leaderboard[0] != null && myTriviaRow === leaderboard[0] && leaderboard[0].score > 0
     return (
       <div className="space-y-5">
         {tournamentId && (
@@ -259,7 +263,7 @@ export function TriviaActiveRound({
   }
 
   return (
-    <LiveLeaderboardLayout sidebar={liveLeaderboard}>
+    <div className="mx-auto w-full max-w-2xl">
       <div className="space-y-5">
         <div className="text-center space-y-2">
           <p className="text-muted text-sm sm:text-base">
@@ -357,6 +361,6 @@ export function TriviaActiveRound({
           </div>
         )}
       </div>
-    </LiveLeaderboardLayout>
+    </div>
   )
 }

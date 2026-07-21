@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   Game,
   GameType,
   VoteAssignment,
@@ -976,6 +976,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  uno: {
+    id: 'uno',
+    label: 'UNO',
+    tagline: 'Match colour or number — first to empty their hand wins',
+    headerEmoji: '🎴🌈',
+    card: {
+      accent: '#ef4444',
+      accentSoft: 'rgba(239, 68, 68, 0.15)',
+      emoji: '🎴',
+      players: '2–10 players',
+      vibe: 'Party card classic',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🎴',
+        label: 'Cards left',
+        color: '#ef4444',
+        leaderboardLabel: 'Fewest cards',
+        activeClass: 'bg-red-500/20 text-red-100 border-red-400',
+        borderClass: 'border-red-500/50 bg-red-500/10',
+        textColor: '#fca5a5',
+      },
+      marry: {
+        emoji: '🌈',
+        label: 'Wild',
+        color: '#f59e0b',
+        leaderboardLabel: 'Wild plays',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+      kill: {
+        emoji: '🏆',
+        label: 'Winner',
+        color: '#fbbf24',
+        leaderboardLabel: 'Winner',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
   ludo: {
     id: 'ludo',
     label: 'Ludo',
@@ -1710,6 +1753,221 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  crossword: {
+    id: 'crossword',
+    label: 'Crossword',
+    tagline: 'Race to fill the grid — first to solve wins',
+    headerEmoji: '🧩✏️',
+    card: {
+      accent: '#0ea5e9',
+      accentSoft: 'rgba(14, 165, 233, 0.15)',
+      emoji: '🧩',
+      players: '1–20 players',
+      vibe: 'Word race',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🏆',
+        label: 'Points',
+        color: '#0ea5e9',
+        leaderboardLabel: 'Total points',
+        activeClass: 'bg-sky-500/20 text-sky-100 border-sky-400',
+        borderClass: 'border-sky-500/50 bg-sky-500/10',
+        textColor: '#7dd3fc',
+      },
+      marry: {
+        emoji: '🔤',
+        label: 'Words',
+        color: '#22c55e',
+        leaderboardLabel: 'Words solved',
+        activeClass: 'bg-emerald-500/20 text-emerald-100 border-emerald-400',
+        borderClass: 'border-emerald-500/50 bg-emerald-500/10',
+        textColor: '#86efac',
+      },
+      kill: {
+        emoji: '⚡',
+        label: 'Speed',
+        color: '#f59e0b',
+        leaderboardLabel: 'First finishes',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
+  word_search: {
+    id: 'word_search',
+    label: 'Word Search',
+    tagline: 'Find the listed words hidden in the grid',
+    headerEmoji: '🔎🔤',
+    card: {
+      accent: '#8b5cf6',
+      accentSoft: 'rgba(139, 92, 246, 0.15)',
+      emoji: '🔎',
+      players: '1–20 players',
+      vibe: 'Word hunt race',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🏆',
+        label: 'Points',
+        color: '#8b5cf6',
+        leaderboardLabel: 'Total points',
+        activeClass: 'bg-violet-500/20 text-violet-100 border-violet-400',
+        borderClass: 'border-violet-500/50 bg-violet-500/10',
+        textColor: '#c4b5fd',
+      },
+      marry: {
+        emoji: '🔤',
+        label: 'Words',
+        color: '#22c55e',
+        leaderboardLabel: 'Words found',
+        activeClass: 'bg-emerald-500/20 text-emerald-100 border-emerald-400',
+        borderClass: 'border-emerald-500/50 bg-emerald-500/10',
+        textColor: '#86efac',
+      },
+      kill: {
+        emoji: '⚡',
+        label: 'Speed',
+        color: '#f59e0b',
+        leaderboardLabel: 'First finds',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
+  word_scramble: {
+    id: 'word_scramble',
+    label: 'Word Scramble',
+    tagline: 'Unscramble the jumbled word before everyone else',
+    headerEmoji: '🔀🔤',
+    card: {
+      accent: '#f59e0b',
+      accentSoft: 'rgba(245, 158, 11, 0.15)',
+      emoji: '🔀',
+      players: '1–20 players',
+      vibe: 'Quick-fire race',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🏆',
+        label: 'Points',
+        color: '#f59e0b',
+        leaderboardLabel: 'Total points',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+      marry: {
+        emoji: '🔤',
+        label: 'Solved',
+        color: '#22c55e',
+        leaderboardLabel: 'Words solved',
+        activeClass: 'bg-emerald-500/20 text-emerald-100 border-emerald-400',
+        borderClass: 'border-emerald-500/50 bg-emerald-500/10',
+        textColor: '#86efac',
+      },
+      kill: {
+        emoji: '⚡',
+        label: 'Speed',
+        color: '#8b5cf6',
+        leaderboardLabel: 'First solves',
+        activeClass: 'bg-violet-500/20 text-violet-100 border-violet-400',
+        borderClass: 'border-violet-500/50 bg-violet-500/10',
+        textColor: '#c4b5fd',
+      },
+    },
+  },
+  landmine: {
+    id: 'landmine',
+    label: 'Landmine',
+    tagline: 'Type a blind answer — dodge the hidden mine',
+    headerEmoji: '🧨💥',
+    card: {
+      accent: '#ef4444',
+      accentSoft: 'rgba(239, 68, 68, 0.15)',
+      emoji: '🧨',
+      players: '3–20 players',
+      vibe: 'Risky word bluff',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '✓',
+        label: 'Safe',
+        color: '#22c55e',
+        leaderboardLabel: 'Top scorers',
+        activeClass: 'bg-emerald-500/20 text-emerald-100 border-emerald-400',
+        borderClass: 'border-emerald-500/50 bg-emerald-500/10',
+        textColor: '#86efac',
+      },
+      marry: {
+        emoji: '⭐',
+        label: 'Original',
+        color: '#0ea5e9',
+        leaderboardLabel: 'Original answers',
+        activeClass: 'bg-sky-500/20 text-sky-100 border-sky-400',
+        borderClass: 'border-sky-500/50 bg-sky-500/10',
+        textColor: '#7dd3fc',
+      },
+      kill: {
+        emoji: '💥',
+        label: 'Mine',
+        color: '#ef4444',
+        leaderboardLabel: 'Mines hit',
+        activeClass: 'bg-red-500/20 text-red-100 border-red-400',
+        borderClass: 'border-red-500/50 bg-red-500/10',
+        textColor: '#fca5a5',
+      },
+    },
+  },
+  ping_pong: {
+    id: 'ping_pong',
+    label: 'Ping Pong',
+    tagline: '1v1 fast-paced paddle duel',
+    headerEmoji: '🏓⚡',
+    card: {
+      accent: '#3b82f6',
+      accentSoft: 'rgba(59, 130, 246, 0.15)',
+      emoji: '🏓',
+      players: '2 players',
+      vibe: 'Realtime duel',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🏓',
+        label: 'Win',
+        color: '#3b82f6',
+        leaderboardLabel: 'Matches Won',
+        activeClass: 'bg-blue-500/20 text-blue-100 border-blue-400',
+        borderClass: 'border-blue-500/50 bg-blue-500/10',
+        textColor: '#93c5fd',
+      },
+      marry: {
+        emoji: '⚡',
+        label: 'Points',
+        color: '#eab308',
+        leaderboardLabel: 'Points Scored',
+        activeClass: 'bg-yellow-500/20 text-yellow-100 border-yellow-400',
+        borderClass: 'border-yellow-500/50 bg-yellow-500/10',
+        textColor: '#fde047',
+      },
+      kill: {
+        emoji: '💔',
+        label: 'Loss',
+        color: '#ef4444',
+        leaderboardLabel: 'Matches Lost',
+        activeClass: 'bg-red-500/20 text-red-100 border-red-400',
+        borderClass: 'border-red-500/50 bg-red-500/10',
+        textColor: '#fca5a5',
+      },
+    },
+  },
 }
 
 /** Home page “Popular games” grid — order is display order. */
@@ -1764,6 +2022,12 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'quiplash',
   'quick_draw',
   'ayo',
+  'crossword',
+  'word_search',
+  'word_scramble',
+  'landmine',
+  'ping_pong',
+  'uno',
 ]
 
 // Games pinned to the top of the picker / games list, in this exact order.
@@ -1786,6 +2050,8 @@ const PINNED_GAME_TYPES: GameType[] = [
   'describe_it',
   'word_rush',
   'i_call_on',
+  'landmine',
+  'ping_pong',
   'smash_marry_kill',
   'bingo',
   'this_or_that',
@@ -1801,6 +2067,75 @@ export const GAME_TYPE_DISPLAY_ORDER: GameType[] = [
   ...PINNED_GAME_TYPES,
   ...GAME_TYPE_OPTIONS.filter((type) => !PINNED_GAME_TYPES.includes(type)),
 ]
+
+/** Broad groups used to organise the create-screen game picker (mirrors the mobile taxonomy). */
+export type GameCategory = 'party' | 'guessing' | 'board' | 'cards' | 'puzzle'
+
+/** Ordered category tabs shown above the picker grid; `all` is prepended by the UI. */
+export const GAME_CATEGORIES: { key: GameCategory; label: string }[] = [
+  { key: 'party', label: 'Party' },
+  { key: 'guessing', label: 'Guessing' },
+  { key: 'board', label: 'Board' },
+  { key: 'cards', label: 'Cards' },
+  { key: 'puzzle', label: 'Puzzles' },
+]
+
+const GAME_CATEGORY_BY_TYPE: Partial<Record<GameType, GameCategory>> = {
+  // Party / social
+  smash_marry_kill: 'party',
+  red_flag_green_flag: 'party',
+  smash_or_pass: 'party',
+  parent_approval: 'party',
+  would_you_rather: 'party',
+  never_have_i_ever: 'party',
+  pick_a_number: 'party',
+  this_or_that: 'party',
+  most_likely_to: 'party',
+  hot_seat: 'party',
+  anonymous_messages: 'party',
+  secret_message: 'party',
+  two_truths: 'party',
+  i_call_on: 'party',
+  landmine: 'party',
+  mafia: 'party',
+  custom: 'party',
+  // Guessing / word-and-answer
+  who_said_this: 'guessing',
+  trivia: 'guessing',
+  codewords: 'guessing',
+  describe_it: 'guessing',
+  quick_draw: 'guessing',
+  quiplash: 'guessing',
+  // Cards
+  whot: 'cards',
+  crazy_eights: 'cards',
+  uno: 'cards',
+  // Board / strategy
+  monopoly: 'board',
+  ludo: 'board',
+  mahjong: 'board',
+  snake_and_ladder: 'board',
+  tic_tac_toe: 'board',
+  chess: 'board',
+  checkers: 'board',
+  scrabble: 'board',
+  ayo: 'board',
+  ping_pong: 'board',
+  // Puzzles
+  yahtzee: 'puzzle',
+  sudoku: 'puzzle',
+  bingo: 'puzzle',
+  matching_pairs: 'puzzle',
+  crossword: 'puzzle',
+  word_search: 'puzzle',
+  word_scramble: 'puzzle',
+  word_hunt: 'puzzle',
+  word_rush: 'puzzle',
+}
+
+export function gameTypeCategory(gameType: GameType): GameCategory {
+  return GAME_CATEGORY_BY_TYPE[gameType] ?? 'party'
+}
 
 export function parseGameType(raw: unknown): GameType {
   if (raw === 'red_flag_green_flag') return 'red_flag_green_flag'
@@ -1835,12 +2170,18 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'scrabble') return 'scrabble'
   if (raw === 'snake_and_ladder' || raw === 'snakes-and-ladders') return 'snake_and_ladder'
   if (raw === 'crazy_eights' || raw === 'crazy-eights') return 'crazy_eights'
+  if (raw === 'uno') return 'uno'
   if (raw === 'checkers' || raw === 'draughts') return 'checkers'
   if (raw === 'mafia' || raw === 'werewolf') return 'mafia'
   if (raw === 'matching_pairs') return 'matching_pairs'
   if (raw === 'quiplash') return 'quiplash'
   if (raw === 'quick_draw' || raw === 'quick-draw') return 'quick_draw'
   if (raw === 'ayo' || raw === 'awale' || raw === 'ayo-olopon') return 'ayo'
+  if (raw === 'crossword' || raw === 'crosswords') return 'crossword'
+  if (raw === 'word_search' || raw === 'word-search' || raw === 'wordsearch') return 'word_search'
+  if (raw === 'word_scramble' || raw === 'word-scramble' || raw === 'wordscramble') return 'word_scramble'
+  if (raw === 'landmine' || raw === 'land-mine') return 'landmine'
+  if (raw === 'ping_pong' || raw === 'ping-pong') return 'ping_pong'
   return 'smash_marry_kill'
 }
 
@@ -1860,9 +2201,12 @@ export function gameTypeConfig(gameType: GameType | string | undefined): GameTyp
  * Games that render the design-system voice rail inline in their own room chrome
  * (the top header). These already have a Join-voice control, so the shared
  * floating `AudioChat` pill must NOT be mounted for them (it would double up).
- * Every other game still relies on the floating pill until the header rolls out.
+ * Every other game relies on the floating pill.
+ *
+ * Empty for now: Whot dropped its in-room voice rail in favour of the shared
+ * green floating Join-voice pill (host + player), so no game suppresses the pill.
  */
-const HEADER_VOICE_GAME_TYPES = new Set<GameType>(['whot'])
+const HEADER_VOICE_GAME_TYPES = new Set<GameType>([])
 
 export function gameHasHeaderVoice(gameType: GameType | string | undefined): boolean {
   return HEADER_VOICE_GAME_TYPES.has(parseGameType(gameType))
@@ -1909,6 +2253,8 @@ export function gameHowItWorks(
       return 'Players roll, hold dice, and choose a score category each turn. Build the best total across all combos.'
     case 'whot':
       return 'Players join with their name. Match the top card by shape or number — WHOT lets you call the next match. Pick 2 and Pick 3 stacks are separate. First to empty their hand wins — or lowest hand total when the game clock runs out.'
+    case 'uno':
+      return 'Players join with their name and are dealt 7 cards. Match the top card by colour, number, or symbol. Skip, Reverse, Draw Two, and Wild cards shake things up — call "UNO" on your second-to-last card or draw a penalty. First to empty their hand wins.'
     case 'ludo':
       return 'Players join with their name. Roll two dice each turn and use each die separately — a 6 brings pieces out; doubles earn another roll after both dice are played. Capture opponents, block with pairs — first to finish all four pieces wins!'
     case 'mahjong':
@@ -1937,8 +2283,18 @@ export function gameHowItWorks(
       return 'Players join with their name and split into teams (you pick how many). Each round, one team is on the clock — a describer sees a secret word and types clues without saying it, while teammates race to type the word. Every correct guess scores a point. Most words across all rounds wins.'
     case 'word_rush':
       return 'Players join with their name. Race to name valid words that start and end with the given letters — team mode races the clock for as many words as possible, individual mode scores everyone each round.'
+    case 'crossword':
+      return 'Players join with their name — everyone gets the same crossword grid. Read the Across and Down clues, tap a cell, and type the answer. Each word you complete correctly scores points, with a speed bonus for finishing a word first. First to fill the whole grid correctly wins — or the highest score when the timer runs out.'
+    case 'word_search':
+      return 'Players join with their name — everyone gets the same letter grid and word list. Drag from the first letter to the last to select a hidden word (across, down, or diagonal, sometimes backwards). Each word you find scores points, with a speed bonus for finding it first. First to find every word wins — or the highest score when the timer runs out.'
+    case 'word_scramble':
+      return 'Players join with their name — everyone gets the same jumbled words. Type the unscrambled answer; correct answers lock in and score, with a speed bonus for solving each scramble first and a bonus for longer words. First to unscramble them all wins — or the highest score when the timer runs out.'
     case 'i_call_on':
       return "Players join with their name. Set a game timer (or play all 26 letters). Each letter cycle someone calls A–Z, everyone fills Name, Animal, Place, Thing, and Food, then marks the next player's sheet. Duplicates score 5 automatically; unique valid answers score 10. Everyone sees all marks live."
+    case 'landmine':
+      return "Players join with their name. Each round someone picks a category and the system secretly plants a “mine” — one of the obvious answers. Everyone types a blind answer, then marks the next player's for validity before the mine is revealed. A valid answer scores 10 (plus 5 if nobody else said it); hit the mine and you score 0 — or get knocked out in Elimination mode."
+    case 'ping_pong':
+      return 'Two players join with their name. A fast-paced 1v1 paddle duel where players move their paddles in realtime to bounce the ball past their opponent. First to reach the target score (3, 5, 7, 11, 15, or 21 points) wins!'
     case 'most_likely_to':
       return joiners
         ? 'Players add their name to the poll when joining. Each round shows a "most likely to…" prompt — vote for who fits best. Votes stay anonymous.'
@@ -2204,6 +2560,12 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   quiplash: true,
   quick_draw: true,
   ayo: true,
+  crossword: true,
+  word_search: true,
+  word_scramble: true,
+  landmine: true,
+  ping_pong: true,
+  uno: true,
   mafia: false,
 }
 
@@ -2246,6 +2608,12 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   quiplash: false,
   quick_draw: false,
   ayo: false,
+  crossword: false,
+  word_search: false,
+  word_scramble: false,
+  landmine: false,
+  ping_pong: false,
+  uno: false,
   mafia: false,
 }
 
@@ -2335,6 +2703,10 @@ export function isCrazyEightsGame(gameType: GameType | string | undefined): bool
   return parseGameType(gameType) === 'crazy_eights'
 }
 
+export function isUnoGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'uno'
+}
+
 export function isLudoGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'ludo'
 }
@@ -2383,6 +2755,10 @@ export function isICallOnGame(gameType: GameType | string | undefined): boolean 
   return parseGameType(gameType) === 'i_call_on'
 }
 
+export function isLandmineGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'landmine'
+}
+
 export function isSudokuGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'sudoku'
 }
@@ -2399,8 +2775,24 @@ export function isQuiplashGame(gameType: GameType | string | undefined): boolean
   return parseGameType(gameType) === 'quiplash'
 }
 
+export function isPingPongGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'ping_pong'
+}
+
 export function isQuickDrawGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'quick_draw'
+}
+
+export function isCrosswordGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'crossword'
+}
+
+export function isWordSearchGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'word_search'
+}
+
+export function isWordScrambleGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'word_scramble'
 }
 
 /** Anonymous room or host-only secret message inbox — shared message storage. */

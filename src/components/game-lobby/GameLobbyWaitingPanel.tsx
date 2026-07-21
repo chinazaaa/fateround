@@ -2,12 +2,10 @@
 
 import { useState } from 'react'
 import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
-import { EditNameInline } from '@/components/ui/EditNameInline'
-import { LeaveGameButton, leaveButtonQuietClassName } from '@/components/ui/LeaveGameButton'
-import { PlayerResumeCard } from '@/components/PlayerResumeCard'
-import { WhatsAppChannelLink } from '@/components/WhatsAppChannelLink'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
-import type { Player } from '@/types'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
+import { lobbyHasOpenPlayerSeat } from '@/lib/game-limits'
+import type { Game, Player } from '@/types'
 
 type Props = {
   gameCode: string
@@ -19,6 +17,12 @@ type Props = {
   title?: string
   /** Game type (e.g. game.game_type) — shows the game's name + emoji so players know what they joined. */
   gameType?: string
+  /** Full game row — surfaces theme / difficulty / time chips so players know what they're joining. */
+  game?: Game | null
+  /** Game row used ONLY to compute the seat cap (game_type + max_players). Lets the panel tell
+   *  when the lobby is full so a spectator sees a "watching" state instead of a dead ready button.
+   *  Separate from `game` so passing it doesn't also render the info chips. */
+  capacityGame?: Pick<Game, 'game_type' | 'max_players'> | null
   description?: React.ReactNode
   rulesLink?: React.ReactNode
   activity?: React.ReactNode
@@ -39,6 +43,8 @@ export function GameLobbyWaitingPanel({
   onLeft,
   title = 'Waiting for host',
   gameType,
+  game,
+  capacityGame,
   description,
   rulesLink,
   activity,
@@ -50,6 +56,11 @@ export function GameLobbyWaitingPanel({
 }: Props) {
   const [readying, setReadying] = useState(false)
   const gameCfg = gameType ? gameTypeConfig(parseGameType(gameType)) : null
+  // A spectator can only ready up if a seat is actually open. When the lobby is full
+  // (all seats taken by ready players), they stay a watcher — hide the ready button and
+  // label them "watching" rather than "not ready". Needs the full `game` row for the cap;
+  // without it we can't tell, so we assume a seat is available (button shown, as before).
+  const seatsFull = capacityGame ? !lobbyHasOpenPlayerSeat(capacityGame, players) : false
 
   const handleReady = async () => {
     if (!onReady || readying) return
@@ -66,8 +77,17 @@ export function GameLobbyWaitingPanel({
 
   return (
     <div className="space-y-5">
+      {/* Rules up top — near the game title, not buried in the footer. */}
+      {rulesLink ? <div className="text-center">{rulesLink}</div> : null}
+
       <div className="rounded-xl border border-[color-mix(in_srgb,var(--primary)_18%,var(--border))] bg-[color-mix(in_srgb,var(--primary)_6%,transparent)] px-4 py-4 text-center space-y-1">
-        {isSpectator ? (
+        {isSpectator && seatsFull ? (
+          <>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--primary)]">Watching</p>
+            <h2 className="text-xl sm:text-2xl font-black">{title}</h2>
+            <p className="text-muted text-sm">The game is full — you&apos;re watching this round.</p>
+          </>
+        ) : isSpectator ? (
           <>
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--primary)]">New round</p>
             <h2 className="text-xl sm:text-2xl font-black">{title}</h2>
@@ -96,44 +116,20 @@ export function GameLobbyWaitingPanel({
             <span>{gameCfg.label}</span>
           </p>
         )}
-        <div className="flex justify-center pt-2">
-          <WhatsAppChannelLink />
-        </div>
+        {game ? <GameInfoChips game={game} className="pt-1" /> : null}
       </div>
 
       {activityFirst ? activity : null}
 
       {/* Lobby leads right after the header — players see who's in immediately. */}
-      <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label={playerListLabel} />
+      <GameLobbyPlayerList
+        players={players}
+        myPlayerId={myPlayerId}
+        label={playerListLabel}
+        spectatorLabel={seatsFull ? 'watching' : 'not ready'}
+      />
 
       {activityFirst ? null : activity}
-
-      {/* Compact footer: your identity, rules and the quieter continue / leave actions
-          live down here so they don't crowd the lobby. */}
-      {myPlayerId ? (
-        <div className="space-y-2.5 border-t border-[var(--border)] pt-4">
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-            <EditNameInline
-              gameCode={gameCode}
-              playerId={myPlayerId}
-              currentName={myPlayerName}
-              onRenamed={onRenamed}
-            />
-            {rulesLink ? <div className="shrink-0">{rulesLink}</div> : null}
-          </div>
-          <PlayerResumeCard gameCode={gameCode} />
-          <LeaveGameButton
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            onLeft={onLeft}
-            confirmTitle="Leave this lobby?"
-            confirmMessage="You can rejoin with your player code if there is room."
-            className={leaveButtonQuietClassName}
-          />
-        </div>
-      ) : rulesLink ? (
-        <div className="text-center">{rulesLink}</div>
-      ) : null}
     </div>
   )
 }

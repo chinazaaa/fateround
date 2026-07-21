@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { QuickDrawGuessPlayerView } from '@/components/quick-draw/QuickDrawGuessPlayerView'
 import { QuickDrawActiveRound } from '@/components/quick-draw/QuickDrawActiveRound'
@@ -43,8 +43,10 @@ import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } fr
 import { playerIsViewer, preJoinScreen, allowLatePlayers } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { DescribeItLoadingScreen } from '@/components/describe-it/DescribeItChrome'
 
 type Screen =
@@ -128,6 +130,7 @@ function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, null>({
     gameCode,
@@ -141,10 +144,11 @@ function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
 
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [
       { table: 'games', column: 'id' },
+      'players',
       'rounds',
       'quick_draw_sessions',
       'quick_draw_assignments',
@@ -155,7 +159,11 @@ function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
   const openLobbyJoin = useCallback(() => {
     setScreen('join')
@@ -226,6 +234,33 @@ function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
     [gameCode, myResumeToken, load, toastError]
   )
 
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙ gear
+  // (top header). Registered while the game is active; GameChromeSettings renders it in the sheet.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={me?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
   if (screen === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -286,6 +321,7 @@ function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
           emoji={cfg.headerEmoji}
           title={game?.title}
           gameType="quick_draw"
+          contentLabel={game?.content_label}
           meta={
             game ? (
               <>
@@ -299,6 +335,8 @@ function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="quick_draw"
         />
@@ -316,6 +354,7 @@ function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
           meId={myPlayerId}
           isHost={false}
           minPlayers={QUICK_DRAW_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={(ready) => void toggleReplayReady(ready)}
           onStart={() => {}}
           pending={replayReadyPending}
@@ -332,6 +371,7 @@ function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myPlayerName}
@@ -386,17 +426,6 @@ function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
             player={me}
             players={players}
             onPromoted={load}
-          />
-        )}
-        {!isFinished && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myPlayerName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby={false}
-            spectating={isViewer}
           />
         )}
         <QuickDrawActiveRound

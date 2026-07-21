@@ -50,11 +50,13 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   yahtzee: 'yahtzee',
   whot: 'whot',
   crazy_eights: 'crazy-eights',
+  uno: 'uno',
   ludo: 'ludo',
   mahjong: 'mahjong',
   i_call_on: 'i-call-on',
   sudoku: 'sudoku',
   tic_tac_toe: 'tic-tac-toe',
+  ping_pong: 'ping-pong',
   word_hunt: 'word-hunt',
   chess: 'chess',
   checkers: 'checkers',
@@ -67,6 +69,10 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   matching_pairs: 'matching-pairs',
   quiplash: 'quiplash',
   quick_draw: 'quick-draw',
+  crossword: 'crossword',
+  word_search: 'word-search',
+  word_scramble: 'word-scramble',
+  landmine: 'landmine',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -1603,6 +1609,76 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       },
     ],
   }),
+  uno: landing('uno', {
+    seoTitle: 'Play UNO Online Free with Friends — No Sign-Up',
+    seoDescription:
+      'Play UNO online free with friends — no sign-up, no download. Match by colour, number, or symbol; Skip, Reverse, Draw Two, and Wild cards; call UNO on your second-to-last card. 2–10 players.',
+    keywords: [
+      'uno online',
+      'uno rules',
+      'how to play uno',
+      'uno card game',
+      'play uno with friends',
+      'uno multiplayer',
+      'play uno online free',
+      'uno with friends online',
+      'uno online free no download',
+      'uno game online',
+      'uno wild card',
+      'uno draw four challenge',
+    ],
+    heroSubtitle: 'The party card classic — match colours and numbers, go wild, and empty your hand first.',
+    bodyParagraph:
+      'UNO on Fate Round plays by the rules everyone knows: match the top card by colour, number, or symbol, and use Skip, Reverse, and Draw Two cards to control the table. Wild cards let you name the next colour, and a Wild Draw Four forces the next player to draw four — unless they challenge it. Call "UNO" the moment you have one card left, or draw a penalty. First to shed every card wins.',
+    highlights: ['108-card deck', '2–10 players', 'Wild + Draw Four challenge'],
+    features: [
+      {
+        title: 'Match or go wild',
+        description: 'Play a card matching the colour, number, or symbol on top — or drop a Wild and name the colour.',
+        emoji: '🎴',
+      },
+      {
+        title: 'Action cards',
+        description: 'Skip and Reverse control the turn order; Draw Two and Wild Draw Four stack the pressure.',
+        emoji: '🌈',
+      },
+      SHARED_FEATURES.mobile,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Join a room', description: 'Enter your name and wait for the host to deal 7 cards each.' },
+      { title: 'Play your turn', description: 'Match by colour, number, or symbol, play a Wild, or draw a card.' },
+      { title: 'Call UNO & win', description: 'Call "UNO" on your second-to-last card, then empty your hand to win.' },
+    ],
+    perfectFor: ['Game nights', 'Family card games', 'Quick card breaks'],
+    extraFaqs: [
+      {
+        question: 'How do you win at UNO?',
+        answer:
+          'Be the first to play every card in your hand. If a game clock is running and time runs out, the player with the lowest points left in hand wins instead — number cards score their face value, action cards 20, and Wild cards 50.',
+      },
+      {
+        question: 'When do you call UNO?',
+        answer:
+          'You must call "UNO" when you play your second-to-last card, leaving you with one. If you forget before the next player takes their turn, you draw a penalty of 2 cards.',
+      },
+      {
+        question: 'What is the Wild Draw Four challenge?',
+        answer:
+          'A Wild Draw Four can only legally be played if you have no card matching the current colour. The next player can challenge it: the system reveals the player’s hand — if they were bluffing, they draw four instead; if the challenge was wrong, the challenger draws four (or six) as a penalty. Hosts can turn challenges off.',
+      },
+      {
+        question: 'How many cards do you start with in UNO?',
+        answer:
+          'Each player is dealt 7 cards, with one card turned face-up to start the discard pile. The host deals when everyone is ready.',
+      },
+      {
+        question: 'Is UNO like Crazy Eights?',
+        answer:
+          'Yes — UNO is a branded descendant of Crazy Eights. Both are match-by-colour-or-number shedding games where you race to empty your hand. Fate Round has both.',
+      },
+    ],
+  }),
   ludo: landing('ludo', {
     seoTitle: 'Ludo Online — Play Classic Board Game with Friends',
     seoDescription:
@@ -2006,6 +2082,58 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Regular tic-tac-toe is easily drawn once you know it. Ultimate adds a layer — because each move sends your opponent to a specific board, you have to think several moves ahead about where you’re sending them. Far deeper, and much harder to force a draw.',
       },
     ],
+  }),
+
+  ping_pong: landing('ping_pong', {
+    seoTitle: 'Ping Pong Online — Play Real-Time 2-Player Table Tennis',
+    seoDescription:
+      'Play fast-paced Ping Pong online with a friend. Real-time 60fps paddle and ball physics, custom win targets, and win-by-2 rules.',
+    keywords: [
+      'ping pong online',
+      'table tennis online',
+      'ping pong 2 player online',
+      'play ping pong with friends',
+      'table tennis game online',
+      'real time ping pong online',
+      'ping pong online free',
+      'table tennis 2 player game',
+    ],
+    heroSubtitle: 'Classic 2-player Ping Pong. Hit the ball back and forth, and try not to miss.',
+    bodyParagraph:
+      "Grab a friend and settle who has the better reflexes. No table required — just share a link and you're in. You get a paddle, drag to hit the ball, and score when the other person misses. You can set the game to end anywhere from a quick 3 points up to a 21-point marathon, but you always have to win by two.",
+    highlights: ['2 players', '60fps real-time physics', 'Win-by-2 rules'],
+    features: [
+      {
+        title: 'Real-time 60fps physics',
+        description: 'Ultra-smooth paddle movement and dynamic ball bounces synced instantly.',
+        emoji: '🏓',
+      },
+      {
+        title: 'Custom win targets',
+        description: 'Set points to win from 3 up to 21 in the lobby settings before starting.',
+        emoji: '🎯',
+      },
+      {
+        title: 'Win by 2 rules',
+        description: 'Authentic table tennis scoring requires a clear 2-point lead at match point to take the crown.',
+        emoji: '🏆',
+      },
+      SHARED_FEATURES.mobile,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Join a room', description: 'Exactly two players take seats at the table to battle heads-up.' },
+      {
+        title: 'Rally and score',
+        description:
+          'Move your paddle to return the ball across the net. Miss a return and your opponent gets the point.',
+      },
+      {
+        title: 'Win by 2',
+        description: 'First to reach the target points with at least a 2-point margin wins the match.',
+      },
+    ],
+    perfectFor: ['Quick competitive duels', 'Friend challenges', 'Reflex testing'],
   }),
 
   chess: landing('chess', {
@@ -2711,6 +2839,160 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       { title: 'Draw & score', description: 'Fool the room or guess fast — most points wins.' },
     ],
     perfectFor: ['Party nights', 'Creative groups', 'Remote teams', 'Jackbox fans'],
+  }),
+  crossword: landing('crossword', {
+    seoTitle: 'Crossword Race Online — Free Multiplayer Crossword Game',
+    seoDescription:
+      'Race friends to fill the same crossword grid in real time. Solve Across and Down clues, score per word, and be first to complete the puzzle. Free, no sign-up.',
+    keywords: [
+      'crossword online multiplayer',
+      'crossword race game',
+      'play crossword with friends online',
+      'real time crossword game',
+      'crossword party game browser',
+      'multiplayer crossword puzzle free',
+      'competitive crossword online',
+    ],
+    heroSubtitle:
+      'Everyone gets the same grid. Read the clues, tap a cell, and type your answer. Score points for every word you finish — first to solve the whole puzzle wins.',
+    highlights: ['1–20 players', 'Same grid for everyone', 'Themed puzzles'],
+    features: [
+      {
+        title: 'Race the grid',
+        description: 'Solve Across and Down clues live — completed words lock in your colour as you go.',
+        emoji: '🧩',
+      },
+      SHARED_FEATURES.realtime,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Create a room', description: 'Pick a theme, difficulty, and time limit.' },
+      { title: 'Share the code', description: 'Friends join from their phones with a nickname.' },
+      { title: 'Solve to win', description: 'Fill words for points — first to 100% correct takes the crown.' },
+    ],
+    perfectFor: ['Puzzle lovers', 'Family game night', 'Commutes', 'Remote teams'],
+  }),
+  word_search: landing('word_search', {
+    seoTitle: 'Word Search Race Online — Free Multiplayer Word Search Game',
+    seoDescription:
+      'Race friends to find every hidden word in the same letter grid. Drag to select words across, down, and diagonally — first to find them all wins. Free, no sign-up.',
+    keywords: [
+      'word search online multiplayer',
+      'word search race game',
+      'play word search with friends online',
+      'real time word search game',
+      'word search party game browser',
+      'multiplayer word search free',
+      'competitive word search online',
+    ],
+    heroSubtitle:
+      'Everyone gets the same letter grid and word list. Drag from the first letter to the last to grab a hidden word — first to find them all wins.',
+    highlights: ['1–20 players', 'Same grid for everyone', 'Themed puzzles'],
+    features: [
+      {
+        title: 'Hunt the grid',
+        description: 'Drag across, down, or diagonally — found words lock in your colour as you go.',
+        emoji: '🔎',
+      },
+      SHARED_FEATURES.realtime,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Create a room', description: 'Pick a theme, difficulty, and time limit.' },
+      { title: 'Share the code', description: 'Friends join from their phones with a nickname.' },
+      { title: 'Find to win', description: 'Grab words for points — first to find them all takes the crown.' },
+    ],
+    perfectFor: ['Puzzle lovers', 'Family game night', 'Commutes', 'Remote teams'],
+  }),
+  word_scramble: landing('word_scramble', {
+    seoTitle: 'Word Scramble Race Online — Free Multiplayer Unscramble Game',
+    seoDescription:
+      'Race friends to unscramble the same jumbled words. Type the answer fastest for a speed bonus — highest score wins. Free, no sign-up.',
+    keywords: [
+      'word scramble online multiplayer',
+      'unscramble game with friends',
+      'word scramble race game',
+      'anagram party game online',
+      'real time word scramble',
+      'multiplayer word scramble free',
+      'competitive unscramble game',
+    ],
+    heroSubtitle:
+      'Everyone gets the same jumbled words. Type the unscrambled answer fastest for a speed bonus — highest score wins.',
+    highlights: ['1–20 players', 'Same scramble for everyone', 'Quick-fire rounds'],
+    features: [
+      {
+        title: 'Unscramble fast',
+        description: 'Type the hidden word — solve it first for a speed bonus, longer words score more.',
+        emoji: '🔀',
+      },
+      SHARED_FEATURES.realtime,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Create a room', description: 'Pick a theme, difficulty, and time limit.' },
+      { title: 'Share the code', description: 'Friends join from their phones with a nickname.' },
+      { title: 'Solve to win', description: 'Unscramble words for points — highest score takes the crown.' },
+    ],
+    perfectFor: ['Puzzle lovers', 'Family game night', 'Commutes', 'Remote teams'],
+  }),
+
+  landmine: landing('landmine', {
+    seoTitle: 'Landmine — Free Online Party Word Game',
+    seoDescription:
+      'Play Landmine online. Type a blind answer to a category — but one common answer is a hidden mine. Dodge it to score, hit it and you’re zeroed or knocked out.',
+    keywords: [
+      'landmine game',
+      'party word game online',
+      'category bluff game',
+      'word game with friends online',
+      'elimination party game',
+      'free party game no signup',
+      'guess the safe answer game',
+    ],
+    heroSubtitle:
+      'Pick a category, type a blind answer — but the system has secretly planted a mine on one of the obvious ones. Play it safe or play it clever.',
+    highlights: ['Zero Points or Elimination', 'Peer-marked answers', 'Hidden mine each round'],
+    features: [
+      {
+        title: 'Dodge the mine',
+        description:
+          'The obvious answer might be the mine — the safest word is rarely the first one that comes to mind.',
+        emoji: '🧨',
+      },
+      {
+        title: 'Mark together',
+        description: 'Everyone marks the next player’s answer Valid or Void before the mine is revealed.',
+        emoji: '👀',
+      },
+      SHARED_FEATURES.realtime,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Join the room', description: 'Enter your name and wait for the host to start.' },
+      {
+        title: 'Answer blind',
+        description: 'A category is revealed and a mine is secretly planted — type one answer before time runs out.',
+      },
+      {
+        title: 'Mark, then reveal',
+        description:
+          'Mark the next player’s answer, then the mine is revealed — valid answers score 10 (+5 if unique), the mine scores 0 or knocks you out.',
+      },
+    ],
+    perfectFor: ['Friend groups', 'Party nights', 'Icebreakers', 'Family game night'],
+    extraFaqs: [
+      {
+        question: 'How does scoring work?',
+        answer:
+          'A valid answer that isn’t the mine scores 10 points, plus 5 more if nobody else gave the same answer. An answer marked Void by your reviewer scores 0. Hit the mine and you score 0 for the round (Zero Points mode) or get knocked out (Elimination mode).',
+      },
+      {
+        question: 'What’s the difference between the two modes?',
+        answer:
+          'Zero Points is softer — hitting the mine just scores you 0 for that round and everyone plays every round. Elimination is higher-stakes — hit the mine and you’re out, last player standing wins. Elimination plays best with 5+ players.',
+      },
+    ],
   }),
 }
 

@@ -2,12 +2,13 @@
   "name": "fateround",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.23.0",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -16,10 +17,20 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "prepare": "husky || true",
     "mobile": "npm --prefix apps/mobile start",
     "mobile:typecheck": "npm --prefix apps/mobile run typecheck",
     "vapid:generate": "web-push generate-vapid-keys",
     "indexnow:submit": "node scripts/submit-indexnow.mjs"
+  },
+  "lint-staged": {
+    "src/**/*.{ts,tsx}": [
+      "prettier --write",
+      "eslint --fix"
+    ],
+    "{apps,packages}/**/*.{ts,tsx}": [
+      "prettier --write"
+    ]
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.106.0",
@@ -42,7 +53,9 @@
     "next": "16.2.9",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "react-markdown": "^10.1.0",
     "react-qr-code": "^2.2.0",
+    "remark-gfm": "^4.0.1",
     "web-push": "^3.6.7",
     "xlsx": "^0.18.5",
     "zod": "^4.4.3"
@@ -64,7 +77,9 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-next": "^0.0.0",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "husky": "^9.1.7",
     "jsdom": "^29.1.1",
+    "lint-staged": "^17.0.8",
     "prettier": "^3.8.4",
     "tailwindcss": "^4",
     "typescript": "^5",

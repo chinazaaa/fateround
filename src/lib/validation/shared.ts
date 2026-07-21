@@ -34,6 +34,30 @@ export const gameCodeString = () =>
         .regex(/^[A-Z0-9]+$/, 'Game code must be alphanumeric')
     )
 
+/**
+ * Long-form Markdown body. Unlike `sanitizedString`, this does NOT strip HTML tags — that
+ * would eat autolinks (`<https://…>`) and any `<`/`>` in prose or code blocks. Safety instead
+ * comes at render time: react-markdown ignores raw HTML by default. We still strip bidi
+ * control characters, which have no legitimate use in a blog body.
+ */
+export const markdownBody = (min: number, max: number) =>
+  z
+    .string()
+    .transform((s) => stripBidiControls(s.trim()))
+    .pipe(z.string().min(min, `Must be at least ${min} character(s)`).max(max, `Must be at most ${max} characters`))
+
+/** URL or root-relative path (e.g. a cover image). Empty string normalises to undefined. */
+export const optionalUrlOrPath = (max: number = 500) =>
+  z
+    .string()
+    .trim()
+    .max(max, `Must be at most ${max} characters`)
+    .refine((s) => s === '' || s.startsWith('/') || /^https?:\/\//i.test(s), {
+      message: 'Must be a URL (https://…) or a path starting with /',
+    })
+    .transform((s) => (s === '' ? undefined : s))
+    .optional()
+
 export const hostTokenString = () => z.string().min(1, 'hostToken is required')
 
 export const uuidString = (label: string = 'ID') => z.string().uuid(`${label} must be a valid UUID`)
@@ -65,6 +89,7 @@ export const gameTypeEnum = z.enum([
   'yahtzee',
   'whot',
   'crazy_eights',
+  'uno',
   'ludo',
   'mahjong',
   'i_call_on',
@@ -82,6 +107,11 @@ export const gameTypeEnum = z.enum([
   'quiplash',
   'word_rush',
   'quick_draw',
+  'crossword',
+  'word_search',
+  'word_scramble',
+  'landmine',
+  'ping_pong',
 ])
 
 export const participantModeEnum = z.enum(['import', 'joiners', 'voters'])
@@ -90,12 +120,22 @@ export const pairVoteModeEnum = z.enum(['any', 'one_each'])
 export const questionSourceEnum = z.enum(['platform', 'custom'])
 export const triviaCategoryEnum = z.enum(['tech', 'general'])
 export const playerQuestionsOrderEnum = z.enum(['players_first', 'uploaded_first', 'mixed'])
-export const wstQuoteSourceEnum = z.enum(['player', 'anime', 'both'])
+export const wstQuoteSourceEnum = z.enum(['player', 'anime', 'both', 'deck'])
 export const wyrChoiceEnum = z.enum(['a', 'b'])
 export const participantGenderEnum = z.enum(['male', 'female'])
 export const playerGenderEnum = z.enum(['male', 'female', 'both'])
 export const pairFlagEnum = z.enum(['kiss', 'kill'])
-export const themeEnum = z.enum(['default', 'neon', 'retro', 'elegant', 'tropical', 'pirate', 'arctic', 'naija'])
+export const themeEnum = z.enum([
+  'default',
+  'neon',
+  'retro',
+  'elegant',
+  'tropical',
+  'pirate',
+  'arctic',
+  'naija',
+  'grass_court',
+])
 export const participantFilterEnum = z.enum(['all', 'joined'])
 export const timerSecondsEnum = z.union([z.literal(10), z.literal(15), z.literal(30), z.literal(60)])
 

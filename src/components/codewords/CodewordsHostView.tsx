@@ -1,37 +1,38 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CodewordsActiveRound } from '@/components/codewords/CodewordsActiveRound'
 import { CodewordsHostManagePanel } from '@/components/codewords/CodewordsHostManagePanel'
 import { CodewordsSpectatorBoard } from '@/components/codewords/CodewordsSpectatorBoard'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
-import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   CODEWORDS_DEFAULT_OPERATIVE_TIMER,
   CODEWORDS_DEFAULT_SPYMASTER_TIMER,
+  CODEWORDS_MIN_PLAYERS,
   codewordsInLobby,
   codewordsPlayerPicks,
   codewordsRandomizeTeams,
-  getCodewordsHostMode,
+  lobbyReadyForGame,
   mergeCodewordsGuesses,
-  setCodewordsHostMode,
   teamLabel,
-  type CodewordsHostMode,
 } from '@/lib/codewords'
 import { useCodewordsRealtime } from '@/hooks/useCodewordsRealtime'
 import { useCodewordsNotifications } from '@/hooks/useCodewordsNotifications'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
-import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import type {
   CodewordsBoard,
   CodewordsGuess,
@@ -43,6 +44,9 @@ import type {
 } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { PlayAgainSetup, playAgainNeedsSetup, type PlayAgainPayload } from '@/components/PlayAgainSetup'
@@ -68,12 +72,6 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
   const [operativeTimer, setOperativeTimer] = useState(CODEWORDS_DEFAULT_OPERATIVE_TIMER)
   const [savingTimers, setSavingTimers] = useState(false)
   const [benchingPlayerId, setBenchingPlayerId] = useState<string | null>(null)
-  const [hostMode, setHostMode] = useState<CodewordsHostMode>('player')
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
   const [playAgainOpen, setPlayAgainOpen] = useState(false)
   const [lobbyPoolOpen, setLobbyPoolOpen] = useState(false)
@@ -131,13 +129,6 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
 
   useEffect(() => {
     load()
-    setHostMode(getCodewordsHostMode(gameCode))
-    const session = getPlayerSession(gameCode)
-    if (session) {
-      setHostPlayerId(session.playerId)
-      setHostResumeToken(session.resumeToken ?? null)
-      setHostPlayerName(session.playerName)
-    }
   }, [gameCode, load])
 
   useCodewordsRealtime(gameCode, 'host', {
@@ -164,26 +155,70 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     onReload: load,
   })
 
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    leaveGameRemovePlayer,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+    onModeChange: (mode) => {
+      if (mode === 'spectator') setTab('manage')
+    },
+  })
+
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostResumeToken(null)
-        setHostPlayerName('')
-        clearPlayerSession(gameCode)
-        setHostMode('spectator')
-        setCodewordsHostMode(gameCode, 'spectator')
-      }
+      onHostSeatRemoved(playerId)
       setPlayers((prev) => prev.filter((p) => p.id !== playerId))
       setRoles((prev) => prev.filter((r) => r.player_id !== playerId))
     },
-    [gameCode, hostPlayerId]
+    [onHostSeatRemoved]
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
 
-  // Clear stale host-as-player state if the host's own row is removed elsewhere.
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
+  // Change the lobby team-assignment mode (players pick / host assigns / random)
+  // via the game PATCH — mirrors the two flags codewords stores.
+  const changeTeamAssignment = useCallback(
+    async (mode: 'players' | 'host' | 'randomize') => {
+      const flags =
+        mode === 'randomize'
+          ? { codewords_player_picks: false, codewords_randomize_teams: true }
+          : mode === 'host'
+            ? { codewords_player_picks: false, codewords_randomize_teams: false }
+            : { codewords_player_picks: true, codewords_randomize_teams: false }
+      try {
+        const res = await fetch(`/api/games/${gameCode}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hostToken, ...flags }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          toastError(data.error ?? 'Could not update team assignment')
+          return
+        }
+        await load()
+      } catch {
+        toastError('Could not update team assignment')
+      }
+    },
+    [gameCode, hostToken, load, toastError]
+  )
 
   const lateJoinNotifyReadyRef = useRef(false)
   const prevPlayerIdsRef = useRef<Set<string>>(new Set())
@@ -249,83 +284,6 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     void assignRole(playerId, team, makeSpymaster ? 'spymaster' : 'operative')
   }
 
-  const changeHostMode = async (mode: CodewordsHostMode) => {
-    const prev = hostMode
-    if (game?.status !== 'waiting') return
-    setHostMode(mode)
-    setCodewordsHostMode(gameCode, mode)
-    if (mode === 'spectator') setTab('manage')
-    // Switching to "Host only" while holding a seat → give up the seat so the host
-    // drops out of the players list.
-    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
-      try {
-        const res = await fetch('/api/players', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error ?? 'Failed to leave seat')
-        }
-        handlePlayerRemoved(hostPlayerId)
-        await load()
-      } catch (err) {
-        setHostMode(prev)
-        setCodewordsHostMode(gameCode, prev)
-        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
-      }
-    }
-  }
-
-  const renameHost = async (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed || !hostPlayerId) return
-    try {
-      const res = await fetch('/api/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
-      setHostPlayerName(data.playerName)
-      const storedGender = getPlayerSession(gameCode)?.playerGender ?? 'both'
-      setPlayerSession(gameCode, hostPlayerId, data.playerName, storedGender, hostResumeToken)
-      await load()
-      success('Name updated!')
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to update name')
-    }
-  }
-
-  const hostJoinGame = async () => {
-    const name = hostJoinName.trim()
-    if (!name) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: name }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostResumeToken(data.resumeToken ?? null)
-      setHostPlayerName(data.playerName)
-      setHostMode('player')
-      setCodewordsHostMode(gameCode, 'player')
-      await load()
-      success(`Joined as ${data.playerName}`)
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }
-
   const startGame = async () => {
     setStarting(true)
     try {
@@ -375,12 +333,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to move player to waiting room')
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostResumeToken(null)
-        setHostPlayerName('')
-        clearPlayerSession(gameCode)
-      }
+      onHostSeatRemoved(playerId)
       await load()
       success('Player moved to waiting room')
     } catch (err) {
@@ -555,12 +508,29 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     if (inActivePlay) setTab('play')
   }, [inActivePlay])
 
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, teams monitor + roster stay in the panel/drawer): the active
+  // late-join card + How-to-play + End game (finish-game, i.e. Close session).
+  const hostSettingsNode = useMemo(
+    () =>
+      game && game.status === 'active' ? (
+        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="codewords" onEnded={load}>
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton
+              onLeave={leaveGameRemovePlayer}
+              variant="remove"
+              className="btn-secondary w-full py-3 text-base"
+            />
+          )}
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load, hostMode, hostPlayerId, leaveGameRemovePlayer]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
   const showTabs = game.status !== 'finished'
@@ -589,100 +559,104 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     )
   ) : null
 
+  // Lobby mode selector (play card) — reused by the new HostLobby and the tabbed manage.
+  const codewordsModeCard = (
+    <HostModeSelector
+      mode={hostMode}
+      onChange={changeHostMode}
+      joinedPlayerId={hostPlayerId}
+      joinedPlayerName={hostPlayerName}
+      joinName={hostJoinName}
+      onJoinNameChange={setHostJoinName}
+      onJoin={() => void hostJoinGame()}
+      joining={hostJoining}
+      onEditName={renameHost}
+      spectatorHint="Watch once the round starts"
+      playerHint="Join a team below · Play tab opens once the round starts"
+      playingNote={
+        <p className="text-xs text-muted">
+          Playing as <strong>{hostPlayerName}</strong> —{' '}
+          {randomizeTeams
+            ? 'pick spymasters in Teams below, then shuffle or start.'
+            : playersPickTeams
+              ? 'pick your team in Teams below, or assign yourself there.'
+              : 'assign yourself in Teams below.'}
+        </p>
+      }
+    />
+  )
+
+  // Shared props for CodewordsHostManagePanel (teams + settings). Rendered in the tabbed
+  // manage and — with embeddedInLobby — as the new HostLobby's main-screen children.
+  const codewordsPanelProps = {
+    game,
+    gameCode,
+    hostToken,
+    playerLink,
+    players,
+    roles,
+    board,
+    guesses,
+    hostPlayerId,
+    hostPlays,
+    spymasterTimer,
+    operativeTimer,
+    savingTimers,
+    savingRoleFor,
+    starting,
+    playingAgain,
+    ending,
+    onSpymasterTimerChange: setSpymasterTimer,
+    onOperativeTimerChange: setOperativeTimer,
+    onSaveTimers: saveTimers,
+    onSetSpymaster: setSpymaster,
+    onMoveTeam: moveTeam,
+    firstTeam,
+    onFirstTeamChange: setFirstTeam,
+    teamAssignment: (randomizeTeams ? 'randomize' : playersPickTeams ? 'players' : 'host') as
+      | 'players'
+      | 'host'
+      | 'randomize',
+    onTeamAssignmentChange: changeTeamAssignment,
+    onStartGame: startGame,
+    onRandomizeTeams: shuffleTeams,
+    randomizingTeams,
+    onPlayAgain: playAgain,
+    onEndSession: endSession,
+    onReload: load,
+    onGameUpdate: setGame,
+    onBenchPlayer: benchPlayer,
+    onRemovePlayer: removePlayer,
+    benchingPlayerId,
+    removingPlayerId,
+    customWordCount:
+      game && parseQuestionSource(game.question_source, parseGameType(game.game_type)) === 'custom'
+        ? customQuestionCount(game)
+        : 0,
+    onEditWordPool: game ? () => setLobbyPoolOpen(true) : undefined,
+    savingWordPool: savingLobbyPool,
+    settingsBottom:
+      game.status === 'waiting' ? (
+        <HostLobbySettingBlock title="Late joiners">
+          <HostAllowViewersField
+            embedded
+            hideHeader
+            gameCode={gameCode}
+            hostToken={hostToken}
+            game={game}
+            onGameUpdate={setGame}
+          />
+        </HostLobbySettingBlock>
+      ) : undefined,
+  }
+
   const manage = (
     <div className="space-y-4 sm:space-y-5 animate-stagger">
-      {game.status === 'waiting' && (
-        <HostModeSelector
-          mode={hostMode}
-          onChange={changeHostMode}
-          joinedPlayerId={hostPlayerId}
-          joinedPlayerName={hostPlayerName}
-          joinName={hostJoinName}
-          onJoinNameChange={setHostJoinName}
-          onJoin={() => void hostJoinGame()}
-          joining={hostJoining}
-          onEditName={renameHost}
-          spectatorHint="Watch from the Watch tab"
-          playerHint="Join a team below · Play tab opens once the round starts"
-          playingNote={
-            <p className="text-xs text-muted">
-              Playing as <strong>{hostPlayerName}</strong> —{' '}
-              {randomizeTeams
-                ? 'pick spymasters in Teams below, then shuffle or start.'
-                : playersPickTeams
-                  ? 'pick your team in Teams below, or assign yourself there.'
-                  : 'assign yourself in Teams below.'}
-            </p>
-          }
-        />
-      )}
+      {game.status === 'waiting' && codewordsModeCard}
 
       <HostRulesRow gameType="codewords" />
-      {game.status === 'waiting' && (
-        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-      )}
 
-      <CodewordsHostManagePanel
-        game={game}
-        gameCode={gameCode}
-        hostToken={hostToken}
-        playerLink={playerLink}
-        players={players}
-        roles={roles}
-        board={board}
-        guesses={guesses}
-        hostPlayerId={hostPlayerId}
-        hostPlays={hostPlays}
-        spymasterTimer={spymasterTimer}
-        operativeTimer={operativeTimer}
-        savingTimers={savingTimers}
-        savingRoleFor={savingRoleFor}
-        starting={starting}
-        playingAgain={playingAgain}
-        ending={ending}
-        onSpymasterTimerChange={setSpymasterTimer}
-        onOperativeTimerChange={setOperativeTimer}
-        onSaveTimers={saveTimers}
-        onSetSpymaster={setSpymaster}
-        onMoveTeam={moveTeam}
-        firstTeam={firstTeam}
-        onFirstTeamChange={setFirstTeam}
-        onStartGame={startGame}
-        onRandomizeTeams={shuffleTeams}
-        randomizingTeams={randomizingTeams}
-        onPlayAgain={playAgain}
-        onEndSession={endSession}
-        onReload={load}
-        onGameUpdate={setGame}
-        onBenchPlayer={benchPlayer}
-        onRemovePlayer={removePlayer}
-        benchingPlayerId={benchingPlayerId}
-        removingPlayerId={removingPlayerId}
-        customWordCount={
-          game && parseQuestionSource(game.question_source, parseGameType(game.game_type)) === 'custom'
-            ? customQuestionCount(game)
-            : 0
-        }
-        onEditWordPool={
-          // Available regardless of source — host can switch Platform / Library / Your own.
-          game ? () => setLobbyPoolOpen(true) : undefined
-        }
-        savingWordPool={savingLobbyPool}
-        settingsBottom={
-          game.status === 'waiting' ? (
-            <HostLobbySettingBlock title="Late joiners">
-              <HostAllowViewersField
-                embedded
-                hideHeader
-                gameCode={gameCode}
-                hostToken={hostToken}
-                game={game}
-                onGameUpdate={setGame}
-              />
-            </HostLobbySettingBlock>
-          ) : undefined
-        }
-      />
+      <CodewordsHostManagePanel {...codewordsPanelProps} />
 
       {game.status === 'active' && (
         <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
@@ -690,20 +664,68 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     </div>
   )
 
+  // Fresh lobby (not the play-again ready-up flow, which keeps the tabbed layout for now).
+  const waitingLobby = inLobby && !game.replay_pending
+  const playerIds = players.map((p) => p.id)
+  const lobbyReady = lobbyReadyForGame(roles, playerIds, randomizeTeams)
+  const canStart = players.length >= CODEWORDS_MIN_PLAYERS && lobbyReady.ok
+
   return (
     <>
-      <HostGameLayout
-        gameCode={gameCode}
-        status={game.status}
-        tab={tab}
-        onTabChange={setTab}
-        primaryKind={primaryKind}
-        showTabs={showTabs}
-        gameStarted={gameStarted}
-        header={<HostGameHeader game={game} />}
-        primary={primary}
-        manage={manage}
-      />
+      {waitingLobby ? (
+        <HostLobby
+          gameCode={gameCode}
+          hostToken={hostToken}
+          game={game}
+          gameTypeLabel={cfg.label}
+          players={players}
+          maxPlayers={lobbyMaxPlayersFromGameClient('codewords', game) ?? game.max_players}
+          resumeToken={hostResumeToken}
+          playCard={codewordsModeCard}
+          settingsChildren={
+            <>
+              <CodewordsHostManagePanel {...codewordsPanelProps} embeddedInLobby slot="lobby-settings" />
+              <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+            </>
+          }
+          onStart={() => void startGame()}
+          starting={starting}
+          startDisabled={!canStart}
+          startDisabledHint={
+            players.length < CODEWORDS_MIN_PLAYERS
+              ? `Need at least ${CODEWORDS_MIN_PLAYERS} players to start (${players.length}/${CODEWORDS_MIN_PLAYERS})`
+              : lobbyReady.ok
+                ? null
+                : lobbyReady.error
+          }
+          startLabel="Start codewords"
+          onRemovePlayer={removePlayer}
+          removingPlayerId={removingPlayerId}
+          highlightPlayerId={hostPlayerId}
+          onEnded={load}
+        >
+          <CodewordsHostManagePanel {...codewordsPanelProps} embeddedInLobby slot="lobby-teams" />
+        </HostLobby>
+      ) : (
+        <HostGameLayout
+          onRemovePlayer={removePlayer}
+          gameCode={gameCode}
+          status={game.status}
+          tab={tab}
+          onTabChange={setTab}
+          primaryKind={primaryKind}
+          game={game}
+          players={players}
+          hostPlayerId={hostPlayerId}
+          onHostRejoined={load}
+          showTabs={showTabs}
+          gameStarted={gameStarted}
+          header={<HostGameHeader game={game} />}
+          primary={primary}
+          manage={manage}
+          noManageTab={game.status === 'active'}
+        />
+      )}
 
       {game && (
         <PlayAgainSetup

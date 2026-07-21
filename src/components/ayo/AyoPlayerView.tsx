@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AyoCard, AyoLoadingScreen, AyoSecondaryButton, AyoShell } from '@/components/ayo/AyoChrome'
 import { AyoFinalResultsShareBlock } from '@/components/ayo/AyoFinalResultsShareBlock'
@@ -32,7 +32,9 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
@@ -56,6 +58,8 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
   const { animation: sowAnimation, playSowAnimation } = useAyoSowAnimation()
   const { confirm } = useConfirm()
   const [session, setSession] = useState<AyoSession | null>(null)
+  const sessionRef = useRef<AyoSession | null>(null)
+  sessionRef.current = session
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
 
@@ -99,6 +103,7 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, AyoSession | null>({
     gameCode,
@@ -113,9 +118,28 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
-  useGameTableSync(gameCode, ['players', { table: 'games', column: 'id' }, 'ayo_sessions'], load)
+  // Delta fast-path: patch the session locally on an ordinary move and skip the full reload;
+  // a status change (→ finished) or the first row still reloads. See useGameTableSync `apply`.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as AyoSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null && prev.status === 'active' && next.status === 'active'
+  }, [])
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  const connected = useGameTableSync(
+    gameCode,
+    ['players', { table: 'games', column: 'id' }, { table: 'ayo_sessions', apply: applySessionRow }],
+    load
+  )
+
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()
@@ -234,6 +258,34 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
 
   useAyoClockExpiry(gameCode, session, game?.status === 'active' && !isViewer)
 
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it. Purely additive — the in-page PlayerSessionControls stays as-is.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={activePlayer?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, activePlayer?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
   if (screen === 'loading') return <AyoLoadingScreen />
 
   if (screen === 'not_found') {
@@ -273,6 +325,8 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="ayo"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
@@ -304,6 +358,7 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={AYO_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -318,6 +373,7 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myName}
@@ -377,17 +433,6 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
             roundKey={game.session_started_at ?? session?.id}
           />
         )}
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby
-            spectating={isViewer}
-          />
-        )}
       </AyoShell>
     )
   }
@@ -407,16 +452,6 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
           onResign={!isViewer ? resign : undefined}
           acting={acting}
           sowAnimation={sowAnimation.animating ? sowAnimation : null}
-        />
-      )}
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isViewer}
         />
       )}
     </AyoShell>

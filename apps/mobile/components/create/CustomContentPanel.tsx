@@ -6,7 +6,8 @@ import { LibraryPackPicker } from '@/components/create/LibraryPackPicker'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
-import { parseListCsv, parseTriviaCsv, parseWyrCsv, pickCsvText } from '@/lib/file-import'
+import { isWordSearchGame } from '@fateround/shared/game-type-checks'
+import { parseListCsv, parsePuzzleCsv, parseTriviaCsv, parseWyrCsv, pickCsvText } from '@/lib/file-import'
 import {
   MAX_TRIVIA_CHOICES,
   customContentCopy,
@@ -15,10 +16,12 @@ import {
   customContentMinimum,
   customContentNoun,
   emptyTriviaDraft,
+  puzzleRequiresHint,
   supportsCustomContent,
   supportsLibrary,
   type CustomContentState,
   type CustomQuestionSource,
+  type PuzzleEntryDraft,
   type TriviaDraft,
   type WyrPairDraft,
 } from '@/lib/create-settings/custom-content'
@@ -40,7 +43,16 @@ export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: 
   const kind = customContentKind(gameType)
   const copy = customContentCopy(gameType)
   const noun = customContentNoun(gameType)
-  const heading = noun === 'words' ? 'Words' : 'Questions'
+  const heading =
+    kind === 'puzzle'
+      ? gameType === 'crossword'
+        ? 'Answers & clues'
+        : gameType === 'word_scramble'
+          ? 'Words & hints'
+          : 'Words'
+      : noun === 'words'
+        ? 'Words'
+        : 'Questions'
   const count = customContentCount(gameType, custom)
   const min = customContentMinimum(gameType, roundsCount)
   const enough = count >= min
@@ -74,6 +86,11 @@ export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: 
         if (rows.length === 0) return setImportError('No question rows found (question, answers, correct)')
         const existing = custom.trivia.filter((t) => t.question.trim() && t.choices.filter(Boolean).length >= 2)
         onChange({ trivia: [...existing, ...rows] })
+      } else if (kind === 'puzzle') {
+        const rows = parsePuzzleCsv(picked.text)
+        if (rows.length === 0) return setImportError('No word rows found in that file')
+        const existing = custom.puzzle.filter((p) => p.word.trim())
+        onChange({ puzzle: [...existing, ...rows] })
       } else {
         const rows = parseListCsv(gameType, picked.text)
         if (rows.length === 0) return setImportError('No rows found in that file')
@@ -115,6 +132,8 @@ export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: 
               <PairEditor custom={custom} onChange={onChange} />
             ) : kind === 'trivia' ? (
               <TriviaEditor custom={custom} onChange={onChange} />
+            ) : kind === 'puzzle' ? (
+              <PuzzleEditor gameType={gameType} custom={custom} onChange={onChange} />
             ) : (
               <ListEditor custom={custom} placeholder={copy.placeholder} onChange={onChange} />
             )}
@@ -141,14 +160,78 @@ export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: 
   )
 }
 
-function addItem(
-  kind: ReturnType<typeof customContentKind>,
-  custom: CustomContentState,
-  onChange: Props['onChange']
-) {
+function addItem(kind: ReturnType<typeof customContentKind>, custom: CustomContentState, onChange: Props['onChange']) {
   if (kind === 'binary') onChange({ pairs: [...custom.pairs, { optionA: '', optionB: '' }] })
   else if (kind === 'trivia') onChange({ trivia: [...custom.trivia, emptyTriviaDraft()] })
+  else if (kind === 'puzzle') onChange({ puzzle: [...custom.puzzle, { word: '', hint: '' }] })
   else onChange({ prompts: [...custom.prompts, ''] })
+}
+
+function PuzzleEditor({
+  gameType,
+  custom,
+  onChange,
+}: {
+  gameType: GameType
+  custom: CustomContentState
+  onChange: Props['onChange']
+}) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
+  const showHint = !isWordSearchGame(gameType)
+  const hintRequired = puzzleRequiresHint(gameType)
+  const wordLabel = gameType === 'crossword' ? 'Answer' : 'Word'
+  const hintLabel = gameType === 'crossword' ? 'Clue' : 'Hint'
+
+  const setEntry = (idx: number, patch: Partial<PuzzleEntryDraft>) => {
+    // The list renders a fallback blank row when `puzzle` is empty (e.g. right after Clear all);
+    // seed that row so the first keystroke is kept instead of mapping over an empty array.
+    if (custom.puzzle.length === 0) {
+      onChange({ puzzle: [{ word: '', hint: '', ...patch }] })
+      return
+    }
+    onChange({ puzzle: custom.puzzle.map((e, i) => (i === idx ? { ...e, ...patch } : e)) })
+  }
+  const removeEntry = (idx: number) => onChange({ puzzle: custom.puzzle.filter((_, i) => i !== idx) })
+
+  const entries = custom.puzzle.length > 0 ? custom.puzzle : [{ word: '', hint: '' }]
+
+  return (
+    <View style={styles.list}>
+      {custom.puzzle.length > 1 ? (
+        <View style={styles.listHeader}>
+          <Text style={styles.listCount}>{custom.puzzle.filter((e) => e.word.trim()).length} words</Text>
+          <Pressable onPress={() => onChange({ puzzle: [] })} hitSlop={8}>
+            <Text style={styles.clearAll}>Clear all</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {entries.map((entry, idx) => (
+        <View key={idx} style={styles.row}>
+          <TextInput
+            style={styles.rowInput}
+            value={entry.word}
+            onChangeText={(word) => setEntry(idx, { word })}
+            placeholder={wordLabel}
+            placeholderTextColor={theme.textFaint}
+            autoCapitalize="characters"
+            autoCorrect={false}
+          />
+          {showHint ? (
+            <TextInput
+              style={styles.rowInput}
+              value={entry.hint}
+              onChangeText={(hint) => setEntry(idx, { hint })}
+              placeholder={hintRequired ? hintLabel : `${hintLabel} (optional)`}
+              placeholderTextColor={theme.textFaint}
+              autoCapitalize="sentences"
+            />
+          ) : null}
+          {custom.puzzle.length > 1 ? <RemoveButton onPress={() => removeEntry(idx)} /> : null}
+        </View>
+      ))}
+    </View>
+  )
 }
 
 function ListEditor({
@@ -164,11 +247,22 @@ function ListEditor({
   const styles = useThemedStyles(makeStyles)
   const setItem = (idx: number, value: string) =>
     onChange({ prompts: custom.prompts.map((p, i) => (i === idx ? value : p)) })
-  const removeItem = (idx: number) =>
-    onChange({ prompts: custom.prompts.filter((_, i) => i !== idx) })
+  const removeItem = (idx: number) => onChange({ prompts: custom.prompts.filter((_, i) => i !== idx) })
+
+  const filledCount = custom.prompts.filter((p) => p.trim()).length
 
   return (
     <View style={styles.list}>
+      {custom.prompts.length > 1 ? (
+        <View style={styles.listHeader}>
+          <Text style={styles.listCount}>
+            {filledCount} {filledCount === 1 ? 'word' : 'words'}
+          </Text>
+          <Pressable onPress={() => onChange({ prompts: [''] })} hitSlop={8}>
+            <Text style={styles.clearAll}>Clear all</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {custom.prompts.map((value, idx) => (
         <View key={idx} style={styles.row}>
           <TextInput
@@ -180,22 +274,14 @@ function ListEditor({
             autoCapitalize="sentences"
             autoCorrect
           />
-          {custom.prompts.length > 1 ? (
-            <RemoveButton onPress={() => removeItem(idx)} />
-          ) : null}
+          {custom.prompts.length > 1 ? <RemoveButton onPress={() => removeItem(idx)} /> : null}
         </View>
       ))}
     </View>
   )
 }
 
-function PairEditor({
-  custom,
-  onChange,
-}: {
-  custom: CustomContentState
-  onChange: Props['onChange']
-}) {
+function PairEditor({ custom, onChange }: { custom: CustomContentState; onChange: Props['onChange'] }) {
   const theme = useTheme()
   const styles = useThemedStyles(makeStyles)
   const setPair = (idx: number, patch: Partial<WyrPairDraft>) =>
@@ -232,13 +318,7 @@ function PairEditor({
   )
 }
 
-function TriviaEditor({
-  custom,
-  onChange,
-}: {
-  custom: CustomContentState
-  onChange: Props['onChange']
-}) {
+function TriviaEditor({ custom, onChange }: { custom: CustomContentState; onChange: Props['onChange'] }) {
   const theme = useTheme()
   const styles = useThemedStyles(makeStyles)
   const setQ = (idx: number, patch: Partial<TriviaDraft>) =>
@@ -301,9 +381,7 @@ function TriviaEditor({
                   placeholderTextColor={theme.textFaint}
                   autoCapitalize="sentences"
                 />
-                {q.choices.length > 2 ? (
-                  <RemoveButton onPress={() => removeChoice(qIdx, cIdx)} />
-                ) : null}
+                {q.choices.length > 2 ? <RemoveButton onPress={() => removeChoice(qIdx, cIdx)} /> : null}
               </View>
             )
           })}
@@ -337,130 +415,138 @@ function RemoveButton({ onPress }: { onPress: () => void }) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  wrap: { gap: theme.space.md },
-  heading: {
-    color: theme.text,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  field: { gap: theme.space.sm },
-  label: {
-    color: theme.text,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  hint: {
-    color: theme.textFaint,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  list: { gap: theme.space.sm },
-  row: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
-  rowInput: {
-    flex: 1,
-    backgroundColor: theme.bgElevated,
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: theme.radius.md,
-    color: theme.text,
-    fontSize: 16,
-    paddingHorizontal: theme.space.md,
-    paddingVertical: 12,
-  },
-  itemCard: {
-    backgroundColor: theme.bgElevated,
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: theme.radius.md,
-    padding: theme.space.md,
-    gap: theme.space.sm,
-  },
-  itemHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  itemLabel: {
-    color: theme.textMuted,
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-  },
-  choiceHint: {
-    color: theme.textFaint,
-    fontSize: 12,
-  },
-  remove: {
-    width: 34,
-    height: 34,
-    borderRadius: theme.radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  removeText: {
-    color: theme.textMuted,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  radio: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: theme.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioOn: {
-    borderColor: theme.success,
-  },
-  radioDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: theme.success,
-  },
-  actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
-  addButton: {
-    paddingVertical: theme.space.sm,
-    paddingHorizontal: theme.space.md,
-    borderRadius: theme.radius.pill,
-    borderWidth: 1,
-    borderColor: theme.primary,
-    backgroundColor: theme.primarySoft,
-  },
-  addButtonText: {
-    color: theme.primaryMuted,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  importButton: {
-    paddingVertical: theme.space.sm,
-    paddingHorizontal: theme.space.md,
-    borderRadius: theme.radius.pill,
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.bgElevated,
-  },
-  importButtonText: { color: theme.textSecondary, fontSize: 14, fontWeight: '700' },
-  importError: { color: theme.error, fontSize: 13 },
-  addChoice: {
-    alignSelf: 'flex-start',
-    paddingVertical: 6,
-  },
-  addChoiceText: {
-    color: theme.primaryMuted,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  count: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  countOk: { color: theme.success },
-  countLow: { color: theme.textMuted },
-})
+    wrap: { gap: theme.space.md },
+    heading: {
+      color: theme.text,
+      fontSize: 18,
+      fontWeight: '800',
+    },
+    field: { gap: theme.space.sm },
+    label: {
+      color: theme.text,
+      fontSize: 16,
+      fontWeight: '800',
+    },
+    hint: {
+      color: theme.textFaint,
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    list: { gap: theme.space.sm },
+    listHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingBottom: 2,
+    },
+    listCount: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },
+    clearAll: { color: theme.primary, fontSize: 13, fontWeight: '800' },
+    row: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
+    rowInput: {
+      flex: 1,
+      backgroundColor: theme.bgElevated,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: theme.radius.md,
+      color: theme.text,
+      fontSize: 16,
+      paddingHorizontal: theme.space.md,
+      paddingVertical: 12,
+    },
+    itemCard: {
+      backgroundColor: theme.bgElevated,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: theme.radius.md,
+      padding: theme.space.md,
+      gap: theme.space.sm,
+    },
+    itemHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    itemLabel: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontWeight: '800',
+      letterSpacing: 0.6,
+      textTransform: 'uppercase',
+    },
+    choiceHint: {
+      color: theme.textFaint,
+      fontSize: 12,
+    },
+    remove: {
+      width: 34,
+      height: 34,
+      borderRadius: theme.radius.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    removeText: {
+      color: theme.textMuted,
+      fontSize: 15,
+      fontWeight: '700',
+    },
+    radio: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: theme.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    radioOn: {
+      borderColor: theme.success,
+    },
+    radioDot: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      backgroundColor: theme.success,
+    },
+    actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
+    addButton: {
+      paddingVertical: theme.space.sm,
+      paddingHorizontal: theme.space.md,
+      borderRadius: theme.radius.pill,
+      borderWidth: 1,
+      borderColor: theme.primary,
+      backgroundColor: theme.primarySoft,
+    },
+    addButtonText: {
+      color: theme.primaryMuted,
+      fontSize: 14,
+      fontWeight: '800',
+    },
+    importButton: {
+      paddingVertical: theme.space.sm,
+      paddingHorizontal: theme.space.md,
+      borderRadius: theme.radius.pill,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.bgElevated,
+    },
+    importButtonText: { color: theme.textSecondary, fontSize: 14, fontWeight: '700' },
+    importError: { color: theme.error, fontSize: 13 },
+    addChoice: {
+      alignSelf: 'flex-start',
+      paddingVertical: 6,
+    },
+    addChoiceText: {
+      color: theme.primaryMuted,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    count: {
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    countOk: { color: theme.success },
+    countLow: { color: theme.textMuted },
+  })

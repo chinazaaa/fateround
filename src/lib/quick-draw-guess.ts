@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage, internalFailure } from '@/lib/api-errors'
 import { markGameFinished } from '@/lib/game-finish'
 import { parseStoredMltQuestions } from '@/lib/custom-questions'
+import { loadPlatformEntries } from '@/lib/platform-content'
 import { QUICK_DRAW_GUESS_WORD_POOL } from '@/lib/quick-draw-guess-words'
 import { pickQuickDrawWord } from '@/lib/quick-draw-prompts'
 import { validateStrokeData } from '@/lib/quick-draw'
@@ -15,9 +16,11 @@ import {
   describeItIndividualLeaderboard,
   describeItLobbyReady,
   describeItRoleLeaderboards,
+  describeItPlayableTeams,
   describerForIndividualTurn,
   describerForTurn,
   nextIndividualDescriberIndex,
+  nextPlayableTeamIndex,
   normalizeGuess,
   teamForTurn,
   teamLabel,
@@ -74,12 +77,17 @@ function emptyStrokeData() {
   return { width: 400, height: 280, strokes: [] }
 }
 
-export function quickDrawGuessWordPool(game: Pick<Game, 'question_source' | 'custom_questions'>): readonly string[] {
+export async function quickDrawGuessWordPool(
+  supabase: SupabaseClient,
+  game: Pick<Game, 'question_source' | 'custom_questions'>
+): Promise<readonly string[]> {
   if (game.question_source === 'custom') {
     const custom = parseStoredMltQuestions(game.custom_questions)
-    if (custom.length > 0) return custom
+    return custom.length > 0 ? custom : QUICK_DRAW_GUESS_WORD_POOL
   }
-  return QUICK_DRAW_GUESS_WORD_POOL
+  // Platform source: admin-managed Guess-mode bank when present, else the built-in word pool.
+  const admin = await loadPlatformEntries<string>(supabase, 'quick_draw', 'guess')
+  return admin.length > 0 ? admin : QUICK_DRAW_GUESS_WORD_POOL
 }
 
 function readUsedFromPoolUsage(poolUsage: unknown): string[] {
@@ -216,7 +224,7 @@ export async function initializeQuickDrawGuessGame(
     teamRoster_ = teamRoster(teamRows)
   }
 
-  const primary = quickDrawGuessWordPool(game as Pick<Game, 'question_source' | 'custom_questions'>)
+  const primary = await quickDrawGuessWordPool(supabase, game as Pick<Game, 'question_source' | 'custom_questions'>)
   const primaryKeys = new Set(primary.map((w) => w.toLowerCase()))
   let priorUsed = readUsedFromPoolUsage(game.pool_usage).filter((w) => primaryKeys.has(w.toLowerCase()))
   if (priorUsed.length >= primary.length) priorUsed = []
@@ -322,7 +330,10 @@ export async function processQuickDrawGuessGuess(
     .select('question_source, custom_questions')
     .eq('id', gameId)
     .maybeSingle()
-  const primary = quickDrawGuessWordPool((game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>)
+  const primary = await quickDrawGuessWordPool(
+    supabase,
+    (game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>
+  )
   const nextWord = pickQuickDrawWord(primary, session.used_words)
   const name = await playerName(supabase, gameId, playerId)
 
@@ -481,7 +492,10 @@ export async function processQuickDrawGuessSkip(
     .select('question_source, custom_questions')
     .eq('id', gameId)
     .maybeSingle()
-  const primary = quickDrawGuessWordPool((game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>)
+  const primary = await quickDrawGuessWordPool(
+    supabase,
+    (game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>
+  )
   const nextWord = pickQuickDrawWord(primary, session.used_words)
 
   const { data: claimed } = await supabase
@@ -515,13 +529,17 @@ export async function processQuickDrawGuessSkip(
 
 export async function processQuickDrawGuessExpireTurn(
   supabase: SupabaseClient,
-  gameId: string
+  gameId: string,
+  opts?: { force?: boolean }
 ): Promise<{ error?: string; internal?: boolean }> {
   const { session, error, internal } = await loadSession(supabase, gameId)
   if (error) return { error, internal }
   if (!session || session.status === 'finished') return {}
   if (session.phase !== 'turn') return {}
-  if (!session.turn_deadline_at || new Date(session.turn_deadline_at).getTime() > Date.now()) return {}
+  // Players/timers wait for the turn deadline; the host may force-skip it early.
+  if (!opts?.force && (!session.turn_deadline_at || new Date(session.turn_deadline_at).getTime() > Date.now())) {
+    return {}
+  }
 
   if (session.mode === 'individual') {
     await endIndividualTurn(supabase, gameId, session)
@@ -576,6 +594,12 @@ export async function processQuickDrawGuessAdvance(
   const { session, error, internal } = await loadSession(supabase, gameId)
   if (error) return { error, internal }
   if (!session || session.status === 'finished') return {}
+  // Host "skip to next phase" arrives here during a live turn too. Only the host
+  // (force) may cut a turn short — end it, which moves the game to the break.
+  if (session.phase === 'turn') {
+    if (opts?.force) return processQuickDrawGuessExpireTurn(supabase, gameId, { force: true })
+    return {}
+  }
   if (session.phase !== 'break') return {}
   if (!opts?.force && (!session.break_deadline_at || new Date(session.break_deadline_at).getTime() > Date.now())) {
     return {}
@@ -586,7 +610,10 @@ export async function processQuickDrawGuessAdvance(
     .select('question_source, custom_questions')
     .eq('id', gameId)
     .maybeSingle()
-  const primary = quickDrawGuessWordPool((game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>)
+  const primary = await quickDrawGuessWordPool(
+    supabase,
+    (game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>
+  )
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const teamRows = await loadTeamRows(supabase, gameId)
@@ -601,6 +628,14 @@ export async function processQuickDrawGuessAdvance(
         session.total_rounds
       )
       nextIndex = nextIndividualDescriberIndex(session.roster, nextIndex, liveIds, totalTurns)
+    } else {
+      // Skip any team that can no longer field a turn (a drawer + a guesser);
+      // once only one team can still play, end the match.
+      const playable = new Set(describeItPlayableTeams(roster, session.num_teams))
+      nextIndex =
+        playable.size <= 1
+          ? session.num_teams * session.total_rounds
+          : nextPlayableTeamIndex(nextIndex, session.num_teams, session.total_rounds, playable)
     }
 
     const nextTurn = buildTurn({
@@ -657,6 +692,47 @@ export async function processQuickDrawGuessAdvance(
   return {}
 }
 
+/**
+ * A player left or was removed in team mode. If their team can no longer field a
+ * turn, resolve it now: skip the collapsed team's remaining turn, and once only
+ * one team can still play, end the match. Safe no-op when the game is fine or not
+ * in team play. Best-effort — never blocks the leave.
+ */
+export async function reconcileQuickDrawGuessAfterRemoval(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error?: string; internal?: boolean }> {
+  const { session, error, internal } = await loadSession(supabase, gameId)
+  if (error) return { error, internal }
+  if (!session || session.status !== 'active' || session.mode === 'individual') return {}
+  if (session.phase !== 'turn' && session.phase !== 'break') return {}
+
+  const teamRows = await loadTeamRows(supabase, gameId)
+  const playable = new Set(describeItPlayableTeams(teamRoster(teamRows), session.num_teams))
+  // With 2+ teams still able to play, only a collapse of the CURRENT live turn's
+  // team needs handling now — a pending break will skip unplayable teams on its
+  // own. (In 'break', active_team is the team that just finished, so ignore it.)
+  if (playable.size >= 2 && (session.phase !== 'turn' || playable.has(session.active_team))) return {}
+
+  // Collapse the dead turn into an immediate break, then let advance skip the
+  // unplayable team (or finish when only one team is left).
+  if (session.phase === 'turn') {
+    const { error: breakError } = await supabase
+      .from('quick_draw_guess_sessions')
+      .update({
+        phase: 'break',
+        turn_deadline_at: null,
+        break_deadline_at: deadline(0),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('game_id', gameId)
+      .eq('phase', 'turn')
+      .eq('turn_index', session.turn_index)
+    if (breakError) return internalFailure('quick-draw-guess:reconcile', breakError)
+  }
+  return processQuickDrawGuessAdvance(supabase, gameId, { force: true })
+}
+
 export function computeQuickDrawGuessTeamScores(
   words: Pick<QuickDrawGuessWord, 'team' | 'status'>[],
   numTeams: number
@@ -679,7 +755,7 @@ export function quickDrawGuessIndividualLeaderboard(
 }
 
 export function quickDrawGuessRoleLeaderboards(
-  guesses: Array<Pick<QuickDrawGuessGuess, 'player_id' | 'turn_index' | 'points'>>,
+  guesses: Array<Pick<QuickDrawGuessGuess, 'player_id' | 'turn_index' | 'points' | 'created_at'>>,
   roster: string[],
   players: Array<{ id: string; name: string; spectator?: boolean | null }>
 ) {

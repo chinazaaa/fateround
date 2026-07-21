@@ -8,12 +8,18 @@ import {
   parseSudokuMetadata,
   playerHasSolvedCell,
 } from '@fateround/shared/sudoku'
-import { playerIsViewer } from '@fateround/shared/viewers'
+import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
+import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
+import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { SudokuGameTimerBar } from '@/components/games/sudoku/SudokuGameTimerBar'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { pointsLeaderboard } from '@/lib/finish-leaderboards'
@@ -26,6 +32,7 @@ import {
   boardCompletionPercent,
   buildCellOwnerGrid,
   completedSudokuNumbersForPlayer,
+  countEmptyCells,
   formatMinutesSeconds,
   getNewlyCompletedUnits,
   getPlayerTimeSpent,
@@ -39,7 +46,16 @@ import {
   type SudokuUnitFlash,
 } from '@/components/games/sudoku/standings'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'late_join_choice'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 // Shared read-only "no local drafts" grid for rendering a watched player's board.
 const EMPTY_DRAFTS: number[][] = Array.from({ length: 9 }, () => Array(9).fill(0))
@@ -100,7 +116,13 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     waitingScreen: 'waiting',
     loadGameState: (game, _players) => loadGameState(game),
     computeScreen: (game, playerId, state) => {
-      if (!playerId) return 'join'
+      if (!playerId) {
+        const pre = preJoinScreen(game, false)
+        if (pre === 'game_ended') return 'game_ended'
+        if (pre === 'game_started_waiting') return 'game_started_waiting'
+        if (pre === 'late_join_choice') return 'late_join_choice'
+        return 'join'
+      }
       if (game.status === 'finished') return 'finished'
       if (game.status === 'waiting') return 'waiting'
       return state ? 'playing' : 'waiting'
@@ -122,6 +144,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     },
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
+  const lateJoin = useLateJoinContext(gameCode, bootstrap.game, bootstrap.screen === 'late_join_choice')
 
   useGameTableSync(
     gameCode,
@@ -167,6 +190,30 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   }, [activePlayers])
 
   const standings = useMemo(() => tallySudokuScores(submissions, activePlayers), [submissions, activePlayers])
+
+  // Feed the roster drawer scoreboard: points headline + "cells left · time" detail.
+  const rosterScores = useMemo(() => Object.fromEntries(standings.map((r) => [r.player_id, r.points])), [standings])
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const r of standings) {
+      const claimed = submissions.filter(
+        (s) => s.player_id === r.player_id && s.is_correct && s.cell_row != null && s.cell_col != null
+      ).length
+      const cellsLeft = puzzle ? countEmptyCells(puzzle) - claimed : 0
+      const timeSecs = getPlayerTimeSpent(
+        bootstrap.game,
+        submissions,
+        r.player_id,
+        puzzle ? playerCompletionPercent(puzzle, submissions, r.player_id) : 0,
+        nowMs,
+        activePlayers.find((p) => p.id === r.player_id)?.joined_at
+      )
+      map[r.player_id] = `⬜ ${cellsLeft} left · ⏱ ${formatMinutesSeconds(timeSecs)}`
+    }
+    return map
+  }, [standings, submissions, puzzle, bootstrap.game, nowMs, activePlayers])
+  useGameStats(rosterDetails)
 
   const me = bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
   const viewing = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
@@ -371,8 +418,40 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     setUndoStack([])
   }
 
+  const gameTimer =
+    (bootstrap.game?.game_duration_seconds ?? 0) > 0 && bootstrap.game?.status === 'active' ? (
+      <SudokuGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} onExpired={() => void bootstrap.load()} />
+    ) : null
+  const gameTimerPinned = useStickyTimer(gameTimer, [bootstrap.code, bootstrap.game])
+
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
+  if (bootstrap.screen === 'late_join_choice' && bootstrap.game) {
+    return (
+      <LateJoinChoiceScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        context={lateJoin.context}
+        contextLoading={lateJoin.loading}
+        nameInput={bootstrap.joinName}
+        onNameChange={bootstrap.setJoinName}
+        joining={bootstrap.joining}
+        error={bootstrap.error}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        onJoinAsPlayer={() => void bootstrap.join(undefined, { joinAsViewer: false })}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
     return (
       <JoinScreen
@@ -382,6 +461,8 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
       />
     )
   }
@@ -444,7 +525,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('sudoku')} subtitle={bootstrap.code}>
       <ScrollView contentContainerStyle={styles.content}>
-        <SudokuGameTimerBar gameCode={bootstrap.code} game={bootstrap.game} />
+        {gameTimerPinned ? null : gameTimer}
 
         {toast ? (
           <View style={[styles.toast, toast.ok ? styles.toastOk : styles.toastBad]}>
@@ -721,22 +802,25 @@ const makeStyles = (theme: Theme) =>
     // White label on the solid rose active chip — intentional.
     watchChipTextActive: { color: '#fff' },
     viewingHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 16 },
-    // Sudoku grid is a functional board (Step D) — frame + cell state colors left as-is.
-    board: { alignSelf: 'center', borderWidth: 2, borderColor: '#374151', marginTop: 8 },
+    // Theme-aware grid: light cells + dark digits in light mode, dark cells + light digits in
+    // dark mode. (Was hardcoded dark, so the board stayed black in light mode.) textFaint gives
+    // grid lines that read on both a white and a near-black background.
+    board: { alignSelf: 'center', borderWidth: 2, borderColor: theme.textFaint, marginTop: 8 },
     row: { flexDirection: 'row' },
     cell: {
       width: 34,
       height: 34,
       borderWidth: 1,
-      borderColor: '#374151',
+      borderColor: theme.textFaint,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: '#111827',
+      backgroundColor: theme.surface,
     },
-    cellGiven: { backgroundColor: '#1f2937' },
+    // Pre-filled clue cells sit one step off the base surface so they read as fixed.
+    cellGiven: { backgroundColor: theme.surfaceHover },
     cellSelected: { borderColor: '#f43f5e' },
-    // White digit on the dark grid cell — intentional (case 2).
-    cellText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+    // Digit follows the theme text colour (dark on light cells, light on dark cells).
+    cellText: { color: theme.text, fontWeight: '700', fontSize: 14 },
     // Dark digit on the pastel-green "my solved" cell so the value stays readable.
     cellTextSolved: { color: '#0b1220' },
     // Red digit marks a wrong guess left in place.

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   DescribeItCard,
@@ -14,10 +14,12 @@ import { gameTypeConfig } from '@/lib/game-types'
 import {
   clampDescribeItMode,
   clampDescribeItTeams,
+  describeItIndividualLeaderboard,
   isDescribeItResultsPhase,
   DESCRIBE_IT_MIN_PLAYERS,
   DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
 } from '@/lib/describe-it'
+import { useGameScores, useGameStats, useRosterBase } from '@/components/roster/RosterDrawerContext'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { DescribeItAchievementPosts } from '@/components/describe-it/DescribeItAchievementPosts'
 import { supabase } from '@/lib/supabase'
@@ -40,7 +42,9 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { preJoinScreen, playerIsViewer, allowLatePlayers } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
@@ -141,6 +145,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, DescribeItSession | null>({
     gameCode,
@@ -153,10 +158,31 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
 
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
+  // Describe It is standalone (no shared dispatcher), so register base rows here +
+  // feed the drawer scoreboard in individual mode: points headline + guesses detail.
+  useRosterBase(game?.status === 'active' || game?.status === 'finished' ? players : undefined, game, myPlayerId)
+  const dItIndividual = clampDescribeItMode(game?.describe_it_mode) === 'individual'
+  const dItLeaderboard = useMemo(() => describeItIndividualLeaderboard(teamRows, players), [teamRows, players])
+  useGameScores(
+    useMemo(
+      () => (dItIndividual ? Object.fromEntries(dItLeaderboard.map((r) => [r.id, r.score])) : null),
+      [dItIndividual, dItLeaderboard]
+    ),
+    { suffix: ' pts' }
+  )
+  useGameStats(
+    useMemo(() => {
+      if (!dItIndividual) return null
+      const counts: Record<string, number> = {}
+      for (const g of guesses) if (g.correct) counts[g.player_id] = (counts[g.player_id] ?? 0) + 1
+      return Object.fromEntries(dItLeaderboard.map((r) => [r.id, `✅ ${counts[r.id] ?? 0} guessed`]))
+    }, [dItIndividual, dItLeaderboard, guesses])
+  )
+
   useTurnNotifications({ status: game?.status })
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [
       { table: 'games', column: 'id' },
@@ -169,7 +195,11 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
   const pickTeam = async (team: number) => {
     if (!myPlayerId) return
@@ -272,6 +302,33 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     enabled: game?.status === 'active' && !isViewer,
   })
 
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙ gear
+  // (top header). Registered while the game is active; GameChromeSettings renders it in the sheet.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={activePlayer?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, activePlayer?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
   if (screen === 'loading') return <DescribeItLoadingScreen />
 
   if (screen === 'not_found') {
@@ -296,6 +353,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
             emoji={cfg.headerEmoji}
             title={game?.title ?? cfg.label}
             gameType="describe_it"
+            contentLabel={game?.content_label}
             subtitle={cfg.tagline}
           />
         }
@@ -304,6 +362,8 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType={['describe_it_describer', 'describe_it_guesser']}
           footer={
@@ -350,6 +410,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={isIndividual ? DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL : DESCRIBE_IT_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -364,6 +425,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myName}
@@ -435,17 +497,6 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
             roundKey={session?.id}
           />
         )}
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby
-            spectating={isViewer}
-          />
-        )}
       </DescribeItShell>
     )
   }
@@ -468,16 +519,6 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
           onGuess={isViewer ? undefined : (text) => void sendAction('guess', { text })}
           onSkip={isViewer ? undefined : () => void sendAction('skip', {})}
           acting={acting}
-        />
-      )}
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isViewer}
         />
       )}
     </DescribeItShell>

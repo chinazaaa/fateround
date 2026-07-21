@@ -1,4 +1,4 @@
-﻿/** Slim column lists for hot-path Supabase queries (avoids select('*') egress). */
+/** Slim column lists for hot-path Supabase queries (avoids select('*') egress). */
 
 // NOTE: host_token / resume_token are deliberately excluded — they are secret auth
 // credentials anon must never read (migration 0122 revokes them at the DB). They are
@@ -6,9 +6,10 @@
 // server-side via the service role. Anon `select('*')` on games/players now ERRORS, so
 // client reads must use these curated lists.
 export const GAME_SELECT =
-  'id,title,rounds_count,timer_seconds,operative_timer_seconds,anonymous,auto_reveal,auto_submit_behavior,participant_mode,participant_filter,pair_vote_mode,question_source,custom_questions,player_questions_enabled,player_questions_order,game_type,theme,status,current_round_number,created_at,finished_at,session_started_at,allow_viewers,allow_late_players,max_players,anonymous_messages_trimmed_at,wst_quote_source,custom_slots,gender_based,codewords_player_picks,codewords_late_join,codewords_randomize_teams,describe_it_num_teams,describe_it_mode,quick_draw_variant,quick_draw_play_mode,quick_draw_num_teams,word_rush_mode,word_rush_prompt_mode,word_rush_difficulty,word_rush_num_teams,pool_usage,trivia_category,bingo_call_mode,bingo_call_interval_seconds,game_duration_seconds,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,ludo_variant,ayo_variant,mahjong_ruleset,mahjong_rule_options,scrabble_dictionary_id,scrabble_clock_mode,scrabble_clock_seconds,chess_board_theme,chess_piece_set,tournament_id,pending_host_player_id,is_public,music_enabled,replay_pending'
+  'id,title,content_label,rounds_count,timer_seconds,operative_timer_seconds,anonymous,auto_reveal,auto_submit_behavior,participant_mode,participant_filter,pair_vote_mode,question_source,custom_questions,player_questions_enabled,player_questions_order,game_type,theme,status,current_round_number,created_at,finished_at,session_started_at,allow_viewers,allow_late_players,max_players,anonymous_messages_trimmed_at,wst_quote_source,custom_slots,gender_based,codewords_player_picks,codewords_late_join,codewords_randomize_teams,describe_it_num_teams,describe_it_mode,quick_draw_variant,quick_draw_play_mode,quick_draw_num_teams,word_rush_mode,word_rush_prompt_mode,word_rush_difficulty,word_rush_num_teams,pool_usage,trivia_category,bingo_call_mode,bingo_call_interval_seconds,game_duration_seconds,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,uno_wd4_challenge,uno_uno_penalty,uno_wd4_challenge_penalty,uno_zero_seven,uno_stacking,uno_multi_play,uno_multi_play_mode,uno_team_mode,ludo_variant,ayo_variant,mahjong_ruleset,mahjong_rule_options,scrabble_dictionary_id,scrabble_clock_mode,scrabble_clock_seconds,chess_board_theme,chess_piece_set,tournament_id,pending_host_player_id,host_player_id,is_public,music_enabled,replay_pending,crossword_theme,crossword_difficulty,word_search_theme,word_search_difficulty,word_scramble_theme,word_scramble_difficulty,monopoly_double_go_salary,monopoly_forced_auctions,monopoly_no_rent_in_jail,monopoly_estate_dividend,landmine_mode,landmine_mine_count,landmine_originality_bonus,landmine_mine_source,landmine_elim_seconds,landmine_review,landmine_review_seconds,ping_pong_points_to_win'
 
-export const PLAYER_SELECT = 'id,game_id,name,gender,identity_gender,participant_id,joined_at,spectator,monopoly_token'
+export const PLAYER_SELECT =
+  'id,game_id,name,gender,identity_gender,participant_id,joined_at,spectator,monopoly_token,is_eliminated,eliminated_at,lives_remaining'
 
 /** Host-side game read: GAME_SELECT plus the host-only AI-questions fields (the host
  *  settings panel reads them). Still excludes host_token — the host page validates its
@@ -22,20 +23,53 @@ export const PARTICIPANT_SELECT =
   'id,game_id,name,gender,photo_url,description,display_order,in_mlt_poll,submitted_by_player_id'
 
 export const ROUND_SELECT =
-  'id,game_id,round_number,participant_ids,wyr_option_a,wyr_option_b,mlt_question,submitter_player_id,quote_text,quote_author_participant_id,quote_submitted_at,status,started_at,ended_at,anime_metadata,trivia_metadata,ttl_metadata,npat_metadata,sudoku_metadata,word_hunt_metadata,memory_match_metadata,quiplash_metadata,quick_draw_metadata'
+  'id,game_id,round_number,participant_ids,wyr_option_a,wyr_option_b,mlt_question,submitter_player_id,quote_text,quote_author_participant_id,quote_submitted_at,status,started_at,ended_at,anime_metadata,trivia_metadata,ttl_metadata,npat_metadata,sudoku_metadata,word_hunt_metadata,memory_match_metadata,quiplash_metadata,quick_draw_metadata,crossword_metadata,landmine_metadata'
 
 export const SUDOKU_SUBMISSION_SELECT =
   'id,game_id,round_id,player_id,block_index,cell_row,cell_col,submitted_value,is_correct,points_awarded,submitted_at'
 
 export const WORD_HUNT_SUBMISSION_SELECT = 'id,game_id,round_id,player_id,word,path,points_awarded,submitted_at'
 
+export const CROSSWORD_SUBMISSION_SELECT =
+  'id,game_id,round_id,player_id,cell_row,cell_col,submitted_letter,is_correct,via_hint,submitted_at'
+
+export const PING_PONG_SESSION_SELECT =
+  'id,game_id,player_x_id,player_o_id,score_x,score_o,points_to_win,status,winner_player_id,status_message,created_at,updated_at'
+
 export const VOTE_SELECT =
-  'id,player_id,round_id,game_id,kiss_participant_id,marry_participant_id,kill_participant_id,pair_assignments,wyr_choice,target_player_id,target_participant_id,anime_choice,picked_number,created_at'
+  'id,player_id,round_id,game_id,kiss_participant_id,marry_participant_id,kill_participant_id,pair_assignments,wyr_choice,target_player_id,target_participant_id,anime_choice,picked_number,response_ms,points,created_at'
 
 export const CONFESSION_SELECT = 'id,game_id,round_id,text,created_at'
 
 export const MONOPOLY_BOARD_SELECT =
   'id,game_id,turn_order,current_turn_index,phase,last_dice,consecutive_doubles,property_owners,property_buildings,mortgaged_properties,houses_in_bank,hotels_in_bank,chance_deck,community_deck,chance_discard,community_discard,auction_state,pending_trade,pending_debt,pending_space,status_message,last_card_event,last_rent_event,last_cash_event,last_trade_event,turn_deadline_at,winner_player_id,created_at,updated_at'
+
+/**
+ * `monopoly_boards` columns that are NOT NULL in the DB.
+ *
+ * Realtime UPDATE payloads omit unchanged TOAST-ed columns — once a game has enough owned
+ * properties for `property_owners` (and the other large jsonb columns) to be stored out-of-line,
+ * a board update that doesn't touch them delivers them as `null`. Since these columns can never
+ * legitimately be null, a null here proves the pushed row is partial: applying it would wipe
+ * ownership, buildings and the decks on screen. Callers use {@link isCompleteMonopolyBoardRow}
+ * to detect that and fall back to a full reload instead of the delta fast-path.
+ */
+export const MONOPOLY_BOARD_NOT_NULL_KEYS = [
+  'property_owners',
+  'property_buildings',
+  'mortgaged_properties',
+  'chance_deck',
+  'community_deck',
+  'chance_discard',
+  'community_discard',
+  'turn_order',
+] as const
+
+/** True when a pushed `monopoly_boards` row carries every NOT-NULL column (i.e. is not a
+ *  TOAST-truncated partial realtime payload — see {@link MONOPOLY_BOARD_NOT_NULL_KEYS}). */
+export function isCompleteMonopolyBoardRow(row: Record<string, unknown>): boolean {
+  return MONOPOLY_BOARD_NOT_NULL_KEYS.every((key) => row[key] != null)
+}
 
 /** Default per-turn timer when host enables timing (seconds). 0 = off. */
 export const MONOPOLY_DEFAULT_TURN_TIMER = 45
@@ -63,6 +97,11 @@ export const CRAZY8_SESSION_SELECT =
   'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at,created_at,updated_at'
 
 export const CRAZY8_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
+
+export const UNO_SESSION_SELECT =
+  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,pending_wild,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,turn_deadline_at,created_at,updated_at'
+
+export const UNO_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
 export const LUDO_SESSION_SELECT =
   'id,game_id,turn_order,current_turn_index,phase,last_dice,remaining_dice,consecutive_sixes,extra_turn,status_message,winner_player_id,turn_deadline_at,created_at,updated_at'
@@ -166,7 +205,13 @@ export const NPAT_ANSWER_SELECT =
 export const NPAT_MARK_SELECT =
   'id,game_id,round_id,marker_player_id,target_player_id,valid_name,valid_animal,valid_place,valid_thing,valid_food,marked_at'
 
-export const WST_QUOTE_POOL_SELECT = 'id,game_id,player_id,quote_text,author_participant_id,created_at,updated_at'
+export const LANDMINE_ANSWER_SELECT =
+  'id,game_id,round_id,player_id,answer,submitted_at,points,outcome,mine_hit,is_original'
+
+export const LANDMINE_MARK_SELECT = 'id,game_id,round_id,marker_player_id,target_player_id,valid,marked_at'
+
+export const WST_QUOTE_POOL_SELECT =
+  'id,game_id,player_id,quote_text,options,correct_index,author_participant_id,created_at,updated_at'
 
 export const PLAYER_QUESTION_SELECT = 'id,player_id,question_type,option_a,option_b,question_text'
 

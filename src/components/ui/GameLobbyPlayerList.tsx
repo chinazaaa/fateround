@@ -12,6 +12,9 @@ type Props = {
   maxCapacity?: number | null
   className?: string
   emptyMessage?: string
+  /** Label shown after a spectator's name. Defaults to "not ready"; pass "watching"
+   *  when spectators can't take a seat (e.g. the lobby is full). */
+  spectatorLabel?: string
 }
 
 export function GameLobbyPlayerList({
@@ -22,6 +25,7 @@ export function GameLobbyPlayerList({
   maxCapacity,
   className = '',
   emptyMessage = 'No players yet',
+  spectatorLabel = 'not ready',
 }: Props) {
   const countSuffix =
     maxCapacity != null
@@ -39,12 +43,14 @@ export function GameLobbyPlayerList({
       {players.length === 0 ? (
         <p className="text-faint text-xs text-center py-2">{emptyMessage}</p>
       ) : (
-        <div className="space-y-1.5 max-h-52 overflow-y-auto">
+        // Capped height + scroll so a full lobby never elongates the page; two
+        // columns on wider screens so ~25 players stay browsable, not a long scroll.
+        <div className="grid max-h-56 grid-cols-1 gap-x-5 gap-y-1.5 overflow-y-auto sm:grid-cols-2">
           {players.map((player) => {
             const isMe = myPlayerId != null && player.id === myPlayerId
             const notReady = player.spectator === true
             return (
-              <div key={player.id} className="flex items-center gap-2">
+              <div key={player.id} className="flex items-center gap-2 min-w-0">
                 <div
                   className={`w-2 h-2 rounded-full shrink-0 ${notReady ? 'bg-[var(--border-strong)]' : isMe ? 'bg-[var(--primary)]' : 'bg-emerald-500'}`}
                 />
@@ -56,7 +62,7 @@ export function GameLobbyPlayerList({
                     {player.name.length > 12 ? `${player.name.slice(0, 11)}…` : player.name}
                   </span>
                   {isMe ? ' (you)' : ''}
-                  {notReady ? <span className="text-faint text-xs"> · not ready</span> : null}
+                  {notReady ? <span className="text-faint text-xs"> · {spectatorLabel}</span> : null}
                 </span>
               </div>
             )

@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Pressable, Share, StyleSheet, Text, View } from 'react-native'
 import { playerResumeUrl } from '@/lib/game-links'
+import { getPlayerSession } from '@/lib/secure-session'
+import { subscribePlayerSession } from '@/lib/session-events'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
@@ -10,18 +12,48 @@ type Props = {
   compact?: boolean
 }
 
-export function PlayerResumeCard({ gameCode, resumeToken, compact = false }: Props) {
+export function PlayerResumeCard({ gameCode, resumeToken: resumeTokenProp, compact = false }: Props) {
   const styles = useThemedStyles(makeStyles)
   const [open, setOpen] = useState(false)
+  const [revealed, setRevealed] = useState(false)
+  // Our callers read the session once and pass the token down, so it goes stale when
+  // the code is rotated from the share sheet. Track the stored one and prefer it.
+  const [storedToken, setStoredToken] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    const read = async () => {
+      const session = await getPlayerSession(gameCode)
+      if (active) setStoredToken(session?.resumeToken ?? null)
+    }
+    void read()
+    const unsubscribe = subscribePlayerSession(gameCode, () => void read())
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [gameCode])
+
+  useEffect(() => {
+    setRevealed(false)
+  }, [storedToken])
+
+  const resumeToken = storedToken ?? resumeTokenProp
   if (!resumeToken) return null
 
   const url = playerResumeUrl(gameCode, resumeToken)
+  const maskedToken = resumeToken.slice(0, 2) + '••••'
 
   if (compact) {
     return (
-      <Text style={styles.compact}>
-        Player code <Text style={styles.code}>{resumeToken}</Text>
-      </Text>
+      <View style={styles.compactRow}>
+        <Text style={styles.compact}>
+          Player code <Text style={styles.code}>{revealed ? resumeToken : maskedToken}</Text>
+        </Text>
+        <Pressable onPress={() => setRevealed((v) => !v)} hitSlop={8}>
+          <Text style={styles.revealSmall}>{revealed ? 'Hide' : 'Reveal'}</Text>
+        </Pressable>
+      </View>
     )
   }
 
@@ -57,7 +89,10 @@ export function PlayerResumeCard({ gameCode, resumeToken, compact = false }: Pro
         </Pressable>
       </View>
       <Text style={styles.cardHint}>Save this code or link to pick up where you left off.</Text>
-      <Text style={styles.codeLarge}>{resumeToken}</Text>
+      <Pressable onPress={() => setRevealed((v) => !v)}>
+        <Text style={styles.codeLarge}>{revealed ? resumeToken : maskedToken}</Text>
+        <Text style={styles.revealHint}>{revealed ? 'Tap to hide' : 'Tap to reveal'}</Text>
+      </Pressable>
       <Pressable style={styles.shareBtn} onPress={() => void onShare()}>
         <Text style={styles.shareText}>Share resume link</Text>
       </Pressable>
@@ -67,7 +102,10 @@ export function PlayerResumeCard({ gameCode, resumeToken, compact = false }: Pro
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
+  compactRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   compact: { color: theme.textFaint, fontSize: 12 },
+  revealSmall: { color: theme.textFaint, fontSize: 11, fontWeight: '600' },
+  revealHint: { color: theme.textFaint, fontSize: 12, textAlign: 'center' },
   code: { color: theme.textSecondary, fontWeight: '700', letterSpacing: 2 },
   collapsed: {
     flexDirection: 'row',

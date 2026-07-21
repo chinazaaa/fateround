@@ -3,19 +3,13 @@
 import { useState } from 'react'
 import {
   computeDescribeItScores,
-  describeItIndividualLeaderboard,
   describeItTotalTurns,
   teamForTurn,
   totalDescribeItTurns,
   type DescribeItTeamScore,
 } from '@/lib/describe-it'
 import type { DescribeItGuess, DescribeItSession, DescribeItWord, Player } from '@/types'
-import {
-  DescribeItCard,
-  DescribeItPlayerScoreboard,
-  DescribeItScoreboard,
-  TeamBadge,
-} from '@/components/describe-it/DescribeItChrome'
+import { DescribeItCard, DescribeItScoreboard, TeamBadge } from '@/components/describe-it/DescribeItChrome'
 
 function GuessFeed({
   guesses,
@@ -140,7 +134,11 @@ export function DescribeItPlayPanel({
   const myTeam = teamRows.find((r) => r.player_id === myPlayerId)?.team ?? null
   const isDescriber = !!myPlayerId && session.describer_player_id === myPlayerId
   const onActiveTeam = myTeam === activeTeam
-  const inRoster = !!myPlayerId && session.roster.includes(myPlayerId)
+  // Gate on the LIVE roster (describe_it_players/teamRows), not the frozen session.roster.
+  // Late joiners are seeded into describe_it_players but never into session.roster, so
+  // checking the snapshot hid the guess input from them — they could only watch. This mirrors
+  // the server's live-roster check in processIndividualGuess.
+  const inRoster = !!myPlayerId && teamRows.some((r) => r.player_id === myPlayerId)
   const myGuessedThisTurn = guesses.some(
     (g) => g.turn_index === session.turn_index && g.player_id === myPlayerId && g.correct
   )
@@ -152,19 +150,13 @@ export function DescribeItPlayPanel({
       : []
 
   const teamScores: DescribeItTeamScore[] = isIndividual ? [] : computeDescribeItScores(words, session.num_teams)
-  const leaderboard = isIndividual ? describeItIndividualLeaderboard(teamRows, players) : []
   // Individual mode: anyone in the roster who isn't the describer may guess.
   const canGuess = isIndividual ? inRoster && !isDescriber : onActiveTeam
 
-  const scoreboardEl = isIndividual ? (
-    <DescribeItPlayerScoreboard
-      leaderboard={leaderboard}
-      describerId={session.describer_player_id}
-      myPlayerId={myPlayerId}
-      round={session.current_round}
-      totalRounds={session.total_rounds}
-    />
-  ) : (
+  // Team mode keeps the inline team scoreboard. Individual mode's per-player leaderboard
+  // now lives in the roster side-drawer (fed via useGameScores/useGameStats), so there's
+  // no inline scoreboard here — the current describer is shown in the play area below.
+  const scoreboardEl = isIndividual ? null : (
     <DescribeItScoreboard
       scores={teamScores}
       activeTeam={activeTeam}
@@ -321,13 +313,7 @@ export function DescribeItPlayPanel({
     </div>
   )
 
-  if (!isIndividual) return inner
-
-  // Individual mode: leaderboard sits in a side column (stacks below on mobile), like Trivia.
-  return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(220px,300px)] lg:items-start">
-      {inner}
-      <aside className="space-y-4 lg:sticky lg:top-4">{scoreboardEl}</aside>
-    </div>
-  )
+  // Individual mode's leaderboard now lives in the roster side-drawer, so both modes
+  // render the same single-column play area (no side column).
+  return inner
 }

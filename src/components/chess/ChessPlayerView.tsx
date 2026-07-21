@@ -1,9 +1,12 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { Chess } from 'chess.js'
 import { useRouter } from 'next/navigation'
 import { ChessCard, ChessLoadingScreen, ChessSecondaryButton, ChessShell } from '@/components/chess/ChessChrome'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ChessFinalResultsShareBlock } from '@/components/chess/ChessFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ChessGamePanel } from '@/components/chess/ChessBoard'
@@ -26,7 +29,6 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
@@ -124,6 +126,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
     joinName,
     setJoinName,
     joining,
+    lobbyFull,
     load,
     join,
   } = useGameViewBootstrap<Screen, ChessSession | null>({
@@ -144,26 +147,36 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   // event must not roll the board back); an optimistic local move keeps the previous
   // updated_at, so the authoritative row for that same move still lands.
   const applySessionRow = useCallback(
-    (row: Record<string, unknown>) => {
-      acceptSession(row as unknown as ChessSession)
+    (row: Record<string, unknown>): boolean => {
+      const prev = sessionRef.current
+      const accepted = acceptSession(row as unknown as ChessSession)
+      // Skip the reconciliation reload for an ordinary in-progress move (the board is fully
+      // patched above and the tighter duel poll reconciles); the first row and any status
+      // transition (→ finished) still reload so the result screen resolves.
+      return prev != null && prev.status === 'active' && accepted.status === 'active'
     },
     [acceptSession]
   )
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     ['players', { table: 'games', column: 'id' }, { table: 'chess_sessions', apply: applySessionRow }],
     load
   )
 
   // Fallback poll: tighter while the match is live, so a dropped realtime channel
-  // costs seconds of move lag instead of most of a minute.
+  // costs seconds of move lag instead of most of a minute. Only runs while the
+  // channel is down — no redundant reloads alongside healthy realtime.
   usePolling(() => load(), [gameCode, load], {
     intervalMs:
-      screen === 'active' && session?.status === 'active'
-        ? POLL_INTERVALS.duelFallback
-        : POLL_INTERVALS.realtimeFallback,
+      game?.status === 'waiting'
+        ? POLL_INTERVALS.lobby
+        : screen === 'active' && session?.status === 'active'
+          ? POLL_INTERVALS.duelFallback
+          : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
   })
 
   useLobbyOpenNotification(game?.status, () => {
@@ -310,6 +323,34 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
 
   useChessClockExpiry(gameCode, session, game?.status === 'active' && !isViewer)
 
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Available whenever the player holds a seat — lobby, active play,
+  // and the finished / replay ready-up screen — not just during active play.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={myName}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, myName, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
   if (screen === 'loading') return <ChessLoadingScreen />
 
   if (screen === 'not_found') {
@@ -351,6 +392,8 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           onSubmit={() => void join()}
           joining={joining}
           gameType="chess"
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
           footer={
             <p className="text-center pt-1">
@@ -381,6 +424,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={CHESS_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -395,6 +439,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myName}
@@ -454,17 +499,6 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
             roundKey={session?.id}
           />
         )}
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby
-            spectating={isViewer}
-          />
-        )}
       </ChessShell>
     )
   }
@@ -483,16 +517,6 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           onMove={!isViewer ? movePiece : undefined}
           onResign={!isViewer ? resign : undefined}
           acting={acting}
-        />
-      )}
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isViewer}
         />
       )}
     </ChessShell>

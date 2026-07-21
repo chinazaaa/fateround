@@ -87,9 +87,30 @@ export function monopolyTurnDeadline(timerSeconds: number): string | null {
   return new Date(Date.now() + timerSeconds * 1000).toISOString()
 }
 
-async function getMonopolyTimerSeconds(supabase: SupabaseClient, gameId: string): Promise<number> {
-  const { data } = await supabase.from('games').select('timer_seconds').eq('id', gameId).maybeSingle()
-  return (data?.timer_seconds ?? 0) as number
+export async function getMonopolyGameSettings(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{
+  timerSeconds: number
+  doubleGo: boolean
+  forcedAuctions: boolean
+  noRentInJail: boolean
+  estateDividend: boolean
+}> {
+  const { data } = await supabase
+    .from('games')
+    .select(
+      'timer_seconds, monopoly_double_go_salary, monopoly_forced_auctions, monopoly_no_rent_in_jail, monopoly_estate_dividend'
+    )
+    .eq('id', gameId)
+    .maybeSingle()
+  return {
+    timerSeconds: (data?.timer_seconds ?? 0) as number,
+    doubleGo: data?.monopoly_double_go_salary === true,
+    forcedAuctions: data?.monopoly_forced_auctions === true,
+    noRentInJail: data?.monopoly_no_rent_in_jail === true,
+    estateDividend: data?.monopoly_estate_dividend === true,
+  }
 }
 
 function monopolyDeadlineForPhase(timerSeconds: number, phase: MonopolyPhase): string | null {
@@ -165,17 +186,23 @@ export function movePosition(from: number, steps: number): { to: number; passedG
 /** Passing or landing on GO while moving forward — collect salary and unlock buying/cards. */
 export function applyGoPass(
   cash: number,
-  _passedGoOnce: boolean
+  _passedGoOnce: boolean,
+  exactGo?: boolean,
+  doubleGoRule?: boolean
 ): { cash: number; passedGoOnce: boolean; collected: number } {
+  const amount = exactGo && doubleGoRule ? MONOPOLY_GO_SALARY * 2 : MONOPOLY_GO_SALARY
   return {
-    cash: cash + MONOPOLY_GO_SALARY,
+    cash: cash + amount,
     passedGoOnce: true,
-    collected: MONOPOLY_GO_SALARY,
+    collected: amount,
   }
 }
 
-function goPassStatusSuffix(collected: number): string {
-  return `Passed GO — collected ${formatMonopolyMoney(collected)}. `
+function goPassStatusSuffix(collected: number, exactGo?: boolean): string {
+  if (exactGo && collected > MONOPOLY_GO_SALARY) {
+    return ` Landed on GO! Collected ${formatMonopolyMoney(collected)}.`
+  }
+  return ` Passed GO — collected ${formatMonopolyMoney(collected)}.`
 }
 
 export function nextTurnIndex(board: MonopolyBoard, states: MonopolyPlayerState[]): number {
@@ -751,36 +778,41 @@ export function planMultiPlayerCashDeltas(
   currentDrawerCash?: number
 ): {
   drawerCash: number
-  error?: string
-  failedPlayerId?: string
+  failedDebts: { playerId: string; amount: number; creditorId: string | null }[]
   otherWrites: { player_id: string; cash_delta: number }[]
 } {
   const drawer = states.find((s) => s.player_id === drawerId)
-  if (!drawer && currentDrawerCash === undefined) {
-    return { drawerCash: 0, error: 'Player not found', otherWrites: [] }
-  }
-
   const baseCash = currentDrawerCash !== undefined ? currentDrawerCash : (drawer?.cash ?? 0)
-  const drawerCash = baseCash + drawerDelta
 
-  for (const [id, delta] of Object.entries(others)) {
-    const target = states.find((s) => s.player_id === id)
-    if (!target) continue
-    if (target.cash + delta < 0) {
-      return { drawerCash, error: 'Insufficient funds', failedPlayerId: id, otherWrites: [] }
+  let safeDrawerDelta = 0
+  const failedDebts: { playerId: string; amount: number; creditorId: string | null }[] = []
+  const otherWrites: { player_id: string; cash_delta: number }[] = []
+
+  if (drawerDelta < 0) {
+    if (baseCash + drawerDelta < 0) {
+      for (const [id, delta] of Object.entries(others)) {
+        failedDebts.push({ playerId: drawerId, amount: delta, creditorId: id })
+      }
+    } else {
+      safeDrawerDelta = drawerDelta
+      for (const [id, delta] of Object.entries(others)) {
+        otherWrites.push({ player_id: id, cash_delta: delta })
+      }
+    }
+  } else {
+    for (const [id, delta] of Object.entries(others)) {
+      const target = states.find((s) => s.player_id === id)
+      if (!target) continue
+      if (target.cash + delta < 0) {
+        failedDebts.push({ playerId: id, amount: Math.abs(delta), creditorId: drawerId })
+      } else {
+        safeDrawerDelta += Math.abs(delta)
+        otherWrites.push({ player_id: id, cash_delta: delta })
+      }
     }
   }
-  if (drawerCash < 0) {
-    return { drawerCash, error: 'Insufficient funds', failedPlayerId: drawerId, otherWrites: [] }
-  }
 
-  const otherWrites: { player_id: string; cash_delta: number }[] = []
-  for (const [id, delta] of Object.entries(others)) {
-    if (!states.some((s) => s.player_id === id)) continue
-    otherWrites.push({ player_id: id, cash_delta: delta })
-  }
-
-  return { drawerCash, otherWrites }
+  return { drawerCash: baseCash + safeDrawerDelta, failedDebts, otherWrites }
 }
 
 function nextTradeEvent(
@@ -840,7 +872,7 @@ async function finalizeAuction(
   const space = spaceAt(spaceIndex)
   const spaceKey = String(spaceIndex)
   const turnFinish = finishTurnAfterSpaceAction(board, states, turnPlayerId)
-  const timerSeconds = await getMonopolyTimerSeconds(supabase, gameId)
+  const settings = await getMonopolyGameSettings(supabase, gameId)
 
   const { data: freshBoardRaw, error: freshBoardError } = await supabase
     .from('monopoly_boards')
@@ -891,7 +923,7 @@ async function finalizeAuction(
             auction_state: restartAuction,
             pending_space: spaceIndex,
             status_message: `${defaulterName} could not afford ${formatMonopolyMoney(auction.high_bid)} — auction reopens.`,
-            turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, 'auction'),
+            turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, 'auction'),
           },
           expectedUpdatedAt
         )
@@ -927,7 +959,7 @@ async function finalizeAuction(
           consecutive_doubles: turnFinish.consecutiveDoubles,
           status_message: statusMessage,
           last_cash_event: lastCashEvent,
-          turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, turnFinish.phase),
+          turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, turnFinish.phase),
         },
         p_player_patches: [{ player_id: auction.high_bidder_id, cash_delta: -auction.high_bid }],
       })
@@ -956,7 +988,7 @@ async function finalizeAuction(
       consecutive_doubles: turnFinish.consecutiveDoubles,
       status_message: statusMessage,
       ...(lastCashEvent ? { last_cash_event: lastCashEvent } : {}),
-      turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, turnFinish.phase),
+      turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, turnFinish.phase),
     },
     expectedUpdatedAt
   )
@@ -1064,7 +1096,7 @@ export async function processMonopolyRoll(
   const state = states.find((s) => s.player_id === playerId)
   if (!state || state.bankrupt) return { error: 'Invalid player' }
 
-  const timerSeconds = await getMonopolyTimerSeconds(supabase, gameId)
+  const settings = await getMonopolyGameSettings(supabase, gameId)
 
   // Token for the optimistic-concurrency claim. The dice roll is non-deterministic,
   // so two concurrent fires would roll different dice; gating every board write on
@@ -1144,10 +1176,11 @@ export async function processMonopolyRoll(
       const move = movePosition(position, dice.total)
       position = move.to
       if (move.passedGo) {
-        const goPass = applyGoPass(cash, passedGoOnce)
+        const exactGo = move.to === 0
+        const goPass = applyGoPass(cash, passedGoOnce, exactGo, settings.doubleGo)
         cash = goPass.cash
         passedGoOnce = goPass.passedGoOnce
-        statusMessage += goPassStatusSuffix(goPass.collected)
+        statusMessage += goPassStatusSuffix(goPass.collected, exactGo)
       }
     } else if (jailTurns >= 3) {
       if (cash < MONOPOLY_JAIL_FINE) {
@@ -1178,7 +1211,7 @@ export async function processMonopolyRoll(
             pending_debt: jailDebt,
             pending_space: jailDebt.space_index ?? board.pending_space,
             status_message: `${jailDebt.reason} — mortgage or sell buildings to raise cash, pay, or forfeit.`,
-            turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, 'raise_funds'),
+            turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, 'raise_funds'),
             auction_state: null,
             pending_trade: null,
             last_dice: dice,
@@ -1195,10 +1228,11 @@ export async function processMonopolyRoll(
       const move = movePosition(position, dice.total)
       position = move.to
       if (move.passedGo) {
-        const goPass = applyGoPass(cash, passedGoOnce)
+        const exactGo = move.to === 0
+        const goPass = applyGoPass(cash, passedGoOnce, exactGo, settings.doubleGo)
         cash = goPass.cash
         passedGoOnce = goPass.passedGoOnce
-        statusMessage += goPassStatusSuffix(goPass.collected)
+        statusMessage += goPassStatusSuffix(goPass.collected, exactGo)
       }
     } else {
       const turnIndex = nextTurnIndex(board, states)
@@ -1214,7 +1248,7 @@ export async function processMonopolyRoll(
           phase: nextPhase,
           current_turn_index: turnIndex,
           status_message: `Still in jail — rolled ${dice.d1}+${dice.d2} (no doubles). Attempt ${jailTurns}/3.`,
-          turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, nextPhase),
+          turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, nextPhase),
         },
         board.updated_at
       )
@@ -1250,10 +1284,11 @@ export async function processMonopolyRoll(
     const move = movePosition(position, dice.total)
     position = move.to
     if (move.passedGo) {
-      const goPass = applyGoPass(cash, passedGoOnce)
+      const exactGo = move.to === 0
+      const goPass = applyGoPass(cash, passedGoOnce, exactGo, settings.doubleGo)
       cash = goPass.cash
       passedGoOnce = goPass.passedGoOnce
-      statusMessage = goPassStatusSuffix(goPass.collected)
+      statusMessage = goPassStatusSuffix(goPass.collected, exactGo)
     }
   }
 
@@ -1328,27 +1363,24 @@ export async function processMonopolyRoll(
         if (effect.getOutOfJail) getOutCards += 1
 
         const multi = planMultiPlayerCashDeltas(states, playerId, effect.cashDelta, effect.playerCashDeltas, cash)
-        if (multi.error) {
-          const failedId = multi.failedPlayerId ?? playerId
-          const owed =
-            failedId === playerId ? Math.abs(effect.cashDelta) : Math.abs(effect.playerCashDeltas[failedId] ?? 0)
-          const reason =
-            failedId === playerId
-              ? card.message
-              : `Could not pay ${formatMonopolyMoney(owed)} for card: ${card.message}`
-          if (failedId !== playerId) {
-            return bankruptPlayer(supabase, gameId, board, states, failedId, reason, board.updated_at, playerId, owed)
-          }
-          // Drawer can't pay: claim the board (folding last_dice/decks into the
-          // raise-funds transition) and write player state only if we won.
-          const cardDebt: MonopolyPendingDebt = {
-            player_id: playerId,
-            creditor_player_id: null,
-            amount: owed,
-            reason,
+        otherCashWrites = multi.otherWrites
+        cash = multi.drawerCash
+
+        if (multi.failedDebts.length > 0) {
+          const debts: MonopolyPendingDebt[] = multi.failedDebts.map((fd) => ({
+            player_id: fd.playerId,
+            creditor_player_id: fd.creditorId,
+            amount: fd.amount,
+            reason: card.message,
             debt_type: 'card',
             space_index: position,
+          }))
+
+          const firstDebt = debts[0]
+          if (debts.length > 1) {
+            firstDebt.next_debts = debts.slice(1)
           }
+
           await updatePlayerAndBoard(
             supabase,
             gameId,
@@ -1363,10 +1395,10 @@ export async function processMonopolyRoll(
             },
             {
               phase: 'raise_funds',
-              pending_debt: cardDebt,
-              pending_space: cardDebt.space_index ?? board.pending_space,
-              status_message: `${cardDebt.reason} — mortgage or sell buildings to raise cash, pay, or forfeit.`,
-              turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, 'raise_funds'),
+              pending_debt: firstDebt,
+              pending_space: firstDebt.space_index ?? board.pending_space,
+              status_message: `${firstDebt.reason} — mortgage or sell buildings to raise cash, pay, or forfeit.`,
+              turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, 'raise_funds'),
               auction_state: null,
               pending_trade: null,
               last_dice: dice,
@@ -1380,9 +1412,6 @@ export async function processMonopolyRoll(
           )
           return {}
         }
-        // Defer the other-player credits/debits into the final board claim.
-        otherCashWrites = multi.otherWrites
-        cash = multi.drawerCash
 
         if (effect.moveTo !== undefined) {
           position = effect.moveTo
@@ -1508,7 +1537,7 @@ export async function processMonopolyRoll(
       ...(lastCardEvent ? { last_card_event: lastCardEvent } : {}),
       ...(pendingDebt ? { pending_debt: pendingDebt } : {}),
       ...(lastCashEvent ? { last_cash_event: lastCashEvent } : {}),
-      turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, boardPhase),
+      turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, boardPhase),
     },
     board.updated_at,
     otherCashWrites
@@ -1558,7 +1587,7 @@ export async function processMonopolyBuy(
   const owners = parsePropertyOwners(board.property_owners)
   const { data: statesRaw } = await supabase.from('monopoly_player_state').select('*').eq('game_id', gameId)
   const states = (statesRaw ?? []) as MonopolyPlayerState[]
-  const timerSeconds = await getMonopolyTimerSeconds(supabase, gameId)
+  const settings = await getMonopolyGameSettings(supabase, gameId)
 
   if (decision === 'buy') {
     const price = space.price ?? 0
@@ -1582,7 +1611,7 @@ export async function processMonopolyBuy(
         consecutive_doubles: turnFinish.consecutiveDoubles,
         status_message: `Bought ${space.name} for ${formatMonopolyMoney(price)}.`,
         last_cash_event: lastCashEvent,
-        turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, turnFinish.phase),
+        turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, turnFinish.phase),
       },
       board.updated_at
     )
@@ -1591,6 +1620,8 @@ export async function processMonopolyBuy(
   }
 
   if (decision === 'pass') {
+    if (settings.forcedAuctions) return { error: 'Passing is disabled. You must buy or auction.' }
+
     // Decline without an auction — the property stays unowned and the turn just moves on.
     const turnFinish = finishTurnAfterSpaceAction(board, states, playerId)
     await persistBoard(
@@ -1602,7 +1633,7 @@ export async function processMonopolyBuy(
         current_turn_index: turnFinish.turnIndex,
         consecutive_doubles: turnFinish.consecutiveDoubles,
         status_message: `${space.name} was passed up — no auction.`,
-        turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, turnFinish.phase),
+        turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, turnFinish.phase),
       },
       board.updated_at
     )
@@ -1617,7 +1648,7 @@ export async function processMonopolyBuy(
       phase: 'auction',
       auction_state: auction,
       status_message: `Auction started for ${space.name}.`,
-      turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, 'auction'),
+      turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, 'auction'),
     },
     board.updated_at
   )
@@ -1671,7 +1702,7 @@ export async function processMonopolyAuction(
   }
 
   const space = spaceAt(nextAuction.space_index)
-  const timerSeconds = await getMonopolyTimerSeconds(supabase, gameId)
+  const settings = await getMonopolyGameSettings(supabase, gameId)
   const { data: updatedBoard, error: updateError } = await supabase
     .from('monopoly_boards')
     .update({
@@ -1680,7 +1711,7 @@ export async function processMonopolyAuction(
         action === 'bid'
           ? `${space.name} — high bid ${formatMonopolyMoney(nextAuction.high_bid)}.`
           : `${space.name} — waiting for next bid.`,
-      turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, 'auction'),
+      turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, 'auction'),
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
@@ -1720,7 +1751,32 @@ export async function processMonopolyPayRent(
   const buildings = parseBuildings(board.property_buildings)
   const mortgaged = parseMortgaged(board.mortgaged_properties)
   const ownerId = owners[String(spaceIndex)]
-  if (!ownerId || ownerId === playerId) return { error: 'Invalid rent state' }
+  const settings = await getMonopolyGameSettings(supabase, gameId)
+
+  if (!ownerId || ownerId === playerId) {
+    const { data: statesRaw } = await supabase.from('monopoly_player_state').select('*').eq('game_id', gameId)
+    const turnFinish = finishTurnAfterSpaceAction(board, (statesRaw ?? []) as MonopolyPlayerState[], playerId)
+
+    const { data: waived, error: updateError } = await supabase
+      .from('monopoly_boards')
+      .update({
+        phase: turnFinish.phase,
+        current_turn_index: turnFinish.turnIndex,
+        consecutive_doubles: turnFinish.consecutiveDoubles,
+        status_message: 'Rent waived due to ownership change.',
+        pending_space: null,
+        pending_debt: null,
+        turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, turnFinish.phase),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('game_id', gameId)
+      .eq('updated_at', board.updated_at)
+      .select('game_id')
+
+    if (updateError) return { error: internalErrorMessage('monopoly_boards', updateError) }
+    if ((waived?.length ?? 0) === 0) return { error: 'Board changed, please try again.' }
+    return {}
+  }
 
   const rent =
     board.pending_debt?.debt_type === 'rent' && board.pending_debt?.amount != null
@@ -1741,6 +1797,29 @@ export async function processMonopolyPayRent(
     .maybeSingle()
   if (!state || !ownerState) return { error: 'Player not found' }
 
+  if (settings.noRentInJail && ownerState.in_jail) {
+    const { data: statesRaw } = await supabase.from('monopoly_player_state').select('*').eq('game_id', gameId)
+    const turnFinish = finishTurnAfterSpaceAction(board, (statesRaw ?? []) as MonopolyPlayerState[], playerId)
+
+    const { error: updateError } = await supabase
+      .from('monopoly_boards')
+      .update({
+        phase: turnFinish.phase,
+        current_turn_index: turnFinish.turnIndex,
+        consecutive_doubles: turnFinish.consecutiveDoubles,
+        status_message: 'Rent waived because the owner is in jail.',
+        pending_space: null,
+        pending_debt: null,
+        turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, turnFinish.phase),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('game_id', gameId)
+      .eq('updated_at', board.updated_at)
+
+    if (updateError) return { error: internalErrorMessage('monopoly_boards', updateError) }
+    return {}
+  }
+
   const rentDebt: MonopolyPendingDebt = {
     player_id: playerId,
     creditor_player_id: ownerId,
@@ -1756,7 +1835,6 @@ export async function processMonopolyPayRent(
 
   const { data: statesRaw } = await supabase.from('monopoly_player_state').select('*').eq('game_id', gameId)
   const turnFinish = finishTurnAfterSpaceAction(board, (statesRaw ?? []) as MonopolyPlayerState[], playerId)
-  const timerSeconds = await getMonopolyTimerSeconds(supabase, gameId)
 
   const lastRentEvent: MonopolyLastRentEvent = {
     seq: (board.last_rent_event?.seq ?? 0) + 1,
@@ -1784,7 +1862,7 @@ export async function processMonopolyPayRent(
     p_consecutive_doubles: turnFinish.consecutiveDoubles,
     p_status_message: `Rent paid on ${space.name}.`,
     p_last_rent_event: lastRentEvent,
-    p_turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, turnFinish.phase),
+    p_turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, turnFinish.phase),
     p_payer_leaves_jail: false,
   })
   if (rpcError) {
@@ -1861,8 +1939,19 @@ export async function processMonopolyBuild(
   const board = boardRaw as MonopolyBoard
 
   const isBuying = action === 'buy_house' || action === 'buy_hotel'
-  if (isBuying && (board.phase === 'pay_rent' || board.phase === 'raise_funds')) {
-    return { error: 'Cannot buy houses or hotels while rent or debt payment is pending' }
+  const isPayer =
+    (board.phase === 'pay_rent' && currentPlayerId(board) === playerId) ||
+    (board.phase === 'raise_funds' && board.pending_debt?.player_id === playerId)
+
+  if (isBuying && isPayer) {
+    return { error: 'You cannot buy buildings while you owe rent or debt' }
+  }
+
+  const pendingSpace = board.pending_debt?.space_index ?? board.pending_space
+  const isPendingProperty = (board.phase === 'pay_rent' || board.phase === 'raise_funds') && pendingSpace === spaceIndex
+
+  if (isPendingProperty) {
+    return { error: 'Cannot modify buildings on this property while its rent is pending collection' }
   }
 
   const space = spaceAt(spaceIndex)
@@ -2275,9 +2364,10 @@ async function clearMonopolyPendingTrade(
   gameId: string,
   board: MonopolyBoard,
   trade: MonopolyPendingTrade,
-  statusMessage: string
+  statusMessage: string,
+  outcome: 'declined' | 'cancelled' = 'declined'
 ): Promise<void> {
-  const lastTradeEvent = nextTradeEvent(board, trade.from_player_id, trade.to_player_id, 'declined')
+  const lastTradeEvent = nextTradeEvent(board, trade.from_player_id, trade.to_player_id, outcome)
   await persistBoard(
     supabase,
     gameId,
@@ -2330,7 +2420,14 @@ export async function processMonopolyTradeCancel(
 
   const names = await playerNamesById(supabase, gameId, [trade.from_player_id, trade.to_player_id])
   const toName = names[trade.to_player_id] ?? 'player'
-  await clearMonopolyPendingTrade(supabase, gameId, board, trade, `Trade offer to ${toName} was cancelled.`)
+  await clearMonopolyPendingTrade(
+    supabase,
+    gameId,
+    board,
+    trade,
+    `Trade offer to ${toName} was cancelled.`,
+    'cancelled'
+  )
   return {}
 }
 
@@ -2340,6 +2437,25 @@ export async function removeMonopolyPlayer(
   playerId: string,
   playerName?: string
 ): Promise<{ error: string | null }> {
+  // A Leave can land in the tiny window between reading the board and the CAS
+  // write inside monopoly_remove_player — another player's action, a turn
+  // advance, or the timer bumps updated_at and the claim returns false. Unlike
+  // in-turn actions (which the current player retries), nothing retries a Leave,
+  // so we retry here against a freshly re-read board before surfacing an error.
+  const MAX_ATTEMPTS = 4
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const result = await attemptRemoveMonopolyPlayer(supabase, gameId, playerId, playerName)
+    if (result !== 'retry') return result
+  }
+  return { error: 'Board changed, please try again.' }
+}
+
+async function attemptRemoveMonopolyPlayer(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  playerName?: string
+): Promise<{ error: string | null } | 'retry'> {
   const { data: boardRaw } = await supabase.from('monopoly_boards').select('*').eq('game_id', gameId).maybeSingle()
   if (!boardRaw) {
     const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
@@ -2358,7 +2474,9 @@ export async function removeMonopolyPlayer(
   mortgaged = returned.mortgaged
 
   const { data: statesRaw } = await supabase.from('monopoly_player_state').select('*').eq('game_id', gameId)
-  const states = ((statesRaw ?? []) as MonopolyPlayerState[]).filter((s) => s.player_id !== playerId)
+  const allStates = (statesRaw ?? []) as MonopolyPlayerState[]
+  const departingState = allStates.find((s) => s.player_id === playerId) ?? null
+  const states = allStates.filter((s) => s.player_id !== playerId)
 
   const { turnOrder, currentTurnIndex } = turnOrderAfterRemoval(board, playerId)
   const removedWasCurrent = currentPlayerId(board) === playerId
@@ -2403,7 +2521,7 @@ export async function removeMonopolyPlayer(
     statusMessage = `${removedName} was removed. ${winnerName} wins!`
   }
 
-  const timerSeconds = await getMonopolyTimerSeconds(supabase, gameId)
+  const settings = await getMonopolyGameSettings(supabase, gameId)
   const boardUpdate: Record<string, unknown> = {
     turn_order: turnOrder,
     current_turn_index: currentTurnIndex,
@@ -2419,8 +2537,9 @@ export async function removeMonopolyPlayer(
     pending_space: removedWasCurrent ? null : board.pending_space,
     winner_player_id: winner ?? board.winner_player_id,
     status_message: statusMessage,
-    turn_deadline_at: phase === 'finished' ? null : monopolyDeadlineForPhase(timerSeconds, phase),
-    updated_at: new Date().toISOString(),
+    turn_deadline_at: phase === 'finished' ? null : monopolyDeadlineForPhase(settings.timerSeconds, phase),
+    // NB: updated_at is set by monopoly_claim_and_apply (to now()) and is not an
+    // accepted patch key — including it here raises UNKNOWN_BOARD_COLUMN.
   }
 
   if (pendingTrade === null && board.pending_trade) {
@@ -2428,22 +2547,44 @@ export async function removeMonopolyPlayer(
     boardUpdate.last_trade_event = nextTradeEvent(board, trade.from_player_id, trade.to_player_id, 'declined')
   }
 
-  const { error: boardError } = await supabase.from('monopoly_boards').update(boardUpdate).eq('game_id', gameId)
-  if (boardError) return { error: internalErrorMessage('monopoly', boardError) }
+  let finalDividend = 0
+  // Robin Hood Estate Dividend: liquidate estate and split among remaining active players.
+  if (settings.estateDividend && !winner && departingState) {
+    const estateValue = computePlayerEstateValue(
+      playerId,
+      departingState,
+      board.property_owners,
+      board.property_buildings,
+      board.mortgaged_properties
+    )
+    const activePlayers = states.filter((s) => !s.bankrupt)
+    const dividend = activePlayers.length > 0 ? Math.floor(estateValue / activePlayers.length) : 0
 
-  const { error: stateError } = await supabase
-    .from('monopoly_player_state')
-    .delete()
-    .eq('game_id', gameId)
-    .eq('player_id', playerId)
-  if (stateError) return { error: internalErrorMessage('monopoly', stateError) }
+    if (dividend > 0) {
+      finalDividend = dividend
+      statusMessage =
+        `🏹 ${removedName} left — estate of ${formatMonopolyMoney(estateValue)} split equally! ` +
+        `Each player receives +${formatMonopolyMoney(dividend)}.`
+      boardUpdate.status_message = statusMessage
+    }
+  }
+
+  const { data: success, error: rpcError } = await supabase.rpc('monopoly_remove_player', {
+    p_game_id: gameId,
+    p_expected_updated_at: board.updated_at,
+    p_board_patch: boardUpdate,
+    p_player_id: playerId,
+    p_dividend: finalDividend,
+  })
+
+  if (rpcError) return { error: internalErrorMessage('monopoly', rpcError) }
+  if (!success) return 'retry' // lost the CAS race — caller re-reads a fresh board and tries again
 
   if (winner) {
     await markGameFinished(supabase, gameId)
   }
 
-  const { error: playerError } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-  return { error: playerError?.message ?? null }
+  return { error: null }
 }
 
 function returnPlayerAssetsToBank(
@@ -2501,6 +2642,41 @@ function releasePropertiesToBank(
     housesReturned,
     hotelsReturned,
   }
+}
+
+/**
+ * Liquidation value of a departing player's estate for the Robin Hood Estate Dividend.
+ * - Unmortgaged properties: full face value (price)
+ * - Mortgaged properties: half face value (mortgage value)
+ * - Buildings: half build cost (standard Monopoly sell-back rate)
+ * - Liquid cash included
+ */
+function computePlayerEstateValue(
+  playerId: string,
+  state: MonopolyPlayerState,
+  rawOwners: unknown,
+  rawBuildings: unknown,
+  rawMortgaged?: unknown
+): number {
+  const owners = parsePropertyOwners(rawOwners)
+  const buildings = parseBuildings(rawBuildings)
+  const mortgaged = parseMortgaged(rawMortgaged)
+  let value = state.cash
+
+  for (const [idx, owner] of Object.entries(owners)) {
+    if (owner !== playerId) continue
+    const space = spaceAt(Number(idx))
+    if (!space || space.price == null) continue
+    // Mortgaged properties valued at half price; unmortgaged at full face value
+    value += mortgaged[idx] ? mortgageValue(space) : space.price
+    const level = buildings[idx] ?? 0
+    if (level === MONOPOLY_HOTEL_LEVEL) {
+      value += Math.floor(((space.houseCost ?? 0) * (MONOPOLY_HOUSES_UNDER_HOTEL + 1)) / 2)
+    } else if (level > 0) {
+      value += Math.floor(((space.houseCost ?? 0) * level) / 2)
+    }
+  }
+  return value
 }
 
 /** Fix boards where bankrupt players still appear in property_owners (legacy assign bug). */
@@ -2563,7 +2739,7 @@ async function enterRaiseFundsPhase(
   expectedUpdatedAt: string,
   boardPatch: Partial<MonopolyBoard> = {}
 ): Promise<{ error?: string }> {
-  const timerSeconds = await getMonopolyTimerSeconds(supabase, gameId)
+  const settings = await getMonopolyGameSettings(supabase, gameId)
   await persistBoard(
     supabase,
     gameId,
@@ -2572,7 +2748,7 @@ async function enterRaiseFundsPhase(
       pending_debt: debt,
       pending_space: debt.space_index ?? board.pending_space,
       status_message: `${debt.reason} — mortgage or sell buildings to raise cash, pay, or forfeit.`,
-      turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, 'raise_funds'),
+      turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, 'raise_funds'),
       auction_state: null,
       pending_trade: null,
       ...boardPatch,
@@ -2639,7 +2815,10 @@ export async function processMonopolySettleDebt(
       p_consecutive_doubles: board.consecutive_doubles ?? 0,
       p_status_message: `Paid ${formatMonopolyMoney(amount)} — roll to move!`,
       p_last_rent_event: board.last_rent_event ?? null,
-      p_turn_deadline_at: monopolyDeadlineForPhase(await getMonopolyTimerSeconds(supabase, gameId), 'roll'),
+      p_turn_deadline_at: monopolyDeadlineForPhase(
+        (await getMonopolyGameSettings(supabase, gameId)).timerSeconds,
+        'roll'
+      ),
       p_payer_leaves_jail: true,
     })
     if (rpcError) {
@@ -2654,7 +2833,25 @@ export async function processMonopolySettleDebt(
   const { data: statesRaw } = await supabase.from('monopoly_player_state').select('*').eq('game_id', gameId)
   const states = (statesRaw ?? []) as MonopolyPlayerState[]
   const turnFinish = finishTurnAfterSpaceAction(board, states, playerId)
-  const timerSeconds = await getMonopolyTimerSeconds(supabase, gameId)
+  const settings = await getMonopolyGameSettings(supabase, gameId)
+
+  let nextPhase = turnFinish.phase
+  let upcomingTurnIndex = turnFinish.turnIndex
+  let nextDoubles = turnFinish.consecutiveDoubles
+  let nextDeadline = monopolyDeadlineForPhase(settings.timerSeconds, turnFinish.phase)
+  let nextDebtObj: MonopolyPendingDebt | null = null
+
+  if (debt.next_debts && debt.next_debts.length > 0) {
+    const nextDebt = debt.next_debts[0]
+    nextDebtObj = { ...nextDebt }
+    if (debt.next_debts.length > 1) {
+      nextDebtObj.next_debts = debt.next_debts.slice(1)
+    }
+    nextPhase = 'raise_funds'
+    upcomingTurnIndex = board.current_turn_index
+    nextDoubles = board.consecutive_doubles ?? 0
+    nextDeadline = monopolyDeadlineForPhase(settings.timerSeconds, 'raise_funds')
+  }
 
   // Claim the board and move the cash in ONE transaction; see above.
   const { error: rpcError } = await supabase.rpc('monopoly_settle_payment', {
@@ -2663,13 +2860,16 @@ export async function processMonopolySettleDebt(
     p_payer_id: playerId,
     p_creditor_id: creditorId,
     p_amount: amount,
-    p_phase: turnFinish.phase,
-    p_current_turn_index: turnFinish.turnIndex,
-    p_consecutive_doubles: turnFinish.consecutiveDoubles,
-    p_status_message: `Paid ${formatMonopolyMoney(amount)}.`,
+    p_phase: nextPhase,
+    p_current_turn_index: upcomingTurnIndex,
+    p_consecutive_doubles: nextDoubles,
+    p_status_message: nextDebtObj
+      ? `${nextDebtObj.reason} — mortgage or sell buildings to raise cash, pay, or forfeit.`
+      : `Paid ${formatMonopolyMoney(amount)}.`,
     p_last_rent_event: board.last_rent_event ?? null,
-    p_turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, turnFinish.phase),
+    p_turn_deadline_at: nextDeadline,
     p_payer_leaves_jail: false,
+    p_pending_debt: nextDebtObj as any, // Passed to our new RPC parameter
   })
   if (rpcError) {
     if (rpcError.message?.includes('INSUFFICIENT_FUNDS')) {
@@ -2769,6 +2969,20 @@ async function bankruptPlayer(
     get_out_of_jail_free: 0,
   })
 
+  let nextPhase = winner ? 'finished' : phaseForTurn(board, updatedStates, turnIndex)
+  let upcomingTurnIndex = turnIndex
+  let nextDebtObj: MonopolyPendingDebt | null = null
+
+  if (board.pending_debt?.next_debts && board.pending_debt.next_debts.length > 0 && !winner) {
+    const nextDebt = board.pending_debt.next_debts[0]
+    nextDebtObj = { ...nextDebt }
+    if (board.pending_debt.next_debts.length > 1) {
+      nextDebtObj.next_debts = board.pending_debt.next_debts.slice(1)
+    }
+    nextPhase = 'raise_funds'
+    upcomingTurnIndex = board.current_turn_index
+  }
+
   const { data: won, error: rpcError } = await supabase.rpc('monopoly_claim_and_apply', {
     p_game_id: gameId,
     p_expected_updated_at: expectedUpdatedAt,
@@ -2778,13 +2992,15 @@ async function bankruptPlayer(
       mortgaged_properties: returned.mortgaged,
       houses_in_bank: (board.houses_in_bank ?? MONOPOLY_HOUSES_IN_BANK) + returned.housesReturned,
       hotels_in_bank: (board.hotels_in_bank ?? MONOPOLY_HOTELS_IN_BANK) + returned.hotelsReturned,
-      phase: winner ? 'finished' : phaseForTurn(board, updatedStates, turnIndex),
-      current_turn_index: turnIndex,
+      phase: nextPhase,
+      current_turn_index: upcomingTurnIndex,
       winner_player_id: winner,
-      status_message: `${reason} — bankrupt! ${assetNote}`,
+      status_message: nextDebtObj
+        ? `${nextDebtObj.reason} — mortgage or sell buildings to raise cash, pay, or forfeit.`
+        : `${reason} — bankrupt! ${assetNote}`,
       last_cash_event: lastCashEvent,
-      pending_debt: null,
-      pending_space: null,
+      pending_debt: nextDebtObj as any,
+      pending_space: nextDebtObj?.space_index ?? null,
       auction_state: null,
       pending_trade: null,
     },

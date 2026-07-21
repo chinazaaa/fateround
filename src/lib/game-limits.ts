@@ -1,4 +1,4 @@
-﻿import type { SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS,
   ANONYMOUS_ROOM_MAX_PLAYERS,
@@ -12,6 +12,7 @@ import { MONOPOLY_DEFAULT_MAX_PLAYERS, MONOPOLY_MAX_PLAYERS, MONOPOLY_MIN_PLAYER
 import { YAHTZEE_DEFAULT_MAX_PLAYERS, YAHTZEE_MAX_PLAYERS, YAHTZEE_MIN_PLAYERS } from '@/lib/yahtzee'
 import { WHOT_DEFAULT_MAX_PLAYERS, WHOT_MAX_PLAYERS, WHOT_MIN_PLAYERS } from '@/lib/whot'
 import { CRAZY8_DEFAULT_MAX_PLAYERS, CRAZY8_MAX_PLAYERS, CRAZY8_MIN_PLAYERS } from '@/lib/crazy-eights'
+import { UNO_DEFAULT_MAX_PLAYERS, UNO_MAX_PLAYERS, UNO_MIN_PLAYERS } from '@/lib/uno'
 import { LUDO_DEFAULT_MAX_PLAYERS, LUDO_MAX_PLAYERS, LUDO_MIN_PLAYERS } from '@/lib/ludo'
 import { MAHJONG_DEFAULT_MAX_PLAYERS, MAHJONG_MAX_PLAYERS, MAHJONG_MIN_PLAYERS } from '@/lib/mahjong'
 import { NPAT_DEFAULT_MAX_PLAYERS, NPAT_MAX_PLAYERS, NPAT_MIN_PLAYERS } from '@/lib/npat'
@@ -22,7 +23,11 @@ import { CHECKERS_DEFAULT_MAX_PLAYERS, CHECKERS_MAX_PLAYERS, CHECKERS_MIN_PLAYER
 import { AYO_DEFAULT_MAX_PLAYERS, AYO_MAX_PLAYERS, AYO_MIN_PLAYERS } from '@/lib/ayo'
 import { SCRABBLE_MAX_PLAYERS, SCRABBLE_MIN_PLAYERS } from '@/lib/scrabble'
 import { SUDOKU_MAX_PLAYERS, SUDOKU_MIN_PLAYERS } from '@/lib/sudoku'
-import { DESCRIBE_IT_DEFAULT_MAX_PLAYERS, DESCRIBE_IT_MAX_PLAYERS, DESCRIBE_IT_MIN_PLAYERS } from '@/lib/describe-it'
+import {
+  DESCRIBE_IT_DEFAULT_MAX_PLAYERS,
+  DESCRIBE_IT_MAX_PLAYERS,
+  DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
+} from '@/lib/describe-it'
 import {
   SNAKE_LADDER_DEFAULT_MAX_PLAYERS,
   SNAKE_LADDER_MAX_PLAYERS,
@@ -37,6 +42,15 @@ import {
 import { QUIPLASH_MIN_PLAYERS, QUIPLASH_MAX_PLAYERS, QUIPLASH_DEFAULT_MAX_PLAYERS } from '@/lib/quiplash'
 import { QUICK_DRAW_MIN_PLAYERS, QUICK_DRAW_MAX_PLAYERS, QUICK_DRAW_DEFAULT_MAX_PLAYERS } from '@/lib/quick-draw'
 import { WORD_RUSH_MIN_PLAYERS, WORD_RUSH_MAX_PLAYERS, WORD_RUSH_DEFAULT_MAX_PLAYERS } from '@/lib/word-rush'
+import { CROSSWORD_MIN_PLAYERS, CROSSWORD_MAX_PLAYERS, CROSSWORD_DEFAULT_MAX_PLAYERS } from '@/lib/crossword'
+import { WORD_SEARCH_MIN_PLAYERS, WORD_SEARCH_MAX_PLAYERS, WORD_SEARCH_DEFAULT_MAX_PLAYERS } from '@/lib/word-search'
+import {
+  WORD_SCRAMBLE_MIN_PLAYERS,
+  WORD_SCRAMBLE_MAX_PLAYERS,
+  WORD_SCRAMBLE_DEFAULT_MAX_PLAYERS,
+} from '@/lib/word-scramble'
+import { LANDMINE_MIN_PLAYERS, LANDMINE_MAX_PLAYERS, LANDMINE_DEFAULT_MAX_PLAYERS } from '@/lib/landmine'
+import { PING_PONG_MIN_PLAYERS, PING_PONG_MAX_PLAYERS, PING_PONG_DEFAULT_MAX_PLAYERS } from '@/lib/ping-pong'
 
 export const LOBBY_LIMIT_GAME_TYPES = [
   'anonymous_messages',
@@ -48,6 +62,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'yahtzee',
   'whot',
   'crazy_eights',
+  'uno',
   'ludo',
   'mahjong',
   'i_call_on',
@@ -65,6 +80,11 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'quick_draw',
   'word_rush',
   'ayo',
+  'crossword',
+  'word_search',
+  'word_scramble',
+  'landmine',
+  'ping_pong',
 ] as const
 
 export type LobbyLimitGameType = (typeof LOBBY_LIMIT_GAME_TYPES)[number]
@@ -136,6 +156,11 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     max: CRAZY8_MAX_PLAYERS,
     default: CRAZY8_DEFAULT_MAX_PLAYERS,
   },
+  uno: {
+    min: UNO_MIN_PLAYERS,
+    max: UNO_MAX_PLAYERS,
+    default: UNO_DEFAULT_MAX_PLAYERS,
+  },
   ludo: {
     min: LUDO_MIN_PLAYERS,
     max: LUDO_MAX_PLAYERS,
@@ -187,7 +212,9 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     default: SCRABBLE_MAX_PLAYERS,
   },
   describe_it: {
-    min: DESCRIBE_IT_MIN_PLAYERS,
+    // Absolute floor for the max-players cap; individual mode can run with 2.
+    // Team mode's higher start minimum is enforced server-side at game start.
+    min: DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
     max: DESCRIBE_IT_MAX_PLAYERS,
     default: DESCRIBE_IT_DEFAULT_MAX_PLAYERS,
   },
@@ -211,6 +238,31 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     max: MATCHING_PAIRS_MAX_PLAYERS,
     default: MATCHING_PAIRS_DEFAULT_MAX_PLAYERS,
   },
+  crossword: {
+    min: CROSSWORD_MIN_PLAYERS,
+    max: CROSSWORD_MAX_PLAYERS,
+    default: CROSSWORD_DEFAULT_MAX_PLAYERS,
+  },
+  word_search: {
+    min: WORD_SEARCH_MIN_PLAYERS,
+    max: WORD_SEARCH_MAX_PLAYERS,
+    default: WORD_SEARCH_DEFAULT_MAX_PLAYERS,
+  },
+  word_scramble: {
+    min: WORD_SCRAMBLE_MIN_PLAYERS,
+    max: WORD_SCRAMBLE_MAX_PLAYERS,
+    default: WORD_SCRAMBLE_DEFAULT_MAX_PLAYERS,
+  },
+  landmine: {
+    min: LANDMINE_MIN_PLAYERS,
+    max: LANDMINE_MAX_PLAYERS,
+    default: LANDMINE_DEFAULT_MAX_PLAYERS,
+  },
+  ping_pong: {
+    min: PING_PONG_MIN_PLAYERS,
+    max: PING_PONG_MAX_PLAYERS,
+    default: PING_PONG_DEFAULT_MAX_PLAYERS,
+  },
 }
 
 export function isLobbyLimitGameType(value: string): value is LobbyLimitGameType {
@@ -230,6 +282,7 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
     yahtzee: { ...GAME_LIMIT_CODE_DEFAULTS.yahtzee },
     whot: { ...GAME_LIMIT_CODE_DEFAULTS.whot },
     crazy_eights: { ...GAME_LIMIT_CODE_DEFAULTS.crazy_eights },
+    uno: { ...GAME_LIMIT_CODE_DEFAULTS.uno },
     ludo: { ...GAME_LIMIT_CODE_DEFAULTS.ludo },
     mahjong: { ...GAME_LIMIT_CODE_DEFAULTS.mahjong },
     i_call_on: { ...GAME_LIMIT_CODE_DEFAULTS.i_call_on },
@@ -245,6 +298,11 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
     snake_and_ladder: { ...GAME_LIMIT_CODE_DEFAULTS.snake_and_ladder },
     mafia: { ...GAME_LIMIT_CODE_DEFAULTS.mafia },
     matching_pairs: { ...GAME_LIMIT_CODE_DEFAULTS.matching_pairs },
+    crossword: { ...GAME_LIMIT_CODE_DEFAULTS.crossword },
+    word_search: { ...GAME_LIMIT_CODE_DEFAULTS.word_search },
+    word_scramble: { ...GAME_LIMIT_CODE_DEFAULTS.word_scramble },
+    landmine: { ...GAME_LIMIT_CODE_DEFAULTS.landmine },
+    ping_pong: { ...GAME_LIMIT_CODE_DEFAULTS.ping_pong },
   }
 }
 

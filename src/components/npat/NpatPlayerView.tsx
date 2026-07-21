@@ -1,6 +1,10 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
@@ -39,6 +43,7 @@ type Screen =
   | 'not_found'
 
 export function NpatPlayerView({ gameCode }: { gameCode: string }) {
+  const router = useRouter()
   const { error: toastError, success } = useToast()
   const [rounds, setRounds] = useState<Round[]>([])
   const [answers, setAnswers] = useState<NpatAnswer[]>([])
@@ -91,6 +96,7 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, null>({
     gameCode,
@@ -108,9 +114,17 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
   useTurnNotifications({ status: game?.status })
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'rounds', 'npat_answers', 'npat_marks'], load)
+  const connected = useGameTableSync(
+    gameCode,
+    [{ table: 'games', column: 'id' }, 'players', 'rounds', 'npat_answers', 'npat_marks'],
+    load
+  )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
   const openLobbyJoin = useCallback(() => {
     setScreen('join')
@@ -124,6 +138,34 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
   const me = players.find((p) => p.id === myPlayerId)
   const isViewer = !!(game && me && game.status !== 'waiting' && playerIsViewer(me, game))
   const myPlayerName = me?.name ?? ''
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it. Purely additive.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={me?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
 
   useRoomMemberAutoJoin({
     gameCode,
@@ -229,6 +271,8 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="i_call_on"
         />
@@ -245,6 +289,7 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={NPAT_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -259,6 +304,7 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myPlayerName}

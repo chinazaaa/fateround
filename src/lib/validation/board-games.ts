@@ -148,6 +148,58 @@ export type CrazyEightsPlayInput = z.infer<typeof crazyEightsPlaySchema>
 export type CrazyEightsDrawInput = z.infer<typeof crazyEightsDrawSchema>
 export type CrazyEightsChooseInput = z.infer<typeof crazyEightsChooseSchema>
 
+// UNO (POST /api/uno/*)
+
+const unoColorEnum = z.enum(['red', 'yellow', 'green', 'blue'])
+
+export const unoActionSchema = z.object({
+  gameId: gameCodeString(),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
+})
+
+export const unoPlaySchema = unoActionSchema.extend({
+  cardId: z.string().min(1),
+  // True when the player is calling "UNO" as they play their second-to-last card.
+  callUno: z.coerce.boolean().optional(),
+})
+
+export const unoPlayMultiSchema = unoActionSchema.extend({
+  // Cards to lay down together, in play order (the last one stays on top).
+  cardIds: z.array(z.string().min(1)).min(2).max(20),
+  callUno: z.coerce.boolean().optional(),
+})
+
+export const unoDrawSchema = unoActionSchema
+
+export const unoChooseSchema = unoActionSchema.extend({
+  color: unoColorEnum,
+})
+
+export const unoChallengeSchema = unoActionSchema.extend({
+  // true = challenge the Wild Draw Four, false = accept the draw.
+  challenge: z.coerce.boolean(),
+})
+
+export const unoCallSchema = unoActionSchema
+
+export const unoPassSchema = unoActionSchema
+
+export const unoSwapSchema = unoActionSchema.extend({
+  // The player to swap hands with (0-7 rule, on a 7).
+  targetId: z.string().min(1),
+})
+
+export const unoTeamLeaveSchema = unoActionSchema.extend({
+  // Team-Up: after a teammate leaves, the remaining partner continues solo or forfeits.
+  decision: z.enum(['continue', 'forfeit']),
+})
+
+export type UnoPlayInput = z.infer<typeof unoPlaySchema>
+export type UnoDrawInput = z.infer<typeof unoDrawSchema>
+export type UnoChooseInput = z.infer<typeof unoChooseSchema>
+export type UnoChallengeInput = z.infer<typeof unoChallengeSchema>
+
 // Ludo (POST /api/ludo/*)
 
 export const ludoActionSchema = z.object({
@@ -350,3 +402,14 @@ export const scrabbleExtendTimeSchema = hostActionSchema.extend({
 
 export type ScrabblePlayInput = z.infer<typeof scrabblePlaySchema>
 export type ScrabbleExchangeInput = z.infer<typeof scrabbleExchangeSchema>
+
+// Ping Pong (POST /api/ping-pong/*)
+
+export const pingPongPointSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  scorer: z.enum(['X', 'O']),
+  rally: z.number().int().nonnegative().optional(),
+})
+
+export type PingPongPointInput = z.infer<typeof pingPongPointSchema>

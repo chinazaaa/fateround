@@ -2,7 +2,7 @@
 
 // Yahtzee: player-facing roll/hold/score loop.
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   YahtzeeCard,
@@ -26,6 +26,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useGameScores, useGameStats, useRosterBase } from '@/components/roster/RosterDrawerContext'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
@@ -33,7 +34,9 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
@@ -56,6 +59,14 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
   const [session, setSession] = useState<YahtzeeSession | null>(null)
+  // Mirror of `session` for the realtime apply callback to read without a
+  // resubscribe. Updated in an effect (never during render) so an aborted/replayed
+  // render can't leave it holding an uncommitted value; the apply callback also
+  // writes it synchronously so consecutive deltas compare against the latest.
+  const sessionRef = useRef<YahtzeeSession | null>(null)
+  useEffect(() => {
+    sessionRef.current = session
+  }, [session])
   const [scores, setScores] = useState<YahtzeePlayerScore[]>([])
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
@@ -83,7 +94,11 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   // reload. This needs the resolved playerId (to tell whose turn it is), so it runs after
   // session resolution and before the screen is computed — exactly where the pre-migration
   // inline sync sat. Side effect only (updates local held/turn refs); no screen change.
-  const afterResolve = useCallback((_game: Game, playerId: string | null, sessionData: YahtzeeSession | null): void => {
+  // Reset the local held-dice mirror when the session resolves to a new turn (or
+  // it isn't our active mid-turn). Shared by the reconciling reload (afterResolve)
+  // AND the realtime delta path (applySessionRow): the delta path skips the reload,
+  // so without calling this a turn change would leave stale held dice on screen.
+  const syncHeldToSession = useCallback((sessionData: YahtzeeSession | null, playerId: string | null): void => {
     if (!sessionData) return
     const turnChanged = turnIndexRef.current !== sessionData.current_turn_index
     const isMyActiveTurn = playerId != null && currentPlayerId(sessionData) === playerId
@@ -94,6 +109,12 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
       setLocalHeld(sessionData.held ?? [false, false, false, false, false])
     }
   }, [])
+
+  const afterResolve = useCallback(
+    (_game: Game, playerId: string | null, sessionData: YahtzeeSession | null): void =>
+      syncHeldToSession(sessionData, playerId),
+    [syncHeldToSession]
+  )
 
   const computeScreen = useCallback((gameData: Game, playerId: string | null): Screen => {
     if (!playerId) {
@@ -119,6 +140,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, YahtzeeSession | null>({
     gameCode,
@@ -134,14 +156,72 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
+  // Register base rows here (the board player path skips the shared dispatcher) for
+  // the header drawer + its live score/categories scoreboard.
+  useRosterBase(game?.status === 'active' || game?.status === 'finished' ? players : undefined, game, myPlayerId)
+  const rosterScores = useMemo(
+    () => Object.fromEntries(scores.map((s) => [s.player_id, totalScore(s.scores.categories)])),
+    [scores]
+  )
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        scores.map((s) => [
+          s.player_id,
+          `📋 ${Object.values(s.scores.categories).filter((v) => v !== null).length}/13 filled`,
+        ])
+      ),
+    [scores]
+  )
+  useGameStats(rosterDetails)
+
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(
+  // Delta fast-path (dual-table). Screen derives from game.status, so session/score writes
+  // only update the board — patch locally and skip the reload; active→finished rides the
+  // games-row event, and the fallback poll reconciles.
+  const applySessionRow = useCallback(
+    (row: Record<string, unknown>): boolean => {
+      const next = row as unknown as YahtzeeSession
+      const prev = sessionRef.current
+      if (prev && next.updated_at < prev.updated_at) return true
+      setSession(next)
+      sessionRef.current = next
+      // The reconciling reload is skipped on the delta path, so mirror
+      // afterResolve's turn-change reset here or held dice stay stale across turns.
+      syncHeldToSession(next, myPlayerId)
+      return prev != null
+    },
+    [syncHeldToSession, myPlayerId]
+  )
+  const applyScoreRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as YahtzeePlayerScore
+    setScores((prev) => {
+      const i = prev.findIndex((s) => s.id === next.id)
+      if (i === -1) return [...prev, next]
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true
+  }, [])
+
+  const connected = useGameTableSync(
     gameCode,
-    ['players', { table: 'games', column: 'id' }, 'yahtzee_sessions', 'yahtzee_player_scores'],
+    [
+      'players',
+      { table: 'games', column: 'id' },
+      { table: 'yahtzee_sessions', apply: applySessionRow },
+      { table: 'yahtzee_player_scores', apply: applyScoreRow },
+    ],
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
   // Ready-up ring: readiness = holding a seat, so this reuses /players/ready (which
   // toggles the spectator flag). `ready:false` sits the player back out.
@@ -254,6 +334,36 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   // Turn timer countdown (also fires expire-turn when deadline passes)
   const { secondsLeft, hasTimer, urgent } = useYahtzeeTurnTimer(gameCode, session, screen === 'active')
 
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it. Purely additive — the in-page PlayerSessionControls stays as-is.
+  const meRow = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
+  const meSpectating = !!(game && meRow && playerIsViewer(meRow, game))
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={meRow?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={meSpectating}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, meRow?.name, meSpectating, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
   if (screen === 'loading') return <YahtzeeLoadingScreen />
 
   if (screen === 'not_found') {
@@ -302,6 +412,8 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="yahtzee"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
@@ -322,6 +434,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={YAHTZEE_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -336,6 +449,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={me?.name ?? ''}
@@ -408,16 +522,6 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     return (
       <YahtzeeShell title={game?.title} wide compact>
         <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={myPlayer} />
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            spectating={isViewer}
-          />
-        )}
         <div className="space-y-2">
           <YahtzeeScorecard
             players={players}
@@ -444,16 +548,6 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <YahtzeeShell title={game?.title} wide compact>
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isViewer}
-        />
-      )}
       <div className="space-y-2">
         <YahtzeeScorecard
           players={players}

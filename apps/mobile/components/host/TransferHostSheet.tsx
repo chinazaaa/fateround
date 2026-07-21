@@ -116,8 +116,9 @@ export function TransferHostSheet({ gameCode, hostToken, visible, onClose }: Pro
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <View style={styles.sheet}>
+      {/* Tap the dimmed area to dismiss; taps on the sheet itself are absorbed. */}
+      <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.handle} />
           <Text style={styles.title}>Transfer host</Text>
 
@@ -163,8 +164,8 @@ export function TransferHostSheet({ gameCode, hostToken, visible, onClose }: Pro
           <Pressable style={styles.close} onPress={onClose}>
             <Text style={styles.closeText}>Close</Text>
           </Pressable>
-        </View>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   )
 }

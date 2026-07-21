@@ -1,16 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { Game, GameType } from '@fateround/shared'
+import { FormField } from '@/components/ui/FormField'
+import { supportsCustomContent } from '@/lib/create-settings'
 import {
   POLL_ROUND_TIMER_OPTIONS,
   TRIVIA_MAX_ROUNDS,
   TRIVIA_MIN_ROUNDS,
+  codewordsTeamAssignmentFlags,
+  codewordsTeamAssignmentFromFlags,
   formatPollRoundTimer,
   hasPartyRoomSettings,
   partyRoundOptions,
   questionRoundPickerOptions,
 } from '@fateround/shared/create-party-games'
 import {
+  gameAllowsLatePlayerJoin,
   gameSupportsViewerSetting,
   lateJoinPolicyFromGame,
   type LateJoinPolicy,
@@ -66,6 +71,11 @@ import {
   type ScrabbleLobbyState,
 } from '@/components/host/lobby-settings/ScrabbleLobbySection'
 import {
+  MonopolyLobbySection,
+  isMonopolyLobbyGame,
+  type MonopolyLobbyState,
+} from '@/components/host/lobby-settings/MonopolyLobbySection'
+import {
   ICallOnLobbySection,
   isICallOnLobbyGame,
   type ICallOnLobbyState,
@@ -106,12 +116,22 @@ import {
   isTriviaLobbyGame,
   type TriviaLobbyState,
 } from '@/components/host/lobby-settings/TriviaLobbySection'
+import { WstSourceLobbyEditor } from '@/components/host/lobby/WstSourceLobbyEditor'
 import {
   customContentStateFromGame,
   customContentPayload,
   customContentCount,
 } from '@/lib/create-settings/custom-content'
-import { isPairGame } from '@fateround/shared/poll-games'
+import { puzzleThemeIdFromValue } from '@/lib/puzzle-themes'
+import {
+  isPairGame,
+  isPollGame,
+  isVoterOnlyMode,
+  isWouldYouRather,
+  isNeverHaveIEver,
+  isMostLikelyTo,
+  isWhoSaidThis,
+} from '@fateround/shared/poll-games'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
@@ -133,6 +153,15 @@ const LOBBY_MAX_PLAYERS_GAMES = new Set<GameType>([
   'describe_it',
   'quick_draw',
   'word_rush',
+  'crossword',
+  'word_search',
+  // Also >2-player games that were missing the lobby max-players control.
+  'codewords',
+  'trivia',
+  'two_truths',
+  'quiplash',
+  'i_call_on',
+  'scrabble',
 ])
 
 /** Party games that play a single round — no editable "Rounds" control (mirrors web create). */
@@ -144,6 +173,8 @@ const ROUNDLESS_GAMES = new Set<GameType>([
   'sudoku',
   'i_call_on',
   'mafia',
+  'crossword',
+  'word_search',
 ])
 
 /** Party games with no round/turn timer on `timer_seconds` (bingo uses a call interval). */
@@ -156,13 +187,28 @@ type Props = {
   visible: boolean
   onClose: () => void
   onSaved: () => void
+  /** Opens the host-transfer flow (pick a player to take over hosting). */
+  onTransfer?: () => void
+  /** Codewords "goes first" preference (owned by the lobby, applied at start). */
+  firstTeam?: 'random' | 'red' | 'blue'
+  onFirstTeamChange?: (team: 'random' | 'red' | 'blue') => void
 }
 
 /**
  * Edit the settings the server allows changing while a game is still in the lobby
  * (mirrors web's PATCH /api/games/[code]): visibility, rounds, timer, late-join.
  */
-export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onClose, onSaved }: Props) {
+export function HostLobbySettingsSheet({
+  gameCode,
+  hostToken,
+  game,
+  visible,
+  onClose,
+  onSaved,
+  onTransfer,
+  firstTeam = 'random',
+  onFirstTeamChange,
+}: Props) {
   const styles = useThemedStyles(makeStyles)
   const gameType = game.game_type as GameType
   const { limits } = useGamePlayerLimits()
@@ -175,8 +221,21 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
   const isQuiplash = isQuiplashLobbyGame(gameType)
   const isDuration = isDurationGame(gameType)
   const isScrabble = isScrabbleLobbyGame(gameType)
+  const isMonopoly = isMonopolyLobbyGame(gameType)
   const isICallOn = isICallOnLobbyGame(gameType)
+  const isWst = isWhoSaidThis(gameType)
   const showPollQuestions = hasPollQuestionSettings(gameType)
+  // "Rounds include" (all vs joined) applies only to import-roster poll games — a pre-set host
+  // list where not everyone may join. Mirrors web's participant_filter gate. Not tied to
+  // hasPollQuestionSettings: SMK / parent_approval need it but have no pair/player-question controls.
+  const showPollParticipantFilter =
+    isPollGame(gameType) &&
+    (game.participant_mode ?? 'import') !== 'joiners' &&
+    !isVoterOnlyMode(game) &&
+    !isWouldYouRather(gameType) &&
+    !isNeverHaveIEver(gameType) &&
+    !isMostLikelyTo(gameType) &&
+    !isWhoSaidThis(gameType)
   const isBingo = isBingoLobbyGame(gameType)
   const isMahjong = isMahjongLobbyGame(gameType)
   const isTrivia = isTriviaLobbyGame(gameType)
@@ -211,10 +270,14 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
     !TIMERLESS_GAMES.has(gameType) &&
     game.timer_seconds != null &&
     game.timer_seconds > 0
-  const showLateJoin = gameSupportsViewerSetting(gameType)
+  // View-only games have no view-vs-play choice — hide the late-join line entirely.
+  const showLateJoin = gameSupportsViewerSetting(gameType) && gameAllowsLatePlayerJoin(gameType)
   const showMaxPlayers = isLobbyLimitGameType(gameType) && LOBBY_MAX_PLAYERS_GAMES.has(gameType)
   const themeOptions = themesForGameType(gameType)
-  const showTheme = themeOptions.length > 1
+  // Crossword / Word Search show their own word-theme picker in DurationGamesSection, so hide
+  // the generic visual-theme picker for them (they don't use a visual skin).
+  const showTheme =
+    themeOptions.length > 1 && gameType !== 'crossword' && gameType !== 'word_search' && gameType !== 'word_scramble'
 
   const timerOptions = Array.from(
     new Set<number>([game.timer_seconds ?? 0, ...POLL_ROUND_TIMER_OPTIONS, ...(isTrivia ? [10] : [])])
@@ -223,9 +286,11 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
     .sort((a, b) => a - b)
 
   const [isPublic, setIsPublic] = useState(!!game.is_public)
+  const showContentLabel = supportsCustomContent(gameType) || isWst
+  const [contentLabel, setContentLabel] = useState(game.content_label ?? '')
   const [themeId, setThemeId] = useState<ThemeId>(() => {
     const current = game.theme as ThemeId | undefined
-    return current && themeOptions.some((o) => o.id === current) ? current : themeOptions[0]?.id ?? 'default'
+    return current && themeOptions.some((o) => o.id === current) ? current : (themeOptions[0]?.id ?? 'default')
   })
   const [roundsCount, setRoundsCount] = useState(game.rounds_count ?? roundOptions[0] ?? 1)
   const [timerSeconds, setTimerSeconds] = useState(game.timer_seconds ?? POLL_ROUND_TIMER_OPTIONS[0])
@@ -257,17 +322,32 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
     timerSeconds: game.timer_seconds ?? 0,
     voteTimer: game.operative_timer_seconds ?? 0,
   }))
-  const [duration, setDuration] = useState<DurationGameState>(() => ({
-    timerSeconds: game.timer_seconds ?? 0,
-    gameDurationSeconds: game.game_duration_seconds ?? 0,
-    largeGrid: (game.game_duration_seconds ?? 0) >= 16,
-  }))
+  const [duration, setDuration] = useState<DurationGameState>(() => {
+    const g = game as unknown as Record<string, string | null | undefined>
+    const themeField = `${gameType}_theme`
+    const diffField = `${gameType}_difficulty`
+    return {
+      timerSeconds: game.timer_seconds ?? 0,
+      gameDurationSeconds: game.game_duration_seconds ?? 0,
+      largeGrid: (game.game_duration_seconds ?? 0) >= 16,
+      theme: g[themeField] ?? '',
+      difficulty: (g[diffField] as 'easy' | 'medium' | 'hard') ?? 'medium',
+      // Content source + pool for the puzzle games (Platform/Library/Your own). Library folds to a
+      // custom pool at rest, so it re-opens under "Your own" — same as the create screen.
+      custom: customContentStateFromGame(game),
+    }
+  })
   const [scrabble, setScrabble] = useState<ScrabbleLobbyState>(() => ({
     clockMode: game.scrabble_clock_mode === 'chess' ? 'chess' : 'standard',
     clockSeconds: game.scrabble_clock_seconds ?? 600,
     timerSeconds: game.timer_seconds ?? 0,
     gameDurationSeconds: game.game_duration_seconds ?? 0,
     dictionaryId: game.scrabble_dictionary_id ?? 'enable',
+  }))
+  const [monopoly, setMonopoly] = useState<MonopolyLobbyState>(() => ({
+    doubleGoSalary: game.monopoly_double_go_salary === true,
+    forcedAuctions: game.monopoly_forced_auctions === true,
+    noRentInJail: game.monopoly_no_rent_in_jail === true,
   }))
   const [icallon, setIcallon] = useState<ICallOnLobbyState>(() => ({
     gameDurationSeconds: game.game_duration_seconds ?? 0,
@@ -276,6 +356,7 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
   }))
   const [poll, setPoll] = useState<PollQuestionsState>(() => ({
     pairVoteMode: game.pair_vote_mode === 'any' ? 'any' : 'one_each',
+    participantFilter: game.participant_filter === 'joined' ? 'joined' : 'all',
     playerQuestionsEnabled: game.player_questions_enabled ?? true,
     playerQuestionsOrder:
       game.player_questions_order === 'uploaded_first'
@@ -303,7 +384,8 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
     voteTimer: game.game_duration_seconds ?? 0,
   }))
   const [team, setTeam] = useState<TeamRoundState>(() => ({
-    mode: (gameType === 'word_rush' ? game.word_rush_mode : game.describe_it_mode) === 'individual' ? 'individual' : 'team',
+    mode:
+      (gameType === 'word_rush' ? game.word_rush_mode : game.describe_it_mode) === 'individual' ? 'individual' : 'team',
     numTeams: (gameType === 'word_rush' ? game.word_rush_num_teams : game.describe_it_num_teams) ?? 2,
     turnSeconds: game.timer_seconds ?? 0,
     rounds: game.rounds_count ?? 3,
@@ -313,6 +395,10 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
   const [codewords, setCodewords] = useState<CodewordsLobbyState>(() => ({
     spymasterTimer: game.timer_seconds ?? 0,
     operativeTimer: game.operative_timer_seconds ?? 0,
+    teamAssignment: codewordsTeamAssignmentFromFlags(
+      game.codewords_player_picks === true,
+      game.codewords_randomize_teams === true
+    ),
   }))
   const [trivia, setTrivia] = useState<TriviaLobbyState>(() => ({
     category: game.trivia_category === 'tech' ? 'tech' : 'general',
@@ -355,7 +441,21 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
     // Visibility / rounds / timer / late-join go through PATCH (works for all games).
     const patch: LobbySettingsPatch = {}
     if (isPublic !== !!game.is_public) patch.is_public = isPublic
+    if (showContentLabel && contentLabel.trim() !== (game.content_label ?? '').trim())
+      patch.content_label = contentLabel.trim()
     if (showTheme && themeId !== game.theme) patch.theme = themeId
+    // Codewords team-assignment mode → the two game flags (lobby-only).
+    if (isCodewords) {
+      const currentAssignment = codewordsTeamAssignmentFromFlags(
+        game.codewords_player_picks === true,
+        game.codewords_randomize_teams === true
+      )
+      if (codewords.teamAssignment !== currentAssignment) {
+        const flags = codewordsTeamAssignmentFlags(codewords.teamAssignment)
+        patch.codewords_player_picks = flags.codewords_player_picks
+        patch.codewords_randomize_teams = flags.codewords_randomize_teams
+      }
+    }
     // Trivia routes rounds/timer through lobby-pool (below) alongside source/category/pool.
     if (showRounds && !isTrivia && roundsCount !== game.rounds_count) patch.rounds_count = roundsCount
     if (showTimer && !isTrivia && timerSeconds !== game.timer_seconds) patch.timer_seconds = timerSeconds
@@ -377,8 +477,10 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
       if (icallon.timerSeconds !== game.timer_seconds) patch.timer_seconds = icallon.timerSeconds
       if (icallon.markingTimer !== game.operative_timer_seconds) patch.operative_timer_seconds = icallon.markingTimer
     }
-    if (showPollQuestions) {
+    if (showPollQuestions || showPollParticipantFilter) {
       if (isPairGame(gameType) && poll.pairVoteMode !== game.pair_vote_mode) patch.pair_vote_mode = poll.pairVoteMode
+      if (showPollParticipantFilter && poll.participantFilter !== (game.participant_filter ?? 'all'))
+        patch.participant_filter = poll.participantFilter
       if (supportsPlayerQuestions(gameType)) {
         if (poll.playerQuestionsEnabled !== game.player_questions_enabled)
           patch.player_questions_enabled = poll.playerQuestionsEnabled
@@ -393,7 +495,8 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
       board.max_players = maxPlayers
     if (isCardGame) {
       if (card.timerSeconds !== game.timer_seconds) board.timer_seconds = card.timerSeconds
-      if (card.gameDurationSeconds !== game.game_duration_seconds) board.game_duration_seconds = card.gameDurationSeconds
+      if (card.gameDurationSeconds !== game.game_duration_seconds)
+        board.game_duration_seconds = card.gameDurationSeconds
       if (gameType === 'whot') {
         if (card.whotPick3Enabled !== game.whot_pick3_enabled) board.whot_pick3_enabled = card.whotPick3Enabled
         if (card.whotPick2Stacking !== game.whot_pick2_stacking) board.whot_pick2_stacking = card.whotPick2Stacking
@@ -403,7 +506,8 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
       } else {
         if (card.crazy8ActionCards !== game.crazy8_action_cards) board.crazy8_action_cards = card.crazy8ActionCards
         if (card.crazy8Jokers !== game.crazy8_jokers) board.crazy8_jokers = card.crazy8Jokers
-        if (card.crazy8Pick2Stacking !== game.crazy8_pick2_stacking) board.crazy8_pick2_stacking = card.crazy8Pick2Stacking
+        if (card.crazy8Pick2Stacking !== game.crazy8_pick2_stacking)
+          board.crazy8_pick2_stacking = card.crazy8Pick2Stacking
       }
     }
     if (isMahjong) {
@@ -421,10 +525,8 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
         if (quickDraw.playMode === 'team' && quickDraw.numTeams !== game.quick_draw_num_teams)
           board.quick_draw_num_teams = quickDraw.numTeams
       } else {
-        if (quickDraw.titleTimer !== game.operative_timer_seconds)
-          board.operative_timer_seconds = quickDraw.titleTimer
-        if (quickDraw.voteTimer !== game.game_duration_seconds)
-          board.game_duration_seconds = quickDraw.voteTimer
+        if (quickDraw.titleTimer !== game.operative_timer_seconds) board.operative_timer_seconds = quickDraw.titleTimer
+        if (quickDraw.voteTimer !== game.game_duration_seconds) board.game_duration_seconds = quickDraw.voteTimer
       }
     }
     if (isVariantGame) {
@@ -435,17 +537,78 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
     if (isMafia) {
       if (mafia.timerSeconds !== game.timer_seconds) board.timer_seconds = mafia.timerSeconds
       if (mafia.doctorEnabled !== game.mafia_doctor_enabled) board.mafia_doctor_enabled = mafia.doctorEnabled
-      if (mafia.detectiveEnabled !== game.mafia_detective_enabled) board.mafia_detective_enabled = mafia.detectiveEnabled
+      if (mafia.detectiveEnabled !== game.mafia_detective_enabled)
+        board.mafia_detective_enabled = mafia.detectiveEnabled
       if (mafia.anonymousVotes !== game.mafia_anonymous_votes) board.mafia_anonymous_votes = mafia.anonymousVotes
     }
     if (isQuiplash) {
       if (quiplash.timerSeconds !== game.timer_seconds) board.timer_seconds = quiplash.timerSeconds
       if (quiplash.voteTimer !== game.operative_timer_seconds) board.operative_timer_seconds = quiplash.voteTimer
     }
+    if (isMonopoly) {
+      if (monopoly.doubleGoSalary !== (game.monopoly_double_go_salary === true))
+        board.monopoly_double_go_salary = monopoly.doubleGoSalary
+      if (monopoly.forcedAuctions !== (game.monopoly_forced_auctions === true))
+        board.monopoly_forced_auctions = monopoly.forcedAuctions
+      if (monopoly.noRentInJail !== (game.monopoly_no_rent_in_jail === true))
+        board.monopoly_no_rent_in_jail = monopoly.noRentInJail
+    }
     if (isDuration) {
-      if (gameType === 'sudoku') {
+      if (
+        gameType === 'sudoku' ||
+        gameType === 'crossword' ||
+        gameType === 'word_search' ||
+        gameType === 'word_scramble'
+      ) {
         if (duration.gameDurationSeconds !== game.game_duration_seconds)
           board.game_duration_seconds = duration.gameDurationSeconds
+        const g = game as unknown as Record<string, string | null | undefined>
+        if (gameType !== 'sudoku') {
+          // Resolve the puzzle content once (source-aware), then assign per-kind so the typed patch
+          // stays type-safe. Platform → built-in theme or admin puzzle_theme_id; Library/Your own →
+          // a re-validated custom pool. Difficulty (grid size) saves under every source.
+          const source = duration.custom.source
+          let themeToSend: string | undefined
+          let puzzleThemeIdToSend: string | undefined
+          let customQuestionsToSend: unknown[] | undefined
+          if (source === 'platform') {
+            const adminId = puzzleThemeIdFromValue(duration.theme)
+            if (adminId) {
+              puzzleThemeIdToSend = adminId
+            } else if (
+              game.question_source === 'custom' ||
+              (duration.theme && duration.theme !== g[`${gameType}_theme`])
+            ) {
+              // A built-in theme also reverts a game that was on a custom pool back to the built-in bank.
+              themeToSend = duration.theme
+            }
+          } else {
+            const built = customContentPayload(gameType, duration.custom)
+            const cq = Array.isArray(built.custom_questions) ? built.custom_questions : []
+            if (cq.length < 4) {
+              setError(source === 'library' ? 'Pick a library pack with at least 4 words' : 'Add at least 4 words')
+              return
+            }
+            // Only send when the pool actually changed, so re-opening + saving an unchanged custom
+            // game doesn't rewrite the identical pool every time.
+            const unchanged =
+              game.question_source === 'custom' && JSON.stringify(cq) === JSON.stringify(game.custom_questions ?? [])
+            if (!unchanged) customQuestionsToSend = cq
+          }
+          const difficultyChanged = duration.difficulty !== (g[`${gameType}_difficulty`] ?? 'medium')
+          if (gameType === 'crossword') {
+            if (themeToSend) board.crossword_theme = themeToSend
+            if (difficultyChanged) board.crossword_difficulty = duration.difficulty
+          } else if (gameType === 'word_search') {
+            if (themeToSend) board.word_search_theme = themeToSend
+            if (difficultyChanged) board.word_search_difficulty = duration.difficulty
+          } else if (gameType === 'word_scramble') {
+            if (themeToSend) board.word_scramble_theme = themeToSend
+            if (difficultyChanged) board.word_scramble_difficulty = duration.difficulty
+          }
+          if (puzzleThemeIdToSend) board.puzzle_theme_id = puzzleThemeIdToSend
+          if (customQuestionsToSend) board.puzzle_custom_questions = customQuestionsToSend
+        }
       } else if (gameType === 'word_hunt') {
         if (duration.timerSeconds !== game.timer_seconds) board.timer_seconds = duration.timerSeconds
       } else {
@@ -584,23 +747,32 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
               />
             </View>
 
-            {showTheme ? (
-              <ThemePicker gameType={gameType} value={themeId} onChange={setThemeId} />
-            ) : null}
-
-            {showMaxPlayers ? (
+            {showContentLabel ? (
               <View style={styles.field}>
-                <Text style={styles.label}>Max players</Text>
-                <MaxPlayersPicker
-                  gameType={gameType}
-                  value={maxPlayers}
-                  limits={limits}
-                  onChange={setMaxPlayers}
+                <FormField
+                  label="Category"
+                  hint="What the questions are about — shown to players next to the room name."
+                  value={contentLabel}
+                  onChangeText={setContentLabel}
+                  placeholder="e.g. Maths, Bible, 90s Music"
+                  maxLength={40}
+                  autoCapitalize="sentences"
+                  autoCorrect={false}
                 />
               </View>
             ) : null}
 
-            {showRounds ? (
+            {showTheme ? <ThemePicker gameType={gameType} value={themeId} onChange={setThemeId} /> : null}
+
+            {showMaxPlayers ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>Max players</Text>
+                <MaxPlayersPicker gameType={gameType} value={maxPlayers} limits={limits} onChange={setMaxPlayers} />
+              </View>
+            ) : null}
+
+            {/* WST has no host-set round count — each question is a round — so hide the picker. */}
+            {showRounds && !isWst ? (
               <RoundCountPicker
                 label="Rounds"
                 value={roundsCount}
@@ -611,7 +783,7 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
 
             {showTimer ? (
               <TimerPicker
-                label={isTrivia ? 'Time per question' : 'Time per round'}
+                label={isTrivia || isWst ? 'Time per question' : 'Time per round'}
                 value={timerSeconds}
                 options={timerOptions}
                 format={formatPollRoundTimer}
@@ -640,10 +812,11 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
             ) : null}
 
             {isQuiplash ? (
-              <QuiplashLobbySection
-                value={quiplash}
-                onChange={(p) => setQuiplash((prev) => ({ ...prev, ...p }))}
-              />
+              <QuiplashLobbySection value={quiplash} onChange={(p) => setQuiplash((prev) => ({ ...prev, ...p }))} />
+            ) : null}
+
+            {isMonopoly ? (
+              <MonopolyLobbySection value={monopoly} onChange={(p) => setMonopoly((prev) => ({ ...prev, ...p }))} />
             ) : null}
 
             {isDuration ? (
@@ -662,12 +835,18 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
               <ICallOnLobbySection value={icallon} onChange={(p) => setIcallon((prev) => ({ ...prev, ...p }))} />
             ) : null}
 
-            {showPollQuestions ? (
+            {showPollQuestions || showPollParticipantFilter ? (
               <PollQuestionsSection
                 gameType={gameType}
                 value={poll}
                 onChange={(p) => setPoll((prev) => ({ ...prev, ...p }))}
+                showParticipantFilter={showPollParticipantFilter}
               />
+            ) : null}
+
+            {/* Who Said This question source (Players submit / Platform / Library / your own CSV). */}
+            {isWst ? (
+              <WstSourceLobbyEditor gameCode={gameCode} hostToken={hostToken} game={game} onSaved={onSaved} />
             ) : null}
 
             {isBingo ? (
@@ -687,10 +866,7 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
             ) : null}
 
             {isQuickDraw ? (
-              <QuickDrawLobbySection
-                value={quickDraw}
-                onChange={(p) => setQuickDraw((prev) => ({ ...prev, ...p }))}
-              />
+              <QuickDrawLobbySection value={quickDraw} onChange={(p) => setQuickDraw((prev) => ({ ...prev, ...p }))} />
             ) : null}
 
             {isCodewords ? (
@@ -700,6 +876,8 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
                 canShuffle={game.codewords_randomize_teams === true}
                 shuffling={shuffling}
                 onShuffle={() => void onShuffle()}
+                firstTeam={firstTeam}
+                onFirstTeamChange={onFirstTeamChange}
               />
             ) : null}
 
@@ -716,6 +894,12 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
                 <Text style={styles.label}>Late join</Text>
                 <LateJoinPolicyPicker gameType={gameType} value={lateJoin} onChange={setLateJoin} />
               </View>
+            ) : null}
+
+            {onTransfer ? (
+              <Pressable style={styles.transferBtn} onPress={onTransfer}>
+                <Text style={styles.transferText}>Transfer host to another player</Text>
+              </Pressable>
             ) : null}
 
             {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -741,38 +925,47 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: '#000000aa', justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: theme.bgElevated,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: theme.space.lg,
-    gap: theme.space.md,
-    maxHeight: '85%',
-  },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: theme.border, alignSelf: 'center' },
-  title: { color: theme.text, fontSize: 20, fontWeight: '800' },
-  body: { gap: theme.space.lg, paddingBottom: theme.space.md },
-  field: { gap: theme.space.sm },
-  label: { color: theme.text, fontSize: 16, fontWeight: '800' },
-  error: { color: theme.error, fontSize: 13 },
-  actions: { flexDirection: 'row', gap: theme.space.sm },
-  flex: { flex: 1 },
-  primary: {
-    backgroundColor: theme.primary,
-    borderRadius: theme.radius.md,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  primaryText: { color: '#fff', fontWeight: '800', fontSize: 16 },
-  secondary: {
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: theme.radius.md,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  secondaryText: { color: theme.textSecondary, fontWeight: '700', fontSize: 16 },
-  disabled: { opacity: 0.5 },
-})
+    backdrop: { flex: 1, backgroundColor: '#000000aa', justifyContent: 'flex-end' },
+    sheet: {
+      backgroundColor: theme.bgElevated,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      padding: theme.space.lg,
+      gap: theme.space.md,
+      maxHeight: '85%',
+    },
+    handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: theme.border, alignSelf: 'center' },
+    title: { color: theme.text, fontSize: 20, fontWeight: '800' },
+    body: { gap: theme.space.lg, paddingBottom: theme.space.md },
+    field: { gap: theme.space.sm },
+    label: { color: theme.text, fontSize: 16, fontWeight: '800' },
+    error: { color: theme.error, fontSize: 13 },
+    actions: { flexDirection: 'row', gap: theme.space.sm },
+    flex: { flex: 1 },
+    primary: {
+      backgroundColor: theme.primary,
+      borderRadius: theme.radius.md,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    primaryText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+    secondary: {
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: theme.radius.md,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    secondaryText: { color: theme.textSecondary, fontWeight: '700', fontSize: 16 },
+    disabled: { opacity: 0.5 },
+    transferBtn: {
+      marginTop: theme.space.sm,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: theme.radius.md,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    transferText: { color: theme.textSecondary, fontWeight: '700', fontSize: 15 },
+  })

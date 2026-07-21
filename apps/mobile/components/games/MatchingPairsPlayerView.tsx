@@ -20,24 +20,23 @@ import {
   pairIcon,
   parseMatchingPairsMetadata,
 } from '@fateround/shared/memory-match'
-import { ROUND_RESULTS_AUTO_ADVANCE_SECONDS, finalResultsAutoRevealSeconds } from '@fateround/shared/round-timing'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { LobbyView } from '@/components/LobbyView'
-import { GameFinishedScreen, GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { pointsLeaderboard } from '@/lib/finish-leaderboards'
-import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postMatchingPairsFlip } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { MEMORY_MATCH_PROGRESS_SELECT, MEMORY_MATCH_SUBMISSION_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { MatchingPairsGameTimerBar } from '@/components/games/matching-pairs/MatchingPairsGameTimerBar'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { MatchingPairsOpponentStrip } from '@/components/games/matching-pairs/MatchingPairsOpponentStrip'
 import { MatchingPairsWaitingForOthers } from '@/components/games/matching-pairs/MatchingPairsWaitingForOthers'
 import {
@@ -51,6 +50,7 @@ import {
   type MatchingPairsProgressWithTiming,
 } from '@/components/games/matching-pairs/matchingPairsScore'
 import { MatchingPairsBreakdownList } from '@/components/games/matching-pairs/MatchingPairsBreakdown'
+import { MatchingPairsRoundResults } from '@/components/games/matching-pairs/MatchingPairsRoundResults'
 
 // The shared MEMORY_MATCH_PROGRESS_SELECT / MatchingPairsProgress type omit the
 // `finished_at` + `created_at` columns (both exist on memory_match_progress).
@@ -254,12 +254,6 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   const showingRoundResults =
     bootstrap.screen === 'playing' && bootstrap.game?.status === 'active' && round?.status === 'finished'
 
-  const nextRoundCountdown = useDeadlineCountdown(
-    round?.ended_at ?? null,
-    isLastRound ? finalResultsAutoRevealSeconds(bootstrap.game?.game_type) : ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
-    showingRoundResults
-  )
-
   // Per-round standings for the interstitial (best points this round per player).
   const roundStandings = useMemo(() => {
     if (!round) return []
@@ -331,6 +325,49 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
+  const gameTimer =
+    (bootstrap.game?.timer_seconds ?? 0) > 0 && bootstrap.game?.status === 'active' ? (
+      <MatchingPairsGameTimerBar
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        roundStartedAt={round?.started_at ?? null}
+        onExpired={() => void bootstrap.load()}
+      />
+    ) : null
+  const gameTimerPinned = useStickyTimer(gameTimer, [bootstrap.code, bootstrap.game, round?.started_at])
+
+  // Feed the roster drawer scoreboard: cumulative points headline + pairs detail.
+  const rosterScored = useMemo(() => {
+    const gridSizePairs = meta?.gridSizePairs ?? 8
+    const sessionStartedAt = bootstrap.game?.session_started_at ?? null
+    const timerSeconds = bootstrap.game?.timer_seconds ?? null
+    const roundStartedAtMap = new Map<string, string>()
+    for (const p of gameProgress) {
+      if (p.created_at && !roundStartedAtMap.has(p.round_id)) roundStartedAtMap.set(p.round_id, p.created_at)
+    }
+    return buildCumulativeMatchingPairsScores(
+      submissions,
+      gameProgress,
+      gridSizePairs,
+      sessionStartedAt,
+      roundStartedAtMap,
+      timerSeconds
+    )
+  }, [meta, bootstrap.game?.session_started_at, bootstrap.game?.timer_seconds, submissions, gameProgress])
+  useGameScores(
+    useMemo(() => Object.fromEntries(rosterScored.map((r) => [r.playerId, r.finalScore])), [rosterScored]),
+    { suffix: ' pts' }
+  )
+  useGameStats(
+    useMemo(
+      () =>
+        Object.fromEntries(
+          rosterScored.map((r) => [r.playerId, `🃏 ${r.pairsMatched} pair${r.pairsMatched === 1 ? '' : 's'}`])
+        ),
+      [rosterScored]
+    )
+  )
+
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
   if (bootstrap.screen === 'join' && bootstrap.game) {
@@ -342,6 +379,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
       />
     )
   }
@@ -421,25 +460,22 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
   // ── Round-results interstitial (multi-round, between rounds) ───────────────
   if (showingRoundResults) {
-    const myTotal = pointsLeaderboard(roundStandings, bootstrap.myPlayerId).find((r) => r.you)
-    const nextLine = isLastRound
-      ? nextRoundCountdown > 0
-        ? `Final results in ${nextRoundCountdown}…`
-        : 'Tallying final results…'
-      : nextRoundCountdown > 0
-        ? `Next round in ${nextRoundCountdown}…`
-        : 'Starting next round…'
+    const roundBoard = pointsLeaderboard(roundStandings, bootstrap.myPlayerId)
+    const myTotal = roundBoard.find((r) => r.you)
     return (
       <GameShell
         bootstrap={bootstrap}
         title={batch3GameLabel('matching_pairs')}
         subtitle={`${roundLabel}Score ${points}`}
       >
-        <GameFinishedScreen
-          title={`Round ${currentRoundNumber}/${totalRounds} complete!`}
-          subtitle={nextLine}
+        <MatchingPairsRoundResults
+          currentRoundNumber={currentRoundNumber}
+          totalRounds={totalRounds}
+          isLastRound={isLastRound}
+          endedAt={round?.ended_at ?? null}
+          gameType={bootstrap.game?.game_type}
           detail={myTotal ? `Your score: ${myTotal.score} pts` : undefined}
-          leaderboard={pointsLeaderboard(roundStandings, bootstrap.myPlayerId)}
+          leaderboard={roundBoard}
         />
       </GameShell>
     )
@@ -452,21 +488,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       subtitle={`${roundLabel}Score ${points} · Streak ${streak}`}
     >
       <ScrollView contentContainerStyle={styles.content}>
-        {isViewer && me && bootstrap.myPlayerId ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId}
-            game={bootstrap.game}
-            player={me}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
-        <MatchingPairsGameTimerBar
-          gameCode={bootstrap.code}
-          game={bootstrap.game}
-          roundStartedAt={round?.started_at ?? null}
-        />
+        {gameTimerPinned ? null : gameTimer}
         {finished && meta ? (
           <MatchingPairsWaitingForOthers
             pairsMatched={pairsMatched}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   CheckersCard,
@@ -8,6 +8,9 @@ import {
   CheckersSecondaryButton,
   CheckersShell,
 } from '@/components/checkers/CheckersChrome'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { CheckersFinalResultsShareBlock } from '@/components/checkers/CheckersFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { CheckersGamePanel } from '@/components/checkers/CheckersBoard'
@@ -30,7 +33,6 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
@@ -53,6 +55,8 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
   const { error: toastError } = useToast()
   const { confirm } = useConfirm()
   const [session, setSession] = useState<CheckersSession | null>(null)
+  const sessionRef = useRef<CheckersSession | null>(null)
+  sessionRef.current = session
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
 
@@ -96,6 +100,7 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, CheckersSession | null>({
     gameCode,
@@ -110,9 +115,28 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
-  useGameTableSync(gameCode, ['players', { table: 'games', column: 'id' }, 'checkers_sessions'], load)
+  // Delta fast-path: patch the session locally on an ordinary move and skip the full reload;
+  // a status change (→ finished) or the first row still reloads. See useGameTableSync `apply`.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as CheckersSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null && prev.status === 'active' && next.status === 'active'
+  }, [])
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  const connected = useGameTableSync(
+    gameCode,
+    ['players', { table: 'games', column: 'id' }, { table: 'checkers_sessions', apply: applySessionRow }],
+    load
+  )
+
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()
@@ -230,6 +254,33 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
 
   useCheckersClockExpiry(gameCode, session, game?.status === 'active' && !isViewer)
 
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; GameChromeSettings renders it.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={myName}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, myName, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
   if (screen === 'loading') return <CheckersLoadingScreen />
 
   if (screen === 'not_found') {
@@ -269,6 +320,8 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="checkers"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
@@ -301,6 +354,7 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={CHECKERS_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -315,6 +369,7 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myName}
@@ -374,17 +429,6 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
             roundKey={session?.id}
           />
         )}
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby
-            spectating={isViewer}
-          />
-        )}
       </CheckersShell>
     )
   }
@@ -402,16 +446,6 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
           onMove={isMyTurn && !isViewer ? movePiece : undefined}
           onResign={!isViewer ? resign : undefined}
           acting={acting}
-        />
-      )}
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isViewer}
         />
       )}
     </CheckersShell>

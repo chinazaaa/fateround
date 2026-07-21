@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import {
   type Game,
   type Player,
@@ -11,31 +11,34 @@ import {
 import { batch5GameLabel } from '@fateround/shared/batch-5-games'
 import {
   QUIPLASH_MAX_ANSWER_LENGTH,
+  QUIPLASH_REVEAL_SECONDS,
   answerAuthorName,
   answerOptionLabel,
   canPlayerVoteInRound,
   countVotesForRound,
   parseQuiplashMetadata,
-  phaseDeadlineCountdown,
   quiplashRoundVotingHint,
-  revealCountdownSeconds,
   roundVoteOptions,
   soloRoundPoints,
   tallyQuiplashScores,
 } from '@fateround/shared/quiplash'
-import { playerIsViewer } from '@fateround/shared/viewers'
+import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
+import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
+import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { PhaseStepper } from '@/components/party/PhaseStepper'
 import { PlayerSessionControls } from '@/components/session/PlayerSessionControls'
 import { RoundBreakCard } from '@/components/party/RoundBreakCard'
+import { DeadlineTimerBadge } from '@/components/ui/DeadlineTimerBadge'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
-import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
-import { TimerBadge } from '@/components/ui/TimerBadge'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useAdvancePolling } from '@/hooks/useAdvancePolling'
 import { postQuiplashAnswer, postQuiplashVote } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import {
@@ -49,7 +52,16 @@ import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'late_join_choice'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
   const [rounds, setRounds] = useState<Round[]>([])
@@ -58,8 +70,8 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
   const [votes, setVotes] = useState<QuiplashVote[]>([])
   const [answerText, setAnswerText] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [countdown, setCountdown] = useState(0)
-  const [revealCountdown, setRevealCountdown] = useState(0)
+  const scrollRef = useRef<ScrollView>(null)
+  const scrollInputIntoView = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)
   const styles = useThemedStyles(makeStyles)
   const theme = useTheme()
 
@@ -84,7 +96,13 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
 
   const computeScreen = useCallback((game: Game, playerId: string | null): Screen => {
     if (game.status === 'finished') return 'finished'
-    if (!playerId) return 'join'
+    if (!playerId) {
+      const pre = preJoinScreen(game, false)
+      if (pre === 'game_ended') return 'game_ended'
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
+      if (pre === 'late_join_choice') return 'late_join_choice'
+      return 'join'
+    }
     if (game.status === 'waiting') return 'waiting'
     return 'playing'
   }, [])
@@ -99,6 +117,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
     computeScreen,
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
+  const lateJoin = useLateJoinContext(gameCode, bootstrap.game, bootstrap.screen === 'late_join_choice')
 
   useGameTableSync(
     gameCode,
@@ -106,6 +125,18 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
     () => bootstrap.load(),
     !!bootstrap.game
   )
+
+  // Deadline-driven phase changes (esp. the last reveal → finished) don't happen
+  // on their own — a client has to nudge the server. Web polls /api/quiplash/advance;
+  // mobile had no poller, so the game could sit on the reveal and never reach the
+  // finished screen until a manual reload. Poll while active and reload on advance.
+  useAdvancePolling({
+    endpoint: '/api/quiplash/advance',
+    gameCode,
+    game: bootstrap.game,
+    enabled: !!bootstrap.game,
+    onAdvanced: () => bootstrap.load(),
+  })
 
   const currentRound = useMemo(() => {
     if (!bootstrap.game) return null
@@ -143,6 +174,22 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
     () => tallyQuiplashScores([], answers, bootstrap.players, votes),
     [answers, bootstrap.players, votes]
   )
+  useGameScores(
+    useMemo(() => Object.fromEntries(liveLeaderboard.map((row) => [row.id, row.score])), [liveLeaderboard]),
+    { suffix: ' pts' }
+  )
+  useGameStats(
+    useMemo(() => {
+      const authorOf: Record<string, string> = {}
+      for (const a of answers) authorOf[a.id] = a.player_id
+      const counts: Record<string, number> = {}
+      for (const v of votes) {
+        const author = authorOf[v.chosen_answer_id]
+        if (author) counts[author] = (counts[author] ?? 0) + 1
+      }
+      return Object.fromEntries(liveLeaderboard.map((row) => [row.id, `🗳 ${counts[row.id] ?? 0} votes`]))
+    }, [liveLeaderboard, answers, votes])
+  )
 
   const revealAnswers = useMemo(() => {
     if (!currentRound) return []
@@ -161,28 +208,6 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
     cannotParticipate: cannotParticipate || !bootstrap.myPlayerId,
     answerCount: roundAnswers.length,
   })
-
-  useEffect(() => {
-    if (!session?.turn_deadline_at) {
-      setCountdown(0)
-      return
-    }
-    const tick = () => setCountdown(phaseDeadlineCountdown(session.turn_deadline_at))
-    tick()
-    const id = setInterval(tick, 500)
-    return () => clearInterval(id)
-  }, [session?.turn_deadline_at, session?.phase])
-
-  useEffect(() => {
-    if (session?.phase !== 'reveal' || !currentRound?.ended_at) {
-      setRevealCountdown(0)
-      return
-    }
-    const tick = () => setRevealCountdown(revealCountdownSeconds(currentRound.ended_at))
-    tick()
-    const id = setInterval(tick, 500)
-    return () => clearInterval(id)
-  }, [session?.phase, currentRound?.ended_at])
 
   const submitAnswer = async () => {
     if (cannotParticipate) return
@@ -213,6 +238,32 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
+  if (bootstrap.screen === 'late_join_choice' && bootstrap.game) {
+    return (
+      <LateJoinChoiceScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        context={lateJoin.context}
+        contextLoading={lateJoin.loading}
+        nameInput={bootstrap.joinName}
+        onNameChange={bootstrap.setJoinName}
+        joining={bootstrap.joining}
+        error={bootstrap.error}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        onJoinAsPlayer={() => void bootstrap.join(undefined, { joinAsViewer: false })}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
     return (
       <JoinScreen
@@ -222,6 +273,8 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
       />
     )
   }
@@ -268,31 +321,8 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
           : `Round ${currentRound.round_number}`
       }
     >
-      <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
+      <KeyboardAwareGameScroll ref={scrollRef} contentContainerStyle={styles.content}>
         <PhaseStepper steps={['Write', 'Vote', 'Results']} activeIndex={phaseIndex} />
-
-        {cannotParticipate && me && bootstrap.myPlayerId ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={bootstrap.myPlayerId}
-            game={bootstrap.game}
-            player={me}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
-
-        <LeaderboardPanel
-          embedded
-          title="Live scores"
-          rows={liveLeaderboard.map((row) => ({
-            id: row.id,
-            name: row.name,
-            score: row.score,
-            highlight: row.id === bootstrap.myPlayerId,
-          }))}
-          highlightId={bootstrap.myPlayerId}
-        />
 
         {metadata ? <Text style={styles.prompt}>{metadata.prompt}</Text> : null}
         {session.phase === 'writing' && !cannotParticipate && !myAnswer ? (
@@ -301,7 +331,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
         {session.phase === 'reveal' ? (
           <Text style={styles.helper}>Who wrote what — points go to every vote your answer received.</Text>
         ) : null}
-        {countdown > 0 ? <TimerBadge seconds={countdown} /> : null}
+        <DeadlineTimerBadge deadlineAt={session.turn_deadline_at} active={!!session.turn_deadline_at} />
 
         {session.phase === 'writing' ? (
           cannotParticipate ? (
@@ -326,6 +356,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
                 placeholderTextColor={theme.textFaint}
                 maxLength={QUIPLASH_MAX_ANSWER_LENGTH}
                 multiline
+                onFocus={scrollInputIntoView}
               />
               <Text style={styles.counter}>
                 {answerText.length}/{QUIPLASH_MAX_ANSWER_LENGTH}
@@ -354,11 +385,24 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
                     style={[styles.choice, isPicked && styles.choiceSelected]}
                     disabled={submitting || !!myVote || !canVote}
                     onPress={() => void submitVote(answer.id)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isPicked, disabled: submitting || !!myVote || !canVote }}
+                    accessibilityLabel={`${answerOptionLabel(index)}. ${answer.text}${isPicked ? ' (your pick)' : ''}`}
                   >
                     <Text style={styles.choiceBadge}>{answerOptionLabel(index)}</Text>
                     <View style={styles.choiceBody}>
                       <Text style={styles.choiceText}>{answer.text}</Text>
-                      {isPicked ? <Text style={styles.yourPick}>Your pick</Text> : null}
+                      {/* Always render (reserve the height) and just toggle visibility,
+                          so the box doesn't grow/shift when you vote. Selection is
+                          conveyed via the Pressable's accessibilityState/label, so hide
+                          this purely-visual label from assistive tech. */}
+                      <Text
+                        style={[styles.yourPick, !isPicked && styles.yourPickHidden]}
+                        accessibilityElementsHidden
+                        importantForAccessibility="no-hide-descendants"
+                      >
+                        Your pick
+                      </Text>
                     </View>
                   </Pressable>
                 )
@@ -399,8 +443,14 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
                 )
               })}
             </View>
-            {revealCountdown > 0 ? (
-              <RoundBreakCard title="Round results" message="Next round starting soon…" secondsLeft={revealCountdown} />
+            {currentRound.ended_at ? (
+              <RoundBreakCard
+                title="Round results"
+                message="Next round starting soon…"
+                deadlineAt={new Date(
+                  new Date(currentRound.ended_at).getTime() + QUIPLASH_REVEAL_SECONDS * 1000
+                ).toISOString()}
+              />
             ) : null}
           </>
         ) : null}
@@ -495,6 +545,7 @@ const makeStyles = (theme: Theme) =>
     choiceBody: { flex: 1, gap: 4 },
     choiceText: { color: theme.text, fontSize: 16, lineHeight: 22 },
     yourPick: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700' },
+    yourPickHidden: { opacity: 0 },
     locked: { color: theme.textMuted, textAlign: 'center', marginTop: 12 },
     revealList: { gap: 10, paddingVertical: 8 },
     content: { paddingBottom: 32, gap: 14 },

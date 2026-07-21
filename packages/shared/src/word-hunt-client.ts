@@ -1,10 +1,4 @@
-import {
-  WORD_HUNT_MIN_WORD_LENGTH,
-  areWordHuntCellsAdjacent,
-  isValidPath,
-  letterAt,
-  wordFromPath,
-} from './word-hunt'
+import { WORD_HUNT_MIN_WORD_LENGTH, areWordHuntCellsAdjacent, isValidPath, letterAt, wordFromPath } from './word-hunt'
 
 export function validateWordHuntSubmissionClient(
   grid: string[][],

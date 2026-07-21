@@ -14,6 +14,9 @@ export const GAME_LABELS: Partial<Record<GameType, string>> = {
   quick_draw: 'Quick Draw',
   matching_pairs: 'Matching Pairs',
   sudoku: 'Sudoku',
+  crossword: 'Crossword',
+  word_search: 'Word Search',
+  word_scramble: 'Word Scramble',
   yahtzee: 'Yahtzee',
   snake_and_ladder: 'Snakes & Ladders',
   ludo: 'Ludo',
@@ -32,6 +35,7 @@ export const GAME_LABELS: Partial<Record<GameType, string>> = {
   custom: 'Custom Game',
   anonymous_messages: 'Anonymous Messages',
   secret_message: 'Secret Message',
+  landmine: 'Landmine',
 }
 
 export { MOBILE_SUPPORTED_GAMES }

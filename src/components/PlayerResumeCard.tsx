@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { InviteLinkActions } from '@/components/InviteLinkActions'
 import { playerResumeUrl, shareOrigin } from '@/lib/site'
 import { getPlayerSession } from '@/lib/utils'
@@ -16,9 +16,12 @@ export function PlayerResumeCard({
   className?: string
   compact?: boolean
 }) {
-  const resumeToken = resumeTokenProp ?? getPlayerSession(gameCode)?.resumeToken ?? null
+  const session = getPlayerSession(gameCode)
+  const resumeToken = resumeTokenProp ?? session?.resumeToken ?? null
   const [open, setOpen] = useState(false)
   const [revealed, setRevealed] = useState(false)
+
+  const maskedToken = useMemo(() => (resumeToken ? resumeToken.slice(0, 2) + '••••' : ''), [resumeToken])
 
   if (!resumeToken) return null
 
@@ -26,10 +29,21 @@ export function PlayerResumeCard({
 
   if (compact) {
     return (
-      <p className={`text-faint text-xs ${className}`}>
-        <span className="uppercase tracking-wider text-[10px]">Player code</span>{' '}
-        <span className="font-mono font-semibold tracking-[0.15em] text-muted">{resumeToken}</span>
-      </p>
+      <div className={`flex items-center justify-between gap-2 ${className}`}>
+        <p className="text-faint text-xs">
+          <span className="uppercase tracking-wider text-[10px]">Player code</span>{' '}
+          <span className="font-mono font-semibold tracking-[0.15em] text-muted">
+            {revealed ? resumeToken : maskedToken}
+          </span>
+        </p>
+        <button
+          type="button"
+          onClick={() => setRevealed((v) => !v)}
+          className="text-[10px] text-faint hover:text-body transition-colors"
+        >
+          {revealed ? 'Hide' : 'Reveal'}
+        </button>
+      </div>
     )
   }
 
@@ -84,15 +98,19 @@ export function PlayerResumeCard({
           Hide
         </button>
       </div>
-      <button
-        type="button"
-        onClick={() => setRevealed((v) => !v)}
-        className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-left"
-      >
-        <p className="text-faint text-[10px] uppercase tracking-wider">Your player code</p>
-        <p className="font-mono font-bold text-xl tracking-[0.2em] mt-1">{revealed ? resumeToken : '••••••'}</p>
-        <p className="text-faint text-xs mt-1">{revealed ? 'Tap to hide' : 'Tap to reveal'}</p>
-      </button>
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+        <div className="flex items-center justify-between">
+          <p className="text-faint text-[10px] uppercase tracking-wider">Your player code</p>
+          <button
+            type="button"
+            onClick={() => setRevealed((v) => !v)}
+            className="text-xs text-faint hover:text-body transition-colors"
+          >
+            {revealed ? 'Hide code' : 'Reveal code'}
+          </button>
+        </div>
+        <p className="font-mono font-bold text-xl tracking-[0.2em] mt-1">{revealed ? resumeToken : maskedToken}</p>
+      </div>
       <p className="text-body font-mono text-sm break-all">{url}</p>
       <InviteLinkActions url={url} copyLabel="Copy continue link" successMessage="Continue link copied" />
     </div>

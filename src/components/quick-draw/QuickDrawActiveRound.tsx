@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
-import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { QuickDrawFinishedResults } from '@/components/quick-draw/QuickDrawFinishedResults'
 import { DrawingCanvas, DrawingPreview } from '@/components/quick-draw/DrawingCanvas'
 import {
@@ -24,6 +23,7 @@ import {
 } from '@/lib/quick-draw'
 import { playerIsViewer } from '@/lib/viewers'
 import { useQuickDrawAdvance } from '@/hooks/useQuickDrawAdvance'
+import { isAdvanceDriver } from '@/lib/advance-driver'
 import { playVoteSubmittedSound } from '@/lib/sounds'
 import { useToast } from '@/components/ui/Toast'
 import type {
@@ -155,6 +155,17 @@ export function QuickDrawActiveRound({
     [titles, votes, drawings, players]
   )
 
+  // Live scores feed the shared roster drawer (opened from the header).
+  const rosterScores = useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard])
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(() => {
+    const realTitleIds = new Set(titles.filter((t) => t.is_real).map((t) => t.id))
+    const counts: Record<string, number> = {}
+    for (const v of votes) if (realTitleIds.has(v.chosen_title_id)) counts[v.player_id] = (counts[v.player_id] ?? 0) + 1
+    return Object.fromEntries(leaderboard.map((row) => [row.id, `✏️ ${counts[row.id] ?? 0} guessed`]))
+  }, [leaderboard, titles, votes])
+  useGameStats(rosterDetails)
+
   const screen: PlayScreen = useMemo(() => {
     if (game.status === 'finished' || session?.phase === 'finished') return 'finished'
     if (!currentRound || !session) return 'waiting'
@@ -186,15 +197,18 @@ export function QuickDrawActiveRound({
     return () => window.clearInterval(id)
   }, [session?.turn_deadline_at, session?.phase])
 
+  // W5: only an elected quorum of clients drives auto-advance (see isAdvanceDriver).
+  const isDriver = useMemo(() => isAdvanceDriver(players, myPlayerId), [players, myPlayerId])
+
   useQuickDrawAdvance({
     gameCode,
     game,
-    enabled: !skipGameSync && game.status === 'active',
+    enabled: !skipGameSync && game.status === 'active' && isDriver,
     onAdvanced: onReload,
   })
 
   useEffect(() => {
-    if (skipGameSync || game.status !== 'active' || !session?.turn_deadline_at || countdown > 0) return
+    if (skipGameSync || !isDriver || game.status !== 'active' || !session?.turn_deadline_at || countdown > 0) return
     const key = `${session.phase}:${session.drawing_index}:${session.turn_deadline_at}`
     if (advancedDeadlineRef.current === key) return
     advancedDeadlineRef.current = key
@@ -207,6 +221,7 @@ export function QuickDrawActiveRound({
     countdown,
     game.status,
     gameCode,
+    isDriver,
     onReload,
     session?.phase,
     session?.drawing_index,
@@ -343,16 +358,7 @@ export function QuickDrawActiveRound({
   const artistName = activeDrawing ? playerDisplayName(activeDrawing.player_id, players) : 'Someone'
 
   return (
-    <LiveLeaderboardLayout
-      sidebar={
-        <PaginatedLeaderboard
-          title="Leaderboard"
-          rows={leaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
-          highlightId={myPlayerId}
-          scoreLabel={(score) => `${score} pts`}
-        />
-      }
-    >
+    <div className="mx-auto w-full max-w-2xl">
       <div className="glass-card p-5 text-center space-y-3">
         <p className="label-caps text-xs">
           Round {currentRound.round_number} of {game.rounds_count}
@@ -523,6 +529,6 @@ export function QuickDrawActiveRound({
           <p className="text-center text-xs text-faint">Reveal lasts {QUICK_DRAW_REVEAL_SECONDS}s</p>
         </div>
       )}
-    </LiveLeaderboardLayout>
+    </div>
   )
 }

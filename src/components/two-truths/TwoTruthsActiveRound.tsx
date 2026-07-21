@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
-import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { TwoTruthsShareBlock } from '@/components/two-truths/TwoTruthsShareBlock'
 import { TwoTruthsSubmitterBadge } from '@/components/two-truths/TwoTruthsSubmitterBadge'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -15,6 +15,7 @@ import {
 } from '@/lib/two-truths'
 import { useRoundTimer } from '@/hooks/useRoundTimer'
 import { useTwoTruthsAdvance } from '@/hooks/useTwoTruthsAdvance'
+import { isAdvanceDriver } from '@/lib/advance-driver'
 import { playVoteSubmittedSound } from '@/lib/sounds'
 import { useToast } from '@/components/ui/Toast'
 import type { Game, Player, Round, TtlGuess } from '@/types'
@@ -66,6 +67,16 @@ export function TwoTruthsActiveRound({
     [guesses, currentRound, myPlayerId]
   )
   const leaderboard = useMemo(() => tallyTtlScores(guesses, players, rounds), [guesses, players, rounds])
+
+  // Live scores feed the shared roster drawer (opened from the header).
+  const rosterScores = useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard])
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(
+    () => Object.fromEntries(leaderboard.map((row) => [row.id, `✅ ${row.correctGuesses} correct`])),
+    [leaderboard]
+  )
+  useGameStats(rosterDetails)
+
   const featuredName = playerDisplayName(currentRound?.submitter_player_id, players)
 
   // "Best guesser" achievement = whoever read the most lies correctly (not raw
@@ -113,10 +124,13 @@ export function TwoTruthsActiveRound({
     setSubmittingIndex(null)
   }, [currentRound?.id])
 
+  // W5: only an elected quorum of clients drives auto-advance (see isAdvanceDriver).
+  const isDriver = useMemo(() => isAdvanceDriver(players, myPlayerId), [players, myPlayerId])
+
   useTwoTruthsAdvance({
     gameCode,
     game,
-    enabled: !skipGameSync && game.status === 'active',
+    enabled: !skipGameSync && game.status === 'active' && isDriver,
     onAdvanced: onReload,
   })
 
@@ -217,16 +231,7 @@ export function TwoTruthsActiveRound({
   if (!metadata || !currentRound) return null
 
   return (
-    <LiveLeaderboardLayout
-      sidebar={
-        <PaginatedLeaderboard
-          title="Leaderboard"
-          rows={leaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
-          highlightId={myPlayerId}
-          scoreLabel={(score) => `${score} pts`}
-        />
-      }
-    >
+    <div className="mx-auto w-full max-w-2xl">
       <div className="glass-card p-5 text-center space-y-3">
         <p className="label-caps text-xs">
           Round {currentRound.round_number} of {game.rounds_count}
@@ -310,6 +315,6 @@ export function TwoTruthsActiveRound({
           Next round in {revealCountdownSeconds(currentRound.ended_at)}s…
         </p>
       )}
-    </LiveLeaderboardLayout>
+    </div>
   )
 }

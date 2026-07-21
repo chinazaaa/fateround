@@ -8,6 +8,7 @@ import {
   isSnakeAndLadderGame,
   isWhotGame,
   isCrazyEightsGame,
+  isUnoGame,
   isYahtzeeGame,
   isMahjongGame,
   isWordHuntGame,
@@ -17,6 +18,10 @@ import {
   isQuiplashGame,
   isQuickDrawGame,
   isAyoGame,
+  isCrosswordGame,
+  isWordSearchGame,
+  isWordScrambleGame,
+  isPingPongGame,
   parseGameType,
 } from '@/lib/game-types'
 import { clampAyoTimer, parseAyoVariant } from '@/lib/ayo'
@@ -24,9 +29,21 @@ import { clampBoardGameTurnTimer, type BoardGameLobbyType } from '@/lib/board-ga
 import { clampMonopolyGameDuration } from '@/lib/monopoly'
 import { clampWhotGameDuration } from '@/lib/whot'
 import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
+import { clampUnoGameDuration, parseMultiPlayMode, UNO_TEAM_PLAYERS } from '@/lib/uno'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { parseMahjongRuleOptions, parseMahjongRuleset } from '@/lib/mahjong-rulesets'
 import { clampSudokuGameDuration } from '@/lib/sudoku'
+import { clampCrosswordGameDuration, parseCrosswordDifficulty } from '@/lib/crossword'
+import { clampWordSearchGameDuration, parseWordSearchDifficulty } from '@/lib/word-search'
+import { clampWordScrambleGameDuration, parseWordScrambleDifficulty } from '@/lib/word-scramble'
+import { findCrosswordTheme } from '@/lib/crossword-puzzles'
+import { findWordSearchTheme } from '@/lib/word-search-puzzles'
+import { findWordScrambleTheme } from '@/lib/word-scramble-puzzles'
+import {
+  parseStoredCrosswordEntries,
+  parseStoredWordSearchEntries,
+  parseStoredWordScrambleEntries,
+} from '@/lib/custom-questions'
 import { MATCHING_PAIRS_GAME_DURATION_OPTIONS } from '@/lib/memory-match'
 import { clampQuiplashRounds, clampQuiplashSubmitTimer, clampQuiplashVoteTimer } from '@/lib/quiplash'
 import {
@@ -37,7 +54,13 @@ import {
   clampQuickDrawVoteTimer,
 } from '@/lib/quick-draw'
 import { clampQuickDrawNumTeams, clampQuickDrawPlayMode } from '@/lib/quick-draw-guess'
-import { clampLobbyMaxPlayers, fetchGamePlayerLimits, type LobbyLimitGameType } from '@/lib/game-limits'
+import {
+  clampLobbyMaxPlayers,
+  fetchGamePlayerLimits,
+  isLobbyLimitGameType,
+  type LobbyLimitGameType,
+} from '@/lib/game-limits'
+import { clampPingPongPoints } from '@/lib/ping-pong'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = getSupabaseAnon()
@@ -48,6 +71,7 @@ function boardGameLobbyType(gameType: string): BoardGameLobbyType | null {
   if (isYahtzeeGame(parsed)) return 'yahtzee'
   if (isWhotGame(parsed)) return 'whot'
   if (isCrazyEightsGame(parsed)) return 'crazy_eights'
+  if (isUnoGame(parsed)) return 'uno'
   if (isLudoGame(parsed)) return 'ludo'
   if (isMahjongGame(parsed)) return 'mahjong'
   if (isSnakeAndLadderGame(parsed)) return 'snake_and_ladder'
@@ -70,6 +94,9 @@ function limitOnlyLobbyType(gameType: string): LobbyLimitGameType | null {
   const parsed = parseGameType(gameType)
   if (isSudokuGame(parsed)) return 'sudoku'
   if (isMatchingPairsGame(parsed)) return 'matching_pairs'
+  if (isCrosswordGame(parsed)) return 'crossword'
+  if (isWordSearchGame(parsed)) return 'word_search'
+  if (isWordScrambleGame(parsed)) return 'word_scramble'
   return null
 }
 
@@ -88,6 +115,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     timer_seconds,
     game_duration_seconds,
     rounds_count,
+    monopoly_double_go_salary,
+    monopoly_forced_auctions,
+    monopoly_no_rent_in_jail,
+    monopoly_estate_dividend,
     whot_pick3_enabled,
     whot_cards_enabled,
     whot_number_calls_enabled,
@@ -95,6 +126,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     crazy8_action_cards,
     crazy8_jokers,
     crazy8_pick2_stacking,
+    uno_wd4_challenge,
+    uno_uno_penalty,
+    uno_zero_seven,
+    uno_stacking,
+    uno_multi_play_mode,
+    uno_team_mode,
     ludo_variant,
     mahjong_ruleset,
     mahjong_rule_options,
@@ -106,15 +143,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     quick_draw_play_mode,
     quick_draw_num_teams,
     ayo_variant,
+    crossword_theme,
+    crossword_difficulty,
+    word_search_theme,
+    word_search_difficulty,
+    word_scramble_theme,
+    word_scramble_difficulty,
+    puzzle_theme_id,
+    puzzle_custom_questions,
+    ping_pong_points_to_win,
+    content_label,
   } = parsed.data
   const gameCode = parsed.data.gameId.toUpperCase()
 
   if (
+    content_label === undefined &&
     is_public === undefined &&
     max_players === undefined &&
     timer_seconds === undefined &&
     game_duration_seconds === undefined &&
     rounds_count === undefined &&
+    monopoly_double_go_salary === undefined &&
+    monopoly_forced_auctions === undefined &&
+    monopoly_no_rent_in_jail === undefined &&
+    monopoly_estate_dividend === undefined &&
     whot_pick3_enabled === undefined &&
     whot_cards_enabled === undefined &&
     whot_number_calls_enabled === undefined &&
@@ -122,6 +174,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     crazy8_action_cards === undefined &&
     crazy8_jokers === undefined &&
     crazy8_pick2_stacking === undefined &&
+    uno_wd4_challenge === undefined &&
+    uno_uno_penalty === undefined &&
+    uno_zero_seven === undefined &&
+    uno_stacking === undefined &&
+    uno_multi_play_mode === undefined &&
+    uno_team_mode === undefined &&
     ludo_variant === undefined &&
     mahjong_ruleset === undefined &&
     mahjong_rule_options === undefined &&
@@ -132,7 +190,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     quick_draw_variant === undefined &&
     quick_draw_play_mode === undefined &&
     quick_draw_num_teams === undefined &&
-    ayo_variant === undefined
+    ayo_variant === undefined &&
+    crossword_theme === undefined &&
+    crossword_difficulty === undefined &&
+    word_search_theme === undefined &&
+    word_search_difficulty === undefined &&
+    word_scramble_theme === undefined &&
+    word_scramble_difficulty === undefined &&
+    puzzle_theme_id === undefined &&
+    puzzle_custom_questions === undefined &&
+    ping_pong_points_to_win === undefined
   ) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
@@ -152,14 +219,35 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const limitOnlyType = limitOnlyLobbyType(game.game_type)
   const quiplashLobby = isQuiplashGame(parseGameType(game.game_type))
   const quickDrawLobby = isQuickDrawGame(parseGameType(game.game_type))
+  const pingPongLobby = isPingPongGame(parseGameType(game.game_type))
   const ayoLobby = ayoLobbyType(game.game_type)
-  if (!boardLobbyType && !timedLobbyType && !limitOnlyType && !quiplashLobby && !quickDrawLobby && !ayoLobby) {
+  // max_players + is_public are generic to every lobby-limit game; the more
+  // specific classifications below only gate the per-game fields (timers, rules,
+  // etc.). So accept any lobby-limit game here — otherwise games with their own
+  // settings routes (codewords, describe_it, trivia…) were rejected outright when
+  // the mobile sheet sent max_players through this route.
+  if (
+    !boardLobbyType &&
+    !timedLobbyType &&
+    !limitOnlyType &&
+    !quiplashLobby &&
+    !quickDrawLobby &&
+    !pingPongLobby &&
+    !ayoLobby &&
+    !isLobbyLimitGameType(game.game_type)
+  ) {
     return NextResponse.json({ error: 'This game type does not support lobby settings here' }, { status: 400 })
   }
 
   const lobbyLimits = await fetchGamePlayerLimits(supabase)
   const limitKey = (
-    quiplashLobby ? 'quiplash' : quickDrawLobby ? 'quick_draw' : (timedLobbyType ?? limitOnlyType ?? boardLobbyType)
+    quiplashLobby
+      ? 'quiplash'
+      : quickDrawLobby
+        ? 'quick_draw'
+        : pingPongLobby
+          ? 'ping_pong'
+          : (timedLobbyType ?? limitOnlyType ?? boardLobbyType ?? parseGameType(game.game_type))
   ) as LobbyLimitGameType
   const gameUpdate: Record<string, unknown> = {}
 
@@ -167,6 +255,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   // tied to a specific board type; any lobby-settings game can toggle it.
   if (is_public !== undefined) {
     gameUpdate.is_public = is_public
+  }
+
+  // Content label — trimmed + capped; empty string clears it.
+  if (content_label !== undefined) {
+    const trimmed = content_label.trim()
+    gameUpdate.content_label = trimmed ? trimmed.slice(0, 40) : null
   }
 
   if (max_players !== undefined) {
@@ -245,6 +339,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.game_duration_seconds = clampQuickDrawVoteTimer(game_duration_seconds)
     } else if (limitOnlyType === 'sudoku') {
       gameUpdate.game_duration_seconds = clampSudokuGameDuration(game_duration_seconds)
+    } else if (limitOnlyType === 'crossword') {
+      gameUpdate.game_duration_seconds = clampCrosswordGameDuration(game_duration_seconds)
+    } else if (limitOnlyType === 'word_search') {
+      gameUpdate.game_duration_seconds = clampWordSearchGameDuration(game_duration_seconds)
+    } else if (limitOnlyType === 'word_scramble') {
+      gameUpdate.game_duration_seconds = clampWordScrambleGameDuration(game_duration_seconds)
     } else if (limitOnlyType === 'matching_pairs') {
       // Matching Pairs stores grid size as game_duration_seconds (0=8 pairs, 16=16 pairs)
       gameUpdate.game_duration_seconds = game_duration_seconds === 16 ? 16 : 0
@@ -256,9 +356,122 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.game_duration_seconds = clampWhotGameDuration(game_duration_seconds)
     } else if (boardLobbyType === 'crazy_eights') {
       gameUpdate.game_duration_seconds = clampCrazyEightsGameDuration(game_duration_seconds)
+    } else if (boardLobbyType === 'uno') {
+      gameUpdate.game_duration_seconds = clampUnoGameDuration(game_duration_seconds)
+    } else if (parseGameType(game.game_type) === 'ping_pong') {
+      gameUpdate.game_duration_seconds = Math.max(0, game_duration_seconds)
     } else {
       return NextResponse.json({ error: 'This game type does not support game length settings' }, { status: 400 })
     }
+  }
+
+  // Crossword / Word Search / Word Scramble puzzle theme + difficulty. Stored on the game and
+  // consumed at start (they pick the word bank + grid), so they're safe to change while waiting.
+  // Selecting a BUILT-IN theme also clears any custom/admin word pool so the game reverts to the
+  // built-in code path (otherwise a stale pool from an earlier admin-theme pick would still win).
+  if (crossword_theme !== undefined || crossword_difficulty !== undefined) {
+    if (limitOnlyType !== 'crossword') {
+      return NextResponse.json({ error: 'This game type has no crossword theme settings' }, { status: 400 })
+    }
+    if (crossword_theme !== undefined) {
+      gameUpdate.crossword_theme = findCrosswordTheme(crossword_theme).id
+      gameUpdate.custom_questions = null
+      gameUpdate.question_source = 'platform'
+    }
+    if (crossword_difficulty !== undefined)
+      gameUpdate.crossword_difficulty = parseCrosswordDifficulty(crossword_difficulty)
+  }
+  if (word_search_theme !== undefined || word_search_difficulty !== undefined) {
+    if (limitOnlyType !== 'word_search') {
+      return NextResponse.json({ error: 'This game type has no word search theme settings' }, { status: 400 })
+    }
+    if (word_search_theme !== undefined) {
+      gameUpdate.word_search_theme = findWordSearchTheme(word_search_theme).id
+      gameUpdate.custom_questions = null
+      gameUpdate.question_source = 'platform'
+    }
+    if (word_search_difficulty !== undefined) {
+      gameUpdate.word_search_difficulty = parseWordSearchDifficulty(word_search_difficulty)
+    }
+  }
+  if (word_scramble_theme !== undefined || word_scramble_difficulty !== undefined) {
+    if (limitOnlyType !== 'word_scramble') {
+      return NextResponse.json({ error: 'This game type has no word scramble theme settings' }, { status: 400 })
+    }
+    if (word_scramble_theme !== undefined) {
+      gameUpdate.word_scramble_theme = findWordScrambleTheme(word_scramble_theme).id
+      gameUpdate.custom_questions = null
+      gameUpdate.question_source = 'platform'
+    }
+    if (word_scramble_difficulty !== undefined) {
+      gameUpdate.word_scramble_difficulty = parseWordScrambleDifficulty(word_scramble_difficulty)
+    }
+  }
+
+  // Switch to an admin theme from the lobby: fold its saved pool + locked difficulty into the
+  // game (mirrors POST /api/games). Its words are secret, so resolved server-side. Stores the
+  // theme NAME in the *_theme column for the join-screen chips.
+  if (puzzle_theme_id !== undefined) {
+    const puzzleKind =
+      limitOnlyType === 'crossword'
+        ? 'crossword'
+        : limitOnlyType === 'word_search'
+          ? 'word_search'
+          : limitOnlyType === 'word_scramble'
+            ? 'word_scramble'
+            : null
+    if (!puzzleKind) {
+      return NextResponse.json({ error: 'This game type has no puzzle themes' }, { status: 400 })
+    }
+    const { data: pt } = await getSupabaseAdmin()
+      .from('puzzle_themes')
+      .select('game_type, name, difficulty, entries')
+      .eq('id', puzzle_theme_id)
+      .maybeSingle()
+    if (!pt || pt.game_type !== puzzleKind || !Array.isArray(pt.entries) || pt.entries.length < 4) {
+      return NextResponse.json({ error: 'Theme not found' }, { status: 400 })
+    }
+    gameUpdate.custom_questions = pt.entries as unknown[]
+    gameUpdate.question_source = 'platform'
+    gameUpdate[`${puzzleKind}_theme`] = pt.name as string
+    const d = pt.difficulty as string | null
+    if (d === 'easy' || d === 'medium' || d === 'hard') gameUpdate[`${puzzleKind}_difficulty`] = d
+  }
+
+  // Host-supplied puzzle pool from the lobby: a Library pack pick or a "Your own" CSV upload.
+  // Re-validate + normalise per game type (never trust the client's array), require 4+ entries,
+  // then store it as a custom pool. question_source='custom' makes start ignore the built-in theme.
+  if (puzzle_custom_questions !== undefined) {
+    const normalised =
+      limitOnlyType === 'crossword'
+        ? parseStoredCrosswordEntries(puzzle_custom_questions)
+        : limitOnlyType === 'word_search'
+          ? parseStoredWordSearchEntries(puzzle_custom_questions)
+          : limitOnlyType === 'word_scramble'
+            ? parseStoredWordScrambleEntries(puzzle_custom_questions)
+            : null
+    if (!normalised) {
+      return NextResponse.json({ error: 'This game type has no custom word pool' }, { status: 400 })
+    }
+    if (normalised.length < 4) {
+      return NextResponse.json({ error: 'Add at least 4 words' }, { status: 400 })
+    }
+    gameUpdate.custom_questions = normalised
+    gameUpdate.question_source = 'custom'
+  }
+
+  if (boardLobbyType === 'monopoly') {
+    if (monopoly_double_go_salary !== undefined) gameUpdate.monopoly_double_go_salary = monopoly_double_go_salary
+    if (monopoly_forced_auctions !== undefined) gameUpdate.monopoly_forced_auctions = monopoly_forced_auctions
+    if (monopoly_no_rent_in_jail !== undefined) gameUpdate.monopoly_no_rent_in_jail = monopoly_no_rent_in_jail
+    if (monopoly_estate_dividend !== undefined) gameUpdate.monopoly_estate_dividend = monopoly_estate_dividend
+  } else if (
+    monopoly_double_go_salary !== undefined ||
+    monopoly_forced_auctions !== undefined ||
+    monopoly_no_rent_in_jail !== undefined ||
+    monopoly_estate_dividend !== undefined
+  ) {
+    return NextResponse.json({ error: 'These rules only apply to Monopoly games' }, { status: 400 })
   }
 
   if (boardLobbyType === 'whot') {
@@ -283,6 +496,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (crazy8_pick2_stacking !== undefined) gameUpdate.crazy8_pick2_stacking = crazy8_pick2_stacking
   } else if (crazy8_action_cards !== undefined || crazy8_jokers !== undefined || crazy8_pick2_stacking !== undefined) {
     return NextResponse.json({ error: 'House rules only apply to Crazy Eights games' }, { status: 400 })
+  }
+
+  if (boardLobbyType === 'uno') {
+    if (uno_wd4_challenge !== undefined) gameUpdate.uno_wd4_challenge = uno_wd4_challenge
+    if (uno_uno_penalty !== undefined) gameUpdate.uno_uno_penalty = Number(uno_uno_penalty) === 4 ? 4 : 2
+    if (uno_zero_seven !== undefined) gameUpdate.uno_zero_seven = uno_zero_seven
+    if (uno_stacking !== undefined) gameUpdate.uno_stacking = uno_stacking
+    if (uno_multi_play_mode !== undefined) gameUpdate.uno_multi_play_mode = parseMultiPlayMode(uno_multi_play_mode)
+    if (uno_team_mode !== undefined) {
+      gameUpdate.uno_team_mode = uno_team_mode
+      // Team-Up is strictly 2v2 — enabling it caps the room at 4 (mirrors create).
+      // Turning it off leaves max_players for the host to adjust separately.
+      if (uno_team_mode === true) gameUpdate.max_players = UNO_TEAM_PLAYERS
+    }
+  } else if (
+    uno_wd4_challenge !== undefined ||
+    uno_uno_penalty !== undefined ||
+    uno_zero_seven !== undefined ||
+    uno_stacking !== undefined ||
+    uno_multi_play_mode !== undefined ||
+    uno_team_mode !== undefined
+  ) {
+    return NextResponse.json({ error: 'House rules only apply to UNO games' }, { status: 400 })
   }
 
   if (boardLobbyType === 'ludo') {
@@ -337,6 +573,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     quick_draw_num_teams !== undefined
   ) {
     return NextResponse.json({ error: 'Quick Draw settings only apply to Quick Draw games' }, { status: 400 })
+  }
+
+  if (pingPongLobby) {
+    if (ping_pong_points_to_win !== undefined) {
+      gameUpdate.ping_pong_points_to_win = clampPingPongPoints(ping_pong_points_to_win)
+    }
+  } else if (ping_pong_points_to_win !== undefined) {
+    return NextResponse.json({ error: 'Points to win only applies to Ping Pong games' }, { status: 400 })
   }
 
   const { data: updated, error } = await getSupabaseAdmin()

@@ -1,7 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { BingoCardGrid, BingoCardLegend, CalledNumbersBoard } from '@/components/bingo/BingoCardGrid'
 import { BingoFinalResultsShareBlock } from '@/components/bingo/BingoFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -15,6 +18,7 @@ import type { BingoCalledNumber, BingoCard, BingoClaim, Game } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useBingoWinNotification, useBingoStartNotification } from '@/hooks/useBingoNotifications'
 import { useBingoAutoCall } from '@/hooks/useBingoAutoCall'
+import { isAdvanceDriver } from '@/lib/advance-driver'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
@@ -25,7 +29,6 @@ import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
@@ -134,6 +137,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, null>({
     gameCode,
@@ -222,6 +226,35 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   const me = players.find((p) => p.id === myPlayerId)
   const myPlayerName = me?.name ?? ''
   const isViewer = !!(game && me && playerIsViewer(me, game))
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it. Purely additive — the in-page PlayerSessionControls stays as-is.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={me?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
   const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
     gameCode,
     game,
@@ -235,10 +268,11 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     calledNumbers.length
   )
 
+  // W5: only an elected quorum of clients drives auto-call (see isAdvanceDriver).
   useBingoAutoCall({
     gameCode,
     game,
-    enabled: screen === 'active',
+    enabled: screen === 'active' && isAdvanceDriver(players, myPlayerId),
     onSynced: load,
   })
 
@@ -421,6 +455,8 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="bingo"
           submitLabel="Join Bingo"
@@ -455,6 +491,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={BINGO_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -469,6 +506,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myPlayerName}
@@ -554,16 +592,6 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
           <div className="text-3xl">{cfg.headerEmoji}</div>
           <h1 className="text-xl font-black gradient-title">{game?.title}</h1>
         </div>
-        {myPlayerId && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myPlayerName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            spectating={isViewer}
-          />
-        )}
 
         {lastCalled != null && (
           <div className="glass-card p-4 text-center">

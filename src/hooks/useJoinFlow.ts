@@ -92,7 +92,7 @@ export function useJoinFlow(deps: JoinFlowDeps) {
     if (initialNameSyncedRef.current) return
     if (initialName?.trim() && !nameInput.trim() && !myPlayerId && !editingJoin) {
       initialNameSyncedRef.current = true
-      setNameInput(initialName)
+      setTimeout(() => setNameInput(initialName), 0)
     }
   }, [initialName, nameInput, myPlayerId, editingJoin])
 
@@ -143,8 +143,10 @@ export function useJoinFlow(deps: JoinFlowDeps) {
     if (useFreeNameJoin || view !== 'join' || !selectedParticipantId) return
     const stillAvailable = namePickerOptions.some((o) => o.id === selectedParticipantId)
     if (!stillAvailable) {
-      setSelectedParticipantId(null)
-      setNameInput('')
+      setTimeout(() => {
+        setSelectedParticipantId(null)
+        setNameInput('')
+      }, 0)
       joinGenderTouchedRef.current = false
     }
   }, [namePickerOptions, selectedParticipantId, useFreeNameJoin, view])
@@ -154,7 +156,8 @@ export function useJoinFlow(deps: JoinFlowDeps) {
     if (!roomDisplayName || useFreeNameJoin || view !== 'join' || editingJoin) return
     const match = namePickerOptions.find((o) => o.name.toLowerCase() === roomDisplayName.toLowerCase())
     if (!match || selectedParticipantId === match.id) return
-    handleSelectParticipant(match.id, match.name)
+    setTimeout(() => handleSelectParticipant(match.id, match.name), 0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomDisplayName, useFreeNameJoin, view, editingJoin, namePickerOptions, selectedParticipantId])
 
   const joinGame = async (joinAsViewer?: boolean, nameOverride?: string) => {
@@ -208,13 +211,27 @@ export function useJoinFlow(deps: JoinFlowDeps) {
         }
       }
 
+      // If this device already holds a seat here (a racing auto-join, a reconnect, a second
+      // tab), send its resume token so the server reclaims THAT row — role and all — instead
+      // of cutting a fresh one. On an active game a fresh row defaults to spectator, which is
+      // how a real player gets silently demoted to a viewer. Mirrors useGameViewBootstrap.
+      // Only a genuine "seat me" POST carries it: identity edits go through the isSelfEdit
+      // PATCH above, and leaving clears the session (so a deliberate rejoin still gets a new row).
+      const existingToken = isSelfEdit ? null : (getPlayerSession(gameCode)?.resumeToken ?? null)
+
       const res = await fetch('/api/players', {
         method: isSelfEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
           isSelfEdit
             ? { ...body, playerId: myPlayerId, resumeToken: editResumeToken }
-            : { ...body, ...activeJoinExtras, ...joinExtras, ...(tournamentToken ? { tournamentToken } : {}) }
+            : {
+                ...body,
+                ...activeJoinExtras,
+                ...joinExtras,
+                ...(tournamentToken ? { tournamentToken } : {}),
+                ...(existingToken ? { resumeToken: existingToken } : {}),
+              }
         ),
       })
       const data = await res.json()
@@ -348,7 +365,8 @@ export function useJoinFlow(deps: JoinFlowDeps) {
     const match = namePickerOptions.find((o) => o.id === selectedParticipantId)
     if (!match || match.name.toLowerCase() !== roomDisplayName.toLowerCase()) return
     participantAutoJoinRef.current = true
-    void joinGame()
+    setTimeout(() => void joinGame(), 0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     roomDisplayName,
     useFreeNameJoin,
@@ -391,6 +409,7 @@ export function useJoinFlow(deps: JoinFlowDeps) {
     }
     nameAutoJoinRef.current = true
     void joinGame(autoJoinAsViewer === true).finally(() => setNameAutoJoinDone(true))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     initialName,
     autoJoinAsViewer,

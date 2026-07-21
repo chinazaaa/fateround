@@ -4,10 +4,15 @@ import { type Game, type Player, type Round, type WordHuntSubmission } from '@fa
 import { batch5GameLabel } from '@fateround/shared/batch-5-games'
 import { parseWordHuntMetadata, tallyWordHuntScores, wordHuntPoints } from '@fateround/shared/word-hunt'
 import { validateWordHuntSubmissionClient, validWordsSetFromMetadata } from '@fateround/shared/word-hunt-client'
-import { playerIsViewer } from '@fateround/shared/viewers'
+import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
+import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
+import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -22,7 +27,16 @@ import { WordHuntPlaySurface } from '@/components/games/word-hunt/WordHuntPlaySu
 import { WordHuntResultsReview } from '@/components/games/word-hunt/WordHuntResultsReview'
 import { WordHuntPersonalResults } from '@/components/games/word-hunt/WordHuntPersonalResults'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'late_join_choice'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
@@ -33,7 +47,6 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   const [selectedPath, setSelectedPath] = useState<number[]>([])
   const [message, setMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [standingsOpen, setStandingsOpen] = useState(false)
   const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
 
   const loadGameState = useCallback(
@@ -75,7 +88,13 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   const computeScreen = useCallback((game: Game, playerId: string | null): Screen => {
-    if (!playerId) return 'join'
+    if (!playerId) {
+      const pre = preJoinScreen(game, false)
+      if (pre === 'game_ended') return 'game_ended'
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
+      if (pre === 'late_join_choice') return 'late_join_choice'
+      return 'join'
+    }
     if (game.status === 'waiting') return 'waiting'
     if (game.status === 'finished') return 'finished'
     return 'playing'
@@ -91,6 +110,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     computeScreen,
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
+  const lateJoin = useLateJoinContext(gameCode, bootstrap.game, bootstrap.screen === 'late_join_choice')
 
   useGameTableSync(
     gameCode,
@@ -99,11 +119,11 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     !!bootstrap.game
   )
 
-  const { label: timeLabel, timeUp, secondsLeft } = useWordHuntTimer(
-    gameCode,
-    bootstrap.game,
-    () => void bootstrap.load()
-  )
+  const {
+    label: timeLabel,
+    timeUp,
+    secondsLeft,
+  } = useWordHuntTimer(gameCode, bootstrap.game, () => void bootstrap.load())
 
   const me = useMemo(
     () => bootstrap.players.find((p) => p.id === bootstrap.myPlayerId),
@@ -115,16 +135,25 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     () => submissions.filter((s) => s.player_id === bootstrap.myPlayerId),
     [submissions, bootstrap.myPlayerId]
   )
-  const foundWords = useMemo(
-    () => new Set(mySubmissions.map((s) => s.word.toLowerCase())),
-    [mySubmissions]
-  )
+  const foundWords = useMemo(() => new Set(mySubmissions.map((s) => s.word.toLowerCase())), [mySubmissions])
   const myPoints = useMemo(() => mySubmissions.reduce((sum, s) => sum + s.points_awarded, 0), [mySubmissions])
 
   const leaderboard = useMemo(
     () => tallyWordHuntScores(submissions, bootstrap.players),
     [submissions, bootstrap.players]
   )
+
+  // Feed the roster drawer scoreboard: points headline + words-found detail.
+  const rosterScores = useMemo(() => Object.fromEntries(leaderboard.map((r) => [r.player_id, r.points])), [leaderboard])
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        leaderboard.map((r) => [r.player_id, `✅ ${r.word_count} word${r.word_count === 1 ? '' : 's'}`])
+      ),
+    [leaderboard]
+  )
+  useGameStats(rosterDetails)
 
   // Viewers watch one player's hunt at a time — the shared grid is static, so the
   // interesting part is a chosen player's words and score filling in live.
@@ -171,6 +200,32 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
+  if (bootstrap.screen === 'late_join_choice' && bootstrap.game) {
+    return (
+      <LateJoinChoiceScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        context={lateJoin.context}
+        contextLoading={lateJoin.loading}
+        nameInput={bootstrap.joinName}
+        onNameChange={bootstrap.setJoinName}
+        joining={bootstrap.joining}
+        error={bootstrap.error}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        onJoinAsPlayer={() => void bootstrap.join(undefined, { joinAsViewer: false })}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
     return (
       <JoinScreen
@@ -180,6 +235,8 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
       />
     )
   }
@@ -196,7 +253,10 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
       points: s.points,
       detail: `${s.word_count} word${s.word_count === 1 ? '' : 's'}`,
     }))
-    const winnerId = top && top.points > 0 && leaderboard.length > 1 ? top.player_id : null
+    // Name the leader whenever they actually scored — a solo player who found words
+    // is still the winner (matches web, which never shows "Game over" here). Only a
+    // round where nobody scored anything falls back to "Game over".
+    const winnerId = top && top.points > 0 ? top.player_id : null
     const validWordsArray = validWords.size > 0 ? Array.from(validWords) : undefined
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('word_hunt')} subtitle={bootstrap.code}>
@@ -215,9 +275,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
                   highlightPlayerId={bootstrap.myPlayerId}
                 />
               ) : null}
-              {!isViewer ? (
-                <WordHuntPersonalResults submissions={mySubmissions} validWords={validWordsArray} />
-              ) : null}
+              {!isViewer ? <WordHuntPersonalResults submissions={mySubmissions} validWords={validWordsArray} /> : null}
             </View>
           }
         />
@@ -289,33 +347,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
 
         {message ? <Text style={styles.message}>{message}</Text> : null}
 
-        <Pressable style={styles.standingsToggle} onPress={() => setStandingsOpen((v) => !v)}>
-          <View>
-            <Text style={styles.standingsTitle}>Live standings</Text>
-            {!standingsOpen ? <Text style={styles.standingsHint}>See who&apos;s ahead</Text> : null}
-          </View>
-          <Text style={styles.standingsChevron}>{standingsOpen ? '▲' : '▾'}</Text>
-        </Pressable>
-        {standingsOpen ? (
-          <View style={styles.standingsList}>
-            {leaderboard.slice(0, 8).map((row, i) => {
-              const isMe = row.player_id === bootstrap.myPlayerId
-              return (
-                <View key={row.player_id} style={styles.standingsRow}>
-                  <View style={styles.standingsLeft}>
-                    <Text style={styles.standingsRank}>{i + 1}</Text>
-                    <Text style={[styles.standingsName, isMe && styles.standingsNameMe]} numberOfLines={1}>
-                      {row.name}
-                    </Text>
-                  </View>
-                  <Text style={[styles.standingsMeta, isMe && styles.standingsNameMe]}>
-                    {row.points} pts · {row.word_count}w
-                  </Text>
-                </View>
-              )
-            })}
-          </View>
-        ) : null}
+        {/* Live standings removed — the roster side-drawer now shows the live leaderboard. */}
       </ScrollView>
     </GameShell>
   )

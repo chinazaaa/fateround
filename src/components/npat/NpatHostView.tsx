@@ -10,35 +10,35 @@ import { NpatScoreboard } from '@/components/npat/NpatScoreboard'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
-import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
+import { HostMaxPlayersLobbyPanel } from '@/components/host-lobby/HostMaxPlayersLobbyPanel'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { useNpatAdvance } from '@/hooks/useNpatAdvance'
 import {
   clampNpatMarkingTimer,
   clampNpatTimer,
   formatNpatGameDuration,
-  getNpatHostMode,
   NPAT_GAME_DURATION_OPTIONS,
   NPAT_MARKING_TIMER_OPTIONS,
   NPAT_MIN_PLAYERS,
   NPAT_TIMER_OPTIONS,
   parseNpatMetadata,
   resolveActiveNpatRound,
-  setNpatHostMode,
   tallyNpatScores,
-  type NpatHostMode,
 } from '@/lib/npat'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, NPAT_ANSWER_SELECT, NPAT_MARK_SELECT, PLAYER_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
-import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import type { Game, NpatAnswer, NpatMark, Player, Round } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
@@ -46,6 +46,9 @@ import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { ExitIcon } from '@/components/host/host-icons'
 
 type HostTab = 'play' | 'manage'
@@ -64,34 +67,10 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const [timerSeconds, setTimerSeconds] = useState(60)
   const [markingTimerSeconds, setMarkingTimerSeconds] = useState(45)
   const [gameDurationSeconds, setGameDurationSeconds] = useState(0)
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
-  const [hostMode, setHostMode] = useState<NpatHostMode>('player')
   const [tab, setTab] = useState<HostTab>('manage')
 
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
   useTurnNotifications({ status: game?.status })
-
-  const handlePlayerRemoved = useCallback(
-    (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostResumeToken(null)
-        setHostPlayerName('')
-        clearPlayerSession(gameCode)
-      }
-      setPlayers((prev) => prev.filter((p) => p.id !== playerId))
-    },
-    [gameCode, hostPlayerId]
-  )
-
-  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
-
-  // Clear stale host-as-player state if the host's own row is removed elsewhere.
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
 
   const load = useCallback(async (): Promise<boolean> => {
     const [gameRes, plrsRes, rdsRes, ansRes, marksRes] = await Promise.all([
@@ -117,23 +96,55 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
 
   useEffect(() => {
     load()
-    setHostMode(getNpatHostMode(gameCode))
-    const session = getPlayerSession(gameCode)
-    if (session) {
-      setHostPlayerId(session.playerId)
-      setHostResumeToken(session.resumeToken ?? null)
-      setHostPlayerName(session.playerName)
-    }
   }, [gameCode, load])
 
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    leaveSeatKeepHosting,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+    onModeChange: (mode) => {
+      if (mode === 'spectator') setTab('manage')
+    },
+  })
+
+  const handlePlayerRemoved = useCallback(
+    (playerId: string) => {
+      onHostSeatRemoved(playerId)
+      setPlayers((prev) => prev.filter((p) => p.id !== playerId))
+    },
+    [onHostSeatRemoved]
+  )
+
+  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
+
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [{ table: 'games', column: 'id' }, 'players', 'rounds', 'npat_answers', 'npat_marks'],
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
   useNpatAdvance({
     gameCode,
@@ -154,81 +165,6 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     if (game?.status === 'finished') setTab('manage')
     else if (game?.status === 'active') setTab('play')
   }, [game?.status])
-
-  const changeHostMode = async (mode: NpatHostMode) => {
-    if (game?.status !== 'waiting') return
-    const prev = hostMode
-    setHostMode(mode)
-    setNpatHostMode(gameCode, mode)
-    if (mode === 'spectator') setTab('manage')
-    // Switching to "Host only" while holding a seat → give up the seat so the host
-    // drops out of the players list.
-    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
-      try {
-        const res = await fetch('/api/players', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error ?? 'Failed to leave seat')
-        }
-        handlePlayerRemoved(hostPlayerId)
-        await load()
-      } catch (err) {
-        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
-      }
-    }
-  }
-
-  const renameHost = async (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed || !hostPlayerId) return
-    try {
-      const res = await fetch('/api/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
-      setHostPlayerName(data.playerName)
-      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
-      await load()
-      success('Name updated!')
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to update name')
-    }
-  }
-
-  const hostJoinGame = async () => {
-    const name = hostJoinName.trim()
-    if (!name) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: name }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostResumeToken(data.resumeToken ?? null)
-      setHostPlayerName(data.playerName)
-      setHostMode('player')
-      setNpatHostMode(gameCode, 'player')
-      await load()
-      success(`Joined as ${data.playerName}`)
-      setTab('play')
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }
 
   const startGame = async () => {
     setStarting(true)
@@ -343,7 +279,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const leaderboard = useMemo(() => tallyNpatScores(answers, players), [answers, players])
   const hostNpatRow = leaderboard.find((row) => row.id === hostPlayerId)
   const hostWonNpat =
-    !!hostNpatRow && leaderboard[0] != null && hostNpatRow.score === leaderboard[0].score && leaderboard[0].score > 0
+    !!hostNpatRow && leaderboard[0] != null && hostNpatRow === leaderboard[0] && leaderboard[0].score > 0
   const showManageScoreboard =
     game?.status === 'active' &&
     currentMetadata != null &&
@@ -354,12 +290,24 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer). NPAT has no in-game settings,
+  // so this is just How-to-play + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="i_call_on" onEnded={load}>
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+          )}
+        </HostActiveSettings>
+      ) : null,
+    [game?.status, gameCode, hostToken, load, hostMode, hostPlayerId, leaveSeatKeepHosting]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
   const cfg = gameTypeConfig('i_call_on')
@@ -390,6 +338,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={NPAT_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}
@@ -461,16 +410,12 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
           spectatorHint="Watch the game from the Watch tab"
           playingNote={
             <p className="text-sm text-muted">
-              Playing as <strong className="text-body">{hostPlayerName}</strong> — play from the Play tab once you
-              start.
+              Playing as <strong className="text-body">{hostPlayerName}</strong> — play once you start.
             </p>
           }
         />
       )}
       {game.status !== 'finished' && <HostRulesRow gameType="i_call_on" />}
-      {game.status === 'waiting' && (
-        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-      )}
 
       {game.status === 'waiting' && (
         <>
@@ -574,18 +519,137 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     </div>
   )
 
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+
+  const lobbyModeCard = (
+    <HostModeSelector
+      mode={hostMode}
+      onChange={changeHostMode}
+      onEditName={renameHost}
+      joinedPlayerId={hostPlayerId}
+      joinedPlayerName={hostPlayerName}
+      joinName={hostJoinName}
+      onJoinNameChange={setHostJoinName}
+      onJoin={() => void hostJoinGame()}
+      joining={hostJoining}
+      spectatorHint="Watch the game once it starts"
+      playerHint="Play along with everyone"
+      playingNote={
+        <p className="text-sm text-muted">
+          Playing as <strong className="text-body">{hostPlayerName}</strong> — play once you start.
+        </p>
+      }
+    />
+  )
+
+  const lobbySettings = (
+    <>
+      <HostMaxPlayersLobbyPanel
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        limitType="i_call_on"
+        playerCount={players.length}
+        onGameUpdate={setGame}
+      />
+      <div className="rounded-2xl border border-[color-mix(in_srgb,var(--primary)_14%,var(--border))] bg-[var(--card-strong)]/95 p-5 space-y-3">
+        <p className="label-caps">Game settings</p>
+        <label className="block space-y-1">
+          <span className="text-sm font-semibold">Game length</span>
+          <select
+            value={gameDurationSeconds}
+            onChange={(e) => setGameDurationSeconds(Number(e.target.value))}
+            className="input-field w-full"
+          >
+            {NPAT_GAME_DURATION_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {formatNpatGameDuration(s)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block space-y-1">
+          <span className="text-sm font-semibold">Writing time (per letter)</span>
+          <select
+            value={timerSeconds}
+            onChange={(e) => setTimerSeconds(Number(e.target.value))}
+            className="input-field w-full"
+          >
+            {NPAT_TIMER_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}s
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block space-y-1">
+          <span className="text-sm font-semibold">Marking time (per letter)</span>
+          <select
+            value={markingTimerSeconds}
+            onChange={(e) => setMarkingTimerSeconds(Number(e.target.value))}
+            className="input-field w-full"
+          >
+            {NPAT_MARKING_TIMER_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}s
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="button" onClick={saveTimers} disabled={savingTimer} className="btn-secondary w-full">
+          {savingTimer ? 'Saving…' : 'Save timers'}
+        </button>
+      </div>
+      <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+    </>
+  )
+
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={cfg.label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('i_call_on', game) ?? game.max_players}
+        resumeToken={hostResumeToken}
+        playCard={lobbyModeCard}
+        settingsChildren={lobbySettings}
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart ? null : `Need at least ${NPAT_MIN_PLAYERS} players to start (${players.length}/${NPAT_MIN_PLAYERS})`
+        }
+        startLabel="Start game"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      />
+    )
+  }
+
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={game.status}
       tab={tab}
       onTabChange={setTab}
       primaryKind={primaryKind}
+      game={game}
+      players={players}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={load}
       showTabs={showTabs}
       gameStarted={gameStarted}
       header={<HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : watchRound}
       manage={manage}
+      noManageTab={game.status === 'active'}
       finished={
         <>
           <NpatFinalResultsShareBlock

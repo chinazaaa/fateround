@@ -1,17 +1,23 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { BingoCardGrid, CalledNumbersBoard } from '@/components/bingo/BingoCardGrid'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { BingoFinalResultsShareBlock } from '@/components/bingo/BingoFinalResultsShareBlock'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
-import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { ExitIcon } from '@/components/host/host-icons'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
@@ -24,10 +30,7 @@ import {
   bingoCallIntervalFromGame,
   bingoCallModeFromGame,
   formatBingoNumber,
-  getBingoHostMode,
-  setBingoHostMode,
   hasBingoWin,
-  type BingoHostMode,
 } from '@/lib/bingo'
 import { supabase } from '@/lib/supabase'
 import {
@@ -38,11 +41,10 @@ import {
   PLAYER_SELECT,
 } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
-import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import type { BingoCallMode, BingoCalledNumber, BingoClaim, BingoCard, Game, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useBingoWinNotification, useBingoStartNotification } from '@/hooks/useBingoNotifications'
@@ -68,12 +70,6 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const [lobbyMaxPlayers, setLobbyMaxPlayers] = useState(BINGO_MIN_PLAYERS)
 
   // Host+play mode
-  const [hostMode, setHostMode] = useState<BingoHostMode>('player')
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
   const [hostCard, setHostCard] = useState<BingoCard | null>(null)
   const [hostMarking, setHostMarking] = useState(false)
   const [hostClaiming, setHostClaiming] = useState(false)
@@ -125,14 +121,40 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   useEffect(() => {
     load()
-    setHostMode(getBingoHostMode(gameCode))
-    const session = getPlayerSession(gameCode)
-    if (session) {
-      setHostPlayerId(session.playerId)
-      setHostResumeToken(session.resumeToken ?? null)
-      setHostPlayerName(session.playerName)
-    }
   }, [gameCode, load])
+
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    leaveSeatKeepHosting,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+  })
+
+  const handlePlayerRemoved = useCallback(
+    (playerId: string) => {
+      onHostSeatRemoved(playerId)
+      if (playerId === hostPlayerId) setHostCard(null)
+      setPlayers((prev) => prev.filter((p) => p.id !== playerId))
+    },
+    [onHostSeatRemoved, hostPlayerId]
+  )
+
+  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
 
   useEffect(() => {
     if (hostPlayerId && game?.status === 'active' && !hostCard) {
@@ -192,25 +214,6 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
-  const handlePlayerRemoved = useCallback(
-    (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostResumeToken(null)
-        setHostPlayerName('')
-        setHostCard(null)
-        clearPlayerSession(gameCode)
-      }
-      setPlayers((prev) => prev.filter((p) => p.id !== playerId))
-    },
-    [gameCode, hostPlayerId]
-  )
-
-  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
-
-  // Clear stale host-as-player state if the host's own row is removed elsewhere.
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
-
   const playerManageBlock =
     game && (game.status === 'waiting' || game.status === 'active') ? (
       <HostLobbyPlayersSection
@@ -223,79 +226,6 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
     ) : null
 
   useBingoAutoCall({ gameCode, game, enabled: game?.status === 'active', onSynced: load })
-
-  const changeHostMode = async (mode: BingoHostMode) => {
-    if (game?.status !== 'waiting') return
-    const prev = hostMode
-    setHostMode(mode)
-    setBingoHostMode(gameCode, mode)
-    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
-      try {
-        const res = await fetch('/api/players', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error ?? 'Failed to leave seat')
-        }
-        handlePlayerRemoved(hostPlayerId)
-        await load()
-      } catch (err) {
-        setHostMode(prev)
-        setBingoHostMode(gameCode, prev)
-        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
-      }
-    }
-  }
-
-  const renameHost = async (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed || !hostPlayerId) return
-    try {
-      const res = await fetch('/api/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
-      setHostPlayerName(data.playerName)
-      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
-      await load()
-      success('Name updated!')
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to update name')
-    }
-  }
-
-  const hostJoinGame = async () => {
-    const name = hostJoinName.trim()
-    if (!name) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: name }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostResumeToken(data.resumeToken ?? null)
-      setHostPlayerName(data.playerName)
-      setHostMode('player')
-      setBingoHostMode(gameCode, 'player')
-      await load()
-      success(`Joined as ${data.playerName}`)
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }
 
   const markHostNumber = async (cellIndex: number) => {
     if (!hostPlayerId || !hostCard || hostMarking) return
@@ -479,12 +409,24 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
+  // Host settings for the active game live in the main-header ⚙ gear (no Manage tab).
+  // Bingo has no in-game settings, so this is just How-to-play + End game. The frequent
+  // "Call random" driver stays in the play body (see `callControl` below), not the gear.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="bingo" onEnded={load}>
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+          )}
+        </HostActiveSettings>
+      ) : null,
+    [game?.status, gameCode, hostToken, load, hostMode, hostPlayerId, leaveSeatKeepHosting]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
   const showTabs = game.status !== 'finished'
@@ -498,9 +440,41 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
     </div>
   )
 
+  // The host's number-calling control — lives in the PLAY BODY (not the gear) since
+  // manual calling is frequent. Auto mode just shows the interval note.
+  const callControl = game?.status === 'active' && (
+    <div className="glass-card p-5 space-y-4">
+      <p className="label-caps">{isAuto ? 'Automatic calling' : 'Call numbers'}</p>
+      {isAuto ? (
+        <p className="text-center text-muted text-sm sm:text-base">
+          Numbers are called automatically every <span className="font-bold text-body">{callInterval}s</span>. Keep this
+          tab open or let players stay connected — anyone in the game keeps it running.
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => callNumber(true)}
+            disabled={calling || called.length >= 75}
+            className="btn-primary flex-1 min-w-[140px]"
+          >
+            {calling ? 'Calling…' : 'Call random'}
+          </button>
+        </div>
+      )}
+      {lastCalled != null && (
+        <p className="text-center text-muted text-sm">
+          Last: <span className="font-bold text-blue-300">{formatBingoNumber(lastCalled)}</span> · {called.length}/75
+          called
+        </p>
+      )}
+    </div>
+  )
+
   // Primary tab: interactive card for a host-player, read-only board for a host-only host.
   const interactivePlay = hostPlays && game.status === 'active' && (
     <div className="space-y-4">
+      {callControl}
       {hostCard ? (
         <>
           <div className="glass-card p-4">
@@ -539,6 +513,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   const watchRound = (
     <div className="space-y-4">
+      {callControl}
       {lastCalled != null && (
         <div className="glass-card p-5">
           <p className="text-center text-muted text-sm">
@@ -574,9 +549,6 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
         />
       )}
       {game.status !== 'finished' && <HostRulesRow gameType="bingo" />}
-      {game.status === 'waiting' && (
-        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-      )}
 
       {game.status === 'waiting' && (
         <>
@@ -770,6 +742,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={BINGO_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}
@@ -786,18 +759,154 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
     )
   }
 
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  const canStart = players.length >= BINGO_MIN_PLAYERS
+
+  const lobbyModeCard = (
+    <HostModeSelector
+      mode={hostMode}
+      onChange={changeHostMode}
+      joinedPlayerId={hostPlayerId}
+      joinedPlayerName={hostPlayerName}
+      onEditName={renameHost}
+      joinName={hostJoinName}
+      onJoinNameChange={setHostJoinName}
+      onJoin={() => void hostJoinGame()}
+      joining={hostJoining}
+      spectatorHint="Watch the game once it starts"
+      playerHint="Get a card and play along"
+      playingNote={
+        <p className="text-sm text-muted">
+          Playing as <strong className="text-body">{hostPlayerName}</strong> — you&apos;ll get a card when the game
+          starts.
+        </p>
+      }
+    />
+  )
+
+  const lobbySettings = (
+    <>
+      <div className="rounded-2xl border border-[color-mix(in_srgb,var(--primary)_14%,var(--border))] bg-[var(--card-strong)]/95 p-5 space-y-3">
+        <p className="label-caps">Game settings</p>
+        <label className="block text-sm text-muted">
+          Max players
+          <select
+            value={lobbyMaxPlayers}
+            onChange={(e) => setLobbyMaxPlayers(Number(e.target.value))}
+            className="input-field w-full mt-1"
+          >
+            {Array.from({ length: 30 - BINGO_MIN_PLAYERS + 1 }, (_, i) => i + BINGO_MIN_PLAYERS).map((n) => (
+              <option key={n} value={n}>
+                {n} players
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => setLobbyCallMode('manual')}
+            className={[
+              'rounded-2xl border-2 px-4 py-3 text-left',
+              lobbyCallMode === 'manual'
+                ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                : 'border-[var(--border-strong)] text-muted',
+            ].join(' ')}
+          >
+            <span className="font-bold block text-sm">Manual</span>
+            <span className="text-faint text-xs">You call numbers</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setLobbyCallMode('auto')}
+            className={[
+              'rounded-2xl border-2 px-4 py-3 text-left',
+              lobbyCallMode === 'auto'
+                ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                : 'border-[var(--border-strong)] text-muted',
+            ].join(' ')}
+          >
+            <span className="font-bold block text-sm">Automatic</span>
+            <span className="text-faint text-xs">Computer calls</span>
+          </button>
+        </div>
+        {lobbyCallMode === 'auto' && (
+          <label className="block text-sm text-muted">
+            Seconds between calls
+            <select
+              value={lobbyCallInterval}
+              onChange={(e) => setLobbyCallInterval(Number(e.target.value))}
+              className="input-field w-full mt-1"
+            >
+              {BINGO_CALL_INTERVAL_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s} seconds
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <button
+          type="button"
+          onClick={saveLobbySettings}
+          disabled={savingSettings}
+          className="btn-secondary w-full py-3"
+        >
+          {savingSettings ? 'Saving…' : 'Save settings'}
+        </button>
+      </div>
+      <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+    </>
+  )
+
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={cfg.label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('bingo', game) ?? game.max_players}
+        resumeToken={hostResumeToken}
+        playCard={lobbyModeCard}
+        settingsChildren={lobbySettings}
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : `Need at least ${BINGO_MIN_PLAYERS} players to start (${players.length}/${BINGO_MIN_PLAYERS})`
+        }
+        startLabel="Start bingo"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      />
+    )
+  }
+
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={game.status}
       tab={tab}
       onTabChange={setTab}
       primaryKind={primaryKind}
+      game={game}
+      players={players}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={load}
       showTabs={showTabs}
       gameStarted={gameStarted}
       header={<HostGameHeader game={game} />}
-      primary={hostPlays ? interactivePlay : watchRound}
+      primary={<div className="max-w-lg mx-auto w-full">{hostPlays ? interactivePlay : watchRound}</div>}
       manage={manage}
+      noManageTab={game.status === 'active'}
       finished={finished}
     />
   )

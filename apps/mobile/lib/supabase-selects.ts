@@ -1,16 +1,17 @@
 export const GAME_SELECT =
-  'id,title,game_type,status,current_round_number,timer_seconds,max_players,allow_viewers,allow_late_players,is_public,theme,replay_pending,pending_host_player_id,tournament_id,ayo_variant,participant_mode,pair_vote_mode,player_questions_enabled,player_questions_order,custom_questions,custom_slots,gender_based,ludo_variant,rounds_count,question_source,trivia_category,created_at,describe_it_num_teams,describe_it_mode,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,word_rush_mode,word_rush_num_teams,word_rush_prompt_mode,word_rush_difficulty,session_started_at,game_duration_seconds,anonymous_messages_trimmed_at,chess_board_theme,chess_piece_set,scrabble_dictionary_id,scrabble_clock_mode,scrabble_clock_seconds,operative_timer_seconds,codewords_player_picks,codewords_late_join,codewords_randomize_teams,mafia_doctor_enabled,mafia_detective_enabled,mafia_anonymous_votes,quick_draw_variant,quick_draw_play_mode,quick_draw_num_teams,mahjong_ruleset,mahjong_rule_options,bingo_call_mode,bingo_call_interval_seconds'
+  'id,title,content_label,game_type,status,current_round_number,timer_seconds,max_players,allow_viewers,allow_late_players,is_public,theme,replay_pending,pending_host_player_id,host_player_id,tournament_id,ayo_variant,participant_mode,pair_vote_mode,player_questions_enabled,player_questions_order,custom_questions,custom_slots,gender_based,ludo_variant,rounds_count,question_source,wst_quote_source,trivia_category,created_at,finished_at,describe_it_num_teams,describe_it_mode,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,word_rush_mode,word_rush_num_teams,word_rush_prompt_mode,word_rush_difficulty,session_started_at,game_duration_seconds,anonymous_messages_trimmed_at,chess_board_theme,chess_piece_set,scrabble_dictionary_id,scrabble_clock_mode,scrabble_clock_seconds,operative_timer_seconds,codewords_player_picks,codewords_late_join,codewords_randomize_teams,mafia_doctor_enabled,mafia_detective_enabled,mafia_anonymous_votes,monopoly_double_go_salary,monopoly_forced_auctions,monopoly_no_rent_in_jail,quick_draw_variant,quick_draw_play_mode,quick_draw_num_teams,mahjong_ruleset,mahjong_rule_options,bingo_call_mode,bingo_call_interval_seconds,crossword_theme,crossword_difficulty,word_search_theme,word_search_difficulty,word_scramble_theme,word_scramble_difficulty,landmine_mode,landmine_mine_count,landmine_originality_bonus,landmine_mine_source,landmine_elim_seconds,landmine_review,landmine_review_seconds'
 
-export const PLAYER_SELECT = 'id,game_id,name,gender,joined_at,spectator,is_eliminated,lives_remaining,eliminated_at,monopoly_token,participant_id'
+export const PLAYER_SELECT =
+  'id,game_id,name,gender,joined_at,spectator,is_eliminated,lives_remaining,eliminated_at,monopoly_token,participant_id'
 
 export const PARTICIPANT_SELECT =
   'id,game_id,name,gender,photo_url,description,display_order,in_mlt_poll,submitted_by_player_id'
 
 export const ROUND_SELECT =
-  'id,game_id,round_number,participant_ids,wyr_option_a,wyr_option_b,mlt_question,submitter_player_id,quote_text,quote_author_participant_id,status,started_at,ended_at,anime_metadata,trivia_metadata,memory_match_metadata,sudoku_metadata,ttl_metadata,quiplash_metadata,word_hunt_metadata,npat_metadata'
+  'id,game_id,round_number,participant_ids,wyr_option_a,wyr_option_b,mlt_question,submitter_player_id,quote_text,quote_author_participant_id,status,started_at,ended_at,anime_metadata,trivia_metadata,memory_match_metadata,sudoku_metadata,ttl_metadata,quiplash_metadata,word_hunt_metadata,npat_metadata,crossword_metadata,word_search_metadata,word_scramble_metadata,landmine_metadata'
 
 export const VOTE_SELECT =
-  'id,player_id,round_id,game_id,kiss_participant_id,marry_participant_id,kill_participant_id,pair_assignments,wyr_choice,target_player_id,target_participant_id,anime_choice,picked_number,created_at'
+  'id,player_id,round_id,game_id,kiss_participant_id,marry_participant_id,kill_participant_id,pair_assignments,wyr_choice,target_player_id,target_participant_id,anime_choice,picked_number,response_ms,points,created_at'
 
 export const YAHTZEE_SESSION_SELECT =
   'id,game_id,turn_order,current_turn_index,phase,dice,held,rolls_remaining,rolls_this_turn,status_message,winner_player_id,turn_deadline_at'
@@ -36,6 +37,15 @@ export const MEMORY_MATCH_PROGRESS_SELECT =
 export const SUDOKU_SUBMISSION_SELECT =
   'id,game_id,round_id,player_id,cell_row,cell_col,submitted_value,is_correct,points_awarded,submitted_at'
 
+export const CROSSWORD_SUBMISSION_SELECT =
+  'id,game_id,round_id,player_id,cell_row,cell_col,submitted_letter,is_correct,via_hint,submitted_at'
+
+export const WORD_SEARCH_FOUND_SELECT =
+  'id,game_id,round_id,player_id,word,start_row,start_col,end_row,end_col,via_hint,found_at'
+
+export const WORD_SCRAMBLE_SOLVE_SELECT = 'id,game_id,round_id,player_id,scramble_index,word,via_hint,solved_at'
+export const WORD_SCRAMBLE_HINT_SELECT = 'player_id,scramble_index,letters'
+
 export const TIC_TAC_TOE_SESSION_SELECT =
   'id,game_id,player_x_id,player_o_id,board,board_winners,active_board,current_turn_mark,status,winner_player_id,is_draw,status_message,turn_deadline_at'
 
@@ -57,8 +67,7 @@ export const AYO_SESSION_SELECT =
 export const BINGO_CARD_SELECT = 'id,game_id,player_id,cells,marked_indices'
 export const BINGO_CALLED_NUMBER_SELECT = 'id,game_id,number,called_at'
 export const BINGO_CLAIM_SELECT = 'id,game_id,player_id,pattern,status,created_at'
-export const TRIVIA_ANSWER_SELECT =
-  'id,game_id,round_id,player_id,choice_index,is_correct,points'
+export const TRIVIA_ANSWER_SELECT = 'id,game_id,round_id,player_id,choice_index,is_correct,response_ms,points'
 
 export const CRAZY8_SESSION_SELECT =
   'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at'
@@ -103,8 +112,7 @@ export const WORD_RUSH_PLAYER_SELECT = 'id,game_id,player_id,team,score,created_
 export const WORD_RUSH_ANSWER_SELECT =
   'id,game_id,turn_index,round,team,team_turn_index,prompt_index,start_letter,end_letter,player_id,text,correct,created_at'
 
-export const WORD_HUNT_SUBMISSION_SELECT =
-  'id,game_id,round_id,player_id,word,path,points_awarded,submitted_at'
+export const WORD_HUNT_SUBMISSION_SELECT = 'id,game_id,round_id,player_id,word,path,points_awarded,submitted_at'
 
 export const NPAT_ANSWER_SELECT =
   'id,game_id,round_id,player_id,name,animal,place,thing,food,submitted_at,score_name,score_animal,score_place,score_thing,score_food'
@@ -112,13 +120,17 @@ export const NPAT_ANSWER_SELECT =
 export const NPAT_MARK_SELECT =
   'id,game_id,round_id,marker_player_id,target_player_id,valid_name,valid_animal,valid_place,valid_thing,valid_food,marked_at'
 
+export const LANDMINE_ANSWER_SELECT =
+  'id,game_id,round_id,player_id,answer,submitted_at,points,outcome,mine_hit,is_original'
+
+export const LANDMINE_MARK_SELECT = 'id,game_id,round_id,marker_player_id,target_player_id,valid,marked_at'
+
 export const CODEWORDS_BOARD_SELECT =
   'id,game_id,words,key,starting_team,revealed_indices,current_turn,guesses_remaining,current_clue_word,current_clue_number,winner,assassin_team,spymaster_timer_seconds,operative_timer_seconds,turn_phase,turn_deadline_at,created_at'
 
 export const CODEWORDS_PLAYER_ROLE_SELECT = 'id,game_id,player_id,team,role,created_at'
 
-export const HOT_SEAT_SUBMISSIONS_SELECT =
-  'id,game_id,round_id,player_id,text,submission_type,created_at'
+export const HOT_SEAT_SUBMISSIONS_SELECT = 'id,game_id,round_id,player_id,text,submission_type,created_at'
 
 export const CODEWORDS_GUESS_SELECT =
   'id,game_id,board_id,player_id,cell_index,word,cell_type,clue_word,clue_number,team,created_at'

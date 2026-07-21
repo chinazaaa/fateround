@@ -14,9 +14,8 @@ import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ParticipantAvatar } from '@/components/ui/ParticipantAvatar'
-import { TimerBadge } from '@/components/ui/TimerBadge'
+import { RoundTimerBadge } from '@/components/party/RoundTimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { useRoundTimer } from '@/hooks/useRoundTimer'
 import { postVote } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { PARTICIPANT_SELECT, ROUND_SELECT, VOTE_SELECT } from '@/lib/supabase-selects'
@@ -89,8 +88,7 @@ export function CustomPlayerView({ gameCode }: { gameCode: string }) {
 
   const currentRound = useMemo(() => {
     if (!bootstrap.game) return null
-    const byPointer =
-      state.rounds.find((r) => r.round_number === bootstrap.game!.current_round_number) ?? null
+    const byPointer = state.rounds.find((r) => r.round_number === bootstrap.game!.current_round_number) ?? null
     const active = state.rounds.find((r) => r.status === 'active') ?? null
     if (active && byPointer && active.id !== byPointer.id && byPointer.status === 'finished') return active
     return byPointer ?? active
@@ -104,9 +102,7 @@ export function CustomPlayerView({ gameCode }: { gameCode: string }) {
   }, [currentRound, state.participants])
 
   const slotKeys = slots.map((s) => s.key)
-  const mode = bootstrap.game
-    ? customAssignmentMode(bootstrap.game, roundParticipants.length, slotKeys)
-    : 'one_each'
+  const mode = bootstrap.game ? customAssignmentMode(bootstrap.game, roundParticipants.length, slotKeys) : 'one_each'
 
   const myVote = useMemo(
     () =>
@@ -119,27 +115,12 @@ export function CustomPlayerView({ gameCode }: { gameCode: string }) {
   const myAssignment = (myVote?.pair_assignments as Record<string, string> | null) ?? null
 
   const showingRoundResults =
-    bootstrap.screen === 'playing' &&
-    bootstrap.game?.status === 'active' &&
-    currentRound?.status === 'finished'
+    bootstrap.screen === 'playing' && bootstrap.game?.status === 'active' && currentRound?.status === 'finished'
 
-  const voteTimerActive =
-    bootstrap.screen === 'playing' && currentRound?.status === 'active' && !submitted
-  const timeLeft = useRoundTimer({
-    game: bootstrap.game,
-    currentRound: voteTimerActive ? currentRound : null,
-    active: !!voteTimerActive,
-    onExpire: () => {},
-  })
+  const voteTimerActive = bootstrap.screen === 'playing' && currentRound?.status === 'active' && !submitted
 
-  const photoById = useMemo(
-    () => new Map(state.participants.map((p) => [p.id, p.photo_url])),
-    [state.participants]
-  )
-  const nameById = useMemo(
-    () => new Map(roundParticipants.map((p) => [p.id, p.name])),
-    [roundParticipants]
-  )
+  const photoById = useMemo(() => new Map(state.participants.map((p) => [p.id, p.photo_url])), [state.participants])
+  const nameById = useMemo(() => new Map(roundParticipants.map((p) => [p.id, p.name])), [roundParticipants])
   const resultsTally = useMemo(() => {
     if (!showingRoundResults || !currentRound) return null
     const roundVotes = state.votes.filter((v) => v.round_id === currentRound.id)
@@ -156,7 +137,12 @@ export function CustomPlayerView({ gameCode }: { gameCode: string }) {
   const totalToAssign = roundParticipants.length
   const canSubmit =
     !submitted &&
-    isCustomAssignmentValid(assignments, roundParticipants.map((p) => p.id), slotKeys, mode)
+    isCustomAssignmentValid(
+      assignments,
+      roundParticipants.map((p) => p.id),
+      slotKeys,
+      mode
+    )
 
   const submit = async () => {
     if (!bootstrap.myResumeToken || !currentRound || !canSubmit || submitting) return
@@ -184,6 +170,8 @@ export function CustomPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
       />
     )
   }
@@ -235,7 +223,11 @@ export function CustomPlayerView({ gameCode }: { gameCode: string }) {
       subtitle={`Round ${currentRound.round_number} / ${bootstrap.game.rounds_count ?? '?'}`}
     >
       <ScrollView contentContainerStyle={styles.content}>
-        {voteTimerActive && timeLeft > 0 ? <TimerBadge seconds={timeLeft} /> : null}
+        <RoundTimerBadge
+          game={bootstrap.game}
+          currentRound={voteTimerActive ? currentRound : null}
+          active={!!voteTimerActive}
+        />
 
         <TurnBanner
           text={bannerText}
@@ -255,12 +247,7 @@ export function CustomPlayerView({ gameCode }: { gameCode: string }) {
         ) : null}
 
         {showingRoundResults && resultsTally ? (
-          <CustomRoundResults
-            tally={resultsTally}
-            slots={slots}
-            myAssignment={myAssignment}
-            photoById={photoById}
-          />
+          <CustomRoundResults tally={resultsTally} slots={slots} myAssignment={myAssignment} photoById={photoById} />
         ) : (
           <>
             {roundParticipants.map((participant) => {
@@ -294,7 +281,13 @@ export function CustomPlayerView({ gameCode }: { gameCode: string }) {
                           disabled={submitted || currentRound.status !== 'active'}
                           onPress={() =>
                             setAssignments((prev) =>
-                              assignCustomSlot(prev, participant.id, slot.key, roundParticipants.map((p) => p.id), mode)
+                              assignCustomSlot(
+                                prev,
+                                participant.id,
+                                slot.key,
+                                roundParticipants.map((p) => p.id),
+                                mode
+                              )
                             )
                           }
                         >
@@ -338,51 +331,51 @@ export function CustomPlayerView({ gameCode }: { gameCode: string }) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  content: { gap: 14, paddingBottom: 32 },
-  wait: { color: theme.textMuted, fontSize: 15 },
-  recapCard: {
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.primary,
-    padding: 12,
-    gap: 4,
-  },
-  recapHeader: {
-    color: theme.primary,
-    fontSize: 11,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    fontWeight: '700',
-  },
-  recapItem: { fontSize: 14, fontWeight: '600' },
-  participantRow: { backgroundColor: theme.surface, borderRadius: 12, padding: 12, gap: 10 },
-  participantHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  participantHeadText: { flex: 1, minWidth: 0 },
-  participantName: { color: theme.text, fontSize: 17, fontWeight: '700' },
-  participantSlot: { fontSize: 12, marginTop: 1, fontWeight: '600' },
-  slotRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  slotBtn: {
-    backgroundColor: theme.bg,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    alignItems: 'center',
-    minWidth: 72,
-  },
-  slotEmoji: { fontSize: 18 },
-  slotLabel: { color: theme.textSecondary, fontSize: 11, marginTop: 2, textAlign: 'center' },
-  hint: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
-  primaryBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  // white on the solid rose submit button — intentional
-  primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  btnDisabled: { opacity: 0.5 },
-  error: { color: theme.error, fontSize: 14 },
-})
+    content: { gap: 14, paddingBottom: 32 },
+    wait: { color: theme.textMuted, fontSize: 15 },
+    recapCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.primary,
+      padding: 12,
+      gap: 4,
+    },
+    recapHeader: {
+      color: theme.primary,
+      fontSize: 11,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+      fontWeight: '700',
+    },
+    recapItem: { fontSize: 14, fontWeight: '600' },
+    participantRow: { backgroundColor: theme.surface, borderRadius: 12, padding: 12, gap: 10 },
+    participantHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    participantHeadText: { flex: 1, minWidth: 0 },
+    participantName: { color: theme.text, fontSize: 17, fontWeight: '700' },
+    participantSlot: { fontSize: 12, marginTop: 1, fontWeight: '600' },
+    slotRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    slotBtn: {
+      backgroundColor: theme.bg,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      alignItems: 'center',
+      minWidth: 72,
+    },
+    slotEmoji: { fontSize: 18 },
+    slotLabel: { color: theme.textSecondary, fontSize: 11, marginTop: 2, textAlign: 'center' },
+    hint: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
+    primaryBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    // white on the solid rose submit button — intentional
+    primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+    btnDisabled: { opacity: 0.5 },
+    error: { color: theme.error, fontSize: 14 },
+  })

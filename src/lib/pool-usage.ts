@@ -19,6 +19,14 @@ export interface PoolUsageState {
   quick_draw?: Record<string, number>
   /** Codewords board word keys → times used on a board */
   codewords?: Record<string, number>
+  /** Crossword answer words → times used (best-effort replay variety) */
+  crossword?: Record<string, number>
+  /** Word Search words → times used (best-effort replay variety) */
+  word_search?: Record<string, number>
+  /** Word Scramble answers → times used (best-effort replay variety) */
+  word_scramble?: Record<string, number>
+  /** Landmine mine words → times chosen as the mine (spreads the mine across the pool) */
+  landmine?: Record<string, number>
 }
 
 type RoundForUsage = {
@@ -58,6 +66,9 @@ export function parsePoolUsage(raw: unknown): PoolUsageState {
     quiplash: section(o.quiplash),
     quick_draw: section(o.quick_draw),
     codewords: section(o.codewords),
+    crossword: section(o.crossword),
+    word_search: section(o.word_search),
+    landmine: section(o.landmine),
   }
 }
 
@@ -137,6 +148,9 @@ export function mergePoolUsageState(existing: PoolUsageState, fromRounds: PoolUs
     quiplash: mergeUsageRecords(existing.quiplash, poolUsageToMap(fromRounds.quiplash)),
     quick_draw: mergeUsageRecords(existing.quick_draw, poolUsageToMap(fromRounds.quick_draw)),
     codewords: mergeUsageRecords(existing.codewords, poolUsageToMap(fromRounds.codewords)),
+    crossword: mergeUsageRecords(existing.crossword, poolUsageToMap(fromRounds.crossword)),
+    word_search: mergeUsageRecords(existing.word_search, poolUsageToMap(fromRounds.word_search)),
+    landmine: mergeUsageRecords(existing.landmine, poolUsageToMap(fromRounds.landmine)),
   }
 }
 

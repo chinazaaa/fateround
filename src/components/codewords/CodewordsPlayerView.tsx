@@ -1,7 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { CodewordsLeaveButton } from '@/components/codewords/CodewordsLeaveButton'
 import { CodewordsFinalResultsShareBlock } from '@/components/codewords/CodewordsFinalResultsShareBlock'
 import { CodewordsEndGameStats } from '@/components/codewords/CodewordsEndGameStats'
@@ -10,10 +13,9 @@ import { CodewordsScoreboard } from '@/components/codewords/CodewordsScoreboard'
 import { CodewordsBoardGrid, CodewordsTeamBadge } from '@/components/codewords/CodewordsBoardGrid'
 import { CodewordsCurrentClueCard } from '@/components/codewords/CodewordsCurrentClueCard'
 import { CodewordsWaitingPanel } from '@/components/codewords/CodewordsWaitingPanel'
-import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
-import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
+import { GameWaitingRoom } from '@/components/game-lobby/GameWaitingRoom'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
@@ -64,7 +66,7 @@ type Screen =
   | 'not_found'
 
 export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
-  const { success, error: toastError } = useToast()
+  const { success, error: toastError, info: toastInfo } = useToast()
   const [screen, setScreen] = useState<Screen>('loading')
   const [game, setGame] = useState<Game | null>(null)
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
@@ -72,6 +74,8 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   const [myPlayerName, setMyPlayerName] = useState('')
   const [joinName, setJoinName] = useState('')
   const [joining, setJoining] = useState(false)
+  // Set when a join is refused for a full lobby — cue to offer "watch instead".
+  const [lobbyFull, setLobbyFull] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   const [myRole, setMyRole] = useState<CodewordsPlayerRole | null>(null)
@@ -83,10 +87,27 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   const [pickingRole, setPickingRole] = useState<CodewordsRole | null>(null)
   const [savingRole, setSavingRole] = useState(false)
   const myPlayerIdRef = useRef<string | null>(null)
+  // Snapshots read by the realtime handlers to notify remaining teammates when
+  // someone leaves, and to spot an auto-promotion to spymaster.
+  const allRolesRef = useRef<CodewordsPlayerRole[]>([])
+  const playerNamesRef = useRef<Map<string, string>>(new Map())
+  const myRoleRef = useRef<CodewordsPlayerRole | null>(null)
 
   useEffect(() => {
     myPlayerIdRef.current = myPlayerId
   }, [myPlayerId])
+
+  useEffect(() => {
+    allRolesRef.current = allRoles
+  }, [allRoles])
+
+  useEffect(() => {
+    playerNamesRef.current = new Map(allPlayers.map((p) => [p.id, p.name]))
+  }, [allPlayers])
+
+  useEffect(() => {
+    myRoleRef.current = myRole
+  }, [myRole])
 
   const handlePlayerRemoved = useCallback(() => {
     clearPlayerSession(gameCode)
@@ -253,6 +274,19 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
         const playerId = myPlayerIdRef.current
         if (playerId && prev.some((p) => p.id === playerId) && !next.some((p) => p.id === playerId)) {
           handlePlayerRemoved()
+          return next
+        }
+        // Tell remaining teammates when one of their own leaves or is removed.
+        const myTeam = myRoleRef.current?.team
+        if (myTeam) {
+          const nextIds = new Set(next.map((p) => p.id))
+          for (const gone of prev) {
+            if (nextIds.has(gone.id) || gone.id === playerId) continue
+            const goneTeam = allRolesRef.current.find((r) => r.player_id === gone.id)?.team
+            if (goneTeam === myTeam) {
+              toastInfo(`${gone.name} left your team`)
+            }
+          }
         }
         return next
       })
@@ -260,6 +294,15 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     onRoles: (updater) => {
       setAllRoles((prev) => {
         const next = updater(prev)
+        // Auto-promotion: an operative on my team became the new spymaster.
+        const myId = myPlayerIdRef.current
+        if (myId) {
+          const before = prev.find((r) => r.player_id === myId)
+          const after = next.find((r) => r.player_id === myId)
+          if (before?.role === 'operative' && after?.role === 'spymaster') {
+            toastInfo("You're now your team's spymaster")
+          }
+        }
         return next
       })
       void refreshMyRole(myPlayerId)
@@ -287,11 +330,16 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
             gameCode,
             playerName: name,
             ...joinExtras,
-            ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer } : {}),
+            // An explicit choice (e.g. "watch instead" on a full lobby) wins in any state.
+            ...(opts?.joinAsViewer !== undefined ? { joinAsViewer: opts.joinAsViewer } : {}),
           }),
         })
         const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? 'Failed to join')
+        if (!res.ok) {
+          setLobbyFull(data?.full === true)
+          throw new Error(data.error ?? 'Failed to join')
+        }
+        setLobbyFull(false)
         setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
         setMyPlayerId(data.playerId)
         setMyResumeToken(data.resumeToken ?? null)
@@ -362,9 +410,39 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     if (screen === 'finished' || screen === 'game_started_waiting' || screen === 'late_join_choice') void load()
   })
 
+  const router = useRouter()
   const cfg = gameTypeConfig('codewords')
   const me = allPlayers.find((p) => p.id === myPlayerId)
   const isViewer = !!(game && me && playerIsViewer(me, game))
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it. Purely additive — the in-page leave button stays as-is.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={me?.name ?? myPlayerName}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, me?.name, myPlayerName, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
   const { context: viewerPromoteContext } = useLateJoinContext(gameCode, game, isViewer && screen === 'active')
   const playersPickTeams = game ? codewordsPlayerPicks(game) : true
   const randomizeTeams = game ? codewordsRandomizeTeams(game) : false
@@ -442,13 +520,22 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     return (
       <GameJoinLobbyShell
         gameCode={gameCode}
-        header={<GameJoinHeader emoji={cfg.headerEmoji} title={game?.title} gameType="codewords" />}
+        header={
+          <GameJoinHeader
+            emoji={cfg.headerEmoji}
+            title={game?.title}
+            gameType="codewords"
+            contentLabel={game?.content_label}
+          />
+        }
       >
         <NameJoinForm
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void joinGame()}
           joining={joining}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void joinGame({ joinAsViewer: true })}
           gameType={['codewords_spymaster', 'codewords_operative']}
           hint={
             game?.status === 'active'
@@ -472,51 +559,31 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (needsTeamPick || waitingInLobby) {
     const isSpectator = me?.spectator === true
+    const lobbyTitle =
+      game?.status === 'active'
+        ? 'Join the game'
+        : randomizeTeams
+          ? 'Waiting for teams'
+          : playersPickTeams
+            ? 'Pick your team & role'
+            : 'Waiting in lobby'
     return (
       <GameJoinLobbyShell gameCode={gameCode}>
-        <div className="space-y-5">
-          <div className="text-center space-y-1">
-            <h2 className="text-xl font-black">
-              {game?.status === 'active'
-                ? 'Join the game'
-                : randomizeTeams
-                  ? 'Waiting for teams'
-                  : playersPickTeams
-                    ? 'Pick your team & role'
-                    : 'Waiting in lobby'}
-            </h2>
-            {!isSpectator ? <p className="text-muted text-sm">Playing as {myPlayerName}</p> : null}
-            <p className="flex items-center justify-center gap-1.5 pt-0.5 text-sm font-bold text-[var(--foreground)]">
-              <span className="leading-none">{cfg.headerEmoji}</span>
-              <span>{cfg.label}</span>
-            </p>
-          </div>
-          {isSpectator && game?.status === 'waiting' && (
-            <button
-              type="button"
-              onClick={() => void markReady()}
-              className="btn-primary w-full py-3 text-base font-bold"
-            >
-              I&apos;m in — ready to play
-            </button>
-          )}
-          {myPlayerId && (
-            <PlayerSessionControls
-              gameCode={gameCode}
-              playerId={myPlayerId}
-              currentName={myPlayerName}
-              onRenamed={(name) => setMyPlayerName(name)}
-              onLeft={leaveGame}
-              inLobby={game?.status === 'waiting'}
-              spectating={isViewer}
-            />
-          )}
-
-          <p className="text-center">
-            <GameRulesLink gameType="codewords" variant="subtle" />
-          </p>
-          <GameLobbyPlayerList players={allPlayers} myPlayerId={myPlayerId} label="In lobby" />
-
+        <GameWaitingRoom
+          gameCode={gameCode}
+          players={allPlayers}
+          myPlayerId={myPlayerId!}
+          myPlayerName={myPlayerName}
+          gameType="codewords"
+          spectating={isViewer || isSpectator}
+          onRenamed={(name) => setMyPlayerName(name)}
+          onLeft={leaveGame}
+          onReady={isSpectator && game?.status === 'waiting' ? () => void markReady() : undefined}
+          title={lobbyTitle}
+          subtitle={
+            game?.status === 'active' ? 'You can play as soon as your team is set.' : 'Waiting for the host to start…'
+          }
+        >
           {playersPickTeams ? (
             <>
               <div className="space-y-2">
@@ -587,10 +654,6 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
             </p>
           )}
 
-          <p className="text-center text-faint text-xs">
-            {game?.status === 'active' ? 'You can play as soon as your team is set.' : 'Waiting for the host to start…'}
-          </p>
-
           <div className="rounded-xl border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] p-4 space-y-2">
             <p className="label-caps text-xs">While you wait — how to play</p>
             <p className="text-faint text-xs leading-relaxed">
@@ -598,7 +661,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
               wins — but avoid the assassin!
             </p>
           </div>
-        </div>
+        </GameWaitingRoom>
       </GameJoinLobbyShell>
     )
   }

@@ -24,6 +24,7 @@ export function HostPlayerManageList({
   className = '',
   compact = false,
   alwaysShowReady = false,
+  seatsFull = false,
 }: {
   players: Player[]
   removingPlayerId?: string | null
@@ -40,6 +41,10 @@ export function HostPlayerManageList({
   compact?: boolean
   /** Keep the ✓/✗ ready column visible even when everyone is ready (no spectators). */
   alwaysShowReady?: boolean
+  /** When the lobby has no open seats, a sitting-out spectator can't ready up — so their
+   *  row reads "Watching" instead of "Not ready", reserving "Not ready" for players who
+   *  still hold an open seat they haven't claimed. */
+  seatsFull?: boolean
 }) {
   const showAdmit = (playerId: string) => !!onAdmitPlayer && (!canAdmitPlayer || canAdmitPlayer(playerId))
   if (players.length === 0) {
@@ -56,17 +61,25 @@ export function HostPlayerManageList({
         <ul className="space-y-1">
           {players.map((p) => {
             const ready = p.spectator !== true
+            const isYou = highlightPlayerId === p.id
+            const isHostWatching = isYou && p.spectator === true
             return (
               <li key={p.id} className="flex items-center justify-between gap-2 text-sm">
                 <span className="font-medium text-sm truncate min-w-0">{p.name}</span>
                 <div className="flex items-center gap-2 shrink-0">
-                  {showReady && (
-                    <span className={`text-sm font-bold ${ready ? 'text-emerald-500' : 'text-red-400'}`}>
-                      {ready ? '✓' : '✗'}
-                    </span>
+                  {isHostWatching || (!ready && seatsFull) ? (
+                    <span className="text-[10px] font-bold uppercase text-faint">Watching</span>
+                  ) : (
+                    showReady && (
+                      <span className={`text-sm font-bold ${ready ? 'text-emerald-500' : 'text-red-400'}`}>
+                        {ready ? '✓' : '✗'}
+                      </span>
+                    )
                   )}
-                  {highlightPlayerId === p.id && (
-                    <span className="text-[10px] font-bold uppercase text-[var(--primary)]">You</span>
+                  {isYou && (
+                    <span className="text-[10px] font-bold uppercase text-[var(--primary)]">
+                      {isHostWatching ? 'Host' : 'You'}
+                    </span>
                   )}
                   {showAdmit(p.id) && (
                     <button
@@ -78,7 +91,7 @@ export function HostPlayerManageList({
                       {admittingPlayerId === p.id ? '…' : 'Deal in'}
                     </button>
                   )}
-                  {onRemovePlayer && (
+                  {onRemovePlayer && !isHostWatching && (
                     <button
                       type="button"
                       onClick={() => onRemovePlayer(p.id, p.name)}
@@ -104,6 +117,9 @@ export function HostPlayerManageList({
         {players.map((p) => {
           const ready = p.spectator !== true
           const isYou = highlightPlayerId === p.id
+          // The host's own seat, sitting out as "Host only" — show it as a watcher, not
+          // a not-ready player, and never with a Remove (you can't kick yourself).
+          const isHostWatching = isYou && p.spectator === true
           const removing = removingPlayerId === p.id
           return (
             <li
@@ -114,10 +130,18 @@ export function HostPlayerManageList({
 
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold leading-tight">{p.name}</p>
-                {isYou && <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--primary)]">You</p>}
+                {isYou && (
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--primary)]">
+                    {isHostWatching ? 'Host · Watching' : 'You'}
+                  </p>
+                )}
               </div>
 
-              {showReady && (
+              {isHostWatching || (!ready && seatsFull) ? (
+                <span className="shrink-0 rounded-full bg-[var(--surface-inset-bg)] px-2.5 py-1 text-[11px] font-semibold text-faint">
+                  Watching
+                </span>
+              ) : showReady ? (
                 <span
                   className={[
                     'shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold',
@@ -128,7 +152,7 @@ export function HostPlayerManageList({
                 >
                   {ready ? 'Ready' : 'Not ready'}
                 </span>
-              )}
+              ) : null}
 
               {showAdmit(p.id) && (
                 <button
@@ -141,7 +165,7 @@ export function HostPlayerManageList({
                 </button>
               )}
 
-              {onRemovePlayer && (
+              {onRemovePlayer && !isHostWatching && (
                 <button
                   type="button"
                   onClick={() => onRemovePlayer(p.id, p.name)}

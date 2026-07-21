@@ -255,6 +255,75 @@ export const npatDisputeSchema = z.object({
 
 export type NpatDisputeInput = z.infer<typeof npatDisputeSchema>
 
+// ── Landmine ────────────────────────────────────────────────────────────────────
+export const landmineCategorySchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  roundId: uuidString('roundId'),
+  categoryId: uuidString('categoryId'),
+})
+
+export type LandmineCategoryInput = z.infer<typeof landmineCategorySchema>
+
+// MANUAL mode: the setter types the category + the mine word(s) themselves.
+export const landmineSetupSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  roundId: uuidString('roundId'),
+  category: z.string().trim().min(1).max(80),
+  mines: z.array(z.string().max(80)).min(1).max(3),
+})
+
+export type LandmineSetupInput = z.infer<typeof landmineSetupSchema>
+
+export const landmineSubmitSchema = z.object({
+  gameId: gameCodeString(),
+  // Player action authorized by the secret resume_token.
+  resumeToken: z.string().min(4),
+  roundId: uuidString('roundId'),
+  answer: z.string().max(80),
+})
+
+export type LandmineSubmitInput = z.infer<typeof landmineSubmitSchema>
+
+export const landmineDraftSchema = landmineSubmitSchema
+
+export type LandmineDraftInput = z.infer<typeof landmineDraftSchema>
+
+export const landmineMarkSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  roundId: uuidString('roundId'),
+  valid: z.boolean(),
+})
+
+export type LandmineMarkInput = z.infer<typeof landmineMarkSchema>
+
+// Review phase: the round's caller (setter in manual, category-picker in auto) checks/overrides
+// every verdict at once (I Call On's caller review), authorized by their player resume_token.
+export const landmineSetterMarkSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  roundId: uuidString('roundId'),
+  verdicts: z
+    .array(
+      z.object({
+        playerId: uuidString('playerId'),
+        valid: z.boolean(),
+      })
+    )
+    .min(1)
+    .max(24),
+})
+
+export type LandmineSetterMarkInput = z.infer<typeof landmineSetterMarkSchema>
+
+export const landmineAdvanceSchema = z.object({
+  gameId: gameCodeString(),
+})
+
+export type LandmineAdvanceInput = z.infer<typeof landmineAdvanceSchema>
+
 export const describeItTeamSchema = z.object({
   gameId: gameCodeString(),
   team: z.coerce.number().int().min(1).max(4),
@@ -431,30 +500,6 @@ export const createQuoteSchema = z.object({
 })
 
 export type CreateQuoteInput = z.infer<typeof createQuoteSchema>
-
-// ---------------------------------------------------------------------------
-// Anime quotes (POST /api/anime-quotes)
-// ---------------------------------------------------------------------------
-
-export const fetchAnimeQuotesSchema = z.object({
-  count: z.coerce.number().int().min(1).max(30),
-  gameId: gameCodeString(),
-  hostToken: hostTokenString(),
-})
-
-export type FetchAnimeQuotesInput = z.infer<typeof fetchAnimeQuotesSchema>
-
-// ---------------------------------------------------------------------------
-// Anime quote reroll (POST /api/anime-quotes/reroll)
-// ---------------------------------------------------------------------------
-
-export const rerollAnimeQuoteSchema = z.object({
-  gameId: gameCodeString(),
-  quoteId: uuidString('quoteId'),
-  hostToken: hostTokenString(),
-})
-
-export type RerollAnimeQuoteInput = z.infer<typeof rerollAnimeQuoteSchema>
 
 // ---------------------------------------------------------------------------
 // Hot Seat submissions (POST /api/hot-seat)

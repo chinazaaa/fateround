@@ -11,16 +11,19 @@ import { MonopolyHostView } from '@/components/monopoly/MonopolyHostView'
 import { YahtzeeHostView } from '@/components/yahtzee/YahtzeeHostView'
 import { WhotHostView } from '@/components/whot/WhotHostView'
 import { CrazyEightsHostView } from '@/components/crazy-eights/CrazyEightsHostView'
+import { UnoHostView } from '@/components/uno/UnoHostView'
 import { LudoHostView } from '@/components/ludo/LudoHostView'
 import { MahjongHostView } from '@/components/mahjong/MahjongHostView'
 import { SnakeLadderHostView } from '@/components/snake-and-ladder/SnakeLadderHostView'
 import { TicTacToeHostView } from '@/components/tic-tac-toe/TicTacToeHostView'
+import { PingPongHostView } from '@/components/ping-pong/PingPongHostView'
 import { ChessHostView } from '@/components/chess/ChessHostView'
 import { CheckersHostView } from '@/components/checkers/CheckersHostView'
 import { AyoHostView } from '@/components/ayo/AyoHostView'
 import { ScrabbleHostView } from '@/components/scrabble/ScrabbleHostView'
 import { DescribeItHostView } from '@/components/describe-it/DescribeItHostView'
 import { NpatHostView } from '@/components/npat/NpatHostView'
+import { LandmineHostView } from '@/components/landmine/LandmineHostView'
 import { SudokuHostView } from '@/components/sudoku/SudokuHostView'
 import { WordHuntHostView } from '@/components/word-hunt/WordHuntHostView'
 import { MafiaHostView } from '@/components/mafia/MafiaHostView'
@@ -28,6 +31,9 @@ import { MatchingPairsHostView } from '@/components/matching-pairs/MatchingPairs
 import { QuiplashHostView } from '@/components/quiplash/QuiplashHostView'
 import { QuickDrawHostView } from '@/components/quick-draw/QuickDrawHostView'
 import { WordRushHostView } from '@/components/word-rush/WordRushHostView'
+import { CrosswordHostView } from '@/components/crossword/CrosswordHostView'
+import { WordSearchHostView } from '@/components/word-search/WordSearchHostView'
+import { WordScrambleHostView } from '@/components/word-scramble/WordScrambleHostView'
 
 export type GameHostView = ComponentType<{ gameCode: string; hostToken: string }>
 
@@ -45,14 +51,17 @@ export const HOST_VIEW_REGISTRY: Partial<Record<GameType, GameHostView>> = {
   trivia: TriviaHostView,
   two_truths: TwoTruthsHostView,
   i_call_on: NpatHostView,
+  landmine: LandmineHostView,
   monopoly: MonopolyHostView,
   yahtzee: YahtzeeHostView,
   whot: WhotHostView,
   crazy_eights: CrazyEightsHostView,
+  uno: UnoHostView,
   ludo: LudoHostView,
   mahjong: MahjongHostView,
   snake_and_ladder: SnakeLadderHostView,
   tic_tac_toe: TicTacToeHostView,
+  ping_pong: PingPongHostView,
   chess: ChessHostView,
   checkers: CheckersHostView,
   ayo: AyoHostView,
@@ -66,4 +75,7 @@ export const HOST_VIEW_REGISTRY: Partial<Record<GameType, GameHostView>> = {
   quiplash: QuiplashHostView,
   quick_draw: QuickDrawHostView,
   word_rush: WordRushHostView,
+  crossword: CrosswordHostView,
+  word_search: WordSearchHostView,
+  word_scramble: WordScrambleHostView,
 }

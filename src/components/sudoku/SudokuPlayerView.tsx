@@ -1,11 +1,17 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { GamePlayerChrome } from '@/components/GamePlayerChrome'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { SudokuBoard } from '@/components/sudoku/SudokuBoard'
 import { SudokuGameTimerBar } from '@/components/sudoku/SudokuGameTimerBar'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
+import { ShareResults } from '@/components/ShareResults'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import {
   parseSudokuMetadata,
@@ -17,6 +23,7 @@ import {
   boardCompletionPercent,
   sudokuPlayerColor,
   buildPlayerSolvedGrid,
+  countEmptyCells,
   playerHasSolvedCell,
   SUDOKU_MY_CELL_COLOR,
   SUDOKU_WRONG_PENALTY,
@@ -38,7 +45,6 @@ import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
@@ -110,6 +116,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   const [correctPulse, setCorrectPulse] = useState<{ value: number; id: number } | null>(null)
   const [highlightNumber, setHighlightNumber] = useState<number | null>(null)
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const finishedCaptureRef = useRef<HTMLDivElement>(null)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
 
   function showToast(msg: string, ok: boolean) {
@@ -220,6 +227,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<View, SudokuGameState>({
     gameCode,
@@ -384,10 +392,69 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     return map
   }, [activePlayers])
 
-  const leaderboard = tallySudokuScores(submissions, players)
+  const leaderboard = useMemo(() => tallySudokuScores(submissions, players), [submissions, players])
+
+  // Live scores feed the shared roster drawer (opened from the header).
+  const rosterScores = useMemo(
+    () => Object.fromEntries(leaderboard.map((row) => [row.player_id, row.points])),
+    [leaderboard]
+  )
+  useGameScores(rosterScores, { suffix: ' pts' })
+
+  // Live per-player detail line for the drawer scoreboard: cells left + time spent.
+  const rosterDetails = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const row of leaderboard) {
+      const claimed = submissions.filter(
+        (s) => s.player_id === row.player_id && s.is_correct && s.cell_row != null && s.cell_col != null
+      ).length
+      const cellsLeft = puzzle ? countEmptyCells(puzzle) - claimed : 0
+      const timeSecs = getPlayerTimeSpent(
+        game,
+        submissions,
+        row.player_id,
+        puzzle ? playerCompletionPercent(puzzle, submissions, row.player_id) : 0,
+        nowMs,
+        players.find((p) => p.id === row.player_id)?.joined_at
+      )
+      map[row.player_id] = `⬜ ${cellsLeft} left · ⏱ ${formatMinutesSeconds(timeSecs)}`
+    }
+    return map
+  }, [leaderboard, submissions, puzzle, game, nowMs, players])
+  useGameStats(rosterDetails)
+
+  const router = useRouter()
   const me = players.find((p) => p.id === myPlayerId)
   const isSpectator = me?.spectator === true
   const isViewer = !!(game && me && playerIsViewer(me, game))
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it. Purely additive — the in-page PlayerSessionControls stays as-is.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={me?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
   const myRank = leaderboard.findIndex((r) => r.player_id === myPlayerId) + 1
   const myCompletion = puzzle && myPlayerId ? playerCompletionPercent(puzzle, submissions, myPlayerId) : 0
   const boardCompletion = puzzle ? boardCompletionPercent(puzzle, cellOwners) : 0
@@ -613,6 +680,8 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="sudoku"
           submitLabel="Join game"
@@ -654,6 +723,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={SUDOKU_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -668,6 +738,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={me?.name ?? ''}
@@ -691,43 +762,61 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
       !!mySudokuRow &&
       leaderboard.length > 1 &&
       leaderboard[0] != null &&
-      mySudokuRow.points === leaderboard[0].points &&
+      mySudokuRow === leaderboard[0] &&
       leaderboard[0].points > 0
     return (
       <div className="min-h-screen flex flex-col">
-        <GamePlayerChrome />
-        <main className="pt-16 flex-1 px-4 py-8 max-w-lg mx-auto w-full space-y-6">
-          <div className="glass-card-strong p-8 text-center space-y-2">
-            <p className="text-4xl">🏆</p>
-            <p className="text-2xl font-black">Puzzle complete!</p>
-            {leaderboard[0] && (
-              <p className="text-muted text-base">
-                {leaderboard[0].name} wins with {leaderboard[0].points} pts
-              </p>
-            )}
+        <main className="pt-16 flex-1 px-4 py-8 max-w-lg mx-auto w-full space-y-4">
+          <div ref={finishedCaptureRef} className="space-y-6">
+            <div className="glass-card-strong p-8 text-center space-y-2">
+              <p className="text-4xl">🏆</p>
+              <p className="text-2xl font-black">Puzzle complete!</p>
+              {leaderboard[0] && (
+                <p className="text-muted text-base">
+                  {leaderboard[0].name} wins with {leaderboard[0].points} pts
+                </p>
+              )}
+            </div>
+            <PaginatedLeaderboard
+              title="Final leaderboard"
+              rows={leaderboard.map((row, i) => {
+                const pct = puzzle ? playerCompletionPercent(puzzle, submissions, row.player_id) : 0
+                const timeSecs = getPlayerTimeSpent(
+                  game,
+                  submissions,
+                  row.player_id,
+                  pct,
+                  nowMs,
+                  players.find((p) => p.id === row.player_id)?.joined_at
+                )
+                return {
+                  id: row.player_id,
+                  name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,
+                  score: row.points,
+                  rank: i + 1,
+                }
+              })}
+              highlightId={myPlayerId ?? undefined}
+              scoreLabel={(n) => `${n} pts`}
+            />
           </div>
-          <PaginatedLeaderboard
-            title="Final leaderboard"
-            rows={leaderboard.map((row, i) => {
-              const pct = puzzle ? playerCompletionPercent(puzzle, submissions, row.player_id) : 0
-              const timeSecs = getPlayerTimeSpent(
-                game,
-                submissions,
-                row.player_id,
-                pct,
-                nowMs,
-                players.find((p) => p.id === row.player_id)?.joined_at
-              )
-              return {
-                id: row.player_id,
-                name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,
-                score: row.points,
-                rank: i + 1,
+          {game && (
+            <HostGameFinishedActions
+              variant="winner"
+              gameCode={game.id}
+              shareButton={
+                <ShareResults
+                  captureRef={finishedCaptureRef}
+                  game={game}
+                  participants={[]}
+                  votes={[]}
+                  rounds={[]}
+                  players={players}
+                  primary
+                />
               }
-            })}
-            highlightId={myPlayerId ?? undefined}
-            scoreLabel={(n) => `${n} pts`}
-          />
+            />
+          )}
           {iWonSudoku && (
             <PostWinToCommunity
               gameType="sudoku"
@@ -743,7 +832,6 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50/80 dark:bg-slate-950/50">
-      <GamePlayerChrome />
       {toast && (
         <div
           className={`fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full text-sm font-semibold shadow-lg ${toast.ok ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}
@@ -927,17 +1015,6 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
             )
           })}
         </div>
-
-        {myPlayerId && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={me?.name ?? ''}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            leaveOnly={isViewer}
-          />
-        )}
       </main>
     </div>
   )

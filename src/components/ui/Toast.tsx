@@ -20,21 +20,9 @@ type ToastApi = {
 const ToastContext = createContext<ToastApi | null>(null)
 
 const kindStyles: Record<ToastKind, string> = {
-  success: 'border-emerald-500/35 bg-[var(--card-strong)]',
-  error: 'border-red-500/35 bg-[var(--card-strong)]',
-  info: 'border-[var(--border-strong)] bg-[var(--card-strong)]',
-}
-
-const kindIcons: Record<ToastKind, string> = {
-  success: '✓',
-  error: '!',
-  info: 'ℹ',
-}
-
-const kindIconColors: Record<ToastKind, string> = {
-  success: 'text-emerald-600',
-  error: 'text-red-500',
-  info: 'text-[var(--primary)]',
+  success: 'border-emerald-500/60 bg-[var(--card-strong)] shadow-[0_0_15px_rgba(16,185,129,0.3)]',
+  error: 'border-red-500/60 bg-[var(--card-strong)] shadow-[0_0_15px_rgba(239,68,68,0.3)]',
+  info: 'border-[var(--border-strong)] bg-[var(--card-strong)] shadow-[0_0_15px_var(--shadow-color,rgba(150,150,150,0.15))]',
 }
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
@@ -68,7 +56,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={api}>
       {children}
       <div
-        className="fixed bottom-5 left-1/2 z-[200] flex w-full max-w-sm -translate-x-1/2 flex-col gap-2 px-4 pointer-events-none"
+        className="fixed top-[4.5rem] left-1/2 z-[200] flex w-full max-w-sm -translate-x-1/2 flex-col items-center gap-2 px-4 pointer-events-none"
         aria-live="polite"
         aria-relevant="additions"
       >
@@ -76,11 +64,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           <div
             key={item.id}
             role="status"
-            className={`pointer-events-auto flex items-start gap-3 rounded-2xl border px-4 py-3 shadow-lg backdrop-blur-md animate-[slide-up_0.25s_cubic-bezier(0.16,1,0.3,1)] ${kindStyles[item.kind]}`}
+            className={`pointer-events-auto flex max-w-full items-start gap-3 rounded-2xl border px-4 py-3 shadow-lg backdrop-blur-md animate-slide-down ${kindStyles[item.kind]}`}
           >
-            <span className={`text-sm font-bold mt-0.5 shrink-0 ${kindIconColors[item.kind]}`}>
-              {kindIcons[item.kind]}
-            </span>
             <p className="text-sm font-medium text-body leading-snug">{item.message}</p>
           </div>
         ))}

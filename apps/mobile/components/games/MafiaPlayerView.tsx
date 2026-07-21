@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { normalizeGameCode, type Game, type Player } from '@fateround/shared'
-import { playerIsViewer } from '@fateround/shared/viewers'
 import {
   type MafiaChatMessage,
   type MafiaStateResponse,
@@ -14,7 +13,6 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -86,8 +84,6 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   const myState = state?.myState ?? null
   const amIAlive = state?.players.find((p) => p.id === bootstrap.myPlayerId)?.isAlive ?? false
   const amISpectator = !!bootstrap.myPlayerId && !!state && !state.players.some((p) => p.id === bootstrap.myPlayerId)
-  const myPlayerRow = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
-  const isViewer = !!(bootstrap.game && myPlayerRow && playerIsViewer(myPlayerRow, bootstrap.game))
   const killedPlayer = state?.lastNightKillPlayerId
     ? state.players.find((p) => p.id === state.lastNightKillPlayerId)
     : undefined
@@ -145,6 +141,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
         footer={<GameRulesLink gameType="mafia" variant="subtle" />}
       />
     )
@@ -192,19 +190,6 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
             phase === 'night' && amIAlive && !!myState && myState.role !== 'villager' && !myState.nightActionSubmitted
           }
         />
-
-        {isViewer && bootstrap.game && bootstrap.myPlayerId && myPlayerRow ? (
-          <View style={styles.bannerWrap}>
-            <ViewerModeBanner
-              gameCode={bootstrap.code}
-              playerId={bootstrap.myPlayerId}
-              game={bootstrap.game}
-              player={myPlayerRow}
-              players={bootstrap.players}
-              onPromoted={() => bootstrap.load()}
-            />
-          </View>
-        ) : null}
 
         {myState ? (
           <View style={styles.identityCard}>
@@ -464,18 +449,25 @@ function MafiaChatSection({
   return (
     <>
       <Text style={[styles.sectionTitle, accent === 'mafia' && styles.mafiaChatTitle]}>{title}</Text>
-      <ScrollView style={styles.chatLog} nestedScrollEnabled>
-        {messages.length === 0 ? (
+      {messages.length === 0 ? (
+        <View style={styles.chatLog}>
           <Text style={styles.chatEmpty}>No messages yet.</Text>
-        ) : (
-          messages.map((m) => (
-            <Text key={m.id} style={styles.chatLine}>
-              <Text style={styles.chatName}>{m.sender_name}: </Text>
-              {m.message}
+        </View>
+      ) : (
+        // Virtualized so a long game's chat only renders the visible rows.
+        <FlatList
+          style={styles.chatLog}
+          data={messages}
+          keyExtractor={(m) => m.id}
+          nestedScrollEnabled
+          renderItem={({ item }) => (
+            <Text style={styles.chatLine}>
+              <Text style={styles.chatName}>{item.sender_name}: </Text>
+              {item.message}
             </Text>
-          ))
-        )}
-      </ScrollView>
+          )}
+        />
+      )}
       <View style={styles.chatRow}>
         <TextInput
           style={styles.chatInput}
@@ -526,7 +518,6 @@ const makeStyles = (theme: Theme) =>
     statusDead: { backgroundColor: '#f43f5e18', borderColor: '#f43f5e55' },
     statusAliveText: { color: '#34d399' },
     statusDeadText: { color: '#fb7185' },
-    bannerWrap: { marginBottom: 12 },
     rulesRow: { alignItems: 'flex-end', marginBottom: 8 },
     phaseCard: {
       backgroundColor: theme.surface,

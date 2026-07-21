@@ -1,4 +1,5 @@
 import type {
+  CrosswordDifficulty,
   DescribeItMode,
   GameType,
   PairVoteMode,
@@ -8,8 +9,32 @@ import type {
   WordRushDifficulty,
   WordRushMode,
   WordRushPromptMode,
+  WordSearchDifficulty,
 } from '@fateround/shared'
+import {
+  CROSSWORD_DEFAULT_DIFFICULTY,
+  CROSSWORD_DEFAULT_DURATION,
+  CROSSWORD_DEFAULT_THEME,
+  clampCrosswordGameDuration,
+  parseCrosswordDifficulty,
+} from '@fateround/shared/crossword'
+import {
+  WORD_SEARCH_DEFAULT_DIFFICULTY,
+  WORD_SEARCH_DEFAULT_DURATION,
+  WORD_SEARCH_DEFAULT_THEME,
+  clampWordSearchGameDuration,
+  parseWordSearchDifficulty,
+} from '@fateround/shared/word-search'
+import {
+  WORD_SCRAMBLE_DEFAULT_DIFFICULTY,
+  WORD_SCRAMBLE_DEFAULT_DURATION,
+  WORD_SCRAMBLE_DEFAULT_THEME,
+  clampWordScrambleGameDuration,
+  parseWordScrambleDifficulty,
+  type WordScrambleDifficulty,
+} from '@fateround/shared/word-scramble'
 import type { BingoCallMode } from '@fateround/shared/create-party-games'
+import { puzzleThemeIdFromValue } from '@/lib/puzzle-themes'
 import {
   clampBingoCallInterval,
   clampBingoCallMode,
@@ -52,7 +77,11 @@ import {
   NPAT_DEFAULT_TIMER,
 } from '@fateround/shared/npat'
 import { isPairGame, parsePairVoteMode } from '@fateround/shared/poll-games'
-import { QUICK_DRAW_GUESS_TEAM_OPTIONS, clampQuickDrawNumTeams, clampQuickDrawPlayMode } from '@fateround/shared/quick-draw-guess'
+import {
+  QUICK_DRAW_GUESS_TEAM_OPTIONS,
+  clampQuickDrawNumTeams,
+  clampQuickDrawPlayMode,
+} from '@fateround/shared/quick-draw-guess'
 import {
   QUIPLASH_DEFAULT_SUBMIT_TIMER,
   QUIPLASH_DEFAULT_VOTE_TIMER,
@@ -102,6 +131,12 @@ export type PartyRoomSettings = {
   npatMarkingTimer: number
   gameDurationSeconds: number
   matchingPairsLargeGrid: boolean
+  crosswordTheme: string
+  crosswordDifficulty: CrosswordDifficulty
+  wordSearchTheme: string
+  wordSearchDifficulty: WordSearchDifficulty
+  wordScrambleTheme: string
+  wordScrambleDifficulty: WordScrambleDifficulty
 }
 
 export function defaultPartyRoomSettings(gameType: GameType): PartyRoomSettings {
@@ -115,7 +150,7 @@ export function defaultPartyRoomSettings(gameType: GameType): PartyRoomSettings 
     bingoCallMode: BINGO_DEFAULT_CALL_MODE,
     bingoCallInterval: BINGO_DEFAULT_CALL_INTERVAL,
     quiplashVoteTimer: QUIPLASH_DEFAULT_VOTE_TIMER,
-    quickDrawVariant: 'lie',
+    quickDrawVariant: 'guess',
     quickDrawPlayMode: 'team',
     quickDrawNumTeams: 2,
     quickDrawTitleTimer: QUICK_DRAW_DEFAULT_TITLE_TIMER,
@@ -132,8 +167,23 @@ export function defaultPartyRoomSettings(gameType: GameType): PartyRoomSettings 
     mafiaDetectiveEnabled: true,
     mafiaAnonymousVotes: true,
     npatMarkingTimer: NPAT_DEFAULT_MARKING_TIMER,
-    gameDurationSeconds: gameType === 'i_call_on' ? NPAT_DEFAULT_GAME_DURATION : 0,
+    gameDurationSeconds:
+      gameType === 'i_call_on'
+        ? NPAT_DEFAULT_GAME_DURATION
+        : gameType === 'crossword'
+          ? CROSSWORD_DEFAULT_DURATION
+          : gameType === 'word_search'
+            ? WORD_SEARCH_DEFAULT_DURATION
+            : gameType === 'word_scramble'
+              ? WORD_SCRAMBLE_DEFAULT_DURATION
+              : 0,
     matchingPairsLargeGrid: false,
+    crosswordTheme: CROSSWORD_DEFAULT_THEME,
+    crosswordDifficulty: CROSSWORD_DEFAULT_DIFFICULTY,
+    wordSearchTheme: WORD_SEARCH_DEFAULT_THEME,
+    wordSearchDifficulty: WORD_SEARCH_DEFAULT_DIFFICULTY,
+    wordScrambleTheme: WORD_SCRAMBLE_DEFAULT_THEME,
+    wordScrambleDifficulty: WORD_SCRAMBLE_DEFAULT_DIFFICULTY,
   }
 }
 
@@ -259,6 +309,38 @@ export function partyRoomSettingsPayload(gameType: GameType, party: PartyRoomSet
   if (gameType === 'sudoku') {
     payload.rounds_count = 1
     payload.game_duration_seconds = party.gameDurationSeconds
+    return payload
+  }
+
+  if (gameType === 'crossword') {
+    payload.rounds_count = 1
+    payload.game_duration_seconds = clampCrosswordGameDuration(party.gameDurationSeconds)
+    // A `pt:<id>` theme is an admin theme — send puzzle_theme_id (server folds its word pool +
+    // locked difficulty); otherwise send the built-in theme id.
+    const themeId = puzzleThemeIdFromValue(party.crosswordTheme)
+    if (themeId) payload.puzzle_theme_id = themeId
+    else payload.crossword_theme = party.crosswordTheme
+    payload.crossword_difficulty = parseCrosswordDifficulty(party.crosswordDifficulty)
+    return payload
+  }
+
+  if (gameType === 'word_search') {
+    payload.rounds_count = 1
+    payload.game_duration_seconds = clampWordSearchGameDuration(party.gameDurationSeconds)
+    const themeId = puzzleThemeIdFromValue(party.wordSearchTheme)
+    if (themeId) payload.puzzle_theme_id = themeId
+    else payload.word_search_theme = party.wordSearchTheme
+    payload.word_search_difficulty = parseWordSearchDifficulty(party.wordSearchDifficulty)
+    return payload
+  }
+
+  if (gameType === 'word_scramble') {
+    payload.rounds_count = 1
+    payload.game_duration_seconds = clampWordScrambleGameDuration(party.gameDurationSeconds)
+    const themeId = puzzleThemeIdFromValue(party.wordScrambleTheme)
+    if (themeId) payload.puzzle_theme_id = themeId
+    else payload.word_scramble_theme = party.wordScrambleTheme
+    payload.word_scramble_difficulty = parseWordScrambleDifficulty(party.wordScrambleDifficulty)
     return payload
   }
 

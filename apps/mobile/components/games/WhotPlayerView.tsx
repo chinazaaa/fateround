@@ -16,8 +16,12 @@ import {
 import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { CardTableArea } from '@/components/games/cards/CardTableArea'
 import { GameTimerBar } from '@/components/games/cards/GameTimerBar'
+import { useGameExpiryTimer } from '@/hooks/useGameExpiryTimer'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
+import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { CrazyEightsRoster } from '@/components/games/cards/CrazyEightsRoster'
 import { WhotCardFace } from '@/components/games/cards/WhotCardFace'
+import { CardHand } from '@/components/games/cards/CardHand'
 import { WhotShapeIcon } from '@/components/games/cards/WhotShapeIcon'
 import { useTurnDeadlineSeconds } from '@/components/games/cards/useTurnDeadlineSeconds'
 // Per-seat turn countdown chip (names the active seat) — replaces the bare TimerBadge.
@@ -27,12 +31,19 @@ import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWait
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { useGamePlacements, useGameStats } from '@/components/session/RosterDrawerContext'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { postWhotChooseNumber, postWhotChooseShape, postWhotDraw, postWhotPlay } from '@/lib/game-api'
+import {
+  postWhotChooseNumber,
+  postWhotChooseShape,
+  postWhotDraw,
+  postWhotExpireTurn,
+  postWhotPlay,
+} from '@/lib/game-api'
 import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT } from '@/lib/supabase-selects'
@@ -127,6 +138,15 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const isOut = !!myHand && myHand.cards.length === 0 && bootstrap.game?.status === 'active'
   const isWatching = isViewer || isOut
 
+  // Desync guard: the hands table loaded (other players' rows are present) but
+  // NONE of them is ours. That means our session player id doesn't match the id
+  // the game dealt a hand to — typically after a rejoin that minted a new player
+  // id with no dealt hand. Without this we'd fall through to the normal hand
+  // section and render a misleading "Your hand (0)" as if we'd emptied our hand
+  // (and won). Show a recovery state instead, and never treat this as isOut.
+  const handMissing =
+    !isWatching && !myHand && hands.length > 0 && bootstrap.game?.status === 'active' && bootstrap.screen === 'playing'
+
   useGameTurnAlerts({
     gameCode: bootstrap.code,
     status: bootstrap.game?.status,
@@ -160,20 +180,70 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     !!gameDeadlineAt && bootstrap.game?.status === 'active'
   )
 
+  // End the game when the whole-game duration runs out (the timer bar otherwise
+  // just drains to 0:00 with nothing telling the server to finish). Matches web.
+  useGameExpiryTimer({
+    endpoint: `/api/games/${gameCode}/expire-whot`,
+    game: bootstrap.game,
+    onExpired: () => void bootstrap.load(),
+  })
+
+  // Advance a stalled turn when its per-turn timer runs out. Any active client
+  // fires it (idempotent + deadline-gated server-side) — matches web.
+  useTurnExpiryTimer({
+    deadlineAt: session?.turn_deadline_at,
+    enabled: bootstrap.game?.status === 'active' && session?.phase === 'playing',
+    onExpire: () => postWhotExpireTurn(bootstrap.code).then(() => bootstrap.load()),
+  })
+
   const handCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const hand of hands) counts[hand.player_id] = hand.cards.length
     return counts
   }, [hands])
 
+  // Feed winner/runner-up medal pills into the roster drawer. finish_order lists
+  // players in the order they emptied their hands (first out = winner); ensure the
+  // declared winner is 1st even if they aren't in finish_order yet.
+  const placements = useMemo(() => {
+    const map: Record<string, number> = {}
+    ;(session?.finish_order ?? []).forEach((id, i) => {
+      map[id] = i + 1
+    })
+    const winnerId = session?.winner_player_id
+    if (winnerId && !(winnerId in map)) map[winnerId] = 1
+    return Object.keys(map).length ? map : null
+  }, [session?.finish_order, session?.winner_player_id])
+  useGamePlacements(placements)
+
+  // Live card counts in the roster drawer scoreboard (only while playing).
+  const rosterDetails = useMemo(() => {
+    if (bootstrap.game?.status !== 'active') return null
+    const out: Record<string, string> = {}
+    for (const [id, n] of Object.entries(handCounts)) out[id] = `🃏 ${n} card${n === 1 ? '' : 's'}`
+    return Object.keys(out).length ? out : null
+  }, [handCounts, bootstrap.game?.status])
+  useGameStats(rosterDetails)
+
+  // Pin the whole-game countdown below the header so it stays visible as the
+  // table scrolls. Falls back to inline rendering under a host shell (no slot).
+  const gameTimer =
+    gameDurationSeconds > 0 && gameSecondsLeft > 0 ? (
+      <GameTimerBar secondsLeft={gameSecondsLeft} durationSeconds={gameDurationSeconds} />
+    ) : null
+  const gameTimerPinned = useStickyTimer(gameTimer, [gameSecondsLeft, gameDurationSeconds])
+
   const act = async (fn: () => Promise<unknown>) => {
     if (!bootstrap.myResumeToken || acting) return
     setActing(true)
     try {
       await fn()
-      await bootstrap.load()
     } finally {
+      // Unblock input as soon as the action lands — don't hold the hand frozen
+      // through a second round-trip. The refresh runs in the background (and the
+      // realtime subscription reloads on the server write anyway; load() de-dupes).
       setActing(false)
+      void bootstrap.load()
     }
   }
 
@@ -218,6 +288,8 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join(undefined, joiningAsViewer ? { joinAsViewer: true } : undefined)}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
         kicker={joiningAsViewer ? 'Watch game' : 'Join game'}
         hint={
           joiningAsViewer
@@ -260,7 +332,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
         <GameFinishPanel
           bootstrap={bootstrap}
           title={winner ? `${winner.name} wins!` : 'Game over'}
-          subtitle="Final standings"
+          subtitle={standings.length > 1 ? 'Lowest hand total wins · WHOT = 20' : 'Final standings'}
           leaderboard={cardHandLeaderboard(standings, session.winner_player_id, bootstrap.myPlayerId)}
           winnerPlayerId={session.winner_player_id}
           roundKey={session.id}
@@ -318,30 +390,21 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title={batch4GameLabel('whot')} subtitle={bootstrap.code}>
       <ScrollView contentContainerStyle={styles.content}>
-        {gameDurationSeconds > 0 && gameSecondsLeft > 0 ? (
-          <GameTimerBar secondsLeft={gameSecondsLeft} durationSeconds={gameDurationSeconds} />
-        ) : null}
+        {gameTimerPinned ? null : gameTimer}
         <TurnBanner
           text={isWatching ? `Spectating — ${turnName}'s turn` : (session.status_message ?? `${turnName}'s turn`)}
           isMyTurn={isMyTurn && !isWatching}
         />
         {timerSeconds > 0 ? <WhotTurnTimerChip turnName={turnName} seconds={timerSeconds} /> : null}
 
-        {isWatching ? (
+        {/* Pure spectators get the central ViewerModeBanner (top of the shell) +
+            the TurnBanner's "Spectating" text — so their screen matches a player's
+            minus the hand. This bespoke banner only covers the distinct "You're
+            out" state (finished your hand while the game continues). */}
+        {isOut ? (
           <View style={styles.watchBanner}>
-            <Text style={styles.watchTitle}>{isOut ? "You're out" : 'Watching'}</Text>
-            <Text style={styles.watchSub}>
-              {isOut
-                ? 'You played all your cards — follow the rest of the game and chat.'
-                : 'Read-only spectator — you can follow the game and chat.'}
-            </Text>
-          </View>
-        ) : null}
-
-        {isWatching ? (
-          <View style={styles.rosterHead}>
-            <Text style={styles.rosterTitle}>Players · {bootstrap.players.length}</Text>
-            <Text style={styles.rosterTag}>watch-only</Text>
+            <Text style={styles.watchTitle}>You&apos;re out</Text>
+            <Text style={styles.watchSub}>You played all your cards — follow the rest of the game and chat.</Text>
           </View>
         ) : null}
 
@@ -364,10 +427,6 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
 
         {drawReshuffles ? (
           <Text style={styles.reshuffleNote}>Draw pile empty — reshuffles from played cards</Text>
-        ) : null}
-
-        {isWatching ? (
-          <Text style={styles.spectateStatus}>Spectating — {turnName}&apos;s turn · you can chat</Text>
         ) : null}
 
         {!isWatching && choosingWhot && isMyTurn ? (
@@ -397,10 +456,19 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
           </View>
         ) : null}
 
-        {!isWatching ? (
+        {isWatching ? null : handMissing ? (
+          <View style={styles.handSyncCard}>
+            <Text style={styles.handSyncTitle}>Syncing your hand…</Text>
+            <Text style={styles.handSyncSub}>
+              Your cards didn&apos;t come through. This can happen after reconnecting — tap refresh.
+            </Text>
+            <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void bootstrap.load()}>
+              <Text style={styles.drawText}>Refresh</Text>
+            </Pressable>
+          </View>
+        ) : (
           <>
-            <Text style={styles.section}>Your hand ({myHand?.cards.length ?? 0})</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hand}>
+            <CardHand count={myHand?.cards.length ?? 0} many={(myHand?.cards.length ?? 0) >= 8}>
               {(myHand?.cards ?? []).map((card) => {
                 const playable = playableIds.has(card.id)
                 return (
@@ -413,7 +481,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
                   </Pressable>
                 )
               })}
-            </ScrollView>
+            </CardHand>
 
             {canDraw ? (
               <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void drawCard()}>
@@ -421,7 +489,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
               </Pressable>
             ) : null}
           </>
-        ) : null}
+        )}
       </ScrollView>
     </GameShell>
   )
@@ -444,15 +512,6 @@ const makeStyles = (theme: Theme) =>
     },
     watchTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
     watchSub: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
-    rosterHead: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginTop: 4,
-    },
-    rosterTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
-    rosterTag: { color: theme.textMuted, fontSize: 12, fontWeight: '600' },
-    spectateStatus: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 2 },
     reshuffleNote: { color: theme.textMuted, fontSize: 12, textAlign: 'center', marginTop: -2 },
     choosePanel: { gap: 8 },
     shapeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -467,7 +526,6 @@ const makeStyles = (theme: Theme) =>
       gap: 4,
     },
     callText: { color: theme.text, fontSize: 11, fontWeight: '600' },
-    hand: { gap: 8, paddingVertical: 8 },
     drawBtn: {
       backgroundColor: theme.surface,
       borderRadius: 10,
@@ -477,4 +535,15 @@ const makeStyles = (theme: Theme) =>
       borderColor: theme.border,
     },
     drawText: { color: theme.text, fontSize: 16, fontWeight: '600' },
+    handSyncCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 16,
+      gap: 10,
+      alignItems: 'center',
+    },
+    handSyncTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
+    handSyncSub: { color: theme.textMuted, fontSize: 13, textAlign: 'center', lineHeight: 18 },
   })

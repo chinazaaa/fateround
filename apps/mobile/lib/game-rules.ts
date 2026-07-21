@@ -29,7 +29,11 @@ const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   mahjong: 'mahjong',
   i_call_on: 'i-call-on',
   sudoku: 'sudoku',
+  crossword: 'crossword',
+  word_search: 'word-search',
+  word_scramble: 'word-scramble',
   tic_tac_toe: 'tic-tac-toe',
+  ping_pong: 'ping-pong',
   word_hunt: 'word-hunt',
   chess: 'chess',
   checkers: 'checkers',
@@ -42,6 +46,7 @@ const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   matching_pairs: 'matching-pairs',
   quiplash: 'quiplash',
   quick_draw: 'quick-draw',
+  landmine: 'landmine',
 }
 
 export function gameRulesUrl(gameType: GameType | string): string | null {

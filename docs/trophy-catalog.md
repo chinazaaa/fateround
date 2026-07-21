@@ -848,13 +848,22 @@ yet — that's expected; the catalog defines what we build. Reused role-award ke
   (15%).
 - **Hidden:** 67 trophies marked `(H)` — redacted until earned.
 
-### Still to decide before seeding
-1. **Exact thresholds** (win counts, streak lengths, points) — tune from real play data.
-2. **Which `event.*` signals each game can actually emit** at finish. Ship the
-   Bronze/Silver counters first where an event isn't wired yet; add the Gold event when it
-   lands.
-3. **Min-player floors** for each competitive `*.wins` / `event *.win` trophy (§3.9).
-4. **Final hidden set** — confirm which `(H)` stay hidden vs revealed.
-5. **Host streak semantics** — a couple of host trophies reference cadence
-   (`host.weekend_streak`); decide whether host activity feeds the account streak or a
-   separate host cadence.
+### Before seeding — RESOLVED with recommended defaults (2026-07-17)
+
+Reversible; override anytime. See
+[`platform-features-master-plan.md`](./platform-features-master-plan.md) § Open decisions.
+
+1. ✅ **Exact thresholds** — default win-ladder **1 / 10 / 25 / 50 / 100** across games (adjust
+   only outliers); streak-milestone trophies at 7 / 30 / 100. Points per tier already locked
+   (15 / 30 / 90 / 300). Fine-tune from real play data via the admin catalog.
+2. ✅ **Which `event.*` signals each game can emit** — **ship Bronze/Silver counters first**
+   where an event isn't wired yet; add the Gold event trophy when its signal lands. (Locked
+   rollout rule; per-game signal list is a build-time detail, not a blocker.)
+3. ✅ **Min-player floors** — **per-game floor, not a flat 3.** Default 3 real players for party
+   games; **2 for inherently 2-player games** (chess, checkers, tic-tac-toe). Guests count
+   (§3.9).
+4. ✅ **Final hidden set** — keep the `(H)`-marked trophies hidden as authored for launch; revisit
+   after seeing which feel like fun surprises vs. confusing gaps. Easy to flip in admin.
+5. ✅ **Host streak semantics** — **host activity feeds the same account `streak`** (play *or*
+   host today keeps 🔥). Cadence trophies like `host.weekend_streak` use their **own dedicated
+   counter**, not a second streak.

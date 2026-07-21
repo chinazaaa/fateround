@@ -18,11 +18,13 @@
       },
       "infoPlist": {
         "UIBackgroundModes": [
-          "remote-notification"
+          "remote-notification",
+          "audio"
         ],
         "NSMicrophoneUsageDescription": "Fate Round uses the microphone for in-game voice chat with other players."
       },
-      "bitcode": false
+      "bitcode": false,
+      "appleTeamId": "3JUY592462"
     },
     "android": {
       "package": "com.fateround.app",
@@ -38,10 +40,21 @@
           "action": "VIEW",
           "autoVerify": true,
           "data": [
-            { "scheme": "https", "host": "fateround.com", "pathPrefix": "/game" },
-            { "scheme": "https", "host": "fateround.com", "pathPrefix": "/host" }
+            {
+              "scheme": "https",
+              "host": "fateround.com",
+              "pathPrefix": "/game"
+            },
+            {
+              "scheme": "https",
+              "host": "fateround.com",
+              "pathPrefix": "/host"
+            }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ],
       "permissions": [
@@ -54,7 +67,9 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.WAKE_LOCK",
-        "android.permission.BLUETOOTH"
+        "android.permission.BLUETOOTH",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ]
     },
     "web": {

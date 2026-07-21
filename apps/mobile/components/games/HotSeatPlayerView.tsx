@@ -1,12 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { type Game, type Participant, type Player, type Round } from '@fateround/shared'
 import { batch9GameLabel } from '@fateround/shared/batch-9-games'
-import {
-  finalResultsAutoRevealSeconds,
-  ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
-  roundResultsWaitMessage,
-} from '@fateround/shared/round-timing'
 import {
   HOT_SEAT_SUBMISSION_TYPES,
   hotSeatPlayerDisplayName,
@@ -21,9 +16,9 @@ import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/g
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { PollReactionBar } from '@/components/games/poll/PollReactionBar'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
-import { TimerBadge } from '@/components/ui/TimerBadge'
-import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
-import { useRoundTimer } from '@/hooks/useRoundTimer'
+import { RoundTimerBadge } from '@/components/party/RoundTimerBadge'
+import { RoundResultsWaitText } from '@/components/party/RoundResultsWaitText'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { getHotSeatSubmissions, postHotSeat } from '@/lib/game-api'
 import { playSound } from '@/lib/sounds'
@@ -68,6 +63,8 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
   const [submissionType, setSubmissionType] = useState<HotSeatSubmissionType>('compliment')
   const [text, setText] = useState('')
   const [submitted, setSubmitted] = useState(false)
+  const scrollRef = useRef<ScrollView>(null)
+  const scrollInputIntoView = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)
   const [results, setResults] = useState<HotSeatSubmission[]>([])
   const [allSubmissions, setAllSubmissions] = useState<HotSeatSubmissionRow[]>([])
   const [acting, setActing] = useState(false)
@@ -181,34 +178,25 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
   const writePhaseActive =
     bootstrap.screen === 'playing' && currentRound?.status === 'active' && !isInHotSeat && !submitted
 
-  // Countdown for the writing phase (auto-submits whatever's typed on expiry).
-  const timeLeft = useRoundTimer({
-    game: bootstrap.game,
-    currentRound: writePhaseActive ? currentRound : null,
-    active: writePhaseActive,
-    onExpire: () => void submitRef.current(),
-  })
-
   const showingResults =
     bootstrap.screen === 'playing' && bootstrap.game?.status === 'active' && currentRound?.status === 'finished'
 
   const isLastRound =
     !!currentRound && !!bootstrap.game && (currentRound.round_number ?? 0) >= (bootstrap.game.rounds_count ?? 0)
 
-  const nextRoundCountdown = useDeadlineCountdown(
-    currentRound?.ended_at,
-    isLastRound ? finalResultsAutoRevealSeconds(bootstrap.game?.game_type) : ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
-    !!showingResults
-  )
-
-  const waitMessage = roundResultsWaitMessage({
-    isLastRound,
-    autoReveal: true,
-    nextRoundSecondsLeft: isLastRound ? 0 : nextRoundCountdown,
-    finalRevealSecondsLeft: isLastRound ? nextRoundCountdown : undefined,
-  })
-
   const selectedTypeMeta = HOT_SEAT_SUBMISSION_TYPES.find((t) => t.type === submissionType)
+
+  // Pinned countdown — visible under the header while the write body scrolls.
+  const hotSeatTimer = (
+    <RoundTimerBadge
+      game={bootstrap.game}
+      currentRound={writePhaseActive ? currentRound : null}
+      active={writePhaseActive}
+      onExpire={() => void submitRef.current()}
+      containerStyle={styles.timerRow}
+    />
+  )
+  const hotSeatTimerPinned = useStickyTimer(hotSeatTimer, [bootstrap.game, writePhaseActive, currentRound])
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
@@ -235,6 +223,8 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
       />
     )
   }
@@ -305,7 +295,7 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
       title={bootstrap.game.title || batch9GameLabel('hot_seat')}
       subtitle={`Round ${currentRound.round_number} / ${bootstrap.game.rounds_count ?? '?'}`}
     >
-      <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
+      <KeyboardAwareGameScroll ref={scrollRef} contentContainerStyle={styles.content}>
         <View style={styles.spotlight}>
           <Text style={styles.spotlightEmoji}>🪑🔥</Text>
           <Text style={styles.spotlightLabel}>In the hot seat</Text>
@@ -331,7 +321,14 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
             {bootstrap.myPlayerId ? (
               <PollReactionBar gameCode={bootstrap.code} playerId={bootstrap.myPlayerId} />
             ) : null}
-            <Text style={styles.waiting}>{waitMessage}</Text>
+            <RoundResultsWaitText
+              anchorTime={currentRound.ended_at}
+              isLastRound={isLastRound}
+              autoReveal
+              gameType={bootstrap.game?.game_type}
+              active={showingResults}
+              style={styles.waiting}
+            />
           </View>
         ) : isInHotSeat ? (
           <TurnBanner text="Everyone is writing about you…" isMyTurn={false} />
@@ -341,11 +338,7 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
           </View>
         ) : (
           <>
-            {timeLeft > 0 ? (
-              <View style={styles.timerRow}>
-                <TimerBadge seconds={timeLeft} />
-              </View>
-            ) : null}
+            {hotSeatTimerPinned ? null : hotSeatTimer}
             <Text style={styles.section}>Pick a vibe</Text>
             <View style={styles.typeRow}>
               {HOT_SEAT_SUBMISSION_TYPES.map(({ type, emoji, label }) => (
@@ -368,6 +361,7 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
               placeholderTextColor={theme.textFaint}
               multiline
               maxLength={300}
+              onFocus={scrollInputIntoView}
             />
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <Pressable

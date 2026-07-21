@@ -19,6 +19,8 @@ type Props = {
   gameTitle?: string | null
   /** Result headline, e.g. "Naza wins!" — leads the shared text. */
   resultTitle?: string
+  /** Short uppercase flavor line, e.g. "FINAL STANDINGS". */
+  resultSubtitle?: string | null
   /** Sub-headline, e.g. "BINGO!". */
   resultDetail?: string | null
   /** Hero emoji — 🏆 for a winner, 🏁 otherwise. */
@@ -56,7 +58,7 @@ function buildShareText({ gameType, gameTitle, resultTitle, resultDetail, emoji 
  * results footer (Share results · Create a new game · View history · Back home).
  */
 export function GameFinishedActions(props: Props) {
-  const { gameCode, gameType, gameTitle, resultTitle, resultDetail, emoji, leaderboard } = props
+  const { gameCode, gameType, gameTitle, resultTitle, resultSubtitle, resultDetail, emoji, leaderboard } = props
   const styles = useThemedStyles(makeStyles)
   const router = useRouter()
   const { error: toastError } = useToast()
@@ -97,6 +99,7 @@ export function GameFinishedActions(props: Props) {
             gameType={gameType}
             gameTitle={gameTitle}
             resultTitle={resultTitle}
+            subtitle={resultSubtitle}
             resultDetail={resultDetail}
             emoji={emoji}
             leaderboard={leaderboard}

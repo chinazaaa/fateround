@@ -9,6 +9,46 @@ export type JoinPlayerResponse = {
   playerGender?: PlayerGender
   canChat?: boolean
   error?: string
+  /** Set by the server when a join is refused because the lobby is full. */
+  full?: boolean
+}
+
+/** Error carrying the server's `full` flag so callers can offer "watch instead". */
+export class JoinError extends Error {
+  full: boolean
+  constructor(message: string, full: boolean) {
+    super(message)
+    this.name = 'JoinError'
+    this.full = full
+  }
+}
+
+/** Reclaim an existing seat from a typed-in player code. Errors on an unknown code. */
+export async function resumePlayerByCode(
+  gameCode: string,
+  resumeToken: string
+): Promise<{
+  playerId: string
+  playerName: string
+  playerGender: PlayerGender
+  resumeToken: string
+  isViewer: boolean
+}> {
+  const res = await fetch(apiUrl('/api/players/resume'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ gameCode: gameCode.toUpperCase(), resumeToken: resumeToken.trim().toUpperCase() }),
+  })
+  const data = (await res.json()) as {
+    playerId: string
+    playerName: string
+    playerGender: PlayerGender
+    resumeToken: string
+    isViewer: boolean
+    error?: string
+  }
+  if (!res.ok) throw new Error(data.error ?? 'Could not find that player code')
+  return data
 }
 
 export async function autoJoinGame(gameCode: string, resumeToken?: string | null): Promise<JoinPlayerResponse> {
@@ -23,6 +63,18 @@ export async function autoJoinGame(gameCode: string, resumeToken?: string | null
   const data = (await res.json()) as JoinPlayerResponse & { error?: string }
   if (!res.ok) throw new Error(data.error ?? 'Failed to join')
   return data
+}
+
+/**
+ * Record which player row is the game's host (games.host_player_id) so every client
+ * can badge the host in the roster drawer. Mirrors web `useHostSeat`. Best-effort.
+ */
+export async function publishHostPlayerId(gameCode: string, hostToken: string, playerId: string): Promise<void> {
+  await fetch(apiUrl(`/api/games/${gameCode.toUpperCase()}/host-player`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hostToken, playerId }),
+  }).catch(() => {})
 }
 
 export async function fetchMobileConfig(): Promise<MobileConfig> {
@@ -59,7 +111,7 @@ export async function joinGame(input: {
   })
   const data = (await res.json()) as JoinPlayerResponse & { error?: string }
   if (!res.ok) {
-    throw new Error(data.error ?? 'Failed to join game')
+    throw new JoinError(data.error ?? 'Failed to join game', data.full === true)
   }
   return data
 }
@@ -124,10 +176,7 @@ export async function searchGifs(query: string, type: KlipyMediaType = 'gifs'): 
     .filter((g) => g.previewUrl && g.fullUrl)
 }
 
-export function isGameMobileSupported(
-  gameType: GameType,
-  config: MobileConfig | null
-): boolean {
+export function isGameMobileSupported(gameType: GameType, config: MobileConfig | null): boolean {
   if (config?.forceWebFallbackFor.includes(gameType)) return false
   if (config) return config.mobileSupportedGames.includes(gameType)
   return NATIVE_GAME_TYPES.includes(gameType)

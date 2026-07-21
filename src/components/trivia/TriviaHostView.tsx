@@ -1,24 +1,29 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TriviaActiveRound } from '@/components/trivia/TriviaActiveRound'
 import { TriviaHostManagePanel } from '@/components/trivia/TriviaHostManagePanel'
 import { TriviaPlayAgainSetup, type TriviaSettingsPayload } from '@/components/trivia/TriviaPlayAgainSetup'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
-import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
+import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { HostMaxPlayersLobbyPanel } from '@/components/host-lobby/HostMaxPlayersLobbyPanel'
+import { TransferHostControl } from '@/components/TransferHostControl'
 import { gameTypeConfig } from '@/lib/game-types'
-import { getTriviaHostMode, setTriviaHostMode, type TriviaHostMode } from '@/lib/trivia'
 import { useTriviaHostRoundAutomation } from '@/hooks/useTriviaHostRoundAutomation'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT, TRIVIA_ANSWER_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
-import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import type { Game, Player, Round, TriviaAnswer } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
@@ -38,12 +43,6 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
   const [playingAgain, setPlayingAgain] = useState(false)
   const [savingLobbySettings, setSavingLobbySettings] = useState(false)
   const [settingsModal, setSettingsModal] = useState<'lobby' | 'play-again' | null>(null)
-  const [hostMode, setHostMode] = useState<TriviaHostMode>('player')
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
   const settingsModalRef = useRef(settingsModal)
   settingsModalRef.current = settingsModal
@@ -67,35 +66,49 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
 
   useEffect(() => {
     load()
-    setHostMode(getTriviaHostMode(gameCode))
-    const session = getPlayerSession(gameCode)
-    if (session) {
-      setHostPlayerId(session.playerId)
-      setHostResumeToken(session.resumeToken ?? null)
-      setHostPlayerName(session.playerName)
-    }
   }, [gameCode, load])
+
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    leaveSeatKeepHosting,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+    onModeChange: (mode) => {
+      if (mode === 'spectator') setTab('manage')
+    },
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostResumeToken(null)
-        setHostPlayerName('')
-        clearPlayerSession(gameCode)
-      }
+      onHostSeatRemoved(playerId)
       setPlayers((prev) => prev.filter((p) => p.id !== playerId))
     },
-    [gameCode, hostPlayerId]
+    [onHostSeatRemoved]
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
 
-  // Clear stale host-as-player state if the host's own row is removed elsewhere.
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
-
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'players', 'rounds', 'trivia_answers'], load)
+  const connected = useGameTableSync(
+    gameCode,
+    [{ table: 'games', column: 'id' }, 'players', 'rounds', 'trivia_answers'],
+    load
+  )
 
   usePolling(
     async () => {
@@ -103,82 +116,12 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
       return load()
     },
     [gameCode, load],
-    { intervalMs: POLL_INTERVALS.realtimeFallback }
+    {
+      intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+      enabled: game?.status === 'waiting' || !connected,
+      runImmediately: false,
+    }
   )
-
-  const changeHostMode = async (mode: TriviaHostMode) => {
-    if (game?.status !== 'waiting') return
-    const prev = hostMode
-    setHostMode(mode)
-    setTriviaHostMode(gameCode, mode)
-    if (mode === 'spectator') setTab('manage')
-    // Switching to "Host only" while holding a seat → give up the seat so the host
-    // drops out of the players list.
-    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
-      try {
-        const res = await fetch('/api/players', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error ?? 'Failed to leave seat')
-        }
-        handlePlayerRemoved(hostPlayerId)
-        await load()
-      } catch (err) {
-        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
-      }
-    }
-  }
-
-  const renameHost = async (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed || !hostPlayerId) return
-    try {
-      const res = await fetch('/api/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
-      setHostPlayerName(data.playerName)
-      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
-      await load()
-      success('Name updated!')
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to update name')
-    }
-  }
-
-  const hostJoinGame = async () => {
-    const name = hostJoinName.trim()
-    if (!name) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: name }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostResumeToken(data.resumeToken ?? null)
-      setHostPlayerName(data.playerName)
-      setHostMode('player')
-      setTriviaHostMode(gameCode, 'player')
-      await load()
-      success(`Joined as ${data.playerName}`)
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }
 
   const endRound = useCallback(async () => {
     setAdvancing(true)
@@ -301,12 +244,48 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
+  // Host controls for the active game live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body). Late-join rules + the rare "End round early" driver + How-to-play
+  // + End game. Players + live scores are seen in the roster drawer / watch view.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="trivia" onEnded={load}>
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          {roundAutomation.activeRound && (
+            <button
+              type="button"
+              onClick={() => void endRound()}
+              disabled={advancing}
+              className="btn-secondary w-full py-3 text-base"
+            >
+              {advancing ? 'Ending…' : 'End round early'}
+            </button>
+          )}
+          {hostPlays && (
+            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+          )}
+        </HostActiveSettings>
+      ) : null,
+    [
+      game,
+      gameCode,
+      hostToken,
+      load,
+      setGame,
+      endRound,
+      advancing,
+      roundAutomation.activeRound,
+      hostPlays,
+      leaveSeatKeepHosting,
+    ]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    // Branded lobby skeleton (covers the header + hides the fixed theme toggle) so
+    // reloading straight into the lobby feels instant and never flashes old chrome.
+    return <HostLobbySkeleton />
   }
 
   const showTabs = game.status !== 'finished'
@@ -381,52 +360,125 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
             spectatorHint="Watch the game from the Watch tab"
             playingNote={
               <p className="text-sm text-muted">
-                Playing as <strong className="text-body">{hostPlayerName}</strong> — answer from the Play tab once you
-                start.
+                Playing as <strong className="text-body">{hostPlayerName}</strong> — answer once you start.
               </p>
             }
           />
         ))}
       {game.status !== 'finished' && <HostRulesRow gameType="trivia" />}
-      {game.status === 'waiting' && (
-        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-      )}
       <TriviaHostManagePanel {...panelProps} section="manage" />
     </div>
   )
 
+  // Fresh lobby (not the play-again ready-up flow, which keeps the tabbed layout for now).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  const activePlayers = players.filter((p) => !p.spectator)
+  const canStart = activePlayers.length >= 1
+
+  const lobbyModeCard = game.tournament_id ? (
+    <p className="surface-inset rounded-xl px-4 py-3 text-sm text-muted">
+      You&apos;re hosting this tournament game — start it below once players have joined. (The host doesn&apos;t play in
+      tournament games.)
+    </p>
+  ) : (
+    <HostModeSelector
+      mode={hostMode}
+      onChange={changeHostMode}
+      joinedPlayerId={hostPlayerId}
+      joinedPlayerName={hostPlayerName}
+      joinName={hostJoinName}
+      onJoinNameChange={setHostJoinName}
+      onJoin={() => void hostJoinGame()}
+      joining={hostJoining}
+      onEditName={renameHost}
+      spectatorHint="Watch the game once it starts"
+      playerHint="Answer along with everyone"
+      playingNote={
+        <p className="text-sm text-muted">
+          Playing as <strong className="text-body">{hostPlayerName}</strong> — answer once you start.
+        </p>
+      }
+    />
+  )
+
+  const lobbySettings = (
+    <>
+      <HostMaxPlayersLobbyPanel
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        limitType="trivia"
+        playerCount={players.length}
+        onGameUpdate={setGame}
+      />
+      <button type="button" onClick={() => setSettingsModal('lobby')} className="btn-secondary w-full">
+        Edit questions &amp; rounds
+      </button>
+      <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+    </>
+  )
+
   return (
     <>
-      <HostGameLayout
-        gameCode={gameCode}
-        status={game.status}
-        tab={tab}
-        onTabChange={setTab}
-        primaryKind={primaryKind}
-        showTabs={showTabs}
-        gameStarted={gameStarted}
-        header={<HostGameHeader game={game} />}
-        primary={hostPlays ? interactivePlay : watchRound}
-        manage={manage}
-        finished={
-          game.tournament_id ? (
-            <div className="space-y-4">
-              <div className="glass-card-strong p-5 text-center space-y-2">
-                <p className="font-bold text-body">🏆 Game over</p>
-                <p className="text-muted text-sm">
-                  Head back to your tournament tab to start the next game — you can close this one.
-                </p>
-                <a href={`/tournament/${game.tournament_id}`} className="btn-secondary btn-fit mx-auto text-sm">
-                  ← Back to Tournament
-                </a>
+      {waitingLobby ? (
+        <HostLobby
+          gameCode={gameCode}
+          hostToken={hostToken}
+          game={game}
+          gameTypeLabel={cfg.label}
+          players={players}
+          maxPlayers={game.max_players}
+          resumeToken={hostResumeToken}
+          playCard={lobbyModeCard}
+          settingsChildren={lobbySettings}
+          onStart={() => void startGame()}
+          starting={starting}
+          startDisabled={!canStart}
+          startDisabledHint={!canStart ? 'Waiting for at least one player to join.' : null}
+          startLabel="Start trivia"
+          onRemovePlayer={removePlayer}
+          removingPlayerId={removingPlayerId}
+          highlightPlayerId={hostPlayerId}
+          onEnded={load}
+        />
+      ) : (
+        <HostGameLayout
+          onRemovePlayer={removePlayer}
+          gameCode={gameCode}
+          status={game.status}
+          tab={tab}
+          onTabChange={setTab}
+          primaryKind={primaryKind}
+          game={game}
+          players={players}
+          hostPlayerId={hostPlayerId}
+          onHostRejoined={load}
+          showTabs={showTabs}
+          gameStarted={gameStarted}
+          header={<HostGameHeader game={game} />}
+          primary={hostPlays ? interactivePlay : watchRound}
+          manage={manage}
+          noManageTab={game.status === 'active'}
+          finished={
+            game.tournament_id ? (
+              <div className="space-y-4">
+                <div className="glass-card-strong p-5 text-center space-y-2">
+                  <p className="font-bold text-body">🏆 Game over</p>
+                  <p className="text-muted text-sm">
+                    Head back to your tournament tab to start the next game — you can close this one.
+                  </p>
+                  <a href={`/tournament/${game.tournament_id}`} className="btn-secondary btn-fit mx-auto text-sm">
+                    ← Back to Tournament
+                  </a>
+                </div>
+                <TriviaHostManagePanel {...panelProps} section="finished" />
               </div>
+            ) : (
               <TriviaHostManagePanel {...panelProps} section="finished" />
-            </div>
-          ) : (
-            <TriviaHostManagePanel {...panelProps} section="finished" />
-          )
-        }
-      />
+            )
+          }
+        />
+      )}
 
       <TriviaPlayAgainSetup
         open={settingsModal !== null}

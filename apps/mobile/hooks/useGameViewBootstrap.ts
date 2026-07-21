@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { AppState } from 'react-native'
 import type { Game, Player } from '@fateround/shared'
 import { normalizeGameCode } from '@fateround/shared'
 import { joinGame } from '@/lib/api'
 import { recordRecentGame } from '@/lib/recent-games'
 import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
+import { reconcilePlayerSession } from '@/lib/player-session-reconcile'
+import { subscribePlayerSession } from '@/lib/session-events'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 import { uniqueTopic } from '@/lib/realtime'
 
@@ -42,8 +45,33 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   const [joinName, setJoinName] = useState('')
   const [joining, setJoining] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Set when a join is refused because the lobby is full — cue to offer "watch instead".
+  const [lobbyFull, setLobbyFull] = useState(false)
 
-  const load = useCallback(async (): Promise<boolean> => {
+  // The game-specific callbacks are passed as fresh literals every render by most call
+  // sites. Mirror them in refs so `load` can stay referentially stable — otherwise `load`
+  // changes identity each render, the mount effect below refires every render, and the
+  // view spins in a continuous full-reload loop (the source of the crossword/word-search
+  // input lag and the finish-screen flicker). We always call the latest closure.
+  const loadGameStateRef = useRef(loadGameState)
+  loadGameStateRef.current = loadGameState
+  const computeScreenRef = useRef(computeScreen)
+  computeScreenRef.current = computeScreen
+  const afterResolveRef = useRef(afterResolve)
+  afterResolveRef.current = afterResolve
+
+  // Singleflight: overlapping load() calls (mount + realtime + submit) must not interleave
+  // their setStates, which is what makes the finished screen flicker. While one load runs,
+  // extra calls just flag a single trailing re-run so we still end on the freshest data.
+  const loadingRef = useRef(false)
+  const pendingRef = useRef(false)
+  // Finished latch, keyed on the session that finished. `start` only moves a game to
+  // 'active' from 'waiting' with a *new* session_started_at, so a later read that shows the
+  // SAME session as 'active' can only be read-replica lag — ignore it so results never bounce
+  // back to the board. A real replay passes through 'waiting' (which clears the latch).
+  const finishedSessionRef = useRef<string | null | undefined>(undefined)
+
+  const runLoad = useCallback(async (): Promise<boolean> => {
     try {
       const supabase = getSupabase()
       const [gameRes, playersRes] = await Promise.all([
@@ -63,13 +91,29 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         return true
       }
 
-      const { state, ok } = await loadGameState(gameData, playerRows)
+      // Stale-replica guard (see finishedSessionRef above).
+      if (
+        finishedSessionRef.current !== undefined &&
+        gameData.status === 'active' &&
+        (gameData.session_started_at ?? null) === finishedSessionRef.current
+      ) {
+        return true
+      }
+      if (gameData.status === 'finished') finishedSessionRef.current = gameData.session_started_at ?? null
+      else if (gameData.status === 'waiting') finishedSessionRef.current = undefined
+
+      const { state, ok } = await loadGameStateRef.current(gameData, playerRows)
 
       setGame(gameData)
       setPlayers(playerRows)
       setGameState(ok ? state : null)
 
-      const session = await getPlayerSession(code)
+      // Reconcile the stored session against the roster we just fetched: a drifted/
+      // stale player id (removed+rejoined, reclaim miss, rotated token) otherwise
+      // sticks forever and mismatches the dealt hand ("Your hand (0)"). Heals via
+      // the server's token-keyed resume, clears only on a confirmed 404. Web does
+      // this via resolvePlayerSession; mobile never had it.
+      const session = await reconcilePlayerSession(code, playerRows)
       const playerId = session?.playerId ?? null
       if (session) {
         setMyPlayerId(session.playerId)
@@ -86,13 +130,31 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
       }
 
       const resolvedState = ok ? state : (null as GameState)
-      if (afterResolve) await afterResolve(gameData, playerId, resolvedState)
-      setScreen(computeScreen(gameData, playerId, resolvedState))
+      if (afterResolveRef.current) await afterResolveRef.current(gameData, playerId, resolvedState)
+      setScreen(computeScreenRef.current(gameData, playerId, resolvedState))
       return true
     } catch {
       return false
     }
-  }, [afterResolve, code, computeScreen, loadGameState, notFoundScreen])
+  }, [code, notFoundScreen])
+
+  const load = useCallback(async (): Promise<boolean> => {
+    if (loadingRef.current) {
+      pendingRef.current = true
+      return true
+    }
+    loadingRef.current = true
+    try {
+      let ok = await runLoad()
+      while (pendingRef.current) {
+        pendingRef.current = false
+        ok = await runLoad()
+      }
+      return ok
+    } finally {
+      loadingRef.current = false
+    }
+  }, [runLoad])
 
   const join = useCallback(
     async (
@@ -131,8 +193,10 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         setMyPlayerId(data.playerId)
         setMyResumeToken(data.resumeToken ?? null)
         setJoinName(data.playerName)
+        setLobbyFull(false)
         await load()
       } catch (err) {
+        setLobbyFull((err as { full?: boolean })?.full === true)
         setError(err instanceof Error ? err.message : 'Failed to join')
       } finally {
         setJoining(false)
@@ -144,6 +208,12 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   useEffect(() => {
     void load()
   }, [load])
+
+  // Rotating the player code mints a new resume token; ours would otherwise stay
+  // cached from bootstrap and every move would authenticate with the dead one.
+  useEffect(() => {
+    return subscribePlayerSession(code, () => void load())
+  }, [code, load])
 
   return {
     code,
@@ -158,6 +228,7 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
     setJoinName,
     joining,
     error,
+    lobbyFull,
     load,
     join,
     joinScreen,
@@ -189,29 +260,66 @@ export function useGameTableSync(
       typeof t === 'string' ? { table: t, column: 'game_id' } : { table: t.table, column: t.column ?? 'game_id' }
     )
 
+    // Debounce reloads so a burst of changes coalesces into one reload. But a plain reset-on-every-
+    // event debounce STARVES under a sustained flood (e.g. crossword/word-search/word-scramble with
+    // many players — an INSERT every ~50ms never leaves the 90ms gap the debounce needs to fire), so
+    // everyone else's live progress freezes until typing pauses. Cap the total wait so a continuous
+    // flood still refreshes ~2.5x/second while isolated changes keep the snappy 90ms latency.
+    const MAX_WAIT_MS = 400
     let debounce: ReturnType<typeof setTimeout> | null = null
+    let firstScheduledAt = 0
+    const fire = () => {
+      debounce = null
+      firstScheduledAt = 0
+      void Promise.resolve()
+        .then(() => reloadRef.current())
+        .catch(() => {})
+    }
     const schedule = () => {
+      const now = Date.now()
+      if (firstScheduledAt === 0) firstScheduledAt = now
       if (debounce) clearTimeout(debounce)
-      debounce = setTimeout(() => {
-        void Promise.resolve()
-          .then(() => reloadRef.current())
-          .catch(() => {})
-      }, 90)
+      const delay = Math.min(90, Math.max(0, MAX_WAIT_MS - (now - firstScheduledAt)))
+      debounce = setTimeout(fire, delay)
     }
 
-    let channel = supabase.channel(uniqueTopic(`sync-${gameCode}`))
-    for (const { table, column } of norm) {
-      channel = channel.on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table, filter: `${column}=eq.${gameCode}` },
-        () => schedule()
-      )
+    // (Re)build and subscribe a fresh channel. Broken out so the AppState resume
+    // path can tear the old one down and start clean — see the listener below.
+    const subscribe = () => {
+      let channel = supabase.channel(uniqueTopic(`sync-${gameCode}`))
+      for (const { table, column } of norm) {
+        channel = channel.on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table, filter: `${column}=eq.${gameCode}` },
+          () => schedule()
+        )
+      }
+      channel.subscribe()
+      return channel
     }
 
-    channel.subscribe()
+    let channel = subscribe()
+
+    // While the app is backgrounded, React Native suspends JS timers and the OS
+    // may silently drop the websocket; realtime-js does not reliably notice on
+    // resume, so changes that landed while away never arrive. On every
+    // background→active edge, drop the (possibly dead) channel, re-subscribe a
+    // fresh one, and fire one reload to reconcile whatever we missed.
+    let prevAppState = AppState.currentState
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      const wasBackground = prevAppState !== 'active'
+      prevAppState = state
+      if (!wasBackground || state !== 'active') return
+      void supabase.removeChannel(channel)
+      channel = subscribe()
+      void Promise.resolve()
+        .then(() => reloadRef.current())
+        .catch(() => {})
+    })
 
     return () => {
       if (debounce) clearTimeout(debounce)
+      appStateSub.remove()
       void supabase.removeChannel(channel)
     }
     // `tables` is intentionally keyed via tablesKey (contents, not identity).

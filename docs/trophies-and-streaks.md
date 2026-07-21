@@ -822,8 +822,10 @@ The push infra already exists (VAPID keys + `push_subscriptions`), but it is cur
 **Phase 1 — foundation + first loop (ship this first):**
 1. Anonymous auth profile + `profiles` / `player_stats` tables.
 2. `player_trophies` + `trophies` catalog, **seeded from `src/lib/trophies/catalog.ts`**
-   (the [`trophy-catalog.md`](./trophy-catalog.md) list). Start with the **top 5 most-played
-   modes** + the platform set; the rest of the 606 seed straight from the file.
+   (the [`trophy-catalog.md`](./trophy-catalog.md) list). Start with the **5 deepest games —
+   Whot, Trivia, Monopoly, Scrabble, Chess** (each carries ~25–30 trophies; mix of most-played
+   + richest event surface) + the platform set; the rest of the 606 seed straight from the file.
+   Bench for the next wave: Yahtzee, Ludo, Checkers.
 3. Award engine wired into `finish-game`; unlock toast on the end screen.
 4. The general streak (any-game-or-Daily) + WAT day boundary + basic freeze.
 5. The four PSN-modeled screens (§3A): profile overview → per-game summary → all-trophies
@@ -846,20 +848,30 @@ The push infra already exists (VAPID keys + `push_subscriptions`), but it is cur
 
 ---
 
-## 10. Open decisions (need a call before/while building)
+## 10. Open decisions — RESOLVED with recommended defaults (2026-07-17)
 
-1. **Level curve** — confirm `sqrt(points/100)` or tune (affects how "fast" early levels
-   feel).
-2. **Freeze economics** — earn rate + cap (proposed 1 per 7 days, hold ≤ 2).
-3. **Competitive-trophy min player count** — proposed floor (e.g. ≥ 3 real players) for
-   "win N" trophies (§3.9).
-4. **Handle uniqueness** — are display handles globally unique, or is the account keyed
-   only by email with a non-unique display name? (Leaderboard currently uses normalized
-   names.)
-5. **Which 5 games seed Phase 1** — pull from actual play analytics (Whot / Trivia likely,
-   confirm the rest).
-6. **Anonymous retention window** — how long do we keep an unclaimed anonymous profile's
-   trophies server-side before pruning?
+Reversible; override anytime. Consolidated view in
+[`platform-features-master-plan.md`](./platform-features-master-plan.md) § Open decisions.
+
+1. ✅ **Level curve** — keep `level = floor(sqrt(points/100)) + 1`. Fast early wins, meaningful
+   high levels (L2=100pts, L3=400, L4=900…). Retune only if it feels off after launch.
+2. ✅ **Freeze economics** — earn **1 freeze per 7-day streak, hold max 2, auto-consume 1 per
+   missed day**, base freezes free forever.
+3. ✅ **Competitive-trophy min player count** — **per-game floor, not a flat 3.** Default 3 real
+   players for party games; **2 for inherently 2-player games** (chess, checkers, tic-tac-toe),
+   or a flat ≥3 would make 2-player wins never count. Guests count as real; the guard is against
+   solo/bot farming (§3.9).
+4. ✅ **Handle uniqueness** — **free, non-unique display names** now; identity is the internal
+   `profiles.id`. Add an *optional* unique `@username` only if friends/@mentions ship later.
+   Disambiguate duplicate names on boards with avatar + a small suffix.
+5. ✅ **Which 5 games seed Phase 1 — decided:** Whot, Trivia, Monopoly, Scrabble, Chess
+   (depth-first — each carries ~25–30 trophies). Bench: Yahtzee, Ludo, Checkers.
+6. ✅ **Anonymous retention window** — keep unclaimed anonymous data for **90 days of inactivity,
+   then prune**. Unify the 30-day guest-history claim window in `account-tiers.md` up to 90 so
+   there is one number.
+7. ✅ **Host-streak semantics** — **hosting feeds the same account `streak`** (play *or* host today
+   keeps 🔥). Host-cadence trophies (e.g. `host.weekend_streak`) use their own counter, not a
+   second streak.
 
 ---
 

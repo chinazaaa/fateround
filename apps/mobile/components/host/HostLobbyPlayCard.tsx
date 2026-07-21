@@ -4,11 +4,7 @@ import type { GameType, Player } from '@fateround/shared'
 import { MONOPOLY_PLAYER_TOKENS, takenMonopolyTokens } from '@fateround/shared/monopoly-tokens'
 import { joinGame } from '@/lib/api'
 import { patchPlayerName, leaveGame } from '@/lib/game-api'
-import {
-  clearPlayerSession,
-  setPlayerSession,
-  type PlayerSession,
-} from '@/lib/secure-session'
+import { clearPlayerSession, setPlayerSession, type PlayerSession } from '@/lib/secure-session'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
@@ -19,6 +15,8 @@ type Props = {
   session: PlayerSession | null
   onSessionChange: (session: PlayerSession | null) => void
   onReload: () => void
+  /** Opens the host-transfer flow — shown beside Rename/Stop playing when seated. */
+  onTransfer?: () => void
 }
 
 /**
@@ -32,6 +30,7 @@ export function HostLobbyPlayCard({
   session,
   onSessionChange,
   onReload,
+  onTransfer,
 }: Props) {
   const theme = useTheme()
   const styles = useThemedStyles(makeStyles)
@@ -62,7 +61,14 @@ export function HostLobbyPlayCard({
       onSessionChange(next)
       onReload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not join')
+      const full = (err as { full?: boolean })?.full === true
+      setError(
+        full
+          ? 'Game is full — remove a player to free a seat, then Play as yourself.'
+          : err instanceof Error
+            ? err.message
+            : 'Could not join'
+      )
     } finally {
       setBusy(false)
     }
@@ -207,9 +213,18 @@ export function HostLobbyPlayCard({
               disabled={busy}
               onPress={() => void onStop()}
             >
-              <Text style={styles.secondaryText}>{busy ? '…' : 'Stop playing'}</Text>
+              <Text style={styles.secondaryText} numberOfLines={1}>
+                {busy ? '…' : 'Stop playing'}
+              </Text>
             </Pressable>
           </View>
+          {onTransfer ? (
+            <Pressable style={[styles.secondary, busy && styles.disabled]} disabled={busy} onPress={onTransfer}>
+              <Text style={styles.secondaryText} numberOfLines={1}>
+                Transfer host
+              </Text>
+            </Pressable>
+          ) : null}
         </>
       )}
     </View>
@@ -218,62 +233,68 @@ export function HostLobbyPlayCard({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  card: {
-    backgroundColor: theme.surface,
-    borderRadius: theme.radius.lg,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: theme.space.md,
-    gap: theme.space.sm,
-    marginTop: theme.space.md,
-  },
-  title: { color: theme.text, fontSize: 17, fontWeight: '800' },
-  hint: { color: theme.textMuted, fontSize: 14, lineHeight: 20 },
-  seatName: { color: theme.primaryMuted, fontSize: 18, fontWeight: '800' },
-  tokens: { gap: 6 },
-  tokenLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
-  tokenGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
-  token: {
-    width: 44,
-    height: 44,
-    borderRadius: theme.radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.bg,
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  tokenOn: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
-  tokenTaken: { opacity: 0.3 },
-  tokenEmoji: { fontSize: 22 },
-  input: {
-    backgroundColor: theme.bg,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: theme.radius.sm,
-    color: theme.text,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    fontSize: 15,
-  },
-  error: { color: theme.error, fontSize: 13 },
-  row: { flexDirection: 'row', gap: theme.space.sm },
-  flex: { flex: 1 },
-  primary: {
-    backgroundColor: theme.primary,
-    borderRadius: theme.radius.sm,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  primaryText: { color: '#fff', fontWeight: '800', fontSize: 15 },
-  secondary: {
-    backgroundColor: theme.bgElevated,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: theme.radius.sm,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  secondaryText: { color: theme.textSecondary, fontWeight: '700', fontSize: 15 },
-  disabled: { opacity: 0.5 },
-})
+    card: {
+      backgroundColor: theme.surface,
+      borderRadius: theme.radius.lg,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: theme.space.md,
+      gap: theme.space.sm,
+      marginTop: theme.space.md,
+    },
+    title: { color: theme.text, fontSize: 17, fontWeight: '800' },
+    hint: { color: theme.textMuted, fontSize: 14, lineHeight: 20 },
+    seatName: { color: theme.primaryMuted, fontSize: 18, fontWeight: '800' },
+    tokens: { gap: 6 },
+    tokenLabel: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.6,
+    },
+    tokenGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
+    token: {
+      width: 44,
+      height: 44,
+      borderRadius: theme.radius.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.bg,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    tokenOn: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+    tokenTaken: { opacity: 0.3 },
+    tokenEmoji: { fontSize: 22 },
+    input: {
+      backgroundColor: theme.bg,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: theme.radius.sm,
+      color: theme.text,
+      paddingHorizontal: 12,
+      paddingVertical: 11,
+      fontSize: 15,
+    },
+    error: { color: theme.error, fontSize: 13 },
+    row: { flexDirection: 'row', gap: theme.space.sm },
+    flex: { flex: 1 },
+    primary: {
+      backgroundColor: theme.primary,
+      borderRadius: theme.radius.sm,
+      paddingVertical: 12,
+      alignItems: 'center',
+    },
+    primaryText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+    secondary: {
+      backgroundColor: theme.bgElevated,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: theme.radius.sm,
+      paddingVertical: 12,
+      alignItems: 'center',
+    },
+    secondaryText: { color: theme.textSecondary, fontWeight: '700', fontSize: 15 },
+    disabled: { opacity: 0.5 },
+  })

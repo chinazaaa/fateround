@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { MatchingPairsPlayerView } from '@/components/matching-pairs/MatchingPairsPlayerView'
 import { MatchingPairsGameTimerBar } from '@/components/matching-pairs/MatchingPairsGameTimerBar'
@@ -12,11 +12,19 @@ import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostMatchingPairsLobbyPanel } from '@/components/host-lobby/HostMatchingPairsLobbyPanel'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { gameTypeConfig } from '@/lib/game-types'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
 import {
@@ -31,6 +39,8 @@ import {
   type MatchingPairsPlayerScore,
 } from '@/lib/memory-match'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
+import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
+import { ShareResults } from '@/components/ShareResults'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import {
@@ -40,33 +50,22 @@ import {
   MEMORY_MATCH_SUBMISSION_SELECT,
   MEMORY_MATCH_PROGRESS_SELECT,
 } from '@/lib/supabase-selects'
-import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { formatMinutesSeconds } from '@/lib/timer-format'
 import { ROUND_RESULTS_AUTO_ADVANCE_SECONDS } from '@/lib/round-timing'
 import type { Game, Player } from '@/types'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useToast } from '@/components/ui/Toast'
 
-type HostMode = 'spectator' | 'player'
 type HostTab = 'manage' | 'play'
 
-const HOST_MODE_KEY = (code: string) => `matching_pairs_host_mode_${code.toUpperCase()}`
-
-function getHostMode(gameCode: string): HostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return (localStorage.getItem(HOST_MODE_KEY(gameCode)) as HostMode) ?? 'spectator'
-}
-function setHostMode(gameCode: string, mode: HostMode) {
-  localStorage.setItem(HOST_MODE_KEY(gameCode), mode)
-}
-
 export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
-  const { error: toastError } = useToast()
+  const { error: toastError, success } = useToast()
   const { confirm } = useConfirm()
+  const finishedCaptureRef = useRef<HTMLDivElement>(null)
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [roundId, setRoundId] = useState<string | null>(null)
@@ -77,11 +76,6 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
 
-  const [hostModeState, setHostModeState] = useState<HostMode>('spectator')
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
   const [nowMs, setNowMs] = useState<number>(() => Date.now())
   const [roundEnded, setRoundEnded] = useState(false)
@@ -197,12 +191,6 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
 
   useEffect(() => {
     void load()
-    setHostModeState(getHostMode(gameCode))
-    const stored = getPlayerSession(gameCode)
-    if (stored) {
-      setHostPlayerId(stored.playerId)
-      setHostPlayerName(stored.playerName)
-    }
   }, [gameCode, load])
 
   useEffect(() => {
@@ -265,59 +253,42 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   }, [gameCode, load])
 
   useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
-  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
-  const handleSelfRemoved = useCallback(() => {
-    clearPlayerSession(gameCode)
-    setHostPlayerId(null)
-    setHostPlayerName('')
-  }, [gameCode])
+  const {
+    hostMode: hostModeState,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame: handleJoinAsPlayer,
+    leaveSeatKeepHosting,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+    onModeChange: (mode) => {
+      if (mode === 'spectator') setTab('manage')
+    },
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        clearPlayerSession(gameCode)
-        setHostPlayerId(null)
-        setHostPlayerName('')
-      }
+      onHostSeatRemoved(playerId)
       setPlayers((prev) => prev.filter((p) => p.id !== playerId))
     },
-    [gameCode, hostPlayerId]
+    [onHostSeatRemoved]
   )
+
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
-
-  const changeHostMode = (mode: HostMode) => {
-    if (game?.status !== 'waiting') return
-    setHostModeState(mode)
-    setHostMode(gameCode, mode)
-    if (mode === 'spectator') setTab('manage')
-  }
-
-  const handleJoinAsPlayer = useCallback(async () => {
-    if (!hostJoinName.trim()) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: hostJoinName.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        toastError(data.error ?? 'Failed to join')
-        return
-      }
-      setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostPlayerName(data.playerName)
-      await load()
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }, [gameCode, hostJoinName, toastError, load])
+  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   const handleStartGame = useCallback(async () => {
     setStarting(true)
@@ -355,45 +326,11 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         toastError(d.error || 'Failed to reset')
         return
       }
-      // Save the stored session BEFORE clearing it (clearPlayerSession destroys it,
-      // so the post-load fixup below needs the original to re-match by name or ID).
-      const storedSession = getPlayerSession(gameCode)
-      if (!sameSettings) {
-        clearPlayerSession(gameCode)
-        setHostPlayerId(null)
-        setHostPlayerName('')
-        setHostJoinName('')
-      }
+      // The play-again POST carries hostPlayerId so the server keeps the host's
+      // seat (resetSpectatorsForLobby); useHostSeat retains that seat in its own
+      // state and only drops it via reconciliation if the row truly disappears.
       setTab('manage')
       await load()
-      // Re-check the fresh roster to restore the host's session if their player row
-      // still exists (preserved by resetSpectatorsForLobby on the server). Without
-      // this, "Return to lobby" would silently drop the host's seat.
-      const { data: freshPlayers } = await supabase.from('players').select('id, name').eq('game_id', gameCode)
-      if (storedSession && freshPlayers) {
-        if (freshPlayers.some((p) => p.id === storedSession.playerId)) {
-          // Same player ID survived — restore the session.
-          setPlayerSession(
-            gameCode,
-            storedSession.playerId,
-            storedSession.playerName,
-            'both',
-            storedSession.resumeToken
-          )
-          setHostPlayerId(storedSession.playerId)
-          setHostPlayerName(storedSession.playerName)
-        } else {
-          // Player row was recreated — match by name.
-          const matchingPlayer = (freshPlayers as { id: string; name: string }[]).find(
-            (p) => p.name === storedSession.playerName
-          )
-          if (matchingPlayer) {
-            setPlayerSession(gameCode, matchingPlayer.id, storedSession.playerName, 'both', storedSession.resumeToken)
-            setHostPlayerId(matchingPlayer.id)
-            setHostPlayerName(storedSession.playerName)
-          }
-        }
-      }
     } finally {
       setPlayingAgain(false)
     }
@@ -494,13 +431,28 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   const isHostWinner = !!winnerId && winnerId === hostPlayerId
   const winnerName = isHostWinner ? hostPlayerName : winnerId ? (playerMap.get(winnerId) ?? winnerId) : 'Someone'
 
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer): late-join rules + How-to-play
+  // + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="matching_pairs" onEnded={load}>
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          {hostModeState === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+          )}
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load, setGame, leaveSeatKeepHosting, hostModeState, hostPlayerId]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
+
+  const cfg = gameTypeConfig('matching_pairs')
 
   const activePlayers = players.filter((p) => !p.spectator)
   const hostPlays = hostModeState === 'player' && !!hostPlayerId
@@ -687,6 +639,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
             onJoinNameChange={setHostJoinName}
             onJoin={() => void handleJoinAsPlayer()}
             joining={hostJoining}
+            onEditName={renameHost}
           />
         ) : undefined
       }
@@ -740,6 +693,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={MATCHING_PAIRS_MIN_PLAYERS}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void handleStartGame()}
           starting={starting}
@@ -756,82 +710,163 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     )
   }
 
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  const canStart = activePlayers.length >= 1
+
+  const lobbyModeCard = (
+    <HostModeSelector
+      mode={hostModeState}
+      onChange={changeHostMode}
+      joinedPlayerId={hostPlayerId}
+      joinedPlayerName={hostPlayerName}
+      joinName={hostJoinName}
+      onJoinNameChange={setHostJoinName}
+      onJoin={() => void handleJoinAsPlayer()}
+      joining={hostJoining}
+      onEditName={renameHost}
+      spectatorHint="Watch the game once it starts"
+      playerHint="Play the memory match with everyone"
+    />
+  )
+
+  const lobbySettings = (
+    <>
+      <HostMatchingPairsLobbyPanel
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        playerCount={activePlayers.length}
+        onGameUpdate={setGame}
+      />
+      <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+    </>
+  )
+
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={cfg.label}
+        resumeToken={hostResumeToken}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('matching_pairs', game) ?? game.max_players}
+        playCard={lobbyModeCard}
+        settingsChildren={lobbySettings}
+        onStart={() => void handleStartGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={canStart ? null : 'Need at least 1 player to start'}
+        startLabel="Start game"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      />
+    )
+  }
+
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={game.status}
       tab={tab}
       onTabChange={setTab}
       primaryKind={primaryKind}
+      game={game}
+      players={players}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={load}
       showTabs={showTabs}
       gameStarted={gameStarted}
       header={<HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : roundEnded ? roundResultsUI : watchBoard}
       manage={manage}
+      noManageTab
       finished={
-        <>
-          <FinishedWinnerHero
-            winnerName={winnerName}
-            game={game}
-            headline={
-              hostWonMp ? (
-                <>
-                  <span className="gradient-title">You</span> won!
-                </>
-              ) : undefined
+        <div className="space-y-4">
+          <div ref={finishedCaptureRef} className="space-y-4">
+            <FinishedWinnerHero
+              winnerName={winnerName}
+              game={game}
+              headline={
+                hostWonMp ? (
+                  <>
+                    <span className="gradient-title">You</span> won!
+                  </>
+                ) : undefined
+              }
+              stats={[
+                {
+                  value: (cumulativeLeaderboard[0]?.finalScore ?? 0).toLocaleString(),
+                  label: 'Points total',
+                },
+              ]}
+            />
+            <PaginatedLeaderboard
+              title="Final leaderboard"
+              rows={cumulativeLeaderboard.map((row, i) => ({
+                id: row.playerId,
+                rank: i + 1,
+                name: row.name,
+                score: row.finalScore,
+                correctCount: row.pairsMatched,
+                expandDetails: (
+                  <MatchingPairsFinalBreakdown
+                    playerId={row.playerId}
+                    allSubmissions={submissions}
+                    allProgress={progressRows}
+                    gridSizePairs={gridSizePairs}
+                    sessionStartedAt={game?.session_started_at ?? null}
+                    roundStartedAtMap={roundStartedAtMap}
+                    totalRounds={totalRounds}
+                    timerSeconds={game?.timer_seconds ?? null}
+                  />
+                ),
+              }))}
+              totalQuestions={gridSizePairs * totalRounds}
+              scoreLabel={(n) => `${n} pts`}
+              emphasizeLeader
+            />
+          </div>
+          <HostGameFinishedActions
+            variant="winner"
+            gameCode={game.id}
+            playAgainButton={
+              <button
+                type="button"
+                onClick={() => void confirmPlayAgain()}
+                disabled={playingAgain}
+                className="btn-secondary w-full py-3 text-sm disabled:opacity-60"
+              >
+                {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
+              </button>
             }
-            stats={[
-              {
-                value: (cumulativeLeaderboard[0]?.finalScore ?? 0).toLocaleString(),
-                label: 'Points total',
-              },
-            ]}
+            returnToLobbyButton={
+              <button
+                type="button"
+                onClick={() => void confirmReturnToLobby()}
+                disabled={playingAgain}
+                className="btn-secondary w-full py-3 text-sm disabled:opacity-60"
+              >
+                Return to lobby · different settings
+              </button>
+            }
+            shareButton={
+              <ShareResults
+                captureRef={finishedCaptureRef}
+                game={game}
+                participants={[]}
+                votes={[]}
+                rounds={[]}
+                players={players}
+                primary
+              />
+            }
           />
-          <PaginatedLeaderboard
-            title="Final leaderboard"
-            rows={cumulativeLeaderboard.map((row, i) => ({
-              id: row.playerId,
-              rank: i + 1,
-              name: row.name,
-              score: row.finalScore,
-              correctCount: row.pairsMatched,
-              expandDetails: (
-                <MatchingPairsFinalBreakdown
-                  playerId={row.playerId}
-                  allSubmissions={submissions}
-                  allProgress={progressRows}
-                  gridSizePairs={gridSizePairs}
-                  sessionStartedAt={game?.session_started_at ?? null}
-                  roundStartedAtMap={roundStartedAtMap}
-                  totalRounds={totalRounds}
-                  timerSeconds={game?.timer_seconds ?? null}
-                />
-              ),
-            }))}
-            totalQuestions={gridSizePairs * totalRounds}
-            scoreLabel={(n) => `${n} pts`}
-            emphasizeLeader
-          />
-          <button
-            type="button"
-            onClick={() => void confirmPlayAgain()}
-            disabled={playingAgain}
-            className="btn-secondary w-full py-3 text-base font-bold disabled:opacity-60"
-          >
-            {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
-          </button>
-          <button
-            type="button"
-            onClick={() => void confirmReturnToLobby()}
-            disabled={playingAgain}
-            className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
-          >
-            Return to lobby
-          </button>
-          <p className="text-center text-xs text-faint leading-relaxed px-2">
-            Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak
-            settings first.
-          </p>
           {hostWonMp && (
             <PostWinToCommunity
               gameType="matching_pairs"
@@ -840,7 +875,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
               roundKey={game?.session_started_at ?? undefined}
             />
           )}
-        </>
+        </div>
       }
     />
   )

@@ -1,7 +1,10 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput } from 'react-native'
-import { ShareGameCard } from '@/components/session/ShareGameCard'
+import { normalizeGameCode } from '@fateround/shared'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
+import { resumePlayerByCode } from '@/lib/api'
+import { setPlayerSession } from '@/lib/secure-session'
+import { notifyPlayerSessionChanged } from '@/lib/session-events'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
@@ -20,6 +23,11 @@ type Props = {
   submitLabel?: string
   /** Optional extra content under the form (e.g. a "How to play" rules link). */
   footer?: ReactNode
+  /** Optional settings chips (theme / difficulty / time) shown under the hint. */
+  infoChips?: ReactNode
+  /** When the lobby is full, pairs with `onJoinAsViewer` to offer a "Watch instead" button. */
+  lobbyFull?: boolean
+  onJoinAsViewer?: () => void
 }
 
 export function JoinScreen({
@@ -33,14 +41,44 @@ export function JoinScreen({
   hint = 'No account needed — enter a display name and play.',
   submitLabel = 'Join game',
   footer,
+  infoChips,
+  lobbyFull = false,
+  onJoinAsViewer,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const theme = useTheme()
+  const [resumeOpen, setResumeOpen] = useState(false)
+  const [codeInput, setCodeInput] = useState('')
+  const [resuming, setResuming] = useState(false)
+  const [resumeError, setResumeError] = useState<string | null>(null)
+
+  const resume = async () => {
+    const trimmed = codeInput.trim()
+    if (!trimmed) {
+      setResumeError('Enter your player code')
+      return
+    }
+    setResuming(true)
+    setResumeError(null)
+    try {
+      const code = normalizeGameCode(gameCode)
+      const data = await resumePlayerByCode(code, trimmed)
+      await setPlayerSession(code, data.playerId, data.playerName, data.playerGender, data.resumeToken)
+      // The view's bootstrap subscribes to session changes and reloads into the game.
+      notifyPlayerSessionChanged(code)
+    } catch (err) {
+      setResumeError(err instanceof Error ? err.message : 'Could not find that player code')
+    } finally {
+      setResuming(false)
+    }
+  }
   return (
     <KeyboardFormScreen contentContainerStyle={styles.container}>
       <Text style={styles.kicker}>{kicker}</Text>
       <Text style={styles.code}>{gameCode}</Text>
       <Text style={styles.hint}>{hint}</Text>
+
+      {infoChips}
 
       <TextInput
         style={styles.input}
@@ -60,9 +98,53 @@ export function JoinScreen({
         {joining ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{submitLabel}</Text>}
       </Pressable>
 
-      {footer}
+      {lobbyFull && onJoinAsViewer ? (
+        <>
+          <Text style={styles.watchNote}>This game is full — all seats are taken. You can still watch.</Text>
+          <Pressable
+            style={[styles.watchButton, joining && styles.buttonDisabled]}
+            onPress={onJoinAsViewer}
+            disabled={joining}
+          >
+            <Text style={styles.watchButtonText}>Watch instead</Text>
+          </Pressable>
+        </>
+      ) : null}
 
-      <ShareGameCard gameCode={gameCode} />
+      <Pressable style={styles.resumeToggle} onPress={() => setResumeOpen((v) => !v)} hitSlop={8}>
+        <Text style={styles.resumeToggleText}>
+          {resumeOpen ? 'Hide player code' : 'Already joined? Enter your player code'}
+        </Text>
+      </Pressable>
+
+      {resumeOpen ? (
+        <>
+          <TextInput
+            style={styles.input}
+            placeholder="Your player code"
+            placeholderTextColor={theme.textFaint}
+            value={codeInput}
+            onChangeText={setCodeInput}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            maxLength={40}
+          />
+          {resumeError ? <Text style={styles.error}>{resumeError}</Text> : null}
+          <Pressable
+            style={[styles.watchButton, resuming && styles.buttonDisabled]}
+            onPress={() => void resume()}
+            disabled={resuming}
+          >
+            {resuming ? (
+              <ActivityIndicator color={theme.text} />
+            ) : (
+              <Text style={styles.watchButtonText}>Continue as my player</Text>
+            )}
+          </Pressable>
+        </>
+      ) : null}
+
+      {footer}
     </KeyboardFormScreen>
   )
 }
@@ -110,6 +192,16 @@ const makeStyles = (theme: Theme) =>
       color: theme.error,
       fontSize: 14,
     },
+    resumeToggle: {
+      alignSelf: 'center',
+      paddingVertical: 8,
+      marginTop: 4,
+    },
+    resumeToggleText: {
+      color: theme.primaryMuted,
+      fontSize: 14,
+      fontWeight: '600',
+    },
     button: {
       backgroundColor: theme.primary,
       borderRadius: 12,
@@ -124,6 +216,25 @@ const makeStyles = (theme: Theme) =>
       // White on the solid rose button — correct in both schemes.
       color: '#fff',
       fontSize: 17,
+      fontWeight: '600',
+    },
+    watchNote: {
+      color: theme.textMuted,
+      fontSize: 13,
+      textAlign: 'center',
+      marginTop: 4,
+    },
+    watchButton: {
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingVertical: 15,
+      alignItems: 'center',
+    },
+    watchButtonText: {
+      color: theme.text,
+      fontSize: 16,
       fontWeight: '600',
     },
   })

@@ -2,7 +2,6 @@
 
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
-import { PlayerResumeCard } from '@/components/PlayerResumeCard'
 
 const leaveInlineClassName =
   'shrink-0 rounded-lg border border-red-500/30 px-3.5 py-1.5 text-xs font-semibold text-red-500 transition-colors hover:bg-red-500/10 disabled:opacity-50'
@@ -79,7 +78,6 @@ export function PlayerSessionControls({
         </div>
         {leaveButton}
       </div>
-      <PlayerResumeCard gameCode={gameCode} compact={!inLobby} />
     </div>
   )
 }

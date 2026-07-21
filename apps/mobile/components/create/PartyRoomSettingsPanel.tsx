@@ -29,23 +29,30 @@ import {
   formatNpatGameDuration,
 } from '@fateround/shared/npat'
 import { isPairGame } from '@fateround/shared/poll-games'
-import {
-  QUICK_DRAW_GUESS_TEAM_OPTIONS,
-  clampQuickDrawPlayMode,
-} from '@fateround/shared/quick-draw-guess'
-import {
-  QUIPLASH_SUBMIT_TIMER_OPTIONS,
-  QUIPLASH_VOTE_TIMER_OPTIONS,
-} from '@fateround/shared/quiplash'
+import { QUICK_DRAW_GUESS_TEAM_OPTIONS, clampQuickDrawPlayMode } from '@fateround/shared/quick-draw-guess'
+import { QUIPLASH_SUBMIT_TIMER_OPTIONS, QUIPLASH_VOTE_TIMER_OPTIONS } from '@fateround/shared/quiplash'
 import { TTL_TIMER_OPTIONS } from '@fateround/shared/two-truths'
-import {
-  WORD_RUSH_ROUND_OPTIONS,
-  WORD_RUSH_TURN_OPTIONS,
-  formatWordRushTurnTimer,
-} from '@fateround/shared/word-rush'
+import { WORD_RUSH_ROUND_OPTIONS, WORD_RUSH_TURN_OPTIONS, formatWordRushTurnTimer } from '@fateround/shared/word-rush'
 import { WORD_HUNT_TIMER_OPTIONS } from '@fateround/shared/word-hunt'
+import {
+  CROSSWORD_GAME_DURATION_OPTIONS,
+  CROSSWORD_THEME_OPTIONS,
+  formatCrosswordGameDuration,
+} from '@fateround/shared/crossword'
+import {
+  WORD_SEARCH_GAME_DURATION_OPTIONS,
+  WORD_SEARCH_THEME_OPTIONS,
+  formatWordSearchGameDuration,
+} from '@fateround/shared/word-search'
+import {
+  WORD_SCRAMBLE_GAME_DURATION_OPTIONS,
+  WORD_SCRAMBLE_THEME_OPTIONS,
+  formatWordScrambleGameDuration,
+} from '@fateround/shared/word-scramble'
 import { RoundCountPicker } from '@/components/create/RoundCountPicker'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
+import { SelectField } from '@/components/create/SelectField'
+import { usePuzzleThemes, puzzleThemeIdFromValue } from '@/lib/puzzle-themes'
 import { SettingToggle } from '@/components/create/SettingToggle'
 import { TimerPicker } from '@/components/create/TimerPicker'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
@@ -58,11 +65,34 @@ type Props = {
   gameType: GameType
   party: PartyRoomSettings
   onChange: (patch: Partial<PartyRoomSettings>) => void
+  /** Content source for puzzle games (crossword/word_search/word_scramble). Theme shows only
+   *  for 'platform'; difficulty is hidden for 'library' (packs carry no difficulty). */
+  contentSource?: 'platform' | 'custom' | 'library'
 }
 
-export function PartyRoomSettingsPanel({ gameType, party, onChange }: Props) {
+export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSource = 'platform' }: Props) {
   const styles = useThemedStyles(makeStyles)
+  // Admin-authored themes shown alongside the built-ins in the theme picker. A selected admin
+  // theme carries value `pt:<id>`; the payload builder sends puzzle_theme_id. Called before any
+  // early return to respect the rules of hooks.
+  const puzzleThemes = usePuzzleThemes(gameType)
+  const lockedPuzzleDifficulty = (value: string): 'easy' | 'medium' | 'hard' | null => {
+    const id = puzzleThemeIdFromValue(value)
+    return id ? (puzzleThemes.find((t) => t.id === id)?.difficulty ?? null) : null
+  }
+  const puzzleThemeOptions = puzzleThemes.map((t) => ({
+    value: `pt:${t.id}`,
+    label: t.difficulty ? `${t.name} (${t.difficulty})` : t.name,
+  }))
   if (!hasPartyRoomSettings(gameType)) return null
+  const showPuzzleTheme = contentSource === 'platform'
+  // Difficulty = grid size, independent of where the words come from, so it stays editable under
+  // every source. A theme only locks it on the Platform tab (admin themes carry one); under
+  // Library/Your own there's no theme, so a stale theme value must not be treated as a lock.
+  const showPuzzleDifficulty = true
+  const crosswordDiffLock = contentSource === 'platform' ? lockedPuzzleDifficulty(party.crosswordTheme) : null
+  const wordSearchDiffLock = contentSource === 'platform' ? lockedPuzzleDifficulty(party.wordSearchTheme) : null
+  const wordScrambleDiffLock = contentSource === 'platform' ? lockedPuzzleDifficulty(party.wordScrambleTheme) : null
 
   const title = `${gameLabel(gameType)} room`
   const roundOptions = partyRoundOptions(gameType)
@@ -233,7 +263,9 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange }: Props) {
                       { value: 'individual', label: 'Individual', hint: 'Everyone draws — fastest guess wins' },
                     ]}
                     onChange={(value) =>
-                      onChange({ quickDrawPlayMode: clampQuickDrawPlayMode(value) as PartyRoomSettings['quickDrawPlayMode'] })
+                      onChange({
+                        quickDrawPlayMode: clampQuickDrawPlayMode(value) as PartyRoomSettings['quickDrawPlayMode'],
+                      })
                     }
                   />
                 </View>
@@ -506,6 +538,144 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange }: Props) {
           />
         ) : null}
 
+        {gameType === 'crossword' ? (
+          <>
+            {showPuzzleTheme ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>Theme</Text>
+                <SelectField
+                  title="Crossword theme"
+                  value={party.crosswordTheme}
+                  options={[
+                    ...CROSSWORD_THEME_OPTIONS.map((option) => ({ value: option.id, label: option.label })),
+                    ...puzzleThemeOptions,
+                  ]}
+                  onChange={(crosswordTheme) => {
+                    const locked = lockedPuzzleDifficulty(crosswordTheme)
+                    onChange({ crosswordTheme, ...(locked ? { crosswordDifficulty: locked } : {}) })
+                  }}
+                />
+              </View>
+            ) : null}
+            {showPuzzleDifficulty ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>Difficulty</Text>
+                <SegmentedControl
+                  value={party.crosswordDifficulty}
+                  disabled={!!crosswordDiffLock}
+                  options={[
+                    { value: 'easy', label: 'Easy', hint: 'Smaller grid, fewer words' },
+                    { value: 'medium', label: 'Medium' },
+                    { value: 'hard', label: 'Hard', hint: 'Bigger grid, more words' },
+                  ]}
+                  onChange={(value) =>
+                    onChange({ crosswordDifficulty: value as PartyRoomSettings['crosswordDifficulty'] })
+                  }
+                />
+              </View>
+            ) : null}
+            <TimerPicker
+              label="Max time limit"
+              value={party.gameDurationSeconds}
+              options={CROSSWORD_GAME_DURATION_OPTIONS}
+              format={formatCrosswordGameDuration}
+              onChange={(gameDurationSeconds) => onChange({ gameDurationSeconds })}
+            />
+          </>
+        ) : null}
+
+        {gameType === 'word_search' ? (
+          <>
+            {showPuzzleTheme ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>Theme</Text>
+                <SelectField
+                  title="Word Search theme"
+                  value={party.wordSearchTheme}
+                  options={[
+                    ...WORD_SEARCH_THEME_OPTIONS.map((option) => ({ value: option.id, label: option.label })),
+                    ...puzzleThemeOptions,
+                  ]}
+                  onChange={(wordSearchTheme) => {
+                    const locked = lockedPuzzleDifficulty(wordSearchTheme)
+                    onChange({ wordSearchTheme, ...(locked ? { wordSearchDifficulty: locked } : {}) })
+                  }}
+                />
+              </View>
+            ) : null}
+            {showPuzzleDifficulty ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>Difficulty</Text>
+                <SegmentedControl
+                  value={party.wordSearchDifficulty}
+                  disabled={!!wordSearchDiffLock}
+                  options={[
+                    { value: 'easy', label: 'Easy', hint: 'Smaller grid, fewer words' },
+                    { value: 'medium', label: 'Medium' },
+                    { value: 'hard', label: 'Hard', hint: 'Bigger grid, all directions' },
+                  ]}
+                  onChange={(value) =>
+                    onChange({ wordSearchDifficulty: value as PartyRoomSettings['wordSearchDifficulty'] })
+                  }
+                />
+              </View>
+            ) : null}
+            <TimerPicker
+              label="Max time limit"
+              value={party.gameDurationSeconds}
+              options={WORD_SEARCH_GAME_DURATION_OPTIONS}
+              format={formatWordSearchGameDuration}
+              onChange={(gameDurationSeconds) => onChange({ gameDurationSeconds })}
+            />
+          </>
+        ) : null}
+
+        {gameType === 'word_scramble' ? (
+          <>
+            {showPuzzleTheme ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>Theme</Text>
+                <SelectField
+                  title="Word Scramble theme"
+                  value={party.wordScrambleTheme}
+                  options={[
+                    ...WORD_SCRAMBLE_THEME_OPTIONS.map((option) => ({ value: option.id, label: option.label })),
+                    ...puzzleThemeOptions,
+                  ]}
+                  onChange={(wordScrambleTheme) => {
+                    const locked = lockedPuzzleDifficulty(wordScrambleTheme)
+                    onChange({ wordScrambleTheme, ...(locked ? { wordScrambleDifficulty: locked } : {}) })
+                  }}
+                />
+              </View>
+            ) : null}
+            {showPuzzleDifficulty ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>Difficulty</Text>
+                <SegmentedControl
+                  value={party.wordScrambleDifficulty}
+                  disabled={!!wordScrambleDiffLock}
+                  options={[
+                    { value: 'easy', label: 'Easy', hint: 'Short words' },
+                    { value: 'medium', label: 'Medium' },
+                    { value: 'hard', label: 'Hard', hint: 'Long words + letter bonus' },
+                  ]}
+                  onChange={(value) =>
+                    onChange({ wordScrambleDifficulty: value as PartyRoomSettings['wordScrambleDifficulty'] })
+                  }
+                />
+              </View>
+            ) : null}
+            <TimerPicker
+              label="Max time limit"
+              value={party.gameDurationSeconds}
+              options={WORD_SCRAMBLE_GAME_DURATION_OPTIONS}
+              format={formatWordScrambleGameDuration}
+              onChange={(gameDurationSeconds) => onChange({ gameDurationSeconds })}
+            />
+          </>
+        ) : null}
+
         {gameType === 'matching_pairs' ? (
           <>
             <TimerPicker
@@ -568,17 +738,17 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange }: Props) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  wrap: { gap: theme.space.md },
-  heading: {
-    color: theme.text,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  field: { gap: theme.space.sm },
-  label: {
-    color: theme.text,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  toggles: { gap: theme.space.sm },
-})
+    wrap: { gap: theme.space.md },
+    heading: {
+      color: theme.text,
+      fontSize: 18,
+      fontWeight: '800',
+    },
+    field: { gap: theme.space.sm },
+    label: {
+      color: theme.text,
+      fontSize: 16,
+      fontWeight: '800',
+    },
+    toggles: { gap: theme.space.sm },
+  })

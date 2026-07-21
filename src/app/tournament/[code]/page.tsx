@@ -71,6 +71,7 @@ const GAME_TYPE_LABELS: Record<string, string> = {
   ludo: 'Ludo',
   whot: 'Whot',
   'crazy-eights': 'Crazy Eights',
+  uno: 'UNO',
   monopoly: 'Monopoly',
   'word-hunt': 'Word Hunt',
   'i-call-on': 'I Call On',

@@ -8,10 +8,31 @@ import {
   formatSudokuGameDuration,
 } from '@fateround/shared/create-party-games'
 import { WORD_HUNT_TIMER_OPTIONS } from '@fateround/shared/word-hunt'
+import {
+  CROSSWORD_GAME_DURATION_OPTIONS,
+  CROSSWORD_THEME_OPTIONS,
+  formatCrosswordGameDuration,
+} from '@fateround/shared/crossword'
+import {
+  WORD_SEARCH_GAME_DURATION_OPTIONS,
+  WORD_SEARCH_THEME_OPTIONS,
+  formatWordSearchGameDuration,
+} from '@fateround/shared/word-search'
+import {
+  WORD_SCRAMBLE_GAME_DURATION_OPTIONS,
+  WORD_SCRAMBLE_THEME_OPTIONS,
+  formatWordScrambleGameDuration,
+} from '@fateround/shared/word-scramble'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
+import { SelectField } from '@/components/create/SelectField'
 import { TimerPicker } from '@/components/create/TimerPicker'
+import { CustomContentPanel } from '@/components/create/CustomContentPanel'
+import { usePuzzleThemes, puzzleThemeIdFromValue, PUZZLE_THEME_VALUE_PREFIX } from '@/lib/puzzle-themes'
+import type { CustomContentState } from '@/lib/create-settings/custom-content'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
+
+type PuzzleDifficulty = 'easy' | 'medium' | 'hard'
 
 export type DurationGameState = {
   /** word_hunt / matching_pairs time limit */
@@ -20,10 +41,29 @@ export type DurationGameState = {
   gameDurationSeconds: number
   /** matching_pairs 8×4 grid */
   largeGrid: boolean
+  /** crossword / word_search puzzle theme (word bank) — a built-in id, an admin `pt:<id>`, or '' */
+  theme: string
+  /** crossword / word_search difficulty */
+  difficulty: PuzzleDifficulty
+  /** crossword / word_search / word_scramble content source + pool (Platform/Library/Your own) */
+  custom: CustomContentState
 }
 
+const DIFFICULTY_OPTIONS: { value: PuzzleDifficulty; label: string; hint?: string }[] = [
+  { value: 'easy', label: 'Easy', hint: 'Smaller grid, fewer words' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'hard', label: 'Hard', hint: 'Bigger grid, more words' },
+]
+
 export function isDurationGame(gameType: GameType): boolean {
-  return gameType === 'sudoku' || gameType === 'word_hunt' || gameType === 'matching_pairs'
+  return (
+    gameType === 'sudoku' ||
+    gameType === 'word_hunt' ||
+    gameType === 'matching_pairs' ||
+    gameType === 'crossword' ||
+    gameType === 'word_search' ||
+    gameType === 'word_scramble'
+  )
 }
 
 type Props = {
@@ -42,6 +82,48 @@ export function DurationGamesSection({ gameType, value, onChange }: Props) {
         options={SUDOKU_GAME_DURATION_OPTIONS}
         format={formatSudokuGameDuration}
         onChange={(gameDurationSeconds) => onChange({ gameDurationSeconds })}
+      />
+    )
+  }
+
+  if (gameType === 'crossword') {
+    return (
+      <PuzzleDurationSection
+        gameType={gameType}
+        value={value}
+        onChange={onChange}
+        themeTitle="Crossword theme"
+        builtinThemes={CROSSWORD_THEME_OPTIONS.map((o) => ({ value: o.id, label: o.label }))}
+        durationOptions={CROSSWORD_GAME_DURATION_OPTIONS}
+        formatDuration={formatCrosswordGameDuration}
+      />
+    )
+  }
+
+  if (gameType === 'word_search') {
+    return (
+      <PuzzleDurationSection
+        gameType={gameType}
+        value={value}
+        onChange={onChange}
+        themeTitle="Word Search theme"
+        builtinThemes={WORD_SEARCH_THEME_OPTIONS.map((o) => ({ value: o.id, label: o.label }))}
+        durationOptions={WORD_SEARCH_GAME_DURATION_OPTIONS}
+        formatDuration={formatWordSearchGameDuration}
+      />
+    )
+  }
+
+  if (gameType === 'word_scramble') {
+    return (
+      <PuzzleDurationSection
+        gameType={gameType}
+        value={value}
+        onChange={onChange}
+        themeTitle="Word Scramble theme"
+        builtinThemes={WORD_SCRAMBLE_THEME_OPTIONS.map((o) => ({ value: o.id, label: o.label }))}
+        durationOptions={WORD_SCRAMBLE_GAME_DURATION_OPTIONS}
+        formatDuration={formatWordScrambleGameDuration}
       />
     )
   }
@@ -83,9 +165,99 @@ export function DurationGamesSection({ gameType, value, onChange }: Props) {
   )
 }
 
+/**
+ * Crossword / Word Search / Word Scramble lobby content editor. Mirrors the web `HostPuzzleSettings`
+ * and the mobile create screen: a Platform / Library / Your own source selector (via CustomContentPanel),
+ * the built-in + admin theme picker under Platform, and difficulty (grid size) shown for every source —
+ * locked only when an admin theme dictates it. The parent sheet translates this into the save patch.
+ */
+function PuzzleDurationSection({
+  gameType,
+  value,
+  onChange,
+  themeTitle,
+  builtinThemes,
+  durationOptions,
+  formatDuration,
+}: {
+  gameType: GameType
+  value: DurationGameState
+  onChange: (patch: Partial<DurationGameState>) => void
+  themeTitle: string
+  builtinThemes: { value: string; label: string }[]
+  durationOptions: readonly number[]
+  formatDuration: (seconds: number) => string
+}) {
+  const styles = useThemedStyles(makeStyles)
+  const puzzleThemes = usePuzzleThemes(gameType)
+  const source = value.custom.source
+
+  const adminThemeOptions = puzzleThemes.map((t) => ({
+    value: `${PUZZLE_THEME_VALUE_PREFIX}${t.id}`,
+    label: t.difficulty ? `${t.name} (${t.difficulty})` : t.name,
+  }))
+  const themeOptions = [...builtinThemes, ...adminThemeOptions]
+  // The game may store an admin theme by NAME; surface it as the matching `pt:<id>` so it shows selected.
+  const adminByName = puzzleThemes.find((t) => t.name === value.theme)
+  const selectedTheme =
+    value.theme.startsWith(PUZZLE_THEME_VALUE_PREFIX) || !adminByName
+      ? value.theme
+      : `${PUZZLE_THEME_VALUE_PREFIX}${adminByName.id}`
+
+  const lockFor = (themeValue: string): PuzzleDifficulty | null => {
+    const id = puzzleThemeIdFromValue(themeValue)
+    return id ? ((puzzleThemes.find((t) => t.id === id)?.difficulty as PuzzleDifficulty | undefined) ?? null) : null
+  }
+  // A theme only locks difficulty on the Platform tab; under Library/Your own there's no theme.
+  const diffLock = source === 'platform' ? lockFor(selectedTheme) : null
+
+  return (
+    <View style={styles.wrap}>
+      <CustomContentPanel
+        gameType={gameType}
+        custom={value.custom}
+        roundsCount={1}
+        onChange={(patch) => onChange({ custom: { ...value.custom, ...patch } })}
+      />
+      {source === 'platform' ? (
+        <View style={styles.field}>
+          <Text style={styles.label}>Theme</Text>
+          <SelectField
+            title={themeTitle}
+            value={selectedTheme}
+            options={themeOptions}
+            onChange={(theme) => {
+              const locked = lockFor(theme)
+              onChange({ theme, ...(locked ? { difficulty: locked } : {}) })
+            }}
+          />
+        </View>
+      ) : null}
+      <View style={styles.field}>
+        <Text style={styles.label}>Difficulty</Text>
+        <SegmentedControl
+          value={value.difficulty}
+          disabled={!!diffLock}
+          options={DIFFICULTY_OPTIONS}
+          onChange={(v) => onChange({ difficulty: v as PuzzleDifficulty })}
+        />
+        <Text style={styles.diffHint}>Sets the grid size and word count — not how tricky the words are.</Text>
+      </View>
+      <TimerPicker
+        label="Max time limit"
+        value={value.gameDurationSeconds}
+        options={durationOptions}
+        format={formatDuration}
+        onChange={(gameDurationSeconds) => onChange({ gameDurationSeconds })}
+      />
+    </View>
+  )
+}
+
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  wrap: { gap: theme.space.md },
-  field: { gap: theme.space.sm },
-  label: { color: theme.text, fontSize: 16, fontWeight: '800' },
-})
+    wrap: { gap: theme.space.md },
+    field: { gap: theme.space.sm },
+    label: { color: theme.text, fontSize: 16, fontWeight: '800' },
+    diffHint: { color: theme.textMuted, fontSize: 12 },
+  })

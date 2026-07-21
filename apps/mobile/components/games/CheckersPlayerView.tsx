@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { colorForPlayer, currentTurnPlayerId, legalStepsFromSquare } from '@fateround/shared/checkers'
-import { playerIsViewer } from '@fateround/shared/viewers'
-import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
+import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { CheckersBoard } from '@/components/games/checkers/CheckersBoard'
-import { CheckersFinalBoard } from '@/components/games/checkers/CheckersFinalBoard'
+import { CheckersShareCard } from '@/components/games/checkers/CheckersShareCard'
 import {
   checkersIsTimed,
   checkersResultDetail,
@@ -20,6 +19,8 @@ import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { postCheckersMove, postCheckersResign } from '@/lib/game-api'
@@ -29,7 +30,15 @@ import { CHECKERS_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'active'
+  | 'finished'
+  | 'not_found'
 
 export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
@@ -56,7 +65,12 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
 
   const computeScreen = useCallback(
     (game: Game, playerId: string | null, sessionData: CheckersSession | null): Screen => {
-      if (!playerId) return 'join'
+      if (!playerId) {
+        const pre = preJoinScreen(game, false)
+        if (pre === 'game_started_waiting') return 'game_started_waiting'
+        if (pre === 'game_ended') return 'game_ended'
+        return 'join'
+      }
       if (game.status === 'waiting') return 'waiting'
       if (game.status === 'active' && sessionData?.status !== 'finished') return 'active'
       if (game.status === 'finished' || sessionData?.status === 'finished') return 'finished'
@@ -179,7 +193,20 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
+    // A match already in progress → newcomers can only watch (checkers has no
+    // late-player seats), so present the join as a read-only viewer entry.
+    const joiningAsViewer = bootstrap.game.status === 'active'
     return (
       <JoinScreen
         gameCode={bootstrap.code}
@@ -187,7 +214,16 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
         joining={bootstrap.joining}
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
-        onJoin={() => void bootstrap.join()}
+        onJoin={() => void bootstrap.join(undefined, joiningAsViewer ? { joinAsViewer: true } : undefined)}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        kicker={joiningAsViewer ? 'Watch game' : 'Join game'}
+        hint={
+          joiningAsViewer
+            ? 'Game in progress — enter a name to watch as a viewer (read-only).'
+            : 'No account needed — enter a display name and play.'
+        }
+        submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
       />
     )
   }
@@ -216,8 +252,13 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
           }
           winnerPlayerId={activeSession.winner_player_id}
           roundKey={activeSession.id}
+          hideDefaultHeader
           notice={
-            <CheckersFinalBoard
+            <CheckersShareCard
+              gameTitle={bootstrap.game.title}
+              winnerName={winner ? winner.name : null}
+              isDraw={activeSession.is_draw}
+              reasonSubtitle={checkersResultDetail(activeSession.result_reason)}
               session={activeSession}
               players={bootstrap.players}
               highlightPlayerId={bootstrap.myPlayerId}
@@ -240,17 +281,6 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell bootstrap={bootstrap} title="Checkers" subtitle={`Code ${bootstrap.code}`}>
       <ScrollView contentContainerStyle={styles.content}>
-        {isViewer && me ? (
-          <ViewerModeBanner
-            gameCode={bootstrap.code}
-            playerId={me.id}
-            game={bootstrap.game}
-            player={me}
-            players={bootstrap.players}
-            onPromoted={() => void bootstrap.load()}
-          />
-        ) : null}
-
         <TurnBanner
           text={
             mustJump

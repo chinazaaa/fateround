@@ -1,7 +1,10 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
@@ -26,9 +29,7 @@ import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } fr
 import { playerIsViewer, preJoinScreen, allowLatePlayers } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { EliminationBanner } from '@/components/EliminationBanner'
-import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
-import { GameRulesLink } from '@/components/ui/GameRulesLink'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { GameWaitingRoom } from '@/components/game-lobby/GameWaitingRoom'
 
 type Screen = 'loading' | 'join' | 'game_started_waiting' | 'late_join_choice' | 'game_ended' | 'playing' | 'not_found'
 
@@ -76,6 +77,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, null>({
     gameCode,
@@ -90,9 +92,17 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'rounds', 'trivia_answers'], load)
+  const connected = useGameTableSync(
+    gameCode,
+    [{ table: 'games', column: 'id' }, 'players', 'rounds', 'trivia_answers'],
+    load
+  )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
   const openLobbyJoin = useCallback(() => {
     setScreen('join')
@@ -106,6 +116,35 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
   const me = players.find((p) => p.id === myPlayerId)
   const myPlayerName = me?.name ?? ''
   const isViewer = !!(game && me && playerIsViewer(me, game))
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it. Purely additive — the in-page PlayerSessionControls stays as-is.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={me?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
   const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
     gameCode,
     game,
@@ -194,6 +233,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
           emoji={cfg.headerEmoji}
           title={game?.title}
           gameType="trivia"
+          contentLabel={game?.content_label}
           meta={
             game ? (
               <>
@@ -207,6 +247,8 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="trivia"
         />
@@ -242,54 +284,46 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
             onPromoted={load}
           />
         )}
-        {!isFinished && (
-          <PlayerSessionControls
+        {game.status === 'waiting' ? (
+          <GameWaitingRoom
             gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myPlayerName}
+            players={players}
+            myPlayerId={myPlayerId}
+            myPlayerName={myPlayerName}
+            gameType="trivia"
+            spectating={isViewer}
             onRenamed={() => void load()}
             onLeft={handlePlayerLeft}
-            inLobby={game.status === 'waiting'}
-            spectating={isViewer}
+            onReady={
+              me?.spectator === true && !game.tournament_id
+                ? async () => {
+                    if (!myResumeToken) return
+                    await fetch('/api/players/ready', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken }),
+                    })
+                    await load()
+                  }
+                : undefined
+            }
           />
-        )}
-        {game.status === 'waiting' && (
+        ) : (
           <>
-            {me?.spectator === true && !game.tournament_id && (
-              <button
-                type="button"
-                className="btn-primary w-full py-3 text-base font-bold"
-                onClick={async () => {
-                  if (!myResumeToken) return
-                  await fetch('/api/players/ready', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken }),
-                  })
-                  await load()
-                }}
-              >
-                I&apos;m in — ready to play
-              </button>
-            )}
-            <p className="text-center">
-              <GameRulesLink gameType="trivia" variant="subtle" />
-            </p>
-            <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label="In lobby" />
+            <TriviaActiveRound
+              gameCode={gameCode}
+              game={game}
+              players={players}
+              rounds={rounds}
+              answers={answers}
+              myPlayerId={myPlayerId}
+              myResumeToken={myResumeToken}
+              playerName={myPlayerName}
+              onReload={load}
+              readOnly={isViewer}
+            />
           </>
         )}
-        <TriviaActiveRound
-          gameCode={gameCode}
-          game={game}
-          players={players}
-          rounds={rounds}
-          answers={answers}
-          myPlayerId={myPlayerId}
-          myResumeToken={myResumeToken}
-          playerName={myPlayerName}
-          onReload={load}
-          readOnly={isViewer}
-        />
       </div>
     </div>
   )

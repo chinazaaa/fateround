@@ -8,7 +8,8 @@ import {
   tallyTriviaPlayerScores,
   TRIVIA_REVEAL_SECONDS,
 } from '@fateround/shared/trivia'
-import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
+import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useRoundTimer } from '@/hooks/useRoundTimer'
@@ -69,6 +70,17 @@ export function TriviaActiveRound({
   )
 
   const leaderboard = useMemo(() => tallyTriviaPlayerScores(answers, players), [answers, players])
+  // Feed live scores into the roster drawer instead of an inline leaderboard.
+  useGameScores(
+    useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard]),
+    { suffix: ' pts' }
+  )
+  useGameStats(
+    useMemo(
+      () => Object.fromEntries(leaderboard.map((row) => [row.id, `✅ ${row.correctCount} correct`])),
+      [leaderboard]
+    )
+  )
   const isLastRound = (game.current_round_number ?? 0) >= (game.rounds_count ?? 0)
 
   const screen: PlayScreen = useMemo(() => {
@@ -131,6 +143,9 @@ export function TriviaActiveRound({
     onAdvanced: onReload,
   })
 
+  const roundTimer = roundStillTiming ? <TimerBadge seconds={timeLeft} /> : null
+  const roundTimerPinned = useStickyTimer(roundTimer, [roundStillTiming, timeLeft])
+
   const submitAnswer = useCallback(
     async (choiceIndex: number) => {
       if (!currentRound || readOnly || submitting || myAnswer || answerLockRef.current || !myResumeToken) return
@@ -173,14 +188,8 @@ export function TriviaActiveRound({
             Round {currentRound.round_number} of {game.rounds_count ?? '?'}
           </Text>
         ) : null}
-        {roundStillTiming ? <TimerBadge seconds={timeLeft} /> : null}
+        {roundTimerPinned ? null : roundTimer}
       </View>
-
-      <LeaderboardPanel
-        embedded
-        rows={leaderboard.map((row) => ({ id: row.id, name: row.name, score: row.score }))}
-        highlightId={myPlayerId}
-      />
 
       {screen === 'waiting' ? (
         <View style={styles.panel}>

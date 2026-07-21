@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { supabasePollOk } from '@/hooks/usePolling'
 import { resolvePlayerSession } from '@/lib/player-resume'
@@ -75,6 +75,8 @@ export interface UseGameViewBootstrapResult<Screen extends string> {
   joinName: string
   setJoinName: React.Dispatch<React.SetStateAction<string>>
   joining: boolean
+  /** True after a join was refused for a full lobby — cue to offer "watch instead". */
+  lobbyFull: boolean
   /** Re-fetch everything and recompute the screen. Returns false if a read failed. */
   load: () => Promise<boolean>
   /** Join the game with `name` (defaults to `joinName`); on active games joins as a viewer
@@ -104,11 +106,25 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
   const [joinName, setJoinName] = useState('')
   const [joining, setJoining] = useState(false)
+  // Set when a join is turned away because the lobby has no open seats. Lets the join
+  // screen offer "watch instead" (a spectator join) rather than a dead end.
+  const [lobbyFull, setLobbyFull] = useState(false)
   // Tournament rooms are opened via a ?tournament= link; the player's secret token
   // (saved at tournament join) rides along so the server seats/reclaims only them.
   const tournamentToken = currentTournamentPlayerToken()
 
-  const load = useCallback(async (): Promise<boolean> => {
+  // Singleflight + finished-latch. Several transports call load() during the active→finished
+  // window (games realtime channel, roster poll, timer expiry, in-flight submits). Without
+  // coalescing they interleave setStates and the results screen flickers; without the latch a
+  // read-replica still returning the pre-finish `active` row bounces it back to the board.
+  const loadingRef = useRef(false)
+  const pendingRef = useRef(false)
+  // Keyed on the session that finished. `start` only moves a game to 'active' from 'waiting'
+  // with a NEW session_started_at, so a later read showing the SAME session as 'active' can
+  // only be replica lag — ignore it. A real replay passes through 'waiting' (clears the latch).
+  const finishedSessionRef = useRef<string | null | undefined>(undefined)
+
+  const runLoad = useCallback(async (): Promise<boolean> => {
     const [gameRes, plrsRes] = await Promise.all([
       supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
       supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
@@ -128,6 +144,17 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
       setScreen(notFoundScreen)
       return true
     }
+
+    // Stale-replica guard (see finishedSessionRef above).
+    if (
+      finishedSessionRef.current !== undefined &&
+      gameData.status === 'active' &&
+      (gameData.session_started_at ?? null) === finishedSessionRef.current
+    ) {
+      return true
+    }
+    if (gameData.status === 'finished') finishedSessionRef.current = gameData.session_started_at ?? null
+    else if (gameData.status === 'waiting') finishedSessionRef.current = undefined
 
     setGame(gameData)
     setPlayers(plrs)
@@ -156,7 +183,27 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
 
     setScreen(computeScreen(gameData, playerId, effectiveState))
     return ok
-  }, [gameCode, loadingScreen, notFoundScreen, loadGameState, computeScreen, afterResolve])
+  }, [gameCode, notFoundScreen, loadGameState, computeScreen, afterResolve])
+
+  const load = useCallback(async (): Promise<boolean> => {
+    // Coalesce overlapping calls: while one runs, extra callers flag a single trailing re-run
+    // so we still settle on the freshest snapshot instead of racing N interleaved loads.
+    if (loadingRef.current) {
+      pendingRef.current = true
+      return true
+    }
+    loadingRef.current = true
+    try {
+      let ok = await runLoad()
+      while (pendingRef.current) {
+        pendingRef.current = false
+        ok = await runLoad()
+      }
+      return ok
+    } finally {
+      loadingRef.current = false
+    }
+  }, [runLoad])
 
   useEffect(() => {
     void load()
@@ -182,14 +229,22 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
             ...joinExtras,
             ...(tournamentToken ? { tournamentToken } : {}),
             ...(existingToken ? { resumeToken: existingToken } : {}),
-            ...(game?.status === 'active' ? { joinAsViewer: joinOpts?.joinAsViewer ?? true } : {}),
+            // An explicit choice (e.g. "watch instead" on a full lobby) wins in any state;
+            // otherwise active games still default a fresh join to viewer.
+            ...(joinOpts?.joinAsViewer !== undefined
+              ? { joinAsViewer: joinOpts.joinAsViewer }
+              : game?.status === 'active'
+                ? { joinAsViewer: true }
+                : {}),
           }),
         })
         const data = await res.json()
         if (!res.ok) {
+          setLobbyFull(data?.full === true)
           onJoinError?.(data.error ?? 'Failed to join')
           return
         }
+        setLobbyFull(false)
         setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
         setMyPlayerId(data.playerId)
         setMyResumeToken(data.resumeToken ?? null)
@@ -228,6 +283,7 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
     joinName,
     setJoinName,
     joining,
+    lobbyFull,
     load,
     join,
   }

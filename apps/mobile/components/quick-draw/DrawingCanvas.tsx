@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { LayoutChangeEvent, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useNavigation } from 'expo-router'
 import Svg, { Path, Rect } from 'react-native-svg'
 import type { QuickDrawDrawingStrokeData, QuickDrawStroke } from '@fateround/shared'
 import {
@@ -68,6 +69,17 @@ function useDrawingBoard({ readOnly = false, strokeData, resetKey, onStrokeChang
     setPreviewStroke(null)
     setStrokes(external)
   }, [readOnly, strokeData])
+
+  // While the active drawer's canvas is mounted, turn off the stack's swipe-back
+  // gesture: a horizontal stroke was being read as "swipe to go back" and popped
+  // the screen. Viewers (readOnly) keep the gesture. Restored on unmount / when
+  // the turn ends.
+  const navigation = useNavigation()
+  useEffect(() => {
+    if (readOnly) return
+    navigation.setOptions({ gestureEnabled: false })
+    return () => navigation.setOptions({ gestureEnabled: true })
+  }, [navigation, readOnly])
 
   const toCanvasPoint = useCallback(
     (locationX: number, locationY: number): [number, number] => {

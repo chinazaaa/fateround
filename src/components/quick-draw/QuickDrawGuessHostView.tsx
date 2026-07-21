@@ -5,13 +5,19 @@ import { QuickDrawGuessPlayPanel } from '@/components/quick-draw/QuickDrawGuessP
 import { QuickDrawGuessFinishedResults } from '@/components/quick-draw/QuickDrawGuessFinishedResults'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostQuickDrawLobbyPanel } from '@/components/host-lobby/HostQuickDrawLobbyPanel'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { gameTypeConfig } from '@/lib/game-types'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { ExitIcon } from '@/components/host/host-icons'
@@ -22,7 +28,6 @@ import {
   clampQuickDrawPlayMode,
 } from '@/lib/quick-draw-guess'
 import { describeItLobbyReady } from '@/lib/describe-it'
-import { getQuickDrawHostMode, setQuickDrawHostMode, type QuickDrawHostMode } from '@/lib/quick-draw'
 import { playerIsViewer } from '@/lib/viewers'
 import { appOrigin } from '@/lib/site'
 import { supabase } from '@/lib/supabase'
@@ -34,7 +39,6 @@ import {
   QUICK_DRAW_GUESS_SESSION_SELECT,
   QUICK_DRAW_GUESS_WORD_SELECT,
 } from '@/lib/supabase-selects'
-import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import type {
   QuickDrawGuessGuess,
   QuickDrawGuessPlayer,
@@ -47,7 +51,7 @@ import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useQuickDrawGuessTimer } from '@/hooks/useQuickDrawGuessTimer'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
@@ -67,12 +71,6 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [acting, setActing] = useState(false)
-  const [hostMode, setHostMode] = useState<QuickDrawHostMode>('player')
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
 
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
@@ -107,33 +105,45 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
 
   useEffect(() => {
     void load()
-    setHostMode(getQuickDrawHostMode(gameCode))
-    const sessionRow = getPlayerSession(gameCode)
-    if (sessionRow) {
-      setHostPlayerId(sessionRow.playerId)
-      setHostResumeToken(sessionRow.resumeToken ?? null)
-      setHostPlayerName(sessionRow.playerName)
-    }
   }, [gameCode, load])
+
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    leaveGameRemovePlayer,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+    onModeChange: (mode) => {
+      if (mode === 'spectator') setTab('manage')
+    },
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostResumeToken(null)
-        setHostPlayerName('')
-        clearPlayerSession(gameCode)
-      }
+      onHostSeatRemoved(playerId)
       setPlayers((prev) => prev.filter((p) => p.id !== playerId))
     },
-    [gameCode, hostPlayerId]
+    [onHostSeatRemoved]
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [
       { table: 'games', column: 'id' },
@@ -145,7 +155,11 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
     ],
     load
   )
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
   useEffect(() => {
     if (game?.status === 'finished') setTab('manage')
@@ -162,13 +176,6 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
   const canStart = readyPlayers.length >= minPlayers && teamReady && !hostMustJoinFirst
 
   const { secondsLeft, breakLeft, urgent } = useQuickDrawGuessTimer(gameCode, session, game?.status === 'active')
-
-  const changeHostMode = (mode: QuickDrawHostMode) => {
-    if (game?.status !== 'waiting') return
-    setHostMode(mode)
-    setQuickDrawHostMode(gameCode, mode)
-    if (mode === 'spectator') setTab('manage')
-  }
 
   const startGame = async () => {
     if (starting || !canStart) return
@@ -192,33 +199,6 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
       toastError(err instanceof Error ? err.message : 'Failed to start')
     } finally {
       setStarting(false)
-    }
-  }
-
-  const hostJoinGame = async () => {
-    const name = hostJoinName.trim()
-    if (!name || hostJoining) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: name }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender ?? 'other', data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostResumeToken(data.resumeToken ?? null)
-      setHostPlayerName(data.playerName)
-      setHostMode('player')
-      setQuickDrawHostMode(gameCode, 'player')
-      await load()
-      success(`Joined as ${data.playerName}`)
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
     }
   }
 
@@ -296,12 +276,10 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
   }
 
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
+
+  const cfg = gameTypeConfig('quick_draw')
 
   const hostPlayer = hostPlayerId ? (players.find((p) => p.id === hostPlayerId) ?? null) : null
   const hostReadOnly = hostPlayer ? playerIsViewer(hostPlayer, game) : true
@@ -373,12 +351,12 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
           onJoinNameChange={setHostJoinName}
           onJoin={() => void hostJoinGame()}
           joining={hostJoining}
+          onEditName={renameHost}
           spectatorHint="Watch drawings from the Watch tab"
           playingNote={
             hostPlayerName ? (
               <p className="text-sm text-muted">
-                Playing as <strong className="text-body">{hostPlayerName}</strong> — draw and guess from the Play tab
-                once you start.
+                Playing as <strong className="text-body">{hostPlayerName}</strong> — draw and guess once you start.
               </p>
             ) : undefined
           }
@@ -419,6 +397,13 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
       {game.status === 'active' && (
         <div className="glass-card p-5 space-y-3">
           <p className="label-caps">Game controls</p>
+          {hostMode === 'player' && !!hostPlayerId && !hostReadOnly && (
+            <HostLeaveSeatButton
+              onLeave={leaveGameRemovePlayer}
+              variant="remove"
+              className="btn-secondary w-full py-3 text-base"
+            />
+          )}
           <HostEndGameButton
             gameCode={gameCode}
             hostToken={hostToken}
@@ -495,6 +480,7 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
           gameCode={gameCode}
           hostToken={hostToken}
           minPlayers={minPlayers}
+          capacityGame={game}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}
@@ -511,8 +497,92 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
     )
   }
 
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+
+  const lobbyModeCard = (
+    <HostModeSelector
+      mode={hostMode}
+      onChange={changeHostMode}
+      joinedPlayerId={hostPlayerId}
+      joinedPlayerName={hostPlayerName}
+      joinName={hostJoinName}
+      onJoinNameChange={setHostJoinName}
+      onJoin={() => void hostJoinGame()}
+      joining={hostJoining}
+      onEditName={renameHost}
+      spectatorHint="Watch drawings once it starts"
+      playerHint="Draw and guess with everyone"
+      playingNote={
+        hostPlayerName ? (
+          <p className="text-sm text-muted">
+            Playing as <strong className="text-body">{hostPlayerName}</strong> — draw and guess once you start.
+          </p>
+        ) : undefined
+      }
+    />
+  )
+
+  const lobbyTeamRoster = !isIndividual ? (
+    <DescribeItTeamRoster
+      numTeams={numTeams}
+      teamRows={teamPlain}
+      players={players}
+      myPlayerId={hostPlayerId}
+      onPick={(team) => hostPlayerId && void assignTeam(hostPlayerId, team)}
+      onMoveTeam={(playerId, team) => void assignTeam(playerId, team)}
+    />
+  ) : null
+
+  const lobbySettings = (
+    <>
+      <HostQuickDrawLobbyPanel
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        playerCount={players.length}
+        onGameUpdate={setGame}
+      />
+      <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+    </>
+  )
+
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={cfg.label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('quick_draw', game) ?? game.max_players}
+        resumeToken={hostResumeToken}
+        playCard={lobbyModeCard}
+        settingsChildren={lobbySettings}
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          hostMustJoinFirst
+            ? 'Join with your name first (Host + play mode)'
+            : !canStart
+              ? `Need at least ${minPlayers} players${isIndividual ? '' : ' with balanced teams'}`
+              : null
+        }
+        startLabel="Start game"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      >
+        {lobbyTeamRoster}
+      </HostLobby>
+    )
+  }
+
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={game.status}
       tab={tab}
@@ -524,6 +594,10 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
       primary={hostPlays ? interactivePlay : watchPanel}
       manage={manage}
       finished={finished}
+      game={game}
+      players={players}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={load}
     />
   )
 }

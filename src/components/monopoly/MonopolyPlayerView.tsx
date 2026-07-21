@@ -1,9 +1,10 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { MonopolyActiveLayout } from '@/components/monopoly/MonopolyActiveLayout'
 import { MonopolyJoinForm } from '@/components/monopoly/MonopolyJoinForm'
+import { MonopolyChangeTokenControl } from '@/components/monopoly/MonopolyChangeTokenControl'
 import { tokenColorForOrder } from '@/components/monopoly/monopoly-ui'
 import { monopolyTokenEmoji, type MonopolyTokenId } from '@/lib/monopoly-tokens'
 import { MONOPOLY_COLOR_CLASSES } from '@/lib/monopoly'
@@ -19,17 +20,20 @@ import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { buildMonopolyStandings, MONOPOLY_MIN_PLAYERS, MONOPOLY_STARTING_CASH } from '@/lib/monopoly'
 import { formatThemedMoney } from '@/components/monopoly/monopoly-themes'
 import { supabase } from '@/lib/supabase'
-import { MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT } from '@/lib/supabase-selects'
+import { MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT, isCompleteMonopolyBoardRow } from '@/lib/supabase-selects'
 import { clearPlayerSession, isFetchNetworkError, messageFromFetchActionError } from '@/lib/utils'
 import type { Game, MonopolyBoard, MonopolyPlayerState } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useRosterBase } from '@/components/roster/RosterDrawerContext'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
@@ -57,6 +61,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
   const [board, setBoard] = useState<MonopolyBoard | null>(null)
+  const boardRef = useRef<MonopolyBoard | null>(null)
+  boardRef.current = board
   const [states, setStates] = useState<MonopolyPlayerState[]>([])
   const [joinToken, setJoinToken] = useState<MonopolyTokenId | null>(null)
   const {
@@ -121,6 +127,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, null>({
     gameCode,
@@ -135,14 +142,56 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
 
+  // The Monopoly player path doesn't go through the shared roster dispatcher, so
+  // register base rows here — this gives players the header roster drawer (with the
+  // live cash/properties scoreboard that MonopolyActiveLayout layers on).
+  useRosterBase(screen === 'active' || screen === 'finished' ? players : undefined, game, myPlayerId)
+
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(
+  // Delta fast-path (dual-table). Screen derives from game.status, so board/state writes only
+  // update the UI — patch locally and skip the reload; active→finished rides the games-row
+  // event, and the fallback poll reconciles.
+  const applyBoardRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as MonopolyBoard
+    const prev = boardRef.current
+    if (prev && next.updated_at < prev.updated_at) return true
+    // Realtime UPDATE payloads drop unchanged TOAST-ed columns (large jsonb such as
+    // property_owners) — they arrive as null once a game has enough owned properties. Applying
+    // such a partial row would wipe ownership/buildings on screen (players show 0 property, can't
+    // see who owns what). Discard it and let the debounced full reload refetch the complete row.
+    if (!isCompleteMonopolyBoardRow(row)) return false
+    setBoard(next)
+    boardRef.current = next
+    return prev != null
+  }, [])
+  const applyStateRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as MonopolyPlayerState
+    setStates((prev) => {
+      const i = prev.findIndex((s) => s.id === next.id)
+      if (i === -1) return [...prev, next]
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true
+  }, [])
+
+  const connected = useGameTableSync(
     gameCode,
-    [{ table: 'games', column: 'id' }, 'players', 'monopoly_boards', 'monopoly_player_state'],
+    [
+      { table: 'games', column: 'id' },
+      'players',
+      { table: 'monopoly_boards', apply: applyBoardRow },
+      { table: 'monopoly_player_state', apply: applyStateRow },
+    ],
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
   // Ready-up ring: readiness = holding a seat, so this reuses /players/ready (which
   // toggles the spectator flag). `ready:false` sits the player back out.
@@ -225,6 +274,35 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const myState = states.find((s) => s.player_id === myPlayerId)
   const me = myPlayerId ? players.find((p) => p.id === myPlayerId) : null
   const myPlayerName = me?.name ?? null
+  const meSpectating = !!(game && me && playerIsViewer(me, game))
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header). Registered while the game is active; the shared settings sheet
+  // renders it. Purely additive — the in-page PlayerSessionControls stays as-is.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={me?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={meSpectating}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, me?.name, meSpectating, load, router])
+  useRegisterGameSettings(playerSettingsNode)
 
   useMonopolyNotifications({
     game,
@@ -293,6 +371,19 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             void join()
           }}
         />
+        {lobbyFull && !joiningAsViewer && (
+          <div className="space-y-2 text-center">
+            <p className="text-faint text-xs leading-relaxed">This game is full — you can watch.</p>
+            <button
+              type="button"
+              onClick={() => void join({ joinAsViewer: true })}
+              disabled={joining}
+              className="btn-secondary w-full"
+            >
+              Watch instead
+            </button>
+          </div>
+        )}
         <LeaderboardJoinNote gameType="monopoly" />
         <p className="text-faint text-xs leading-relaxed text-center">
           {joiningAsViewer
@@ -315,6 +406,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={MONOPOLY_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -364,6 +456,16 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               <span>{cfg.label}</span>
             </p>
           </div>
+          {!isSpectator && myPlayerId && (
+            <MonopolyChangeTokenControl
+              gameCode={gameCode}
+              playerId={myPlayerId}
+              currentTokenId={me?.monopoly_token}
+              players={players}
+              resumeToken={myResumeToken}
+              onChanged={() => void load()}
+            />
+          )}
           <GameRulesLink gameType="monopoly" variant="subtle" />
           <div className="glass-card-strong p-4 text-center">
             <p className="text-3xl font-black text-[var(--primary)]">{players.length}</p>
@@ -389,17 +491,6 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
                 </div>
               ))}
             </div>
-          )}
-          {myPlayerId && (
-            <PlayerSessionControls
-              gameCode={gameCode}
-              playerId={myPlayerId}
-              currentName={displayName}
-              onRenamed={() => void load()}
-              onLeft={handlePlayerLeft}
-              inLobby
-              spectating={isSpectator}
-            />
           )}
         </div>
       </GameJoinLobbyShell>
@@ -471,19 +562,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <div className="min-h-screen pb-24 overflow-x-hidden px-2 sm:px-4 py-3 sm:py-6">
       <div className="max-w-6xl mx-auto space-y-3 sm:space-y-4">
-        <MonopolyPageHeader title={game?.title}>
-          {myPlayerId && sessionName ? (
-            <PlayerSessionControls
-              gameCode={gameCode}
-              playerId={myPlayerId}
-              currentName={sessionName}
-              onRenamed={() => void load()}
-              onLeft={handlePlayerLeft}
-              align="center"
-              spectating={isViewer}
-            />
-          ) : null}
-        </MonopolyPageHeader>
+        <MonopolyPageHeader title={game?.title}></MonopolyPageHeader>
 
         {isViewer && myPlayer && (
           <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={myPlayer} />

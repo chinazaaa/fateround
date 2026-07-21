@@ -8,6 +8,7 @@ import {
   isCrazyEightsGame,
   isDescribeItGame,
   isICallOnGame,
+  isLandmineGame,
   isLudoGame,
   isMahjongGame,
   isMonopolyGame,
@@ -17,6 +18,9 @@ import {
   isSecretMessageGame,
   isSnakeAndLadderGame,
   isSudokuGame,
+  isCrosswordGame,
+  isWordSearchGame,
+  isWordScrambleGame,
   isTicTacToeGame,
   isTriviaGame,
   isTwoTruthsGame,
@@ -27,12 +31,7 @@ import {
   parseGameType,
 } from './game-type-checks'
 import { lobbyHasOpenPlayerSeat } from './game-limits-lite'
-import {
-  isMostLikelyTo,
-  isNeverHaveIEver,
-  isThisOrThat,
-  isWouldYouRather,
-} from './poll-games'
+import { isMostLikelyTo, isNeverHaveIEver, isThisOrThat, isWouldYouRather } from './poll-games'
 import type { Game, GameType, Player } from './types'
 
 export type LateJoinPolicy = 'lobby_only' | 'viewers_only' | 'viewers_and_players'
@@ -89,7 +88,40 @@ export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
     !isChessGame(gameType) &&
     !isCheckersGame(gameType) &&
     !isAyoGame(gameType) &&
-    !isScrabbleGame(gameType)
+    !isScrabbleGame(gameType) &&
+    !isSudokuGame(gameType) &&
+    !isCrosswordGame(gameType) &&
+    !isWordSearchGame(gameType)
+  )
+}
+
+/**
+ * Whether a seated host/player leaving mid-game can flip to spectator IN PLACE — POST
+ * /api/players/spectate, which just sets spectator=true and keeps their row, score, and seat
+ * id — versus needing the destructive removal path (DELETE /api/players → the game's
+ * turn_order / hand / rotating-role cleanup, then a fresh viewer re-seat).
+ *
+ * Only games with NO turn_order / fixed-seat / rotating-role coupling — independent,
+ * simultaneous play where `spectator` is a pure scoring flag — are safe for the in-place flip.
+ * This is an explicit allow-list: everything NOT listed (board/card/duel games, rotating-role
+ * games, quick_draw, poll subtypes, and anything new/uncertain) falls through to the removal
+ * path. Erring that way is safe — at worst the leaver's score is dropped — whereas an in-place
+ * flip on a turn game would strand them in turn_order and hand out ghost turns.
+ */
+export function gameSupportsInPlaceSpectate(gameType: GameType): boolean {
+  return (
+    isTriviaGame(gameType) ||
+    isBingoGame(gameType) ||
+    isICallOnGame(gameType) ||
+    isLandmineGame(gameType) ||
+    isCrosswordGame(gameType) ||
+    isSudokuGame(gameType) ||
+    isWordSearchGame(gameType) ||
+    isWordScrambleGame(gameType) ||
+    isWordHuntGame(gameType) ||
+    isTwoTruthsGame(gameType) ||
+    isQuiplashGame(gameType) ||
+    isWordRushGame(gameType)
   )
 }
 
@@ -107,6 +139,7 @@ export function gameOffersLateJoinChoice(gameType: GameType): boolean {
     isMostLikelyTo(gameType) ||
     isTwoTruthsGame(gameType) ||
     isICallOnGame(gameType) ||
+    isLandmineGame(gameType) ||
     isSudokuGame(gameType) ||
     isQuiplashGame(gameType) ||
     isQuickDrawGame(gameType)

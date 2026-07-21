@@ -243,7 +243,9 @@ const makeStyles = (theme: Theme) =>
       borderColor: theme.primary,
     },
     cellDisabled: { opacity: 0.6 },
-    cellText: { color: theme.text, fontSize: 22, fontWeight: '800' },
+    // Stretch to the full cell width and centre the glyph so the heavy-weight lone "I" (the
+    // narrowest glyph) isn't clipped to nothing by the New Architecture's text measurement.
+    cellText: { color: theme.text, fontSize: 22, fontWeight: '800', alignSelf: 'stretch', textAlign: 'center' },
     // White letter on the solid primary tile — correct in both schemes.
     cellTextSelected: { color: '#fff' },
   })

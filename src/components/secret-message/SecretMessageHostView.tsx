@@ -48,9 +48,13 @@ export function SecretMessageHostView({ gameCode, hostToken }: { gameCode: strin
   }, [load])
 
   // Realtime push: reload on any change to this game's row.
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }], load)
+  const connected = useGameTableSync(gameCode, [{ table: 'games', column: 'id' }], load)
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.slow })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.slow,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
   const shareUrl = `${appOrigin()}/game/${gameCode}`
   const cfg = gameTypeConfig('secret_message')

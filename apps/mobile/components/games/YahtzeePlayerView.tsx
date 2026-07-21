@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ScrollView, StyleSheet, Text } from 'react-native'
 import { type YahtzeeCategory, type YahtzeePlayerScore, type YahtzeeSession } from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import { YAHTZEE_MIN_PLAYERS, currentPlayerId, totalScore } from '@fateround/shared/yahtzee'
+import { preJoinScreen } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { YahtzeeDiceTray } from '@/components/games/YahtzeeDiceTray'
@@ -14,7 +18,6 @@ import { YahtzeeShareCard } from '@/components/games/YahtzeeShareCard'
 import { useToast } from '@/components/ui/Toast'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
-import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useYahtzeeTurnExpiry } from '@/hooks/useYahtzeeTurnExpiry'
@@ -25,7 +28,15 @@ import { YAHTZEE_PLAYER_SCORES_SELECT, YAHTZEE_SESSION_SELECT } from '@/lib/supa
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
@@ -64,7 +75,12 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     waitingScreen: 'waiting',
     loadGameState,
     computeScreen: (game, playerId) => {
-      if (!playerId) return 'join'
+      if (!playerId) {
+        const pre = preJoinScreen(game, false)
+        if (pre === 'game_started_waiting') return 'game_started_waiting'
+        if (pre === 'game_ended') return 'game_ended'
+        return 'join'
+      }
       if (game.status === 'waiting') return 'waiting'
       if (game.status === 'active') return 'playing'
       return 'finished'
@@ -110,7 +126,6 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   // Turn timer: count down from turn_deadline_at during the rolling phase, and
   // ask the server to expire the turn once the deadline passes.
   const timerActive = bootstrap.screen === 'playing' && session?.phase === 'rolling' && !!session?.turn_deadline_at
-  const secondsLeft = useDeadlineCountdown(session?.turn_deadline_at, 0, timerActive)
   useYahtzeeTurnExpiry(bootstrap.code, session, bootstrap.screen === 'playing')
 
   const roll = async () => {
@@ -146,9 +161,39 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
+  // Roster drawer scoreboard: total score headline + filled-categories detail.
+  const rosterScores = useMemo(
+    () => Object.fromEntries(scores.map((s) => [s.player_id, totalScore(s.scores.categories)])),
+    [scores]
+  )
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(
+    () =>
+      Object.fromEntries(
+        scores.map((s) => {
+          const filled = Object.values(s.scores.categories).filter((v) => v !== null).length
+          return [s.player_id, `📋 ${filled}/13 filled`]
+        })
+      ),
+    [scores]
+  )
+  useGameStats(rosterDetails)
+
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
+    // Mid-game the only way in is as a read-only viewer.
+    const joiningAsViewer = bootstrap.game.status === 'active'
     return (
       <JoinScreen
         gameCode={bootstrap.code}
@@ -156,7 +201,16 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
         joining={bootstrap.joining}
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
-        onJoin={() => void bootstrap.join()}
+        onJoin={() => void bootstrap.join(undefined, joiningAsViewer ? { joinAsViewer: true } : undefined)}
+        lobbyFull={bootstrap.lobbyFull}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        kicker={joiningAsViewer ? 'Watch game' : 'Join game'}
+        hint={
+          joiningAsViewer
+            ? 'Game in progress — enter a name to watch as a viewer (read-only).'
+            : 'No account needed — enter a display name and play.'
+        }
+        submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
       />
     )
   }
@@ -231,7 +285,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
           onRoll={() => void roll()}
           rolling={acting}
           timerActive={timerActive}
-          secondsLeft={secondsLeft}
+          turnDeadlineAt={session?.turn_deadline_at}
         />
 
         {session.status_message ? <Text style={styles.status}>{session.status_message}</Text> : null}

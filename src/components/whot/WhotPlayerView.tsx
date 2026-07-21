@@ -1,10 +1,13 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { WhotCard, WhotLoadingScreen, WhotSecondaryButton, WhotShell } from '@/components/whot/WhotChrome'
 import { WhotPlaySurface } from '@/components/whot/WhotPlaySurface'
 import { PlayerRoomShell } from '@/components/rooms/PlayerRoomShell'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { WhotFinalResultsShareBlock } from '@/components/whot/WhotFinalResultsShareBlock'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -40,6 +43,7 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useWhotTurnTimer } from '@/hooks/useWhotTurnTimer'
 import { useWhotGameTimer } from '@/hooks/useWhotGameTimer'
 import { useWhotNotifications, playWhotActionSound } from '@/hooks/useWhotNotifications'
+import { useGamePlacements, useGameStats } from '@/components/roster/RosterDrawerContext'
 
 type Screen =
   | 'loading'
@@ -55,6 +59,8 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
   const [session, setSession] = useState<WhotSession | null>(null)
+  const sessionRef = useRef<WhotSession | null>(null)
+  sessionRef.current = session
   const [hands, setHands] = useState<WhotPlayerHand[]>([])
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
@@ -95,6 +101,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, WhotSession | null>({
     gameCode,
@@ -109,11 +116,47 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
-  // Realtime push: reload on any change to this game's row + its tables. `players` keeps
-  // the replay ready-up ring live as people tap "ready".
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'players', 'whot_sessions', 'whot_player_hands'], load)
+  // Delta fast-path (dual-table). The screen is derived purely from game.status, so session
+  // and hand writes only update the board/hand UI — patch them locally and skip the full
+  // reload. The active→finished transition rides the games-row event (no apply → still
+  // reloads), and the fallback poll stays the reconciliation net.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as WhotSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at < prev.updated_at) return true // stale/reordered
+    setSession(next)
+    sessionRef.current = next
+    return prev != null // first session still reloads (harmless; games event also covers start)
+  }, [])
+  const applyHandRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as WhotPlayerHand
+    setHands((prev) => {
+      const i = prev.findIndex((h) => h.id === next.id)
+      if (i === -1) return [...prev, next].sort((a, b) => a.player_order - b.player_order)
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true // a hand change never changes the screen — always safe to skip the reload
+  }, [])
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  // Realtime push: patch session + hands locally on plays (see above), reload for games/players.
+  const connected = useGameTableSync(
+    gameCode,
+    [
+      { table: 'games', column: 'id' },
+      'players',
+      { table: 'whot_sessions', apply: applySessionRow },
+      { table: 'whot_player_hands', apply: applyHandRow },
+    ],
+    load
+  )
+
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
   // Ready-up ring: readiness = holding a seat, so this reuses /players/ready (which
   // toggles the spectator flag). `ready:false` sits the player back out.
@@ -199,6 +242,27 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     return counts
   }, [hands])
 
+  // Winner/runner-up medal pills on the roster drawer (mirrors the host view).
+  const placements = useMemo(() => {
+    const map: Record<string, number> = {}
+    ;(session?.finish_order ?? []).forEach((id, i) => {
+      map[id] = i + 1
+    })
+    const winnerId = session?.winner_player_id
+    if (winnerId && !(winnerId in map)) map[winnerId] = 1
+    return Object.keys(map).length ? map : null
+  }, [session?.finish_order, session?.winner_player_id])
+  useGamePlacements(placements)
+
+  // Live card counts in the roster drawer scoreboard (only while playing).
+  const rosterDetails = useMemo(() => {
+    if (game?.status !== 'active') return null
+    const out: Record<string, string> = {}
+    for (const [id, n] of Object.entries(handCounts)) out[id] = `🃏 ${n} card${n === 1 ? '' : 's'}`
+    return Object.keys(out).length ? out : null
+  }, [handCounts, game?.status])
+  useGameStats(rosterDetails)
+
   const cfg = gameTypeConfig('whot')
   const winner = players.find((p) => p.id === session?.winner_player_id)
   const turnPlayerId = session ? currentPlayerId(session) : null
@@ -231,6 +295,39 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const myCanPlay = session ? hasPlayableCard(myHand, session, whotRules) : false
   const whotCallActive = session ? hasActiveWhotCall(session) : false
   const pickPenalty = session ? getActivePickPenalty(session) : { type: null, count: 0 }
+
+  // The roster side-drawer is fed centrally by the dispatcher (PollGamePlayerExperience
+  // → useRosterBase), same as every game. Its useGameSession now late-binds myPlayerId
+  // when our row lands, so a spectator's own row is marked "· you" without any Whot-
+  // specific override.
+
+  // Change name · Leave game for players/spectators live behind the main chrome's ⚙
+  // gear (top header) — the in-room bar that used to hold them is gone. Registered
+  // while the game is active; `GameChromeSettings` renders it inside the one sheet.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={activePlayer?.name ?? roomDisplayName ?? ''}
+          onRenamed={() => void load()}
+          spectating={isWatching}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, activePlayer?.name, roomDisplayName, isWatching, load, router])
+  useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') return <WhotLoadingScreen />
 
@@ -283,6 +380,8 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
           value={joinName}
           onChange={setJoinName}
           onSubmit={() => void join()}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           joining={joining}
           gameType="whot"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
@@ -308,6 +407,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={WHOT_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -322,6 +422,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
         <GameLobbyWaitingPanel
           gameCode={gameCode}
           gameType={game?.game_type}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={me?.name ?? ''}
@@ -376,24 +477,10 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
 
   if (!session) return <WhotLoadingScreen />
 
-  // The active play surface mounts inside the design-system room shell, which
-  // supplies the `.fr-room-poll` → `.pr-main` → `.pr-stage` frame the `.ct-surface`
-  // needs, with the top voice rail as the room chrome.
-  const roomShell = (children: React.ReactNode) => (
-    <PlayerRoomShell
-      gameCode={gameCode}
-      gameName={game?.title ?? cfg.label}
-      playerName={activePlayer?.name ?? roomDisplayName}
-      playerId={myPlayerId}
-      resumeToken={myResumeToken}
-      onLeave={() => {
-        clearPlayerSession(gameCode)
-        router.push('/')
-      }}
-    >
-      {children}
-    </PlayerRoomShell>
-  )
+  // The active play surface mounts inside the design-system room frame, which
+  // supplies the `.fr-room-poll` → `.pr-main` → `.pr-stage` layout the `.ct-surface`
+  // needs. The room chrome is the app's fixed top header + the floating Join-voice pill.
+  const roomShell = (children: React.ReactNode) => <PlayerRoomShell>{children}</PlayerRoomShell>
 
   if (isWatching) {
     return roomShell(

@@ -6,6 +6,10 @@ import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import { ShareInviteButton } from '@/components/ShareInviteButton'
 import { Modal } from '@/components/ui/Modal'
 import { hostGameUrl, hostPlayerUrl, playerGameUrl, playerResumeUrl, shareOrigin } from '@/lib/site'
+import { useRouter } from 'next/navigation'
+import { getPlayerSession, setPlayerSession } from '@/lib/utils'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useToast } from '@/components/ui/Toast'
 
 type QrConfig = {
   url: string
@@ -31,6 +35,7 @@ function ShareLinkSection({
   qr,
   onShowQr,
   nativeShare,
+  rotateCode,
 }: {
   title: string
   description: string
@@ -42,6 +47,10 @@ function ShareLinkSection({
   /** When set, show a one-tap native Share button (mobile share sheet → WhatsApp/etc.)
    *  as the primary action. Only used for the player invite link. */
   nativeShare?: { text: string }
+  rotateCode?: {
+    isRotating: boolean
+    onRotate: () => void
+  }
 }) {
   return (
     <section className="space-y-2">
@@ -61,6 +70,16 @@ function ShareLinkSection({
         >
           Show QR code
         </button>
+        {rotateCode ? (
+          <button
+            type="button"
+            onClick={rotateCode.onRotate}
+            disabled={rotateCode.isRotating}
+            className="text-sm font-semibold text-red-500 hover:text-red-400 transition-colors disabled:opacity-50"
+          >
+            {rotateCode.isRotating ? 'Rotating...' : 'Rotate code'}
+          </button>
+        ) : null}
       </div>
     </section>
   )
@@ -69,6 +88,12 @@ function ShareLinkSection({
 export function GameShareMenu({ gameCode, hostToken, resumeToken, className = '' }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [qrConfig, setQrConfig] = useState<QrConfig | null>(null)
+  const [isRotating, setIsRotating] = useState(false)
+
+  const router = useRouter()
+  const { confirm } = useConfirm()
+  const { success, error } = useToast()
+  const session = getPlayerSession(gameCode)
 
   const origin = shareOrigin()
   const inviteUrl = playerGameUrl(gameCode, origin)
@@ -79,6 +104,40 @@ export function GameShareMenu({ gameCode, hostToken, resumeToken, className = ''
   const openQr = (config: QrConfig) => {
     setMenuOpen(false)
     setQrConfig(config)
+  }
+
+  const handleRotate = async () => {
+    if (!resumeToken || !session) return
+    const ok = await confirm({
+      title: 'Rotate player code?',
+      message:
+        'If you accidentally shared your player code, you can generate a new one to protect your seat. Your old continue link will stop working immediately.',
+      confirmLabel: 'Rotate code',
+      destructive: true,
+    })
+    if (!ok) return
+
+    setIsRotating(true)
+    try {
+      const res = await fetch('/api/players/resume/rotate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameCode, resumeToken }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || 'Failed to rotate code')
+      }
+      const { newToken } = await res.json()
+      setPlayerSession(gameCode, session.playerId, session.playerName, session.playerGender, newToken)
+      success('Your new player code is active.')
+      router.refresh()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to rotate code'
+      error(msg)
+    } finally {
+      setIsRotating(false)
+    }
   }
 
   const subtitle = hostToken
@@ -133,6 +192,7 @@ export function GameShareMenu({ gameCode, hostToken, resumeToken, className = ''
                 copySuccessMessage: 'Host + play link copied',
               }}
               onShowQr={openQr}
+              rotateCode={session ? { isRotating, onRotate: handleRotate } : undefined}
             />
           ) : hostUrl ? (
             <ShareLinkSection
@@ -165,6 +225,7 @@ export function GameShareMenu({ gameCode, hostToken, resumeToken, className = ''
                 copySuccessMessage: 'Continue link copied',
               }}
               onShowQr={openQr}
+              rotateCode={session ? { isRotating, onRotate: handleRotate } : undefined}
             />
           ) : null}
         </div>

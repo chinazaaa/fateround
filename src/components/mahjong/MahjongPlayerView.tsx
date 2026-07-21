@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   MahjongCard,
@@ -16,6 +16,9 @@ import { currentMahjongPlayerId, MAHJONG_MIN_PLAYERS } from '@/lib/mahjong'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { setPlayerSession, clearPlayerSession } from '@/lib/utils'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { resolvePlayerSession } from '@/lib/player-resume'
 import type { Game, MahjongClaimType, MahjongPlayerState, MahjongSession, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -27,7 +30,6 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
@@ -59,6 +61,8 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
   const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
   const [joinName, setJoinName] = useState('')
   const [joining, setJoining] = useState(false)
+  // Set when a join is refused for a full lobby — cue to offer "watch instead".
+  const [lobbyFull, setLobbyFull] = useState(false)
   const [acting, setActing] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
@@ -209,14 +213,22 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
             gameCode,
             playerName: name,
             ...joinExtras,
-            ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer ?? true } : {}),
+            // An explicit choice (e.g. "watch instead" on a full lobby) wins in any state;
+            // otherwise active games still default a fresh join to viewer.
+            ...(opts?.joinAsViewer !== undefined
+              ? { joinAsViewer: opts.joinAsViewer }
+              : game?.status === 'active'
+                ? { joinAsViewer: true }
+                : {}),
           }),
         })
         const data = await res.json()
         if (!res.ok) {
+          setLobbyFull(data?.full === true)
           toastError(data.error ?? 'Failed to join')
           return
         }
+        setLobbyFull(false)
         setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
         setMyPlayerId(data.playerId)
         await load()
@@ -277,6 +289,32 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
     game?.status === 'active' && !isViewer && (isMyTurn || session?.phase === 'claim')
   )
 
+  // Edit name · Leave game for players/spectators, in the main-header ⚙ during play.
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={myName}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, game?.status, gameCode, myName, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
   if (screen === 'loading') return <MahjongLoadingScreen />
 
   if (screen === 'not_found') {
@@ -316,6 +354,8 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
           onChange={setJoinName}
           onSubmit={() => void join()}
           joining={joining}
+          lobbyFull={lobbyFull}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
           footer={
             <p className="text-center pt-1">
               <GameRulesLink gameType="mahjong" variant="subtle" />
@@ -345,6 +385,7 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
             meId={myPlayerId}
             isHost={false}
             minPlayers={MAHJONG_MIN_PLAYERS}
+            capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
             pending={replayReadyPending}
@@ -358,6 +399,7 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
       <GameJoinLobbyShell gameCode={gameCode}>
         <GameLobbyWaitingPanel
           gameCode={gameCode}
+          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myName}
@@ -397,16 +439,6 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
             <p className="text-2xl font-black">Game over</p>
           </MahjongCard>
         )}
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby
-          />
-        )}
       </MahjongShell>
     )
   }
@@ -431,15 +463,6 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
           }
           onRiichi={() => void postAction('/api/mahjong/riichi')}
           onPass={() => void postAction('/api/mahjong/pass')}
-        />
-      )}
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
         />
       )}
     </MahjongShell>

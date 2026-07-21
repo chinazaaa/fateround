@@ -6,17 +6,13 @@ import { isSubscribed, pushSupported, subscribeToGamePush, unsubscribeFromGamePu
 type Props = { gameCode: string | null; resumeToken: string | null }
 
 /**
- * Header toggle (sits beside SoundToggle) for game-lifecycle push notifications —
- * start / play-again / end. A persistent, discoverable home rather than a floating
- * corner pill.
- *
- * Permission is granted once per device: after that every game auto-subscribes on
- * load and shows "on" with no re-prompt. First-timers (permission still undecided)
- * get a pulsing dot on the bell so the control is noticed. Renders nothing when push
- * can't be delivered (un-installed iOS, denied permission, no resume token, no key) —
- * un-installed iOS is handled separately by IosInstallPushNudge.
+ * Shared push-alert state for game-lifecycle notifications (start / play-again /
+ * end). Drives both the header pill ({@link NotificationToggle}) and the settings
+ * sheet's "Game alerts" row. `available` is false when push can't be delivered
+ * (un-installed iOS, denied permission, no resume token, no VAPID key) — callers
+ * render nothing in that case.
  */
-export function NotificationToggle({ gameCode, resumeToken }: Props) {
+export function useGameAlertsToggle(gameCode: string | null, resumeToken: string | null) {
   const [state, setState] = useState<'hidden' | 'on' | 'off'>('hidden')
   const [undecided, setUndecided] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -40,7 +36,7 @@ export function NotificationToggle({ gameCode, resumeToken }: Props) {
         return
       }
 
-      // permission === 'default' — show the bell as off, with a first-time hint.
+      // permission === 'default' — show as off, with a first-time hint.
       if (!cancelled) {
         setState('off')
         setUndecided(true)
@@ -52,7 +48,6 @@ export function NotificationToggle({ gameCode, resumeToken }: Props) {
     }
   }, [gameCode, resumeToken])
 
-  if (state === 'hidden') return null
   const on = state === 'on'
 
   const toggle = async () => {
@@ -72,6 +67,24 @@ export function NotificationToggle({ gameCode, resumeToken }: Props) {
     }
     setBusy(false)
   }
+
+  return { available: state !== 'hidden', on, undecided, busy, toggle }
+}
+
+/**
+ * Header toggle (sits beside SoundToggle) for game-lifecycle push notifications —
+ * start / play-again / end. A persistent, discoverable home rather than a floating
+ * corner pill.
+ *
+ * Permission is granted once per device: after that every game auto-subscribes on
+ * load and shows "on" with no re-prompt. First-timers (permission still undecided)
+ * get a pulsing dot on the bell so the control is noticed. Renders nothing when push
+ * can't be delivered — un-installed iOS is handled separately by IosInstallPushNudge.
+ */
+export function NotificationToggle({ gameCode, resumeToken }: Props) {
+  const { available, on, undecided, busy, toggle } = useGameAlertsToggle(gameCode, resumeToken)
+
+  if (!available) return null
 
   return (
     <button

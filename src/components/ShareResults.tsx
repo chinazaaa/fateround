@@ -16,6 +16,7 @@ import {
   isMonopolyGame,
   isWhotGame,
   isCrazyEightsGame,
+  isUnoGame,
   isLudoGame,
   isSnakeAndLadderGame,
   isTicTacToeGame,
@@ -195,7 +196,11 @@ function buildShareText({
     return lines.join('\n')
   }
 
-  if ((isWhotGame(gameType) || isCrazyEightsGame(gameType)) && whotStandings && whotStandings.length > 0) {
+  if (
+    (isWhotGame(gameType) || isCrazyEightsGame(gameType) || isUnoGame(gameType)) &&
+    whotStandings &&
+    whotStandings.length > 0
+  ) {
     const lines = [
       ...gameHeader,
       whotWinnerName ? `🏆 ${whotWinnerName} wins!` : '🏆 Game over',
@@ -327,7 +332,7 @@ function buildShareText({
     const topScores = scores.slice(0, 3)
     const medals = ['1st', '2nd', '3rd']
     topScores.forEach((s, i) => {
-      lines.push(`  ${medals[i]}: ${s.name} (${s.correctGuesses} correct)`)
+      lines.push(`  ${medals[i]}: ${s.name} (${s.points} pts)`)
     })
   } else if (isCustomGame(gameType)) {
     const slots = game.custom_slots?.slots ?? []

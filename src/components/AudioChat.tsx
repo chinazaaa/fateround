@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { LiveKitRoom, RoomAudioRenderer, useLocalParticipant, useParticipants } from '@livekit/components-react'
+import type { DisconnectReason } from 'livekit-client'
+import { voiceDisconnectMessage } from '@/lib/voice-errors'
 import { useToast } from '@/components/ui/Toast'
 
 /** Proof the caller is allowed in the room, verified server-side before a
@@ -57,6 +59,14 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
 
   const serverUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL
   const joinAudioRef = useRef<() => Promise<void>>(null)
+  // True from the moment WE tear the room down (Leave, or another tab taking the
+  // call over) until the next join. LiveKit's own `shouldConnect` guard — which
+  // exists to swallow the connect-promise rejection that an intentional
+  // disconnect raises — only clears when the `connect` prop flips to false. We
+  // tear down by unmounting <LiveKitRoom> (token → null) instead, so that guard
+  // never clears and our own Leave arrives at `onError` looking exactly like a
+  // failed connect. Track the intent ourselves so Leave stays silent.
+  const leavingRef = useRef(false)
   // Keep auth in a ref so the presence poll doesn't restart when the parent
   // passes a fresh auth object on every render.
   const authRef = useRef(auth)
@@ -153,6 +163,7 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
         throw new Error(errData.error || 'Failed to fetch audio token')
       }
       const data = await res.json()
+      leavingRef.current = false
       setToken(data.token)
       setIsOpen(true)
 
@@ -169,15 +180,31 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
 
       setActiveTabId(myTabId)
     } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join voice chat')
+      // Log the raw reason (server error / network) for debugging; players get a
+      // plain message, never a leaked config string like "LIVEKIT_API_KEY not set".
+      console.error('[voice] join failed', err)
+      toastError('Could not join voice chat. Please try again.')
     } finally {
       setIsConnecting(false)
     }
   }
   joinAudioRef.current = joinAudio
 
+  // LiveKit fires onDisconnected on any terminal disconnect — an early/failed
+  // media negotiation (common on phones), a same-identity takeover, or a network
+  // drop. Clearing the token then silently flips back to the "Join voice" button,
+  // which reads as an instant self-kick right after clicking Join. Tear the dead
+  // room down (correct) but make the reason visible so it's clearly a disconnect,
+  // not an untoggle — except CLIENT_INITIATED, which is just our own Leave.
+  const handleDisconnected = (reason?: DisconnectReason) => {
+    leaveAudio(false)
+    const message = voiceDisconnectMessage(reason)
+    if (message) toastError(message)
+  }
+
   // 3. Leave voice chat handler
   const leaveAudio = (manual = true) => {
+    leavingRef.current = true
     setToken(null)
     setIsOpen(false)
     if (manual) {
@@ -265,7 +292,7 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
 
   return (
     <div
-      className={`fixed bottom-20 z-50 flex flex-col gap-2 ${
+      className={`voice-fab fixed bottom-20 z-50 flex flex-col gap-2 ${
         side === 'right' ? 'right-4 items-end' : 'left-4 items-start'
       }`}
     >
@@ -391,7 +418,19 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
           token={token}
           serverUrl={serverUrl}
           connect={true}
-          onDisconnected={() => leaveAudio(false)}
+          onDisconnected={handleDisconnected}
+          onError={(err) => {
+            // Our own teardown rejects the in-flight connect — that is not a
+            // connection failure, so it must never surface as one. (Also
+            // de-dupes: a real failure calls leaveAudio below, so the extra
+            // rejections from the stacked catch handlers stay quiet.)
+            if (leavingRef.current) return
+            // Keep LiveKit's raw reason in the console for debugging, but never
+            // show it to players — surface a plain, friendly message instead.
+            console.error('[voice] LiveKit connection error', err)
+            leaveAudio(false)
+            toastError('Could not connect to voice chat. Please try again.')
+          }}
           className={isOpen ? 'glass-card-strong w-72 p-4 shadow-xl flex flex-col gap-3 max-h-87.5' : 'hidden'}
         >
           <RoomAudioRenderer />

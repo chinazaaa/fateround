@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
+import { useCloseGameSettings } from '@/components/GameSettingsContext'
 
 export function HostEndGameButton({
   gameCode,
@@ -25,6 +26,7 @@ export function HostEndGameButton({
 }) {
   const { confirm } = useConfirm()
   const { error: toastError } = useToast()
+  const closeSettings = useCloseGameSettings()
   const [ending, setEnding] = useState(false)
 
   const endGame = async () => {
@@ -46,6 +48,8 @@ export function HostEndGameButton({
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to end game')
+      // Close the ⚙ settings sheet when the button lives inside it (no-op elsewhere).
+      closeSettings()
       await onEnded?.()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to end game')

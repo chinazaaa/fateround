@@ -61,9 +61,11 @@ import {
   isYahtzeeGame,
   isWhotGame,
   isCrazyEightsGame,
+  isUnoGame,
   isLudoGame,
   isSnakeAndLadderGame,
   isTicTacToeGame,
+  isPingPongGame,
   isChessGame,
   isCheckersGame,
   isAyoGame,
@@ -71,13 +73,20 @@ import {
   isDescribeItGame,
   isWordRushGame,
   isICallOnGame,
+  isLandmineGame,
   isSudokuGame,
+  isCrosswordGame,
+  isWordSearchGame,
+  isWordScrambleGame,
   isWordHuntGame,
   isMafiaGame,
   isMatchingPairsGame,
+  isMahjongGame,
   isQuiplashGame,
   isQuickDrawGame,
 } from '@/lib/game-types'
+import { DEFAULT_MAHJONG_RULESET, MAHJONG_RULESETS, MAHJONG_RULESET_CONFIG } from '@/lib/mahjong-rulesets'
+import type { MahjongRuleset } from '@/types'
 import { BOARD_THEMES, PIECE_SETS, useChessAppearance } from '@/lib/chess-appearance'
 import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
@@ -112,9 +121,24 @@ import {
   questionRoundPickerOptions,
   clampLobbyQuestionRounds,
   CODEWORDS_MIN_CUSTOM_POOL,
+  parseCrosswordEntryImport,
+  parseWordSearchEntryImport,
+  parseWordScrambleEntryImport,
+  parseStoredCrosswordEntries,
+  parseStoredWordSearchEntries,
+  parseStoredWordScrambleEntries,
+  parseWstDeckImport,
+  parseExcelWstDeckImport,
+  formatEntryImportSummary,
+  type CrosswordEntry,
+  type WordSearchEntry,
+  type WordScrambleEntry,
 } from '@/lib/custom-questions'
+import { WST_DECK_MIN_ENTRIES, type WstDeckEntry } from '@/lib/who-said-this'
+import { WST_PLATFORM_DECK } from '@/lib/who-said-this-questions'
 import { playerQuestionsOrderOptions, parsePlayerQuestionsOrder } from '@/lib/player-question-pool'
 import { isPeoplePollGame, playerNameSubmissionHint } from '@/lib/player-participant-pool'
+import { setHostPlayIntent } from '@/lib/host-play-intent'
 import { CustomSlotBuilder } from '@/components/CustomSlotBuilder'
 import { GenderRoundModeControl } from '@/components/GenderRoundModeControl'
 import { customPairVoteModeOptions } from '@/lib/custom-game'
@@ -123,10 +147,11 @@ import type { CustomSlotsConfig } from '@/types'
 import { GameTypeModal } from '@/components/GameTypeModal'
 import { GameTypeCard } from '@/components/GameTypeCard'
 import { LibraryPackPicker } from '@/components/LibraryPackPicker'
+import { PuzzleUpload } from '@/components/create/PuzzleUpload'
 import { PageShell, BackBtn, Field, Chip, Toggle, PrimaryBtn } from '@/components/ui/PageShell'
 import { StepIndicator, SettingsGroup, StickyActionBar, SegmentedControl, ChipGrid } from '@/components/ui/CreateWizard'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
-import { LateJoinPolicyToggle } from '@/components/AllowViewersToggle'
+import { LateJoinPolicyToggle, LateJoinField } from '@/components/AllowViewersToggle'
 import {
   gameSupportsViewerSetting,
   clampLateJoinPolicyForGameType,
@@ -211,6 +236,7 @@ import {
   CRAZY8_GAME_DURATION_OPTIONS,
   formatCrazyEightsGameDuration,
 } from '@/lib/crazy-eights'
+import { UNO_DEFAULT_MAX_PLAYERS, UNO_GAME_DURATION_OPTIONS, formatUnoGameDuration } from '@/lib/uno'
 import { turnTimerOptionsFor, formatBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { LUDO_DEFAULT_MAX_PLAYERS } from '@/lib/ludo'
 import { SNAKE_LADDER_DEFAULT_MAX_PLAYERS } from '@/lib/snake-and-ladder'
@@ -224,12 +250,48 @@ import {
   NPAT_MARKING_TIMER_OPTIONS,
   NPAT_TIMER_OPTIONS,
 } from '@/lib/npat'
+import {
+  LANDMINE_DEFAULT_ROUND_COUNT,
+  LANDMINE_DEFAULT_WRITING_TIMER,
+  LANDMINE_DEFAULT_MARKING_TIMER,
+  LANDMINE_DEFAULT_CATEGORY_TIMER,
+} from '@/lib/landmine'
 import { WORD_HUNT_DEFAULT_MAX_PLAYERS, WORD_HUNT_DEFAULT_TIMER, WORD_HUNT_TIMER_OPTIONS } from '@/lib/word-hunt'
 import { formatSudokuGameDuration, SUDOKU_GAME_DURATION_OPTIONS } from '@/lib/sudoku'
+import {
+  formatCrosswordGameDuration,
+  CROSSWORD_GAME_DURATION_OPTIONS,
+  CROSSWORD_DEFAULT_DURATION,
+  CROSSWORD_DIFFICULTIES,
+  CROSSWORD_DEFAULT_DIFFICULTY,
+  type CrosswordDifficulty,
+} from '@/lib/crossword'
+import { crosswordThemeOptions, CROSSWORD_DEFAULT_THEME } from '@/lib/crossword-puzzles'
+import { usePuzzleThemes, puzzleThemeIdFromValue, type PuzzleThemeOption } from '@/hooks/usePuzzleThemes'
+import {
+  formatWordSearchGameDuration,
+  WORD_SEARCH_GAME_DURATION_OPTIONS,
+  WORD_SEARCH_DEFAULT_DURATION,
+  WORD_SEARCH_DIFFICULTIES,
+  WORD_SEARCH_DEFAULT_DIFFICULTY,
+  type WordSearchDifficulty,
+} from '@/lib/word-search'
+import { wordSearchThemeOptions, WORD_SEARCH_DEFAULT_THEME } from '@/lib/word-search-puzzles'
+import {
+  formatWordScrambleGameDuration,
+  WORD_SCRAMBLE_GAME_DURATION_OPTIONS,
+  WORD_SCRAMBLE_DEFAULT_DURATION,
+  WORD_SCRAMBLE_DIFFICULTIES,
+  WORD_SCRAMBLE_DEFAULT_DIFFICULTY,
+  type WordScrambleDifficulty,
+} from '@/lib/word-scramble'
+import { wordScrambleThemeOptions, WORD_SCRAMBLE_DEFAULT_THEME } from '@/lib/word-scramble-puzzles'
 import { MATCHING_PAIRS_GAME_DURATION_OPTIONS, formatMatchingPairsGameDuration } from '@/lib/memory-match'
 import {
   DESCRIBE_IT_DEFAULT_ROUNDS,
+  DESCRIBE_IT_DEFAULT_MAX_PLAYERS,
   DESCRIBE_IT_DEFAULT_TURN_SECONDS,
+  DESCRIBE_IT_MAX_PLAYER_OPTIONS,
   DESCRIBE_IT_MIN_PLAYERS,
   DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
   DESCRIBE_IT_ROUND_OPTIONS,
@@ -265,6 +327,7 @@ function CreateGameInner() {
   const [participantTab, setParticipantTab] = useState<ParticipantTab>('upload')
   const [settings, setSettings] = useState<Settings>({
     title: '',
+    content_label: '',
     rounds_count: 3,
     timer_seconds: 30,
     anonymous: true,
@@ -279,7 +342,7 @@ function CreateGameInner() {
     isPublic: false,
     describe_it_num_teams: 2,
     describe_it_mode: 'team',
-    quick_draw_variant: 'lie',
+    quick_draw_variant: 'guess',
     quick_draw_play_mode: 'team',
     quick_draw_num_teams: 2,
     word_rush_num_teams: 2,
@@ -293,6 +356,9 @@ function CreateGameInner() {
   const [quickDrawWords, setQuickDrawWords] = useState('')
   const [quickDrawUploadError, setQuickDrawUploadError] = useState<string | null>(null)
   const quickDrawFileRef = useRef<HTMLInputElement>(null)
+  const crosswordFileRef = useRef<HTMLInputElement>(null)
+  const wordSearchFileRef = useRef<HTMLInputElement>(null)
+  const wordScrambleFileRef = useRef<HTMLInputElement>(null)
   const [participants, setParticipants] = useState<ParticipantInput[]>([])
   const [nameInput, setNameInput] = useState('')
   const [defaultGender, setDefaultGender] = useState<ParticipantGender>('female')
@@ -301,6 +367,9 @@ function CreateGameInner() {
   const inputRef = useRef<HTMLInputElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const questionsFileRef = useRef<HTMLInputElement>(null)
+  const wstDeckFileRef = useRef<HTMLInputElement>(null)
+  // True once the host manually edits the Category — after that, the AI "Theme" no longer mirrors into it.
+  const contentLabelTouchedRef = useRef(false)
   const [bulkPaste, setBulkPaste] = useState('')
   const [questionSource, setQuestionSource] = useState<QuestionSource>('platform')
   const [playerQuestionsEnabled, setPlayerQuestionsEnabled] = useState(true)
@@ -315,6 +384,9 @@ function CreateGameInner() {
   const [panRoundsInput, setPanRoundsInput] = useState('5')
   const [questionsBulkPaste, setQuestionsBulkPaste] = useState('')
   const [wstQuoteSource, setWstQuoteSource] = useState<WstQuoteSource>('player')
+  // Pre-set roster deck (quote + who said it) uploaded for Who Said This.
+  const [wstDeck, setWstDeck] = useState<WstDeckEntry[]>([])
+  const [wstDeckError, setWstDeckError] = useState<string | null>(null)
   const [customSlots, setCustomSlots] = useState<CustomSlotsConfig | null>(null)
   const [anonymousMaxPlayers, setAnonymousMaxPlayers] = useState(ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS)
   const [bingoMaxPlayers, setBingoMaxPlayers] = useState(BINGO_DEFAULT_MAX_PLAYERS)
@@ -361,18 +433,63 @@ function CreateGameInner() {
   const [crazy8ActionCards, setCrazy8ActionCards] = useState(true)
   const [crazy8Jokers, setCrazy8Jokers] = useState(false)
   const [crazy8Pick2Stacking, setCrazy8Pick2Stacking] = useState(true)
+  const [unoMaxPlayers, setUnoMaxPlayers] = useState(UNO_DEFAULT_MAX_PLAYERS)
+  const [unoGameDuration, setUnoGameDuration] = useState(0)
+  const [unoWd4Challenge, setUnoWd4Challenge] = useState(true)
+  const [unoUnoPenalty, setUnoUnoPenalty] = useState(2)
+  const [unoZeroSeven, setUnoZeroSeven] = useState(false)
+  const [unoStacking, setUnoStacking] = useState(false)
+  const [unoMultiPlayMode, setUnoMultiPlayMode] = useState<
+    'off' | 'same_color' | 'same_number' | 'same_color_or_number'
+  >('off')
+  const [unoTeamMode, setUnoTeamMode] = useState(false)
   const [ludoMaxPlayers, setLudoMaxPlayers] = useState(LUDO_DEFAULT_MAX_PLAYERS)
   const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
   const [ayoVariant, setAyoVariant] = useState<AyoVariant>('traditional')
+  const [mahjongRuleset, setMahjongRuleset] = useState<MahjongRuleset>(DEFAULT_MAHJONG_RULESET)
   const [snakeLadderMaxPlayers, setSnakeLadderMaxPlayers] = useState(SNAKE_LADDER_DEFAULT_MAX_PLAYERS)
   const [npatMaxPlayers, setNpatMaxPlayers] = useState(NPAT_DEFAULT_MAX_PLAYERS)
   const [sudokuMaxPlayers, setSudokuMaxPlayers] = useState(20)
   const [sudokuGameDuration, setSudokuGameDuration] = useState(0)
+  const [crosswordMaxPlayers, setCrosswordMaxPlayers] = useState(20)
+  const [crosswordGameDuration, setCrosswordGameDuration] = useState<number>(CROSSWORD_DEFAULT_DURATION)
+  const [crosswordTheme, setCrosswordTheme] = useState<string>(CROSSWORD_DEFAULT_THEME)
+  const [crosswordDifficulty, setCrosswordDifficulty] = useState<CrosswordDifficulty>(CROSSWORD_DEFAULT_DIFFICULTY)
+  const [wordSearchMaxPlayers, setWordSearchMaxPlayers] = useState(20)
+  const [wordSearchGameDuration, setWordSearchGameDuration] = useState<number>(WORD_SEARCH_DEFAULT_DURATION)
+  const [wordSearchTheme, setWordSearchTheme] = useState<string>(WORD_SEARCH_DEFAULT_THEME)
+  const [wordSearchDifficulty, setWordSearchDifficulty] = useState<WordSearchDifficulty>(WORD_SEARCH_DEFAULT_DIFFICULTY)
+  const [wordScrambleMaxPlayers, setWordScrambleMaxPlayers] = useState(20)
+  const [wordScrambleGameDuration, setWordScrambleGameDuration] = useState<number>(WORD_SCRAMBLE_DEFAULT_DURATION)
+  const [wordScrambleTheme, setWordScrambleTheme] = useState<string>(WORD_SCRAMBLE_DEFAULT_THEME)
+  const [wordScrambleDifficulty, setWordScrambleDifficulty] = useState<WordScrambleDifficulty>(
+    WORD_SCRAMBLE_DEFAULT_DIFFICULTY
+  )
+  // Admin-authored themes shown in the theme dropdown alongside the built-ins. A selected admin
+  // theme carries value `pt:<id>` in the same <select>; the create payload sends puzzle_theme_id
+  // and the server folds its word pool + locked difficulty into the game.
+  const puzzleThemes = usePuzzleThemes(settings.game_type)
+  const lockedPuzzleDifficulty = (value: string): PuzzleThemeOption['difficulty'] => {
+    const id = puzzleThemeIdFromValue(value)
+    return id ? (puzzleThemes.find((t) => t.id === id)?.difficulty ?? null) : null
+  }
   const [wordHuntMaxPlayers, setWordHuntMaxPlayers] = useState(WORD_HUNT_DEFAULT_MAX_PLAYERS)
   const [wordRushMaxPlayers, setWordRushMaxPlayers] = useState(WORD_RUSH_DEFAULT_MAX_PLAYERS)
+  const [describeItMaxPlayers, setDescribeItMaxPlayers] = useState(DESCRIBE_IT_DEFAULT_MAX_PLAYERS)
   const [wordHuntTimer, setWordHuntTimer] = useState(WORD_HUNT_DEFAULT_TIMER)
   const [npatGameDuration, setNpatGameDuration] = useState(NPAT_DEFAULT_GAME_DURATION)
   const [npatMarkingTimer, setNpatMarkingTimer] = useState(NPAT_DEFAULT_MARKING_TIMER)
+  const [landmineMode, setLandmineMode] = useState<'zero_points' | 'elimination'>('zero_points')
+  const [landmineMineSource, setLandmineMineSource] = useState<'system' | 'manual'>('system')
+  const [landmineMineCount, setLandmineMineCount] = useState(1)
+  const [landmineOriginality, setLandmineOriginality] = useState(true)
+  // Review-before-reveal: on by default for both modes (host can turn it off for instant reveal).
+  const [landmineReview, setLandmineReview] = useState(true)
+  // Review-window length (seconds); default seeded per mode (manual 45, auto 20).
+  const [landmineReviewSeconds, setLandmineReviewSeconds] = useState(20)
+  const [landmineCategoryTimer, setLandmineCategoryTimer] = useState(10)
+  const [landmineMarkingTimer, setLandmineMarkingTimer] = useState(45)
+  const [landmineElimSeconds, setLandmineElimSeconds] = useState(300)
   const [eliminationEnabled, setEliminationEnabled] = useState(false)
   const [eliminationMode, setEliminationMode] = useState<'per-round' | 'lives'>('per-round')
   const [eliminationRule, setEliminationRule] = useState<'bottom-n' | 'score-threshold'>('bottom-n')
@@ -380,6 +497,11 @@ function CreateGameInner() {
   const [scoreThreshold, setScoreThreshold] = useState(50)
   const [startingLives, setStartingLives] = useState(3)
   const [customTriviaQuestions, setCustomTriviaQuestions] = useState<TriviaQuestion[]>([])
+  const [customCrosswordEntries, setCustomCrosswordEntries] = useState<CrosswordEntry[]>([])
+  const [customWordSearchWords, setCustomWordSearchWords] = useState<WordSearchEntry[]>([])
+  const [customWordScrambleWords, setCustomWordScrambleWords] = useState<WordScrambleEntry[]>([])
+  const [puzzleUploadError, setPuzzleUploadError] = useState<string | null>(null)
+  const [puzzleUploadSummary, setPuzzleUploadSummary] = useState<string | null>(null)
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null)
   const [libraryPackQuestions, setLibraryPackQuestions] = useState<unknown[]>([])
   const [libraryPacks, setLibraryPacks] = useState<
@@ -424,6 +546,10 @@ function CreateGameInner() {
     if (data.pack?.questions) {
       const qs = data.pack.questions
       setLibraryPackQuestions(qs)
+      // Auto-fill the player-facing content label with the pack name (e.g. "Bible trivia")
+      // unless the host has already typed their own.
+      if (data.pack.title && !settings.content_label.trim())
+        setSettings((s) => (s.content_label.trim() ? s : { ...s, content_label: data.pack.title }))
       if (isTriviaGame(settings.game_type)) setCustomTriviaQuestions(qs as TriviaQuestion[])
       else if (isWouldYouRather(settings.game_type) || isThisOrThat(settings.game_type))
         setCustomWyrQuestions(qs as WyrQuestion[])
@@ -432,6 +558,9 @@ function CreateGameInner() {
       else if (isQuickDrawGame(settings.game_type))
         setQuickDrawWords(parseDescribeItWords((qs as string[]).join('\n')).join('\n'))
       else if (isCodewordsGame(settings.game_type)) setCustomCodewordsWords(parseStoredCodewordsWords(qs))
+      else if (isCrosswordGame(settings.game_type)) setCustomCrosswordEntries(parseStoredCrosswordEntries(qs))
+      else if (isWordSearchGame(settings.game_type)) setCustomWordSearchWords(parseStoredWordSearchEntries(qs))
+      else if (isWordScrambleGame(settings.game_type)) setCustomWordScrambleWords(parseStoredWordScrambleEntries(qs))
       else setCustomMltQuestions(qs as string[])
     }
   }
@@ -451,10 +580,12 @@ function CreateGameInner() {
     setYahtzeeMaxPlayers((v) => clamp('yahtzee', v))
     setWhotMaxPlayers((v) => clamp('whot', v))
     setCrazy8MaxPlayers((v) => clamp('crazy_eights', v))
+    setUnoMaxPlayers((v) => clamp('uno', v))
     setLudoMaxPlayers((v) => clamp('ludo', v))
     setSnakeLadderMaxPlayers((v) => clamp('snake_and_ladder', v))
     setNpatMaxPlayers((v) => clamp('i_call_on', v))
     setWordRushMaxPlayers((v) => clamp('word_rush', v))
+    setDescribeItMaxPlayers((v) => clamp('describe_it', v))
   }, [lobbyLimits])
 
   useEffect(() => {
@@ -553,6 +684,13 @@ function CreateGameInner() {
               rounds_count: 1,
             }
           : {}),
+        ...(isUnoGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+            }
+          : {}),
         ...(isLudoGame(type)
           ? {
               participant_mode: 'joiners' as const,
@@ -573,6 +711,15 @@ function CreateGameInner() {
               participant_mode: 'joiners' as const,
               anonymous: true,
               rounds_count: 1,
+            }
+          : {}),
+        ...(isPingPongGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+              ping_pong_points_to_win: 7,
+              game_duration_seconds: 0,
             }
           : {}),
         ...(isChessGame(type)
@@ -598,7 +745,7 @@ function CreateGameInner() {
               participant_mode: 'joiners' as const,
               anonymous: true,
               rounds_count: 1,
-              timer_seconds: 0,
+              timer_seconds: 300, // 5 min per-player time bank
             }
           : {}),
         ...(isScrabbleGame(type)
@@ -606,8 +753,7 @@ function CreateGameInner() {
               participant_mode: 'joiners' as const,
               anonymous: true,
               rounds_count: 1,
-              // Optional per-turn timer; default off.
-              timer_seconds: 0,
+              timer_seconds: 120, // 2 min per turn
             }
           : {}),
         ...(isDescribeItGame(type)
@@ -651,6 +797,14 @@ function CreateGameInner() {
               game_duration_seconds: 0,
             }
           : {}),
+        ...(isMahjongGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+              timer_seconds: 30,
+            }
+          : {}),
         ...(isWhoSaidThis(type)
           ? {
               participant_mode: 'import' as const,
@@ -679,6 +833,7 @@ function CreateGameInner() {
           if (!d.pack?.questions) return
           const gt = d.pack.game_type
           const qs = d.pack.questions
+          if (d.pack.title) setSettings((s) => (s.content_label.trim() ? s : { ...s, content_label: d.pack.title }))
           if (gt === 'describe_it' || gt === 'quick_draw') {
             const words = parseDescribeItWords((qs as string[]).join('\n')).join('\n')
             setQuestionSource('custom')
@@ -690,6 +845,15 @@ function CreateGameInner() {
           } else if (gt === 'codewords') {
             setQuestionSource('custom')
             setCustomCodewordsWords(parseStoredCodewordsWords(qs))
+          } else if (gt === 'crossword') {
+            setQuestionSource('library')
+            setCustomCrosswordEntries(parseStoredCrosswordEntries(qs))
+          } else if (gt === 'word_search') {
+            setQuestionSource('library')
+            setCustomWordSearchWords(parseStoredWordSearchEntries(qs))
+          } else if (gt === 'word_scramble') {
+            setQuestionSource('library')
+            setCustomWordScrambleWords(parseStoredWordScrambleEntries(qs))
           } else {
             setQuestionSource('library')
             if (gt === 'trivia') setCustomTriviaQuestions(qs as TriviaQuestion[])
@@ -725,9 +889,11 @@ function CreateGameInner() {
     if (!whotCardsEnabled) setWhotNumberCallsEnabled(false)
   }, [whotCardsEnabled])
   const isCrazy8 = isCrazyEightsGame(settings.game_type)
+  const isUno = isUnoGame(settings.game_type)
   const isLudo = isLudoGame(settings.game_type)
   const isSnakeLadder = isSnakeAndLadderGame(settings.game_type)
   const isTicTacToe = isTicTacToeGame(settings.game_type)
+  const isPingPong = isPingPongGame(settings.game_type)
   const isChess = isChessGame(settings.game_type)
   const isCheckers = isCheckersGame(settings.game_type)
   const isAyo = isAyoGame(settings.game_type)
@@ -736,11 +902,34 @@ function CreateGameInner() {
   const isWordRush = isWordRushGame(settings.game_type)
   const isMafia = isMafiaGame(settings.game_type)
   const isNpat = isICallOnGame(settings.game_type)
+  const isLandmine = isLandmineGame(settings.game_type)
   const isSudoku = isSudokuGame(settings.game_type)
+  const isCrossword = isCrosswordGame(settings.game_type)
+  const isWordSearch = isWordSearchGame(settings.game_type)
+  const isWordScramble = isWordScrambleGame(settings.game_type)
+  // Difficulty = grid size, which is independent of where the words come from, so it stays editable
+  // under every source. A theme only locks difficulty on the Platform tab (admin themes carry one);
+  // under Library/Your own there's no theme, so never treat a stale theme value as a lock there.
+  const crosswordDiffLock = questionSource === 'platform' ? lockedPuzzleDifficulty(crosswordTheme) : null
+  const wordSearchDiffLock = questionSource === 'platform' ? lockedPuzzleDifficulty(wordSearchTheme) : null
+  const wordScrambleDiffLock = questionSource === 'platform' ? lockedPuzzleDifficulty(wordScrambleTheme) : null
   const isWordHunt = isWordHuntGame(settings.game_type)
   const isMatchingPairs = isMatchingPairsGame(settings.game_type)
+  const isMahjong = isMahjongGame(settings.game_type)
   const showViewerToggle = gameSupportsViewerSetting(settings.game_type)
   const isWst = isWhoSaidThis(settings.game_type)
+  // Who Said This host-provided deck (Platform / Library / uploaded). Players just join and
+  // answer (no name list), so it's a single-step quick-create like trivia.
+  const isWstDeck = isWst && wstQuoteSource === 'deck'
+  // The effective deck for the selected source: built-in Platform pack, a chosen Library pack,
+  // or the uploaded CSV. Fed into custom_questions + the create-button gating.
+  const wstDeckContent: WstDeckEntry[] = !isWstDeck
+    ? []
+    : questionSource === 'platform'
+      ? WST_PLATFORM_DECK
+      : questionSource === 'library'
+        ? (libraryPackQuestions as WstDeckEntry[])
+        : wstDeck
   const isHotSeatGame = isHotSeat(settings.game_type)
   const isPanGame = isPan
   const hotSeatCreateCapUpper = isHotSeatGame ? hotSeatMaxCapUpperBound(0, participants.length) : 20
@@ -817,7 +1006,11 @@ function CreateGameInner() {
     (isLobbyQuestions && !isTot && !isPan && customQuestionCount >= settings.rounds_count && customQuestionCount > 0) ||
     (questionSource === 'library' &&
       libraryPackQuestions.length >= settings.rounds_count &&
-      libraryPackQuestions.length > 0)
+      libraryPackQuestions.length > 0) ||
+    // Players-submit mode needs no content at create (players write questions in the lobby);
+    // deck mode needs its source (Platform is always ready; Library/upload need >= 2).
+    (isWst && wstQuoteSource !== 'deck') ||
+    (isWstDeck && wstDeckContent.length >= WST_DECK_MIN_ENTRIES)
   const canCreateQuickLobby = !!settings.title.trim() && hasEnoughCustomQuestions
 
   const customSlotsValid =
@@ -825,10 +1018,54 @@ function CreateGameInner() {
 
   const isAnonymousRoom = isAnonymousMessagesGame(settings.game_type)
   const isSecretMessage = isSecretMessageGame(settings.game_type)
+  // Host's create-screen seat choice, carried into the lobby via host-play intent.
+  const [hostName, setHostName] = useState('')
+  const [hostWillPlay, setHostWillPlay] = useState(true)
+  // Games whose host panel supports the "Host only / Host + play" seat toggle.
+  // Excludes the poll family (routed through PollHostView, own join flow) and the
+  // host-only games (message boards, mafia). For these, the host's create-screen
+  // name + role are carried into the lobby via host-play intent.
+  const hostPlaySupported =
+    !isBinaryLobby &&
+    !isMlt &&
+    !isPan &&
+    !isHotSeatGame &&
+    !isPeoplePoll &&
+    !isAnonymousRoom &&
+    !isSecretMessage &&
+    !isMafia
   const isBingo = isBingoGame(settings.game_type)
   const isCodewords = isCodewordsGame(settings.game_type)
+  // Content games (CSV upload / library packs) can carry a player-facing "category" label
+  // so joiners know what the pack is about before they commit (e.g. "Maths"). For library
+  // packs it's auto-filled from the pack name; for a CSV upload we ask the host directly,
+  // right under the upload — hence gated on the custom source. Reused across game blocks.
+  const showsContentLabel =
+    isLobbyQuestions || isCrossword || isWordSearch || isWordScramble || isCodewords || isDescribeIt || isWst
+  const categoryUploadField =
+    showsContentLabel && questionSource === 'custom' ? (
+      <Field label="Category">
+        <input
+          value={settings.content_label}
+          onChange={(e) => {
+            contentLabelTouchedRef.current = true
+            setSettings({ ...settings, content_label: e.target.value })
+          }}
+          placeholder="Maths, Countries, Mixed"
+          maxLength={40}
+          className="input-field"
+        />
+        <p className="text-faint text-xs mt-2">What is this CSV theme? Shown to players before they join.</p>
+      </Field>
+    ) : null
+  // Mirror the AI "Theme (optional)" into the player-facing Category so the host doesn't fill both —
+  // until they hand-edit the Category, after which we stop overriding it.
+  const handleAiThemeChange = (theme: string) => {
+    if (!contentLabelTouchedRef.current) setSettings((s) => ({ ...s, content_label: theme }))
+  }
   const isMessageBoard = isAnonymousRoom || isSecretMessage
   const isQuickLobby =
+    isWst ||
     isMessageBoard ||
     isBingo ||
     isCodewords ||
@@ -837,16 +1074,22 @@ function CreateGameInner() {
     isYahtzee ||
     isWhot ||
     isCrazy8 ||
+    isUno ||
     isLudo ||
     isSnakeLadder ||
     isTicTacToe ||
+    isPingPong ||
     isChess ||
     isScrabble ||
     isDescribeIt ||
     isQuickDraw ||
     isWordRush ||
     isNpat ||
+    isLandmine ||
     isSudoku ||
+    isCrossword ||
+    isWordSearch ||
+    isWordScramble ||
     isWordHunt ||
     isMatchingPairs
   const isTriviaQuickCreate = isTrivia
@@ -875,6 +1118,11 @@ function CreateGameInner() {
     setCustomWyrQuestions([])
     setCustomMltQuestions([])
     setCustomTriviaQuestions([])
+    setCustomCrosswordEntries([])
+    setCustomWordSearchWords([])
+    setCustomWordScrambleWords([])
+    setPuzzleUploadError(null)
+    setPuzzleUploadSummary(null)
     setDescribeItWords('')
     setQuickDrawWords('')
     setSelectedPackId(null)
@@ -885,9 +1133,24 @@ function CreateGameInner() {
       setNpatGameDuration(NPAT_DEFAULT_GAME_DURATION)
       setNpatMarkingTimer(NPAT_DEFAULT_MARKING_TIMER)
     }
+    if (isLandmineGame(type)) {
+      // Reset Landmine's own timers so switching from a game with different options can't leave
+      // them on a value outside Landmine's allowed set.
+      setLandmineCategoryTimer(LANDMINE_DEFAULT_CATEGORY_TIMER)
+      setLandmineMarkingTimer(LANDMINE_DEFAULT_MARKING_TIMER)
+    }
     setSettings({
       ...settings,
       game_type: type,
+      // Reset the shared rounds_count + writing timer to Landmine-valid defaults (they carry over
+      // from the previous game type and may not be in Landmine's option sets).
+      ...(isLandmineGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            rounds_count: LANDMINE_DEFAULT_ROUND_COUNT,
+            timer_seconds: LANDMINE_DEFAULT_WRITING_TIMER,
+          }
+        : {}),
       ...(isLobbyGame(type) ? { participant_mode: 'joiners', anonymous: true } : {}),
       ...(isAnonymousMessagesGame(type)
         ? { participant_mode: 'joiners' as const, anonymous: true, rounds_count: 1 }
@@ -947,7 +1210,7 @@ function CreateGameInner() {
             participant_mode: 'joiners' as const,
             anonymous: true,
             rounds_count: 1,
-            timer_seconds: 0,
+            timer_seconds: 30,
           }
         : {}),
       ...(isWhotGame(type)
@@ -955,7 +1218,7 @@ function CreateGameInner() {
             participant_mode: 'joiners' as const,
             anonymous: true,
             rounds_count: 1,
-            timer_seconds: 0,
+            timer_seconds: 30,
           }
         : {}),
       ...(isCrazyEightsGame(type)
@@ -963,7 +1226,15 @@ function CreateGameInner() {
             participant_mode: 'joiners' as const,
             anonymous: true,
             rounds_count: 1,
-            timer_seconds: 0,
+            timer_seconds: 30,
+          }
+        : {}),
+      ...(isUnoGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: 30,
           }
         : {}),
       ...(isLudoGame(type)
@@ -971,7 +1242,7 @@ function CreateGameInner() {
             participant_mode: 'joiners' as const,
             anonymous: true,
             rounds_count: 1,
-            timer_seconds: 60,
+            timer_seconds: 30,
           }
         : {}),
       ...(isSnakeAndLadderGame(type)
@@ -1005,7 +1276,7 @@ function CreateGameInner() {
             participant_mode: 'joiners' as const,
             anonymous: true,
             rounds_count: 1,
-            timer_seconds: 0,
+            timer_seconds: 300, // 5 min per-player time bank
           }
         : {}),
       ...(isICallOnGame(type)
@@ -1017,6 +1288,20 @@ function CreateGameInner() {
           }
         : {}),
       ...(isSudokuGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+          }
+        : {}),
+      ...(isCrosswordGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+          }
+        : {}),
+      ...(isWordSearchGame(type)
         ? {
             participant_mode: 'joiners' as const,
             anonymous: true,
@@ -1036,6 +1321,30 @@ function CreateGameInner() {
             anonymous: true,
             rounds_count: 1,
             timer_seconds: WORD_HUNT_DEFAULT_TIMER,
+          }
+        : {}),
+      ...(isMahjongGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: 30,
+          }
+        : {}),
+      ...(isScrabbleGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: 120, // 2 min per turn
+          }
+        : {}),
+      ...(isTicTacToeGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: 30,
           }
         : {}),
       ...(isWhoSaidThis(type)
@@ -1336,14 +1645,61 @@ function CreateGameInner() {
     if (isTrivia) setCustomTriviaQuestions((prev) => prev.filter((_, i) => i !== index))
   }
 
+  // Who Said This deck upload (quote + A/B/C/D options + correct) — trivia-style CSV/xlsx.
+  const handleWstDeckUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setWstDeckError(null)
+    try {
+      const name = file.name.toLowerCase()
+      const result =
+        name.endsWith('.xlsx') || name.endsWith('.xls')
+          ? await parseExcelWstDeckImport(await file.arrayBuffer())
+          : parseWstDeckImport(await file.text())
+      if (result.questions.length < WST_DECK_MIN_ENTRIES) {
+        setWstDeck([])
+        setWstDeckError(
+          `Need at least ${WST_DECK_MIN_ENTRIES} questions — each row is a quote, its options, and which is correct.`
+        )
+        return
+      }
+      setWstDeck(result.questions)
+      const extra = formatEntryImportSummary(result)
+      if (extra) setWstDeckError(extra)
+    } catch {
+      setWstDeckError('Could not read that file. Use a CSV/Excel with quote, option_a…option_d, correct.')
+    }
+  }
+
   const createGame = async () => {
     if (loading) return
     if (isQuickLobby) {
       if (!settings.title.trim()) return
+      if (isWstDeck && wstDeckContent.length < WST_DECK_MIN_ENTRIES) return
       if (
         isCodewords &&
         (questionSource === 'custom' || questionSource === 'library') &&
         customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL
+      )
+        return
+      // Custom/library crossword + word search need at least 4 entries to pack a grid.
+      if (
+        isCrossword &&
+        (questionSource === 'custom' || questionSource === 'library') &&
+        customCrosswordEntries.length < 4
+      )
+        return
+      if (
+        isWordSearch &&
+        (questionSource === 'custom' || questionSource === 'library') &&
+        customWordSearchWords.length < 4
+      )
+        return
+      if (
+        isWordScramble &&
+        (questionSource === 'custom' || questionSource === 'library') &&
+        customWordScrambleWords.length < 4
       )
         return
     } else if (isTriviaQuickCreate) {
@@ -1357,51 +1713,94 @@ function CreateGameInner() {
         body: JSON.stringify({
           ...settings,
           ...(isWordHunt ? { timer_seconds: wordHuntTimer } : {}),
-          rounds_count: isWst ? Math.max(participants.length, 2) : settings.rounds_count,
-          question_source: isCodewords
-            ? questionSource === 'library'
+          rounds_count: isWst
+            ? isWstDeck
+              ? Math.max(wstDeckContent.length, 2)
+              : Math.max(participants.length, 2)
+            : settings.rounds_count,
+          question_source: isWst
+            ? isWstDeck && wstDeckContent.length >= WST_DECK_MIN_ENTRIES
               ? 'custom'
-              : questionSource
-            : isDescribeIt
-              ? (questionSource === 'custom' || questionSource === 'library') &&
-                parseDescribeItWords(describeItWords).length > 0
+              : 'platform'
+            : isCrossword
+              ? (questionSource === 'custom' || questionSource === 'library') && customCrosswordEntries.length >= 4
                 ? 'custom'
                 : 'platform'
-              : isQuickDraw
-                ? (questionSource === 'custom' || questionSource === 'library') &&
-                  parseDescribeItWords(quickDrawWords).length > 0
+              : isWordSearch
+                ? (questionSource === 'custom' || questionSource === 'library') && customWordSearchWords.length >= 4
                   ? 'custom'
                   : 'platform'
-                : isLobbyQuestions
-                  ? questionSource === 'library'
+                : isWordScramble
+                  ? (questionSource === 'custom' || questionSource === 'library') && customWordScrambleWords.length >= 4
                     ? 'custom'
-                    : questionSource
-                  : 'platform',
-          custom_questions: isCodewords
-            ? questionSource === 'custom' || questionSource === 'library'
-              ? customCodewordsWords
+                    : 'platform'
+                  : isCodewords
+                    ? questionSource === 'library'
+                      ? 'custom'
+                      : questionSource
+                    : isDescribeIt
+                      ? (questionSource === 'custom' || questionSource === 'library') &&
+                        parseDescribeItWords(describeItWords).length > 0
+                        ? 'custom'
+                        : 'platform'
+                      : isQuickDraw
+                        ? (questionSource === 'custom' || questionSource === 'library') &&
+                          parseDescribeItWords(quickDrawWords).length > 0
+                          ? 'custom'
+                          : 'platform'
+                        : isLobbyQuestions
+                          ? questionSource === 'library'
+                            ? 'custom'
+                            : questionSource
+                          : 'platform',
+          custom_questions: isWst
+            ? isWstDeck && wstDeckContent.length >= WST_DECK_MIN_ENTRIES
+              ? wstDeckContent
               : null
-            : isDescribeIt
-              ? (questionSource === 'custom' || questionSource === 'library') &&
-                parseDescribeItWords(describeItWords).length > 0
-                ? parseDescribeItWords(describeItWords)
+            : isCrossword
+              ? (questionSource === 'custom' || questionSource === 'library') && customCrosswordEntries.length >= 4
+                ? customCrosswordEntries
                 : null
-              : isQuickDraw
-                ? (questionSource === 'custom' || questionSource === 'library') &&
-                  parseDescribeItWords(quickDrawWords).length > 0
-                  ? parseDescribeItWords(quickDrawWords)
+              : isWordSearch
+                ? (questionSource === 'custom' || questionSource === 'library') && customWordSearchWords.length >= 4
+                  ? customWordSearchWords
                   : null
-                : isLobbyQuestions && (questionSource === 'custom' || questionSource === 'library')
-                  ? isWyr || isTot
-                    ? customWyrQuestions
-                    : isTrivia
-                      ? customTriviaQuestions
-                      : isQuiplash
-                        ? customMltQuestions
-                        : customMltQuestions
-                  : null,
+                : isWordScramble
+                  ? (questionSource === 'custom' || questionSource === 'library') && customWordScrambleWords.length >= 4
+                    ? customWordScrambleWords
+                    : null
+                  : isCodewords
+                    ? questionSource === 'custom' || questionSource === 'library'
+                      ? customCodewordsWords
+                      : null
+                    : isDescribeIt
+                      ? (questionSource === 'custom' || questionSource === 'library') &&
+                        parseDescribeItWords(describeItWords).length > 0
+                        ? parseDescribeItWords(describeItWords)
+                        : null
+                      : isQuickDraw
+                        ? (questionSource === 'custom' || questionSource === 'library') &&
+                          parseDescribeItWords(quickDrawWords).length > 0
+                          ? parseDescribeItWords(quickDrawWords)
+                          : null
+                        : isLobbyQuestions && (questionSource === 'custom' || questionSource === 'library')
+                          ? isWyr || isTot
+                            ? customWyrQuestions
+                            : isTrivia
+                              ? customTriviaQuestions
+                              : isQuiplash
+                                ? customMltQuestions
+                                : customMltQuestions
+                          : null,
           trivia_category: isTrivia ? triviaCategory : undefined,
           describe_it_mode: isDescribeIt ? settings.describe_it_mode : undefined,
+          landmine_mode: isLandmine ? landmineMode : undefined,
+          landmine_mine_source: isLandmine ? landmineMineSource : undefined,
+          landmine_elim_seconds: isLandmine ? landmineElimSeconds : undefined,
+          landmine_mine_count: isLandmine ? landmineMineCount : undefined,
+          landmine_originality_bonus: isLandmine ? landmineOriginality : undefined,
+          landmine_review: isLandmine ? landmineReview : undefined,
+          landmine_review_seconds: isLandmine ? landmineReviewSeconds : undefined,
           quick_draw_variant: isQuickDraw ? settings.quick_draw_variant : undefined,
           quick_draw_play_mode:
             isQuickDraw && settings.quick_draw_variant === 'guess' ? settings.quick_draw_play_mode : undefined,
@@ -1441,30 +1840,42 @@ function CreateGameInner() {
                               ? whotMaxPlayers
                               : isCrazy8
                                 ? crazy8MaxPlayers
-                                : isLudo
-                                  ? ludoMaxPlayers
-                                  : isSnakeLadder
-                                    ? snakeLadderMaxPlayers
-                                    : isNpat
-                                      ? npatMaxPlayers
-                                      : isSudoku
-                                        ? sudokuMaxPlayers
-                                        : isWordHunt
-                                          ? wordHuntMaxPlayers
-                                          : isWordRush
-                                            ? wordRushMaxPlayers
-                                            : isMatchingPairs
-                                              ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
-                                              : undefined,
+                                : isUno
+                                  ? unoMaxPlayers
+                                  : isLudo
+                                    ? ludoMaxPlayers
+                                    : isSnakeLadder
+                                      ? snakeLadderMaxPlayers
+                                      : isNpat
+                                        ? npatMaxPlayers
+                                        : isSudoku
+                                          ? sudokuMaxPlayers
+                                          : isCrossword
+                                            ? crosswordMaxPlayers
+                                            : isWordSearch
+                                              ? wordSearchMaxPlayers
+                                              : isWordScramble
+                                                ? wordScrambleMaxPlayers
+                                                : isWordHunt
+                                                  ? wordHuntMaxPlayers
+                                                  : isWordRush
+                                                    ? wordRushMaxPlayers
+                                                    : isDescribeIt
+                                                      ? describeItMaxPlayers
+                                                      : isMatchingPairs
+                                                        ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
+                                                        : undefined,
           operative_timer_seconds: isCodewords
             ? codewordsOperativeTimer
             : isNpat
               ? npatMarkingTimer
-              : isQuiplash
-                ? quiplashVoteTimer
-                : isQuickDraw
-                  ? quickDrawTitleTimer
-                  : undefined,
+              : isLandmine
+                ? landmineMarkingTimer
+                : isQuiplash
+                  ? quiplashVoteTimer
+                  : isQuickDraw
+                    ? quickDrawTitleTimer
+                    : undefined,
           codewords_player_picks: isCodewords ? codewordsPlayerPicks : undefined,
           codewords_late_join: isCodewords ? lateJoinPolicy === 'viewers_and_players' : undefined,
           codewords_randomize_teams: isCodewords ? codewordsRandomizeTeams : undefined,
@@ -1481,17 +1892,27 @@ function CreateGameInner() {
               ? whotGameDuration
               : isCrazy8
                 ? crazy8GameDuration
-                : isNpat
-                  ? npatGameDuration
-                  : isScrabble
-                    ? scrabbleGameDuration
-                    : isSudoku
-                      ? sudokuGameDuration
-                      : isMatchingPairs
-                        ? (settings.game_duration_seconds ?? 0)
-                        : isQuickDraw
-                          ? quickDrawVoteTimer
-                          : undefined,
+                : isUno
+                  ? unoGameDuration
+                  : isNpat
+                    ? npatGameDuration
+                    : isScrabble
+                      ? scrabbleGameDuration
+                      : isSudoku
+                        ? sudokuGameDuration
+                        : isCrossword
+                          ? crosswordGameDuration
+                          : isWordSearch
+                            ? wordSearchGameDuration
+                            : isWordScramble
+                              ? wordScrambleGameDuration
+                              : isMatchingPairs
+                                ? (settings.game_duration_seconds ?? 0)
+                                : isQuickDraw
+                                  ? quickDrawVoteTimer
+                                  : isLandmine
+                                    ? landmineCategoryTimer
+                                    : undefined,
           whot_pick3_enabled: isWhot ? whotPick3Enabled : undefined,
           whot_pick2_stacking: isWhot ? whotPick2Stacking : undefined,
           whot_cards_enabled: isWhot ? whotCardsEnabled : undefined,
@@ -1499,13 +1920,57 @@ function CreateGameInner() {
           crazy8_action_cards: isCrazy8 ? crazy8ActionCards : undefined,
           crazy8_jokers: isCrazy8 ? crazy8Jokers : undefined,
           crazy8_pick2_stacking: isCrazy8 ? crazy8Pick2Stacking : undefined,
+          uno_wd4_challenge: isUno ? unoWd4Challenge : undefined,
+          uno_uno_penalty: isUno ? unoUnoPenalty : undefined,
+          uno_zero_seven: isUno ? unoZeroSeven : undefined,
+          uno_stacking: isUno ? unoStacking : undefined,
+          uno_multi_play_mode: isUno ? unoMultiPlayMode : undefined,
+          uno_team_mode: isUno ? unoTeamMode : undefined,
+          // Team-Up is strictly 2v2.
+          ...(isUno && unoTeamMode ? { max_players: 4 } : {}),
           ludo_variant: isLudo ? ludoVariant : undefined,
           ayo_variant: isAyo ? ayoVariant : undefined,
+          mahjong_ruleset: isMahjong ? mahjongRuleset : undefined,
           scrabble_dictionary_id: isScrabble ? scrabbleDictionary : undefined,
           scrabble_clock_mode: isScrabble ? scrabbleClockMode : undefined,
           scrabble_clock_seconds: isScrabble && scrabbleClockMode === 'chess' ? scrabbleClockSeconds : undefined,
           chess_board_theme: isChess ? chessBoardTheme : undefined,
           chess_piece_set: isChess ? chessPieceSet : undefined,
+          // A `pt:<id>` value is an admin theme — send it as puzzle_theme_id (the server folds its
+          // word pool + locked difficulty), not as the built-in theme column.
+          crossword_theme: isCrossword
+            ? puzzleThemeIdFromValue(crosswordTheme)
+              ? undefined
+              : crosswordTheme
+            : undefined,
+          crossword_difficulty: isCrossword ? crosswordDifficulty : undefined,
+          word_search_theme: isWordSearch
+            ? puzzleThemeIdFromValue(wordSearchTheme)
+              ? undefined
+              : wordSearchTheme
+            : undefined,
+          word_search_difficulty: isWordSearch ? wordSearchDifficulty : undefined,
+          word_scramble_theme: isWordScramble
+            ? puzzleThemeIdFromValue(wordScrambleTheme)
+              ? undefined
+              : wordScrambleTheme
+            : undefined,
+          word_scramble_difficulty: isWordScramble ? wordScrambleDifficulty : undefined,
+          // Only an admin theme picked under Platform folds a pool. Switching to Library/Your own
+          // leaves the prior `pt:<id>` in theme state; gate by source so a stale admin theme can't
+          // override the custom pool or the (now editable) difficulty.
+          puzzle_theme_id:
+            questionSource === 'platform'
+              ? (puzzleThemeIdFromValue(
+                  isCrossword
+                    ? crosswordTheme
+                    : isWordSearch
+                      ? wordSearchTheme
+                      : isWordScramble
+                        ? wordScrambleTheme
+                        : ''
+                ) ?? undefined)
+              : undefined,
           elimination_config:
             eliminationEnabled && isEliminationCompatible
               ? eliminationMode === 'per-round'
@@ -1541,6 +2006,16 @@ function CreateGameInner() {
         // panel and can reopen it later without the saved link (same-device recovery).
         // The token also lives in the panel's share menu for hosting on another device.
         rememberHostToken(data.gameCode, data.hostToken)
+        // Carry the host's create-screen choice into the lobby. A typed name under
+        // "Host + play" means "seat me automatically" (the lobby auto-joins with it);
+        // an empty name still lands in play mode but waits for a manual Join, and
+        // "Host only" makes the host a spectator. Consumed once on the host panel.
+        if (hostPlaySupported) {
+          setHostPlayIntent(data.gameCode, {
+            name: hostName.trim(),
+            role: hostWillPlay ? 'play' : 'host',
+          })
+        }
         const roomParam = searchParams.get('room')
         const memberParam = searchParams.get('member')
         if (roomParam) {
@@ -1627,25 +2102,70 @@ function CreateGameInner() {
             >
               {(settings.game_type === 'monopoly'
                 ? THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
-                : THEMES.filter((theme) => theme.id !== 'pirate' && theme.id !== 'arctic' && theme.id !== 'naija')
+                : settings.game_type === 'ping_pong'
+                  ? THEMES.filter((theme) => theme.id === 'default' || theme.id === 'grass_court')
+                  : THEMES.filter(
+                      (theme) =>
+                        theme.id !== 'pirate' &&
+                        theme.id !== 'arctic' &&
+                        theme.id !== 'naija' &&
+                        theme.id !== 'grass_court'
+                    )
               ).map((theme) => {
                 const monopolyEdition =
                   settings.game_type === 'monopoly' ? MONOPOLY_EDITIONS.find((e) => e.themeId === theme.id) : null
                 const displayTheme = monopolyEdition
                   ? { ...theme, label: monopolyEdition.editionName, emoji: monopolyEdition.editionEmoji }
-                  : theme
+                  : settings.game_type === 'ping_pong' && theme.id === 'default'
+                    ? {
+                        ...theme,
+                        label: 'Table Tennis',
+                        emoji: '🏓',
+                        preview: { bg: '#064e3b', accent: '#f43f5e', text: '#ecfdf5' },
+                      }
+                    : theme
                 return (
                   <ThemePreviewCard
                     key={theme.id}
                     theme={displayTheme}
                     selected={settings.theme === theme.id}
                     onClick={() => setSettings({ ...settings, theme: theme.id })}
-                    onPreview={() => setPreviewTheme(theme)}
+                    onPreview={() => setPreviewTheme(displayTheme)}
                   />
                 )
               })}
             </div>
           </div>
+
+          {/* You — host seat choice, carried into the lobby via host-play intent */}
+          {hostPlaySupported && (
+            <div className="glass-card p-5 space-y-3">
+              <p className="label-caps">You</p>
+              <SegmentedControl
+                value={hostWillPlay ? 'play' : 'host'}
+                onChange={(v) => setHostWillPlay(v === 'play')}
+                options={[
+                  { label: 'Host + play', value: 'play' },
+                  { label: 'Host only', value: 'host' },
+                ]}
+              />
+              {hostWillPlay && (
+                <div className="pt-1">
+                  <input
+                    type="text"
+                    value={hostName}
+                    onChange={(e) => setHostName(e.target.value)}
+                    placeholder="Your name (optional)"
+                    maxLength={24}
+                    className="input-field w-full"
+                  />
+                  <p className="text-faint text-xs mt-1.5 leading-relaxed">
+                    Enter your name to be seated automatically. Leave it blank to add yourself from the lobby.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Rules */}
           <div className="glass-card p-5 space-y-5">
@@ -1677,9 +2197,7 @@ function CreateGameInner() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} />
                 <p className="text-faint text-sm leading-relaxed">
                   Players join with one tap and get a random lobby name shown on their messages. The cap applies to the
                   lobby before start. With &quot;Allow viewers&quot;, people can watch after the session starts
@@ -1748,11 +2266,7 @@ function CreateGameInner() {
                     </select>
                   </Field>
                 )}
-                {showViewerToggle && (
-                  <Field label="Late joiners">
-                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
-                  </Field>
-                )}
+                {showViewerToggle && <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} />}
                 <p className="text-faint text-sm leading-relaxed">
                   Players join with their name and get a unique 5×5 card. Called squares turn blue on their card; they
                   tap blue to mark green, then tap BINGO when they complete a line.
@@ -1819,11 +2333,7 @@ function CreateGameInner() {
                     ))}
                   </select>
                 </Field>
-                {showViewerToggle && (
-                  <Field label="Late joiners">
-                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
-                  </Field>
-                )}
+                {showViewerToggle && <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} />}
                 <p className="text-faint text-sm leading-relaxed">
                   Everyone writes a funny answer to the same prompt. Answers battle head-to-head and the group votes for
                   the funniest — you earn one point per vote.
@@ -2053,6 +2563,7 @@ function CreateGameInner() {
                         gameType="describe_it"
                         noun={settings.quick_draw_variant === 'guess' ? 'words' : 'prompts'}
                         defaultCount={30}
+                        onThemeChange={handleAiThemeChange}
                         onGenerated={(questions) => {
                           setQuickDrawUploadError(null)
                           setQuickDrawWords(parseDescribeItWords((questions as string[]).join('\n')).join('\n'))
@@ -2122,11 +2633,8 @@ function CreateGameInner() {
                     )}
                   </div>
                 )}
-                {showViewerToggle && (
-                  <Field label="Late joiners">
-                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
-                  </Field>
-                )}
+                {categoryUploadField}
+                {showViewerToggle && <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} />}
                 <p className="text-faint text-sm leading-relaxed">
                   {settings.quick_draw_variant === 'guess'
                     ? settings.quick_draw_play_mode === 'individual'
@@ -2163,11 +2671,7 @@ function CreateGameInner() {
                     ))}
                   </select>
                 </Field>
-                {showViewerToggle && (
-                  <Field label="Late joiners">
-                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
-                  </Field>
-                )}
+                {showViewerToggle && <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} />}
                 <p className="text-faint text-sm leading-relaxed">
                   Everyone writes two truths and one lie in the lobby. Each round spotlights one player — the rest guess
                   which statement is the lie. Correct guesses earn points; fool the room for bonus points.
@@ -2214,9 +2718,7 @@ function CreateGameInner() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="monopoly" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="monopoly" />
                 <p className="text-faint text-sm leading-relaxed">
                   {formatThemedText(
                     'Players join with their name and start on GO with £1,500. Take turns rolling dice, buying properties, paying rent, and drawing cards. Last player standing wins! If someone stalls, their turn auto-resolves. Set a game length to end automatically — the richest player wins when time runs out.',
@@ -2252,9 +2754,7 @@ function CreateGameInner() {
                     <option value={120}>2 minutes</option>
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="yahtzee" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="yahtzee" />
                 <p className="text-faint text-sm leading-relaxed">
                   Play solo or with up to six friends. Take turns rolling 5 dice, holding what you want, and scoring an
                   unused category on your sheet. Highest total score at the end wins!
@@ -2301,9 +2801,7 @@ function CreateGameInner() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="whot" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="whot" />
                 <Field label="House rules">
                   <div className="space-y-2">
                     <Toggle
@@ -2383,9 +2881,7 @@ function CreateGameInner() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="crazy_eights" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="crazy_eights" />
                 <Field label="House rules">
                   <div className="space-y-2">
                     <Toggle
@@ -2415,6 +2911,118 @@ function CreateGameInner() {
                   suit{crazy8ActionCards ? '; 2 makes them draw, J & A skip, Q reverses' : ''}. First to empty their
                   hand wins! With a game length set, time running out ends the game — whoever has the lowest total on
                   the cards left in their hand wins.
+                </p>
+              </SettingsGroup>
+            ) : isUno ? (
+              <SettingsGroup title="UNO room">
+                <Field label="Team-Up (2v2)">
+                  <Toggle
+                    label="Team-Up mode"
+                    description="4 players in 2 teams of 2. Teammates sit across and see each other's hands; a team wins the round the moment either partner empties their hand."
+                    value={unoTeamMode}
+                    onChange={setUnoTeamMode}
+                  />
+                </Field>
+                {unoTeamMode ? (
+                  <Field label="Players">
+                    <div className="input-field w-full bg-[var(--surface-inset-bg)] text-muted">
+                      4 players (2 teams of 2)
+                    </div>
+                  </Field>
+                ) : (
+                  <Field label={`Max players (${effectiveLimits.uno.min}–${effectiveLimits.uno.max})`}>
+                    <select
+                      value={unoMaxPlayers}
+                      onChange={(e) => setUnoMaxPlayers(Number(e.target.value))}
+                      className="input-field w-full"
+                    >
+                      {playerCountOptions(effectiveLimits.uno.min, effectiveLimits.uno.max).map((n) => (
+                        <option key={n} value={n}>
+                          {n} players
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
+                <Field label="Turn timer">
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    {turnTimerOptionsFor('uno').map((s) => (
+                      <option key={s} value={s}>
+                        {formatBoardGameTurnTimer(s)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Game length">
+                  <select
+                    value={unoGameDuration}
+                    onChange={(e) => setUnoGameDuration(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {UNO_GAME_DURATION_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {formatUnoGameDuration(s)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="uno" />
+                <Field label="Missed “UNO” penalty">
+                  <select
+                    value={unoUnoPenalty}
+                    onChange={(e) => setUnoUnoPenalty(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    <option value={2}>Draw 2 cards</option>
+                    <option value={4}>Draw 4 cards (harsher)</option>
+                  </select>
+                </Field>
+                <Field label="House rules">
+                  <div className="space-y-2">
+                    <Toggle
+                      label="Wild Draw Four challenge"
+                      description="Let the next player challenge a Wild Draw Four — the system reveals the hand. Off: they always draw 4."
+                      value={unoWd4Challenge}
+                      onChange={setUnoWd4Challenge}
+                    />
+                    <Toggle
+                      label="0-7 rule"
+                      description="Play a 0 → everyone passes their whole hand in the direction of play. Play a 7 → swap hands with any player."
+                      value={unoZeroSeven}
+                      onChange={setUnoZeroSeven}
+                    />
+                    <Toggle
+                      label="Stacking"
+                      description="Stack Draw Two on Draw Two and Draw Four on Draw Four — the penalty piles up and passes on. Whoever would draw the pile can still challenge a Draw Four (if challenge is on)."
+                      value={unoStacking}
+                      onChange={setUnoStacking}
+                    />
+                  </div>
+                </Field>
+                <Field label="Multi-Play">
+                  <select
+                    value={unoMultiPlayMode}
+                    onChange={(e) => setUnoMultiPlayMode(e.target.value as typeof unoMultiPlayMode)}
+                    className="input-field w-full"
+                  >
+                    <option value="off">Off — one card per turn</option>
+                    <option value="same_color_or_number">Same colour or number</option>
+                    <option value="same_color">Same colour only</option>
+                    <option value="same_number">Same number only</option>
+                  </select>
+                  <p className="mt-1 text-xs text-faint">
+                    Lay several matching cards in a single turn — the last one played sets the next colour.
+                  </p>
+                </Field>
+                <p className="text-faint text-sm leading-relaxed">
+                  The party card classic — match the top card by colour, number, or symbol. Skip, Reverse, Draw Two, and
+                  Wild cards keep it lively; call &quot;UNO&quot; on your second-to-last card or draw a penalty. First
+                  to empty their hand wins! With a game length set, time running out ends the game — lowest hand total
+                  wins.
                 </p>
               </SettingsGroup>
             ) : isLudo ? (
@@ -2454,9 +3062,7 @@ function CreateGameInner() {
                     <option value="traditional">Traditional — no safe squares except your home column</option>
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="ludo" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="ludo" />
                 <p className="text-faint text-sm leading-relaxed">
                   {ludoVariant === 'traditional'
                     ? 'Traditional Ludo — the only safe spot is your own coloured home column; anywhere on the shared track, a lone piece can be captured. Roll two dice to enter, race around, and get all four pieces home to win.'
@@ -2495,17 +3101,49 @@ function CreateGameInner() {
                     <option value={90}>90 seconds</option>
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle
-                    value={lateJoinPolicy}
-                    onChange={setLateJoinPolicy}
-                    gameType="snake_and_ladder"
-                  />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="snake_and_ladder" />
                 <p className="text-faint text-sm leading-relaxed">
                   Classic Snakes &amp; Ladders — roll one die, climb the ladders, dodge the snakes. Roll a 6 to go
                   again. First to land on 100 exactly wins!
                 </p>
+              </SettingsGroup>
+            ) : isPingPong ? (
+              <SettingsGroup title="Ping Pong room">
+                <p className="text-faint text-sm">Exactly 2 players — 1v1 match where the host can play or watch.</p>
+                <Field label="Points to win">
+                  <select
+                    value={settings.ping_pong_points_to_win ?? 7}
+                    onChange={(e) => setSettings({ ...settings, ping_pong_points_to_win: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    <option value={3}>First to 3 points (Lightning)</option>
+                    <option value={5}>First to 5 points</option>
+                    <option value={7}>First to 7 points (Quick)</option>
+                    <option value={11}>First to 11 points (Standard)</option>
+                    <option value={15}>First to 15 points</option>
+                    <option value={21}>First to 21 points (Long)</option>
+                  </select>
+                </Field>
+                <Field label="Match Timer">
+                  <select
+                    value={settings.game_duration_seconds ?? 0}
+                    onChange={(e) => setSettings({ ...settings, game_duration_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    <option value={0}>No timer</option>
+                    <option value={60}>1 minute</option>
+                    <option value={120}>2 minutes</option>
+                    <option value={180}>3 minutes</option>
+                    <option value={300}>5 minutes</option>
+                    <option value={600}>10 minutes</option>
+                  </select>
+                </Field>
+                <Field label="Late joiners">
+                  <p className="text-sm font-medium">Viewers only</p>
+                  <p className="text-xs text-faint mt-1">
+                    Once the 2-player match starts, anyone else joining the room will automatically become a viewer.
+                  </p>
+                </Field>
               </SettingsGroup>
             ) : isTicTacToe ? (
               <SettingsGroup title="Tic-Tac-Toe room">
@@ -2522,9 +3160,7 @@ function CreateGameInner() {
                     <option value={60}>60 seconds</option>
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="tic_tac_toe" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="tic_tac_toe" />
                 <p className="text-faint text-sm leading-relaxed">
                   Ultimate Tic-Tac-Toe — nine small boards in one big grid. Your move sends your opponent to the
                   matching board; win three boards in a row to win it all.
@@ -2545,9 +3181,7 @@ function CreateGameInner() {
                     <option value={600}>10 minutes each</option>
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="chess" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="chess" />
                 <Field label="Board">
                   <div className="flex flex-wrap gap-2">
                     {BOARD_THEMES.map((theme) => {
@@ -2629,14 +3263,44 @@ function CreateGameInner() {
                     <option value={600}>10 minutes each</option>
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="checkers" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="checkers" />
                 <p className="text-faint text-sm leading-relaxed">
                   Classic checkers — Black moves first, jumps are forced, and reaching the far row crowns a king.
                   Capture all your opponent’s pieces to win. Each player gets their own clock that only ticks on their
                   turn.
                 </p>
+              </SettingsGroup>
+            ) : isMahjong ? (
+              <SettingsGroup title="Mahjong room">
+                <p className="text-faint text-sm">Exactly 4 players — the host can join as one of them.</p>
+                <Field label="Turn timer">
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    <option value={0}>No timer</option>
+                    <option value={30}>30 seconds</option>
+                    <option value={60}>60 seconds</option>
+                    <option value={90}>90 seconds</option>
+                    <option value={120}>2 minutes</option>
+                  </select>
+                </Field>
+                <Field label="Ruleset">
+                  <select
+                    value={mahjongRuleset}
+                    onChange={(e) => setMahjongRuleset(e.target.value as MahjongRuleset)}
+                    className="input-field w-full"
+                  >
+                    {MAHJONG_RULESETS.map((id) => (
+                      <option key={id} value={id}>
+                        {MAHJONG_RULESET_CONFIG[id].label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-faint text-xs mt-2">{MAHJONG_RULESET_CONFIG[mahjongRuleset].description}</p>
+                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="mahjong" />
               </SettingsGroup>
             ) : isAyo ? (
               <SettingsGroup title="Ayo room">
@@ -2664,9 +3328,7 @@ function CreateGameInner() {
                     <option value={600}>10 minutes each</option>
                   </select>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="ayo" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="ayo" />
                 <p className="text-faint text-sm leading-relaxed">
                   {ayoVariant === 'traditional'
                     ? 'Traditional Ayo Olopon — sow anti-clockwise and complete fours on your own houses to win them. If you complete a four on your opponent’s house with your last seed, you win it; if you still have seeds left to sow, they win it instead. Most houses wins the round; each round win takes one of their houses. Play until all opponent houses are gone. Winner is Ọta; three straight round wins makes an Ọta champion.'
@@ -2749,14 +3411,207 @@ function CreateGameInner() {
                   </select>
                   <p className="text-faint mt-1 text-xs">{SCRABBLE_DICTIONARY_BLURBS[scrabbleDictionary]}</p>
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="scrabble" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="scrabble" />
                 <p className="text-faint text-sm leading-relaxed">
                   Build words on a 15×15 board, hit the premium squares, and outscore everyone. Every word is checked
                   against a real dictionary; highest score when the tiles run out wins. Set a game length so it
                   can&apos;t run for hours.
                 </p>
+              </SettingsGroup>
+            ) : isLandmine ? (
+              <SettingsGroup title="Landmine settings">
+                <Field label="Who plants the mine">
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      aria-pressed={landmineMineSource === 'system'}
+                      onClick={() => {
+                        setLandmineMineSource('system')
+                        setLandmineCategoryTimer(10)
+                        setLandmineReview(true)
+                        setLandmineReviewSeconds(20)
+                      }}
+                      className={[
+                        'rounded-2xl border-2 px-4 py-4 text-left',
+                        landmineMineSource === 'system'
+                          ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                          : 'border-[var(--border-strong)] text-muted',
+                      ].join(' ')}
+                    >
+                      <span className="font-bold block text-base">Auto</span>
+                      <span className="text-faint text-xs sm:text-sm">
+                        The app secretly plants the mine. Everyone plays every round.
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={landmineMineSource === 'manual'}
+                      onClick={() => {
+                        setLandmineMineSource('manual')
+                        // Give setters more time to type, and default to a single cycle.
+                        setLandmineCategoryTimer(30)
+                        setSettings((s) => ({ ...s, rounds_count: 1 }))
+                        setLandmineReview(true)
+                        setLandmineReviewSeconds(45)
+                      }}
+                      className={[
+                        'rounded-2xl border-2 px-4 py-4 text-left',
+                        landmineMineSource === 'manual'
+                          ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                          : 'border-[var(--border-strong)] text-muted',
+                      ].join(' ')}
+                    >
+                      <span className="font-bold block text-base">Manual</span>
+                      <span className="text-faint text-xs sm:text-sm">
+                        Players take turns setting the category + mine, sit out their round, and score what the room
+                        scores.
+                      </span>
+                    </button>
+                  </div>
+                </Field>
+                <Field label="Mode">
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      aria-pressed={landmineMode === 'zero_points'}
+                      onClick={() => setLandmineMode('zero_points')}
+                      className={[
+                        'rounded-2xl border-2 px-4 py-4 text-left',
+                        landmineMode === 'zero_points'
+                          ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                          : 'border-[var(--border-strong)] text-muted',
+                      ].join(' ')}
+                    >
+                      <span className="font-bold block text-base">Zero Points</span>
+                      <span className="text-faint text-xs sm:text-sm">Mine scores 0 — everyone plays all rounds</span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={landmineMode === 'elimination'}
+                      onClick={() => setLandmineMode('elimination')}
+                      className={[
+                        'rounded-2xl border-2 px-4 py-4 text-left',
+                        landmineMode === 'elimination'
+                          ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                          : 'border-[var(--border-strong)] text-muted',
+                      ].join(' ')}
+                    >
+                      <span className="font-bold block text-base">Elimination</span>
+                      <span className="text-faint text-xs sm:text-sm">Mine knocks you out — last standing wins</span>
+                    </button>
+                  </div>
+                </Field>
+                <Field label="Hidden mines each round">
+                  <select
+                    value={landmineMineCount}
+                    onChange={(e) => setLandmineMineCount(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {[1, 2, 3].map((n) => (
+                      <option key={n} value={n}>
+                        {n} mine{n > 1 ? 's' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-faint text-xs mt-1">
+                    How many of the answers are secretly booby-trapped each round. Type a mine and you score 0 (or get
+                    knocked out). More mines = riskier.
+                  </p>
+                </Field>
+                {landmineMode === 'elimination' && (
+                  <Field label="Time limit">
+                    <SegmentedControl
+                      value={String(landmineElimSeconds)}
+                      onChange={(v) => setLandmineElimSeconds(Number(v))}
+                      options={[180, 300, 600, 900].map((s) => ({ value: String(s), label: `${s / 60} min` }))}
+                    />
+                    <p className="text-faint text-xs mt-1">
+                      Elimination plays until one player is left — but if nobody hits a mine it would run forever, so
+                      the game ends when the clock runs out and ranks survivors by score.
+                    </p>
+                  </Field>
+                )}
+                {landmineMode === 'zero_points' && landmineMineSource === 'system' && (
+                  <Field label="Number of rounds">
+                    <SegmentedControl
+                      value={String(settings.rounds_count)}
+                      onChange={(v) => setSettings({ ...settings, rounds_count: Number(v) })}
+                      options={[3, 5, 8, 10].map((n) => ({ value: String(n), label: String(n) }))}
+                    />
+                  </Field>
+                )}
+                {landmineMode === 'zero_points' && landmineMineSource === 'manual' && (
+                  <Field label="Number of rounds">
+                    <SegmentedControl
+                      value={String(settings.rounds_count)}
+                      onChange={(v) => setSettings({ ...settings, rounds_count: Number(v) })}
+                      options={[1, 2, 3, 5].map((n) => ({ value: String(n), label: String(n) }))}
+                    />
+                    <p className="text-faint text-xs mt-1">
+                      One round = every player takes a turn setting the mine. So {settings.rounds_count} round
+                      {settings.rounds_count === 1 ? '' : 's'} means everyone sets{' '}
+                      {settings.rounds_count === 1 ? 'once' : `${settings.rounds_count} times`}.
+                    </p>
+                  </Field>
+                )}
+                <Field
+                  label={
+                    landmineMineSource === 'manual' ? 'Time to set the category & mine' : 'Time to pick a category'
+                  }
+                >
+                  <SegmentedControl
+                    value={String(landmineCategoryTimer)}
+                    onChange={(v) => setLandmineCategoryTimer(Number(v))}
+                    options={[5, 10, 15, 30].map((n) => ({ value: String(n), label: `${n}s` }))}
+                  />
+                </Field>
+                <Field label="Time to answer">
+                  <SegmentedControl
+                    value={String(settings.timer_seconds)}
+                    onChange={(v) => setSettings({ ...settings, timer_seconds: Number(v) })}
+                    options={[30, 45, 60, 90].map((n) => ({ value: String(n), label: `${n}s` }))}
+                  />
+                </Field>
+                <Field label="Time to vote on answers">
+                  <SegmentedControl
+                    value={String(landmineMarkingTimer)}
+                    onChange={(v) => setLandmineMarkingTimer(Number(v))}
+                    options={[20, 30, 45, 60].map((n) => ({ value: String(n), label: `${n}s` }))}
+                  />
+                </Field>
+                <label className="flex items-center justify-between gap-2 py-1">
+                  <span className="text-sm font-semibold">Originality bonus (+5 if nobody else said it)</span>
+                  <input
+                    type="checkbox"
+                    checked={landmineOriginality}
+                    onChange={(e) => setLandmineOriginality(e.target.checked)}
+                  />
+                </label>
+                <label className="flex items-center justify-between gap-2 py-1">
+                  <span className="text-sm font-semibold">
+                    Review answers before reveal
+                    <span className="block text-xs font-normal text-faint">
+                      {landmineMineSource === 'manual'
+                        ? 'The setter checks each answer before scores show.'
+                        : 'The round’s caller checks each answer before scores show. Off = instant reveal.'}
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={landmineReview}
+                    onChange={(e) => setLandmineReview(e.target.checked)}
+                  />
+                </label>
+                {landmineReview && (
+                  <Field label="Review time">
+                    <SegmentedControl
+                      value={String(landmineReviewSeconds)}
+                      onChange={(v) => setLandmineReviewSeconds(Number(v))}
+                      options={[15, 20, 30, 45, 60].map((n) => ({ value: String(n), label: `${n}s` }))}
+                    />
+                  </Field>
+                )}
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} />
               </SettingsGroup>
             ) : isDescribeIt ? (
               <SettingsGroup title="Text Charades room">
@@ -2810,6 +3665,19 @@ function CreateGameInner() {
                     </select>
                   </Field>
                 )}
+                <Field label={`Max players (up to ${DESCRIBE_IT_MAX_PLAYER_OPTIONS.at(-1)})`}>
+                  <select
+                    value={describeItMaxPlayers}
+                    onChange={(e) => setDescribeItMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {DESCRIBE_IT_MAX_PLAYER_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
                 <Field
                   label={
                     settings.describe_it_mode === 'individual'
@@ -2907,6 +3775,7 @@ function CreateGameInner() {
                         gameType="describe_it"
                         noun="words"
                         defaultCount={30}
+                        onThemeChange={handleAiThemeChange}
                         onGenerated={(questions) => {
                           setDescribeItUploadError(null)
                           setDescribeItWords(parseDescribeItWords((questions as string[]).join('\n')).join('\n'))
@@ -2998,9 +3867,8 @@ function CreateGameInner() {
                     )}
                   </div>
                 )}
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="describe_it" />
-                </Field>
+                {categoryUploadField}
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="describe_it" />
                 <p className="text-faint text-sm leading-relaxed">
                   {settings.describe_it_mode === 'individual'
                     ? 'Everyone takes turns describing one word while the rest race to guess it. Guessers score by speed and the describer scores per correct guess — highest total on the leaderboard wins.'
@@ -3144,9 +4012,7 @@ function CreateGameInner() {
                     </p>
                   )}
                 </Field>
-                <Field label="Late joiners">
-                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_rush" />
-                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_rush" />
               </SettingsGroup>
             ) : isNpat ? (
               <SettingsGroup title="I Call On room">
@@ -3337,6 +4203,7 @@ function CreateGameInner() {
                     {questionTab === 'ai' ? (
                       <AiQuestionsGenerator
                         gameType="codewords"
+                        onThemeChange={handleAiThemeChange}
                         noun="words"
                         defaultCount={Math.max(CODEWORDS_MIN_CUSTOM_POOL, 25)}
                         onGenerated={(questions) => {
@@ -3455,9 +4322,478 @@ function CreateGameInner() {
                     )}
                   </div>
                 )}
+                {categoryUploadField}
                 <p className="text-faint text-sm leading-relaxed">
                   Two teams of spymasters and operatives. Spymasters give one-word clues — operatives guess words on the
                   5×5 grid. First team to find all their words wins. Avoid the assassin!
+                </p>
+              </SettingsGroup>
+            ) : isWordSearch ? (
+              <SettingsGroup title="Word Search room">
+                <Field label={`Max players (${effectiveLimits.word_search.min}–${effectiveLimits.word_search.max})`}>
+                  <select
+                    value={wordSearchMaxPlayers}
+                    onChange={(e) => setWordSearchMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {playerCountOptions(effectiveLimits.word_search.min, effectiveLimits.word_search.max).map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Words">
+                  <SegmentedControl
+                    value={questionSource}
+                    onChange={(v) => {
+                      setQuestionSource(v as QuestionSource)
+                      setSelectedPackId(null)
+                      setLibraryPackQuestions([])
+                      setPuzzleUploadError(null)
+                      setPuzzleUploadSummary(null)
+                      if (v !== questionSource) setCustomWordSearchWords([])
+                    }}
+                    options={questionSourceOptions('word_search')}
+                  />
+                </Field>
+                {questionSource === 'library' && (
+                  <div className="space-y-2 pt-1">
+                    <LibraryPackPicker
+                      loading={libraryPacksLoading}
+                      packs={libraryPacks}
+                      search={libraryPackSearch}
+                      onSearchChange={setLibraryPackSearch}
+                      selectedPackId={selectedPackId}
+                      onSelect={selectLibraryPack}
+                      noun="words"
+                    />
+                    {customWordSearchWords.length > 0 && (
+                      <p className="text-faint text-xs text-center">
+                        Loaded {customWordSearchWords.length} words from this pack.
+                      </p>
+                    )}
+                  </div>
+                )}
+                {questionSource === 'custom' && (
+                  <PuzzleUpload
+                    sample={questionSampleFile('word_search')}
+                    hint={questionUploadHint('word_search')}
+                    buttonLabel="Choose CSV"
+                    fileRef={wordSearchFileRef}
+                    error={puzzleUploadError}
+                    summary={puzzleUploadSummary}
+                    onFile={async (file) => {
+                      setPuzzleUploadError(null)
+                      setPuzzleUploadSummary(null)
+                      try {
+                        const result = parseWordSearchEntryImport(await file.text())
+                        if (result.questions.length < 4) throw new Error('Need at least 4 words')
+                        setCustomWordSearchWords(result.questions)
+                        const extra = formatEntryImportSummary(result)
+                        setPuzzleUploadSummary(`${result.questions.length} words loaded${extra ? ` · ${extra}` : ''}`)
+                      } catch (err) {
+                        setCustomWordSearchWords([])
+                        setPuzzleUploadError(err instanceof Error ? err.message : 'Could not read that file')
+                      }
+                    }}
+                  />
+                )}
+                {categoryUploadField}
+                {questionSource === 'platform' && (
+                  <Field label="Theme">
+                    <select
+                      value={wordSearchTheme}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setWordSearchTheme(v)
+                        const locked = lockedPuzzleDifficulty(v)
+                        if (locked) setWordSearchDifficulty(locked)
+                      }}
+                      className="input-field w-full"
+                    >
+                      {wordSearchThemeOptions().map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.label}
+                        </option>
+                      ))}
+                      {puzzleThemes.length > 0 && (
+                        <optgroup label="Custom themes">
+                          {puzzleThemes.map((t) => (
+                            <option key={t.id} value={`pt:${t.id}`}>
+                              {t.name}
+                              {t.difficulty ? ` (${t.difficulty})` : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                  </Field>
+                )}
+                {
+                  /* Difficulty = grid size, shown for every source (Platform/Library/Your own). */
+                  <Field label="Difficulty">
+                    <div className="grid grid-cols-3 gap-3">
+                      {WORD_SEARCH_DIFFICULTIES.map((difficulty) => (
+                        <button
+                          key={difficulty}
+                          type="button"
+                          disabled={!!wordSearchDiffLock}
+                          onClick={() => setWordSearchDifficulty(difficulty)}
+                          className={[
+                            'rounded-2xl border-2 px-4 py-3 text-center capitalize',
+                            wordSearchDifficulty === difficulty
+                              ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                              : 'border-[var(--border-strong)] text-muted',
+                            wordSearchDiffLock ? 'opacity-50' : '',
+                          ].join(' ')}
+                        >
+                          <span className="font-bold block text-base">{difficulty}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {wordSearchDiffLock ? (
+                      <p className="mt-2 text-xs text-muted">Difficulty is set by this theme.</p>
+                    ) : (
+                      <p className="mt-2 text-xs text-muted">
+                        Sets the grid size, number of words and directions — not how tricky the words are.
+                      </p>
+                    )}
+                  </Field>
+                }
+                <Field label="Max time limit">
+                  <select
+                    value={wordSearchGameDuration}
+                    onChange={(e) => setWordSearchGameDuration(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {WORD_SEARCH_GAME_DURATION_OPTIONS.map((seconds) => (
+                      <option key={seconds} value={seconds}>
+                        {seconds === 0 ? 'No timer' : formatWordSearchGameDuration(seconds)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {showViewerToggle && (
+                  <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_search" />
+                )}
+                <p className="text-faint text-sm leading-relaxed">
+                  Race to find every hidden word in the shared grid. Drag from the first letter to the last — each word
+                  scores points, with a bonus for finding it first. Harder puzzles hide words diagonally and backwards.
+                </p>
+              </SettingsGroup>
+            ) : isWordScramble ? (
+              <SettingsGroup title="Word Scramble room">
+                <Field
+                  label={`Max players (${effectiveLimits.word_scramble.min}–${effectiveLimits.word_scramble.max})`}
+                >
+                  <select
+                    value={wordScrambleMaxPlayers}
+                    onChange={(e) => setWordScrambleMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {playerCountOptions(effectiveLimits.word_scramble.min, effectiveLimits.word_scramble.max).map(
+                      (n) => (
+                        <option key={n} value={n}>
+                          {n} players
+                        </option>
+                      )
+                    )}
+                  </select>
+                </Field>
+                <Field label="Words & hints">
+                  <SegmentedControl
+                    value={questionSource}
+                    onChange={(v) => {
+                      setQuestionSource(v as QuestionSource)
+                      setSelectedPackId(null)
+                      setLibraryPackQuestions([])
+                      setPuzzleUploadError(null)
+                      setPuzzleUploadSummary(null)
+                      // Any source switch drops the prior pool so stale custom words can't be
+                      // submitted under the Library UI (or vice-versa) without a fresh pick.
+                      if (v !== questionSource) setCustomWordScrambleWords([])
+                    }}
+                    options={questionSourceOptions('word_scramble')}
+                  />
+                </Field>
+                {questionSource === 'library' && (
+                  <div className="space-y-2 pt-1">
+                    <LibraryPackPicker
+                      loading={libraryPacksLoading}
+                      packs={libraryPacks}
+                      search={libraryPackSearch}
+                      onSearchChange={setLibraryPackSearch}
+                      selectedPackId={selectedPackId}
+                      onSelect={selectLibraryPack}
+                      noun="words"
+                    />
+                    {customWordScrambleWords.length > 0 && (
+                      <p className="text-faint text-xs text-center">
+                        Loaded {customWordScrambleWords.length} words from this pack.
+                      </p>
+                    )}
+                  </div>
+                )}
+                {questionSource === 'custom' && (
+                  <PuzzleUpload
+                    sample={questionSampleFile('word_scramble')}
+                    hint={questionUploadHint('word_scramble')}
+                    buttonLabel="Choose CSV"
+                    fileRef={wordScrambleFileRef}
+                    error={puzzleUploadError}
+                    summary={puzzleUploadSummary}
+                    onFile={async (file) => {
+                      setPuzzleUploadError(null)
+                      setPuzzleUploadSummary(null)
+                      try {
+                        const result = parseWordScrambleEntryImport(await file.text())
+                        if (result.questions.length < 4) throw new Error('Need at least 4 words')
+                        setCustomWordScrambleWords(result.questions)
+                        const extra = formatEntryImportSummary(result)
+                        setPuzzleUploadSummary(`${result.questions.length} words loaded${extra ? ` · ${extra}` : ''}`)
+                      } catch (err) {
+                        setCustomWordScrambleWords([])
+                        setPuzzleUploadError(err instanceof Error ? err.message : 'Could not read that file')
+                      }
+                    }}
+                  />
+                )}
+                {categoryUploadField}
+                {questionSource === 'platform' && (
+                  <Field label="Theme">
+                    <select
+                      value={wordScrambleTheme}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setWordScrambleTheme(v)
+                        const locked = lockedPuzzleDifficulty(v)
+                        if (locked) setWordScrambleDifficulty(locked)
+                      }}
+                      className="input-field w-full"
+                    >
+                      {wordScrambleThemeOptions().map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.label}
+                        </option>
+                      ))}
+                      {puzzleThemes.length > 0 && (
+                        <optgroup label="Custom themes">
+                          {puzzleThemes.map((t) => (
+                            <option key={t.id} value={`pt:${t.id}`}>
+                              {t.name}
+                              {t.difficulty ? ` (${t.difficulty})` : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                  </Field>
+                )}
+                {
+                  /* Difficulty = grid size, shown for every source (Platform/Library/Your own). */
+                  <Field label="Difficulty">
+                    <div className="grid grid-cols-3 gap-3">
+                      {WORD_SCRAMBLE_DIFFICULTIES.map((difficulty) => (
+                        <button
+                          key={difficulty}
+                          type="button"
+                          disabled={!!wordScrambleDiffLock}
+                          onClick={() => setWordScrambleDifficulty(difficulty)}
+                          className={[
+                            'rounded-2xl border-2 px-4 py-3 text-center capitalize',
+                            wordScrambleDifficulty === difficulty
+                              ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                              : 'border-[var(--border-strong)] text-muted',
+                            wordScrambleDiffLock ? 'opacity-50' : '',
+                          ].join(' ')}
+                        >
+                          <span className="font-bold block text-base">{difficulty}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {wordScrambleDiffLock ? (
+                      <p className="mt-2 text-xs text-muted">Difficulty is set by this theme.</p>
+                    ) : (
+                      <p className="mt-2 text-xs text-muted">
+                        Sets the word length — easy uses short words, hard uses longer ones.
+                      </p>
+                    )}
+                  </Field>
+                }
+                <Field label="Max time limit">
+                  <select
+                    value={wordScrambleGameDuration}
+                    onChange={(e) => setWordScrambleGameDuration(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {WORD_SCRAMBLE_GAME_DURATION_OPTIONS.map((seconds) => (
+                      <option key={seconds} value={seconds}>
+                        {seconds === 0 ? 'No timer' : formatWordScrambleGameDuration(seconds)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {showViewerToggle && (
+                  <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_scramble" />
+                )}
+                <p className="text-faint text-sm leading-relaxed">
+                  Everyone races the same jumbled words. Type the answer fastest — each solve scores points, with a
+                  speed bonus for solving first and extra for longer words.
+                </p>
+              </SettingsGroup>
+            ) : isCrossword ? (
+              <SettingsGroup title="Crossword room">
+                <Field label={`Max players (${effectiveLimits.crossword.min}–${effectiveLimits.crossword.max})`}>
+                  <select
+                    value={crosswordMaxPlayers}
+                    onChange={(e) => setCrosswordMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {playerCountOptions(effectiveLimits.crossword.min, effectiveLimits.crossword.max).map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Answers & clues">
+                  <SegmentedControl
+                    value={questionSource}
+                    onChange={(v) => {
+                      setQuestionSource(v as QuestionSource)
+                      setSelectedPackId(null)
+                      setLibraryPackQuestions([])
+                      setPuzzleUploadError(null)
+                      setPuzzleUploadSummary(null)
+                      if (v !== questionSource) setCustomCrosswordEntries([])
+                    }}
+                    options={questionSourceOptions('crossword')}
+                  />
+                </Field>
+                {questionSource === 'library' && (
+                  <div className="space-y-2 pt-1">
+                    <LibraryPackPicker
+                      loading={libraryPacksLoading}
+                      packs={libraryPacks}
+                      search={libraryPackSearch}
+                      onSearchChange={setLibraryPackSearch}
+                      selectedPackId={selectedPackId}
+                      onSelect={selectLibraryPack}
+                      noun="answers"
+                    />
+                    {customCrosswordEntries.length > 0 && (
+                      <p className="text-faint text-xs text-center">
+                        Loaded {customCrosswordEntries.length} answers from this pack.
+                      </p>
+                    )}
+                  </div>
+                )}
+                {questionSource === 'custom' && (
+                  <PuzzleUpload
+                    sample={questionSampleFile('crossword')}
+                    hint={questionUploadHint('crossword')}
+                    buttonLabel="Choose CSV"
+                    fileRef={crosswordFileRef}
+                    error={puzzleUploadError}
+                    summary={puzzleUploadSummary}
+                    onFile={async (file) => {
+                      setPuzzleUploadError(null)
+                      setPuzzleUploadSummary(null)
+                      try {
+                        const result = parseCrosswordEntryImport(await file.text())
+                        if (result.questions.length < 4) throw new Error('Need at least 4 answers with clues')
+                        setCustomCrosswordEntries(result.questions)
+                        const extra = formatEntryImportSummary(result)
+                        setPuzzleUploadSummary(`${result.questions.length} answers loaded${extra ? ` · ${extra}` : ''}`)
+                      } catch (err) {
+                        setCustomCrosswordEntries([])
+                        setPuzzleUploadError(err instanceof Error ? err.message : 'Could not read that file')
+                      }
+                    }}
+                  />
+                )}
+                {categoryUploadField}
+                {questionSource === 'platform' && (
+                  <Field label="Theme">
+                    <select
+                      value={crosswordTheme}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setCrosswordTheme(v)
+                        const locked = lockedPuzzleDifficulty(v)
+                        if (locked) setCrosswordDifficulty(locked)
+                      }}
+                      className="input-field w-full"
+                    >
+                      {crosswordThemeOptions().map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.label}
+                        </option>
+                      ))}
+                      {puzzleThemes.length > 0 && (
+                        <optgroup label="Custom themes">
+                          {puzzleThemes.map((t) => (
+                            <option key={t.id} value={`pt:${t.id}`}>
+                              {t.name}
+                              {t.difficulty ? ` (${t.difficulty})` : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                  </Field>
+                )}
+                {
+                  /* Difficulty = grid size, shown for every source (Platform/Library/Your own). */
+                  <Field label="Difficulty">
+                    <div className="grid grid-cols-3 gap-3">
+                      {CROSSWORD_DIFFICULTIES.map((difficulty) => (
+                        <button
+                          key={difficulty}
+                          type="button"
+                          disabled={!!crosswordDiffLock}
+                          onClick={() => setCrosswordDifficulty(difficulty)}
+                          className={[
+                            'rounded-2xl border-2 px-4 py-3 text-center capitalize',
+                            crosswordDifficulty === difficulty
+                              ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                              : 'border-[var(--border-strong)] text-muted',
+                            crosswordDiffLock ? 'opacity-50' : '',
+                          ].join(' ')}
+                        >
+                          <span className="font-bold block text-base">{difficulty}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {crosswordDiffLock ? (
+                      <p className="mt-2 text-xs text-muted">Difficulty is set by this theme.</p>
+                    ) : (
+                      <p className="mt-2 text-xs text-muted">
+                        Sets the grid size and number of words — not how tricky the words are.
+                      </p>
+                    )}
+                  </Field>
+                }
+                <Field label="Max time limit">
+                  <select
+                    value={crosswordGameDuration}
+                    onChange={(e) => setCrosswordGameDuration(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {CROSSWORD_GAME_DURATION_OPTIONS.map((seconds) => (
+                      <option key={seconds} value={seconds}>
+                        {seconds === 0 ? 'No timer' : formatCrosswordGameDuration(seconds)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {showViewerToggle && (
+                  <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="crossword" />
+                )}
+                <p className="text-faint text-sm leading-relaxed">
+                  Race to fill the shared crossword. Each word you complete first scores points; reveal a letter for a
+                  small penalty. Fastest solver — or the highest score when time runs out — wins.
                 </p>
               </SettingsGroup>
             ) : isSudoku ? (
@@ -3489,9 +4825,7 @@ function CreateGameInner() {
                   </select>
                 </Field>
                 {showViewerToggle && (
-                  <Field label="Late joiners">
-                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="sudoku" />
-                  </Field>
+                  <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="sudoku" />
                 )}
                 <p className="text-faint text-sm leading-relaxed">
                   Race to solve the 9×9 puzzle block by block. First to claim a block gets 10 pts, second 6, third 3,
@@ -3526,9 +4860,7 @@ function CreateGameInner() {
                   </select>
                 </Field>
                 {showViewerToggle && (
-                  <Field label="Late joiners">
-                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_hunt" />
-                  </Field>
+                  <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_hunt" />
                 )}
                 <p className="text-faint text-sm leading-relaxed">
                   Everyone races on the same 4×4 letter grid. Connect adjacent letters to spell valid words — 3 letters
@@ -3591,9 +4923,7 @@ function CreateGameInner() {
                   </div>
                 </Field>
                 {showViewerToggle && (
-                  <Field label="Late joiners">
-                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="mafia" />
-                  </Field>
+                  <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="mafia" />
                 )}
                 <p className="text-faint text-sm leading-relaxed">
                   Social deduction game. The Mafia tries to eliminate the Villagers without getting caught, while the
@@ -3677,13 +5007,7 @@ function CreateGameInner() {
                   </div>
                 </Field>
                 {showViewerToggle && (
-                  <Field label="Late joiners">
-                    <LateJoinPolicyToggle
-                      value={lateJoinPolicy}
-                      onChange={setLateJoinPolicy}
-                      gameType="matching_pairs"
-                    />
-                  </Field>
+                  <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="matching_pairs" />
                 )}
                 <Field label="Public game">
                   <div className="flex rounded-xl border border-[var(--border)] overflow-hidden">
@@ -3734,38 +5058,84 @@ function CreateGameInner() {
                     </Field>
                   )}
                   {isTrivia && showViewerToggle && (
-                    <Field label="Late joiners">
-                      <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
-                    </Field>
+                    <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} />
                   )}
                   {isWst ? (
                     <div className="space-y-4">
-                      <Field label="Quote source">
+                      <Field label="Questions">
                         <SegmentedControl
-                          value={wstQuoteSource}
-                          onChange={(v) => setWstQuoteSource(v)}
+                          value={wstQuoteSource === 'player' ? 'player' : questionSource}
+                          onChange={(v) => {
+                            if (v === 'player') {
+                              setWstQuoteSource('player')
+                            } else {
+                              setWstQuoteSource('deck')
+                              setQuestionSource(v as QuestionSource)
+                            }
+                          }}
                           options={[
                             {
-                              value: 'player' as WstQuoteSource,
-                              label: 'Player Quotes',
-                              hint: 'Players submit quotes in the lobby',
+                              value: 'player',
+                              label: 'Players submit',
+                              hint: 'Everyone writes a quote + 4 options in the lobby',
                             },
+                            { value: 'platform', label: 'Platform', hint: 'Our built-in pack of famous quotes' },
+                            { value: 'library', label: 'Library', hint: 'Pick a community quote pack (e.g. anime)' },
                             {
-                              value: 'anime' as WstQuoteSource,
-                              label: 'Anime Quotes',
-                              hint: 'Quotes from anime characters',
+                              value: 'custom',
+                              label: 'Your own',
+                              hint: 'Upload a CSV of quotes, options, and answers',
                             },
-                            { value: 'both' as WstQuoteSource, label: 'Both', hint: 'Mix player + anime quotes' },
                           ]}
                         />
                       </Field>
-                      <p className="text-faint text-sm leading-relaxed">
-                        {wstQuoteSource === 'anime'
-                          ? 'Anime quotes are fetched in the lobby — no player submissions needed.'
-                          : wstQuoteSource === 'both'
-                            ? 'Players submit quotes and anime quotes are fetched — both are shuffled together.'
-                            : 'Rounds are automatic — one turn per player who joins and claims their name. The count updates in the host lobby as people join.'}
-                      </p>
+                      {wstQuoteSource === 'player' ? (
+                        <p className="text-faint text-sm leading-relaxed">
+                          Players join and each submits a quote with four options (A–D) and marks the answer. When you
+                          start, everyone answers the pooled questions — fastest correct wins.
+                        </p>
+                      ) : questionSource === 'platform' ? (
+                        <p className="text-faint text-sm leading-relaxed">
+                          {WST_PLATFORM_DECK.length} famous quotes are built in — players just join and answer like
+                          trivia, fastest correct wins. No setup needed.
+                        </p>
+                      ) : questionSource === 'library' ? (
+                        <LibraryPackPicker
+                          loading={libraryPacksLoading}
+                          packs={libraryPacks}
+                          search={libraryPackSearch}
+                          onSearchChange={setLibraryPackSearch}
+                          selectedPackId={selectedPackId}
+                          onSelect={selectLibraryPack}
+                        />
+                      ) : (
+                        <div className="space-y-3">
+                          <button
+                            type="button"
+                            onClick={() => wstDeckFileRef.current?.click()}
+                            className="btn-secondary w-full py-2.5 text-sm"
+                          >
+                            {wstDeck.length > 0
+                              ? `Replace deck (${wstDeck.length} questions)`
+                              : 'Upload deck (CSV or Excel)'}
+                          </button>
+                          <input
+                            ref={wstDeckFileRef}
+                            type="file"
+                            accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            className="hidden"
+                            onChange={handleWstDeckUpload}
+                          />
+                          {wstDeckError ? <p className="text-xs text-red-400">{wstDeckError}</p> : null}
+                          <p className="text-faint text-xs leading-relaxed">
+                            Columns:{' '}
+                            <span className="font-mono">quote, option_a, option_b, option_c, option_d, correct</span>.
+                            The <span className="font-mono">correct</span> column is the answer letter (A–D). Players
+                            just join and answer like trivia — fastest correct wins.
+                          </p>
+                          {categoryUploadField}
+                        </div>
+                      )}
                     </div>
                   ) : isPanGame ? (
                     <Field label="Rounds">
@@ -3933,9 +5303,7 @@ function CreateGameInner() {
                   )}
 
                   {showViewerToggle && !isQuickLobby && !isTrivia && (
-                    <Field label="Late joiners">
-                      <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
-                    </Field>
+                    <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} />
                   )}
                 </SettingsGroup>
 
@@ -4087,6 +5455,7 @@ function CreateGameInner() {
                             gameType={settings.game_type as AiQuestionGameType}
                             triviaCategory={isTrivia ? triviaCategory : undefined}
                             noun={isTrivia ? 'questions' : 'prompts'}
+                            onThemeChange={handleAiThemeChange}
                             defaultCount={Math.min(50, Math.max(settings.rounds_count ?? 10, 10))}
                             onGenerated={(questions) => {
                               setQuestionsUploadError(null)
@@ -4225,6 +5594,7 @@ function CreateGameInner() {
                               Need at least {settings.rounds_count} questions for {settings.rounds_count} rounds.
                             </p>
                           )}
+                        {categoryUploadField}
                       </div>
                     )}
                   </SettingsGroup>
@@ -4237,6 +5607,7 @@ function CreateGameInner() {
                     !isTrivia &&
                     !isPan &&
                     !isNpat &&
+                    !isLandmine &&
                     !isScrabble) ||
                   isHotSeatGame ? (
                     <SettingsGroup title={isHotSeatGame ? "Who's in the game" : "Who's in the poll"}>
@@ -4297,6 +5668,7 @@ function CreateGameInner() {
                   !isPan &&
                   !isTrivia &&
                   !isNpat &&
+                  !isLandmine &&
                   !isScrabble && (
                     <SettingsGroup title="Who appears in rounds">
                       <SegmentedControl
@@ -4310,47 +5682,8 @@ function CreateGameInner() {
                     </SettingsGroup>
                   )}
 
-                {!isAnonymousRoom && (
-                  <SettingsGroup
-                    title="Advanced"
-                    description="Timer behavior & privacy"
-                    collapsible
-                    defaultOpen={false}
-                  >
-                    <Field label="When timer runs out">
-                      <SegmentedControl
-                        value={settings.auto_submit_behavior}
-                        onChange={(v) => setSettings({ ...settings, auto_submit_behavior: v })}
-                        options={[
-                          { value: 'random', label: 'Random fill', hint: 'Incomplete votes get random choices.' },
-                          { value: 'no_answer', label: 'No answer', hint: 'Incomplete votes count as no vote.' },
-                        ]}
-                      />
-                    </Field>
-
-                    <div className="space-y-2">
-                      {!isAnonymousGame(settings.game_type) && (
-                        <Toggle
-                          label="Anonymous responses"
-                          description="Hide who voted for what"
-                          value={settings.anonymous}
-                          onChange={(v) => setSettings({ ...settings, anonymous: v })}
-                        />
-                      )}
-                      {isAnonymousGame(settings.game_type) && (
-                        <p className="text-faint text-xs px-1">
-                          Would You Rather, Most Likely To, and Who Said This are always anonymous.
-                        </p>
-                      )}
-                      <Toggle
-                        label="Auto-reveal results"
-                        description="Show results after the last round automatically"
-                        value={settings.auto_reveal}
-                        onChange={(v) => setSettings({ ...settings, auto_reveal: v })}
-                      />
-                    </div>
-                  </SettingsGroup>
-                )}
+                {/* The "Advanced" group (timer-behavior / anonymous / auto-reveal) is hidden from
+                    the create screen — the defaults in the initial settings state are used as-is. */}
               </>
             )}
 
@@ -4515,6 +5848,7 @@ function CreateGameInner() {
           theme={previewTheme}
           onClose={() => setPreviewTheme(null)}
           onSelect={(themeId) => setSettings({ ...settings, theme: themeId })}
+          gameType={settings.game_type}
         />
       </>
     )
@@ -4633,6 +5967,7 @@ function CreateGameInner() {
               >
                 Add all from paste
               </button>
+              {uploadError && <p className="text-red-400 text-sm">{uploadError}</p>}
             </div>
           )}
 

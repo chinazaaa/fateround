@@ -9,6 +9,7 @@ import { CodewordsLobbyRoster } from '@/components/codewords/CodewordsLobbyRoste
 import { CodewordsScoreboard } from '@/components/codewords/CodewordsScoreboard'
 import { HostLobbyStartButton } from '@/components/host-lobby/HostLobbyStartButton'
 import { HostVisibilityToggle } from '@/components/host-lobby/HostVisibilityToggle'
+import { HostContentLabelField } from '@/components/host-lobby/HostContentLabelField'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
@@ -66,12 +67,16 @@ export function CodewordsHostManagePanel({
   randomizingTeams = false,
   firstTeam = 'random' as 'random' | 'red' | 'blue',
   onFirstTeamChange,
+  teamAssignment = 'players' as 'players' | 'host' | 'randomize',
+  onTeamAssignmentChange,
   customWordCount = 0,
   onEditWordPool,
   savingWordPool = false,
   settingsBottom,
   hostPlayerId = null,
   hostPlays = false,
+  embeddedInLobby = false,
+  slot = 'all',
 }: {
   game: Game
   gameCode: string
@@ -106,6 +111,8 @@ export function CodewordsHostManagePanel({
   randomizingTeams?: boolean
   firstTeam?: 'random' | 'red' | 'blue'
   onFirstTeamChange?: (team: 'random' | 'red' | 'blue') => void
+  teamAssignment?: 'players' | 'host' | 'randomize'
+  onTeamAssignmentChange?: (mode: 'players' | 'host' | 'randomize') => void
   customWordCount?: number
   onEditWordPool?: () => void
   savingWordPool?: boolean
@@ -115,6 +122,13 @@ export function CodewordsHostManagePanel({
    *  host's role achievement to the community leaderboard when they win one. */
   hostPlayerId?: string | null
   hostPlays?: boolean
+  /** When embedded inside the mobile-parity HostLobby, hide this panel's own players
+   *  list + Start/End footer (HostLobby renders those); keep teams + settings. */
+  embeddedInLobby?: boolean
+  /** Which slice to render inside HostLobby: 'lobby-teams' = the team roster only (main
+   *  screen); 'lobby-settings' = "Before you start" + Public game only (the ⚙ sheet).
+   *  'all' (default) renders everything for the tabbed manage. */
+  slot?: 'all' | 'lobby-teams' | 'lobby-settings'
 }) {
   const { error: toastError } = useToast()
   const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
@@ -208,6 +222,11 @@ export function CodewordsHostManagePanel({
         ? ready.error
         : null
 
+  // HostLobby slots: teams roster on the main screen, settings ("Before you start" +
+  // Public game) in the ⚙ sheet. 'all' (tabbed manage) shows both.
+  const showTeams = slot !== 'lobby-settings'
+  const showSettings = slot !== 'lobby-teams'
+
   const sessionEnded = game.status === 'finished'
   const roundWon = Boolean(board?.winner)
   const showWinnerResults = Boolean(board && roundWon && (sessionEnded || game.status === 'active'))
@@ -280,7 +299,7 @@ export function CodewordsHostManagePanel({
       )}
 
       {/* Teams + Unassigned roster — the lineup, kept up top */}
-      {(inLobby || game.status === 'active' || game.status === 'finished') && (
+      {showTeams && (inLobby || game.status === 'active' || game.status === 'finished') && (
         <div className="glass-card p-5 space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
@@ -353,12 +372,12 @@ export function CodewordsHostManagePanel({
         </div>
       )}
 
-      {inLobby && players.length > 0 && (
+      {inLobby && players.length > 0 && !embeddedInLobby && (
         <HostLobbyPlayersSection players={players} highlightPlayerId={null} alwaysShowReady />
       )}
 
       {/* Before you start — every other setup option lives here, collapsed by default */}
-      {inLobby && (
+      {showSettings && inLobby && (
         <HostLobbySettingsSection
           title="Before you start"
           summary={settingsSummary}
@@ -373,6 +392,25 @@ export function CodewordsHostManagePanel({
                 disabled={savingMaxPlayers}
               />
             </HostLobbySettingBlock>
+
+            {onTeamAssignmentChange && (
+              <HostLobbySettingBlock title="Team assignment">
+                <div className="flex rounded-xl border border-[var(--border)] overflow-hidden text-sm">
+                  {(['players', 'host', 'randomize'] as const).map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => onTeamAssignmentChange(opt)}
+                      className={`flex-1 py-1.5 font-semibold transition-colors ${
+                        teamAssignment === opt ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
+                      }`}
+                    >
+                      {opt === 'players' ? 'Players pick' : opt === 'host' ? 'Host assigns' : '🎲 Random'}
+                    </button>
+                  ))}
+                </div>
+              </HostLobbySettingBlock>
+            )}
 
             {onFirstTeamChange && (
               <HostLobbySettingBlock title="Goes first">
@@ -457,28 +495,34 @@ export function CodewordsHostManagePanel({
         </HostLobbySettingsSection>
       )}
 
-      {/* Start + close — actions */}
-      {inLobby && (
+      {/* Start + close — actions. Hidden inside HostLobby (it owns the Start/End footer and
+          the central Public-game toggle); shown only in the tabbed manage. */}
+      {showSettings && inLobby && !embeddedInLobby && (
         <div className="space-y-3">
-          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-3">
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-3 space-y-3">
             <HostVisibilityToggle gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={onGameUpdate} />
+            <HostContentLabelField gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={onGameUpdate} />
           </div>
-          <HostLobbyStartButton
-            onClick={onStartGame}
-            disabled={startDisabled}
-            starting={starting}
-            disabledHint={startDisabledHint}
-          />
-          <HostEndGameButton
-            gameCode={gameCode}
-            hostToken={hostToken}
-            onEnded={onReload}
-            label="End lobby"
-            icon={<ExitIcon size={16} />}
-            confirmTitle="Close this lobby?"
-            confirmMessage="Players will be disconnected. You can start a new game from Play again afterward."
-            className="btn-danger-soft"
-          />
+          {!embeddedInLobby && (
+            <>
+              <HostLobbyStartButton
+                onClick={onStartGame}
+                disabled={startDisabled}
+                starting={starting}
+                disabledHint={startDisabledHint}
+              />
+              <HostEndGameButton
+                gameCode={gameCode}
+                hostToken={hostToken}
+                onEnded={onReload}
+                label="End lobby"
+                icon={<ExitIcon size={16} />}
+                confirmTitle="Close this lobby?"
+                confirmMessage="Players will be disconnected. You can start a new game from Play again afterward."
+                className="btn-danger-soft"
+              />
+            </>
+          )}
         </div>
       )}
 

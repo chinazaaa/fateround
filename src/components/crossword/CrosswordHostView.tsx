@@ -1,0 +1,810 @@
+'use client'
+
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { supabase } from '@/lib/supabase'
+import { CrosswordBoard, crosswordPlayerColor } from '@/components/crossword/CrosswordBoard'
+import { CrosswordGameTimerBar } from '@/components/crossword/CrosswordGameTimerBar'
+import { CrosswordPlayerView } from '@/components/crossword/CrosswordPlayerView'
+import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
+import { HostGameHeader } from '@/components/host/HostGameHeader'
+import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
+import { HostManageSection } from '@/components/host/HostManageSection'
+import { HostModeSelector } from '@/components/host/HostModeSelector'
+import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
+import { HostSudokuLobbyPanel } from '@/components/host-lobby/HostSudokuLobbyPanel'
+import { HostPuzzleSettings } from '@/components/host-lobby/HostPuzzleSettings'
+import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { gameTypeConfig } from '@/lib/game-types'
+import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { ExitIcon } from '@/components/host/host-icons'
+import {
+  parseCrosswordMetadata,
+  tallyCrosswordScores,
+  buildCellOwnerGrid,
+  buildPlayerLetterGrid,
+  buildPlayerSolvedGrid,
+  crosswordWordCells,
+  fillableCellCount,
+  playerCompletionPercent,
+  CROSSWORD_MIN_PLAYERS,
+  CROSSWORD_GAME_DURATION_OPTIONS,
+  formatCrosswordGameDuration,
+  type CrosswordMetadata,
+  type CrosswordSubmission,
+} from '@/lib/crossword'
+import { getPlayerTimeSpent } from '@/lib/sudoku'
+import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT, CROSSWORD_SUBMISSION_SELECT } from '@/lib/supabase-selects'
+import { formatMinutesSeconds } from '@/lib/timer-format'
+import type { Game, Player } from '@/types'
+import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
+import { useHostAutoReady } from '@/hooks/useHostAutoReady'
+import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostSeat } from '@/hooks/useHostSeat'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
+import { useToast } from '@/components/ui/Toast'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { FinishedWinnerHero } from '@/components/FinishedWinner'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+
+type HostTab = 'manage' | 'play'
+
+function emptyLetters(size: number): string[][] {
+  return Array.from({ length: size }, () => Array(size).fill(''))
+}
+
+export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
+  const { error: toastError, success } = useToast()
+  const { confirm } = useConfirm()
+  const [game, setGame] = useState<Game | null>(null)
+  const [players, setPlayers] = useState<Player[]>([])
+  const [roundId, setRoundId] = useState<string | null>(null)
+  const [metadata, setMetadata] = useState<CrosswordMetadata | null>(null)
+  const [submissions, setSubmissions] = useState<CrosswordSubmission[]>([])
+  const [playingAgain, setPlayingAgain] = useState(false)
+  const [starting, setStarting] = useState(false)
+
+  const [tab, setTab] = useState<HostTab>('manage')
+  const [nowMs, setNowMs] = useState<number>(Date.now())
+  const [solutionGrid, setSolutionGrid] = useState<string[][] | null>(null)
+
+  useEffect(() => {
+    if (game?.status === 'active') {
+      const interval = setInterval(() => setNowMs(Date.now()), 1000)
+      return () => clearInterval(interval)
+    }
+  }, [game?.status])
+
+  useTurnNotifications({ status: game?.status })
+
+  const load = useCallback(async () => {
+    const [{ data: gameData }, { data: playersData }] = await Promise.all([
+      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
+      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+    ])
+
+    if (!gameData) return
+    setGame(gameData as Game)
+    setPlayers((playersData ?? []) as Player[])
+
+    if (gameData.status === 'active') {
+      const { data: roundData } = await supabase
+        .from('rounds')
+        .select(ROUND_SELECT)
+        .eq('game_id', gameCode)
+        .eq('round_number', 1)
+        .maybeSingle()
+      if (roundData) {
+        const meta = parseCrosswordMetadata((roundData as Record<string, unknown>).crossword_metadata)
+        if (meta) setMetadata(meta)
+        setRoundId(roundData.id as string)
+
+        const { data: subs } = await supabase
+          .from('crossword_submissions')
+          .select(CROSSWORD_SUBMISSION_SELECT)
+          .eq('round_id', roundData.id)
+        setSubmissions((subs ?? []) as CrosswordSubmission[])
+      }
+    } else if (gameData.status === 'finished') {
+      // Load the round metadata too, not just the submissions — on a refresh of the finished
+      // screen without it, `metadata` stays null and the leaderboard (and answer key) go
+      // blank because tallyCrosswordScores can't run.
+      const { data: roundData } = await supabase
+        .from('rounds')
+        .select(ROUND_SELECT)
+        .eq('game_id', gameCode)
+        .eq('round_number', 1)
+        .maybeSingle()
+      if (roundData) {
+        const meta = parseCrosswordMetadata((roundData as Record<string, unknown>).crossword_metadata)
+        if (meta) setMetadata(meta)
+        setRoundId(roundData.id as string)
+      }
+      const { data: subs } = await supabase
+        .from('crossword_submissions')
+        .select(CROSSWORD_SUBMISSION_SELECT)
+        .eq('game_id', gameCode)
+      setSubmissions((subs ?? []) as CrosswordSubmission[])
+    }
+  }, [gameCode])
+
+  useEffect(() => {
+    load()
+  }, [gameCode, load])
+
+  useEffect(() => {
+    if (game?.status === 'active') setTab('play')
+    else if (game?.status === 'finished') setTab('manage')
+  }, [game?.status])
+
+  // A replay reuses this view with a fresh round — drop the previous game's answer grid so the
+  // finish screen refetches the new puzzle's solution instead of pairing new clues with stale
+  // letters (which garbles every word in the answer key).
+  useEffect(() => {
+    setSolutionGrid(null)
+  }, [roundId])
+
+  // Pull the answer grid once the game is finished, so it can show below the leaderboard.
+  useEffect(() => {
+    if (game?.status !== 'finished' || solutionGrid) return
+    let cancelled = false
+    fetch(`/api/crossword/solution?gameId=${gameCode.toUpperCase()}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!cancelled && j?.solution) setSolutionGrid(j.solution as string[][])
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [game?.status, solutionGrid, gameCode])
+
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    leaveSeatKeepHosting,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+    onModeChange: (mode) => {
+      if (mode === 'spectator') setTab('manage')
+    },
+  })
+
+  const handlePlayerRemoved = useCallback(
+    (playerId: string) => {
+      onHostSeatRemoved(playerId)
+      setPlayers((prev) => prev.filter((p) => p.id !== playerId))
+    },
+    [onHostSeatRemoved]
+  )
+  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
+
+  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
+  useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
+
+  // Latest committed status, read by the games channel without resubscribing.
+  const gameStatusRef = useRef(game?.status)
+  gameStatusRef.current = game?.status
+  useEffect(() => {
+    const ch = supabase
+      .channel(`crossword_host_game_${gameCode}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
+        (payload) => {
+          const next = payload.new as Game
+          setGame(next)
+          // markGameFinished writes the games row more than once at finish (status, then
+          // finished_at / winner). Reloading on every UPDATE replayed the finish cascade
+          // several times — the host's "glitches several times". Reload only on a status flip.
+          if (next.status !== gameStatusRef.current) load()
+        }
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(ch)
+    }
+  }, [gameCode, load])
+
+  useEffect(() => {
+    if (!roundId) return
+    // Batch INSERT floods (every player's keystroke is an INSERT for everyone) into one update a
+    // few times a second so a busy room doesn't re-render the whole board per keystroke-per-player.
+    const pending: CrosswordSubmission[] = []
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
+    const flush = () => {
+      flushTimer = null
+      if (pending.length === 0) return
+      const batch = pending.splice(0, pending.length)
+      setSubmissions((prev) => {
+        const ids = new Set(prev.map((s) => s.id))
+        const add = batch.filter((s) => !ids.has(s.id) && (ids.add(s.id), true))
+        return add.length ? [...prev, ...add] : prev
+      })
+    }
+    const ch = supabase
+      .channel(`crossword_host_subs_${roundId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'crossword_submissions', filter: `round_id=eq.${roundId}` },
+        (payload) => {
+          pending.push(payload.new as CrosswordSubmission)
+          if (!flushTimer) flushTimer = setTimeout(flush, 200)
+        }
+      )
+      .subscribe()
+    return () => {
+      if (flushTimer) clearTimeout(flushTimer)
+      void supabase.removeChannel(ch)
+    }
+  }, [roundId])
+
+  useEffect(() => {
+    const ch = supabase
+      .channel(`crossword_host_players_${gameCode}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
+        () => {
+          supabase
+            .from('players')
+            .select(PLAYER_SELECT)
+            .eq('game_id', gameCode)
+            .order('joined_at')
+            .then(({ data }) => {
+              if (data) setPlayers(data as Player[])
+            })
+        }
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(ch)
+    }
+  }, [gameCode])
+
+  async function handleStart() {
+    if (starting) return
+    setStarting(true)
+    try {
+      const res = await fetch(`/api/games/${gameCode}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken }),
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        toastError(d.error || 'Failed to start')
+        return
+      }
+      await load()
+      if (hostMode === 'player' && hostPlayerId) setTab('play')
+    } finally {
+      setStarting(false)
+    }
+  }
+
+  async function resetGame(sameSettings: boolean) {
+    if (playingAgain) return
+    setPlayingAgain(true)
+    try {
+      const res = await fetch(`/api/games/${gameCode}/play-again`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined, same_settings: sameSettings }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        toastError(d.error || 'Failed to reset')
+        return
+      }
+      // Return to lobby keeps the host seated: the play-again route re-seats the passed
+      // hostPlayerId (resetSpectatorsForLobby(..., [hostPlayerId])), so clearing the local
+      // session here would strand the host — their row stays in the roster while the UI
+      // wrongly shows the "enter your name to join" form. Keep the session; the host can
+      // leave the seat deliberately with the Host/Play toggle if they want to.
+      if (!sameSettings) {
+        setHostJoinName('')
+      }
+      setTab('manage')
+      await load()
+    } finally {
+      setPlayingAgain(false)
+    }
+  }
+
+  const confirmPlayAgain = async () => {
+    const ok = await confirm({
+      title: 'Play again — same settings?',
+      message:
+        'Reopens the game with the same settings. Previous watchers and new people can join; everyone taps “ready” and you start the next game once enough players are in.',
+      confirmLabel: 'Play again',
+    })
+    if (ok) void resetGame(true)
+  }
+
+  const confirmReturnToLobby = async () => {
+    const ok = await confirm({
+      title: 'Return to lobby?',
+      message:
+        'Sends everyone back to the game lobby where you can tweak settings or let new people join before starting again.',
+      confirmLabel: 'Return to lobby',
+    })
+    if (ok) void resetGame(false)
+  }
+
+  const activePlayers = useMemo(() => players.filter((p) => p.spectator !== true), [players])
+  const cellOwners = useMemo(() => (metadata ? buildCellOwnerGrid(metadata, submissions) : []), [metadata, submissions])
+  const playerColors = useMemo(() => {
+    const map: Record<string, string> = {}
+    activePlayers.forEach((p, i) => {
+      map[p.id] = crosswordPlayerColor(i)
+    })
+    return map
+  }, [activePlayers])
+
+  const leaderboard = useMemo(
+    () => (metadata ? tallyCrosswordScores(metadata, submissions, players) : []),
+    [metadata, submissions, players]
+  )
+  // A crossword has exactly one winner: the single top-ranked player after all
+  // tiebreaks (points → words → finish time → name). Post the host's community win
+  // only when the host is that winner — never every player tied on points.
+  const leader = leaderboard[0]
+  const hostWon = !!leader && leader.player_id === hostPlayerId && leader.wordsCompleted > 0
+  const hostPlays = hostMode === 'player' && !!hostPlayerId
+
+  // When the host is only watching, they view one player's board (switchable), with that
+  // player's own letters — not an aggregate ownership grid.
+  const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
+  const effectiveWatchedId =
+    (watchedPlayerId && activePlayers.some((p) => p.id === watchedPlayerId) ? watchedPlayerId : null) ??
+    leaderboard.find((row) => activePlayers.some((p) => p.id === row.player_id))?.player_id ??
+    activePlayers[0]?.id ??
+    null
+  const watchedName = players.find((p) => p.id === effectiveWatchedId)?.name ?? 'a player'
+  const watchedLetterGrid = useMemo(
+    () =>
+      metadata && effectiveWatchedId
+        ? buildPlayerLetterGrid(metadata, submissions, effectiveWatchedId, emptyLetters(metadata.size))
+        : metadata
+          ? emptyLetters(metadata.size)
+          : [],
+    [metadata, submissions, effectiveWatchedId]
+  )
+  const watchedSolvedCells = useMemo(
+    () =>
+      metadata && effectiveWatchedId ? buildPlayerSolvedGrid(metadata, submissions, effectiveWatchedId) : undefined,
+    [metadata, submissions, effectiveWatchedId]
+  )
+
+  const boardCompletion = useMemo(() => {
+    if (!metadata) return 0
+    const fillable = fillableCellCount(metadata)
+    if (fillable === 0) return 0
+    let owned = 0
+    for (let r = 0; r < metadata.size; r++) {
+      for (let c = 0; c < metadata.size; c++) {
+        if (cellOwners[r]?.[c]) owned++
+      }
+    }
+    return Math.round((owned / fillable) * 100)
+  }, [metadata, cellOwners])
+
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer): late-join rules + How-to-play
+  // + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings
+          gameCode={gameCode}
+          hostToken={hostToken}
+          gameType="crossword"
+          onEnded={load}
+          endGameConfirmMessage="Players will see the final results."
+        >
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton
+              onLeave={leaveSeatKeepHosting}
+              canRejoin={false}
+              className="btn-secondary w-full py-3 text-base"
+            />
+          )}
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load, setGame, hostMode, hostPlayerId, leaveSeatKeepHosting]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
+  if (!game) {
+    return <HostLobbySkeleton />
+  }
+
+  const cfg = gameTypeConfig('crossword')
+
+  const showTabs = game.status !== 'finished'
+  const gameStarted = game.status === 'active'
+  const primaryKind: 'play' | 'watch' = hostPlays ? 'play' : 'watch'
+
+  const interactivePlay = <CrosswordPlayerView gameCode={gameCode} />
+
+  const watchBoard = (
+    <div className="space-y-6">
+      <CrosswordGameTimerBar gameCode={gameCode} game={game} onExpired={load} />
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Puzzle progress</p>
+        <p className="text-2xl font-black">{boardCompletion}%</p>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-6">
+        {metadata && (
+          <div className="space-y-2">
+            <p className="text-xs text-muted">
+              Watching <span className="font-semibold text-[var(--foreground)]">{watchedName}</span>&apos;s board
+            </p>
+            <CrosswordBoard
+              metadata={metadata}
+              letterGrid={watchedLetterGrid}
+              mySolvedCells={watchedSolvedCells}
+              myPlayerId={effectiveWatchedId}
+              playerColors={playerColors}
+              readOnly
+            />
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <p className="label-caps text-xs">Live scores — tap to watch</p>
+          {leaderboard.map((row, i) => {
+            const pct = metadata ? playerCompletionPercent(metadata, submissions, row.player_id) : 0
+            const timeSecs = getPlayerTimeSpent(
+              game,
+              submissions,
+              row.player_id,
+              pct,
+              nowMs,
+              players.find((p) => p.id === row.player_id)?.joined_at
+            )
+            return (
+              <button
+                key={row.player_id}
+                type="button"
+                onClick={() => setWatchedPlayerId(row.player_id)}
+                className={`w-full text-left glass-card px-3 py-2.5 flex items-center justify-between gap-4 transition ${
+                  effectiveWatchedId === row.player_id ? 'ring-2 ring-[var(--accent,#0ea5e9)]' : ''
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-semibold truncate block">
+                    {i + 1}. {row.name}
+                  </span>
+                  <span className="text-xs text-muted block">
+                    {row.wordsCompleted} words · {pct}% · ⏱️ {formatMinutesSeconds(timeSecs)}
+                  </span>
+                </div>
+                <span className="text-sm font-bold shrink-0">{row.points} pts</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+
+  const manage = (
+    <HostManageSection
+      game={game}
+      players={players}
+      highlightPlayerId={hostPlayerId}
+      removingPlayerId={removingPlayerId}
+      onRemovePlayer={removePlayer}
+      gameType="crossword"
+      top={
+        game.status === 'waiting' ? (
+          <HostModeSelector
+            mode={hostMode}
+            onChange={changeHostMode}
+            onEditName={renameHost}
+            joinedPlayerId={hostPlayerId}
+            joinedPlayerName={hostPlayerName}
+            joinName={hostJoinName}
+            onJoinNameChange={setHostJoinName}
+            onJoin={() => void hostJoinGame()}
+            joining={hostJoining}
+            spectatorHint="Watch the puzzle from the Watch tab"
+          />
+        ) : undefined
+      }
+      settings={
+        game.status === 'waiting' ? (
+          <HostSudokuLobbyPanel
+            gameCode={gameCode}
+            hostToken={hostToken}
+            game={game}
+            playerCount={players.length}
+            onGameUpdate={setGame}
+            durationChoices={CROSSWORD_GAME_DURATION_OPTIONS}
+            formatDuration={formatCrosswordGameDuration}
+            puzzleSettings={
+              <HostPuzzleSettings
+                gameCode={gameCode}
+                hostToken={hostToken}
+                game={game}
+                onGameUpdate={setGame}
+                kind="crossword"
+              />
+            }
+          />
+        ) : (
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        )
+      }
+      footer={
+        game.status === 'waiting' ? (
+          <HostLobbyWaitingFooter
+            gameCode={gameCode}
+            hostToken={hostToken}
+            game={game ?? undefined}
+            onGameUpdate={setGame}
+            onStart={() => void handleStart()}
+            onEnded={load}
+            canStart={activePlayers.length >= CROSSWORD_MIN_PLAYERS}
+            starting={starting}
+            startLabel="Start puzzle"
+            startDisabledHint={
+              activePlayers.length >= CROSSWORD_MIN_PLAYERS
+                ? null
+                : `Need at least ${CROSSWORD_MIN_PLAYERS} player${CROSSWORD_MIN_PLAYERS === 1 ? '' : 's'} to start`
+            }
+            className="space-y-3"
+          />
+        ) : game.status === 'active' ? (
+          <HostEndGameButton
+            gameCode={gameCode}
+            hostToken={hostToken}
+            onEnded={load}
+            label="End game"
+            icon={<ExitIcon size={16} />}
+            confirmTitle="End this game?"
+            confirmMessage="Players will see the final results."
+            className="btn-danger-soft"
+          />
+        ) : null
+      }
+    />
+  )
+
+  if (game.status === 'waiting' && game.replay_pending) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--background)] px-3 py-8 text-[var(--foreground)]">
+        <ReplayReadyRing
+          players={players}
+          meId={hostPlayerId}
+          isHost
+          gameCode={gameCode}
+          hostToken={hostToken}
+          minPlayers={CROSSWORD_MIN_PLAYERS}
+          capacityGame={game}
+          onToggleReady={() => {}}
+          onStart={() => void handleStart()}
+          starting={starting}
+        />
+        <button
+          type="button"
+          onClick={() => void confirmReturnToLobby()}
+          disabled={playingAgain}
+          className="mt-1 py-2 text-sm font-medium text-muted transition-colors hover:text-body disabled:opacity-60"
+        >
+          Return to lobby instead
+        </button>
+      </div>
+    )
+  }
+
+  // Fresh lobby (not the play-again ready-up flow, handled above).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  const canStart = activePlayers.length >= CROSSWORD_MIN_PLAYERS
+
+  const lobbyModeCard = (
+    <HostModeSelector
+      mode={hostMode}
+      onChange={changeHostMode}
+      onEditName={renameHost}
+      joinedPlayerId={hostPlayerId}
+      joinedPlayerName={hostPlayerName}
+      joinName={hostJoinName}
+      onJoinNameChange={setHostJoinName}
+      onJoin={() => void hostJoinGame()}
+      joining={hostJoining}
+      spectatorHint="Watch the puzzle once it starts"
+      playerHint="Solve the puzzle with everyone"
+    />
+  )
+
+  const lobbySettings = (
+    <>
+      <HostSudokuLobbyPanel
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        playerCount={players.length}
+        onGameUpdate={setGame}
+        durationChoices={CROSSWORD_GAME_DURATION_OPTIONS}
+        formatDuration={formatCrosswordGameDuration}
+        puzzleSettings={
+          <HostPuzzleSettings
+            gameCode={gameCode}
+            hostToken={hostToken}
+            game={game}
+            onGameUpdate={setGame}
+            kind="crossword"
+          />
+        }
+      />
+      <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+    </>
+  )
+
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={cfg.label}
+        resumeToken={hostResumeToken}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('crossword', game) ?? game.max_players}
+        playCard={lobbyModeCard}
+        settingsChildren={lobbySettings}
+        onStart={() => void handleStart()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : `Need at least ${CROSSWORD_MIN_PLAYERS} player${CROSSWORD_MIN_PLAYERS === 1 ? '' : 's'} to start`
+        }
+        startLabel="Start puzzle"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      />
+    )
+  }
+
+  return (
+    <HostGameLayout
+      onRemovePlayer={removePlayer}
+      gameCode={gameCode}
+      status={game.status}
+      tab={tab}
+      onTabChange={setTab}
+      primaryKind={primaryKind}
+      game={game}
+      players={players}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={load}
+      showTabs={showTabs}
+      gameStarted={gameStarted}
+      header={<HostGameHeader game={game} />}
+      primary={hostPlays ? interactivePlay : watchBoard}
+      manage={manage}
+      noManageTab
+      finished={
+        <>
+          <FinalResultsShareBlock
+            game={game}
+            participants={[]}
+            votes={[]}
+            rounds={[]}
+            players={players}
+            playAgainButton={
+              <button
+                type="button"
+                onClick={() => void confirmPlayAgain()}
+                disabled={playingAgain}
+                className="btn-secondary w-full py-3 text-base font-bold disabled:opacity-60"
+              >
+                {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
+              </button>
+            }
+          >
+            <FinishedWinnerHero winnerName={leaderboard[0]?.name} game={game} />
+            <PaginatedLeaderboard
+              title="Final leaderboard"
+              rows={leaderboard.map((row, i) => {
+                const pct = metadata ? playerCompletionPercent(metadata, submissions, row.player_id) : 0
+                const timeSecs = getPlayerTimeSpent(
+                  game,
+                  submissions,
+                  row.player_id,
+                  pct,
+                  nowMs,
+                  players.find((p) => p.id === row.player_id)?.joined_at
+                )
+                return {
+                  id: row.player_id,
+                  name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,
+                  score: row.points,
+                  rank: i + 1,
+                }
+              })}
+              scoreLabel={(n) => `${n} pts`}
+              emphasizeLeader
+            />
+          </FinalResultsShareBlock>
+          <button
+            type="button"
+            onClick={() => void confirmReturnToLobby()}
+            disabled={playingAgain}
+            className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
+          >
+            Return to lobby
+          </button>
+          <p className="text-center text-xs text-faint leading-relaxed px-2">
+            Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak
+            settings first.
+          </p>
+          {hostWon && (
+            <PostWinToCommunity
+              gameType="crossword"
+              gameCode={gameCode}
+              winnerName={leader?.name ?? ''}
+              roundKey={game?.session_started_at ?? undefined}
+            />
+          )}
+          {solutionGrid && metadata && (
+            <div className="glass-card p-4 space-y-3">
+              <p className="label-caps text-xs">Answers</p>
+              <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1">
+                {(['across', 'down'] as const).map((dir) => (
+                  <div key={dir} className="space-y-1">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-muted">{dir}</p>
+                    {metadata.clues
+                      .filter((c) => c.direction === dir)
+                      .map((c) => {
+                        const word = crosswordWordCells(c)
+                          .map(([r, col]) => solutionGrid[r]?.[col] ?? '')
+                          .join('')
+                        return (
+                          <p key={`${c.number}-${c.direction}`} className="text-sm text-muted">
+                            <span className="font-semibold text-[var(--foreground)]">{c.number}.</span> {c.clue} —{' '}
+                            <span className="font-bold text-[var(--foreground)]">{word}</span>
+                          </p>
+                        )
+                      })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      }
+    />
+  )
+}

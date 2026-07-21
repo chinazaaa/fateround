@@ -191,8 +191,11 @@ export function QuickDrawGuessPlayPanel({
     />
   )
 
+  // Cap + center the play column so the drawing board isn't huge in the wide host
+  // dashboard (the player view already caps at max-w-lg; this makes the host
+  // play/watch view match instead of stretching to the full column).
   return (
-    <div className="space-y-4 min-w-0">
+    <div className="space-y-4 min-w-0 mx-auto max-w-lg">
       {session.phase === 'turn' && (
         <div
           className={`text-center text-sm font-bold tabular-nums ${urgent ? 'text-red-400 animate-pulse' : 'text-faint'}`}

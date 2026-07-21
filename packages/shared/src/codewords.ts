@@ -97,9 +97,7 @@ export function mergeCodewordsGuesses(
   const rows = Array.isArray(incoming) ? incoming : [incoming]
   const byId = new Map(prev.map((g) => [g.id, g]))
   for (const guess of rows) byId.set(guess.id, guess)
-  return Array.from(byId.values()).sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  )
+  return Array.from(byId.values()).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
 }
 
 export function cellBackground(type: CodewordsCellType, revealed: boolean, showKey: boolean): string {
@@ -114,4 +112,15 @@ export function cellBackground(type: CodewordsCellType, revealed: boolean, showK
     default:
       return revealed ? '#fde68a' : '#fef3c7'
   }
+}
+
+/**
+ * Foreground colour for a cell's word, paired with {@link cellBackground}. Every
+ * cell sits on a light background and reads best in near-black — except the
+ * exposed assassin, whose background is dark grey, so its label needs light text
+ * to stay legible (otherwise the bomb word is black-on-black on the reveal).
+ */
+export function cellTextColor(type: CodewordsCellType, revealed: boolean, showKey: boolean): string {
+  if ((revealed || showKey) && type === 'assassin') return '#f4f4f5'
+  return '#171717'
 }

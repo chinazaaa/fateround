@@ -7,12 +7,14 @@ import {
   isYahtzeeGame,
   isWhotGame,
   isCrazyEightsGame,
+  isUnoGame,
   isLudoGame,
   isMahjongGame,
   isSnakeAndLadderGame,
   isTicTacToeGame,
   isChessGame,
   isCheckersGame,
+  isPingPongGame,
   isAyoGame,
   isScrabbleGame,
   isDescribeItGame,
@@ -22,10 +24,14 @@ import {
   isNeverHaveIEver,
   isSecretMessageGame,
   isSudokuGame,
+  isCrosswordGame,
+  isWordSearchGame,
+  isWordScrambleGame,
   isThisOrThat,
   isTriviaGame,
   isTwoTruthsGame,
   isICallOnGame,
+  isLandmineGame,
   isWouldYouRather,
   isQuiplashGame,
   isQuickDrawGame,
@@ -84,13 +90,19 @@ export function gameSupportsViewerSetting(gameType: GameType): boolean {
   return !isSecretMessageGame(gameType)
 }
 
-/** Board games allow watch-only late join — not mid-game players. */
+/**
+ * Board games allow watch-only late join — not mid-game players. The solo-race puzzles
+ * (Sudoku / Crossword / Word Search) are the same: a late arrival watches a player's board
+ * (and can switch between players), rather than joining the race late. So the only late-join
+ * options for these are "viewers only" or "lobby only" — never "viewers + players".
+ */
 export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
   return (
     !isMonopolyGame(gameType) &&
     !isYahtzeeGame(gameType) &&
     !isWhotGame(gameType) &&
     !isCrazyEightsGame(gameType) &&
+    !isUnoGame(gameType) &&
     !isLudoGame(gameType) &&
     !isMahjongGame(gameType) &&
     !isSnakeAndLadderGame(gameType) &&
@@ -98,7 +110,12 @@ export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
     !isChessGame(gameType) &&
     !isCheckersGame(gameType) &&
     !isAyoGame(gameType) &&
-    !isScrabbleGame(gameType)
+    !isPingPongGame(gameType) &&
+    !isScrabbleGame(gameType) &&
+    !isSudokuGame(gameType) &&
+    !isCrosswordGame(gameType) &&
+    !isWordSearchGame(gameType) &&
+    !isWordScrambleGame(gameType)
   )
 }
 
@@ -117,6 +134,7 @@ export function gameOffersLateJoinChoice(gameType: GameType): boolean {
     isMostLikelyTo(gameType) ||
     isTwoTruthsGame(gameType) ||
     isICallOnGame(gameType) ||
+    isLandmineGame(gameType) ||
     isSudokuGame(gameType) ||
     isQuiplashGame(gameType) ||
     isQuickDrawGame(gameType)
@@ -244,7 +262,13 @@ export function spectatorForActiveJoin(
   if (game.status !== 'active') return false
   const gameType = parseGameType(game.game_type)
   if (isAnonymousMessagesGame(gameType)) return true
-  if (isMonopolyGame(gameType) || isYahtzeeGame(gameType) || isWhotGame(gameType) || isCrazyEightsGame(gameType))
+  if (
+    isMonopolyGame(gameType) ||
+    isYahtzeeGame(gameType) ||
+    isWhotGame(gameType) ||
+    isCrazyEightsGame(gameType) ||
+    isUnoGame(gameType)
+  )
     return true
   if (!allowLatePlayers(game)) return true
   if (gameOffersLateJoinChoice(gameType)) return joinAsViewer === true

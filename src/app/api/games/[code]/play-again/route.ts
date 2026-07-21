@@ -21,6 +21,10 @@ import {
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
+  isCrosswordGame,
+  isWordSearchGame,
+  isPingPongGame,
+  isWhoSaidThis,
 } from '@/lib/game-types'
 import { clearAnonymousRoomSessionData, reopenSecretMessageBoard } from '@/lib/anonymous-messages'
 import { clearBingoSessionData } from '@/lib/bingo'
@@ -29,17 +33,23 @@ import { clearMonopolySessionData } from '@/lib/monopoly'
 import { clearYahtzeeSessionData } from '@/lib/yahtzee'
 import { clearWhotSessionData } from '@/lib/whot'
 import { clearCrazyEightsSessionData } from '@/lib/crazy-eights'
+import { clearUnoSessionData } from '@/lib/uno'
 import { clearLudoSessionData } from '@/lib/ludo'
 import { clearMahjongSessionData, canMahjongPlayAgain } from '@/lib/mahjong'
 import { clearSnakeAndLadderSessionData } from '@/lib/snake-and-ladder'
 import { clearTicTacToeSessionData, canTicTacToePlayAgain } from '@/lib/tic-tac-toe'
+import { clearPingPongSessionData, canPingPongPlayAgain } from '@/lib/ping-pong'
 import { clearChessSessionData, canChessPlayAgain } from '@/lib/chess'
 import { clearCheckersSessionData, canCheckersPlayAgain } from '@/lib/checkers'
 import { clearAyoSessionData, canAyoPlayAgain } from '@/lib/ayo'
 import { clearDescribeItSessionData, canDescribeItPlayAgain } from '@/lib/describe-it'
 import { clearScrabbleSessionData, canScrabblePlayAgain } from '@/lib/scrabble'
 import { clearNpatSessionData } from '@/lib/npat'
+import { clearLandmineSessionData } from '@/lib/landmine'
 import { clearSudokuSessionData } from '@/lib/sudoku'
+import { clearCrosswordSessionData } from '@/lib/crossword'
+import { clearWordSearchSessionData } from '@/lib/word-search'
+import { clearWordScrambleSessionData } from '@/lib/word-scramble'
 import { clearWordHuntSessionData } from '@/lib/word-hunt'
 import { clearMafiaSessionData } from '@/lib/mafia'
 import { clearTriviaSessionData } from '@/lib/trivia'
@@ -52,12 +62,15 @@ import {
   applyCustomQuestionsUpdate,
   applyParticipantListUpdate,
   applyTriviaSettingsUpdate,
+  applyWstQuoteSourceUpdate,
   canReplaceHostParticipantList,
   parseHostPoolCustomQuestions,
   parseHostPoolTriviaQuestions,
   parseHostPoolParticipants,
   replaceHostParticipantList,
 } from '@/lib/host-pool-update'
+import { WST_DECK_MIN_ENTRIES, type WstDeckEntry } from '@/lib/who-said-this'
+import type { WyrQuestion } from '@/lib/would-you-rather-questions'
 import { extractRoundUsage, extractCodewordsBoardUsage, mergePoolUsageState, parsePoolUsage } from '@/lib/pool-usage'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { resetSpectatorsForLobby } from '@/lib/viewers'
@@ -89,6 +102,7 @@ type ClearableSessionGameType = Extract<
   | 'yahtzee'
   | 'whot'
   | 'crazy_eights'
+  | 'uno'
   | 'ludo'
   | 'mahjong'
   | 'snake_and_ladder'
@@ -103,6 +117,11 @@ type ClearableSessionGameType = Extract<
   | 'sudoku'
   | 'word_hunt'
   | 'mafia'
+  | 'crossword'
+  | 'word_search'
+  | 'word_scramble'
+  | 'landmine'
+  | 'ping_pong'
 >
 
 /**
@@ -122,6 +141,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   yahtzee: clearYahtzeeSessionData,
   whot: clearWhotSessionData,
   crazy_eights: clearCrazyEightsSessionData,
+  uno: clearUnoSessionData,
   ludo: clearLudoSessionData,
   mahjong: clearMahjongSessionData,
   snake_and_ladder: clearSnakeAndLadderSessionData,
@@ -136,6 +156,11 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   sudoku: clearSudokuSessionData,
   word_hunt: clearWordHuntSessionData,
   mafia: clearMafiaSessionData,
+  crossword: clearCrosswordSessionData,
+  word_search: clearWordSearchSessionData,
+  word_scramble: clearWordScrambleSessionData,
+  landmine: clearLandmineSessionData,
+  ping_pong: clearPingPongSessionData,
 }
 
 async function handlePost(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
@@ -149,6 +174,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     custom_questions: rawCustomQuestions,
     participants: rawParticipants,
     question_source,
+    wst_quote_source: rawWstQuoteSource,
     trivia_category,
     timer_seconds,
     rounds_count,
@@ -164,6 +190,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
   const ticTacToeCanReplay = isTicTacToeGame(gameType)
     ? await canTicTacToePlayAgain(supabase, gameId, game.status)
     : false
+  const pingPongCanReplay = isPingPongGame(gameType) ? await canPingPongPlayAgain(supabase, gameId, game.status) : false
   const chessCanReplay = isChessGame(gameType) ? await canChessPlayAgain(supabase, gameId, game.status) : false
   const checkersCanReplay = isCheckersGame(gameType) ? await canCheckersPlayAgain(supabase, gameId, game.status) : false
   const ayoCanReplay = isAyoGame(gameType) ? await canAyoPlayAgain(supabase, gameId, game.status) : false
@@ -177,6 +204,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     game.status === 'waiting' ||
     game.status === 'finished' ||
     ticTacToeCanReplay ||
+    pingPongCanReplay ||
     chessCanReplay ||
     checkersCanReplay ||
     ayoCanReplay ||
@@ -188,7 +216,9 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     (isTwoTruthsGame(gameType) && game.status === 'active') ||
     (isICallOnGame(gameType) && game.status === 'active') ||
     (isSudokuGame(gameType) && game.status === 'active') ||
-    (isWordHuntGame(gameType) && game.status === 'active')
+    (isWordHuntGame(gameType) && game.status === 'active') ||
+    (isCrosswordGame(gameType) && game.status === 'active') ||
+    (isWordSearchGame(gameType) && game.status === 'active')
   if (!canReturnToLobby) {
     return NextResponse.json({ error: 'Game must be finished before playing again' }, { status: 400 })
   }
@@ -243,7 +273,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
   }
 
   if (rawCustomQuestions !== undefined && isCodewordsGame(gameType)) {
-    const nextWords = parseHostPoolCustomQuestions(rawCustomQuestions, gameType)
+    const nextWords = parseHostPoolCustomQuestions(rawCustomQuestions, gameType) as string[] | null
     if (!nextWords || !Array.isArray(nextWords) || nextWords.length < CODEWORDS_MIN_CUSTOM_POOL) {
       return NextResponse.json(
         { error: `Need at least ${CODEWORDS_MIN_CUSTOM_POOL} valid words in your library` },
@@ -253,8 +283,24 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     const { gameUpdate: wordUpdate, poolUsage: nextPoolUsage } = applyCustomQuestionsUpdate(game, nextWords, poolUsage)
     Object.assign(gameUpdate, wordUpdate)
     poolUsage = nextPoolUsage
+  } else if (isWhoSaidThis(gameType) && (rawWstQuoteSource !== undefined || rawCustomQuestions !== undefined)) {
+    // Who Said This replay source swap — 'player' reverts to lobby-submitted quotes; a deck
+    // source arrives as a deck in custom_questions. Mirrors the lobby-pool route.
+    if (rawWstQuoteSource === 'player') {
+      Object.assign(gameUpdate, applyWstQuoteSourceUpdate(game, { source: 'player' }).gameUpdate)
+    } else {
+      const nextDeck = parseHostPoolCustomQuestions(rawCustomQuestions, gameType) as WstDeckEntry[] | null
+      if (!nextDeck || nextDeck.length < WST_DECK_MIN_ENTRIES) {
+        return NextResponse.json(
+          { error: `Upload at least ${WST_DECK_MIN_ENTRIES} questions — a quote, its options, and which is correct` },
+          { status: 400 }
+        )
+      }
+      Object.assign(gameUpdate, applyWstQuoteSourceUpdate(game, { source: 'deck', deck: nextDeck }).gameUpdate)
+    }
   } else if (rawCustomQuestions !== undefined && !isTriviaGame(gameType)) {
-    const nextQuestions = parseHostPoolCustomQuestions(rawCustomQuestions, gameType)
+    // WST is handled in its own branch above, so any deck here belongs to a WYR/MLT pool.
+    const nextQuestions = parseHostPoolCustomQuestions(rawCustomQuestions, gameType) as WyrQuestion[] | string[] | null
     if (!nextQuestions) {
       return NextResponse.json({ error: 'Upload at least one valid question' }, { status: 400 })
     }

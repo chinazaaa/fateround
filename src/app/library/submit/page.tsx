@@ -1,14 +1,19 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useMemo, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageShell, Field, PrimaryBtn } from '@/components/ui/PageShell'
+import { Modal } from '@/components/ui/Modal'
 import { parseCsvRows } from '@/lib/csv-parse'
 import { parseDescribeItWords } from '@/lib/describe-it-words'
 import { parseCodewordsWordRows, CODEWORDS_MIN_CUSTOM_POOL } from '@/lib/codewords-pool'
 import { PAN_MIN_POOL } from '@/lib/pick-a-number-questions'
+import { parseCrosswordEntries } from '@/lib/crossword-puzzles'
+import { parseWordSearchEntries } from '@/lib/word-search-puzzles'
+import { parseWordScrambleEntries } from '@/lib/word-scramble-puzzles'
 import type { TriviaQuestion } from '@/types'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
+import type { WstDeckEntry } from '@/lib/who-said-this'
 
 type GameType =
   | 'trivia'
@@ -20,11 +25,21 @@ type GameType =
   | 'quick_draw'
   | 'codewords'
   | 'pick_a_number'
+  | 'crossword'
+  | 'word_search'
+  | 'word_scramble'
+  | 'who_said_this'
 
 interface ValidationResult {
   ok: boolean
   errors: string[]
-  questions: TriviaQuestion[] | WyrQuestion[] | string[]
+  questions:
+    | TriviaQuestion[]
+    | WyrQuestion[]
+    | string[]
+    | { answer: string; clue: string }[]
+    | { word: string }[]
+    | WstDeckEntry[]
   rowCount: number
 }
 
@@ -59,6 +74,44 @@ function validateTrivia(rows: Record<string, string>[]): ValidationResult {
       choices: [r.option_a, r.option_b, r.option_c, r.option_d],
       correctIndex: ['a', 'b', 'c', 'd'].indexOf(correctRaw),
       category: 'general',
+    })
+  }
+
+  if (questions.length < 5) errors.push('Must have at least 5 valid rows')
+  if (questions.length > 200) errors.push('Maximum 200 rows allowed')
+  return { ok: errors.length === 0, errors, questions, rowCount: rows.length }
+}
+
+function validateWhoSaidThis(rows: Record<string, string>[]): ValidationResult {
+  const required = ['quote', 'option_a', 'option_b', 'option_c', 'option_d', 'correct']
+  if (rows.length === 0) return { ok: false, errors: ['No rows found'], questions: [], rowCount: 0 }
+  const missing = required.filter((col) => !(col in rows[0]))
+  if (missing.length > 0)
+    return { ok: false, errors: [`Missing columns: ${missing.join(', ')}`], questions: [], rowCount: 0 }
+
+  const errors: string[] = []
+  const questions: WstDeckEntry[] = []
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]
+    const rowNum = i + 2
+    if (!r.quote) {
+      errors.push(`Row ${rowNum}: quote is empty`)
+      continue
+    }
+    if (!r.option_a || !r.option_b || !r.option_c || !r.option_d) {
+      errors.push(`Row ${rowNum}: all options (a–d) are required`)
+      continue
+    }
+    const correctRaw = r.correct.toLowerCase().trim()
+    if (!['a', 'b', 'c', 'd'].includes(correctRaw)) {
+      errors.push(`Row ${rowNum}: 'correct' must be a, b, c, or d`)
+      continue
+    }
+    questions.push({
+      quote: r.quote,
+      options: [r.option_a, r.option_b, r.option_c, r.option_d],
+      correctIndex: ['a', 'b', 'c', 'd'].indexOf(correctRaw),
     })
   }
 
@@ -128,12 +181,78 @@ function validateCodewords(rows: Record<string, string>[]): ValidationResult {
   return { ok: errors.length === 0, errors, questions: words, rowCount: rows.length }
 }
 
+function validateCrossword(rows: Record<string, string>[]): ValidationResult {
+  if (rows.length === 0) return { ok: false, errors: ['No rows found'], questions: [], rowCount: 0 }
+  if (!('answer' in rows[0]) && !('word' in rows[0])) {
+    return { ok: false, errors: ['Missing column: answer'], questions: [], rowCount: 0 }
+  }
+  const seen = new Set<string>()
+  const questions: { answer: string; clue: string }[] = []
+  for (const e of parseCrosswordEntries(rows)) {
+    const key = e.answer.trim().toUpperCase()
+    if (!seen.has(key)) {
+      seen.add(key)
+      questions.push({ answer: e.answer.trim(), clue: e.clue.trim() })
+    }
+  }
+  const errors: string[] = []
+  if (questions.length < 4) errors.push('Must have at least 4 answers, each with a clue')
+  if (questions.length > 200) errors.push('Maximum 200 rows allowed')
+  return { ok: errors.length === 0, errors, questions, rowCount: rows.length }
+}
+
+function validateWordSearch(rows: Record<string, string>[]): ValidationResult {
+  if (rows.length === 0) return { ok: false, errors: ['No rows found'], questions: [], rowCount: 0 }
+  if (!('word' in rows[0]) && !('answer' in rows[0])) {
+    return { ok: false, errors: ['Missing column: word'], questions: [], rowCount: 0 }
+  }
+  const seen = new Set<string>()
+  const questions: { word: string }[] = []
+  for (const e of parseWordSearchEntries(rows)) {
+    const word = e.word.trim().toUpperCase()
+    if (word && !seen.has(word)) {
+      seen.add(word)
+      questions.push({ word })
+    }
+  }
+  const errors: string[] = []
+  if (questions.length < 4) errors.push('Must have at least 4 words')
+  if (questions.length > 200) errors.push('Maximum 200 words allowed')
+  return { ok: errors.length === 0, errors, questions, rowCount: rows.length }
+}
+
+function validateWordScramble(rows: Record<string, string>[]): ValidationResult {
+  if (rows.length === 0) return { ok: false, errors: ['No rows found'], questions: [], rowCount: 0 }
+  if (!('word' in rows[0]) && !('answer' in rows[0])) {
+    return { ok: false, errors: ['Missing column: word'], questions: [], rowCount: 0 }
+  }
+  const seen = new Set<string>()
+  const questions: { word: string; hint?: string }[] = []
+  for (const e of parseWordScrambleEntries(rows)) {
+    const word = e.word.trim().toUpperCase()
+    if (word && !seen.has(word)) {
+      seen.add(word)
+      questions.push(e.hint ? { word, hint: e.hint } : { word })
+    }
+  }
+  const errors: string[] = []
+  if (questions.length < 4) errors.push('Must have at least 4 words')
+  if (questions.length > 200) errors.push('Maximum 200 words allowed')
+  return { ok: errors.length === 0, errors, questions, rowCount: rows.length }
+}
+
 const GAME_TYPES: { value: GameType; label: string; description: string; columns: string }[] = [
   {
     value: 'trivia',
     label: 'Trivia',
     description: 'Multiple-choice questions with one correct answer',
     columns: 'question, option_a, option_b, option_c, option_d, correct',
+  },
+  {
+    value: 'who_said_this',
+    label: 'Who Said This',
+    description: 'Quotes with multiple-choice options for who said each one',
+    columns: 'quote, option_a, option_b, option_c, option_d, correct',
   },
   {
     value: 'would_you_rather',
@@ -183,6 +302,24 @@ const GAME_TYPES: { value: GameType; label: string; description: string; columns
     description: 'Prompts players answer with a number',
     columns: 'question',
   },
+  {
+    value: 'crossword',
+    label: 'Crossword',
+    description: 'Answers with their clues for the crossword grid',
+    columns: 'answer, clue',
+  },
+  {
+    value: 'word_search',
+    label: 'Word Search',
+    description: 'Words to hide in the word-search grid',
+    columns: 'word',
+  },
+  {
+    value: 'word_scramble',
+    label: 'Word Scramble',
+    description: 'Words to unscramble, with optional hints',
+    columns: 'word, hint',
+  },
 ]
 
 const DIFFICULTY_TAGS = ['easy', 'intermediate', 'advanced'] as const
@@ -217,7 +354,24 @@ export default function SubmitPackPage() {
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(true)
+  const [pickerSearch, setPickerSearch] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+
+  const pickerMatches = useMemo(() => {
+    const q = pickerSearch.trim().toLowerCase()
+    if (!q) return GAME_TYPES
+    return GAME_TYPES.filter((t) => `${t.label} ${t.description}`.toLowerCase().includes(q))
+  }, [pickerSearch])
+
+  const chooseType = (value: GameType) => {
+    setGameType(value)
+    setValidation(null)
+    setFileName('')
+    if (fileRef.current) fileRef.current.value = ''
+    setPickerOpen(false)
+    setPickerSearch('')
+  }
 
   const toggleVibe = (v: VibeTag) =>
     setVibeTags((prev) => {
@@ -236,9 +390,13 @@ export default function SubmitPackPage() {
       const text = ev.target?.result as string
       const rows = parseCsvRows(text)
       if (gameType === 'trivia') setValidation(validateTrivia(rows))
+      else if (gameType === 'who_said_this') setValidation(validateWhoSaidThis(rows))
       else if (gameType === 'would_you_rather' || gameType === 'this_or_that') setValidation(validateWyr(rows))
       else if (gameType === 'describe_it' || gameType === 'quick_draw') setValidation(validateDescribeIt(rows))
       else if (gameType === 'codewords') setValidation(validateCodewords(rows))
+      else if (gameType === 'crossword') setValidation(validateCrossword(rows))
+      else if (gameType === 'word_search') setValidation(validateWordSearch(rows))
+      else if (gameType === 'word_scramble') setValidation(validateWordScramble(rows))
       else if (gameType === 'pick_a_number') setValidation(validatePrompts(rows, PAN_MIN_POOL))
       else setValidation(validatePrompts(rows)) // covers most_likely_to and never_have_i_ever
     }
@@ -302,6 +460,7 @@ export default function SubmitPackPage() {
                 setValidation(null)
                 setFileName('')
                 setSubmitError(null)
+                setPickerOpen(true)
                 if (fileRef.current) fileRef.current.value = ''
               }}
               className="btn-primary btn-fit px-4 py-2 text-sm mx-auto"
@@ -340,49 +499,40 @@ export default function SubmitPackPage() {
         <p className="text-muted text-sm mt-1">Share your questions with the community</p>
       </div>
 
-      <div className="space-y-3">
-        <p className="text-sm font-medium text-muted">Game type</p>
-        <div className="grid grid-cols-1 gap-2">
-          {GAME_TYPES.map((type) => (
+      {!gameType ? (
+        // Step 1 prompt — the picker modal is open by default; this backs it if closed.
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          className="surface-inset flex w-full items-center justify-between gap-4 px-5 py-6 text-left transition-all hover:border-[var(--border-strong)]"
+        >
+          <div className="space-y-1">
+            <p className="font-semibold">Choose a game type</p>
+            <p className="text-faint text-sm">Pick what kind of pack you&apos;re sharing to get started.</p>
+          </div>
+          <span className="btn-primary btn-fit shrink-0 px-4 py-2 text-sm">Choose</span>
+        </button>
+      ) : (
+        <>
+          {/* Selected-type summary — the "step 1 result" with a way back to the picker. */}
+          <div className="surface-inset flex items-center justify-between gap-3 px-4 py-3">
+            <div className="min-w-0">
+              <p className="label-caps text-faint">Game type</p>
+              <p className="font-semibold text-sm mt-0.5 truncate">{selectedType?.label}</p>
+            </div>
             <button
-              key={type.value}
               type="button"
-              onClick={() => {
-                setGameType(type.value)
-                setValidation(null)
-                setFileName('')
-                if (fileRef.current) fileRef.current.value = ''
-              }}
-              className={`surface-inset text-left px-4 py-3.5 transition-all ${
-                gameType === type.value
-                  ? 'border-[var(--chip-active-border)] bg-[var(--chip-active-bg)]'
-                  : 'hover:border-[var(--border-strong)]'
-              }`}
+              onClick={() => setPickerOpen(true)}
+              className="btn-secondary btn-fit shrink-0 px-3.5 py-1.5 text-sm"
             >
-              <div className="flex items-center justify-between gap-3">
-                <div className="space-y-0.5">
-                  <p
-                    className={`font-semibold text-sm ${gameType === type.value ? 'text-[var(--chip-active-text)]' : ''}`}
-                  >
-                    {type.label}
-                  </p>
-                  <p className="text-faint text-xs">{type.description}</p>
-                </div>
-                <div
-                  className={`w-4 h-4 rounded-full border-2 shrink-0 transition-colors ${
-                    gameType === type.value
-                      ? 'border-[var(--chip-active-text)] bg-[var(--chip-active-text)]'
-                      : 'border-[var(--border-strong)]'
-                  }`}
-                />
-              </div>
+              Change
             </button>
-          ))}
-        </div>
-      </div>
+          </div>
+        </>
+      )}
 
       {gameType && (
-        <>
+        <div className="space-y-6">
           <Field label="Pack title">
             <input
               type="text"
@@ -525,6 +675,19 @@ export default function SubmitPackPage() {
                           {i + 1}. {q}
                         </p>
                       ))}
+                    {gameType === 'crossword' &&
+                      (validation.questions as { answer: string; clue: string }[]).slice(0, 3).map((q, i) => (
+                        <p key={i} className="text-xs text-muted truncate leading-relaxed">
+                          {i + 1}. {q.answer} <span className="text-faint">— {q.clue}</span>
+                        </p>
+                      ))}
+                    {(gameType === 'word_search' || gameType === 'word_scramble') &&
+                      (validation.questions as { word: string; hint?: string }[]).slice(0, 3).map((q, i) => (
+                        <p key={i} className="text-xs text-muted truncate leading-relaxed">
+                          {i + 1}. {q.word}
+                          {q.hint ? <span className="text-faint"> — {q.hint}</span> : null}
+                        </p>
+                      ))}
                   </div>
                 </>
               ) : (
@@ -559,8 +722,70 @@ export default function SubmitPackPage() {
           <PrimaryBtn onClick={handleSubmit} disabled={!validation?.ok || !title.trim() || submitting}>
             {submitting ? 'Submitting…' : 'Submit pack'}
           </PrimaryBtn>
-        </>
+        </div>
       )}
+
+      <Modal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        title="What kind of pack?"
+        subtitle="Choose the game your questions are for"
+        size="lg"
+        fillHeight
+      >
+        <div className="space-y-4">
+          <div className="relative">
+            <input
+              type="search"
+              value={pickerSearch}
+              onChange={(e) => setPickerSearch(e.target.value)}
+              placeholder="Search game types…"
+              aria-label="Search game types"
+              className="input-field w-full pr-9"
+            />
+            {pickerSearch && (
+              <button
+                type="button"
+                onClick={() => setPickerSearch('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-faint hover:text-body text-lg leading-none"
+                aria-label="Clear search"
+              >
+                ×
+              </button>
+            )}
+          </div>
+
+          {pickerMatches.length === 0 ? (
+            <p className="text-muted text-sm text-center py-8">
+              No game types match &ldquo;{pickerSearch.trim()}&rdquo;
+            </p>
+          ) : (
+            <div className="grid gap-2.5 sm:grid-cols-2">
+              {pickerMatches.map((type) => {
+                const active = gameType === type.value
+                return (
+                  <button
+                    key={type.value}
+                    type="button"
+                    onClick={() => chooseType(type.value)}
+                    aria-pressed={active}
+                    className={`surface-inset flex h-full flex-col gap-1 px-4 py-3.5 text-left transition-all ${
+                      active
+                        ? 'border-[var(--chip-active-border)] bg-[var(--chip-active-bg)]'
+                        : 'hover:border-[var(--border-strong)]'
+                    }`}
+                  >
+                    <p className={`font-semibold text-sm ${active ? 'text-[var(--chip-active-text)]' : ''}`}>
+                      {type.label}
+                    </p>
+                    <p className="text-faint text-xs leading-snug">{type.description}</p>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </Modal>
     </PageShell>
   )
 }

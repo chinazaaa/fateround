@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { NpatCallerReviewPanel } from '@/components/npat/NpatCallerReviewPanel'
 import { NpatFinalResultsShareBlock } from '@/components/npat/NpatFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -35,6 +36,7 @@ import {
 } from '@/lib/npat'
 import { isInCatalogue } from '@/lib/npat-catalogue'
 import { useNpatAdvance } from '@/hooks/useNpatAdvance'
+import { isAdvanceDriver } from '@/lib/advance-driver'
 import { playVoteSubmittedSound } from '@/lib/sounds'
 import { useToast } from '@/components/ui/Toast'
 import type { Game, NpatAnswer, NpatCategory, NpatMark, Player, Round } from '@/types'
@@ -139,6 +141,22 @@ export function NpatActiveRound({
   const reviewTargetId = reviewTargetForMarker(metadata, myPlayerId)
   const reviewTargetAnswer = reviewTargetId ? (roundAnswers.find((a) => a.player_id === reviewTargetId) ?? null) : null
   const leaderboard = useMemo(() => tallyNpatScores(answers, players), [answers, players])
+
+  // Live scores feed the shared roster drawer (opened from the header).
+  const rosterScores = useMemo(() => Object.fromEntries(leaderboard.map((row) => [row.id, row.score])), [leaderboard])
+  useGameScores(rosterScores, { suffix: ' pts' })
+  const rosterDetails = useMemo(() => {
+    // Count category answers that scored (name/animal/place/thing/food) across rounds.
+    const counts: Record<string, number> = {}
+    for (const a of answers) {
+      const scored = [a.score_name, a.score_animal, a.score_place, a.score_thing, a.score_food].filter(
+        (s) => (s ?? 0) > 0
+      ).length
+      counts[a.player_id] = (counts[a.player_id] ?? 0) + scored
+    }
+    return Object.fromEntries(leaderboard.map((row) => [row.id, `✅ ${counts[row.id] ?? 0} answers`]))
+  }, [leaderboard, answers])
+  useGameStats(rosterDetails)
   const callerName = playerDisplayName(callerId, players)
 
   const writingTimer = clampNpatTimer(game.timer_seconds)
@@ -240,10 +258,13 @@ export function NpatActiveRound({
     }
   }, [currentRound?.id, reviewTargetId, reviewTargetAnswer?.player_id, metadata?.phase, myMark?.marked_at, myMark?.id])
 
+  // W5: only an elected quorum of clients drives auto-advance (see isAdvanceDriver).
+  const isDriver = useMemo(() => isAdvanceDriver(players, myPlayerId), [players, myPlayerId])
+
   useNpatAdvance({
     gameCode,
     game,
-    enabled: !skipGameSync && game.status === 'active',
+    enabled: !skipGameSync && game.status === 'active' && isDriver,
     onAdvanced: onReload,
   })
 
@@ -255,7 +276,7 @@ export function NpatActiveRound({
       (currentRound.status === 'finished' &&
         currentRound.ended_at != null &&
         revealCountdownSeconds(currentRound.ended_at) <= 0)
-    if (!betweenRounds) return
+    if (!betweenRounds || !isDriver) return
 
     let cancelled = false
     const sync = async () => {
@@ -277,7 +298,16 @@ export function NpatActiveRound({
       cancelled = true
       window.clearInterval(interval)
     }
-  }, [skipGameSync, game.status, gameCode, currentRound?.id, currentRound?.status, currentRound?.ended_at, onReload])
+  }, [
+    skipGameSync,
+    isDriver,
+    game.status,
+    gameCode,
+    currentRound?.id,
+    currentRound?.status,
+    currentRound?.ended_at,
+    onReload,
+  ])
 
   const screen: PlayScreen = useMemo(() => {
     if (game.status === 'finished') return 'finished'
@@ -458,8 +488,7 @@ export function NpatActiveRound({
 
   if (screen === 'finished') {
     const myNpatRow = leaderboard.find((row) => row.id === myPlayerId)
-    const iWonNpat =
-      !!myNpatRow && leaderboard[0] != null && myNpatRow.score === leaderboard[0].score && leaderboard[0].score > 0
+    const iWonNpat = !!myNpatRow && leaderboard[0] != null && myNpatRow === leaderboard[0] && leaderboard[0].score > 0
     return (
       <>
         <NpatFinalResultsShareBlock
@@ -777,12 +806,8 @@ export function NpatActiveRound({
       </div>
 
       <aside className="min-w-0 space-y-4 order-2">
-        <PaginatedLeaderboard
-          title="Leaderboard"
-          rows={leaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
-          highlightId={myPlayerId}
-          scoreLabel={(score) => `${score} pts`}
-        />
+        {/* Plain leaderboard removed — the roster side-drawer now shows the live leaderboard.
+            The per-answer transparency scoreboard below stays (it's not a duplicate). */}
         {showLiveScoreboard && <div className="hidden lg:block">{scoreboard}</div>}
       </aside>
     </div>

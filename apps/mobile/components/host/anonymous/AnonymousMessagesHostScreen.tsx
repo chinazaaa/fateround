@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Image } from 'expo-image'
 import type { AnonymousMessage, Game, Player } from '@fateround/shared'
 import {
@@ -83,10 +83,7 @@ export function AnonymousMessagesHostScreen({ gameCode, hostToken, game, players
   }, [code, nameById])
 
   const loadBans = useCallback(async () => {
-    const res = await getSupabase()
-      .from('anonymous_room_bans')
-      .select(ANONYMOUS_ROOM_BAN_SELECT)
-      .eq('game_id', code)
+    const res = await getSupabase().from('anonymous_room_bans').select(ANONYMOUS_ROOM_BAN_SELECT).eq('game_id', code)
     if (res.error) return
     setBans((res.data as BanRow[]) ?? [])
   }, [code])
@@ -116,13 +113,9 @@ export function AnonymousMessagesHostScreen({ gameCode, hostToken, game, players
           void loadBans()
         }
       )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${code}` },
-        () => {
-          onReload()
-        }
-      )
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${code}` }, () => {
+        onReload()
+      })
       .subscribe()
     return () => {
       void supabase.removeChannel(channel)
@@ -136,10 +129,7 @@ export function AnonymousMessagesHostScreen({ gameCode, hostToken, game, players
     return () => clearInterval(id)
   }, [active, bans.length])
 
-  const banForPlayer = useCallback(
-    (playerId: string) => bans.find((b) => b.player_id === playerId) ?? null,
-    [bans]
-  )
+  const banForPlayer = useCallback((playerId: string) => bans.find((b) => b.player_id === playerId) ?? null, [bans])
 
   const onRemoveMessage = async (messageId: string) => {
     setRemovingMessageId(messageId)
@@ -253,11 +243,7 @@ export function AnonymousMessagesHostScreen({ gameCode, hostToken, game, players
             disabled={acting}
             onPress={() => void onPlayAgain()}
           >
-            {acting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.primaryBtnText}>Play again</Text>
-            )}
+            {acting ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Play again</Text>}
           </Pressable>
           <GameFinishedActions gameCode={gameCode} gameType={game.game_type} gameTitle={game.title} />
         </>
@@ -329,9 +315,7 @@ export function AnonymousMessagesHostScreen({ gameCode, hostToken, game, players
                             onPress={() => void onUnmute(player.id)}
                             hitSlop={6}
                           >
-                            <Text style={styles.unmuteText}>
-                              {mutingPlayerId === player.id ? '…' : 'Unmute'}
-                            </Text>
+                            <Text style={styles.unmuteText}>{mutingPlayerId === player.id ? '…' : 'Unmute'}</Text>
                           </Pressable>
                         ) : (
                           <Pressable
@@ -339,9 +323,7 @@ export function AnonymousMessagesHostScreen({ gameCode, hostToken, game, players
                             onPress={() => void onMute(player.id)}
                             hitSlop={6}
                           >
-                            <Text style={styles.muteText}>
-                              {mutingPlayerId === player.id ? '…' : 'Mute'}
-                            </Text>
+                            <Text style={styles.muteText}>{mutingPlayerId === player.id ? '…' : 'Mute'}</Text>
                           </Pressable>
                         )}
                         <Pressable
@@ -349,9 +331,7 @@ export function AnonymousMessagesHostScreen({ gameCode, hostToken, game, players
                           onPress={() => void onRemovePlayer(player.id)}
                           hitSlop={6}
                         >
-                          <Text style={styles.removeText}>
-                            {removingPlayerId === player.id ? '…' : 'Remove'}
-                          </Text>
+                          <Text style={styles.removeText}>{removingPlayerId === player.id ? '…' : 'Remove'}</Text>
                         </Pressable>
                       </View>
                     ) : null}
@@ -368,33 +348,39 @@ export function AnonymousMessagesHostScreen({ gameCode, hostToken, game, players
               {messages.length === 0 ? (
                 <Text style={styles.empty}>No messages yet.</Text>
               ) : (
-                messages.map((m) => {
-                  const isGif = m.message_type === 'gif' && !!m.media_url
-                  return (
-                    <View key={m.id} style={styles.messageRow}>
-                      <View style={styles.messageBody}>
-                        <Text style={styles.messageAuthor}>{m.player_name ?? 'Unknown'}</Text>
-                        {m.reply_to_text ? (
-                          <Text style={styles.replyQuote} numberOfLines={1}>
-                            {m.reply_to_text}
-                          </Text>
-                        ) : null}
-                        {isGif ? (
-                          <Image source={{ uri: m.media_url! }} style={styles.gif} contentFit="cover" />
-                        ) : (
-                          <Text style={styles.messageText}>{m.text}</Text>
-                        )}
+                <FlatList
+                  style={styles.messageList}
+                  data={messages}
+                  keyExtractor={(m) => m.id}
+                  nestedScrollEnabled
+                  renderItem={({ item: m }) => {
+                    const isGif = m.message_type === 'gif' && !!m.media_url
+                    return (
+                      <View style={styles.messageRow}>
+                        <View style={styles.messageBody}>
+                          <Text style={styles.messageAuthor}>{m.player_name ?? 'Unknown'}</Text>
+                          {m.reply_to_text ? (
+                            <Text style={styles.replyQuote} numberOfLines={1}>
+                              {m.reply_to_text}
+                            </Text>
+                          ) : null}
+                          {isGif ? (
+                            <Image source={{ uri: m.media_url! }} style={styles.gif} contentFit="cover" />
+                          ) : (
+                            <Text style={styles.messageText}>{m.text}</Text>
+                          )}
+                        </View>
+                        <Pressable
+                          disabled={removingMessageId === m.id}
+                          onPress={() => void onRemoveMessage(m.id)}
+                          hitSlop={6}
+                        >
+                          <Text style={styles.removeText}>{removingMessageId === m.id ? '…' : 'Remove'}</Text>
+                        </Pressable>
                       </View>
-                      <Pressable
-                        disabled={removingMessageId === m.id}
-                        onPress={() => void onRemoveMessage(m.id)}
-                        hitSlop={6}
-                      >
-                        <Text style={styles.removeText}>{removingMessageId === m.id ? '…' : 'Remove'}</Text>
-                      </Pressable>
-                    </View>
-                  )
-                })
+                    )
+                  }}
+                />
               )}
             </View>
           ) : null}
@@ -491,6 +477,9 @@ const makeStyles = (theme: Theme) =>
     muteText: { color: '#f59e0b', fontSize: 13, fontWeight: '700' },
     unmuteText: { color: '#34d399', fontSize: 13, fontWeight: '700' },
     removeText: { color: theme.error, fontSize: 13, fontWeight: '700' },
+    // Bounded so the virtualized live feed scrolls within its own box (only
+    // visible rows render) instead of growing the page scroll unboundedly.
+    messageList: { maxHeight: 420 },
     messageRow: {
       flexDirection: 'row',
       alignItems: 'flex-start',

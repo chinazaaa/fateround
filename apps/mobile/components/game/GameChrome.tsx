@@ -1,10 +1,15 @@
 import { ReactNode } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
-import type { Game, Player } from '@fateround/shared'
+import type { Game, GameType, Player } from '@fateround/shared'
 import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
+import { useRosterBase } from '@/components/session/RosterDrawerContext'
+import { useSpectatorBadge } from '@/components/session/SpectatorBadgeContext'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import type { BootstrapLike } from '@/lib/bootstrap-props'
 import { shellPropsFromBootstrap } from '@/lib/bootstrap-props'
+import { gameLabel } from '@/lib/mobile-registry'
+import { gameTypeMeta } from '@/lib/game-type-meta'
+import { ResultsCard, type ResultsPalette } from '@/components/lifecycle/ResultsCard'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
@@ -20,11 +25,29 @@ export type FinishedLeaderboardRow = {
   detail?: string
 }
 
-function rankBadge(index: number): string {
-  if (index === 0) return '👑'
-  if (index === 1) return '🥈'
-  if (index === 2) return '🥉'
-  return `${index + 1}`
+/** Theme-aware colors for the on-screen results card (mirrors the shared PNG). */
+export function themedResultsPalette(theme: Theme): ResultsPalette {
+  return {
+    cardBg: theme.surface,
+    gameTitle: theme.primary,
+    label: theme.textMuted,
+    divider: theme.border,
+    result: theme.text,
+    subtitle: theme.primaryMuted,
+    detail: theme.textSecondary,
+    rowBg: theme.bg,
+    rowBorder: theme.border,
+    rowWinnerBg: theme.primarySoft,
+    rowWinnerBorder: theme.primary,
+    rank: theme.textFaint,
+    rowName: theme.text,
+    rowNameWinner: theme.text,
+    you: theme.textMuted,
+    rowDetail: theme.textFaint,
+    rowValue: theme.primaryMuted,
+    rowValueWinner: theme.primary,
+    brand: theme.textFaint,
+  }
 }
 
 export function GameLoading() {
@@ -77,21 +100,29 @@ export function GameShell({
   const roster = shell.players
   const pid = shell.myPlayerId
   const me = pid && roster ? roster.find((p) => p.id === pid) : undefined
-  const showViewerBanner = !!(g && me && code && playerIsViewer(me, g))
+  const isViewer = !!(g && me && code && playerIsViewer(me, g))
+
+  // Surface spectator status as a compact header pill (mirrors the host badge)
+  // rather than a full-width body banner. The banner below now only renders its
+  // actionable "join as player" case — plain watch-only status lives in the pill.
+  useSpectatorBadge(isViewer)
+
+  // Feed the roster drawer that lives in the session/host shell. This alone
+  // gives every game a plain roster; game views layer scores via useGameScores.
+  useRosterBase(roster, g, pid)
 
   // Suppress subtitles that only repeat the game code (e.g. "Code 8HDLLU" or
   // the bare code) — the session header already shows the code as its hero
   // text. Subtitles carrying real context ("Pick your team", phase labels) stay.
   const codeUpper = code?.trim().toUpperCase()
   const subUpper = subtitle?.trim().toUpperCase()
-  const subtitleIsJustCode =
-    !!subUpper && !!codeUpper && (subUpper === codeUpper || subUpper === `CODE ${codeUpper}`)
+  const subtitleIsJustCode = !!subUpper && !!codeUpper && (subUpper === codeUpper || subUpper === `CODE ${codeUpper}`)
   const showSubtitle = !!subtitle && !subtitleIsJustCode
 
   return (
     <View style={styles.shell}>
       {showSubtitle ? <Text style={styles.shellSubtitle}>{subtitle}</Text> : null}
-      {showViewerBanner ? (
+      {isViewer ? (
         <ViewerModeBanner
           gameCode={code!}
           playerId={pid!}
@@ -122,7 +153,8 @@ export function GameFinishedScreen({
   leaderboard,
   primaryAction,
   emoji = '🏁',
-  centered = true,
+  gameType,
+  gameTitle,
 }: {
   title: string
   detail?: string | null
@@ -130,37 +162,29 @@ export function GameFinishedScreen({
   leaderboard?: FinishedLeaderboardRow[]
   primaryAction?: { label: string; onPress: () => void }
   emoji?: string
+  /** When set, the card shows the branded game header (emoji + title + label). */
+  gameType?: GameType | string | null
+  gameTitle?: string | null
+  /** @deprecated the card is always centered now; kept for prop compatibility. */
   centered?: boolean
 }) {
   const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
+  const gameEmoji = gameType ? gameTypeMeta(gameType as GameType).emoji : undefined
+  const label = gameType ? gameLabel(gameType as GameType) : undefined
   return (
-    <View style={[styles.panel, centered && styles.panelCentered]}>
-      {emoji ? <Text style={styles.finishedEmoji}>{emoji}</Text> : null}
-      <Text style={[styles.finishedTitle, centered && styles.finishedTitleCentered]}>{title}</Text>
-      {subtitle ? (
-        <Text style={[styles.finishedSubtitle, centered && styles.finishedSubtitleCentered]}>{subtitle}</Text>
-      ) : null}
-      {detail ? (
-        <Text style={[styles.finishedDetail, centered && styles.finishedDetailCentered]}>{detail}</Text>
-      ) : null}
-      {leaderboard && leaderboard.length > 0 ? (
-        <View style={styles.leaderboard}>
-          {leaderboard.map((row, index) => (
-            <View key={`${row.name}-${index}`} style={[styles.leaderboardRow, row.highlight && styles.leaderboardHighlight]}>
-              <Text style={styles.leaderboardRank}>{rankBadge(index)}</Text>
-              <Text style={styles.leaderboardName} numberOfLines={1}>
-                {row.name?.trim() ? row.name : 'Player'}
-                {row.you ? <Text style={styles.leaderboardYou}> (you)</Text> : null}
-              </Text>
-              <Text style={styles.leaderboardScore} numberOfLines={2}>
-                {row.score}
-                {row.scoreSuffix ? ` ${row.scoreSuffix}` : ''}
-                {row.detail ? <Text style={styles.leaderboardDetail}>{`  ·  ${row.detail}`}</Text> : null}
-              </Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
+    <View style={styles.finishedWrap}>
+      <ResultsCard
+        palette={themedResultsPalette(theme)}
+        gameEmoji={gameEmoji}
+        gameTitle={gameTitle}
+        label={label}
+        emoji={emoji}
+        resultTitle={title}
+        subtitle={subtitle}
+        detail={detail}
+        leaderboard={leaderboard}
+      />
       {primaryAction ? (
         <Pressable style={styles.finishedButton} onPress={primaryAction.onPress}>
           <Text style={styles.finishedButtonText}>{primaryAction.label}</Text>
@@ -205,163 +229,80 @@ export function TurnBanner({ text, isMyTurn }: { text: string; isMyTurn: boolean
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  centered: {
-    flex: 1,
-    backgroundColor: theme.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-    gap: 8,
-  },
-  title: {
-    color: theme.text,
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  body: {
-    color: theme.textMuted,
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  shell: {
-    flex: 1,
-    backgroundColor: theme.bg,
-    padding: 16,
-    gap: 14,
-  },
-  shellSubtitle: {
-    color: theme.textMuted,
-    fontSize: 15,
-    lineHeight: 21,
-  },
-  panel: {
-    backgroundColor: theme.surface,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: 24,
-    gap: 12,
-  },
-  panelCentered: {
-    alignItems: 'center',
-  },
-  panelText: {
-    color: theme.textSecondary,
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  finishedEmoji: {
-    fontSize: 44,
-    lineHeight: 52,
-  },
-  finishedTitle: {
-    color: theme.text,
-    fontSize: 24,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-  finishedTitleCentered: {
-    textAlign: 'center',
-  },
-  finishedSubtitle: {
-    color: theme.primaryMuted,
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-  },
-  finishedSubtitleCentered: {
-    textAlign: 'center',
-  },
-  finishedDetail: {
-    color: theme.textSecondary,
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: '600',
-  },
-  finishedDetailCentered: {
-    textAlign: 'center',
-  },
-  leaderboard: {
-    gap: 6,
-    marginTop: 4,
-    // Fill the (centered) panel width so each row's flex name column has room
-    // to expand — otherwise the name collapses to zero width and disappears.
-    alignSelf: 'stretch',
-    width: '100%',
-  },
-  leaderboardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: theme.bg,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  leaderboardHighlight: {
-    borderWidth: 1,
-    borderColor: theme.primary,
-  },
-  leaderboardRank: {
-    color: theme.textFaint,
-    fontSize: 15,
-    fontWeight: '700',
-    width: 26,
-    textAlign: 'center',
-  },
-  leaderboardName: {
-    flex: 1,
-    minWidth: 52,
-    color: theme.text,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  leaderboardYou: {
-    color: theme.textMuted,
-    fontWeight: '600',
-  },
-  leaderboardScore: {
-    flexShrink: 1,
-    textAlign: 'right',
-    color: theme.primaryMuted,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  leaderboardDetail: {
-    color: theme.textFaint,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  finishedButton: {
-    backgroundColor: theme.primary,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  finishedButtonText: {
-    // White on the solid rose button — correct in both schemes.
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  turnBanner: {
-    backgroundColor: theme.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-  },
-  turnBannerActive: {
-    backgroundColor: theme.primarySoft,
-    borderColor: theme.primary,
-  },
-  turnText: {
-    color: theme.text,
-    fontSize: 16,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-})
+    centered: {
+      flex: 1,
+      backgroundColor: theme.bg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+      gap: 8,
+    },
+    title: {
+      color: theme.text,
+      fontSize: 22,
+      fontWeight: '700',
+    },
+    body: {
+      color: theme.textMuted,
+      fontSize: 16,
+      textAlign: 'center',
+    },
+    shell: {
+      flex: 1,
+      backgroundColor: theme.bg,
+      padding: 16,
+      gap: 14,
+    },
+    shellSubtitle: {
+      color: theme.textMuted,
+      fontSize: 15,
+      lineHeight: 21,
+    },
+    panel: {
+      backgroundColor: theme.surface,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 24,
+      gap: 12,
+    },
+    panelText: {
+      color: theme.textSecondary,
+      fontSize: 15,
+      lineHeight: 22,
+    },
+    finishedWrap: {
+      gap: 12,
+    },
+    finishedButton: {
+      backgroundColor: theme.primary,
+      borderRadius: 10,
+      paddingVertical: 12,
+      alignItems: 'center',
+      marginTop: 4,
+    },
+    finishedButtonText: {
+      // White on the solid rose button — correct in both schemes.
+      color: '#fff',
+      fontSize: 15,
+      fontWeight: '700',
+    },
+    turnBanner: {
+      backgroundColor: theme.surface,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+    },
+    turnBannerActive: {
+      backgroundColor: theme.primarySoft,
+      borderColor: theme.primary,
+    },
+    turnText: {
+      color: theme.text,
+      fontSize: 16,
+      fontWeight: '700',
+      textAlign: 'center',
+    },
+  })

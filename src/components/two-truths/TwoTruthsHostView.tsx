@@ -1,18 +1,27 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TwoTruthsActiveRound } from '@/components/two-truths/TwoTruthsActiveRound'
 import { TwoTruthsHostManagePanel } from '@/components/two-truths/TwoTruthsHostManagePanel'
 import { TwoTruthsLobbySubmit } from '@/components/two-truths/TwoTruthsLobbySubmit'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
-import { HostThemePicker } from '@/components/host-lobby/HostThemePicker'
+import { HostAllowViewersField } from '@/components/HostAllowViewersField'
+import { HostMaxPlayersLobbyPanel } from '@/components/host-lobby/HostMaxPlayersLobbyPanel'
+import { TransferHostControl } from '@/components/TransferHostControl'
 import { EditNameInline } from '@/components/ui/EditNameInline'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { useTwoTruthsAdvance } from '@/hooks/useTwoTruthsAdvance'
-import { getTtlHostMode, setTtlHostMode, type TtlHostMode } from '@/lib/two-truths'
+import { lobbyReadyForTwoTruths, TTL_TIMER_OPTIONS } from '@/lib/two-truths'
 import { supabase } from '@/lib/supabase'
 import {
   GAME_SELECT,
@@ -22,10 +31,9 @@ import {
   TTL_STATEMENT_SELECT,
 } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
-import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
-import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import type { Game, Player, Round, TtlGuess, TtlStatement } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
@@ -46,34 +54,11 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
   const [playingAgain, setPlayingAgain] = useState(false)
   const [savingTimer, setSavingTimer] = useState(false)
   const [timerSeconds, setTimerSeconds] = useState(45)
-  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
-  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
-  const [hostPlayerName, setHostPlayerName] = useState('')
-  const [hostJoinName, setHostJoinName] = useState('')
-  const [hostJoining, setHostJoining] = useState(false)
-  const [hostMode, setHostMode] = useState<TtlHostMode>('player')
   const [tab, setTab] = useState<HostTab>('manage')
   const [editingStatements, setEditingStatements] = useState(false)
 
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
   useTurnNotifications({ status: game?.status })
-
-  const handlePlayerRemoved = useCallback(
-    (playerId: string) => {
-      if (playerId === hostPlayerId) {
-        setHostPlayerId(null)
-        setHostPlayerName('')
-        clearPlayerSession(gameCode)
-      }
-      setPlayers((prev) => prev.filter((p) => p.id !== playerId))
-    },
-    [gameCode, hostPlayerId]
-  )
-
-  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
-
-  // Clear stale host-as-player state if the host's own row is removed elsewhere.
-  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
 
   const load = useCallback(async (): Promise<boolean> => {
     const [gameRes, plrsRes, stmtsRes, rdsRes, gssRes] = await Promise.all([
@@ -97,23 +82,55 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
 
   useEffect(() => {
     load()
-    setHostMode(getTtlHostMode(gameCode))
-    const session = getPlayerSession(gameCode)
-    if (session) {
-      setHostPlayerId(session.playerId)
-      setHostResumeToken(session.resumeToken ?? null)
-      setHostPlayerName(session.playerName)
-    }
   }, [gameCode, load])
 
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    leaveSeatKeepHosting,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+    onModeChange: (mode) => {
+      if (mode === 'spectator') setTab('manage')
+    },
+  })
+
+  const handlePlayerRemoved = useCallback(
+    (playerId: string) => {
+      onHostSeatRemoved(playerId)
+      setPlayers((prev) => prev.filter((p) => p.id !== playerId))
+    },
+    [onHostSeatRemoved]
+  )
+
+  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
+
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [{ table: 'games', column: 'id' }, 'players', 'ttl_statements', 'rounds', 'ttl_guesses'],
     load
   )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
   useTwoTruthsAdvance({
     gameCode,
@@ -129,81 +146,6 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
     if (game?.status === 'finished') setTab('manage')
     else if (game?.status === 'active') setTab('play')
   }, [game?.status])
-
-  const changeHostMode = async (mode: TtlHostMode) => {
-    const prev = hostMode
-    if (game?.status !== 'waiting') return
-    setHostMode(mode)
-    setTtlHostMode(gameCode, mode)
-    if (mode === 'spectator') setTab('manage')
-    // Switching to "Host only" while holding a seat → give up the seat so the host
-    // drops out of the players list.
-    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
-      try {
-        const res = await fetch('/api/players', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error ?? 'Failed to leave seat')
-        }
-        handlePlayerRemoved(hostPlayerId)
-        await load()
-      } catch (err) {
-        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
-      }
-    }
-  }
-
-  const renameHost = async (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed || !hostPlayerId) return
-    try {
-      const res = await fetch('/api/players', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
-      setHostPlayerName(data.playerName)
-      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
-      await load()
-      success('Name updated!')
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to update name')
-    }
-  }
-
-  const hostJoinGame = async () => {
-    const name = hostJoinName.trim()
-    if (!name) return
-    setHostJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: name }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
-      setHostPlayerId(data.playerId)
-      setHostResumeToken(data.resumeToken ?? null)
-      setHostPlayerName(data.playerName)
-      setHostMode('player')
-      setTtlHostMode(gameCode, 'player')
-      await load()
-      success(`Joined as ${data.playerName}`)
-      setTab('play')
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setHostJoining(false)
-    }
-  }
 
   const startGame = async () => {
     setStarting(true)
@@ -281,12 +223,24 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
+  // Host controls for the active room live in the main-header ⚙ gear (no Manage tab —
+  // gameplay is the body, roster + Remove in the drawer): late-join rules + End game.
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="two_truths" onEnded={load}>
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+          )}
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load, hostMode, hostPlayerId, leaveSeatKeepHosting]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   if (!game) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading…</p>
-      </div>
-    )
+    return <HostLobbySkeleton />
   }
 
   const cfg = gameTypeConfig('two_truths')
@@ -330,10 +284,7 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
           gameCode={gameCode}
           playerId={hostPlayerId}
           currentName={hostPlayerName}
-          onRenamed={(name) => {
-            setHostPlayerName(name)
-            void load()
-          }}
+          onRenamed={() => void load()}
         />
         <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-5 text-center space-y-1">
           <p className="text-2xl">✓</p>
@@ -352,10 +303,7 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
           gameCode={gameCode}
           playerId={hostPlayerId}
           currentName={hostPlayerName}
-          onRenamed={(name) => {
-            setHostPlayerName(name)
-            void load()
-          }}
+          onRenamed={() => void load()}
         />
         <p className="label-caps">Your statements</p>
         <TwoTruthsLobbySubmit
@@ -417,25 +365,115 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
       )}
       {hostStatementSetup}
       {game.status !== 'finished' && <HostRulesRow gameType="two_truths" />}
-      {game.status === 'waiting' && (
-        <HostThemePicker gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-      )}
       <TwoTruthsHostManagePanel {...panelProps} section="manage" />
     </div>
   )
 
+  // Fresh lobby (not the play-again ready-up flow, which keeps the tabbed layout for now).
+  const waitingLobby = game.status === 'waiting' && !game.replay_pending
+  const ready = lobbyReadyForTwoTruths(
+    players.map((p) => p.id),
+    statements
+  )
+
+  const lobbyModeCard = (
+    <HostModeSelector
+      mode={hostMode}
+      onChange={changeHostMode}
+      joinedPlayerId={hostPlayerId}
+      joinedPlayerName={hostPlayerName}
+      joinName={hostJoinName}
+      onJoinNameChange={setHostJoinName}
+      onJoin={() => void hostJoinGame()}
+      joining={hostJoining}
+      onEditName={renameHost}
+      spectatorHint="Watch the game once it starts"
+      playerHint="Play along with everyone"
+      playingNote={
+        <p className="text-sm text-muted">
+          Playing as <strong className="text-body">{hostPlayerName}</strong> — submit your statements below before you
+          start.
+        </p>
+      }
+    />
+  )
+
+  const lobbySettings = (
+    <>
+      <HostMaxPlayersLobbyPanel
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        limitType="two_truths"
+        playerCount={players.length}
+        onGameUpdate={setGame}
+      />
+      <div className="rounded-2xl border border-[color-mix(in_srgb,var(--primary)_14%,var(--border))] bg-[var(--card-strong)]/95 p-5 space-y-2">
+        <p className="label-caps">Guess timer (per round)</p>
+        <select
+          value={timerSeconds}
+          onChange={(e) => setTimerSeconds(Number(e.target.value))}
+          className="input-field w-full"
+        >
+          {TTL_TIMER_OPTIONS.map((s) => (
+            <option key={s} value={s}>
+              {s} seconds
+            </option>
+          ))}
+        </select>
+        <button type="button" onClick={saveTimer} disabled={savingTimer} className="btn-secondary w-full">
+          {savingTimer ? 'Saving…' : 'Save timer'}
+        </button>
+      </div>
+      <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+    </>
+  )
+
+  if (waitingLobby) {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={cfg.label}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('two_truths', game) ?? game.max_players}
+        resumeToken={hostResumeToken}
+        playCard={lobbyModeCard}
+        settingsChildren={lobbySettings}
+        onStart={() => void startGame()}
+        starting={starting}
+        startDisabled={!ready.ok}
+        startDisabledHint={ready.ok ? null : ready.error}
+        startLabel="Start game"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={load}
+      >
+        {hostStatementSetup}
+      </HostLobby>
+    )
+  }
+
   return (
     <HostGameLayout
+      onRemovePlayer={removePlayer}
       gameCode={gameCode}
       status={game.status}
       tab={tab}
       onTabChange={setTab}
       primaryKind={primaryKind}
+      game={game}
+      players={players}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={load}
       showTabs={showTabs}
       gameStarted={gameStarted}
       header={<HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : watchRound}
       manage={manage}
+      noManageTab={game?.status === 'active'}
       finished={<TwoTruthsHostManagePanel {...panelProps} section="finished" />}
     />
   )

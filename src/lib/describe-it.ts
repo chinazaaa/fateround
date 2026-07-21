@@ -1,12 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { loadPlatformEntries } from '@/lib/platform-content'
 import { internalErrorMessage, internalFailure } from '@/lib/api-errors'
 import { markGameFinished } from '@/lib/game-finish'
 import type { DescribeItGuess, DescribeItMode, DescribeItSession, DescribeItWord, Game } from '@/types'
 import { DESCRIBE_IT_WORD_POOL, parseStoredDescribeItWords, pickDescribeWord } from '@/lib/describe-it-words'
 
 export const DESCRIBE_IT_MIN_PLAYERS = 4
-/** Individual mode only needs a describer + two guessers, so it can start with fewer. */
-export const DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL = 3
+/** Individual mode only needs a describer + one guesser, so it can start with fewer. */
+export const DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL = 2
 export const DESCRIBE_IT_MAX_PLAYERS = 20
 export const DESCRIBE_IT_DEFAULT_MAX_PLAYERS = 12
 
@@ -62,7 +63,7 @@ export function clampDescribeItTurnSeconds(value: unknown): number {
 export function clampDescribeItMaxPlayers(value: unknown): number {
   const n = Math.round(Number(value))
   if (!Number.isFinite(n)) return DESCRIBE_IT_DEFAULT_MAX_PLAYERS
-  return Math.min(DESCRIBE_IT_MAX_PLAYERS, Math.max(DESCRIBE_IT_MIN_PLAYERS, n))
+  return Math.min(DESCRIBE_IT_MAX_PLAYERS, Math.max(DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL, n))
 }
 
 /**
@@ -124,14 +125,21 @@ export function clueContainsWord(clue: string, word: string): boolean {
  * never see words the host didn't add; a short list recycles rather than pulling
  * defaults). With no custom words, the built-in bank is primary.
  */
-export function describeItWordPools(game: Pick<Game, 'question_source' | 'custom_questions'>): {
+export async function describeItWordPools(
+  supabase: SupabaseClient,
+  game: Pick<Game, 'question_source' | 'custom_questions'>
+): Promise<{
   primary: readonly string[]
   fallback: readonly string[]
-} {
-  if (game.question_source !== 'custom') return { primary: DESCRIBE_IT_WORD_POOL, fallback: [] }
-  const custom = parseStoredDescribeItWords(game.custom_questions as unknown)
-  if (custom.length === 0) return { primary: DESCRIBE_IT_WORD_POOL, fallback: [] }
-  return { primary: custom, fallback: [] }
+}> {
+  if (game.question_source === 'custom') {
+    const custom = parseStoredDescribeItWords(game.custom_questions as unknown)
+    if (custom.length > 0) return { primary: custom, fallback: [] }
+    return { primary: DESCRIBE_IT_WORD_POOL, fallback: [] }
+  }
+  // Platform source: admin-managed bank when present, else the built-in word pool.
+  const admin = await loadPlatformEntries<string>(supabase, 'describe_it')
+  return { primary: admin.length > 0 ? admin : DESCRIBE_IT_WORD_POOL, fallback: [] }
 }
 
 export function totalDescribeItTurns(numTeams: number, totalRounds: number): number {
@@ -199,6 +207,36 @@ export function teamRoster(rows: Array<{ player_id: string; team: number }>): Ma
 export function describerForTurn(members: string[], round: number): string | null {
   if (members.length === 0) return null
   return members[(round - 1) % members.length] ?? members[0] ?? null
+}
+
+/** Teams that can still field a turn (a describer + at least one guesser). */
+export function describeItPlayableTeams(roster: Map<number, string[]>, numTeams: number): number[] {
+  const out: number[] = []
+  for (let team = 1; team <= numTeams; team += 1) {
+    if ((roster.get(team)?.length ?? 0) >= DESCRIBE_IT_MIN_PER_TEAM) out.push(team)
+  }
+  return out
+}
+
+/**
+ * Next turn index at or after `startIndex` whose team can still field a turn.
+ * A team that dropped below the minimum mid-game gets its turns skipped (no
+ * dead air) rather than running out the clock. Returns `totalTurns` (a non-turn)
+ * when no playable team remains, which the caller treats as "match over".
+ */
+export function nextPlayableTeamIndex(
+  startIndex: number,
+  numTeams: number,
+  totalRounds: number,
+  playableTeams: Set<number>
+): number {
+  const totalTurns = totalDescribeItTurns(numTeams, totalRounds)
+  let index = startIndex
+  while (index < totalTurns) {
+    if (playableTeams.has(teamForTurn(index, numTeams))) break
+    index += 1
+  }
+  return index
 }
 
 /** Lobby is ready when every configured team has at least the minimum members. */
@@ -436,7 +474,10 @@ export async function initializeDescribeItGame(
     teamRoster_ = teamRoster(teamRows)
   }
 
-  const { primary, fallback } = describeItWordPools(game as Pick<Game, 'question_source' | 'custom_questions'>)
+  const { primary, fallback } = await describeItWordPools(
+    supabase,
+    game as Pick<Game, 'question_source' | 'custom_questions'>
+  )
 
   // Carry word usage across Play again so each new game prefers fresh words.
   // Track the primary (cycled) pool; once all of it has been used, start fresh.
@@ -589,7 +630,10 @@ export async function processDescribeItGuess(
     .select('question_source, custom_questions')
     .eq('id', gameId)
     .maybeSingle()
-  const { primary, fallback } = describeItWordPools((game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>)
+  const { primary, fallback } = await describeItWordPools(
+    supabase,
+    (game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>
+  )
   const nextWord = pickDescribeWord(primary, fallback, session.used_words)
   const name = await playerName(supabase, gameId, playerId)
 
@@ -799,7 +843,10 @@ export async function processDescribeItSkip(
     .select('question_source, custom_questions')
     .eq('id', gameId)
     .maybeSingle()
-  const { primary, fallback } = describeItWordPools((game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>)
+  const { primary, fallback } = await describeItWordPools(
+    supabase,
+    (game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>
+  )
   const nextWord = pickDescribeWord(primary, fallback, session.used_words)
 
   // Same atomic claim as a guess, so a skip can't skip a word that was just
@@ -898,7 +945,10 @@ export async function processDescribeItAdvance(
     .select('question_source, custom_questions')
     .eq('id', gameId)
     .maybeSingle()
-  const { primary, fallback } = describeItWordPools((game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>)
+  const { primary, fallback } = await describeItWordPools(
+    supabase,
+    (game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>
+  )
 
   // Claim the break→next-turn transition, scoped to the break we observed so
   // concurrent advances (every client runs the timer) resolve to a single winner
@@ -926,6 +976,15 @@ export async function processDescribeItAdvance(
         session.total_rounds
       )
       nextIndex = nextIndividualDescriberIndex(session.roster, nextIndex, liveIds, totalTurns)
+    } else {
+      // Skip any team that can no longer field a turn; once only one team (or
+      // none) can still play, the match is decided — jump past the last turn so
+      // the finish path below fires.
+      const playable = new Set(describeItPlayableTeams(roster, session.num_teams))
+      nextIndex =
+        playable.size <= 1
+          ? totalDescribeItTurns(session.num_teams, session.total_rounds)
+          : nextPlayableTeamIndex(nextIndex, session.num_teams, session.total_rounds, playable)
     }
 
     const nextTurn = buildTurn({
@@ -984,6 +1043,47 @@ export async function processDescribeItAdvance(
   return {}
 }
 
+/**
+ * A player left or was removed in team mode. If their team can no longer field a
+ * turn, resolve it now: skip the collapsed team's remaining turn, and once only
+ * one team can still play, end the match (highest score wins). Safe no-op when
+ * the game is fine or not in team play. Best-effort — never blocks the leave.
+ */
+export async function reconcileDescribeItAfterRemoval(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error?: string; internal?: boolean }> {
+  const { session, error, internal } = await loadSession(supabase, gameId)
+  if (error) return { error, internal }
+  if (!session || session.status !== 'active' || session.mode === 'individual') return {}
+  if (session.phase !== 'turn' && session.phase !== 'break') return {}
+
+  const teamRows = await loadTeamRows(supabase, gameId)
+  const playable = new Set(describeItPlayableTeams(teamRoster(teamRows), session.num_teams))
+  // With 2+ teams still able to play, only a collapse of the CURRENT live turn's
+  // team needs handling now — a pending break will skip unplayable teams on its
+  // own. (In 'break', active_team is the team that just finished, so ignore it.)
+  if (playable.size >= 2 && (session.phase !== 'turn' || playable.has(session.active_team))) return {}
+
+  // Collapse the dead turn into an immediate break, then let advance skip the
+  // unplayable team (or finish when only one team is left).
+  if (session.phase === 'turn') {
+    const { error: breakError } = await supabase
+      .from('describe_it_sessions')
+      .update({
+        phase: 'break',
+        turn_deadline_at: null,
+        break_deadline_at: deadline(0),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('game_id', gameId)
+      .eq('phase', 'turn')
+      .eq('turn_index', session.turn_index)
+    if (breakError) return internalFailure('describe-it:reconcile', breakError)
+  }
+  return processDescribeItAdvance(supabase, gameId, { force: true })
+}
+
 export type DescribeItTeamScore = { team: number; score: number }
 
 /** Team scores = number of words guessed, highest first. */
@@ -1029,7 +1129,7 @@ export function describeItIndividualLeaderboard(
 // Only scored guesses (points > 0) exist in individual mode — team-mode guesses store
 // points = 0 and are naturally ignored. Spectators are excluded.
 export function describeItRoleLeaderboards(
-  guesses: Array<Pick<DescribeItGuess, 'player_id' | 'turn_index' | 'points'>>,
+  guesses: Array<Pick<DescribeItGuess, 'player_id' | 'turn_index' | 'points' | 'created_at'>>,
   roster: string[],
   players: Array<{ id: string; name: string; spectator?: boolean | null }>
 ): { guessers: DescribeItPlayerScore[]; describers: DescribeItPlayerScore[] } {
@@ -1037,27 +1137,39 @@ export function describeItRoleLeaderboards(
   const nameById = new Map(active.map((p) => [p.id, p.name]))
   const guesserPoints = new Map<string, number>()
   const describerPoints = new Map<string, number>()
+  // Latest scoring-guess time per role — the player who stopped needing to score earlier
+  // was faster, so a points tie breaks by speed before name.
+  const guesserLast = new Map<string, number>()
+  const describerLast = new Map<string, number>()
 
   for (const g of guesses) {
     const points = g.points ?? 0
     if (points <= 0) continue
+    const when = g.created_at ? new Date(g.created_at).getTime() : null
     // Guesser credit — only for a still-present (non-spectator) player.
     if (nameById.has(g.player_id)) {
       guesserPoints.set(g.player_id, (guesserPoints.get(g.player_id) ?? 0) + points)
+      if (when != null && when > (guesserLast.get(g.player_id) ?? -Infinity)) guesserLast.set(g.player_id, when)
     }
     // Describer credit — the player whose turn this guess landed on.
     const describerId = describerForIndividualTurn(roster, g.turn_index)
     if (describerId && nameById.has(describerId)) {
       describerPoints.set(describerId, (describerPoints.get(describerId) ?? 0) + points)
+      if (when != null && when > (describerLast.get(describerId) ?? -Infinity)) describerLast.set(describerId, when)
     }
   }
 
-  const rank = (totals: Map<string, number>): DescribeItPlayerScore[] =>
+  const rank = (totals: Map<string, number>, last: Map<string, number>): DescribeItPlayerScore[] =>
     active
       .map((p) => ({ id: p.id, name: p.name, score: totals.get(p.id) ?? 0 }))
-      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          (last.get(a.id) ?? Infinity) - (last.get(b.id) ?? Infinity) ||
+          a.name.localeCompare(b.name)
+      )
 
-  return { guessers: rank(guesserPoints), describers: rank(describerPoints) }
+  return { guessers: rank(guesserPoints, guesserLast), describers: rank(describerPoints, describerLast) }
 }
 
 export function isDescribeItResultsPhase(
