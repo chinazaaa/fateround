@@ -126,8 +126,12 @@ docker run -d --name app --restart always \
   -e OTEL_RESOURCE_ATTRIBUTES="$OTEL_RESOURCE_ATTRIBUTES" \
   "$REPO:$TAG"
 
-# Reclaim disk from the now-untagged previous image.
-docker image prune -f >/dev/null 2>&1 || true
+# Reclaim disk from previous images. Each deploy pulls "$REPO:<commit-sha>", so old images
+# stay TAGGED (not dangling) and `prune -f` alone never reclaims them — ~100 deploys of
+# ~375MB fill the 20G root and the next `docker pull` dies with "no space left on device".
+# `-a` removes every image not used by a running container; the box runs only the `app`
+# container (just started above on "$REPO:$TAG"), so this keeps the live image and drops the rest.
+docker image prune -af >/dev/null 2>&1 || true
 REDEPLOY
 chmod 750 /usr/local/bin/redeploy.sh
 

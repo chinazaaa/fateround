@@ -27,7 +27,7 @@ export function getResumeTokenFromUrl(): string | null {
   return token.length >= 4 ? token : null
 }
 
-function stripResumeTokenFromUrl(): void {
+export function stripResumeTokenFromUrl(): void {
   if (typeof window === 'undefined') return
   // Keep ?player= on host URLs so the combined host+play link stays shareable.
   if (window.location.pathname.startsWith('/host/')) return
@@ -38,40 +38,54 @@ function stripResumeTokenFromUrl(): void {
   window.history.replaceState({}, '', next)
 }
 
-async function resumeFromApi(gameCode: string, resumeToken: string): Promise<ResolvedPlayerSession | null> {
-  const res = await fetch('/api/players/resume', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ gameCode, resumeToken }),
-  })
-  const data = (await res.json()) as {
-    playerId?: string
-    playerName?: string
-    playerGender?: string
-    resumeToken?: string
-    error?: string
-  }
-  if (!res.ok || !data.playerId || !data.playerName) return null
+type ResumeResult = { type: 'success'; session: ResolvedPlayerSession } | { type: 'not_found' } | { type: 'error' }
 
-  const playerGender = parsePlayerGenderFromDb(data.playerGender)
-  if (!playerGender) return null
+async function resumeFromApi(gameCode: string, resumeToken: string): Promise<ResumeResult> {
+  try {
+    const res = await fetch('/api/players/resume', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gameCode, resumeToken }),
+    })
 
-  const token =
-    typeof data.resumeToken === 'string' && data.resumeToken.trim()
-      ? normalizeResumeToken(data.resumeToken)
-      : normalizeResumeToken(resumeToken)
+    if (res.status === 404) {
+      return { type: 'not_found' }
+    }
 
-  setPlayerSession(gameCode, data.playerId, data.playerName, playerGender, token)
-  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/host/')) {
-    setPollHostMode(gameCode, 'player')
-  }
-  stripResumeTokenFromUrl()
+    const data = (await res.json().catch(() => ({}))) as {
+      playerId?: string
+      playerName?: string
+      playerGender?: string
+      resumeToken?: string
+      error?: string
+    }
+    if (!res.ok || !data.playerId || !data.playerName) return { type: 'error' }
 
-  return {
-    playerId: data.playerId,
-    playerName: data.playerName,
-    playerGender,
-    resumeToken: token,
+    const playerGender = parsePlayerGenderFromDb(data.playerGender)
+    if (!playerGender) return { type: 'error' }
+
+    const token =
+      typeof data.resumeToken === 'string' && data.resumeToken.trim()
+        ? normalizeResumeToken(data.resumeToken)
+        : normalizeResumeToken(resumeToken)
+
+    setPlayerSession(gameCode, data.playerId, data.playerName, playerGender, token)
+    if (typeof window !== 'undefined' && window.location.pathname.startsWith('/host/')) {
+      setPollHostMode(gameCode, 'player')
+    }
+    stripResumeTokenFromUrl()
+
+    return {
+      type: 'success',
+      session: {
+        playerId: data.playerId,
+        playerName: data.playerName,
+        playerGender,
+        resumeToken: token,
+      },
+    }
+  } catch {
+    return { type: 'error' }
   }
 }
 
@@ -106,7 +120,19 @@ export async function resolvePlayerSession(
   const urlToken = getResumeTokenFromUrl()
   if (urlToken) {
     const resumed = await resumeFromApi(gameCode, urlToken)
-    if (resumed) return resumed
+    if (resumed.type === 'success') {
+      return resumed.session
+    }
+    if (resumed.type === 'not_found') {
+      // If the token in the URL is definitively gone (e.g. rotated code or kicked),
+      // we must NOT fall back to local storage, otherwise a player clicking an old link
+      // on their own device would silently log in via localStorage and think the old
+      // link still worked.
+      clearPlayerSession(gameCode)
+      stripResumeTokenFromUrl()
+      return null
+    }
+    // If it's just a network error, we can safely fall through to try localStorage.
   }
 
   const session = getPlayerSession(gameCode)
@@ -148,7 +174,8 @@ export async function resumePlayerSession(
 ): Promise<ResolvedPlayerSession | null> {
   const token = normalizeResumeToken(resumeToken)
   if (token.length < 4) return null
-  return resumeFromApi(gameCode, token)
+  const result = await resumeFromApi(gameCode, token)
+  return result.type === 'success' ? result.session : null
 }
 
 export function applyResolvedSession(

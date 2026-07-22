@@ -198,7 +198,7 @@ export function useMonopolyNotifications({
       (board.last_trade_event.from_player_id === myPlayerId || board.last_trade_event.to_player_id === myPlayerId)
     ) {
       const msg = formatTradeMessageForPlayer(board.last_trade_event, myPlayerId, players, themeId)
-      if (board.last_trade_event.outcome === 'declined') {
+      if (board.last_trade_event.outcome === 'declined' || board.last_trade_event.outcome === 'cancelled') {
         info(msg)
       } else if (board.last_trade_event.outcome === 'accepted') {
         success(msg)

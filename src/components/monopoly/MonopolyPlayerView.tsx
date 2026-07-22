@@ -160,8 +160,9 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     // such a partial row would wipe ownership/buildings on screen (players show 0 property, can't
     // see who owns what). Discard it and let the debounced full reload refetch the complete row.
     if (!isCompleteMonopolyBoardRow(row)) return false
-    setBoard(next)
-    boardRef.current = next
+    const merged = prev ? { ...prev, ...next } : next
+    setBoard(merged)
+    boardRef.current = merged
     return prev != null
   }, [])
   const applyStateRow = useCallback((row: Record<string, unknown>): boolean => {
