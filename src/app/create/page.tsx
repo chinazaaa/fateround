@@ -439,6 +439,7 @@ function CreateGameInner() {
   const [unoUnoPenalty, setUnoUnoPenalty] = useState(2)
   const [unoZeroSeven, setUnoZeroSeven] = useState(false)
   const [unoStacking, setUnoStacking] = useState(false)
+  const [unoJumpIn, setUnoJumpIn] = useState(false)
   const [unoMultiPlayMode, setUnoMultiPlayMode] = useState<
     'off' | 'same_color' | 'same_number' | 'same_color_or_number'
   >('off')
@@ -1924,6 +1925,7 @@ function CreateGameInner() {
           uno_uno_penalty: isUno ? unoUnoPenalty : undefined,
           uno_zero_seven: isUno ? unoZeroSeven : undefined,
           uno_stacking: isUno ? unoStacking : undefined,
+          uno_jump_in: isUno ? unoJumpIn : undefined,
           uno_multi_play_mode: isUno ? unoMultiPlayMode : undefined,
           uno_team_mode: isUno ? unoTeamMode : undefined,
           // Team-Up is strictly 2v2.
@@ -3000,6 +3002,12 @@ function CreateGameInner() {
                       description="Stack Draw Two on Draw Two and Draw Four on Draw Four — the penalty piles up and passes on. Whoever would draw the pile can still challenge a Draw Four (if challenge is on)."
                       value={unoStacking}
                       onChange={setUnoStacking}
+                    />
+                    <Toggle
+                      label="Jump-In"
+                      description="Hold an exact match for the top card (same colour + number, or same colour + symbol)? Play it instantly, even out of turn — the players you skip lose that turn. Wilds can't be jumped. Off keeps strict turn order."
+                      value={unoJumpIn}
+                      onChange={setUnoJumpIn}
                     />
                   </div>
                 </Field>

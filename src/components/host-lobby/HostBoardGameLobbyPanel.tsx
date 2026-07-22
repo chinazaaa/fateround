@@ -77,6 +77,7 @@ export function HostBoardGameLobbyPanel({
   const [unoUnoPenalty, setUnoUnoPenalty] = useState(2)
   const [unoZeroSeven, setUnoZeroSeven] = useState(false)
   const [unoStacking, setUnoStacking] = useState(false)
+  const [unoJumpIn, setUnoJumpIn] = useState(false)
   const [unoMultiPlayMode, setUnoMultiPlayMode] = useState('off')
   const [unoTeamMode, setUnoTeamMode] = useState(false)
   const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
@@ -126,6 +127,7 @@ export function HostBoardGameLobbyPanel({
       setUnoUnoPenalty(Number(game.uno_uno_penalty) === 4 ? 4 : 2)
       setUnoZeroSeven(game.uno_zero_seven === true)
       setUnoStacking(game.uno_stacking === true)
+      setUnoJumpIn(game.uno_jump_in === true)
       setUnoMultiPlayMode(game.uno_multi_play_mode ?? 'off')
       setUnoTeamMode(game.uno_team_mode === true)
     }
@@ -217,6 +219,7 @@ export function HostBoardGameLobbyPanel({
     if (patch.uno_uno_penalty !== undefined) setUnoUnoPenalty(patch.uno_uno_penalty as number)
     if (patch.uno_zero_seven !== undefined) setUnoZeroSeven(patch.uno_zero_seven as boolean)
     if (patch.uno_stacking !== undefined) setUnoStacking(patch.uno_stacking as boolean)
+    if (patch.uno_jump_in !== undefined) setUnoJumpIn(patch.uno_jump_in as boolean)
     if (patch.uno_multi_play_mode !== undefined) setUnoMultiPlayMode(patch.uno_multi_play_mode as string)
     if (patch.uno_team_mode !== undefined) setUnoTeamMode(patch.uno_team_mode as boolean)
     void patchSettings(patch)
@@ -491,6 +494,12 @@ export function HostBoardGameLobbyPanel({
                   description="Stack Draw Two on Draw Two and Draw Four on Draw Four — the penalty piles up and passes on."
                   value={unoStacking}
                   onChange={(v) => onUnoRuleChange({ uno_stacking: v })}
+                />
+                <Toggle
+                  label="Jump-In"
+                  description="Hold an exact match for the top card (same colour + number/symbol)? Play it instantly, out of turn — skipped players lose that turn. Wilds can’t be jumped."
+                  value={unoJumpIn}
+                  onChange={(v) => onUnoRuleChange({ uno_jump_in: v })}
                 />
               </div>
               <div>

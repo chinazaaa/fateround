@@ -31,7 +31,9 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import {
   canPlayCard,
+  cardLabel,
   cardShortLabel,
+  isJumpInMatch,
   multiSetGroupingOk,
   validateMultiSet,
   UNO_COLORS,
@@ -103,6 +105,10 @@ export type UnoPlaySurfaceProps = {
   multiPlayMode?: UnoMultiPlayMode
   /** Play several cards at once (ids in play order — last stays on top). */
   onPlayMulti: (cardIds: string[]) => void
+  /** Jump-In host rule is on — surfaces exact-match cards to play out of turn. */
+  jumpInEnabled?: boolean
+  /** Play an exact-match card out of turn (Jump-In). */
+  onJumpIn?: (cardId: string) => void
   /** Team-Up: your teammate's hand, shown read-only ("Partner" panel). */
   partner?: { id: string; name: string; cards: UnoCard[] } | null
   /** Team-Up quick messages — partner-private emote channel (colour/value/action hints). */
@@ -152,6 +158,8 @@ export function UnoPlaySurface({
   onPass,
   multiPlayMode = 'off',
   onPlayMulti,
+  jumpInEnabled,
+  onJumpIn,
   partner,
   quickChat,
   onTeamLeaveDecision,
@@ -208,6 +216,17 @@ export function UnoPlaySurface({
   const deciding = isMyTurn && !watching && session.phase === 'challenge_window'
   const swapping = isMyTurn && !watching && session.phase === 'swap_target'
   const canAct = isMyTurn && !watching && session.phase === 'playing'
+  // Jump-In: out of turn, play an exact match for the settled top card. Only while the pile is
+  // settled (no pending Draw penalty) and it isn't already your turn (then you'd just play normally).
+  const canJumpIn =
+    !!jumpInEnabled &&
+    !!onJumpIn &&
+    !watching &&
+    !isMyTurn &&
+    session.phase === 'playing' &&
+    (session.draw_penalty ?? 0) === 0
+  const jumpableCards = canJumpIn ? myHand.filter((c) => isJumpInMatch(c, top)) : []
+  const canJumpNow = jumpableCards.length > 0
   // Stacking + challenge: a pending Wild Draw Four penalty may be challenged during normal play
   // (wd4_player_id is kept only while the challenge is available).
   const canChallengeStack =
@@ -546,7 +565,9 @@ export function UnoPlaySurface({
                 ? 'You drew a card — play it or keep it'
                 : canAct
                   ? `Tap a highlighted card to play it${many ? ' · swipe to see more' : ''}`
-                  : undefined
+                  : canJumpNow
+                    ? `⚡ Jump-In! Tap your ${cardLabel(top!)} to play it out of turn`
+                    : undefined
           }
           actions={
             <>
@@ -657,15 +678,21 @@ export function UnoPlaySurface({
                 />
               )
             }
-            const playable = canAct && canPlayCard(card, session)
+            const normalPlayable = canAct && canPlayCard(card, session)
+            const jumpable = canJumpIn && isJumpInMatch(card, top)
+            const playable = normalPlayable || jumpable
+            const clickable = playable && !acting
+            const onClick = clickable ? (normalPlayable ? () => onPlay(card.id) : () => onJumpIn?.(card.id)) : undefined
             return (
               <UnoCardFace
                 key={card.id}
                 card={card}
                 playable={playable}
                 sel={card.id === session.drawn_card_id}
-                dim={canAct && !playable}
-                onClick={playable && !acting ? () => onPlay(card.id) : undefined}
+                // Spotlight the matches: dim non-playable cards on your turn, and dim
+                // everything but the exact matches when a Jump-In is available.
+                dim={(canAct && !playable) || (canJumpIn && !jumpable)}
+                onClick={onClick}
               />
             )
           })}

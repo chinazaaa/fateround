@@ -445,6 +445,7 @@ export async function POST(req: NextRequest) {
     uno_stacking: rawUnoStacking,
     uno_multi_play_mode: rawUnoMultiPlayMode,
     uno_team_mode: rawUnoTeamMode,
+    uno_jump_in: rawUnoJumpIn,
     ludo_variant: rawLudoVariant,
     ayo_variant: rawAyoVariant,
     mahjong_ruleset: rawMahjongRuleset,
@@ -1153,6 +1154,7 @@ export async function POST(req: NextRequest) {
                 uno_stacking: rawUnoStacking === true,
                 uno_multi_play_mode: parseMultiPlayMode(rawUnoMultiPlayMode),
                 uno_team_mode: rawUnoTeamMode === true,
+                uno_jump_in: rawUnoJumpIn === true,
               }
             : isLudoGame(game_type)
               ? { ludo_variant: parseLudoVariant(rawLudoVariant) }

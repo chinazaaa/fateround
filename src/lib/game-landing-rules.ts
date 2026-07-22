@@ -803,6 +803,17 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
     {
+      title: 'Jump-In (optional)',
+      points: [
+        'A host setting — off by default (recommended off for strict turn order, on for chaotic casual lobbies).',
+        'When on, if you hold an EXACT match for the card on top — same colour AND same number, or same colour AND same symbol (e.g. Red 7 on Red 7, Blue Skip on Blue Skip) — you can play it instantly, even when it isn’t your turn. Just tap the highlighted card.',
+        'Only exact matches qualify: a different-coloured 7, or a red card of another number, does not count. Wild and Wild Draw Four cards can never be jumped on.',
+        'Play then continues from whoever sits after you (in the current direction) — everyone you jumped over loses that turn entirely.',
+        'If two players hold the same card, whoever taps first gets it; the window then closes on the old card (but a match for the new card is fair game).',
+        'Jump-In plays a single card — it never triggers a Multi-Play dump — and it’s disabled while a Draw Two/Four penalty is still pending. Drop to one card on a Jump-In and you must still call “UNO”; jump in a 0 or 7 and its effect fires as normal.',
+      ],
+    },
+    {
       title: 'Wild Draw Four challenge',
       points: [
         'A Wild Draw Four is only meant to be played when you have no card of the current colour.',

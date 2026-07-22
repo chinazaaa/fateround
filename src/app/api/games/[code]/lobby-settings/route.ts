@@ -133,6 +133,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     uno_stacking,
     uno_multi_play_mode,
     uno_team_mode,
+    uno_jump_in,
     ludo_variant,
     mahjong_ruleset,
     mahjong_rule_options,
@@ -182,6 +183,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     uno_stacking === undefined &&
     uno_multi_play_mode === undefined &&
     uno_team_mode === undefined &&
+    uno_jump_in === undefined &&
     ludo_variant === undefined &&
     mahjong_ruleset === undefined &&
     mahjong_rule_options === undefined &&
@@ -515,13 +517,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       // Turning it off leaves max_players for the host to adjust separately.
       if (uno_team_mode === true) gameUpdate.max_players = UNO_TEAM_PLAYERS
     }
+    if (uno_jump_in !== undefined) gameUpdate.uno_jump_in = uno_jump_in
   } else if (
     uno_wd4_challenge !== undefined ||
     uno_uno_penalty !== undefined ||
     uno_zero_seven !== undefined ||
     uno_stacking !== undefined ||
     uno_multi_play_mode !== undefined ||
-    uno_team_mode !== undefined
+    uno_team_mode !== undefined ||
+    uno_jump_in !== undefined
   ) {
     return NextResponse.json({ error: 'House rules only apply to UNO games' }, { status: 400 })
   }
