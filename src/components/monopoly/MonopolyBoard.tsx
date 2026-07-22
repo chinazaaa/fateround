@@ -1,4 +1,6 @@
 'use client'
+import { useState } from 'react'
+import { Modal } from '@/components/ui/Modal'
 
 import {
   MONOPOLY_COLOR_CLASSES,
@@ -259,6 +261,7 @@ function BoardSpaceCell({
   edge,
   myPlayerId,
   themeId,
+  onClick,
 }: {
   spaceIndex: number
   states: MonopolyPlayerState[]
@@ -271,6 +274,7 @@ function BoardSpaceCell({
   edge: ReturnType<typeof boardEdgeForSpace>
   myPlayerId?: string | null
   themeId?: string | null
+  onClick?: () => void
 }) {
   const space = spaceAt(spaceIndex)
   const ownerId = owners[String(spaceIndex)]
@@ -291,6 +295,7 @@ function BoardSpaceCell({
 
   return (
     <div
+      onClick={onClick}
       title={themedSpaceName(space.name, spaceIndex, themeId)}
       className={[
         `relative flex overflow-hidden rounded-[2px] sm:rounded-[3px] border ${palette.tileBg} text-neutral-900 shadow-sm`,
@@ -436,6 +441,7 @@ function BoardCellWrapper({
   highlightIndex,
   myPlayerId,
   themeId,
+  onClick,
 }: {
   spaceIndex: number
   states: MonopolyPlayerState[]
@@ -447,9 +453,11 @@ function BoardCellWrapper({
   highlightIndex?: number | null
   myPlayerId?: string | null
   themeId?: string | null
+  onClick?: () => void
 }) {
   return (
     <BoardSpaceCell
+      onClick={onClick}
       spaceIndex={spaceIndex}
       states={states}
       players={players}
@@ -492,6 +500,7 @@ export function MonopolyClassicBoard({
   mobileCenter?: React.ReactNode
   themeId?: string | null
 }) {
+  const [selectedSpace, setSelectedSpace] = useState<number | null>(null)
   const owners = effectivePropertyOwners(parsePropertyOwners(propertyOwners), states)
   const buildings = parseBuildings(propertyBuildings)
   const mortgaged = parseMortgaged(mortgagedProperties)
@@ -534,6 +543,22 @@ export function MonopolyClassicBoard({
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-[740px] lg:max-w-[880px] xl:max-w-[940px]">
+      <Modal open={selectedSpace !== null} onClose={() => setSelectedSpace(null)}>
+        {selectedSpace !== null && (
+          <div className="w-full">
+            <MonopolyCurrentSpace
+              title="Property Info"
+              index={selectedSpace}
+              ownerName={owners[String(selectedSpace)] ? playerName(players, owners[String(selectedSpace)]) : null}
+              propertyOwners={owners}
+              propertyBuildings={buildings}
+              mortgagedProperties={mortgaged}
+              lastDiceTotal={lastDiceTotal}
+              themeId={themeId}
+            />
+          </div>
+        )}
+      </Modal>
       <div
         className={[
           'relative w-full aspect-[7/8] sm:aspect-square overflow-hidden rounded-xl sm:rounded-2xl',
@@ -921,7 +946,7 @@ export function MonopolyClassicBoard({
                 className="relative z-[1] min-h-0 min-w-0"
                 style={{ gridColumn: col, gridRow: row }}
               >
-                <BoardCellWrapper spaceIndex={spaceIndex} {...cellProps} />
+                <BoardCellWrapper onClick={() => setSelectedSpace(spaceIndex)} spaceIndex={spaceIndex} {...cellProps} />
               </div>
             )
           })}
@@ -940,6 +965,7 @@ export function MonopolyCurrentSpace({
   lastDiceTotal = 2,
   compact = false,
   themeId,
+  title,
 }: {
   index: number
   ownerName?: string | null
@@ -949,6 +975,7 @@ export function MonopolyCurrentSpace({
   lastDiceTotal?: number
   compact?: boolean
   themeId?: string | null
+  title?: string
 }) {
   const space = spaceAt(index)
   const icon = spaceIcon(space.type, themeId)
@@ -974,6 +1001,10 @@ export function MonopolyCurrentSpace({
     return null
   })()
 
+  const level = buildingLevel(buildings, index)
+  const levelLabel = level === MONOPOLY_HOTEL_LEVEL ? '🏨 Hotel' : level > 0 ? `${level} 🏠` : null
+  const fullDetailLine = levelLabel ? `${detailLine || ''} · ${levelLabel}` : detailLine
+
   if (compact) {
     return (
       <div className="overflow-hidden rounded-2xl border border-[var(--border-strong)] bg-[var(--card-strong)] shadow-[var(--card-shadow)] min-w-0 h-full flex flex-col">
@@ -989,14 +1020,16 @@ export function MonopolyCurrentSpace({
             </span>
           )}
           <div className="min-w-0 flex-1">
-            <p className="text-[9px] font-semibold uppercase tracking-widest text-muted leading-none">You landed on</p>
+            <p className="text-[9px] font-semibold uppercase tracking-widest text-muted leading-none">
+              {title ?? 'You landed on'}
+            </p>
             <p
               className={`text-sm font-black text-[var(--foreground)] truncate leading-tight mt-0.5 ${getBoardPalette(themeId).tileFont ?? ''}`}
             >
               <span className="hidden sm:inline">{themedSpaceName(space.name, index, themeId)}</span>
               <span className="sm:hidden">{shortSpaceName(space.name, 16, index, themeId)}</span>
             </p>
-            {detailLine && <p className="text-[11px] text-muted truncate leading-snug mt-0.5">{detailLine}</p>}
+            {fullDetailLine && <p className="text-[11px] text-muted truncate leading-snug mt-0.5">{fullDetailLine}</p>}
           </div>
         </div>
       </div>
@@ -1018,7 +1051,7 @@ export function MonopolyCurrentSpace({
             </span>
           )}
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">You landed on</p>
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">{title ?? 'You landed on'}</p>
             <p
               className={`mt-0.5 text-xl sm:text-2xl font-black text-[var(--foreground)] leading-tight ${getBoardPalette(themeId).tileFont ?? ''}`}
             >
@@ -1055,6 +1088,12 @@ export function MonopolyCurrentSpace({
                     ) : null}
                   </>
                 )}
+                {levelLabel && (
+                  <>
+                    {' '}
+                    · <span className="font-bold text-[var(--foreground)]">{levelLabel}</span>
+                  </>
+                )}
               </p>
             )}
             {space.price == null && rentLabel && (
@@ -1077,6 +1116,12 @@ export function MonopolyCurrentSpace({
                 ) : (
                   <>
                     Rent <span className="font-bold text-[var(--foreground)]">{rentLabel}</span>
+                  </>
+                )}
+                {levelLabel && (
+                  <>
+                    {' '}
+                    · <span className="font-bold text-[var(--foreground)]">{levelLabel}</span>
                   </>
                 )}
               </p>

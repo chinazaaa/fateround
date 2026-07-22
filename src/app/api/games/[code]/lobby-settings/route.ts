@@ -117,6 +117,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     rounds_count,
     monopoly_double_go_salary,
     monopoly_forced_auctions,
+    monopoly_auction_timer_seconds,
     monopoly_no_rent_in_jail,
     monopoly_estate_dividend,
     whot_pick3_enabled,
@@ -165,6 +166,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     rounds_count === undefined &&
     monopoly_double_go_salary === undefined &&
     monopoly_forced_auctions === undefined &&
+    monopoly_auction_timer_seconds === undefined &&
     monopoly_no_rent_in_jail === undefined &&
     monopoly_estate_dividend === undefined &&
     whot_pick3_enabled === undefined &&
@@ -463,11 +465,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (boardLobbyType === 'monopoly') {
     if (monopoly_double_go_salary !== undefined) gameUpdate.monopoly_double_go_salary = monopoly_double_go_salary
     if (monopoly_forced_auctions !== undefined) gameUpdate.monopoly_forced_auctions = monopoly_forced_auctions
+    if (monopoly_auction_timer_seconds !== undefined)
+      gameUpdate.monopoly_auction_timer_seconds = monopoly_auction_timer_seconds
     if (monopoly_no_rent_in_jail !== undefined) gameUpdate.monopoly_no_rent_in_jail = monopoly_no_rent_in_jail
     if (monopoly_estate_dividend !== undefined) gameUpdate.monopoly_estate_dividend = monopoly_estate_dividend
   } else if (
     monopoly_double_go_salary !== undefined ||
     monopoly_forced_auctions !== undefined ||
+    monopoly_auction_timer_seconds !== undefined ||
     monopoly_no_rent_in_jail !== undefined ||
     monopoly_estate_dividend !== undefined
   ) {
