@@ -425,6 +425,8 @@ export interface Game {
   uno_multi_play_mode?: string
   /** UNO — 2v2 Team-Up mode (exactly 4 players). */
   uno_team_mode?: boolean
+  /** UNO — Jump-In: play an exact-match card out of turn (deferred toggle). */
+  uno_jump_in?: boolean
   /** Ludo — 'modern' (start + mid-arm safe stars) or 'traditional' (no track safe squares). */
   ludo_variant?: LudoVariant
   /** Ayo — 'traditional' (capture on 4, houses, match rounds) or 'oware' (2/3 seeds). */

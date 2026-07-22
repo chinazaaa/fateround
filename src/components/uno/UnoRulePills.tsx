@@ -15,6 +15,7 @@ export function UnoRulePills({ game, className }: { game: Game; className?: stri
   if (game.uno_multi_play_mode && game.uno_multi_play_mode !== 'off') {
     pills.push({ key: 'multi', icon: '🃏', label: 'Multi-Play' })
   }
+  if (game.uno_jump_in) pills.push({ key: 'jumpin', icon: '⚡', label: 'Jump-In' })
 
   if (pills.length === 0) return null
 

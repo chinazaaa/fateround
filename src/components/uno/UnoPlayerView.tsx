@@ -521,6 +521,8 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
       onPass={() => void postAction('/api/uno/pass', {})}
       multiPlayMode={parseMultiPlayMode(game?.uno_multi_play_mode)}
       onPlayMulti={(cardIds) => void postAction('/api/uno/play-multi', { cardIds })}
+      jumpInEnabled={game?.uno_jump_in === true}
+      onJumpIn={(cardId) => void postAction('/api/uno/jump-in', { cardId })}
       partner={partner}
       quickChat={quickChat}
       onTeamLeaveDecision={(decision) => void postAction('/api/uno/team-leave', { decision })}
