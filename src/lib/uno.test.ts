@@ -428,6 +428,37 @@ describe('resolveMultiPlayAdvance', () => {
     expect(draw2First).toEqual({ direction: -1, penalty: 2, skipsBefore: 0, skipsAfter: 0 })
     expect(revFirst).toEqual(draw2First)
   })
+
+  it('top card wins: a number laid on a +2 cancels the draw (only the visible top counts)', () => {
+    // [+2, 5]: the 5 settles the pile — next player just matches the 5, no draw.
+    expect(resolveMultiPlayAdvance([c('draw2'), c('number', 'red', 5)], session({ direction: 1 }), 3)).toEqual({
+      direction: 1,
+      penalty: 0,
+      skipsBefore: 0,
+      skipsAfter: 0,
+    })
+    // [5, +2]: the +2 is on top — next player draws 2.
+    expect(resolveMultiPlayAdvance([c('number', 'red', 5), c('draw2')], session({ direction: 1 }), 3)).toEqual({
+      direction: 1,
+      penalty: 2,
+      skipsBefore: 0,
+      skipsAfter: 0,
+    })
+  })
+
+  it('top card wins: only the action run after the last number counts', () => {
+    // [+2, 5, skip]: the 5 cancels the +2; only the trailing skip survives.
+    expect(
+      resolveMultiPlayAdvance([c('draw2'), c('number', 'red', 5), c('skip')], session({ direction: 1 }), 4)
+    ).toEqual({ direction: 1, penalty: 0, skipsBefore: 1, skipsAfter: 0 })
+    // [reverse, 5]: the number also cancels a covered reverse (direction stays put).
+    expect(resolveMultiPlayAdvance([c('reverse'), c('number', 'red', 5)], session({ direction: 1 }), 4)).toEqual({
+      direction: 1,
+      penalty: 0,
+      skipsBefore: 0,
+      skipsAfter: 0,
+    })
+  })
 })
 
 describe('multiSetGroupingOk', () => {

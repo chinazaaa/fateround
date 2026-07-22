@@ -599,6 +599,7 @@ export async function initializeUnoGame(
     draw_pile: drawPile,
     discard_pile: [],
     top_card: top,
+    last_play_cards: null,
     required_color: null,
     draw_penalty: 0,
     pending_wild: null,
@@ -906,9 +907,13 @@ function resolveNextTurn(session: UnoSession, hands: UnoPlayerHand[], card: UnoC
  * is up after that. So order matters — the Draw-Two penalty lands on the player reached after the
  * skips that come BEFORE it, and skips AFTER it push the turn further along.
  *
+ * The card left on top wins (WYSIWYG): only the run of action cards laid AFTER the last non-action
+ * (number) card counts. Covering your own Draw Two with a number settles the pile — the next player
+ * just matches the number, no draw — so the demand always matches the visible top card.
+ *
  * Returns:
  *  - `direction`   — play direction after any reverses.
- *  - `penalty`     — total Draw-Two cards owed (0 when the set has no Draw Two).
+ *  - `penalty`     — total Draw-Two cards owed (0 when the trailing run has no Draw Two).
  *  - `skipsBefore` — skip-steps (skip / 2-player reverse) laid down before the first Draw Two.
  *  - `skipsAfter`  — skip-steps laid down after the first Draw Two.
  *
@@ -921,7 +926,8 @@ export function resolveMultiPlayAdvance(
   session: Pick<UnoSession, 'direction'>,
   activeCount: number
 ): { direction: number; penalty: number; skipsBefore: number; skipsAfter: number } {
-  let direction = session.direction < 0 ? -1 : 1
+  const baseDirection = session.direction < 0 ? -1 : 1
+  let direction = baseDirection
   let skipsBefore = 0
   let skipsAfter = 0
   let penalty = 0
@@ -941,6 +947,14 @@ export function resolveMultiPlayAdvance(
     } else if (c.kind === 'draw2') {
       seenDraw2 = true
       penalty += 2
+    } else {
+      // A non-action (number) card settles the pile: everything laid before it is covered and
+      // cancelled. Only the action cards played after it carry a turn-flow effect.
+      direction = baseDirection
+      skipsBefore = 0
+      skipsAfter = 0
+      penalty = 0
+      seenDraw2 = false
     }
   }
   return { direction, penalty, skipsBefore, skipsAfter }
@@ -1084,6 +1098,7 @@ export async function processUnoPlay(
     // Wild / Wild Draw Four with cards left: pause for the colour choice.
     patch = {
       top_card: card,
+      last_play_cards: [card],
       discard_pile: discardWith(baseDiscard, session.top_card),
       draw_pile: basePile,
       required_color: null,
@@ -1108,6 +1123,7 @@ export async function processUnoPlay(
     const draw2Penalty = card.kind === 'draw2' ? draw2Base + 2 : 0
     const board: Partial<UnoSession> = {
       top_card: card,
+      last_play_cards: [card],
       required_color: null,
       pending_wild: null,
       challenge_prev_color: null,
@@ -1277,6 +1293,8 @@ export async function processUnoPlayMulti(
 
   const board: Partial<UnoSession> = {
     top_card: lastCard,
+    // The whole set, in play order — the client fans the covered cards behind the top one.
+    last_play_cards: cards,
     required_color: null,
     pending_wild: null,
     challenge_prev_color: null,
