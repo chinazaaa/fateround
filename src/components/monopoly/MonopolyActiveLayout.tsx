@@ -191,7 +191,7 @@ export function MonopolyActiveLayout({
               isMyAuctionTurn={spectator ? false : isMyAuctionTurn}
               phase={board.phase}
               secondsLeft={secondsLeft}
-              hasTimer={hasTimer && !spectator && amActor}
+              hasTimer={hasTimer}
               urgent={urgent}
             />
           </div>

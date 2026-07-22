@@ -52,7 +52,7 @@ export function GameChromeSettings({
   }, [role, gameCode])
 
   const rowClass =
-    'flex w-full items-center justify-start gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] px-3.5 py-3 text-sm font-semibold text-body transition-colors hover:text-[var(--foreground)]'
+    'flex w-full items-center justify-center gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] px-3.5 py-3 text-sm font-semibold text-body transition-colors hover:text-[var(--foreground)]'
 
   return (
     <>
