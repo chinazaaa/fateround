@@ -1207,12 +1207,18 @@ export async function processMonopolyRoll(
             cash,
             position,
             in_jail: inJail,
-            jail_turns: jailTurns,
+            // Clamp at the 3-attempt limit — the player stays jailed until the
+            // fine is settled via raise_funds, and must never roll again here.
+            jail_turns: 3,
             get_out_of_jail_free: getOutCards,
             passed_go_once: passedGoOnce,
           },
           {
-            phase: 'jail',
+            // Out of jail-roll attempts and can't pay: move to raise_funds so the
+            // player must mortgage/sell to settle the fine. Leaving this as 'jail'
+            // let the roll guard (phase === 'jail') fire again, re-incrementing
+            // jail_turns without bound (the 5/3, 15/3 bug).
+            phase: 'raise_funds',
             pending_debt: jailDebt,
             pending_space: jailDebt.space_index ?? board.pending_space,
             status_message: `${jailDebt.reason} — mortgage or sell buildings to raise cash, pay, or forfeit.`,
