@@ -92,6 +92,7 @@ export async function getMonopolyGameSettings(
   gameId: string
 ): Promise<{
   timerSeconds: number
+  auctionTimerSeconds: number
   doubleGo: boolean
   forcedAuctions: boolean
   noRentInJail: boolean
@@ -100,12 +101,13 @@ export async function getMonopolyGameSettings(
   const { data } = await supabase
     .from('games')
     .select(
-      'timer_seconds, monopoly_double_go_salary, monopoly_forced_auctions, monopoly_no_rent_in_jail, monopoly_estate_dividend'
+      'timer_seconds, monopoly_auction_timer_seconds, monopoly_double_go_salary, monopoly_forced_auctions, monopoly_no_rent_in_jail, monopoly_estate_dividend'
     )
     .eq('id', gameId)
     .maybeSingle()
   return {
     timerSeconds: (data?.timer_seconds ?? 0) as number,
+    auctionTimerSeconds: (data?.monopoly_auction_timer_seconds ?? MONOPOLY_AUCTION_TIMER_SECONDS) as number,
     doubleGo: data?.monopoly_double_go_salary === true,
     forcedAuctions: data?.monopoly_forced_auctions === true,
     noRentInJail: data?.monopoly_no_rent_in_jail === true,
@@ -113,11 +115,14 @@ export async function getMonopolyGameSettings(
   }
 }
 
-function monopolyDeadlineForPhase(timerSeconds: number, phase: MonopolyPhase): string | null {
+function monopolyDeadlineForPhase(
+  settings: { timerSeconds: number; auctionTimerSeconds: number },
+  phase: MonopolyPhase
+): string | null {
   if (phase === 'finished') return null
-  if (phase === 'auction') return monopolyTurnDeadline(MONOPOLY_AUCTION_TIMER_SECONDS)
+  if (phase === 'auction') return monopolyTurnDeadline(settings.auctionTimerSeconds)
   if (phase === 'roll' || phase === 'jail' || phase === 'buy' || phase === 'pay_rent' || phase === 'raise_funds') {
-    return monopolyTurnDeadline(timerSeconds)
+    return monopolyTurnDeadline(settings.timerSeconds)
   }
   return null
 }
@@ -923,7 +928,7 @@ async function finalizeAuction(
             auction_state: restartAuction,
             pending_space: spaceIndex,
             status_message: `${defaulterName} could not afford ${formatMonopolyMoney(auction.high_bid)} — auction reopens.`,
-            turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, 'auction'),
+            turn_deadline_at: monopolyDeadlineForPhase(settings, 'auction'),
           },
           expectedUpdatedAt
         )
@@ -959,7 +964,7 @@ async function finalizeAuction(
           consecutive_doubles: turnFinish.consecutiveDoubles,
           status_message: statusMessage,
           last_cash_event: lastCashEvent,
-          turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, turnFinish.phase),
+          turn_deadline_at: monopolyDeadlineForPhase(settings, turnFinish.phase),
         },
         p_player_patches: [{ player_id: auction.high_bidder_id, cash_delta: -auction.high_bid }],
       })
@@ -988,7 +993,7 @@ async function finalizeAuction(
       consecutive_doubles: turnFinish.consecutiveDoubles,
       status_message: statusMessage,
       ...(lastCashEvent ? { last_cash_event: lastCashEvent } : {}),
-      turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, turnFinish.phase),
+      turn_deadline_at: monopolyDeadlineForPhase(settings, turnFinish.phase),
     },
     expectedUpdatedAt
   )
@@ -1211,7 +1216,7 @@ export async function processMonopolyRoll(
             pending_debt: jailDebt,
             pending_space: jailDebt.space_index ?? board.pending_space,
             status_message: `${jailDebt.reason} — mortgage or sell buildings to raise cash, pay, or forfeit.`,
-            turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, 'raise_funds'),
+            turn_deadline_at: monopolyDeadlineForPhase(settings, 'raise_funds'),
             auction_state: null,
             pending_trade: null,
             last_dice: dice,
@@ -1248,7 +1253,7 @@ export async function processMonopolyRoll(
           phase: nextPhase,
           current_turn_index: turnIndex,
           status_message: `Still in jail — rolled ${dice.d1}+${dice.d2} (no doubles). Attempt ${jailTurns}/3.`,
-          turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, nextPhase),
+          turn_deadline_at: monopolyDeadlineForPhase(settings, nextPhase),
         },
         board.updated_at
       )
@@ -1398,7 +1403,7 @@ export async function processMonopolyRoll(
               pending_debt: firstDebt,
               pending_space: firstDebt.space_index ?? board.pending_space,
               status_message: `${firstDebt.reason} — mortgage or sell buildings to raise cash, pay, or forfeit.`,
-              turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, 'raise_funds'),
+              turn_deadline_at: monopolyDeadlineForPhase(settings, 'raise_funds'),
               auction_state: null,
               pending_trade: null,
               last_dice: dice,
@@ -1537,7 +1542,7 @@ export async function processMonopolyRoll(
       ...(lastCardEvent ? { last_card_event: lastCardEvent } : {}),
       ...(pendingDebt ? { pending_debt: pendingDebt } : {}),
       ...(lastCashEvent ? { last_cash_event: lastCashEvent } : {}),
-      turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, boardPhase),
+      turn_deadline_at: monopolyDeadlineForPhase(settings, boardPhase),
     },
     board.updated_at,
     otherCashWrites
@@ -1611,7 +1616,7 @@ export async function processMonopolyBuy(
         consecutive_doubles: turnFinish.consecutiveDoubles,
         status_message: `Bought ${space.name} for ${formatMonopolyMoney(price)}.`,
         last_cash_event: lastCashEvent,
-        turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, turnFinish.phase),
+        turn_deadline_at: monopolyDeadlineForPhase(settings, turnFinish.phase),
       },
       board.updated_at
     )
@@ -1633,7 +1638,7 @@ export async function processMonopolyBuy(
         current_turn_index: turnFinish.turnIndex,
         consecutive_doubles: turnFinish.consecutiveDoubles,
         status_message: `${space.name} was passed up — no auction.`,
-        turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, turnFinish.phase),
+        turn_deadline_at: monopolyDeadlineForPhase(settings, turnFinish.phase),
       },
       board.updated_at
     )
@@ -1648,7 +1653,7 @@ export async function processMonopolyBuy(
       phase: 'auction',
       auction_state: auction,
       status_message: `Auction started for ${space.name}.`,
-      turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, 'auction'),
+      turn_deadline_at: monopolyDeadlineForPhase(settings, 'auction'),
     },
     board.updated_at
   )
@@ -1711,7 +1716,7 @@ export async function processMonopolyAuction(
         action === 'bid'
           ? `${space.name} — high bid ${formatMonopolyMoney(nextAuction.high_bid)}.`
           : `${space.name} — waiting for next bid.`,
-      turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, 'auction'),
+      turn_deadline_at: monopolyDeadlineForPhase(settings, 'auction'),
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
@@ -1766,7 +1771,7 @@ export async function processMonopolyPayRent(
         status_message: 'Rent waived due to ownership change.',
         pending_space: null,
         pending_debt: null,
-        turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, turnFinish.phase),
+        turn_deadline_at: monopolyDeadlineForPhase(settings, turnFinish.phase),
         updated_at: new Date().toISOString(),
       })
       .eq('game_id', gameId)
@@ -1810,7 +1815,7 @@ export async function processMonopolyPayRent(
         status_message: 'Rent waived because the owner is in jail.',
         pending_space: null,
         pending_debt: null,
-        turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, turnFinish.phase),
+        turn_deadline_at: monopolyDeadlineForPhase(settings, turnFinish.phase),
         updated_at: new Date().toISOString(),
       })
       .eq('game_id', gameId)
@@ -1862,7 +1867,7 @@ export async function processMonopolyPayRent(
     p_consecutive_doubles: turnFinish.consecutiveDoubles,
     p_status_message: `Rent paid on ${space.name}.`,
     p_last_rent_event: lastRentEvent,
-    p_turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, turnFinish.phase),
+    p_turn_deadline_at: monopolyDeadlineForPhase(settings, turnFinish.phase),
     p_payer_leaves_jail: false,
   })
   if (rpcError) {
@@ -2364,9 +2369,10 @@ async function clearMonopolyPendingTrade(
   gameId: string,
   board: MonopolyBoard,
   trade: MonopolyPendingTrade,
-  statusMessage: string
+  statusMessage: string,
+  outcome: 'declined' | 'cancelled' = 'declined'
 ): Promise<void> {
-  const lastTradeEvent = nextTradeEvent(board, trade.from_player_id, trade.to_player_id, 'declined')
+  const lastTradeEvent = nextTradeEvent(board, trade.from_player_id, trade.to_player_id, outcome)
   await persistBoard(
     supabase,
     gameId,
@@ -2419,7 +2425,14 @@ export async function processMonopolyTradeCancel(
 
   const names = await playerNamesById(supabase, gameId, [trade.from_player_id, trade.to_player_id])
   const toName = names[trade.to_player_id] ?? 'player'
-  await clearMonopolyPendingTrade(supabase, gameId, board, trade, `Trade offer to ${toName} was cancelled.`)
+  await clearMonopolyPendingTrade(
+    supabase,
+    gameId,
+    board,
+    trade,
+    `Trade offer to ${toName} was cancelled.`,
+    'cancelled'
+  )
   return {}
 }
 
@@ -2529,7 +2542,7 @@ async function attemptRemoveMonopolyPlayer(
     pending_space: removedWasCurrent ? null : board.pending_space,
     winner_player_id: winner ?? board.winner_player_id,
     status_message: statusMessage,
-    turn_deadline_at: phase === 'finished' ? null : monopolyDeadlineForPhase(settings.timerSeconds, phase),
+    turn_deadline_at: phase === 'finished' ? null : monopolyDeadlineForPhase(settings, phase),
     // NB: updated_at is set by monopoly_claim_and_apply (to now()) and is not an
     // accepted patch key — including it here raises UNKNOWN_BOARD_COLUMN.
   }
@@ -2740,7 +2753,7 @@ async function enterRaiseFundsPhase(
       pending_debt: debt,
       pending_space: debt.space_index ?? board.pending_space,
       status_message: `${debt.reason} — mortgage or sell buildings to raise cash, pay, or forfeit.`,
-      turn_deadline_at: monopolyDeadlineForPhase(settings.timerSeconds, 'raise_funds'),
+      turn_deadline_at: monopolyDeadlineForPhase(settings, 'raise_funds'),
       auction_state: null,
       pending_trade: null,
       ...boardPatch,
@@ -2807,10 +2820,7 @@ export async function processMonopolySettleDebt(
       p_consecutive_doubles: board.consecutive_doubles ?? 0,
       p_status_message: `Paid ${formatMonopolyMoney(amount)} — roll to move!`,
       p_last_rent_event: board.last_rent_event ?? null,
-      p_turn_deadline_at: monopolyDeadlineForPhase(
-        (await getMonopolyGameSettings(supabase, gameId)).timerSeconds,
-        'roll'
-      ),
+      p_turn_deadline_at: monopolyDeadlineForPhase(await getMonopolyGameSettings(supabase, gameId), 'roll'),
       p_payer_leaves_jail: true,
     })
     if (rpcError) {
@@ -2830,7 +2840,7 @@ export async function processMonopolySettleDebt(
   let nextPhase = turnFinish.phase
   let upcomingTurnIndex = turnFinish.turnIndex
   let nextDoubles = turnFinish.consecutiveDoubles
-  let nextDeadline = monopolyDeadlineForPhase(settings.timerSeconds, turnFinish.phase)
+  let nextDeadline = monopolyDeadlineForPhase(settings, turnFinish.phase)
   let nextDebtObj: MonopolyPendingDebt | null = null
 
   if (debt.next_debts && debt.next_debts.length > 0) {
@@ -2842,7 +2852,7 @@ export async function processMonopolySettleDebt(
     nextPhase = 'raise_funds'
     upcomingTurnIndex = board.current_turn_index
     nextDoubles = board.consecutive_doubles ?? 0
-    nextDeadline = monopolyDeadlineForPhase(settings.timerSeconds, 'raise_funds')
+    nextDeadline = monopolyDeadlineForPhase(settings, 'raise_funds')
   }
 
   // Claim the board and move the cash in ONE transaction; see above.

@@ -63,6 +63,7 @@ export function HostBoardGameLobbyPanel({
   const [gameDuration, setGameDuration] = useState(0)
   const [monopolyDoubleGoSalary, setMonopolyDoubleGoSalary] = useState(false)
   const [monopolyForcedAuctions, setMonopolyForcedAuctions] = useState(false)
+  const [monopolyAuctionTimerSeconds, setMonopolyAuctionTimerSeconds] = useState(10)
   const [monopolyNoRentInJail, setMonopolyNoRentInJail] = useState(false)
   const [monopolyEstateDividend, setMonopolyEstateDividend] = useState(false)
   const [whotPick3Enabled, setWhotPick3Enabled] = useState(true)
@@ -105,6 +106,7 @@ export function HostBoardGameLobbyPanel({
     if (boardGameType === 'monopoly') {
       setMonopolyDoubleGoSalary(game.monopoly_double_go_salary === true)
       setMonopolyForcedAuctions(game.monopoly_forced_auctions === true)
+      setMonopolyAuctionTimerSeconds(game.monopoly_auction_timer_seconds ?? 10)
       setMonopolyNoRentInJail(game.monopoly_no_rent_in_jail === true)
       setMonopolyEstateDividend(game.monopoly_estate_dividend === true)
     }
@@ -179,8 +181,15 @@ export function HostBoardGameLobbyPanel({
   }
 
   const onTurnTimerChange = (next: number) => {
+    if (next === turnTimer) return
     setTurnTimer(next)
     void patchSettings({ timer_seconds: next })
+  }
+
+  const onAuctionTimerChange = (next: number) => {
+    if (next === monopolyAuctionTimerSeconds) return
+    setMonopolyAuctionTimerSeconds(next)
+    void patchSettings({ monopoly_auction_timer_seconds: next })
   }
 
   const onGameDurationChange = (next: number) => {
@@ -235,6 +244,15 @@ export function HostBoardGameLobbyPanel({
         label: shortTurnLabel(s),
       })),
     [boardGameType]
+  )
+
+  const auctionTimerOptions = useMemo(
+    () =>
+      [5, 10, 15, 20, 30, 45, 60].map((s) => ({
+        value: s,
+        label: shortTurnLabel(s),
+      })),
+    []
   )
 
   const durationFormatter =
@@ -310,6 +328,16 @@ export function HostBoardGameLobbyPanel({
         <HostLobbySettingBlock title="Turn timer">
           <HostLobbyOptionChips value={turnTimer} options={turnTimerOptions} onChange={onTurnTimerChange} />
         </HostLobbySettingBlock>
+
+        {boardGameType === 'monopoly' && (
+          <HostLobbySettingBlock title="Auction timer">
+            <HostLobbyOptionChips
+              value={monopolyAuctionTimerSeconds}
+              options={auctionTimerOptions}
+              onChange={onAuctionTimerChange}
+            />
+          </HostLobbySettingBlock>
+        )}
 
         {(boardGameType === 'monopoly' ||
           boardGameType === 'whot' ||

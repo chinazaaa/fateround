@@ -316,6 +316,7 @@ export interface Game {
   mafia_anonymous_votes?: boolean
   monopoly_double_go_salary?: boolean
   monopoly_forced_auctions?: boolean
+  monopoly_auction_timer_seconds?: number | null
   monopoly_no_rent_in_jail?: boolean
   monopoly_estate_dividend?: boolean
   anonymous: boolean
@@ -514,7 +515,7 @@ export interface MonopolyLastTradeEvent {
   seq: number
   from_player_id: string
   to_player_id: string
-  outcome: 'proposed' | 'declined' | 'accepted'
+  outcome: 'proposed' | 'declined' | 'accepted' | 'cancelled'
 }
 
 export interface MonopolyBoard {

@@ -1871,3 +1871,22 @@ body {
     radial-gradient(ellipse 90% 55% at 50% -10%, rgba(244, 63, 94, 0.2) 0%, transparent 55%),
     radial-gradient(ellipse 50% 35% at 85% 90%, rgba(16, 185, 129, 0.15) 0%, transparent 50%);
 }
+
+/* ── Custom Utilities ───────────────────────────────────────────── */
+@theme {
+  --animate-intermittent-shake: intermittent-shake 5s cubic-bezier(.36,.07,.19,.97) infinite;
+  @keyframes intermittent-shake {
+    0%, 80% { transform: translateX(0); }
+    82% { transform: translateX(-4px) rotate(-3deg); }
+    84% { transform: translateX(4px) rotate(3deg); }
+    86% { transform: translateX(-4px) rotate(-3deg); }
+    88% { transform: translateX(4px) rotate(3deg); }
+    90%, 100% { transform: translateX(0); }
+  }
+}
+
+select option {
+  background-color: var(--card-strong) !important;
+  color: var(--foreground) !important;
+}
+

@@ -13,6 +13,16 @@ import { secondsUntil } from '@/lib/timer-format'
  * so a deadline the server won't act on can't be re-POSTed every few seconds forever by
  * every connected client. Any new `deadlineAt` resets the back-off.
  *
+ * A 200 `skipped` verdict is ambiguous: it can mean the deadline is genuinely dead
+ * (finished session), OR just ordinary clock skew — the client's countdown hit 0 a beat
+ * before the server agrees `turn_deadline_at` has passed. That second deadline is LIVE and
+ * about to expire, so backing off strands the turn (the game looks frozen until a manual
+ * refresh). To tell them apart without server help, the first `graceSkips` `skipped`s keep
+ * the flat `cooldownMs` cadence — long enough to absorb the skew, since the server starts
+ * acting the instant its clock passes the deadline. Only sustained skipping past that
+ * window (a truly dead deadline) ramps into exponential back-off. A 4xx is terminal, not
+ * skew, so it skips the grace window and backs off immediately.
+ *
  * The game-specific "is there a live timer right now" test is passed in as `hasTimer`
  * (typically: deadline present AND the phase/status is a timed one) — it is also the
  * value returned. `enabled` gates whether *this* client shows the countdown (defaults
@@ -36,6 +46,7 @@ export function useTurnTimer({
   urgentThreshold = 10,
   cooldownMs = 3000,
   maxBackoffMs = 60000,
+  graceSkips = 3,
 }: {
   gameCode: string
   endpoint: string
@@ -48,6 +59,7 @@ export function useTurnTimer({
   urgentThreshold?: number
   cooldownMs?: number
   maxBackoffMs?: number
+  graceSkips?: number
 }) {
   const [secondsLeft, setSecondsLeft] = useState(0)
   const firingRef = useRef(false)
@@ -102,7 +114,12 @@ export function useTurnTimer({
             : null
           if (!res.ok || payload?.skipped) {
             skipStreakRef.current += 1
-            rearmMs = Math.min(cooldownMs * 2 ** skipStreakRef.current, maxBackoffMs)
+            // A 200 `skipped` gets a grace window of flat-cooldown retries first — that
+            // deadline may just be skew away from firing, and a long back-off would freeze
+            // a live turn. Only skips *past* the window (a genuinely dead deadline) ramp up.
+            // A 4xx never gets grace: it's terminal, so back off from the first one.
+            const overGrace = res.ok ? skipStreakRef.current - graceSkips : skipStreakRef.current
+            rearmMs = overGrace > 0 ? Math.min(cooldownMs * 2 ** overGrace, maxBackoffMs) : cooldownMs
           } else {
             skipStreakRef.current = 0
           }
@@ -135,7 +152,7 @@ export function useTurnTimer({
     }
     // resetKey re-arms the interval on a caller-significant change (e.g. phase) that
     // leaves deadlineAt untouched, matching the original per-game effect deps.
-  }, [active, mayExpire, deadlineAt, gameCode, endpoint, intervalMs, cooldownMs, maxBackoffMs, resetKey])
+  }, [active, mayExpire, deadlineAt, gameCode, endpoint, intervalMs, cooldownMs, maxBackoffMs, graceSkips, resetKey])
 
   return {
     secondsLeft,

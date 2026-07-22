@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import { getPlayerSession, setPlayerSession } from '@/lib/utils'
+import { stripResumeTokenFromUrl } from '@/lib/player-resume'
 
 /**
  * "Rotate player code" — issues a fresh resume token for the caller's own seat and
@@ -44,8 +45,9 @@ export function RotatePlayerCodeButton({ gameCode, className }: { gameCode: stri
       const body = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(body.error || 'Failed to rotate code')
       setPlayerSession(gameCode, session.playerId, session.playerName, session.playerGender, body.newToken)
+      stripResumeTokenFromUrl()
       success('Your new player code is active.')
-      router.refresh()
+      setTimeout(() => window.location.reload(), 800)
     } catch (err) {
       error(err instanceof Error ? err.message : 'Failed to rotate code')
     } finally {

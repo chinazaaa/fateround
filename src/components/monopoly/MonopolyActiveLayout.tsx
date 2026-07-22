@@ -109,7 +109,9 @@ export function MonopolyActiveLayout({
 
   const personalTradeMessage =
     board.last_trade_event &&
-    (board.last_trade_event.outcome === 'declined' || board.last_trade_event.outcome === 'accepted') &&
+    (board.last_trade_event.outcome === 'declined' ||
+      board.last_trade_event.outcome === 'accepted' ||
+      board.last_trade_event.outcome === 'cancelled') &&
     (board.last_trade_event.from_player_id === myPlayerId || board.last_trade_event.to_player_id === myPlayerId)
       ? formatTradeMessageForPlayer(board.last_trade_event, myPlayerId, players)
       : null
@@ -189,7 +191,7 @@ export function MonopolyActiveLayout({
               isMyAuctionTurn={spectator ? false : isMyAuctionTurn}
               phase={board.phase}
               secondsLeft={secondsLeft}
-              hasTimer={hasTimer && !spectator && amActor}
+              hasTimer={hasTimer}
               urgent={urgent}
             />
           </div>
