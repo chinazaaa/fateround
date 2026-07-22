@@ -503,6 +503,8 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             onPass={() => void postHostAction('/api/uno/pass')}
             multiPlayMode={parseMultiPlayMode(game.uno_multi_play_mode)}
             onPlayMulti={(cardIds) => void postHostAction('/api/uno/play-multi', { cardIds })}
+            jumpInEnabled={game.uno_jump_in === true}
+            onJumpIn={(cardId) => void postHostAction('/api/uno/jump-in', { cardId })}
             partner={partner}
             quickChat={quickChat}
             onTeamLeaveDecision={(decision) => void postHostAction('/api/uno/team-leave', { decision })}

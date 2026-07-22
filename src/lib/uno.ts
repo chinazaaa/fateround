@@ -49,6 +49,8 @@ export type UnoRules = {
   multiPlay: UnoMultiPlayMode
   /** 2v2 Team-Up mode: a team wins the moment either member empties their hand. */
   teamMode: boolean
+  /** Jump-In: any player may play an exact-match card out of turn (same colour + value/symbol). */
+  jumpIn: boolean
 }
 
 /** Team-Up requires exactly this many players (2 teams of 2). */
@@ -131,6 +133,7 @@ export function parseUnoRules(
         | 'uno_stacking'
         | 'uno_multi_play_mode'
         | 'uno_team_mode'
+        | 'uno_jump_in'
       >
     | null
     | undefined
@@ -146,6 +149,7 @@ export function parseUnoRules(
     stacking: game?.uno_stacking === true,
     multiPlay: parseMultiPlayMode(game?.uno_multi_play_mode),
     teamMode: game?.uno_team_mode === true,
+    jumpIn: game?.uno_jump_in === true,
   }
 }
 
@@ -298,6 +302,20 @@ export function canPlayCard(card: UnoCard, session: UnoSession): boolean {
   if (card.kind === 'number' && top.kind === 'number') return card.value === top.value
   if (card.kind !== 'number' && card.kind === top.kind) return true // matching symbol (Skip on Skip, etc.)
   return false
+}
+
+/**
+ * Jump-In eligibility: `card` is an EXACT match for the settled top card — same colour AND same
+ * number (for number cards) or same symbol (Skip/Reverse/Draw Two). Wild and Wild Draw Four are
+ * never eligible (no fixed colour/number to match). A different colour or a different value/symbol
+ * does not qualify.
+ */
+export function isJumpInMatch(card: UnoCard, top: UnoCard | null): boolean {
+  if (!top) return false
+  if (isWildCard(card) || isWildCard(top)) return false
+  if (card.color !== top.color) return false
+  if (card.kind === 'number' && top.kind === 'number') return card.value === top.value
+  return card.kind !== 'number' && card.kind === top.kind
 }
 
 export function playPenaltyError(card: UnoCard, session: UnoSession): string | null {
@@ -657,7 +675,7 @@ async function loadGameState(
     supabase
       .from('games')
       .select(
-        'timer_seconds, game_duration_seconds, session_started_at, uno_wd4_challenge, uno_uno_penalty, uno_wd4_challenge_penalty, uno_zero_seven, uno_stacking, uno_multi_play_mode, uno_team_mode'
+        'timer_seconds, game_duration_seconds, session_started_at, uno_wd4_challenge, uno_uno_penalty, uno_wd4_challenge_penalty, uno_zero_seven, uno_stacking, uno_multi_play_mode, uno_team_mode, uno_jump_in'
       )
       .eq('id', gameId)
       .maybeSingle(),
@@ -1033,7 +1051,8 @@ export async function processUnoPlay(
   gameId: string,
   playerId: string,
   cardId: string,
-  callUno = false
+  callUno = false,
+  opts?: { jumpIn?: boolean }
 ): Promise<{ error?: string }> {
   const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
     await loadGameState(supabase, gameId)
@@ -1056,19 +1075,30 @@ export async function processUnoPlay(
   }
 
   if (session.phase !== 'playing') return { error: 'Resolve the current card first' }
-
-  const currentId = currentPlayerId(session)
-  if (currentId !== playerId) return { error: 'Not your turn' }
   if (unoHandCount(hands, playerId) === 0) return { error: 'You are out of the game' }
 
   const hand = handForPlayer(hands, playerId)
   const cardIndex = hand.findIndex((c) => c.id === cardId)
   if (cardIndex < 0) return { error: 'Card not in hand' }
-
   const card = hand[cardIndex]
-  const penaltyError = playPenaltyError(card, session)
-  if (penaltyError) return { error: penaltyError }
-  if (!canPlayCard(card, session)) return { error: 'Cannot play that card' }
+
+  if (opts?.jumpIn) {
+    // Jump-In: play an exact-match card out of turn. Only settled top cards are eligible — no
+    // jumping while a Draw penalty is pending, and Wilds are never eligible (see isJumpInMatch).
+    if (!rules.jumpIn) return { error: 'Jump-In is off for this game' }
+    if ((session.draw_penalty ?? 0) > 0) return { error: "Can't jump in while a Draw penalty is pending" }
+    if (!isJumpInMatch(card, session.top_card)) return { error: 'Only an exact match can jump in' }
+    // The jumper takes the seat; play then flows on from immediately after them, so seats that
+    // would have played in between are skipped. Everything below keys off current_turn_index.
+    const jumpIndex = (session.turn_order ?? []).indexOf(playerId)
+    if (jumpIndex < 0) return { error: 'You are not in this game' }
+    session.current_turn_index = jumpIndex
+  } else {
+    if (currentPlayerId(session) !== playerId) return { error: 'Not your turn' }
+    const penaltyError = playPenaltyError(card, session)
+    if (penaltyError) return { error: penaltyError }
+    if (!canPlayCard(card, session)) return { error: 'Cannot play that card' }
+  }
 
   // Settle a missed "UNO" call by the previous player before applying this move.
   const missed = settleMissedUno(session, hands, playerId, rules, playerNames)
@@ -1214,6 +1244,21 @@ export async function processUnoPlay(
   }
 
   return {}
+}
+
+/**
+ * Jump-In: `playerId` plays an exact-match card out of turn. Shares the single-card play pipeline
+ * (missed-UNO settle, 0-7, UNO-call bookkeeping, turn advance) — only the turn/eligibility gate
+ * differs. Play resumes from the seat immediately after the jumper.
+ */
+export async function processUnoJumpIn(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  cardId: string,
+  callUno = false
+): Promise<{ error?: string }> {
+  return processUnoPlay(supabase, gameId, playerId, cardId, callUno, { jumpIn: true })
 }
 
 // ── Multi-Play (lay several matching cards at once) ──────────────────────────────

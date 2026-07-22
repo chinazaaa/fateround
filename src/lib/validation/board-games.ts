@@ -170,6 +170,12 @@ export const unoPlayMultiSchema = unoActionSchema.extend({
   callUno: z.coerce.boolean().optional(),
 })
 
+export const unoJumpInSchema = unoActionSchema.extend({
+  // The exact-match card played out of turn.
+  cardId: z.string().min(1),
+  callUno: z.coerce.boolean().optional(),
+})
+
 export const unoDrawSchema = unoActionSchema
 
 export const unoChooseSchema = unoActionSchema.extend({

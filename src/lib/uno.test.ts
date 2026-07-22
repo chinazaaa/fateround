@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildUnoDeck,
   canPlayCard,
+  isJumpInMatch,
   cardPoints,
   unoHandSum,
   unoPlacementOrder,
@@ -529,6 +530,31 @@ describe('validateMultiSet', () => {
   })
 })
 
+describe('isJumpInMatch', () => {
+  it('matches an exact same-colour, same-number card', () => {
+    const top = card({ id: 't', color: 'red', kind: 'number', value: 7 })
+    expect(isJumpInMatch(card({ id: 'a', color: 'red', kind: 'number', value: 7 }), top)).toBe(true)
+  })
+  it('rejects a same-number card of another colour, and a same-colour card of another number', () => {
+    const top = card({ id: 't', color: 'red', kind: 'number', value: 7 })
+    expect(isJumpInMatch(card({ id: 'b', color: 'blue', kind: 'number', value: 7 }), top)).toBe(false)
+    expect(isJumpInMatch(card({ id: 'c', color: 'red', kind: 'number', value: 3 }), top)).toBe(false)
+  })
+  it('matches an exact same-colour action card (Red Skip on Red Skip) but not a mismatched one', () => {
+    const top = card({ id: 't', color: 'red', kind: 'skip' })
+    expect(isJumpInMatch(card({ id: 'd', color: 'red', kind: 'skip' }), top)).toBe(true)
+    expect(isJumpInMatch(card({ id: 'e', color: 'blue', kind: 'skip' }), top)).toBe(false)
+    expect(isJumpInMatch(card({ id: 'f', color: 'red', kind: 'reverse' }), top)).toBe(false)
+  })
+  it('never matches wilds (as the played card or the top card), and never a null top', () => {
+    const top = card({ id: 't', color: 'red', kind: 'number', value: 7 })
+    expect(isJumpInMatch(card({ id: 'w', color: 'wild', kind: 'wild' }), top)).toBe(false)
+    const wildTop = card({ id: 'wt', color: 'wild', kind: 'wild_draw4' })
+    expect(isJumpInMatch(card({ id: 'g', color: 'red', kind: 'number', value: 7 }), wildTop)).toBe(false)
+    expect(isJumpInMatch(card({ id: 'h', color: 'red', kind: 'number', value: 7 }), null)).toBe(false)
+  })
+})
+
 describe('parseUnoRules', () => {
   it('defaults: challenge on, penalty 2, wd4 penalty 6, 0-7 off, stacking off', () => {
     const r = parseUnoRules(null)
@@ -540,6 +566,7 @@ describe('parseUnoRules', () => {
       stacking: false,
       multiPlay: 'off',
       teamMode: false,
+      jumpIn: false,
     })
   })
   it('reads host overrides', () => {
@@ -551,6 +578,7 @@ describe('parseUnoRules', () => {
       uno_stacking: true,
       uno_multi_play_mode: 'same_color_or_number',
       uno_team_mode: true,
+      uno_jump_in: true,
     })
     expect(r).toEqual({
       wd4Challenge: false,
@@ -560,6 +588,7 @@ describe('parseUnoRules', () => {
       stacking: true,
       multiPlay: 'same_color_or_number',
       teamMode: true,
+      jumpIn: true,
     })
   })
   it('reads the milder wd4 penalty variant (4) and clamps junk to 6', () => {
