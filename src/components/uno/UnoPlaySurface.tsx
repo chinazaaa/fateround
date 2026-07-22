@@ -200,6 +200,10 @@ export function UnoPlaySurface({
     })
 
   const top = session.top_card
+  // Multi-Play visibility: when a set covered earlier cards (e.g. a Draw Two under a Skip), only
+  // the last card shows on the pile — surface the whole set so buried effects stay visible.
+  const lastPlaySet = (session.last_play_cards as UnoCard[] | null) ?? []
+  const showLastPlay = lastPlaySet.length > 1
   const choosing = isMyTurn && !watching && session.phase === 'choose_color'
   const deciding = isMyTurn && !watching && session.phase === 'challenge_window'
   const swapping = isMyTurn && !watching && session.phase === 'swap_target'
@@ -330,6 +334,34 @@ export function UnoPlaySurface({
           draw={<DrawPile count={drawCount} accent={UNO_ACCENT} />}
           discard={top ? <UnoCardFace card={top} big /> : <span className="turn-status g">No card</span>}
         />
+
+        {/* Multi-Play reveal — the full set that was just laid, so covered cards (e.g. a Draw Two
+            played under a Skip) stay visible. The rightmost chip is the card on top of the pile. */}
+        {showLastPlay && (
+          <div className="uno-lastplay" role="status">
+            <span className="uno-lastplay__lbl">Played together</span>
+            <div className="uno-lastplay__cards">
+              {lastPlaySet.map((c, i) => {
+                const isTop = i === lastPlaySet.length - 1
+                return (
+                  <span
+                    key={`${c.id}-${i}`}
+                    className={`uno-mini ${c.color === 'wild' ? 'uno-mini-wild' : `uno-mini-${c.color}`}${
+                      isTop ? ' uno-mini--top' : ''
+                    }`}
+                    title={
+                      isTop
+                        ? `${c.color === 'wild' ? '' : `${c.color} `}${cardShortLabel(c)} — on top`
+                        : `${c.color === 'wild' ? '' : `${c.color} `}${cardShortLabel(c)} — covered`
+                    }
+                  >
+                    <span className="uno-mini-oval">{miniGlyph(c)}</span>
+                  </span>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Persistent demand badge — the called colour stays visible for the whole
             call, even after a player draws (which overwrites status_message). */}

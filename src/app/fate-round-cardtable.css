@@ -1061,6 +1061,33 @@
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.03); }
 }
+/* Multi-Play reveal — the full set just laid, so cards covered by the top one (e.g. a Draw Two
+   under a Skip) stay visible. Reuses the .uno-mini chip look; the on-top card is ringed. */
+.fr-room .uno-lastplay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 0 4px;
+}
+.fr-room .uno-lastplay__lbl {
+  font: 600 11px var(--font-body, inherit);
+  letter-spacing: 0.02em;
+  color: var(--text-muted, var(--text));
+  text-transform: uppercase;
+}
+.fr-room .uno-lastplay__cards {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 100%;
+}
+.fr-room .uno-lastplay .uno-mini--top {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+
 .fr-room .uno-challenge {
   display: flex;
   gap: 10px;
