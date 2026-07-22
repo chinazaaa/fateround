@@ -18,8 +18,9 @@ import {
   unoTeammateId,
   unoPlayerSharesWin,
   unoActiveTeammates,
+  resolveMultiPlayAdvance,
 } from './uno'
-import type { UnoCard, UnoPlayerHand, UnoSession } from '@/types'
+import type { UnoCard, UnoColor, UnoPlayerHand, UnoSession } from '@/types'
 
 function card(partial: Partial<UnoCard> & Pick<UnoCard, 'color' | 'kind'>): UnoCard {
   return { id: partial.id ?? `${partial.color}-${partial.kind}-${partial.value ?? ''}`, ...partial }
@@ -377,6 +378,86 @@ describe('Team-Up helpers', () => {
     expect(unoActiveTeammates(order, hands, ['a'], 'a')).toEqual(['c'])
     // once c also leaves, that team has no active member left.
     expect(unoActiveTeammates(order, hands, ['a', 'c'], 'a')).toEqual([])
+  })
+})
+
+describe('resolveMultiPlayAdvance', () => {
+  const c = (kind: UnoCard['kind'], color: UnoColor = 'red', value?: number) => card({ color, kind, value })
+
+  it('plain multi (no action): advances one seat past no skips', () => {
+    const r = resolveMultiPlayAdvance([c('number', 'red', 3), c('number', 'red', 3)], session({ direction: 1 }), 4)
+    expect(r).toEqual({ direction: 1, penalty: 0, skipsBefore: 0, skipsAfter: 0 })
+  })
+
+  it('+2 then Skip: penalty targets the immediate next player, skip trails after it', () => {
+    // Drawer sits 1 + skipsBefore ahead (the immediate next); skipsAfter pushes the turn onward.
+    const r = resolveMultiPlayAdvance([c('draw2'), c('skip')], session({ direction: 1 }), 3)
+    expect(r).toEqual({ direction: 1, penalty: 2, skipsBefore: 0, skipsAfter: 1 })
+  })
+
+  it('Skip then +2: the skip lands before the draw, so the penalty targets the player after it', () => {
+    const r = resolveMultiPlayAdvance([c('skip'), c('draw2')], session({ direction: 1 }), 3)
+    expect(r).toEqual({ direction: 1, penalty: 2, skipsBefore: 1, skipsAfter: 0 })
+  })
+
+  it('stacked Draw Twos accumulate onto one drawer', () => {
+    const r = resolveMultiPlayAdvance([c('draw2'), c('draw2')], session({ direction: 1 }), 3)
+    expect(r).toEqual({ direction: 1, penalty: 4, skipsBefore: 0, skipsAfter: 0 })
+  })
+
+  it('reverse flips direction with 3+ players (no extra skip)', () => {
+    const r = resolveMultiPlayAdvance([c('number', 'red', 5), c('reverse')], session({ direction: 1 }), 4)
+    expect(r).toEqual({ direction: -1, penalty: 0, skipsBefore: 0, skipsAfter: 0 })
+  })
+
+  it('reverse acts as a skip with two players (no draw2 → counted as a leading skip)', () => {
+    const r = resolveMultiPlayAdvance([c('number', 'red', 5), c('reverse')], session({ direction: 1 }), 2)
+    expect(r).toEqual({ direction: 1, penalty: 0, skipsBefore: 1, skipsAfter: 0 })
+  })
+
+  it('reverse + skip: direction flips, then one player is skipped (order-independent, no draw2)', () => {
+    const flipSkip = resolveMultiPlayAdvance([c('reverse'), c('skip')], session({ direction: 1 }), 4)
+    const skipFlip = resolveMultiPlayAdvance([c('skip'), c('reverse')], session({ direction: 1 }), 4)
+    expect(flipSkip).toEqual({ direction: -1, penalty: 0, skipsBefore: 1, skipsAfter: 0 })
+    expect(skipFlip).toEqual(flipSkip) // resolved in the final direction, so order does not matter here
+  })
+
+  it('+2 + reverse: penalty applies in the final direction (order-independent w.r.t. the reverse)', () => {
+    const draw2First = resolveMultiPlayAdvance([c('draw2'), c('reverse')], session({ direction: 1 }), 4)
+    const revFirst = resolveMultiPlayAdvance([c('reverse'), c('draw2')], session({ direction: 1 }), 4)
+    expect(draw2First).toEqual({ direction: -1, penalty: 2, skipsBefore: 0, skipsAfter: 0 })
+    expect(revFirst).toEqual(draw2First)
+  })
+
+  it('top card wins: a number laid on a +2 cancels the draw (only the visible top counts)', () => {
+    // [+2, 5]: the 5 settles the pile — next player just matches the 5, no draw.
+    expect(resolveMultiPlayAdvance([c('draw2'), c('number', 'red', 5)], session({ direction: 1 }), 3)).toEqual({
+      direction: 1,
+      penalty: 0,
+      skipsBefore: 0,
+      skipsAfter: 0,
+    })
+    // [5, +2]: the +2 is on top — next player draws 2.
+    expect(resolveMultiPlayAdvance([c('number', 'red', 5), c('draw2')], session({ direction: 1 }), 3)).toEqual({
+      direction: 1,
+      penalty: 2,
+      skipsBefore: 0,
+      skipsAfter: 0,
+    })
+  })
+
+  it('top card wins: only the action run after the last number counts', () => {
+    // [+2, 5, skip]: the 5 cancels the +2; only the trailing skip survives.
+    expect(
+      resolveMultiPlayAdvance([c('draw2'), c('number', 'red', 5), c('skip')], session({ direction: 1 }), 4)
+    ).toEqual({ direction: 1, penalty: 0, skipsBefore: 1, skipsAfter: 0 })
+    // [reverse, 5]: the number also cancels a covered reverse (direction stays put).
+    expect(resolveMultiPlayAdvance([c('reverse'), c('number', 'red', 5)], session({ direction: 1 }), 4)).toEqual({
+      direction: 1,
+      penalty: 0,
+      skipsBefore: 0,
+      skipsAfter: 0,
+    })
   })
 })
 

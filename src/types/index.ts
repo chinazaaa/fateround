@@ -730,6 +730,13 @@ export interface UnoSession {
   draw_penalty_kind: 'draw2' | 'wild_draw4' | null
   /** Set to the card the current player just drew while they may still play it or keep it (pass). */
   drawn_card_id: string | null
+  /**
+   * The exact cards laid in the most recent play, in play order (last = the visible top card).
+   * >1 means a Multi-Play covered earlier cards (e.g. a Draw Two under a Skip); the client shows
+   * the covered cards as a "played together" fan so buried effects stay visible. null / length 1
+   * = nothing extra to surface.
+   */
+  last_play_cards?: UnoCard[] | null
   /** During `choose_color`, which wild is being coloured. */
   pending_wild: 'wild' | 'wild_draw4' | null
   /** Colour in effect immediately before a Wild Draw Four (for challenge reveal). */

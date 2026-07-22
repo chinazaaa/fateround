@@ -200,6 +200,10 @@ export function UnoPlaySurface({
     })
 
   const top = session.top_card
+  // Multi-Play visibility: when a set covered earlier cards (e.g. a Draw Two under a Skip), only
+  // the last card shows on the pile — surface the whole set so buried effects stay visible.
+  const lastPlaySet = (session.last_play_cards as UnoCard[] | null) ?? []
+  const showLastPlay = lastPlaySet.length > 1
   const choosing = isMyTurn && !watching && session.phase === 'choose_color'
   const deciding = isMyTurn && !watching && session.phase === 'challenge_window'
   const swapping = isMyTurn && !watching && session.phase === 'swap_target'
@@ -212,6 +216,52 @@ export function UnoPlaySurface({
     session.draw_penalty_kind === 'wild_draw4' &&
     session.wd4_player_id != null
   const turnName = players.find((p) => p.id === turnPlayerId)?.name ?? 'next player'
+
+  // Wild Draw Four challenge context — who played it and the colour that was in play before, so the
+  // targeted player can judge whether to challenge. A challenge wins if that player was *hiding* a
+  // card of the previous colour (they should have played it instead of the Wild Draw Four).
+  const wd4PlayerName = session.wd4_player_id ? (byId.get(session.wd4_player_id)?.name ?? 'They') : null
+  const wd4PrevColor = session.challenge_prev_color as UnoColor | null
+  const challengeHint =
+    wd4PlayerName != null ? (
+      <div className="uno-challenge-hint">
+        <p className="uno-challenge-hint__lead">
+          <strong>{wd4PlayerName}</strong> played a Wild Draw Four
+          {wd4PrevColor ? (
+            <>
+              {' '}
+              over{' '}
+              <span className="uno-challenge-hint__chip">
+                <span
+                  aria-hidden
+                  style={{
+                    display: 'inline-block',
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    background: UNO_COLOR_HEX[wd4PrevColor],
+                  }}
+                />
+                {UNO_COLOR_LABELS[wd4PrevColor]}
+              </span>
+            </>
+          ) : null}
+          .
+        </p>
+        <p className="uno-challenge-hint__q">
+          Do you think {wd4PlayerName} was still holding a{' '}
+          {wd4PrevColor ? <strong>{UNO_COLOR_LABELS[wd4PrevColor]}</strong> : 'matching'} card?
+        </p>
+        <p className="uno-challenge-hint__legend">
+          <span>
+            <strong>Yes</strong> → Challenge
+          </span>
+          <span>
+            <strong>No</strong> → Draw {drawPenalty || 4}
+          </span>
+        </p>
+      </div>
+    ) : null
 
   // 0-7 rule: candidates to swap hands with (other seated players still holding cards).
   const swapTargets = session.turn_order
@@ -285,6 +335,34 @@ export function UnoPlaySurface({
           discard={top ? <UnoCardFace card={top} big /> : <span className="turn-status g">No card</span>}
         />
 
+        {/* Multi-Play reveal — the full set that was just laid, so covered cards (e.g. a Draw Two
+            played under a Skip) stay visible. The rightmost chip is the card on top of the pile. */}
+        {showLastPlay && (
+          <div className="uno-lastplay" role="status">
+            <span className="uno-lastplay__lbl">Played together</span>
+            <div className="uno-lastplay__cards">
+              {lastPlaySet.map((c, i) => {
+                const isTop = i === lastPlaySet.length - 1
+                return (
+                  <span
+                    key={`${c.id}-${i}`}
+                    className={`uno-mini ${c.color === 'wild' ? 'uno-mini-wild' : `uno-mini-${c.color}`}${
+                      isTop ? ' uno-mini--top' : ''
+                    }`}
+                    title={
+                      isTop
+                        ? `${c.color === 'wild' ? '' : `${c.color} `}${cardShortLabel(c)} — on top`
+                        : `${c.color === 'wild' ? '' : `${c.color} `}${cardShortLabel(c)} — covered`
+                    }
+                  >
+                    <span className="uno-mini-oval">{miniGlyph(c)}</span>
+                  </span>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Persistent demand badge — the called colour stays visible for the whole
             call, even after a player draws (which overwrites status_message). */}
         {requiredColor && (
@@ -343,13 +421,16 @@ export function UnoPlaySurface({
 
         {/* Wild Draw Four challenge — the targeted player accepts or challenges. */}
         {deciding && (
-          <div className="uno-challenge">
-            <button type="button" disabled={acting} onClick={() => onChallenge(false)}>
-              Draw {drawPenalty || 4}
-            </button>
-            <button type="button" className="hot" disabled={acting} onClick={() => onChallenge(true)}>
-              ⚖️ Challenge
-            </button>
+          <div className="uno-challenge-decide">
+            {challengeHint}
+            <div className="uno-challenge">
+              <button type="button" disabled={acting} onClick={() => onChallenge(false)}>
+                Draw {drawPenalty || 4}
+              </button>
+              <button type="button" className="hot" disabled={acting} onClick={() => onChallenge(true)}>
+                ⚖️ Challenge
+              </button>
+            </div>
           </div>
         )}
 
@@ -477,25 +558,28 @@ export function UnoPlaySurface({
               {canChallengeStack ? (
                 // Draw (accept) + Challenge side by side, in the pinned hand actions so both
                 // stay on-screen together — plus you can still tap a Wild Draw Four to stack.
-                <div style={{ display: 'flex', gap: 8, width: '100%' }}>
-                  <button
-                    type="button"
-                    className="fr-btn fr-btn--secondary"
-                    style={{ flex: 1 }}
-                    disabled={acting}
-                    onClick={onDraw}
-                  >
-                    Draw {drawPenalty}
-                  </button>
-                  <button
-                    type="button"
-                    className="fr-btn fr-btn--primary"
-                    style={{ flex: 1 }}
-                    disabled={acting}
-                    onClick={() => onChallenge(true)}
-                  >
-                    ⚖️ Challenge
-                  </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
+                  {challengeHint}
+                  <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+                    <button
+                      type="button"
+                      className="fr-btn fr-btn--secondary"
+                      style={{ flex: 1 }}
+                      disabled={acting}
+                      onClick={onDraw}
+                    >
+                      Draw {drawPenalty}
+                    </button>
+                    <button
+                      type="button"
+                      className="fr-btn fr-btn--primary"
+                      style={{ flex: 1 }}
+                      disabled={acting}
+                      onClick={() => onChallenge(true)}
+                    >
+                      ⚖️ Challenge
+                    </button>
+                  </div>
                 </div>
               ) : multiMode ? (
                 <div style={{ display: 'flex', gap: 8, width: '100%' }}>

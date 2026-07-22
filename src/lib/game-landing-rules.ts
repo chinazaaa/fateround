@@ -787,7 +787,9 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'A host setting — Off, Same colour, Same number, or Same colour or number (off by default).',
         'On your turn, tap “Play multiple”, then tap the cards you want to lay down together and confirm — so you can dump all your reds, or all your 6s, in one turn.',
         'The first card must legally match the top of the discard pile, and every card in the set must fit the chosen grouping rule.',
-        'Action cards can be included; their effects apply and the last card you place decides what the next player must match.',
+        'Cards resolve in the order you lay them, and the last card decides what the next player must match.',
+        'Action-card effects still apply in sequence — but a plain number/colour card laid on top of an action settles the pile and cancels whatever is buried under it. Cover your own Draw Two with a number and no one draws; leave the Draw Two on top and the next player draws 2. A Draw Two followed by a Skip does both — the next player draws 2 and the player after is skipped.',
+        'Only the action cards after your last number card take effect. The full set you laid is shown above the pile (“Played together”) so covered cards stay visible.',
       ],
     },
     {
@@ -805,7 +807,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         'A Wild Draw Four is only meant to be played when you have no card of the current colour.',
         'The next player can accept the draw, or challenge: the system reveals the hand.',
-        'If the player was bluffing (held the colour), they draw 4 instead — the challenger is safe.',
+        'If the player was bluffing (held the colour), they draw 4 instead — the challenger is safe, and it becomes the challenger’s turn to play as normal (they never lost their turn, just the draw).',
         'If the challenge is wrong, the challenger draws 6 (the 4 they refused plus a 2 penalty) and is skipped.',
         'Hosts can turn the challenge off, in which case a Wild Draw Four always makes the next player draw 4.',
       ],
