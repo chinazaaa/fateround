@@ -1081,6 +1081,51 @@
   color: #e2231a;
 }
 
+/* Challenge decision helper — names the Wild Draw Four player + the colour that was in play,
+   so the target can judge whether the WD4 player was hiding a matching card. */
+.fr-room .uno-challenge-decide {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+.fr-room .uno-challenge-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface-2, var(--surface));
+  text-align: center;
+}
+.fr-room .uno-challenge-hint__lead {
+  font: 600 13px var(--font-body, inherit);
+  color: var(--text);
+  margin: 0;
+}
+.fr-room .uno-challenge-hint__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 700;
+}
+.fr-room .uno-challenge-hint__q {
+  font: 700 14px var(--font-display, inherit);
+  color: var(--text);
+  margin: 0;
+}
+.fr-room .uno-challenge-hint__legend {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  font: 500 12px var(--font-body, inherit);
+  color: var(--text-muted, var(--text));
+  margin: 2px 0 0;
+}
+
 /* Active house-rule pills — shown on the UNO join screen + during play. */
 .fr-room .uno-rule-pills,
 .uno-rule-pills {

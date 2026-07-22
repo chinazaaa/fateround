@@ -900,6 +900,52 @@ function resolveNextTurn(session: UnoSession, hands: UnoPlayerHand[], card: UnoC
   return { nextIndex, direction }
 }
 
+/**
+ * Turn resolution for a Multi-Play set (cards IN PLAY ORDER). Action cards resolve in sequence:
+ * a Draw Two makes the *immediate* next player draw and lose their turn; a Skip then skips whoever
+ * is up after that. So order matters — the Draw-Two penalty lands on the player reached after the
+ * skips that come BEFORE it, and skips AFTER it push the turn further along.
+ *
+ * Returns:
+ *  - `direction`   — play direction after any reverses.
+ *  - `penalty`     — total Draw-Two cards owed (0 when the set has no Draw Two).
+ *  - `skipsBefore` — skip-steps (skip / 2-player reverse) laid down before the first Draw Two.
+ *  - `skipsAfter`  — skip-steps laid down after the first Draw Two.
+ *
+ * The caller turns this into indices: the drawer sits `1 + skipsBefore` active seats ahead; when
+ * there are `skipsAfter` skips the penalty is applied immediately and the turn advances past the
+ * drawer + those skips (see processUnoPlayMulti). All Draw Twos accumulate onto the one drawer.
+ */
+export function resolveMultiPlayAdvance(
+  cards: UnoCard[],
+  session: Pick<UnoSession, 'direction'>,
+  activeCount: number
+): { direction: number; penalty: number; skipsBefore: number; skipsAfter: number } {
+  let direction = session.direction < 0 ? -1 : 1
+  let skipsBefore = 0
+  let skipsAfter = 0
+  let penalty = 0
+  let seenDraw2 = false
+  for (const c of cards) {
+    if (c.kind === 'reverse') {
+      // With ≤2 active players Reverse acts as a Skip; otherwise it just flips direction.
+      if (activeCount <= 2) {
+        if (seenDraw2) skipsAfter += 1
+        else skipsBefore += 1
+      } else {
+        direction = -direction
+      }
+    } else if (c.kind === 'skip') {
+      if (seenDraw2) skipsAfter += 1
+      else skipsBefore += 1
+    } else if (c.kind === 'draw2') {
+      seenDraw2 = true
+      penalty += 2
+    }
+  }
+  return { direction, penalty, skipsBefore, skipsAfter }
+}
+
 function discardWith(base: UnoCard[], top: UnoCard | null): UnoCard[] {
   const discard = [...base]
   if (top) discard.push(top)
@@ -1212,26 +1258,22 @@ export async function processUnoPlayMulti(
   const basePile = missed?.drawPile ?? (session.draw_pile as UnoCard[]) ?? []
   const baseDiscard = missed?.discardPile ?? (session.discard_pile as UnoCard[]) ?? []
 
-  // Resolve the action cards in play order: reverses flip direction (act as a skip with two
-  // players), skips add a skip, Draw Twos accumulate a penalty on the eventual next player.
+  // Resolve the action cards in play order. A Draw Two makes the *immediate* next player draw and
+  // lose their turn; a Skip then skips whoever is up after that. So the penalty lands on the seat
+  // reached after the skips laid BEFORE it, and skips laid AFTER push the turn further along.
   const activeCount = activePlayerCount(session, hands)
-  let direction = session.direction < 0 ? -1 : 1
-  let skipSteps = 0
-  let draw2Count = 0
-  for (const c of cards) {
-    if (c.kind === 'reverse') {
-      if (activeCount <= 2) skipSteps += 1
-      else direction = -direction
-    } else if (c.kind === 'skip') {
-      skipSteps += 1
-    } else if (c.kind === 'draw2') {
-      draw2Count += 1
-    }
-  }
-  const penalty = draw2Count * 2
+  const { direction, penalty, skipsBefore, skipsAfter } = resolveMultiPlayAdvance(cards, session, activeCount)
+  const draw2Count = penalty / 2
   const lastCard = cards[cards.length - 1]!
   // Discard everything except the card that stays face-up on top.
   const discardPile = [...baseDiscard, ...(session.top_card ? [session.top_card] : []), ...cards.slice(0, -1)]
+
+  // A Draw Two followed by a Skip can't be resolved with a single pending penalty (the trailing
+  // skip must fire only after the draw), so that combo auto-applies the draw here and advances
+  // past the drawer + skips. A pending penalty (Draw Two with no trailing skip) stays live so the
+  // target can stack when the host allows it.
+  const autoResolve = penalty > 0 && skipsAfter > 0 && !wentOut
+  const pendingPenalty = penalty > 0 && !autoResolve && !wentOut
 
   const board: Partial<UnoSession> = {
     top_card: lastCard,
@@ -1239,8 +1281,8 @@ export async function processUnoPlayMulti(
     pending_wild: null,
     challenge_prev_color: null,
     wd4_player_id: null,
-    draw_penalty: penalty,
-    draw_penalty_kind: penalty > 0 && rules.stacking ? 'draw2' : null,
+    draw_penalty: pendingPenalty ? penalty : 0,
+    draw_penalty_kind: pendingPenalty && rules.stacking ? 'draw2' : null,
     drawn_card_id: null,
     discard_pile: discardPile,
     draw_pile: basePile,
@@ -1250,6 +1292,9 @@ export async function processUnoPlayMulti(
   const unoPatch: Partial<UnoSession> = owesUno
     ? { uno_pending_player: playerId, uno_called: callUno }
     : { uno_pending_player: null, uno_called: false }
+
+  // AUTO-resolve draws for the target here; captured so the hand write happens after persist.
+  let autoDraw: { playerId: string; hand: UnoCard[] } | null = null
 
   let patch: Partial<UnoSession>
   if (wentOut) {
@@ -1267,18 +1312,54 @@ export async function processUnoPlayMulti(
       ),
       ...unoPatch,
     }
-  } else {
-    const advance = 1 + skipSteps
-    const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, advance, direction)
+  } else if (pendingPenalty) {
+    // Land on the drawer (the seat after the leading skips); they draw or stack on their turn.
+    const drawerIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1 + skipsBefore, direction)
+    const drawerId = session.turn_order[drawerIndex]
+    const stackNote = rules.stacking ? ' or stack a Draw Two' : ''
+    patch = {
+      ...board,
+      current_turn_index: drawerIndex,
+      direction,
+      phase: 'playing',
+      status_message: `${name} played ${cards.length} cards — ${playerName(playerNames, drawerId)} must draw ${penalty}${stackNote} (${draw2Count} × Draw Two)`,
+      ...unoPatch,
+    }
+  } else if (autoResolve) {
+    // The immediate target draws now and loses their turn; play continues past them + the skips.
+    const drawerIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1 + skipsBefore, direction)
+    const drawerId = session.turn_order[drawerIndex]
+    const drawerBase = missed && missed.playerId === drawerId ? missed.hand : handForPlayer(hands, drawerId)
+    const drawResult = drawCardsWithRefill(basePile, discardPile, penalty)
+    autoDraw = { playerId: drawerId, hand: [...drawerBase, ...drawResult.drawn] }
+    const nextIndex = unoNextTurnIndex(session, hands, drawerIndex, 1 + skipsAfter, direction)
     const nextPlayerId = session.turn_order[nextIndex]
-    let status = `${name} played ${cards.length} cards — ${playerName(playerNames, nextPlayerId)}'s turn, match ${cardLabel(lastCard)}`
-    if (penalty > 0) status = `${playerName(playerNames, nextPlayerId)} must draw ${penalty} (${draw2Count} × Draw Two)`
+    patch = {
+      ...board,
+      draw_pile: drawResult.drawPile,
+      discard_pile: drawResult.discardPile,
+      current_turn_index: nextIndex,
+      direction,
+      phase: 'playing',
+      status_message: `${name} played ${cards.length} cards — ${playerName(playerNames, drawerId)} drew ${drawResult.drawn.length}, skipped to ${playerName(playerNames, nextPlayerId)}`,
+      ...unoPatch,
+    }
+  } else {
+    // Plain multi (no Draw Two): advance past every skip to the next player.
+    const nextIndex = unoNextTurnIndex(
+      session,
+      hands,
+      session.current_turn_index,
+      1 + skipsBefore + skipsAfter,
+      direction
+    )
+    const nextPlayerId = session.turn_order[nextIndex]
     patch = {
       ...board,
       current_turn_index: nextIndex,
       direction,
       phase: 'playing',
-      status_message: status,
+      status_message: `${name} played ${cards.length} cards — ${playerName(playerNames, nextPlayerId)}'s turn, match ${cardLabel(lastCard)}`,
       ...unoPatch,
     }
   }
@@ -1289,7 +1370,9 @@ export async function processUnoPlayMulti(
   if (!won) return {}
 
   await writeHand(supabase, gameId, playerId, newHand)
-  if (missed) await writeHand(supabase, gameId, missed.playerId, missed.hand)
+  // AUTO-resolve drew for the target (its hand already folds in any missed-UNO penalty for them).
+  if (autoDraw) await writeHand(supabase, gameId, autoDraw.playerId, autoDraw.hand)
+  if (missed && missed.playerId !== autoDraw?.playerId) await writeHand(supabase, gameId, missed.playerId, missed.hand)
 
   if (wentOut) {
     await supabase.from('players').update({ spectator: true }).eq('id', playerId).eq('game_id', gameId)
@@ -1718,16 +1801,19 @@ export async function processUnoChallenge(
   const hadMatch = prevColor != null && wd4Hand.some((c) => c.color === prevColor)
 
   if (hadMatch && wd4PlayerId) {
-    // Challenge succeeds: the WD4 player draws 4 instead; challenger is safe but still skipped.
+    // Challenge succeeds: the Wild Draw Four player draws instead and their turn ends. The
+    // challenger never lost their turn (they only avoided the draw), so play stays on them —
+    // it's now their normal turn, matching the colour the WD4 named (required_color is kept).
     const drawResult = await applyDrawTo(wd4PlayerId)
+    const colorHint = session.required_color ? ` — match ${UNO_COLOR_LABELS[session.required_color as UnoColor]}` : ''
     const won = await persistSession(
       supabase,
       gameId,
       clearBoard({
         draw_pile: drawResult.drawPile,
         discard_pile: drawResult.discardPile,
-        current_turn_index: afterIndex,
-        status_message: `Challenge succeeded — ${playerName(playerNames, wd4PlayerId)} draws ${penalty}. ${playerName(playerNames, afterId)}'s turn`,
+        current_turn_index: session.current_turn_index,
+        status_message: `Challenge succeeded — ${playerName(playerNames, wd4PlayerId)} draws ${penalty}. ${playerName(playerNames, playerId)}'s turn${colorHint}`,
       }),
       timerSeconds,
       session.updated_at
