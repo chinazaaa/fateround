@@ -21,6 +21,7 @@ import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { ExitIcon } from '@/components/host/host-icons'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
+import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
@@ -127,8 +128,9 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
     // such a partial row would wipe ownership/buildings on screen. Discard it and let the
     // debounced full reload refetch the complete row.
     if (!isCompleteMonopolyBoardRow(row)) return false
-    setBoard(next)
-    boardRef.current = next
+    const merged = prev ? { ...prev, ...next } : next
+    setBoard(merged)
+    boardRef.current = merged
     return prev != null
   }, [])
   const applyStateRow = useCallback((row: Record<string, unknown>): boolean => {
@@ -333,7 +335,20 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
           endGameConfirmTitle="End this game early?"
           endGameConfirmMessage="The current game will end and players will see the results screen."
         >
+          <HostLobbyPlayersSection
+            players={players}
+            removingPlayerId={removingPlayerId}
+            onRemovePlayer={removePlayer}
+            highlightPlayerId={hostPlayerId}
+            label="Players"
+          />
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          <MonopolyHostTimeExtension
+            gameCode={gameCode}
+            game={game}
+            hostToken={hostToken}
+            onExtended={() => void load()}
+          />
           {hostMode === 'player' && !!hostPlayerId && (
             <HostLeaveSeatButton
               onLeave={leaveGameRemovePlayer}
@@ -343,7 +358,19 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
           )}
         </HostActiveSettings>
       ) : null,
-    [game, gameCode, hostToken, load, setGame, hostMode, hostPlayerId, leaveGameRemovePlayer]
+    [
+      game,
+      gameCode,
+      hostToken,
+      load,
+      setGame,
+      hostMode,
+      hostPlayerId,
+      leaveGameRemovePlayer,
+      players,
+      removingPlayerId,
+      removePlayer,
+    ]
   )
   useRegisterGameSettings(hostSettingsNode)
 
@@ -427,6 +454,13 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
           />
         )
       })()}
+      <MonopolyPlayerList
+        states={states}
+        players={players}
+        currentPlayerId={turnPlayerId}
+        propertyOwners={board.property_owners}
+        themeId={game?.theme}
+      />
     </div>
   ) : (
     <p className="text-muted text-sm text-center">Waiting for the round to begin…</p>
@@ -497,26 +531,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
               onGameUpdate={setGame}
             />
           )}
-          {game.status === 'active' && (
-            <>
-              <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-              <MonopolyHostTimeExtension
-                gameCode={gameCode}
-                game={game}
-                hostToken={hostToken}
-                onExtended={() => void load()}
-              />
-              {board && (
-                <MonopolyPlayerList
-                  states={states}
-                  players={players}
-                  currentPlayerId={turnPlayerId}
-                  propertyOwners={board.property_owners}
-                  themeId={game?.theme}
-                />
-              )}
-            </>
-          )}
+          {/* Note: Active settings are moved to hostSettingsNode (the gear icon drawer) */}
         </>
       }
       footer={

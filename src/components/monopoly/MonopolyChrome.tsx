@@ -314,7 +314,9 @@ export function MonopolyTurnStrip({
       {isMyAuctionTurn && !isMyTurn ? 'Bid' : phase === 'roll' || phase === 'jail' ? 'Roll' : 'Act'}
     </span>
   ) : (
-    <span className="text-[10px] text-faint capitalize">{phase?.replace('_', ' ') ?? 'Wait'}</span>
+    <span className="text-[10px] text-faint capitalize">
+      {phase === 'roll' ? 'rolling' : phase === 'jail' ? 'in jail' : (phase?.replace('_', ' ') ?? 'wait')}
+    </span>
   )
 
   if (compact) {
