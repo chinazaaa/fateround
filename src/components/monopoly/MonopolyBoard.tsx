@@ -296,6 +296,19 @@ function BoardSpaceCell({
   return (
     <div
       onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-label={themedSpaceName(space.name, spaceIndex, themeId)}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onClick()
+              }
+            }
+          : undefined
+      }
       title={themedSpaceName(space.name, spaceIndex, themeId)}
       className={[
         `relative flex overflow-hidden rounded-[2px] sm:rounded-[3px] border ${palette.tileBg} text-neutral-900 shadow-sm`,
@@ -543,11 +556,10 @@ export function MonopolyClassicBoard({
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-[740px] lg:max-w-[880px] xl:max-w-[940px]">
-      <Modal open={selectedSpace !== null} onClose={() => setSelectedSpace(null)}>
+      <Modal open={selectedSpace !== null} onClose={() => setSelectedSpace(null)} title="Space Info">
         {selectedSpace !== null && (
           <div className="w-full">
             <MonopolyCurrentSpace
-              title="Property Info"
               index={selectedSpace}
               ownerName={owners[String(selectedSpace)] ? playerName(players, owners[String(selectedSpace)]) : null}
               propertyOwners={owners}
