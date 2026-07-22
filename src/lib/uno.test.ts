@@ -20,7 +20,9 @@ import {
   unoPlayerSharesWin,
   unoActiveTeammates,
   resolveMultiPlayAdvance,
+  processUnoChallenge,
 } from './uno'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { UnoCard, UnoColor, UnoPlayerHand, UnoSession } from '@/types'
 
 function card(partial: Partial<UnoCard> & Pick<UnoCard, 'color' | 'kind'>): UnoCard {
@@ -629,5 +631,183 @@ describe('rotateActiveHands (0 rule)', () => {
     const by = Object.fromEntries(out.map((o) => [o.playerId, o.cards[0]!.id]))
     // active seq [a, c]: a→c, c→a
     expect(by).toEqual({ c: 'ax', a: 'cx' })
+  })
+})
+
+// ── processUnoChallenge (integration, in-memory Supabase mock) ────────────────────
+// A minimal mock that supports the exact query chains uno.ts uses: from().select().eq().
+// maybeSingle() / .order() for reads, and update().eq()...select()/await for writes. Rows
+// are mutated in place so we can assert final hands + turn after the handler runs.
+type Row = Record<string, unknown>
+function applyFilters(rows: Row[], filters: [string, unknown][]): Row[] {
+  return rows.filter((r) => filters.every(([c, v]) => r[c] === v))
+}
+function makeSupabase(tables: Record<string, Row[]>): SupabaseClient {
+  const api = {
+    from(table: string) {
+      const filters: [string, unknown][] = []
+      let updatePatch: Row | null = null
+      const exec = () => {
+        const matched = applyFilters(tables[table] ?? [], filters)
+        if (updatePatch) {
+          for (const r of matched) Object.assign(r, updatePatch)
+          return { data: matched.map((r) => ({ ...r })), error: null }
+        }
+        return { data: matched, error: null }
+      }
+      const builder: Record<string, unknown> = {
+        select: () => builder,
+        eq: (c: string, v: unknown) => {
+          filters.push([c, v])
+          return builder
+        },
+        order: () => Promise.resolve(exec()),
+        maybeSingle: () => {
+          const { data, error } = exec()
+          return Promise.resolve({ data: data[0] ?? null, error })
+        },
+        update: (patch: Row) => {
+          updatePatch = patch
+          return builder
+        },
+        then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+          Promise.resolve(exec()).then(resolve, reject),
+      }
+      return builder
+    },
+  }
+  return api as unknown as SupabaseClient
+}
+
+function handRow(playerId: string, cards: UnoCard[], order: number): UnoPlayerHand {
+  return { id: `h-${playerId}`, game_id: 'G', player_id: playerId, cards, player_order: order, created_at: '' }
+}
+
+// A + B + C, A has just played a Wild Draw Four over RED and named BLUE; B (index 1) is in the
+// challenge window facing a Draw 4. `aHand` decides guilt: holding a red card = a caught bluff.
+function challengeWorld(aHand: UnoCard[], bHand: UnoCard[]) {
+  const drawPile: UnoCard[] = Array.from({ length: 10 }, (_, i) =>
+    card({ id: `d${i}`, color: 'green', kind: 'number', value: (i % 9) + 1 })
+  )
+  const sessionRow: Row = {
+    ...session({
+      turn_order: ['A', 'B', 'C'],
+      current_turn_index: 1,
+      direction: 1,
+      phase: 'challenge_window',
+      draw_pile: drawPile,
+      discard_pile: [],
+      top_card: card({ color: 'wild', kind: 'wild_draw4' }),
+      required_color: 'blue',
+      draw_penalty: 4,
+      challenge_prev_color: 'red',
+      wd4_player_id: 'A',
+      updated_at: 't0',
+    }),
+  }
+  const tables: Record<string, Row[]> = {
+    uno_sessions: [sessionRow],
+    uno_player_hands: [
+      handRow('A', aHand, 0),
+      handRow('B', bHand, 1),
+      handRow('C', [card({ color: 'yellow', kind: 'number', value: 1 })], 2),
+    ] as unknown as Row[],
+    games: [
+      {
+        id: 'G',
+        timer_seconds: 0,
+        game_duration_seconds: 0,
+        session_started_at: null,
+        uno_wd4_challenge: true,
+        uno_uno_penalty: 2,
+        uno_wd4_challenge_penalty: 6,
+        uno_zero_seven: false,
+        uno_stacking: false,
+        uno_multi_play_mode: 'off',
+        uno_team_mode: false,
+      },
+    ],
+    players: [
+      { id: 'A', name: 'Ann' },
+      { id: 'B', name: 'Bob' },
+      { id: 'C', name: 'Cara' },
+    ],
+  }
+  return { tables, supabase: makeSupabase(tables) }
+}
+const handOf = (tables: Record<string, Row[]>, id: string) =>
+  tables.uno_player_hands.find((h) => h.player_id === id)!.cards as UnoCard[]
+const sess = (tables: Record<string, Row[]>) => tables.uno_sessions[0] as unknown as UnoSession
+
+describe('processUnoChallenge (turn + hands)', () => {
+  it('challenge SUCCEEDS (bluff caught): WD4 player draws 4, challenger keeps the turn', async () => {
+    // A illegally held a red card → guilty.
+    const { tables, supabase } = challengeWorld(
+      [card({ id: 'r5', color: 'red', kind: 'number', value: 5 })],
+      [
+        card({ id: 'b2', color: 'blue', kind: 'number', value: 2 }),
+        card({ id: 'g3', color: 'green', kind: 'number', value: 3 }),
+      ]
+    )
+    const res = await processUnoChallenge(supabase, 'G', 'B', true)
+    expect(res.error).toBeUndefined()
+    expect(handOf(tables, 'A')).toHaveLength(5) // 1 + 4 drawn
+    expect(handOf(tables, 'B')).toHaveLength(2) // challenger did NOT draw
+    expect(sess(tables).current_turn_index).toBe(1) // stays on B — their turn to play
+    expect(sess(tables).phase).toBe('playing')
+    expect(sess(tables).draw_penalty).toBe(0)
+    expect(sess(tables).required_color).toBe('blue') // B must match the named colour
+  })
+
+  it('challenge FAILS (not a bluff): challenger draws 6 and is skipped', async () => {
+    // A held no red → innocent.
+    const { tables, supabase } = challengeWorld(
+      [card({ id: 'g5', color: 'green', kind: 'number', value: 5 })],
+      [
+        card({ id: 'b2', color: 'blue', kind: 'number', value: 2 }),
+        card({ id: 'g3', color: 'green', kind: 'number', value: 3 }),
+      ]
+    )
+    const res = await processUnoChallenge(supabase, 'G', 'B', true)
+    expect(res.error).toBeUndefined()
+    expect(handOf(tables, 'A')).toHaveLength(1) // unchanged
+    expect(handOf(tables, 'B')).toHaveLength(8) // 2 + 6 drawn (4 + 2 penalty)
+    expect(sess(tables).current_turn_index).toBe(2) // skipped past B to C
+    expect(sess(tables).draw_penalty).toBe(0)
+  })
+
+  it('ACCEPT (no challenge): challenger draws 4 and is skipped', async () => {
+    const { tables, supabase } = challengeWorld(
+      [card({ id: 'r5', color: 'red', kind: 'number', value: 5 })],
+      [card({ id: 'b2', color: 'blue', kind: 'number', value: 2 })]
+    )
+    const res = await processUnoChallenge(supabase, 'G', 'B', false)
+    expect(res.error).toBeUndefined()
+    expect(handOf(tables, 'A')).toHaveLength(1) // unchanged — accept never reveals
+    expect(handOf(tables, 'B')).toHaveLength(5) // 1 + 4 drawn
+    expect(sess(tables).current_turn_index).toBe(2) // skipped to C
+  })
+
+  it('only the wrong player may decide', async () => {
+    const { supabase } = challengeWorld([card({ color: 'red', kind: 'number', value: 5 })], [])
+    const res = await processUnoChallenge(supabase, 'G', 'C', true) // C is not the target
+    expect(res.error).toBe('Not your decision')
+  })
+
+  it('color-only rule: a same-NUMBER card of another colour is NOT a bluff (challenge fails)', async () => {
+    // A holds blue 5 + green 3 — no RED — even though blue 5 could match a red 5 by number.
+    // Per UNO, only a colour match makes a WD4 illegal, so the challenge should FAIL.
+    const { tables, supabase } = challengeWorld(
+      [
+        card({ id: 'b5', color: 'blue', kind: 'number', value: 5 }),
+        card({ id: 'g3', color: 'green', kind: 'number', value: 3 }),
+      ],
+      [card({ id: 'y2', color: 'yellow', kind: 'number', value: 2 })]
+    )
+    const res = await processUnoChallenge(supabase, 'G', 'B', true)
+    expect(res.error).toBeUndefined()
+    expect(handOf(tables, 'A')).toHaveLength(2) // A did NOT draw — challenge failed
+    expect(handOf(tables, 'B')).toHaveLength(7) // B drew 6 (1 + 6)
+    expect(sess(tables).current_turn_index).toBe(2)
   })
 })

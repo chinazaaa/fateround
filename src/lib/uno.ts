@@ -1869,6 +1869,8 @@ export async function processUnoChallenge(
     // it's now their normal turn, matching the colour the WD4 named (required_color is kept).
     const drawResult = await applyDrawTo(wd4PlayerId)
     const colorHint = session.required_color ? ` — match ${UNO_COLOR_LABELS[session.required_color as UnoColor]}` : ''
+    // Spell out WHY the challenge won — the bluffer was caught holding the previous colour.
+    const prevLabel = prevColor ? UNO_COLOR_LABELS[prevColor] : 'the colour'
     const won = await persistSession(
       supabase,
       gameId,
@@ -1876,7 +1878,7 @@ export async function processUnoChallenge(
         draw_pile: drawResult.drawPile,
         discard_pile: drawResult.discardPile,
         current_turn_index: session.current_turn_index,
-        status_message: `Challenge succeeded — ${playerName(playerNames, wd4PlayerId)} draws ${penalty}. ${playerName(playerNames, playerId)}'s turn${colorHint}`,
+        status_message: `Challenge won — ${playerName(playerNames, wd4PlayerId)} was hiding a ${prevLabel} card! ${playerName(playerNames, wd4PlayerId)} draws ${penalty}. ${playerName(playerNames, playerId)}'s turn${colorHint}`,
       }),
       timerSeconds,
       session.updated_at
@@ -1896,6 +1898,9 @@ export async function processUnoChallenge(
     failPenalty
   )
   const failHand = [...handForPlayer(hands, playerId), ...drawn]
+  // Spell out WHY the challenge lost — the Wild Draw Four was legal (no card of the prev colour).
+  const failLabel = prevColor ? UNO_COLOR_LABELS[prevColor] : 'that colour'
+  const wd4Name = wd4PlayerId ? playerName(playerNames, wd4PlayerId) : 'They'
   const won = await persistSession(
     supabase,
     gameId,
@@ -1903,7 +1908,7 @@ export async function processUnoChallenge(
       draw_pile: drawPile,
       discard_pile: discardPile,
       current_turn_index: afterIndex,
-      status_message: `Challenge failed — ${playerName(playerNames, playerId)} draws ${drawn.length}. ${playerName(playerNames, afterId)}'s turn`,
+      status_message: `Challenge lost — ${wd4Name} had no ${failLabel} card. ${playerName(playerNames, playerId)} draws ${drawn.length}. ${playerName(playerNames, afterId)}'s turn`,
     }),
     timerSeconds,
     session.updated_at
