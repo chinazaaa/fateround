@@ -75,7 +75,7 @@ function TitleDeedSection({
 
     rows.push({ label: 'Price', value: fmt(space.price!), section: true })
     rows.push({ label: 'Site rent', value: fmt(space.rentTable[0]!), active: !!ownerId && level === 0 })
-    for (let h = 1; h <= MONOPOLY_MAX_HOUSES_PER_PROPERTY; h++) {
+    for (let h = 1; h < MONOPOLY_HOTEL_LEVEL; h++) {
       rows.push({
         label: `With ${h} house${h > 1 ? 's' : ''}`,
         value: fmt(space.rentTable[h]!),
