@@ -12,7 +12,12 @@ import {
   type MonopolySpace,
 } from '@/lib/monopoly'
 import { computeRent, parseBuildings, parseMortgaged, buildingLevel } from '@/lib/monopoly-rent'
-import { MONOPOLY_HOTEL_LEVEL } from '@/lib/monopoly-board'
+import {
+  MONOPOLY_HOTEL_LEVEL,
+  MONOPOLY_MAX_HOUSES_PER_PROPERTY,
+  mortgageValue,
+  countOwnedInGroup,
+} from '@/lib/monopoly-board'
 import { monopolyTokenById, monopolyTokenEmoji } from '@/lib/monopoly-tokens'
 import {
   formatThemedMoney,
@@ -36,6 +41,106 @@ import {
 function colorBar(color?: MonopolyColorGroup): string {
   if (!color) return 'bg-neutral-400/80'
   return MONOPOLY_COLOR_CLASSES[color] ?? 'bg-neutral-400'
+}
+
+// ---------------------------------------------------------------------------
+// Title Deed — full rent schedule grid for the property inspection modal
+// ---------------------------------------------------------------------------
+
+interface TitleDeedRow {
+  label: string
+  value: string
+  active?: boolean
+  section?: boolean
+}
+
+function TitleDeedSection({
+  space,
+  themeId,
+  owners,
+  buildings,
+  ownerId,
+}: {
+  space: MonopolySpace
+  themeId?: string | null
+  owners: Record<string, string>
+  buildings: Record<string, number>
+  ownerId?: string
+}) {
+  const fmt = (amount: number) => formatThemedMoney(amount, themeId)
+  const rows: TitleDeedRow[] = []
+
+  if (space.type === 'property' && space.rentTable && space.houseCost != null) {
+    const level = buildingLevel(buildings, space.index)
+
+    rows.push({ label: 'Price', value: fmt(space.price!), section: true })
+    rows.push({ label: 'Site rent', value: fmt(space.rentTable[0]!), active: !!ownerId && level === 0 })
+    for (let h = 1; h < MONOPOLY_HOTEL_LEVEL; h++) {
+      rows.push({
+        label: `With ${h} house${h > 1 ? 's' : ''}`,
+        value: fmt(space.rentTable[h]!),
+        active: !!ownerId && level === h,
+      })
+    }
+    rows.push({
+      label: 'With hotel',
+      value: fmt(space.rentTable[MONOPOLY_HOTEL_LEVEL]!),
+      active: !!ownerId && level === MONOPOLY_HOTEL_LEVEL,
+    })
+    rows.push({ label: 'Mortgage value', value: fmt(mortgageValue(space)), section: true })
+    rows.push({ label: 'House cost', value: fmt(space.houseCost) })
+    rows.push({ label: 'Hotel cost', value: fmt(space.houseCost) })
+  } else if (space.type === 'station') {
+    const ownedCount = ownerId ? countOwnedInGroup(owners, ownerId, 'station') : 0
+    const baseRent = space.rent ?? 25
+
+    rows.push({ label: 'Price', value: fmt(space.price!), section: true })
+    for (let n = 1; n <= 4; n++) {
+      const rent = baseRent * 2 ** (n - 1)
+      rows.push({
+        label: `${n} station${n > 1 ? 's' : ''} owned`,
+        value: fmt(rent),
+        active: !!ownerId && ownedCount === n,
+      })
+    }
+    rows.push({ label: 'Mortgage value', value: fmt(mortgageValue(space)), section: true })
+  } else if (space.type === 'utility') {
+    const ownedCount = ownerId ? countOwnedInGroup(owners, ownerId, 'utility') : 0
+
+    rows.push({ label: 'Price', value: fmt(space.price!), section: true })
+    rows.push({
+      label: '1 utility owned',
+      value: '4× dice roll',
+      active: !!ownerId && ownedCount === 1,
+    })
+    rows.push({
+      label: '2 utilities owned',
+      value: '10× dice roll',
+      active: !!ownerId && ownedCount === 2,
+    })
+    rows.push({ label: 'Mortgage value', value: fmt(mortgageValue(space)), section: true })
+  }
+
+  if (rows.length === 0) return null
+
+  return (
+    <div className="mt-3 rounded-xl border border-[var(--border-strong)] overflow-hidden">
+      {rows.map((row, i) => (
+        <div
+          key={i}
+          className={[
+            'flex items-center justify-between px-3 py-1.5 text-xs sm:text-sm',
+            i > 0 ? 'border-t border-[var(--border-strong)]/50' : '',
+            row.active ? 'bg-[var(--primary)]/10 font-bold text-[var(--foreground)]' : 'text-muted',
+            row.section ? 'font-semibold text-[var(--foreground)]' : '',
+          ].join(' ')}
+        >
+          <span>{row.label}</span>
+          <span className={row.active ? 'text-[var(--primary)]' : ''}>{row.value}</span>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function playerPosition(state: MonopolyPlayerState): number {
@@ -1140,6 +1245,7 @@ export function MonopolyCurrentSpace({
             )}
           </div>
         </div>
+        <TitleDeedSection space={space} themeId={themeId} owners={owners} buildings={buildings} ownerId={ownerId} />
       </div>
     </div>
   )
