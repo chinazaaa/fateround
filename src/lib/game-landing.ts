@@ -1445,10 +1445,17 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'whot game strategy',
       'whot scoring points',
       'play whot with friends online',
+      'play whot online with friends',
+      'whot card game rules',
+      'online whot game',
+      'whot online free',
+      'how to play whot card game',
+      'nigerian card game whot',
+      'whot game online free no download',
     ],
     heroSubtitle: 'The Nigerian card classic — match, stack, and call WHOT on your crew.',
     bodyParagraph:
-      'Whot on Fate Round runs on the Nigerian house rules everyone actually plays by — match the top card by shape or number, drop WHOT to call the next shape, and keep those Pick 2 and Pick 3 stacks separate. The special cards are where it gets loud: Hold On buys you another go, Suspension skips the next player, General Market makes everyone draw, and the WHOT card (20) bends the whole game to your will. No shuffling, no lost cards, no arguments about the rules — deal a room, share the code, and play from any phone. First to empty their hand wins. Two to six players, free forever.',
+      "Whot on Fate Round runs on the Nigerian house rules everyone actually plays by — match the top card by shape or number, drop WHOT to call the next shape, and keep those Pick 2 and Pick 3 stacks separate. The special cards are where it gets loud: Hold On buys you another go, Suspension skips the next player, General Market makes everyone draw, and the WHOT card (20) bends the whole game to your will. No shuffling, no lost cards, no arguments about the rules — deal a room, share the code, and play from any phone, laptop, or tablet. It works on any device with a browser, so it's perfect for playing with friends abroad or catching up with diaspora crew across time zones. Play Whot online free — no app, no download, no sign-up. First to empty their hand wins. Two to six players, free forever.",
     highlights: ['54-card deck', '2–6 players', 'Naija house rules'],
     features: [
       {
@@ -1469,7 +1476,13 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       { title: 'Play your turn', description: 'Match the top card, defend pick stacks, or draw.' },
       { title: 'Empty your hand', description: 'First player out of cards wins the game.' },
     ],
-    perfectFor: ['Game nights', 'Nigerian diaspora hangouts', 'Card game lovers'],
+    perfectFor: [
+      'Game nights',
+      'Nigerian diaspora hangouts',
+      'Card game lovers',
+      'Family across time zones',
+      'WhatsApp group nights',
+    ],
     extraFaqs: [
       {
         question: 'How do you win at Whot?',
@@ -1535,6 +1548,21 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'Can I run a Whot tournament online?',
         answer:
           'Yes. Fate Round can run a Whot tournament as a head-to-head bracket, and there’s a class-based championship format for schools. Create one from the Tournaments page and share the join code — free, no app, no sign-up.',
+      },
+      {
+        question: 'Where can I play Whot online?',
+        answer:
+          'Fate Round is the easiest way to play Whot online free. Open fateround.com in any browser, create a room, and share the code with friends — no app to install, no account to create, no download required. It works on phones, laptops, and tablets.',
+      },
+      {
+        question: 'Can you play Whot with 2 players?',
+        answer:
+          'Yes. Whot on Fate Round supports 2 to 6 players. In a 2-player game each player is dealt 6 cards instead of 5, and cards like Suspension (8) hit even harder because they hand the turn straight back to you.',
+      },
+      {
+        question: 'What are the shapes in Whot?',
+        answer:
+          'A Whot deck uses five shapes instead of the suits you see in a standard playing-card deck: circle, triangle, cross, square, and star. Each shape has cards numbered 1 through 14, plus the special WHOT cards numbered 20 that act as wilds. You match by shape or number on your turn.',
       },
     ],
   }),
@@ -2342,6 +2370,15 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'ayo game rules',
       'two player ayo online',
       'ayo online free',
+      'ayo game online',
+      'how to play ayo',
+      'ayoayo game',
+      'mancala online',
+      'nigerian board game ayo',
+      'oware online',
+      'play ayo online free',
+      'ayo board game',
+      'yoruba board game online',
     ],
     heroSubtitle: 'Sow seeds, capture 2s and 3s, and crown Ọta — the Yoruba classic, head-to-head.',
     bodyParagraph:
@@ -2382,6 +2419,26 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'Can I play untimed?',
         answer:
           'Yes — choose Casual (no timer) when creating a room. For faster ranked play, pick 30 seconds per player or longer clocks.',
+      },
+      {
+        question: 'What is Ayo / Ayoayo?',
+        answer:
+          "Ayo (also called Ayoayo or Ayo Olopon) is a traditional Yoruba board game from Nigeria in the mancala family. Two players sit on opposite sides of a board with 12 houses (6 per side), each starting with 4 seeds. Players take turns sowing seeds anti-clockwise, capturing from the opponent's side when the last seed lands in a house with 2 or 3 seeds.",
+      },
+      {
+        question: 'How many seeds are in Ayo?',
+        answer:
+          'A standard Ayo board starts with 48 seeds — 4 seeds in each of the 12 houses (6 per player). As the game progresses, seeds move around the board and get captured. The player who captures the most seeds wins.',
+      },
+      {
+        question: 'Is Ayo the same as Mancala?',
+        answer:
+          'Ayo is one game in the mancala family — a group of count-and-capture board games played across Africa and beyond. Ayo follows Yoruba rules (anti-clockwise sowing, capture on 2s and 3s, the Ota/Ope tradition). Other mancala variants include Oware (Ghana), Bao (East Africa), and Kalah (Western adaptation).',
+      },
+      {
+        question: 'Can I play Ayo online with friends?',
+        answer:
+          'Yes — create a room on Fate Round, share the link, and a friend joins from their phone or laptop. Two players play head-to-head in real time with traditional rules. Free, no sign-up, no download.',
       },
     ],
   }),
