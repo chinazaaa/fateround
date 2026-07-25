@@ -10,6 +10,18 @@ const TEAM_TEXT: Record<string, string> = {
   solo: 'text-amber-400',
   special: 'text-pink-400',
 }
+const TEAM_CHIP: Record<string, string> = {
+  village: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+  mafia: 'bg-red-500/10 text-red-400 border-red-500/20',
+  solo: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+  special: 'bg-pink-500/10 text-pink-400 border-pink-500/20',
+}
+const TEAM_LABEL: Record<string, string> = {
+  village: 'Village',
+  mafia: 'Mafia',
+  solo: 'Solo',
+  special: 'Special',
+}
 
 interface MafiaRolesDrawerProps {
   enabledRoles: MafiaRole[]
@@ -56,11 +68,16 @@ export function MafiaRolesDrawer({ enabledRoles }: MafiaRolesDrawerProps) {
                     className="bg-[var(--surface-inset-bg)] border border-[var(--border)] rounded-xl p-3 flex gap-3"
                   >
                     <span className="text-2xl">{mafiaRoleEmoji(role)}</span>
-                    <div>
+                    <div className="space-y-1">
                       <p className={`font-bold text-sm ${TEAM_TEXT[info.team] ?? 'text-[var(--foreground)]'}`}>
                         {info.name}
                       </p>
                       <p className="text-xs text-[var(--muted)] leading-relaxed">{info.description}</p>
+                      <span
+                        className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full border ${TEAM_CHIP[info.team] ?? ''}`}
+                      >
+                        Team: {TEAM_LABEL[info.team] ?? info.team}
+                      </span>
                     </div>
                   </div>
                 )
