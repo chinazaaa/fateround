@@ -328,6 +328,7 @@ export interface Game {
   mafia_cupid_enabled?: boolean
   mafia_cursed_villager_enabled?: boolean
   mafia_medium_enabled?: boolean
+  mafia_priest_enabled?: boolean
   mafia_anonymous_votes?: boolean
   mafia_count?: number | null
   mafia_day_seconds?: number
@@ -1870,6 +1871,7 @@ export type MafiaRole =
   | 'cupid'
   | 'cursed_villager'
   | 'medium'
+  | 'priest'
 export type MafiaTeam = 'village' | 'mafia' | 'jester' | 'serial_killer' | 'arsonist'
 export type MafiaDeathCause = 'mafia_kill' | 'village_vote' | 'serial_kill' | 'arson' | 'vigilante_kill'
 export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'day' | 'voting' | 'elimination' | 'game_over'
@@ -1890,6 +1892,7 @@ export interface MafiaRoleEnabledFlags {
   cupid_enabled: boolean
   cursed_villager_enabled: boolean
   medium_enabled: boolean
+  priest_enabled: boolean
 }
 
 export interface MafiaSession extends MafiaRoleEnabledFlags {
@@ -1936,12 +1939,14 @@ export interface MafiaPlayerState {
   death_day: number | null
   death_cause: MafiaDeathCause | null
   night_action_target_player_id: string | null
+  night_action_target_player_id_2: string | null
   day_vote_target_player_id: string | null
   doused_by_arsonist: boolean
   vigilante_shots_used: number
   vigilante_reveal_used: boolean
   medium_revive_used: boolean
   bodyguard_hits_taken: number
+  priest_holy_water_used: boolean
   is_lover: boolean
   lover_partner_player_id: string | null
   seat_number: number
@@ -1992,6 +1997,7 @@ export interface MafiaMyState {
   vigilanteRevealResult?: { targetName: string; role: MafiaRole } | null
   mediumReviveRemaining?: number
   mediumGhostChat?: MafiaChatMessage[]
+  priestHolyWaterRemaining?: number
   framerLastTargetName?: string | null
   cupidLinkedNames?: [string, string] | null
   isLover?: boolean

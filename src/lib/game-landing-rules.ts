@@ -1554,8 +1554,8 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'Setup',
       points: [
         '5 to 16 players join the lobby. Each player is secretly assigned a role.',
-        'The host picks which roles are in the game — from 17 available roles across Village, Mafia, Solo, and Special teams.',
-        'Village roles include Villager, Doctor, Detective, Bodyguard, Mayor, Vigilante, Tracker, and Medium.',
+        'The host picks which roles are in the game — from 18 available roles across Village, Mafia, Solo, and Special teams.',
+        'Village roles include Villager, Doctor, Detective, Bodyguard, Mayor, Vigilante, Tracker, Medium, and Priest.',
         'Mafia roles include Mafia, Alpha Mafia, Junior Mafia, and Framer.',
         'Solo roles (Jester, Serial Killer, Arsonist) and Special roles (Cupid, Cursed Villager) add extra twists.',
       ],
@@ -1579,6 +1579,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'A sunrise report announces who died last night (or if nobody died).',
         'Investigation results from the previous night are delivered privately to each investigative role.',
         'The Vigilante may shoot or reveal one player during the day (each once, not on the same day).',
+        'The Priest may throw holy water on one player (once per game) — if they are Mafia, they die; if not, the Priest dies and the target is confirmed innocent.',
         "The town discusses and debates who they suspect. The Mayor's vote counts double.",
         'Players vote to eliminate one suspect. Plurality wins; ties result in no elimination.',
         'If the Jester is voted out, the Jester wins!',

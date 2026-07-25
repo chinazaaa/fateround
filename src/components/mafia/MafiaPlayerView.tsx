@@ -90,6 +90,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
   const [acting, setActing] = useState(false)
   const [vigilanteMode, setVigilanteMode] = useState<'shoot' | 'reveal' | null>(null)
   const [vigilanteRevealResult, setVigilanteRevealResult] = useState<{ targetName: string; role: string } | null>(null)
+  const [priestMode, setPriestMode] = useState(false)
 
   // A late joiner's client can load state well after the game's shared role_reveal phase has
   // already ended (it's a one-time, whole-game window) — without this they'd be dropped
@@ -332,6 +333,32 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
     }
   }
 
+  const submitPriestAction = async (targetId: string) => {
+    if (!myResumeToken) return
+    setActing(true)
+    try {
+      const res = await fetch(`/api/mafia/${gameCode}/priest-action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumeToken: myResumeToken, targetPlayerId: targetId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toastError(data.error ?? 'Action failed')
+      } else {
+        toastSuccess(
+          data.targetWasMafia ? 'Holy water hit — target was Mafia!' : 'Holy water missed — the Priest has died'
+        )
+      }
+      setPriestMode(false)
+      await load()
+    } catch {
+      toastError('Action failed')
+    } finally {
+      setActing(false)
+    }
+  }
+
   // Tap-to-act selection state — tapping a tile in MafiaPlayersGrid is the primary way to
   // act/vote (no separate button list); a fresh submission overwrites the previous one
   // server-side, so players can change their pick anytime before the phase ends by tapping
@@ -343,6 +370,8 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
   const lastSeenChatCountRef = useRef(0)
 
   const [cupidFirstPick, setCupidFirstPick] = useState<string | null>(null)
+  const [arsonistFirstPick, setArsonistFirstPick] = useState<string | null>(null)
+  const [arsonistMode, setArsonistMode] = useState<'douse' | 'ignite' | null>(null)
   const [nightSelection, setNightSelection] = useState<string | null>(null)
   const [voteSelection, setVoteSelection] = useState<string | null>(null)
   const phaseKey = `${mafiaState?.phase ?? ''}:${mafiaState?.dayNumber ?? 0}`
@@ -656,7 +685,19 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             void submitNightAction(id)
           }
           gridSelectedIds = nightSelection ? [nightSelection] : []
-        } else if (myRole !== 'medium') {
+        } else if (myRole === 'arsonist' && arsonistMode === 'douse') {
+          gridOnSelect = (id) => {
+            if (!arsonistFirstPick) {
+              setArsonistFirstPick(id)
+            } else {
+              void submitNightAction(arsonistFirstPick, id)
+              setArsonistFirstPick(null)
+            }
+          }
+          gridSelectedIds = arsonistFirstPick ? [arsonistFirstPick] : []
+        } else if (myRole === 'arsonist' && arsonistMode === 'ignite') {
+          // Ignite is a one-click self-target — handled in the panel below, not via grid
+        } else if (myRole !== 'medium' && myRole !== 'arsonist') {
           gridOnSelect = (id) => {
             setNightSelection(id)
             void submitNightAction(id)
@@ -673,6 +714,12 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
       if ((phase === 'day' || phase === 'voting') && myRole === 'vigilante' && vigilanteMode) {
         gridOnSelect = (id) => {
           void submitVigilanteAction(id, vigilanteMode)
+        }
+        gridSelectedIds = []
+      }
+      if ((phase === 'day' || phase === 'voting') && myRole === 'priest' && priestMode) {
+        gridOnSelect = (id) => {
+          void submitPriestAction(id)
         }
         gridSelectedIds = []
       }
@@ -763,6 +810,37 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
           </div>
         )}
 
+        {(phase === 'day' || phase === 'voting') && myRole === 'priest' && amIAlive && !amISpectator && (
+          <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-3">
+            <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">⛪ Priest Actions</h3>
+            {priestMode ? (
+              <div className="space-y-2">
+                <p className="text-sm text-[var(--foreground)]">Tap a player to throw holy water on</p>
+                <button
+                  type="button"
+                  onClick={() => setPriestMode(false)}
+                  className="text-xs text-[var(--muted)] underline"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (myState?.priestHolyWaterRemaining ?? 0) > 0 ? (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={acting}
+                  onClick={() => setPriestMode(true)}
+                  className="flex-1 px-3 py-2 rounded-xl bg-blue-600 text-white text-sm font-bold disabled:opacity-40"
+                >
+                  💧 Throw Holy Water
+                </button>
+              </div>
+            ) : (
+              <p className="text-xs text-[var(--muted)]">Holy water already used.</p>
+            )}
+          </div>
+        )}
+
         {(phase === 'day' || phase === 'voting') && amIAlive && !amISpectator && (
           <MafiaSkipPhaseBar
             phase={phase}
@@ -786,6 +864,14 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             onIgnite={() => {
               if (myPlayerId) void submitNightAction(myPlayerId)
             }}
+            arsonistMode={arsonistMode}
+            onArsonistModeChange={(mode) => {
+              setArsonistMode(mode)
+              if (!mode) setArsonistFirstPick(null)
+            }}
+            arsonistFirstPickName={
+              arsonistFirstPick ? (publicPlayers.find((p) => p.id === arsonistFirstPick)?.name ?? null) : null
+            }
           />
         )}
 

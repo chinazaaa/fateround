@@ -32,6 +32,7 @@ const ADVANCED_ROLE_FIELDS = [
   'mafia_cupid_enabled',
   'mafia_cursed_villager_enabled',
   'mafia_medium_enabled',
+  'mafia_priest_enabled',
 ] as const satisfies readonly (keyof Game)[]
 
 const ADVANCED_ROLE_LABELS: Record<(typeof ADVANCED_ROLE_FIELDS)[number], { label: string; description: string }> = {
@@ -50,7 +51,10 @@ const ADVANCED_ROLE_LABELS: Record<(typeof ADVANCED_ROLE_FIELDS)[number], { labe
   mafia_framer_enabled: { label: 'Framer', description: 'Frames a player so the Detective reads them as Mafia' },
   mafia_jester_enabled: { label: 'Jester', description: 'Wins alone if lynched' },
   mafia_serial_killer_enabled: { label: 'Serial Killer', description: 'Kills alone, wins as last one standing' },
-  mafia_arsonist_enabled: { label: 'Arsonist', description: 'Douses/ignites, wins as last one standing' },
+  mafia_arsonist_enabled: {
+    label: 'Arsonist',
+    description: 'Douses 2 per night, ignites to kill all doused; immune to Mafia',
+  },
   mafia_cupid_enabled: { label: 'Cupid', description: 'Links two players as Lovers on night one' },
   mafia_cursed_villager_enabled: {
     label: 'Cursed Villager',
@@ -59,6 +63,10 @@ const ADVANCED_ROLE_LABELS: Record<(typeof ADVANCED_ROLE_FIELDS)[number], { labe
   mafia_medium_enabled: {
     label: 'Medium',
     description: 'Reads ghost chat at night, one-time revive',
+  },
+  mafia_priest_enabled: {
+    label: 'Priest',
+    description: 'Once per day, throw holy water — kills Mafia, or self-destructs',
   },
 }
 
@@ -265,7 +273,7 @@ export function HostMafiaLobbyPanel({ gameCode, hostToken, game, playerCount, on
           </div>
           <p className="text-xs text-muted">
             {showCustomize || isCustomized
-              ? 'Pick exactly which of the 17 roles are in play.'
+              ? 'Pick exactly which of the 18 roles are in play.'
               : 'The full 17-role roster — Villager, Mafia, Doctor, Detective, plus 13 more mixed in when there are enough player slots.'}
           </p>
           {(showCustomize || isCustomized) && (
