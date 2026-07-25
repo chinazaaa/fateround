@@ -1973,6 +1973,7 @@ export interface MafiaMyState {
    *  crew sees exactly what each other plays, not just "they're mafia too". */
   mafiaTeammateRoles: Record<string, MafiaRole>
   mafiaChatMessages?: MafiaChatMessage[]
+  mafiaTeammateNightTargets?: Record<string, string | null>
   trackerResult?: { targetName: string; visitedName: string | null } | null
   bodyguardLastOutcome?: 'saved' | 'sacrificed' | 'no_attack' | null
   doctorLastOutcome?: 'saved' | 'no_attack' | null

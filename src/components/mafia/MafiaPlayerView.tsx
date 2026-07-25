@@ -650,6 +650,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
           myRole={myRole}
           mafiaTeammateIds={myState?.mafiaTeammateIds}
           mafiaTeammateRoles={myState?.mafiaTeammateRoles}
+          mafiaTeammateNightTargets={myState?.mafiaTeammateNightTargets}
           phase={phase}
           voteTallies={voteTallies}
           voteChoices={voteChoices}
