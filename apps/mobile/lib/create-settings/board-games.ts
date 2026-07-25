@@ -11,6 +11,7 @@ import {
   type ScrabbleClockMode,
 } from '@fateround/shared/create-board-games'
 import { parseLudoVariant } from '@fateround/shared/ludo'
+import { parseMultiPlayMode, type UnoMultiPlayMode } from '@fateround/shared/uno'
 import { DEFAULT_MAHJONG_RULESET, DEFAULT_MAHJONG_RULE_OPTIONS } from '@fateround/shared/mahjong-rulesets'
 import type { ScrabbleDictionaryId } from '@fateround/shared/scrabble-dictionary-meta'
 import { SCRABBLE_DEFAULT_DICTIONARY, parseScrabbleDictionaryId } from '@fateround/shared/scrabble-dictionary-meta'
@@ -47,12 +48,13 @@ export type GameRoomSettings = {
   crazy8ActionCards: boolean
   crazy8Jokers: boolean
   crazy8Pick2Stacking: boolean
-  /** Core UNO toggles (Phase 1). Multi-Play/Team-Up/Jump-In exist on the games row but
-   *  have no create-flow control yet — see docs/mobile-web-parity-plan.md. */
   unoWd4Challenge: boolean
   unoUnoPenalty: number
   unoZeroSeven: boolean
   unoStacking: boolean
+  unoJumpIn: boolean
+  unoMultiPlayMode: UnoMultiPlayMode
+  unoTeamMode: boolean
   scrabbleDictionaryId: ScrabbleDictionaryId
   scrabbleClockMode: ScrabbleClockMode
   scrabbleClockSeconds: number
@@ -83,6 +85,9 @@ export function defaultGameRoomSettings(gameType: GameType): GameRoomSettings {
     unoUnoPenalty: 2,
     unoZeroSeven: false,
     unoStacking: false,
+    unoJumpIn: false,
+    unoMultiPlayMode: 'off',
+    unoTeamMode: false,
     scrabbleDictionaryId: SCRABBLE_DEFAULT_DICTIONARY,
     scrabbleClockMode: 'standard',
     scrabbleClockSeconds: 600,
@@ -181,6 +186,10 @@ export function gameRoomSettingsPayload(gameType: GameType, room: GameRoomSettin
     payload.uno_uno_penalty = room.unoUnoPenalty
     payload.uno_zero_seven = room.unoZeroSeven
     payload.uno_stacking = room.unoStacking
+    payload.uno_jump_in = room.unoJumpIn
+    payload.uno_multi_play_mode = parseMultiPlayMode(room.unoMultiPlayMode)
+    payload.uno_team_mode = room.unoTeamMode
+    if (room.unoTeamMode) payload.max_players = 4
     return payload
   }
 

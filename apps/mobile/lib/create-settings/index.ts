@@ -172,6 +172,9 @@ export function buildCreatePayload(state: CreateWizardState, limits: GamePlayerL
     const fallback = lobbyDefaultMaxPlayers(gameType, limits)
     maxPlayers = clampLobbyMaxPlayers(gameType, state.maxPlayers ?? fallback, limits)
   }
+  // UNO Team-Up is fixed at 4 players (2 teams of 2) — overrides whatever max-players the host
+  // picked before turning Team-Up on.
+  if (gameType === 'uno' && state.room.unoTeamMode) maxPlayers = 4
 
   const payload: Record<string, unknown> = {
     title: state.title.trim(),

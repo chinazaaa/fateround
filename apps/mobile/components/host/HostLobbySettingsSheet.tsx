@@ -48,6 +48,7 @@ import {
   type CardHouseRulesState,
 } from '@/components/host/lobby-settings/CardHouseRulesSection'
 import { UnoRulesSection, type UnoRulesState } from '@/components/host/lobby-settings/UnoRulesSection'
+import { parseMultiPlayMode } from '@fateround/shared/uno'
 import {
   BoardVariantSection,
   isBoardVariantGame,
@@ -318,6 +319,9 @@ export function HostLobbySettingsSheet({
     stacking: game.uno_stacking ?? false,
     zeroSeven: game.uno_zero_seven ?? false,
     unoPenalty: game.uno_uno_penalty === 4 ? 4 : 2,
+    jumpIn: game.uno_jump_in ?? false,
+    multiPlayMode: parseMultiPlayMode(game.uno_multi_play_mode),
+    teamMode: game.uno_team_mode ?? false,
   }))
   const [variant, setVariant] = useState<BoardVariantState>(() => ({
     timerSeconds: game.timer_seconds ?? 0,
@@ -530,6 +534,13 @@ export function HostLobbySettingsSheet({
       if (uno.stacking !== game.uno_stacking) board.uno_stacking = uno.stacking
       if (uno.zeroSeven !== game.uno_zero_seven) board.uno_zero_seven = uno.zeroSeven
       if (uno.unoPenalty !== game.uno_uno_penalty) board.uno_uno_penalty = uno.unoPenalty
+      if (uno.jumpIn !== game.uno_jump_in) board.uno_jump_in = uno.jumpIn
+      if (uno.multiPlayMode !== parseMultiPlayMode(game.uno_multi_play_mode))
+        board.uno_multi_play_mode = uno.multiPlayMode
+      if (uno.teamMode !== game.uno_team_mode) {
+        board.uno_team_mode = uno.teamMode
+        if (uno.teamMode) board.max_players = 4
+      }
     }
     if (isMahjong) {
       if (mahjong.timerSeconds !== game.timer_seconds) board.timer_seconds = mahjong.timerSeconds
@@ -787,10 +798,16 @@ export function HostLobbySettingsSheet({
 
             {showTheme ? <ThemePicker gameType={gameType} value={themeId} onChange={setThemeId} /> : null}
 
-            {showMaxPlayers ? (
+            {showMaxPlayers && !(isUno && uno.teamMode) ? (
               <View style={styles.field}>
                 <Text style={styles.label}>Max players</Text>
                 <MaxPlayersPicker gameType={gameType} value={maxPlayers} limits={limits} onChange={setMaxPlayers} />
+              </View>
+            ) : null}
+            {isUno && uno.teamMode ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>Max players</Text>
+                <Text style={styles.label}>4 players (2 teams of 2)</Text>
               </View>
             ) : null}
 
