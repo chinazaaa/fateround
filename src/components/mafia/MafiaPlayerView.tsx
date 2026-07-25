@@ -552,10 +552,12 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     // two-step pick and the current highlighted selection are tracked in local state above.
     let gridOnSelect: ((id: string) => void) | undefined
     let gridSelectedIds: string[] = []
+    let cupidPicking = false
     if (amIAlive && !amISpectator) {
       if (phase === 'night' && myRole && !NO_NIGHT_ACTION_ROLES.includes(myRole)) {
         if (myRole === 'cupid') {
           if (!myState?.cupidLinkedNames && dayNumber === 1) {
+            cupidPicking = true
             gridOnSelect = (id) => {
               if (!cupidFirstPick) {
                 setCupidFirstPick(id)
@@ -638,6 +640,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                 anonymousVotes={anonymousVotes}
                 onSelect={gridOnSelect}
                 selectedIds={gridSelectedIds}
+                allowSelfSelect={cupidPicking}
               />
 
               {(phase === 'day' || phase === 'voting') && amIAlive && !amISpectator && (

@@ -29,6 +29,10 @@ interface MafiaPlayersGridProps {
   /** Currently chosen target(s) — highlighted so the player can see (and change) their pick
    *  before the phase ends. Cupid's two-step pick can hold up to two ids. */
   selectedIds?: string[]
+  /** Cupid's role text says they can link two players "possibly including yourself" — set
+   *  during Cupid's pick so their own tile becomes tappable too, instead of the usual
+   *  self-target block that applies to every other role. */
+  allowSelfSelect?: boolean
 }
 
 const TEAM_TEXT: Record<string, string> = {
@@ -57,6 +61,7 @@ export function MafiaPlayersGrid({
   anonymousVotes = false,
   onSelect,
   selectedIds = [],
+  allowSelfSelect = false,
 }: MafiaPlayersGridProps) {
   const seatNumberById = new Map(players.map((p) => [p.id, p.seatNumber]))
   const headerSuffix = phase === 'voting' ? ' · tap to vote' : onSelect ? ' · tap to select' : ''
@@ -73,7 +78,7 @@ export function MafiaPlayersGrid({
           const votingForSeat =
             phase === 'voting' && p.isAlive && !anonymousVotes ? seatNumberById.get(voteChoices[p.id]) : undefined
           const isSelected = selectedIds.includes(p.id)
-          const clickable = !!onSelect && p.isAlive && !isMe
+          const clickable = !!onSelect && p.isAlive && (!isMe || allowSelfSelect)
           const isTeammate = !isMe && mafiaTeammateIds.includes(p.id)
           const teammateRole = isTeammate ? mafiaTeammateRoles[p.id] : undefined
           const revealedRole = p.role ?? teammateRole

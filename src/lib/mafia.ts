@@ -231,7 +231,7 @@ export function resolveMafiaNight(
   // Wolf Cub revenge: if pending (set because a wolf-cub-associated death happened
   // previously), the mafia team also gets the runner-up target this night.
   let bonusMafiaTarget: string | null = null
-  if (session.wolf_cub_revenge_pending && mafiaVotes.length > 0) {
+  if (session.wolf_cub_revenge_pending && mafiaTarget && mafiaVotes.length > 0) {
     const counts: Record<string, number> = {}
     mafiaVotes.forEach((v) => (counts[v] = (counts[v] || 0) + 1))
     const runnerUp = Object.keys(counts)

@@ -305,13 +305,13 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
     const isCustomized = advancedRoleFields.some((v) => v === false)
     items.push(isCustomized ? '🎭 Custom roles' : '🎭 Classic (16 roles)')
     if (typeof game.timer_seconds === 'number' && game.timer_seconds > 0) {
-      items.push(`🌙 ${game.timer_seconds}s night`)
+      items.push(`🌙 ${formatDuration(game.timer_seconds)} night`)
     }
     if (typeof game.mafia_day_seconds === 'number' && game.mafia_day_seconds > 0) {
       items.push(`☀️ ${formatDuration(game.mafia_day_seconds)} day`)
     }
     if (typeof game.mafia_voting_seconds === 'number' && game.mafia_voting_seconds > 0) {
-      items.push(`🗳️ ${game.mafia_voting_seconds}s voting`)
+      items.push(`🗳️ ${formatDuration(game.mafia_voting_seconds)} voting`)
     }
     if (game.mafia_anonymous_votes) items.push('🕶️ Anonymous votes')
   } else if (gt === 'ping_pong') {

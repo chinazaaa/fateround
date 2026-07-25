@@ -104,7 +104,7 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'alpha_wolf',
     name: 'Alpha Mafia',
     team: 'mafia',
-    description: 'Leads the Mafia — your kill vote counts twice, and you can chat with your crew during the day too.',
+    description: 'Leads the Mafia — your kill vote counts twice toward the nightly kill.',
   },
   wolf_cub: {
     role: 'wolf_cub',

@@ -96,6 +96,13 @@ export async function runMafiaAdvance(
   // (often a brief 10s one) moves on.
   const systemMessages: string[] = []
 
+  // Player-state/players writes that depend on THIS transition actually being the one that
+  // wins the phase CAS below — deferred (not awaited yet) so a losing racer (another request
+  // already advanced this phase first) never applies them. Previously these ran unconditionally
+  // before the CAS, so a losing racer could still burn a vigilante's one shot, mark an
+  // arsonist's douse target, or double-write a death row.
+  const pendingEffects: Array<() => PromiseLike<unknown>> = []
+
   // Define timer durations — Night, Day (discussion), and Voting each have their own dial,
   // matching Wolvesville's separate phase timers rather than one duration doubled for day.
   // Day Report/Elimination are brief announcement beats, not player-input phases — kept
@@ -123,7 +130,12 @@ export async function runMafiaAdvance(
   }
 
   const applyLoversOverlay = (winTeam: NonNullable<MafiaSession['winning_team']>) => {
-    updateFields.winning_team = checkLoversWin(playerStates) ? 'lovers' : winTeam
+    // Only override the real winner when the two Lovers are the sole survivors — otherwise a
+    // Village/Mafia win where the lovers simply happened to both be on the winning side would
+    // get reported purely as a Lovers win, losing the actual team result. checkLoversWin only
+    // confirms both are alive, not that they're alone, so that check is added here.
+    const aliveCount = playerStates.filter((p) => p.is_alive).length
+    updateFields.winning_team = checkLoversWin(playerStates) && aliveCount === 2 ? 'lovers' : winTeam
   }
 
   // 3. Resolve current phase transitions
@@ -157,23 +169,29 @@ export async function runMafiaAdvance(
     updateFields.wolf_cub_revenge_pending = wolfCubDiedThisNight
 
     if (cursedConvertedPlayerId) {
-      await admin
-        .from('mafia_player_states')
-        .update({ role: 'mafia' })
-        .eq('game_id', gameId)
-        .eq('player_id', cursedConvertedPlayerId)
+      pendingEffects.push(() =>
+        admin
+          .from('mafia_player_states')
+          .update({ role: 'mafia' })
+          .eq('game_id', gameId)
+          .eq('player_id', cursedConvertedPlayerId)
+      )
       const pIndex = playerStates.findIndex((p) => p.player_id === cursedConvertedPlayerId)
       if (pIndex !== -1) playerStates[pIndex].role = 'mafia'
     }
 
     for (const death of deaths) {
       const deadState = playerStates.find((p) => p.player_id === death.playerId)
-      await admin
-        .from('mafia_player_states')
-        .update({ is_alive: false, death_day: session.day_number, death_cause: death.cause })
-        .eq('game_id', gameId)
-        .eq('player_id', death.playerId)
-      await admin.from('players').update({ is_eliminated: true }).eq('game_id', gameId).eq('id', death.playerId)
+      pendingEffects.push(() =>
+        admin
+          .from('mafia_player_states')
+          .update({ is_alive: false, death_day: session.day_number, death_cause: death.cause })
+          .eq('game_id', gameId)
+          .eq('player_id', death.playerId)
+      )
+      pendingEffects.push(() =>
+        admin.from('players').update({ is_eliminated: true }).eq('game_id', gameId).eq('id', death.playerId)
+      )
       const pIndex = playerStates.findIndex((p) => p.player_id === death.playerId)
       if (pIndex !== -1) playerStates[pIndex].is_alive = false
       systemMessages.push(
@@ -192,7 +210,7 @@ export async function runMafiaAdvance(
       updateFields.phase = 'game_over'
       applyLoversOverlay(winTeam)
       updateFields.phase_deadline = null
-      await markGameFinished(admin, gameId)
+      pendingEffects.push(() => markGameFinished(admin, gameId))
     }
   } else if (currentPhase === 'voting' && targetPhase === 'elimination') {
     // Resolve Voting on whatever's been cast so far — this runs identically whether Voting
@@ -203,19 +221,25 @@ export async function runMafiaAdvance(
 
     if (votedPlayerId) {
       const votedState = playerStates.find((p) => p.player_id === votedPlayerId)
-      // Set eliminated player is_alive = false
-      await admin
-        .from('mafia_player_states')
-        .update({
-          is_alive: false,
-          death_day: session.day_number,
-          death_cause: 'village_vote',
-        })
-        .eq('game_id', gameId)
-        .eq('player_id', votedPlayerId)
-
-      // Set is_eliminated = true in players table
-      await admin.from('players').update({ is_eliminated: true }).eq('game_id', gameId).eq('id', votedPlayerId)
+      // Wolf Cub's revenge triggers on death by any cause, not just a night kill — a lynched
+      // Cub grants the mafia a bonus kill the following night too.
+      if (votedState?.role === 'wolf_cub') {
+        updateFields.wolf_cub_revenge_pending = true
+      }
+      pendingEffects.push(() =>
+        admin
+          .from('mafia_player_states')
+          .update({
+            is_alive: false,
+            death_day: session.day_number,
+            death_cause: 'village_vote',
+          })
+          .eq('game_id', gameId)
+          .eq('player_id', votedPlayerId)
+      )
+      pendingEffects.push(() =>
+        admin.from('players').update({ is_eliminated: true }).eq('game_id', gameId).eq('id', votedPlayerId)
+      )
 
       // Update local state for win check
       const pIndex = playerStates.findIndex((p) => p.player_id === votedPlayerId)
@@ -234,14 +258,14 @@ export async function runMafiaAdvance(
       updateFields.phase = 'game_over'
       updateFields.winning_team = 'jester'
       updateFields.phase_deadline = null
-      await markGameFinished(admin, gameId)
+      pendingEffects.push(() => markGameFinished(admin, gameId))
     } else {
       const winTeam = checkMafiaWinCondition(playerStates)
       if (winTeam) {
         updateFields.phase = 'game_over'
         applyLoversOverlay(winTeam)
         updateFields.phase_deadline = null
-        await markGameFinished(admin, gameId)
+        pendingEffects.push(() => markGameFinished(admin, gameId))
       }
     }
   } else if (targetPhase === 'night' && currentPhase !== 'role_reveal') {
@@ -265,10 +289,12 @@ export async function runMafiaAdvance(
       (p) => p.role === 'vigilante' && p.is_alive && p.night_action_target_player_id && p.vigilante_shots_used < 1
     )
     if (firedVigilante) {
-      await admin
-        .from('mafia_player_states')
-        .update({ vigilante_shots_used: firedVigilante.vigilante_shots_used + 1 })
-        .eq('id', firedVigilante.id)
+      pendingEffects.push(() =>
+        admin
+          .from('mafia_player_states')
+          .update({ vigilante_shots_used: firedVigilante.vigilante_shots_used + 1 })
+          .eq('id', firedVigilante.id)
+      )
     }
     // Arsonist's douse target (from the night just resolved) becomes permanently doused.
     const arsonist = playerStates.find((p) => p.role === 'arsonist' && p.is_alive)
@@ -277,29 +303,35 @@ export async function runMafiaAdvance(
       arsonist.night_action_target_player_id &&
       arsonist.night_action_target_player_id !== arsonist.player_id
     ) {
-      await admin
-        .from('mafia_player_states')
-        .update({ doused_by_arsonist: true })
-        .eq('game_id', gameId)
-        .eq('player_id', arsonist.night_action_target_player_id)
+      pendingEffects.push(() =>
+        admin
+          .from('mafia_player_states')
+          .update({ doused_by_arsonist: true })
+          .eq('game_id', gameId)
+          .eq('player_id', arsonist.night_action_target_player_id)
+      )
     }
     // Clear all targets and votes in player states
-    await admin
-      .from('mafia_player_states')
-      .update({
-        night_action_target_player_id: null,
-        day_vote_target_player_id: null,
-      })
-      .eq('game_id', gameId)
+    pendingEffects.push(() =>
+      admin
+        .from('mafia_player_states')
+        .update({
+          night_action_target_player_id: null,
+          day_vote_target_player_id: null,
+        })
+        .eq('game_id', gameId)
+    )
   } else if (targetPhase === 'night' && currentPhase === 'role_reveal') {
     // Moving from role reveal to night 1 (keep day_number = 1)
-    await admin
-      .from('mafia_player_states')
-      .update({
-        night_action_target_player_id: null,
-        day_vote_target_player_id: null,
-      })
-      .eq('game_id', gameId)
+    pendingEffects.push(() =>
+      admin
+        .from('mafia_player_states')
+        .update({
+          night_action_target_player_id: null,
+          day_vote_target_player_id: null,
+        })
+        .eq('game_id', gameId)
+    )
   }
 
   if (targetPhase === 'day' && currentPhase === 'day_report') {
@@ -310,7 +342,9 @@ export async function runMafiaAdvance(
     systemMessages.push(`🗳️ Get ready to vote! (${votesRequired} vote${votesRequired === 1 ? '' : 's'} required)`)
   }
 
-  // 4. Save session updates — guard with current phase to prevent double-processing
+  // 4. Save session updates — guard with current phase to prevent double-processing. Only the
+  // request that actually flips this row (non-empty result) may go on to apply the dependent
+  // player-state writes and system messages queued above — a losing racer stops here.
   const { error: sessionError, data: updatedSession } = await admin
     .from('mafia_sessions')
     .update(updateFields)
@@ -328,6 +362,8 @@ export async function runMafiaAdvance(
     // request that actually applied the transition already did).
     return { ok: true }
   }
+
+  await Promise.all(pendingEffects.map((run) => run()))
 
   if (systemMessages.length > 0) {
     await admin.from('mafia_chat_messages').insert(

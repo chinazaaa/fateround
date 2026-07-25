@@ -64,7 +64,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { data: game } = await admin
     .from('games')
     .select(
-      'host_token, status, title, max_players, timer_seconds, mafia_doctor_enabled, mafia_detective_enabled, mafia_anonymous_votes, replay_pending, theme, is_public'
+      'host_token, status, title, max_players, timer_seconds, mafia_doctor_enabled, mafia_detective_enabled, mafia_bodyguard_enabled, mafia_mayor_enabled, mafia_vigilante_enabled, mafia_tracker_enabled, mafia_alpha_wolf_enabled, mafia_wolf_cub_enabled, mafia_framer_enabled, mafia_jester_enabled, mafia_serial_killer_enabled, mafia_arsonist_enabled, mafia_cupid_enabled, mafia_cursed_villager_enabled, mafia_anonymous_votes, replay_pending, theme, is_public'
     )
     .eq('id', gameId)
     .maybeSingle()
@@ -122,7 +122,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         mafiaTargetPlayerId: null,
         doctorTargetPlayerId: null,
         detectTargetPlayerId: null,
-        enabledRoles: ['villager', 'mafia', 'doctor', 'detective'],
+        enabledRoles: enabledRolesFrom({
+          doctor_enabled: game.mafia_doctor_enabled !== false,
+          detective_enabled: game.mafia_detective_enabled !== false,
+          bodyguard_enabled: game.mafia_bodyguard_enabled !== false,
+          mayor_enabled: game.mafia_mayor_enabled !== false,
+          vigilante_enabled: game.mafia_vigilante_enabled !== false,
+          tracker_enabled: game.mafia_tracker_enabled !== false,
+          alpha_wolf_enabled: game.mafia_alpha_wolf_enabled !== false,
+          wolf_cub_enabled: game.mafia_wolf_cub_enabled !== false,
+          framer_enabled: game.mafia_framer_enabled !== false,
+          jester_enabled: game.mafia_jester_enabled !== false,
+          serial_killer_enabled: game.mafia_serial_killer_enabled !== false,
+          arsonist_enabled: game.mafia_arsonist_enabled !== false,
+          cupid_enabled: game.mafia_cupid_enabled !== false,
+          cursed_villager_enabled: game.mafia_cursed_villager_enabled !== false,
+        }),
       })
     }
     return NextResponse.json({ error: 'Game session not initialized' }, { status: 404 })

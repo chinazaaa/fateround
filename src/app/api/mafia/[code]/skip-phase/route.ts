@@ -53,31 +53,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: 'Only living players can vote to skip' }, { status: 400 })
   }
 
-  const existing = session.skip_requested_player_ids ?? []
-  if (existing.includes(playerId)) {
-    return NextResponse.json({ success: true, skipRequestCount: existing.length })
-  }
-  const nextSkipIds = [...existing, playerId]
+  // Atomic append via a single UPDATE statement (array_append) — concurrent skip requests
+  // serialize under Postgres row-level locking instead of racing a read-modify-write in
+  // application code, which could silently drop an append or let two requests both believe
+  // they hit the majority threshold and each trigger a phase advance.
+  const { data: appended, error: rpcError } = await admin.rpc('mafia_append_skip_request', {
+    p_game_id: gameId,
+    p_phase: session.phase,
+    p_player_id: playerId,
+  })
 
-  // Guard with the current phase so a request racing a natural/other-triggered transition
-  // doesn't stamp a stale skip tally onto the next phase.
-  const { error: updateError, data: updatedSession } = await admin
-    .from('mafia_sessions')
-    .update({ skip_requested_player_ids: nextSkipIds })
-    .eq('game_id', gameId)
-    .eq('phase', session.phase)
-    .select('phase')
-
-  if (updateError) {
-    console.error('Failed to record skip request:', updateError)
+  if (rpcError) {
+    console.error('Failed to record skip request:', rpcError)
     return NextResponse.json({ error: 'Failed to record skip request' }, { status: 500 })
   }
 
-  if (!updatedSession || updatedSession.length === 0) {
-    // Phase already moved on — nothing to skip anymore.
-    return NextResponse.json({ success: true, skipRequestCount: existing.length })
+  if (!appended) {
+    // Either the phase already moved on, or this player already requested a skip — a cheap
+    // follow-up read distinguishes the two only for an accurate response, no retry needed.
+    const { data: current } = await admin
+      .from('mafia_sessions')
+      .select('phase, skip_requested_player_ids')
+      .eq('game_id', gameId)
+      .maybeSingle()
+    const count = current?.skip_requested_player_ids?.length ?? 0
+    return NextResponse.json({ success: true, skipRequestCount: count })
   }
 
+  const nextSkipIds = appended as string[]
   const aliveCount = playerStates.filter((p) => p.is_alive).length
   const skipRequired = Math.floor(aliveCount / 2) + 1
 

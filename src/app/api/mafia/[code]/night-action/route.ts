@@ -90,18 +90,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (typeof secondTargetPlayerId !== 'string') {
       return NextResponse.json({ error: 'Cupid must choose two players to link' }, { status: 400 })
     }
+    if (targetPlayerId === secondTargetPlayerId) {
+      return NextResponse.json({ error: 'Cupid must choose two different players' }, { status: 400 })
+    }
     const first = playerStates.find((p) => p.player_id === targetPlayerId)
     const second = playerStates.find((p) => p.player_id === secondTargetPlayerId)
     if (!first || !second || !first.is_alive || !second.is_alive) {
       return NextResponse.json({ error: 'Both Lover targets must be alive players' }, { status: 404 })
     }
-    const { error: sessionUpdateError } = await admin
+    // Conditioned on cupid_lover_ids still being unset — the read above and this write are
+    // separate round trips, so without this guard two concurrent Cupid submissions could both
+    // pass the check and the second would silently overwrite the first pair.
+    const { data: linked, error: sessionUpdateError } = await admin
       .from('mafia_sessions')
       .update({ cupid_lover_ids: [targetPlayerId, secondTargetPlayerId] })
       .eq('game_id', gameId)
+      .is('cupid_lover_ids', null)
+      .select('id')
     if (sessionUpdateError) {
       console.error('Failed to link Lovers:', sessionUpdateError)
       return NextResponse.json({ error: 'Failed to link Lovers' }, { status: 500 })
+    }
+    if (!linked || linked.length === 0) {
+      return NextResponse.json({ error: 'Lovers have already been linked' }, { status: 400 })
     }
     await Promise.all([
       admin

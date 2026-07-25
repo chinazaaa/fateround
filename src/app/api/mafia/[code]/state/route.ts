@@ -202,9 +202,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     let bodyguardLastOutcome: MafiaMyState['bodyguardLastOutcome'] = null
     if (role === 'bodyguard') {
-      if (session.bodyguard_sacrifice_player_id === myPlayerState.player_id) bodyguardLastOutcome = 'sacrificed'
-      else if (session.bodyguard_target_player_id) bodyguardLastOutcome = 'saved'
-      else bodyguardLastOutcome = 'no_attack'
+      if (session.bodyguard_sacrifice_player_id === myPlayerState.player_id) {
+        bodyguardLastOutcome = 'sacrificed'
+      } else if (
+        session.bodyguard_target_player_id &&
+        (session.bodyguard_target_player_id === session.mafia_target_player_id ||
+          session.bodyguard_target_player_id === session.serial_kill_player_id)
+      ) {
+        // Only a real save if the protected target was actually attacked — otherwise every
+        // uneventful night (bodyguard_target_player_id is set just because they acted) was
+        // misreported as "your target was attacked and you saved them."
+        bodyguardLastOutcome = 'saved'
+      } else {
+        bodyguardLastOutcome = 'no_attack'
+      }
     }
 
     let doctorLastOutcome: MafiaMyState['doctorLastOutcome'] = null
@@ -338,7 +349,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const votedPlayerIds: string[] = []
   playerStates.forEach((ps) => {
     if (ps.day_vote_target_player_id) {
-      voteTallies[ps.day_vote_target_player_id] = (voteTallies[ps.day_vote_target_player_id] || 0) + 1
+      // The Mayor's vote counts double toward the lynch majority (see resolveMafiaDayVote) —
+      // weight the displayed tally the same way so it agrees with the actual resolved outcome.
+      const weight = ps.role === 'mayor' ? 2 : 1
+      voteTallies[ps.day_vote_target_player_id] = (voteTallies[ps.day_vote_target_player_id] || 0) + weight
       voteChoices[ps.player_id] = ps.day_vote_target_player_id
       votedPlayerIds.push(ps.player_id)
     }

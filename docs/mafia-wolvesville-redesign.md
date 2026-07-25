@@ -1,6 +1,6 @@
 # Mafia → Wolvesville-style Redesign (Plan)
 
-Status: PLAN ONLY, not started. No code changes yet.
+Status: Phase 1 (core mechanics rewrite) implemented; Phases 2-3 not started.
 
 ## Why / scope
 User wants a full rewrite of the Mafia game (mechanics + UI, web + mobile) to feel like Wolvesville: richer roles, real night/day/vote flow, layered chat, and optionally the social meta-layer (avatars, clans, leveling, currency, battle pass). This is a multi-week effort, not a single PR — this doc breaks it into independently shippable phases.
