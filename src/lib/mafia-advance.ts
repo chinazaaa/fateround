@@ -8,6 +8,7 @@ import {
   resolveMafiaDayVote,
   mafiaRoleTeam,
 } from '@/lib/mafia'
+import { MAFIA_ROLE_INFO } from '@/components/mafia/mafia-role-info'
 import type { MafiaPlayerState, MafiaSession, MafiaPhase } from '@/types'
 
 const KILLER_LABEL: Record<string, string> = {
@@ -58,7 +59,7 @@ export async function runMafiaAdvance(
     const name = nameById.get(playerId) ?? 'Unknown'
     return ps ? `#${ps.seat_number} ${name}` : name
   }
-  const roleLabel = (role: string) => `(${role.replace(/_/g, ' ')})`
+  const roleLabel = (role: string) => `(${MAFIA_ROLE_INFO[role as keyof typeof MAFIA_ROLE_INFO]?.name ?? role})`
 
   if (game.status === 'finished' || session.phase === 'game_over') {
     return { ok: false, error: 'Game is already finished', status: 400 }

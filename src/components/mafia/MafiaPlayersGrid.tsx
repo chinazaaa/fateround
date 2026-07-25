@@ -179,7 +179,7 @@ export function MafiaPlayersGrid({
               ) : (
                 revealedRole && (
                   <span className={`text-[9px] font-bold uppercase leading-none ${roleTeamColor}`}>
-                    {mafiaRoleEmoji(revealedRole)} {revealedRole.replace(/_/g, ' ')}
+                    {mafiaRoleEmoji(revealedRole)} {MAFIA_ROLE_INFO[revealedRole]?.name ?? revealedRole}
                   </span>
                 )
               )}
