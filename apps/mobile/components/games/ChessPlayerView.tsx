@@ -151,6 +151,9 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
     status: bootstrap.game?.status,
     isMyTurn,
     enabled: bootstrap.screen === 'active',
+    // The opening player's first move is a waiting->active transition, not a turn
+    // change — without this they'd see "Game started!" instead of "Your turn!".
+    startMessage: isMyTurn ? 'Your turn!' : 'Game started! 🎮',
   })
 
   const chess = useMemo(() => {

@@ -329,6 +329,9 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
     status: game?.status,
     isMyTurn: isViewer ? null : isMyTurn,
     enabled: !isViewer,
+    // The opening player's first move is a waiting->active transition, not a turn
+    // change — without this they'd see "Game started!" instead of "Your turn!".
+    startMessage: isMyTurn ? 'Your turn!' : 'Game started! 🎮',
   })
 
   // Change name · Leave game for players/spectators live behind the main chrome's ⚙
