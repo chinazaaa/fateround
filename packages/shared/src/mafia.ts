@@ -82,6 +82,10 @@ export function mafiaRoleEmoji(role: string): string {
       return '💘'
     case 'cursed_villager':
       return '☠️'
+    case 'medium':
+      return '🔮'
+    case 'priest':
+      return '⛪'
     default:
       return '🏘️'
   }
@@ -197,6 +201,20 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     team: 'special',
     description:
       'Starts on the Village team, but if the Mafia targets you, you convert to Mafia and survive instead of dying.',
+  },
+  medium: {
+    role: 'medium',
+    name: 'Medium',
+    team: 'village',
+    description:
+      'Can read ghost chat at night to hear the dead. Once per game, choose a dead player at night to revive them.',
+  },
+  priest: {
+    role: 'priest',
+    name: 'Priest',
+    team: 'village',
+    description:
+      'Once during the day, throw holy water on another player. If they are Mafia, they die. If not, you die and their innocence is announced.',
   },
 }
 

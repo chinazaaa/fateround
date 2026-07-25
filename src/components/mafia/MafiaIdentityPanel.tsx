@@ -22,7 +22,6 @@ export function MafiaIdentityPanel({ myState }: MafiaIdentityPanelProps) {
     (myState.isLover ||
       !!myState.detectiveResult ||
       !!myState.trackerResult ||
-      (myRole === 'bodyguard' && !!myState.bodyguardLastOutcome && myState.bodyguardLastOutcome !== 'no_attack') ||
       (myRole === 'doctor' && !!myState.doctorLastOutcome && myState.doctorLastOutcome !== 'no_attack') ||
       myRole === 'vigilante' ||
       (myRole === 'framer' && !!myState.framerLastTargetName) ||
@@ -67,16 +66,6 @@ export function MafiaIdentityPanel({ myState }: MafiaIdentityPanelProps) {
             {myState.trackerResult.visitedName
               ? `visited ${myState.trackerResult.visitedName} last night.`
               : 'visited no one last night.'}
-          </p>
-        </div>
-      )}
-
-      {myRole === 'bodyguard' && myState?.bodyguardLastOutcome && myState.bodyguardLastOutcome !== 'no_attack' && (
-        <div className="glass-card border border-[var(--border)] rounded-2xl p-3 text-left">
-          <p className="text-sm text-[var(--foreground)]">
-            {myState.bodyguardLastOutcome === 'sacrificed'
-              ? 'You took a second hit and died protecting your target.'
-              : 'You absorbed an attack last night but survived! One more hit will kill you.'}
           </p>
         </div>
       )}

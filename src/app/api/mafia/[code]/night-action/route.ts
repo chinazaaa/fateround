@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import type { MafiaPlayerState, MafiaSession } from '@/types'
 
-const NO_NIGHT_ACTION_ROLES = new Set(['villager', 'mayor', 'jester', 'cursed_villager', 'vigilante'])
+const NO_NIGHT_ACTION_ROLES = new Set(['villager', 'mayor', 'jester', 'cursed_villager', 'vigilante', 'priest'])
 const ROLE_ENABLED_FIELD: Partial<Record<string, keyof MafiaSession>> = {
   doctor: 'doctor_enabled',
   detective: 'detective_enabled',
@@ -150,20 +150,48 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ success: true })
   }
 
-  // Arsonist self-targets to signal "ignite" instead of dousing — validated below without
-  // the generic "target must be alive" / "no self-target" checks that apply to other roles.
-  const isArsonistIgnite = role === 'arsonist' && targetPlayerId === playerId
-  if (!isArsonistIgnite) {
-    const targetState = playerStates.find((p) => p.player_id === targetPlayerId)
-    if (!targetState) {
-      return NextResponse.json({ error: 'Target player not found' }, { status: 404 })
+  // Arsonist: self-target = ignite, otherwise douse 2 players
+  if (role === 'arsonist') {
+    const isIgnite = targetPlayerId === playerId
+    if (isIgnite) {
+      const { error: updateError } = await admin
+        .from('mafia_player_states')
+        .update({ night_action_target_player_id: playerId, night_action_target_player_id_2: null })
+        .eq('id', myState.id)
+      if (updateError) return NextResponse.json({ error: 'Failed to submit night action' }, { status: 500 })
+      return NextResponse.json({ success: true })
     }
-    if (!targetState.is_alive) {
-      return NextResponse.json({ error: 'Target player is already dead' }, { status: 400 })
+    if (typeof secondTargetPlayerId !== 'string') {
+      return NextResponse.json({ error: 'Arsonist must choose two players to douse' }, { status: 400 })
     }
-    if (NO_SELF_TARGET_ROLES.has(role) && targetPlayerId === playerId) {
-      return NextResponse.json({ error: 'You cannot target yourself' }, { status: 400 })
+    if (targetPlayerId === secondTargetPlayerId) {
+      return NextResponse.json({ error: 'Choose two different players' }, { status: 400 })
     }
+    if (targetPlayerId === playerId || secondTargetPlayerId === playerId) {
+      return NextResponse.json({ error: 'You cannot douse yourself' }, { status: 400 })
+    }
+    const t1 = playerStates.find((p) => p.player_id === targetPlayerId)
+    const t2 = playerStates.find((p) => p.player_id === secondTargetPlayerId)
+    if (!t1 || !t2 || !t1.is_alive || !t2.is_alive) {
+      return NextResponse.json({ error: 'Both douse targets must be alive players' }, { status: 400 })
+    }
+    const { error: updateError } = await admin
+      .from('mafia_player_states')
+      .update({ night_action_target_player_id: targetPlayerId, night_action_target_player_id_2: secondTargetPlayerId })
+      .eq('id', myState.id)
+    if (updateError) return NextResponse.json({ error: 'Failed to submit night action' }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  const targetState = playerStates.find((p) => p.player_id === targetPlayerId)
+  if (!targetState) {
+    return NextResponse.json({ error: 'Target player not found' }, { status: 404 })
+  }
+  if (!targetState.is_alive) {
+    return NextResponse.json({ error: 'Target player is already dead' }, { status: 400 })
+  }
+  if (NO_SELF_TARGET_ROLES.has(role) && targetPlayerId === playerId) {
+    return NextResponse.json({ error: 'You cannot target yourself' }, { status: 400 })
   }
 
   // 3. Update the player's night action target

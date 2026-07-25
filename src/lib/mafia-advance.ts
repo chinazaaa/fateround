@@ -206,8 +206,8 @@ export async function runMafiaAdvance(
             .eq('game_id', gameId)
             .eq('player_id', bgState.player_id)
         )
-        if (!bodyguardSacrificePlayerId) {
-          systemMessages.push(`🛡️ ${playerLabel(bgState.player_id)} (Bodyguard) absorbed an attack but survived!`)
+        if (!bodyguardSacrificePlayerId && mafiaTarget) {
+          systemMessages.push('🛡️ Someone was protected!')
         }
       }
     }
@@ -309,17 +309,41 @@ export async function runMafiaAdvance(
             ? `🏥 Night ${session.day_number}: Your target was attacked — you saved them!`
             : `🏥 Night ${session.day_number}: Your target was not attacked.`,
         })
+        if (wasAttacked) {
+          privateMessages.push({
+            target_player_id: doctorTarget,
+            message: `🏥 Night ${session.day_number}: You were saved last night!`,
+          })
+        }
       }
     }
 
     // Bodyguard
     if (bodyguardTarget) {
-      const bodyguard = playerStates.find((p) => p.role === 'bodyguard' && p.is_alive)
-      if (bodyguard && bodyguardSacrificePlayerId) {
-        privateMessages.push({
-          target_player_id: bodyguard.player_id,
-          message: `🛡️ Night ${session.day_number}: Your target was attacked — you sacrificed yourself to save them.`,
-        })
+      const bodyguard = playerStates.find((p) => p.role === 'bodyguard')
+      if (bodyguard) {
+        const bodyguardProtectedTarget = bodyguardTarget === mafiaTarget || bodyguardTarget === serialKillerTarget
+        const bodyguardProtectedSelf = bodyguard.player_id === mafiaTarget || bodyguard.player_id === serialKillerTarget
+
+        if (bodyguardSacrificePlayerId) {
+          privateMessages.push({
+            target_player_id: bodyguard.player_id,
+            message: `🛡️ Night ${session.day_number}: Your target was attacked — you took a fatal hit protecting them.`,
+          })
+        } else if (bodyguardProtectedTarget || bodyguardProtectedSelf) {
+          privateMessages.push({
+            target_player_id: bodyguard.player_id,
+            message: `🛡️ Night ${session.day_number}: You absorbed an attack but survived! One more hit will kill you.`,
+          })
+        }
+
+        // Tell the protected player they were saved
+        if (bodyguardProtectedTarget && bodyguardTarget !== bodyguard.player_id) {
+          privateMessages.push({
+            target_player_id: bodyguardTarget,
+            message: `🛡️ Night ${session.day_number}: You were protected last night — someone took the hit for you.`,
+          })
+        }
       }
     }
 
@@ -430,20 +454,21 @@ export async function runMafiaAdvance(
     updateFields.medium_revive_player_id = null
     updateFields.vigilante_day_kill_player_id = null
     updateFields.vigilante_reveal_player_id = null
-    // Arsonist's douse target (from the night just resolved) becomes permanently doused.
+    // Arsonist's douse targets (from the night just resolved) become permanently doused.
     const arsonist = playerStates.find((p) => p.role === 'arsonist' && p.is_alive)
-    if (
-      arsonist &&
-      arsonist.night_action_target_player_id &&
-      arsonist.night_action_target_player_id !== arsonist.player_id
-    ) {
-      pendingEffects.push(() =>
-        admin
-          .from('mafia_player_states')
-          .update({ doused_by_arsonist: true })
-          .eq('game_id', gameId)
-          .eq('player_id', arsonist.night_action_target_player_id)
+    if (arsonist && arsonist.night_action_target_player_id !== arsonist.player_id) {
+      const douseIds = [arsonist.night_action_target_player_id, arsonist.night_action_target_player_id_2].filter(
+        (id): id is string => !!id && id !== arsonist.player_id
       )
+      for (const douseId of douseIds) {
+        pendingEffects.push(() =>
+          admin
+            .from('mafia_player_states')
+            .update({ doused_by_arsonist: true })
+            .eq('game_id', gameId)
+            .eq('player_id', douseId)
+        )
+      }
     }
     // Clear all targets and votes in player states
     pendingEffects.push(() =>
@@ -451,6 +476,7 @@ export async function runMafiaAdvance(
         .from('mafia_player_states')
         .update({
           night_action_target_player_id: null,
+          night_action_target_player_id_2: null,
           day_vote_target_player_id: null,
         })
         .eq('game_id', gameId)

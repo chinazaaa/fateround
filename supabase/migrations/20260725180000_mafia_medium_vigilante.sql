@@ -9,7 +9,8 @@ ALTER TABLE mafia_player_states ADD CONSTRAINT mafia_player_states_role_check CH
     'mafia', 'alpha_wolf', 'wolf_cub', 'framer',
     'jester', 'serial_killer', 'arsonist',
     'cupid', 'cursed_villager',
-    'medium'
+    'medium',
+    'priest'
   )
 );
 
@@ -41,3 +42,19 @@ ADD COLUMN IF NOT EXISTS vigilante_reveal_used boolean NOT NULL DEFAULT false;
 ALTER TABLE mafia_sessions
 ADD COLUMN IF NOT EXISTS vigilante_day_kill_player_id uuid REFERENCES players(id) ON DELETE SET NULL,
 ADD COLUMN IF NOT EXISTS vigilante_reveal_player_id uuid REFERENCES players(id) ON DELETE SET NULL;
+
+-- 7. Arsonist rework: douse 2 players per night, immune to mafia kill
+ALTER TABLE mafia_player_states
+ADD COLUMN IF NOT EXISTS night_action_target_player_id_2 uuid REFERENCES players(id) ON DELETE SET NULL;
+
+-- 8. Priest role: one-time holy water during day, kills mafia or self-destructs
+ALTER TABLE mafia_player_states
+ADD COLUMN IF NOT EXISTS priest_holy_water_used boolean NOT NULL DEFAULT false;
+
+ALTER TABLE mafia_sessions
+ADD COLUMN IF NOT EXISTS priest_enabled boolean NOT NULL DEFAULT true;
+
+ALTER TABLE games
+ADD COLUMN IF NOT EXISTS mafia_priest_enabled boolean NOT NULL DEFAULT true;
+
+GRANT SELECT (mafia_priest_enabled) ON public.games TO anon, authenticated;

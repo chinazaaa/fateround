@@ -87,7 +87,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   ])
 
   if (!mafiaSession || !mafiaPlayerStates) {
-    if (game.status === 'waiting') {
+    if (game.status === 'waiting' || game.status === 'finished') {
       const hostPlayers = (playersData ?? []).map((p, index) => ({
         id: p.id,
         seatNumber: index + 1,
@@ -102,8 +102,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       }))
       return NextResponse.json({
         gameTitle: game.title,
-        status: 'waiting',
-        phase: 'role_reveal',
+        status: game.status,
+        phase: game.status === 'finished' ? 'game_over' : 'role_reveal',
         dayNumber: 0,
         phaseDeadline: null,
         maxPlayers: game.max_players ?? 10,
