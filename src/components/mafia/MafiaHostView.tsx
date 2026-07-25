@@ -116,13 +116,17 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   useApplyGameTheme(mafiaState?.theme)
 
-  // Table sync triggers state reload
+  // Table sync triggers state reload. Distinct channelKey — when the host is seated,
+  // MafiaPlayerView is rendered nested inside this view and runs its own
+  // useGameTableSync(gameCode, ...) with no key; two subscribers on the same default
+  // `sync-<code>` topic throws "cannot add postgres_changes callbacks after subscribe()".
   const connected = useGameTableSync(
     gameCode,
     [{ table: 'games', column: 'id' }, 'players', 'mafia_sessions', 'mafia_player_states'],
     () => {
       void load()
-    }
+    },
+    { channelKey: 'host' }
   )
 
   // Polling fallback — only while realtime is disconnected.

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import type { MafiaPlayerState, MafiaSession } from '@/types'
-import { runMafiaAdvance } from '../advance/route'
+import { runMafiaAdvance } from '@/lib/mafia-advance'
 
 /**
  * Lets the town vote to skip ahead out of Discussion or Voting early instead of always
