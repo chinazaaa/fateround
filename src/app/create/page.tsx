@@ -17,6 +17,10 @@ import { LIBRARY_GAME_TYPE_MAP } from './constants'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 import { GenderBadge } from './components/GenderBadge'
 import { Avatar } from './components/Avatar'
+import { TemplateQuickStart } from './components/TemplateQuickStart'
+import { SaveTemplateModal } from './components/SaveTemplateModal'
+import { UseTemplateConfirmModal } from './components/UseTemplateConfirmModal'
+import { getTemplates, saveTemplate, deleteTemplate, type GameTemplate, type TemplateSlots } from '@/lib/game-templates'
 import { rememberHostToken } from '@/lib/host-session'
 import { THEMES } from '@/lib/themes'
 import { ThemePreviewCard, ThemePreviewModal } from '@/components/ThemePreviewModal'
@@ -84,6 +88,7 @@ import {
   isMahjongGame,
   isQuiplashGame,
   isQuickDrawGame,
+  templatableGame,
 } from '@/lib/game-types'
 import { DEFAULT_MAHJONG_RULESET, MAHJONG_RULESETS, MAHJONG_RULESET_CONFIG } from '@/lib/mahjong-rulesets'
 import type { MahjongRuleset } from '@/types'
@@ -315,12 +320,14 @@ import { getCodeDefaultLimits, playerCountOptions, type GamePlayerLimitsMap } fr
 import { TriviaTimerPicker } from '@/components/trivia/TriviaTimerPicker'
 import { TRIVIA_QUESTION_COUNT } from '@/lib/trivia-questions'
 import { useToast } from '@/components/ui/Toast'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { ELIMINATION_COMPATIBLE_TYPES } from '@/types/elimination'
 
 function CreateGameInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const toast = useToast()
+  const { confirm } = useConfirm()
   const [step, setStep] = useState<Step>('settings')
   const [showGameTypes, setShowGameTypes] = useState(false)
   const [previewTheme, setPreviewTheme] = useState<(typeof THEMES)[number] | null>(null)
@@ -363,6 +370,21 @@ function CreateGameInner() {
   const [nameInput, setNameInput] = useState('')
   const [defaultGender, setDefaultGender] = useState<ParticipantGender>('female')
   const [loading, setLoading] = useState(false)
+  // Set by a template's "Use & create" button: applies the template's values (via
+  // setState calls), then this effect fires once those commit so createGame's
+  // closure sees the applied values rather than whatever was on screen before.
+  const [pendingAutoCreate, setPendingAutoCreate] = useState(false)
+  // Save-as-template widgets (TemplateQuickStart at top, save button+modal at bottom of the
+  // settings column) share this slot state + save modal rather than each owning their own copy,
+  // so saving/deleting from either place is instantly reflected in the other.
+  const [templateSlots, setTemplateSlots] = useState<TemplateSlots | null>(null)
+  const [templateModal, setTemplateModal] = useState<{ open: boolean; presetSlot: number | null }>({
+    open: false,
+    presetSlot: null,
+  })
+  // Set when a Quick Start pill is tapped; confirmed via UseTemplateConfirmModal before it
+  // actually applies the template and creates the game (see runUseTemplate/confirmUseTemplate).
+  const [useTemplateConfirm, setUseTemplateConfirm] = useState<GameTemplate | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -521,6 +543,12 @@ function CreateGameInner() {
       })
       .catch(() => {})
   }, [])
+
+  // Hydrate saved templates after mount (avoids SSR/localStorage mismatch), and whenever the
+  // game type changes — each game type has its own independent set of slots.
+  useEffect(() => {
+    setTemplateSlots(getTemplates(settings.game_type))
+  }, [settings.game_type])
 
   useEffect(() => {
     if (questionSource !== 'library') return
@@ -942,6 +970,667 @@ function CreateGameInner() {
   )
   const isCustomTwoSlot = isCustom && (customSlots?.slots.length ?? 0) === 2
   const supportsGender = supportsGenderToggle(settings.game_type)
+
+  // Save-as-template field registry (see src/lib/game-templates.ts + ./components/TemplateBar).
+  // Settings are split across the shared `Settings` object and dozens of per-game useState
+  // hooks above, so there's no single object to serialize — this maps each tunable field to
+  // its own get/set, scoped to the game type(s) it applies to. `title`, participants, and any
+  // custom question/CSV content are deliberately excluded — those aren't "settings" to reuse.
+  // Reusable game-type predicates for entries below that apply to more than one `isXGame` helper.
+  const isPollFamilyGame = (t: GameType) =>
+    isWouldYouRather(t) ||
+    isNeverHaveIEver(t) ||
+    isThisOrThat(t) ||
+    isMostLikelyTo(t) ||
+    isPickANumber(t) ||
+    isHotSeat(t) ||
+    isPairGame(t) ||
+    t === 'smash_marry_kill' ||
+    t === 'parent_approval'
+  const roundsCountApplies = (t: GameType) =>
+    isPollFamilyGame(t) ||
+    isTriviaGame(t) ||
+    isQuiplashGame(t) ||
+    isQuickDrawGame(t) ||
+    isDescribeItGame(t) ||
+    isWordRushGame(t) ||
+    isLandmineGame(t) ||
+    isMatchingPairsGame(t)
+  const eliminationApplies = (t: GameType) => (ELIMINATION_COMPATIBLE_TYPES as readonly string[]).includes(t)
+  // Mirrors the `hostPlaySupported` computation below (defined later in this component, from
+  // per-render isX booleans) but as a reusable predicate over an arbitrary game type, since
+  // TEMPLATE_FIELDS needs `appliesTo(t)` rather than a value pinned to the current game type.
+  const hostPlaySupportedFor = (t: GameType) =>
+    !isWouldYouRather(t) &&
+    !isThisOrThat(t) &&
+    !isNeverHaveIEver(t) &&
+    !isMostLikelyTo(t) &&
+    !isPickANumber(t) &&
+    !isHotSeat(t) &&
+    !isPeoplePollGame(t) &&
+    !isAnonymousMessagesGame(t) &&
+    !isSecretMessageGame(t) &&
+    !isMafiaGame(t)
+  const TEMPLATE_FIELDS: Record<
+    string,
+    { get: () => unknown; set: (v: unknown) => void; appliesTo: (t: GameType) => boolean }
+  > = {
+    timer_seconds: {
+      get: () => settings.timer_seconds,
+      set: (v) => setSettings((s) => ({ ...s, timer_seconds: v as number })),
+      appliesTo: templatableGame,
+    },
+    theme: {
+      get: () => settings.theme,
+      set: (v) => setSettings((s) => ({ ...s, theme: v as Settings['theme'] })),
+      appliesTo: templatableGame,
+    },
+    is_public: {
+      get: () => settings.isPublic,
+      set: (v) => setSettings((s) => ({ ...s, isPublic: v as boolean })),
+      appliesTo: templatableGame,
+    },
+    late_join_policy: {
+      get: () => lateJoinPolicy,
+      set: (v) => setLateJoinPolicy(v as LateJoinPolicy),
+      appliesTo: gameSupportsViewerSetting,
+    },
+    // "You" — host seat choice (Host + play vs Host only) and the host's own display name,
+    // for games whose host panel supports seating the host as a player.
+    host_will_play: {
+      get: () => hostWillPlay,
+      set: (v) => setHostWillPlay(v as boolean),
+      appliesTo: hostPlaySupportedFor,
+    },
+    host_name: {
+      get: () => hostName,
+      set: (v) => setHostName(v as string),
+      appliesTo: hostPlaySupportedFor,
+    },
+    // Poll-family games (would-you-rather, never-have-i-ever, this-or-that, most-likely-to,
+    // pick-a-number, hot-seat, smash-marry-kill, red/green-flag, smash-or-pass, parent-approval)
+    rounds_count: {
+      get: () => settings.rounds_count,
+      set: (v) => setSettings((s) => ({ ...s, rounds_count: v as number })),
+      appliesTo: roundsCountApplies,
+    },
+    participant_mode: {
+      get: () => settings.participant_mode,
+      set: (v) => setSettings((s) => ({ ...s, participant_mode: v as Settings['participant_mode'] })),
+      appliesTo: isPollFamilyGame,
+    },
+    gender_based: {
+      get: () => settings.gender_based,
+      set: (v) => setSettings((s) => ({ ...s, gender_based: v as boolean })),
+      appliesTo: supportsGenderToggle,
+    },
+    pair_vote_mode: {
+      get: () => settings.pair_vote_mode,
+      set: (v) => setSettings((s) => ({ ...s, pair_vote_mode: v as Settings['pair_vote_mode'] })),
+      appliesTo: isPairGame,
+    },
+    // Who Said This
+    wst_quote_source: {
+      get: () => wstQuoteSource,
+      set: (v) => setWstQuoteSource(v as WstQuoteSource),
+      appliesTo: isWhoSaidThis,
+    },
+    // Bingo
+    bingo_max_players: {
+      get: () => bingoMaxPlayers,
+      set: (v) => setBingoMaxPlayers(v as number),
+      appliesTo: isBingoGame,
+    },
+    bingo_call_mode: {
+      get: () => bingoCallMode,
+      set: (v) => setBingoCallMode(v as BingoCallMode),
+      appliesTo: isBingoGame,
+    },
+    bingo_call_interval: {
+      get: () => bingoCallInterval,
+      set: (v) => setBingoCallInterval(v as number),
+      appliesTo: isBingoGame,
+    },
+    // Codewords
+    codewords_max_players: {
+      get: () => codewordsMaxPlayers,
+      set: (v) => setCodewordsMaxPlayers(v as number),
+      appliesTo: isCodewordsGame,
+    },
+    codewords_operative_timer: {
+      get: () => codewordsOperativeTimer,
+      set: (v) => setCodewordsOperativeTimer(v as number),
+      appliesTo: isCodewordsGame,
+    },
+    codewords_player_picks: {
+      get: () => codewordsPlayerPicks,
+      set: (v) => setCodewordsPlayerPicks(v as boolean),
+      appliesTo: isCodewordsGame,
+    },
+    codewords_randomize_teams: {
+      get: () => codewordsRandomizeTeams,
+      set: (v) => setCodewordsRandomizeTeams(v as boolean),
+      appliesTo: isCodewordsGame,
+    },
+    // Trivia
+    trivia_max_players: {
+      get: () => triviaMaxPlayers,
+      set: (v) => setTriviaMaxPlayers(v as number),
+      appliesTo: isTriviaGame,
+    },
+    trivia_category: {
+      get: () => triviaCategory,
+      set: (v) => setTriviaCategory(v as TriviaCategory),
+      appliesTo: isTriviaGame,
+    },
+    // Quiplash
+    quiplash_max_players: {
+      get: () => quiplashMaxPlayers,
+      set: (v) => setQuiplashMaxPlayers(v as number),
+      appliesTo: isQuiplashGame,
+    },
+    quiplash_vote_timer: {
+      get: () => quiplashVoteTimer,
+      set: (v) => setQuiplashVoteTimer(v as number),
+      appliesTo: isQuiplashGame,
+    },
+    // Quick Draw
+    quick_draw_max_players: {
+      get: () => quickDrawMaxPlayers,
+      set: (v) => setQuickDrawMaxPlayers(v as number),
+      appliesTo: isQuickDrawGame,
+    },
+    quick_draw_title_timer: {
+      get: () => quickDrawTitleTimer,
+      set: (v) => setQuickDrawTitleTimer(v as number),
+      appliesTo: isQuickDrawGame,
+    },
+    quick_draw_vote_timer: {
+      get: () => quickDrawVoteTimer,
+      set: (v) => setQuickDrawVoteTimer(v as number),
+      appliesTo: isQuickDrawGame,
+    },
+    quick_draw_variant: {
+      get: () => settings.quick_draw_variant,
+      set: (v) => setSettings((s) => ({ ...s, quick_draw_variant: v as Settings['quick_draw_variant'] })),
+      appliesTo: isQuickDrawGame,
+    },
+    quick_draw_play_mode: {
+      get: () => settings.quick_draw_play_mode,
+      set: (v) => setSettings((s) => ({ ...s, quick_draw_play_mode: v as Settings['quick_draw_play_mode'] })),
+      appliesTo: isQuickDrawGame,
+    },
+    quick_draw_num_teams: {
+      get: () => settings.quick_draw_num_teams,
+      set: (v) => setSettings((s) => ({ ...s, quick_draw_num_teams: v as number })),
+      appliesTo: isQuickDrawGame,
+    },
+    // Two Truths & a Lie
+    two_truths_max_players: {
+      get: () => ttlMaxPlayers,
+      set: (v) => setTtlMaxPlayers(v as number),
+      appliesTo: isTwoTruthsGame,
+    },
+    // Text Charades (describe_it)
+    describe_it_max_players: {
+      get: () => describeItMaxPlayers,
+      set: (v) => setDescribeItMaxPlayers(v as number),
+      appliesTo: isDescribeItGame,
+    },
+    describe_it_mode: {
+      get: () => settings.describe_it_mode,
+      set: (v) => setSettings((s) => ({ ...s, describe_it_mode: v as Settings['describe_it_mode'] })),
+      appliesTo: isDescribeItGame,
+    },
+    describe_it_num_teams: {
+      get: () => settings.describe_it_num_teams,
+      set: (v) => setSettings((s) => ({ ...s, describe_it_num_teams: v as number })),
+      appliesTo: isDescribeItGame,
+    },
+    // Word Rush
+    word_rush_max_players: {
+      get: () => wordRushMaxPlayers,
+      set: (v) => setWordRushMaxPlayers(v as number),
+      appliesTo: isWordRushGame,
+    },
+    word_rush_mode: {
+      get: () => settings.word_rush_mode,
+      set: (v) => setSettings((s) => ({ ...s, word_rush_mode: v as Settings['word_rush_mode'] })),
+      appliesTo: isWordRushGame,
+    },
+    word_rush_prompt_mode: {
+      get: () => settings.word_rush_prompt_mode,
+      set: (v) => setSettings((s) => ({ ...s, word_rush_prompt_mode: v as Settings['word_rush_prompt_mode'] })),
+      appliesTo: isWordRushGame,
+    },
+    word_rush_difficulty: {
+      get: () => settings.word_rush_difficulty,
+      set: (v) => setSettings((s) => ({ ...s, word_rush_difficulty: v as Settings['word_rush_difficulty'] })),
+      appliesTo: isWordRushGame,
+    },
+    word_rush_num_teams: {
+      get: () => settings.word_rush_num_teams,
+      set: (v) => setSettings((s) => ({ ...s, word_rush_num_teams: v as number })),
+      appliesTo: isWordRushGame,
+    },
+    // I Call On (NPAT)
+    npat_max_players: {
+      get: () => npatMaxPlayers,
+      set: (v) => setNpatMaxPlayers(v as number),
+      appliesTo: isICallOnGame,
+    },
+    npat_game_duration: {
+      get: () => npatGameDuration,
+      set: (v) => setNpatGameDuration(v as number),
+      appliesTo: isICallOnGame,
+    },
+    npat_marking_timer: {
+      get: () => npatMarkingTimer,
+      set: (v) => setNpatMarkingTimer(v as number),
+      appliesTo: isICallOnGame,
+    },
+    // Sudoku
+    sudoku_max_players: {
+      get: () => sudokuMaxPlayers,
+      set: (v) => setSudokuMaxPlayers(v as number),
+      appliesTo: isSudokuGame,
+    },
+    sudoku_game_duration: {
+      get: () => sudokuGameDuration,
+      set: (v) => setSudokuGameDuration(v as number),
+      appliesTo: isSudokuGame,
+    },
+    // Word Hunt
+    word_hunt_max_players: {
+      get: () => wordHuntMaxPlayers,
+      set: (v) => setWordHuntMaxPlayers(v as number),
+      appliesTo: isWordHuntGame,
+    },
+    word_hunt_timer: {
+      get: () => wordHuntTimer,
+      set: (v) => setWordHuntTimer(v as number),
+      appliesTo: isWordHuntGame,
+    },
+    // Mafia / Werewolf
+    mafia_max_players: {
+      get: () => settings.max_players,
+      set: (v) => setSettings((s) => ({ ...s, max_players: v as number })),
+      appliesTo: isMafiaGame,
+    },
+    mafia_doctor_enabled: {
+      get: () => settings.mafia_doctor_enabled,
+      set: (v) => setSettings((s) => ({ ...s, mafia_doctor_enabled: v as boolean })),
+      appliesTo: isMafiaGame,
+    },
+    mafia_detective_enabled: {
+      get: () => settings.mafia_detective_enabled,
+      set: (v) => setSettings((s) => ({ ...s, mafia_detective_enabled: v as boolean })),
+      appliesTo: isMafiaGame,
+    },
+    mafia_anonymous_votes: {
+      get: () => settings.mafia_anonymous_votes,
+      set: (v) => setSettings((s) => ({ ...s, mafia_anonymous_votes: v as boolean })),
+      appliesTo: isMafiaGame,
+    },
+    // Matching Pairs
+    matching_pairs_max_players: {
+      get: () => settings.max_players,
+      set: (v) => setSettings((s) => ({ ...s, max_players: v as number })),
+      appliesTo: isMatchingPairsGame,
+    },
+    matching_pairs_grid_size: {
+      get: () => settings.game_duration_seconds,
+      set: (v) => setSettings((s) => ({ ...s, game_duration_seconds: v as number })),
+      appliesTo: isMatchingPairsGame,
+    },
+    // Word Search
+    word_search_max_players: {
+      get: () => wordSearchMaxPlayers,
+      set: (v) => setWordSearchMaxPlayers(v as number),
+      appliesTo: isWordSearchGame,
+    },
+    word_search_game_duration: {
+      get: () => wordSearchGameDuration,
+      set: (v) => setWordSearchGameDuration(v as number),
+      appliesTo: isWordSearchGame,
+    },
+    word_search_theme: {
+      get: () => wordSearchTheme,
+      set: (v) => setWordSearchTheme(v as string),
+      appliesTo: isWordSearchGame,
+    },
+    word_search_difficulty: {
+      get: () => wordSearchDifficulty,
+      set: (v) => setWordSearchDifficulty(v as WordSearchDifficulty),
+      appliesTo: isWordSearchGame,
+    },
+    // Word Scramble
+    word_scramble_max_players: {
+      get: () => wordScrambleMaxPlayers,
+      set: (v) => setWordScrambleMaxPlayers(v as number),
+      appliesTo: isWordScrambleGame,
+    },
+    word_scramble_game_duration: {
+      get: () => wordScrambleGameDuration,
+      set: (v) => setWordScrambleGameDuration(v as number),
+      appliesTo: isWordScrambleGame,
+    },
+    word_scramble_theme: {
+      get: () => wordScrambleTheme,
+      set: (v) => setWordScrambleTheme(v as string),
+      appliesTo: isWordScrambleGame,
+    },
+    word_scramble_difficulty: {
+      get: () => wordScrambleDifficulty,
+      set: (v) => setWordScrambleDifficulty(v as WordScrambleDifficulty),
+      appliesTo: isWordScrambleGame,
+    },
+    // Crossword
+    crossword_max_players: {
+      get: () => crosswordMaxPlayers,
+      set: (v) => setCrosswordMaxPlayers(v as number),
+      appliesTo: isCrosswordGame,
+    },
+    crossword_game_duration: {
+      get: () => crosswordGameDuration,
+      set: (v) => setCrosswordGameDuration(v as number),
+      appliesTo: isCrosswordGame,
+    },
+    crossword_theme: {
+      get: () => crosswordTheme,
+      set: (v) => setCrosswordTheme(v as string),
+      appliesTo: isCrosswordGame,
+    },
+    crossword_difficulty: {
+      get: () => crosswordDifficulty,
+      set: (v) => setCrosswordDifficulty(v as CrosswordDifficulty),
+      appliesTo: isCrosswordGame,
+    },
+    // Landmine
+    landmine_mode: {
+      get: () => landmineMode,
+      set: (v) => setLandmineMode(v as typeof landmineMode),
+      appliesTo: isLandmineGame,
+    },
+    landmine_mine_source: {
+      get: () => landmineMineSource,
+      set: (v) => setLandmineMineSource(v as typeof landmineMineSource),
+      appliesTo: isLandmineGame,
+    },
+    landmine_mine_count: {
+      get: () => landmineMineCount,
+      set: (v) => setLandmineMineCount(v as number),
+      appliesTo: isLandmineGame,
+    },
+    landmine_originality: {
+      get: () => landmineOriginality,
+      set: (v) => setLandmineOriginality(v as boolean),
+      appliesTo: isLandmineGame,
+    },
+    landmine_review: {
+      get: () => landmineReview,
+      set: (v) => setLandmineReview(v as boolean),
+      appliesTo: isLandmineGame,
+    },
+    landmine_review_seconds: {
+      get: () => landmineReviewSeconds,
+      set: (v) => setLandmineReviewSeconds(v as number),
+      appliesTo: isLandmineGame,
+    },
+    landmine_category_timer: {
+      get: () => landmineCategoryTimer,
+      set: (v) => setLandmineCategoryTimer(v as number),
+      appliesTo: isLandmineGame,
+    },
+    landmine_marking_timer: {
+      get: () => landmineMarkingTimer,
+      set: (v) => setLandmineMarkingTimer(v as number),
+      appliesTo: isLandmineGame,
+    },
+    landmine_elim_seconds: {
+      get: () => landmineElimSeconds,
+      set: (v) => setLandmineElimSeconds(v as number),
+      appliesTo: isLandmineGame,
+    },
+    // Anonymous Messages
+    anonymous_max_players: {
+      get: () => anonymousMaxPlayers,
+      set: (v) => setAnonymousMaxPlayers(v as number),
+      appliesTo: isAnonymousMessagesGame,
+    },
+    // Elimination (trivia, i_call_on, two_truths)
+    elimination_enabled: {
+      get: () => eliminationEnabled,
+      set: (v) => setEliminationEnabled(v as boolean),
+      appliesTo: eliminationApplies,
+    },
+    elimination_mode: {
+      get: () => eliminationMode,
+      set: (v) => setEliminationMode(v as typeof eliminationMode),
+      appliesTo: eliminationApplies,
+    },
+    elimination_rule: {
+      get: () => eliminationRule,
+      set: (v) => setEliminationRule(v as typeof eliminationRule),
+      appliesTo: eliminationApplies,
+    },
+    elimination_eliminate_count: {
+      get: () => eliminateCount,
+      set: (v) => setEliminateCount(v as number),
+      appliesTo: eliminationApplies,
+    },
+    elimination_score_threshold: {
+      get: () => scoreThreshold,
+      set: (v) => setScoreThreshold(v as number),
+      appliesTo: eliminationApplies,
+    },
+    elimination_starting_lives: {
+      get: () => startingLives,
+      set: (v) => setStartingLives(v as number),
+      appliesTo: eliminationApplies,
+    },
+    // Uno
+    uno_max_players: { get: () => unoMaxPlayers, set: (v) => setUnoMaxPlayers(v as number), appliesTo: isUnoGame },
+    uno_game_duration: {
+      get: () => unoGameDuration,
+      set: (v) => setUnoGameDuration(v as number),
+      appliesTo: isUnoGame,
+    },
+    uno_wd4_challenge: {
+      get: () => unoWd4Challenge,
+      set: (v) => setUnoWd4Challenge(v as boolean),
+      appliesTo: isUnoGame,
+    },
+    uno_uno_penalty: { get: () => unoUnoPenalty, set: (v) => setUnoUnoPenalty(v as number), appliesTo: isUnoGame },
+    uno_zero_seven: { get: () => unoZeroSeven, set: (v) => setUnoZeroSeven(v as boolean), appliesTo: isUnoGame },
+    uno_stacking: { get: () => unoStacking, set: (v) => setUnoStacking(v as boolean), appliesTo: isUnoGame },
+    uno_jump_in: { get: () => unoJumpIn, set: (v) => setUnoJumpIn(v as boolean), appliesTo: isUnoGame },
+    uno_multi_play_mode: {
+      get: () => unoMultiPlayMode,
+      set: (v) => setUnoMultiPlayMode(v as typeof unoMultiPlayMode),
+      appliesTo: isUnoGame,
+    },
+    uno_team_mode: { get: () => unoTeamMode, set: (v) => setUnoTeamMode(v as boolean), appliesTo: isUnoGame },
+    // Monopoly
+    monopoly_max_players: {
+      get: () => monopolyMaxPlayers,
+      set: (v) => setMonopolyMaxPlayers(v as number),
+      appliesTo: isMonopolyGame,
+    },
+    monopoly_game_duration: {
+      get: () => monopolyGameDuration,
+      set: (v) => setMonopolyGameDuration(v as number),
+      appliesTo: isMonopolyGame,
+    },
+    // Whot
+    whot_max_players: { get: () => whotMaxPlayers, set: (v) => setWhotMaxPlayers(v as number), appliesTo: isWhotGame },
+    whot_game_duration: {
+      get: () => whotGameDuration,
+      set: (v) => setWhotGameDuration(v as number),
+      appliesTo: isWhotGame,
+    },
+    whot_pick3_enabled: {
+      get: () => whotPick3Enabled,
+      set: (v) => setWhotPick3Enabled(v as boolean),
+      appliesTo: isWhotGame,
+    },
+    whot_pick2_stacking: {
+      get: () => whotPick2Stacking,
+      set: (v) => setWhotPick2Stacking(v as boolean),
+      appliesTo: isWhotGame,
+    },
+    whot_cards_enabled: {
+      get: () => whotCardsEnabled,
+      set: (v) => setWhotCardsEnabled(v as boolean),
+      appliesTo: isWhotGame,
+    },
+    whot_number_calls_enabled: {
+      get: () => whotNumberCallsEnabled,
+      set: (v) => setWhotNumberCallsEnabled(v as boolean),
+      appliesTo: isWhotGame,
+    },
+    // Crazy Eights
+    crazy8_max_players: {
+      get: () => crazy8MaxPlayers,
+      set: (v) => setCrazy8MaxPlayers(v as number),
+      appliesTo: isCrazyEightsGame,
+    },
+    crazy8_game_duration: {
+      get: () => crazy8GameDuration,
+      set: (v) => setCrazy8GameDuration(v as number),
+      appliesTo: isCrazyEightsGame,
+    },
+    crazy8_action_cards: {
+      get: () => crazy8ActionCards,
+      set: (v) => setCrazy8ActionCards(v as boolean),
+      appliesTo: isCrazyEightsGame,
+    },
+    crazy8_jokers: {
+      get: () => crazy8Jokers,
+      set: (v) => setCrazy8Jokers(v as boolean),
+      appliesTo: isCrazyEightsGame,
+    },
+    crazy8_pick2_stacking: {
+      get: () => crazy8Pick2Stacking,
+      set: (v) => setCrazy8Pick2Stacking(v as boolean),
+      appliesTo: isCrazyEightsGame,
+    },
+    // Ludo
+    ludo_max_players: { get: () => ludoMaxPlayers, set: (v) => setLudoMaxPlayers(v as number), appliesTo: isLudoGame },
+    ludo_variant: { get: () => ludoVariant, set: (v) => setLudoVariant(v as LudoVariant), appliesTo: isLudoGame },
+    // Snake & Ladder
+    snake_ladder_max_players: {
+      get: () => snakeLadderMaxPlayers,
+      set: (v) => setSnakeLadderMaxPlayers(v as number),
+      appliesTo: isSnakeAndLadderGame,
+    },
+    // Chess
+    chess_board_theme: {
+      get: () => chessBoardTheme,
+      set: (v) => setChessBoardTheme(v as string),
+      appliesTo: isChessGame,
+    },
+    chess_piece_set: { get: () => chessPieceSet, set: (v) => setChessPieceSet(v as string), appliesTo: isChessGame },
+    // Ayo
+    ayo_variant: { get: () => ayoVariant, set: (v) => setAyoVariant(v as AyoVariant), appliesTo: isAyoGame },
+    // Mahjong
+    mahjong_ruleset: {
+      get: () => mahjongRuleset,
+      set: (v) => setMahjongRuleset(v as MahjongRuleset),
+      appliesTo: isMahjongGame,
+    },
+    // Scrabble
+    scrabble_game_duration: {
+      get: () => scrabbleGameDuration,
+      set: (v) => setScrabbleGameDuration(v as number),
+      appliesTo: isScrabbleGame,
+    },
+    scrabble_dictionary: {
+      get: () => scrabbleDictionary,
+      set: (v) => setScrabbleDictionary(v as ScrabbleDictionaryId),
+      appliesTo: isScrabbleGame,
+    },
+    scrabble_clock_mode: {
+      get: () => scrabbleClockMode,
+      set: (v) => setScrabbleClockMode(v as ScrabbleClockMode),
+      appliesTo: isScrabbleGame,
+    },
+    scrabble_clock_seconds: {
+      get: () => scrabbleClockSeconds,
+      set: (v) => setScrabbleClockSeconds(v as number),
+      appliesTo: isScrabbleGame,
+    },
+    // Yahtzee
+    yahtzee_max_players: {
+      get: () => yahtzeeMaxPlayers,
+      set: (v) => setYahtzeeMaxPlayers(v as number),
+      appliesTo: isYahtzeeGame,
+    },
+    // Ping Pong
+    ping_pong_points_to_win: {
+      get: () => settings.ping_pong_points_to_win,
+      set: (v) => setSettings((s) => ({ ...s, ping_pong_points_to_win: v as number })),
+      appliesTo: isPingPongGame,
+    },
+    ping_pong_game_duration: {
+      get: () => settings.game_duration_seconds,
+      set: (v) => setSettings((s) => ({ ...s, game_duration_seconds: v as number })),
+      appliesTo: isPingPongGame,
+    },
+  }
+  const captureTemplateValues = (): Record<string, unknown> => {
+    const out: Record<string, unknown> = {}
+    for (const [key, field] of Object.entries(TEMPLATE_FIELDS)) {
+      if (field.appliesTo(settings.game_type)) out[key] = field.get()
+    }
+    return out
+  }
+  const applyTemplateValues = (values: Record<string, unknown>) => {
+    for (const [key, value] of Object.entries(values)) {
+      const field = TEMPLATE_FIELDS[key]
+      if (field && field.appliesTo(settings.game_type)) field.set(value)
+    }
+  }
+  const refreshTemplateSlots = () => setTemplateSlots(getTemplates(settings.game_type))
+  const handlePrefillTemplate = (tpl: GameTemplate) => {
+    applyTemplateValues(tpl.values)
+    toast.info(`Prefilled from "${tpl.name}" — review below, then Create when ready`)
+  }
+  // "Use & create" skips straight to creating a game, so it's confirmed first (see
+  // useTemplateConfirm + UseTemplateConfirmModal below) rather than firing on the first tap.
+  const runUseTemplate = (tpl: GameTemplate) => {
+    // A blank game name would otherwise silently block creation (the server requires a
+    // title) — default it to the template's name so this is a genuine one-tap action
+    // instead of a no-op when the host hasn't typed anything yet.
+    if (!settings.title.trim()) setSettings((s) => ({ ...s, title: tpl.name }))
+    applyTemplateValues(tpl.values)
+    setPendingAutoCreate(true)
+  }
+  const confirmUseTemplate = () => {
+    if (useTemplateConfirm) runUseTemplate(useTemplateConfirm)
+    setUseTemplateConfirm(null)
+  }
+  const openSaveTemplateModal = (presetSlot: number | null = null) => setTemplateModal({ open: true, presetSlot })
+  const confirmSaveTemplate = (slot: number, name: string) => {
+    saveTemplate(settings.game_type, slot, { name, savedAt: Date.now(), values: captureTemplateValues() })
+    setTemplateModal({ open: false, presetSlot: null })
+    refreshTemplateSlots()
+    toast.success(`Saved as "${name}"`)
+  }
+  const handleDeleteTemplate = async (slot: number) => {
+    const name = templateSlots?.[slot]?.name
+    const ok = await confirm({
+      title: name ? `Delete "${name}"?` : 'Delete this template?',
+      message: "This can't be undone.",
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
+    deleteTemplate(settings.game_type, slot)
+    refreshTemplateSlots()
+    toast.info(name ? `Deleted "${name}"` : 'Template deleted')
+  }
+
   const participantOpts = {
     genderBased: settings.gender_based,
     customSlots: customSlots,
@@ -2038,6 +2727,14 @@ function CreateGameInner() {
     }
   }
 
+  // Fires once a template's applied values have committed to state (see
+  // pendingAutoCreate above), then runs the normal create flow.
+  useEffect(() => {
+    if (!pendingAutoCreate) return
+    setPendingAutoCreate(false)
+    void createGame()
+  }, [pendingAutoCreate]) // eslint-disable-line react-hooks/exhaustive-deps -- intentionally only re-fire on the flag
+
   if (step === 'settings') {
     return (
       <>
@@ -2095,6 +2792,21 @@ function CreateGameInner() {
               </p>
             </Field>
           </div>
+
+          {templatableGame(settings.game_type) && templateSlots && (
+            <TemplateQuickStart
+              slots={templateSlots}
+              onUse={setUseTemplateConfirm}
+              onPrefill={handlePrefillTemplate}
+              onOverride={(slot) => openSaveTemplateModal(slot)}
+              onDelete={handleDeleteTemplate}
+            />
+          )}
+          <UseTemplateConfirmModal
+            template={useTemplateConfirm}
+            onCancel={() => setUseTemplateConfirm(null)}
+            onConfirm={confirmUseTemplate}
+          />
 
           {/* Theme */}
           <div className="glass-card p-5 space-y-3">
@@ -5811,6 +6523,25 @@ function CreateGameInner() {
               </p>
             </SettingsGroup>
           </div>
+
+          {templatableGame(settings.game_type) && (
+            <>
+              <button
+                type="button"
+                onClick={() => openSaveTemplateModal()}
+                className="btn-secondary w-full py-2.5 text-sm"
+              >
+                Save current settings as template
+              </button>
+              <SaveTemplateModal
+                open={templateModal.open}
+                slots={templateSlots ?? [null, null]}
+                presetSlot={templateModal.presetSlot}
+                onClose={() => setTemplateModal({ open: false, presetSlot: null })}
+                onConfirm={confirmSaveTemplate}
+              />
+            </>
+          )}
 
           <StickyActionBar>
             {isQuickLobby ? (
