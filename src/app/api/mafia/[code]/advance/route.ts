@@ -224,7 +224,12 @@ export async function runMafiaAdvance(
         `⚖️ The Village killed ${playerLabel(votedPlayerId)}${votedState ? ` ${roleLabel(votedState.role)}` : ''}`
       )
     } else {
-      systemMessages.push('🤝 No majority reached — nobody was eliminated.')
+      // Show how many alive players actually cast a vote — makes it obvious when "no
+      // majority" happened because voting was cut short (a skip vote resolved before
+      // everyone had voted), not because the town's votes were genuinely split evenly.
+      const aliveCount = playerStates.filter((p) => p.is_alive).length
+      const votedCount = playerStates.filter((p) => p.is_alive && p.day_vote_target_player_id).length
+      systemMessages.push(`🤝 No majority reached (${votedCount}/${aliveCount} voted) — nobody was eliminated.`)
     }
 
     // Jester wins outright if they were just lynched, ahead of the normal team win check

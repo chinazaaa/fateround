@@ -634,6 +634,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                   skipRequestCount={skipRequestCount ?? 0}
                   skipRequiredCount={skipRequiredCount ?? 1}
                   hasRequestedSkip={!!hasRequestedSkip}
+                  needsVoteFirst={phase === 'voting' && !myState?.dayVoteSubmitted}
                   disabled={acting}
                   onSkip={() => void submitSkipPhase()}
                 />
