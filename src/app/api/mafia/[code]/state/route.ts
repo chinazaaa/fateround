@@ -366,7 +366,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const voteChoices: Record<string, string> = {}
   const votedPlayerIds: string[] = []
   playerStates.forEach((ps) => {
-    if (ps.day_vote_target_player_id) {
+    if (ps.is_alive && ps.day_vote_target_player_id) {
       // The Mayor's vote counts double toward the lynch majority (see resolveMafiaDayVote) —
       // weight the displayed tally the same way so it agrees with the actual resolved outcome.
       const weight = ps.role === 'mayor' ? 2 : 1
