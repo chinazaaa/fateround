@@ -95,7 +95,8 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     ['players', { table: 'games', column: 'id' }, 'checkers_sessions'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   const activeSession = session ?? bootstrap.gameState

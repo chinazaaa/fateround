@@ -117,7 +117,8 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [{ table: 'games', column: 'id' }, 'rounds', 'ttl_statements', 'ttl_guesses'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   // Deadline-driven round changes (incl. the last reveal → finished) need a

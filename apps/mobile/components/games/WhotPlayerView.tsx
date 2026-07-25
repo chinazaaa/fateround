@@ -121,7 +121,8 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [{ table: 'games', column: 'id' }, 'whot_sessions', 'whot_player_hands'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   const rules = parseWhotRules(bootstrap.game)

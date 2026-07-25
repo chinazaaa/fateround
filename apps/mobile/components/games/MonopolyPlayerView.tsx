@@ -203,7 +203,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [{ table: 'games', column: 'id' }, 'monopoly_boards', 'monopoly_player_state', 'players'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   // End the game when the whole-game duration runs out. Without this the timer

@@ -201,7 +201,8 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
       'codewords_messages',
     ],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   const activeState = bootstrap.gameState ?? cwState

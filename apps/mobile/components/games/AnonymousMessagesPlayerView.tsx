@@ -430,6 +430,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         <ScrollView contentContainerStyle={styles.lobbyScroll}>
           <WaitingPanel message="Waiting for the host to start the session…" />
           <AnonymousRoomHeadcount game={game} players={players} />
+          <GameInfoChips game={game} />
           <AnonymousLobbyDetail game={game} players={players} myName={myName} />
           {myPlayer?.spectator === true ? (
             <View style={styles.readyBox}>

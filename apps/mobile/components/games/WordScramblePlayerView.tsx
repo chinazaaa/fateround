@@ -158,7 +158,8 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [{ table: 'games', column: 'id' }, 'rounds', 'word_scramble_solves', 'word_scramble_hints'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   useEffect(() => {

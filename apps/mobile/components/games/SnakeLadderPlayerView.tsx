@@ -109,7 +109,8 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [{ table: 'games', column: 'id' }, 'snake_ladder_sessions', 'snake_ladder_player_state'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   const turnPlayerId = session ? currentPlayerId(session) : null

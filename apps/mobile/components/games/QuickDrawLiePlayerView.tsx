@@ -135,7 +135,8 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
       'quick_draw_votes',
     ],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   useQuickDrawAutoAdvance({

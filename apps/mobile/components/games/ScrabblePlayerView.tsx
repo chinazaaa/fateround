@@ -129,7 +129,8 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [{ table: 'games', column: 'id' }, 'scrabble_sessions', 'scrabble_player_state'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   const activeSession = session ?? bootstrap.gameState
