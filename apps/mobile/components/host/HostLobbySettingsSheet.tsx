@@ -99,6 +99,11 @@ import {
   type MahjongLobbyState,
 } from '@/components/host/lobby-settings/MahjongLobbySection'
 import {
+  CheckersLobbySection,
+  isCheckersLobbyGame,
+  type CheckersLobbyState,
+} from '@/components/host/lobby-settings/CheckersLobbySection'
+import {
   TeamRoundGamesSection,
   isTeamRoundGame,
   type TeamRoundState,
@@ -242,6 +247,7 @@ export function HostLobbySettingsSheet({
     !isWhoSaidThis(gameType)
   const isBingo = isBingoLobbyGame(gameType)
   const isMahjong = isMahjongLobbyGame(gameType)
+  const isCheckers = isCheckersLobbyGame(gameType)
   const isTrivia = isTriviaLobbyGame(gameType)
   const ownsTimer =
     isCardGame ||
@@ -253,6 +259,7 @@ export function HostLobbySettingsSheet({
     isScrabble ||
     isICallOn ||
     isMahjong ||
+    isCheckers ||
     isTeamRound ||
     isQuickDraw ||
     isCodewords
@@ -390,6 +397,10 @@ export function HostLobbySettingsSheet({
     timerSeconds: game.timer_seconds ?? 0,
     ruleset: game.mahjong_ruleset ?? 'fate_round',
     ruleOptions: parseMahjongRuleOptions(game.mahjong_rule_options),
+  }))
+  const [checkers, setCheckers] = useState<CheckersLobbyState>(() => ({
+    timerSeconds: game.timer_seconds ?? 0,
+    checkersNigeriaStreetRules: game.checkers_nigeria_street_rules === true,
   }))
   const [quickDraw, setQuickDraw] = useState<QuickDrawLobbyState>(() => ({
     variant: game.quick_draw_variant === 'guess' ? 'guess' : 'lie',
@@ -547,6 +558,11 @@ export function HostLobbySettingsSheet({
       if (mahjong.ruleset !== game.mahjong_ruleset) board.mahjong_ruleset = mahjong.ruleset
       if (JSON.stringify(mahjong.ruleOptions) !== JSON.stringify(game.mahjong_rule_options ?? null))
         board.mahjong_rule_options = mahjong.ruleOptions
+    }
+    if (isCheckers) {
+      if (checkers.timerSeconds !== game.timer_seconds) board.timer_seconds = checkers.timerSeconds
+      if (gameType === 'checkers_nigeria' && checkers.checkersNigeriaStreetRules !== game.checkers_nigeria_street_rules)
+        board.checkers_nigeria_street_rules = checkers.checkersNigeriaStreetRules
     }
     if (isQuickDraw) {
       if (quickDraw.variant !== game.quick_draw_variant) board.quick_draw_variant = quickDraw.variant
@@ -897,6 +913,14 @@ export function HostLobbySettingsSheet({
 
             {isMahjong ? (
               <MahjongLobbySection value={mahjong} onChange={(p) => setMahjong((prev) => ({ ...prev, ...p }))} />
+            ) : null}
+
+            {isCheckers ? (
+              <CheckersLobbySection
+                gameType={gameType}
+                value={checkers}
+                onChange={(p) => setCheckers((prev) => ({ ...prev, ...p }))}
+              />
             ) : null}
 
             {isTeamRound ? (
