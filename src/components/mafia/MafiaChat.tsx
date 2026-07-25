@@ -42,6 +42,12 @@ export function MafiaPhaseTimer({ deadline, onExpired }: { deadline: string | nu
 
 // ── Shared bubble renderer with auto-scroll ───────────────────────────────────
 
+export interface MafiaSystemLine {
+  id: string
+  text: string
+  tone?: 'default' | 'danger' | 'success'
+}
+
 interface ChatMessagesProps {
   messages: MafiaChatMessage[]
   myPlayerId: string | null
@@ -50,13 +56,23 @@ interface ChatMessagesProps {
    *  message mentioning the local player's own number gets a highlighted border, matching
    *  Wolvesville's convention of referring to players by seat number in chat. */
   players?: MafiaPublicPlayer[]
+  /** Synthesized public phase-narrative lines (day started, sunrise/vote results, votes
+   *  required) shown inline above the chat history — folds the "system log" and chat into
+   *  one feed, matching Wolvesville, instead of a separate result card. */
+  systemLines?: MafiaSystemLine[]
 }
 
-export function ChatMessages({ messages, myPlayerId, sentBubbleClass, players }: ChatMessagesProps) {
+const SYSTEM_LINE_TONE: Record<NonNullable<MafiaSystemLine['tone']>, string> = {
+  default: 'text-pink-500',
+  danger: 'text-red-400',
+  success: 'text-emerald-400',
+}
+
+export function ChatMessages({ messages, myPlayerId, sentBubbleClass, players, systemLines = [] }: ChatMessagesProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages.length])
+  }, [messages.length, systemLines.length])
 
   const seatNumberById = new Map(players?.map((p) => [p.id, p.seatNumber]) ?? [])
   const mySeatNumber = myPlayerId ? seatNumberById.get(myPlayerId) : undefined
@@ -64,7 +80,12 @@ export function ChatMessages({ messages, myPlayerId, sentBubbleClass, players }:
 
   return (
     <div className="h-40 overflow-y-auto space-y-1.5 flex flex-col p-1">
-      {messages.length === 0 ? (
+      {systemLines.map((line) => (
+        <p key={line.id} className={`text-sm font-bold text-center py-1 ${SYSTEM_LINE_TONE[line.tone ?? 'default']}`}>
+          {line.text}
+        </p>
+      ))}
+      {messages.length === 0 && systemLines.length === 0 ? (
         <p className="text-xs text-[var(--muted)] italic text-center py-6 m-auto">No messages yet.</p>
       ) : (
         messages.map((m) => {
@@ -127,6 +148,7 @@ interface ChatProps {
   onSendMessage: (msg: string) => Promise<void>
   myPlayerId: string | null
   players?: MafiaPublicPlayer[]
+  systemLines?: MafiaSystemLine[]
 }
 
 export function MafiaSecretChat({ messages, onSendMessage, myPlayerId, players }: ChatProps) {
@@ -170,7 +192,14 @@ interface DayChatProps extends ChatProps {
   disabled?: boolean
 }
 
-export function MafiaDayChat({ messages, onSendMessage, myPlayerId, players, disabled = false }: DayChatProps) {
+export function MafiaDayChat({
+  messages,
+  onSendMessage,
+  myPlayerId,
+  players,
+  systemLines,
+  disabled = false,
+}: DayChatProps) {
   const { text, setText, sending, handleSubmit } = useChatInput(onSendMessage, disabled)
   return (
     <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-2">
@@ -181,6 +210,7 @@ export function MafiaDayChat({ messages, onSendMessage, myPlayerId, players, dis
         messages={messages}
         myPlayerId={myPlayerId}
         players={players}
+        systemLines={systemLines}
         sentBubbleClass="bg-[var(--primary)] text-white"
       />
       <form onSubmit={handleSubmit} className="flex gap-2">

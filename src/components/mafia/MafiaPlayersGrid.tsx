@@ -1,11 +1,14 @@
 'use client'
 
-import type { MafiaPhase, MafiaPublicPlayer } from '@/types'
-import { MAFIA_TEAM_ROLES, mafiaRoleEmoji } from './mafia-role-info'
+import type { MafiaPhase, MafiaPublicPlayer, MafiaRole } from '@/types'
+import { MAFIA_ROLE_INFO, MAFIA_TEAM_ROLES, mafiaRoleEmoji } from './mafia-role-info'
 
 interface MafiaPlayersGridProps {
   players: MafiaPublicPlayer[]
   myPlayerId: string | null
+  /** The local player's own role — shown directly on their own tile (not just on death),
+   *  so there's no need for a separate "Your Identity" card taking up page space. */
+  myRole?: MafiaRole | null
   phase: MafiaPhase
   voteTallies: Record<string, number>
   /** voterId -> targetId, when votes are public — shown as a "→ #N" sign on the voter's own
@@ -19,6 +22,13 @@ interface MafiaPlayersGridProps {
   selectedIds?: string[]
 }
 
+const TEAM_TEXT: Record<string, string> = {
+  village: 'text-emerald-400',
+  mafia: 'text-red-400',
+  solo: 'text-amber-400',
+  special: 'text-pink-400',
+}
+
 /**
  * Numbered player roster tiles, styled after Wolvesville's grid: seat numbers, a tombstone
  * for eliminated players (with their revealed role), a "(you)" tag + highlighted border on
@@ -28,6 +38,7 @@ interface MafiaPlayersGridProps {
 export function MafiaPlayersGrid({
   players,
   myPlayerId,
+  myRole,
   phase,
   voteTallies,
   voteChoices = {},
@@ -97,10 +108,19 @@ export function MafiaPlayersGrid({
                 {p.name}
                 {isMe && <span className="font-normal text-[var(--primary)]"> (you)</span>}
               </span>
-              {!p.isAlive && p.role && (
-                <span className={`text-[9px] font-bold uppercase leading-none ${roleTeamColor}`}>
-                  {mafiaRoleEmoji(p.role)} {p.role.replace(/_/g, ' ')}
+              {isMe && myRole ? (
+                <span
+                  className={`text-[9px] font-bold uppercase leading-none ${TEAM_TEXT[MAFIA_ROLE_INFO[myRole].team]}`}
+                >
+                  {mafiaRoleEmoji(myRole)} {MAFIA_ROLE_INFO[myRole].name}
                 </span>
+              ) : (
+                !p.isAlive &&
+                p.role && (
+                  <span className={`text-[9px] font-bold uppercase leading-none ${roleTeamColor}`}>
+                    {mafiaRoleEmoji(p.role)} {p.role.replace(/_/g, ' ')}
+                  </span>
+                )
               )}
             </button>
           )

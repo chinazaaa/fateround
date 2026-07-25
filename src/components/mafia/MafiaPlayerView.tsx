@@ -506,6 +506,44 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       ? (publicPlayers.find((p) => p.id === cupidFirstPick)?.name ?? null)
       : null
 
+    // Public phase narrative — folded into the shared activity feed (below) as system lines,
+    // since it's visible to the whole town, not just the acting player.
+    const systemLines: { id: string; text: string; tone?: 'default' | 'danger' | 'success' }[] = []
+    if (phase === 'day_report') {
+      if (newlyDeadTonight.length > 0) {
+        newlyDeadTonight.forEach((p) =>
+          systemLines.push({ id: `death-${p.id}`, text: `#${p.seatNumber} ${p.name} was found dead.`, tone: 'danger' })
+        )
+      } else {
+        systemLines.push({
+          id: 'no-death',
+          text: lastNightMafiaHadTarget
+            ? '🏥 The Doctor saved the village last night!'
+            : '😴 No one was attacked last night.',
+          tone: 'success',
+        })
+      }
+    } else if (phase === 'day') {
+      systemLines.push({ id: `day-${dayNumber}`, text: `☀️ Day ${dayNumber} has started. Get ready to discuss!` })
+    } else if (phase === 'voting') {
+      systemLines.push({
+        id: `voting-${dayNumber}`,
+        text: votesRequired
+          ? `🗳️ Get ready to vote! (${votesRequired} vote${votesRequired === 1 ? '' : 's'} required)`
+          : '🗳️ Voting has begun.',
+      })
+    } else if (phase === 'elimination') {
+      systemLines.push(
+        votedPlayer
+          ? {
+              id: `elim-${dayNumber}`,
+              text: `⚖️ #${votedPlayer.seatNumber} ${votedPlayer.name} was voted out.`,
+              tone: 'danger',
+            }
+          : { id: `elim-${dayNumber}`, text: '🤝 No majority reached — nobody was eliminated.' }
+      )
+    }
+
     return (
       <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col">
         {isViewer && <ViewerModeBanner />}
@@ -528,7 +566,34 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
         <MafiaPhaseTimer deadline={phaseDeadline} onExpired={triggerAutoAdvance} />
 
-        <main className="flex-1 max-w-5xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+        <main className="flex-1 max-w-3xl w-full mx-auto p-4 md:p-6 space-y-4">
+          <MafiaPlayersGrid
+            players={publicPlayers}
+            myPlayerId={myPlayerId}
+            myRole={myRole}
+            phase={phase}
+            voteTallies={voteTallies}
+            voteChoices={voteChoices}
+            onSelect={gridOnSelect}
+            selectedIds={gridSelectedIds}
+          />
+
+          {(phase === 'role_reveal' || phase === 'night' || (phase === 'voting' && amIAlive && !amISpectator)) && (
+            <MafiaPhaseCard
+              phase={phase}
+              dayNumber={dayNumber}
+              myState={myState}
+              amIAlive={amIAlive}
+              amISpectator={amISpectator}
+              acting={acting}
+              cupidFirstPickName={cupidFirstPickName}
+              onIgnite={() => {
+                if (myPlayerId) void submitNightAction(myPlayerId)
+              }}
+              onSkipVote={() => void submitDayVote(null)}
+            />
+          )}
+
           <MafiaIdentityPanel
             myState={myState}
             myPlayerId={myPlayerId}
@@ -538,54 +603,25 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
             onSendMafiaMessage={sendMafiaMessage}
           />
 
-          <div className="md:col-span-2 space-y-4">
-            <MafiaPhaseCard
-              phase={phase}
-              dayNumber={dayNumber}
-              myState={myState}
-              votedPlayer={votedPlayer}
-              lastNightMafiaHadTarget={lastNightMafiaHadTarget}
-              amIAlive={amIAlive}
-              amISpectator={amISpectator}
-              acting={acting}
-              cupidFirstPickName={cupidFirstPickName}
-              onIgnite={() => {
-                if (myPlayerId) void submitNightAction(myPlayerId)
-              }}
-              onSkipVote={() => void submitDayVote(null)}
-              newlyDeadTonight={newlyDeadTonight}
-              votesRequired={votesRequired}
-            />
-
-            <MafiaPlayersGrid
-              players={publicPlayers}
+          {phase !== 'night' && phase !== 'role_reveal' && (
+            <MafiaDayChat
+              messages={dayChatMessages ?? []}
+              onSendMessage={sendDayMessage}
               myPlayerId={myPlayerId}
-              phase={phase}
-              voteTallies={voteTallies}
-              voteChoices={voteChoices}
-              onSelect={gridOnSelect}
-              selectedIds={gridSelectedIds}
+              players={publicPlayers}
+              systemLines={systemLines}
+              disabled={!amIAlive || amISpectator}
             />
+          )}
 
-            {phase !== 'night' && phase !== 'role_reveal' && (
-              <MafiaDayChat
-                messages={dayChatMessages ?? []}
-                onSendMessage={sendDayMessage}
-                myPlayerId={myPlayerId}
-                players={publicPlayers}
-                disabled={!amIAlive || amISpectator}
-              />
-            )}
-
-            {!amIAlive && myPlayerId && (
-              <MafiaGhostChat
-                messages={ghostChatMessages ?? []}
-                onSendMessage={sendGhostMessage}
-                myPlayerId={myPlayerId}
-                players={publicPlayers}
-              />
-            )}
-          </div>
+          {!amIAlive && myPlayerId && (
+            <MafiaGhostChat
+              messages={ghostChatMessages ?? []}
+              onSendMessage={sendGhostMessage}
+              myPlayerId={myPlayerId}
+              players={publicPlayers}
+            />
+          )}
         </main>
       </div>
     )
