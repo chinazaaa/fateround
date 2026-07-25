@@ -37,23 +37,24 @@ import { MafiaRolesDrawer } from './MafiaRolesDrawer'
 import { MafiaSkipPhaseBar } from './MafiaSkipPhaseBar'
 import { MAFIA_TEAM_ROLES, NO_NIGHT_ACTION_ROLES } from './mafia-role-info'
 import type { MafiaStateResponse } from './mafia-types'
+import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import type { Game } from '@/types'
 
 const WINNING_TEAM_LABEL: Record<string, string> = {
-  mafia: 'MAFIA 🔪',
-  village: 'VILLAGE 🏘️',
-  jester: 'JESTER 🃏',
-  serial_killer: 'SERIAL KILLER 🔪',
-  arsonist: 'ARSONIST 🔥',
-  lovers: 'LOVERS 💘',
+  mafia: 'The Mafia wins!',
+  village: 'The Village wins!',
+  jester: 'The Jester wins!',
+  serial_killer: 'The Serial Killer wins!',
+  arsonist: 'The Arsonist wins!',
+  lovers: 'The Lovers win!',
 }
-const WINNING_TEAM_COLOR: Record<string, string> = {
-  mafia: 'text-red-500',
-  village: 'text-emerald-400',
-  jester: 'text-amber-400',
-  serial_killer: 'text-amber-400',
-  arsonist: 'text-orange-400',
-  lovers: 'text-pink-400',
+const WINNING_TEAM_EMOJI: Record<string, string> = {
+  mafia: '🔪',
+  village: '🏘️',
+  jester: '🃏',
+  serial_killer: '🔪',
+  arsonist: '🔥',
+  lovers: '💘',
 }
 const PHASE_LABEL: Record<string, string> = {
   role_reveal: 'Role Reveal',
@@ -712,38 +713,34 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
   // ── Finished / game over ──────────────────────────────────────────────────────
 
+  const winningTeam = mafiaState?.winningTeam ?? null
+
   return (
-    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col justify-center items-center p-6 text-center">
-      <div className="max-w-md w-full glass-card border border-[var(--border)] rounded-2xl p-8 shadow-2xl space-y-6">
-        <h1 className="text-4xl font-extrabold text-[var(--primary)] animate-pulse">GAME OVER</h1>
+    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] p-4 md:p-6">
+      <div className="mx-auto w-full max-w-2xl space-y-5">
+        <div className="glass-card border border-[var(--border)] rounded-2xl p-6">
+          <FinishedWinnerHero
+            game={game!}
+            emoji={winningTeam ? (WINNING_TEAM_EMOJI[winningTeam] ?? '🏆') : '🏁'}
+            headline={winningTeam ? (WINNING_TEAM_LABEL[winningTeam] ?? 'Game over!') : 'Game over — no winner'}
+            subtitle="Mafia"
+          />
+        </div>
 
-        {mafiaState?.winningTeam ? (
-          <div className="space-y-2">
-            <p className="text-[var(--muted)] text-sm uppercase tracking-widest font-bold">Winning Team</p>
-            <div className={`text-3xl font-black ${WINNING_TEAM_COLOR[mafiaState.winningTeam] ?? 'text-emerald-400'}`}>
-              {WINNING_TEAM_LABEL[mafiaState.winningTeam] ?? mafiaState.winningTeam.toUpperCase()}
-            </div>
-          </div>
-        ) : (
-          <p className="text-[var(--muted)]">The game has finished!</p>
-        )}
-
-        <div className="border-t border-[var(--border)] pt-6">
-          <h3 className="text-sm font-semibold tracking-widest uppercase text-[var(--primary)] mb-4 font-mono">
-            Roles Reveal
-          </h3>
+        <div className="glass-card border border-[var(--border)] rounded-2xl p-5">
+          <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)] mb-3">Roles reveal</h3>
           <div className="space-y-2">
             {mafiaState?.players.map((p) => (
               <div
                 key={p.id}
-                className="flex justify-between items-center text-sm p-2 rounded bg-[var(--surface-inset-bg)] border border-[var(--border)]"
+                className="flex justify-between items-center text-sm p-2 rounded-lg bg-[var(--surface-inset-bg)] border border-[var(--border)]"
               >
-                <span className="font-semibold text-[var(--muted)]">
+                <span className="font-semibold text-[var(--foreground)]">
                   #{p.seatNumber} {p.name}
                   {p.id === myPlayerId && <span className="text-[var(--primary)] font-normal"> (you)</span>}
                 </span>
                 <span
-                  className={`font-mono text-xs uppercase ${
+                  className={`font-bold text-xs uppercase ${
                     p.role && MAFIA_TEAM_ROLES.includes(p.role)
                       ? 'text-red-400'
                       : p.role === 'jester'
@@ -751,7 +748,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                         : 'text-emerald-400'
                   }`}
                 >
-                  {p.role?.replace(/_/g, ' ')}
+                  {p.role ? p.role.replace(/_/g, ' ') : '—'}
                 </span>
               </div>
             ))}

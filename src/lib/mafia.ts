@@ -461,6 +461,57 @@ export async function announceMafiaLateJoin(admin: SupabaseClient, gameId: strin
   })
 }
 
+/**
+ * Ends a Mafia game early (host "End game"), independent of the normal night/vote win
+ * checks in advance/route.ts. Without this, the generic finish-game fallthrough only flips
+ * games.status to 'finished' — mafia_sessions.phase never reaches 'game_over', so the
+ * finished screen shows no winning team and only already-eliminated players' roles reveal
+ * (everyone still alive stays hidden, since role reveal is gated on is_alive/game_over).
+ * If one team already effectively controls the game at the moment of ending, that's surfaced
+ * as the winner; otherwise there's honestly no winner yet, and the screen should say so.
+ */
+export async function finishMafiaGameEarly(admin: SupabaseClient, gameId: string): Promise<{ error?: string | null }> {
+  const [{ data: mafiaSession }, { data: playerStates }] = await Promise.all([
+    admin.from('mafia_sessions').select('*').eq('game_id', gameId).maybeSingle(),
+    admin.from('mafia_player_states').select('*').eq('game_id', gameId),
+  ])
+
+  if (!mafiaSession || !playerStates) {
+    // No session yet (still in the lobby) — nothing Mafia-specific to resolve.
+    return { error: null }
+  }
+
+  const session = mafiaSession as MafiaSession
+  const states = playerStates as MafiaPlayerState[]
+
+  if (session.phase === 'game_over') {
+    return { error: null }
+  }
+
+  const winTeam = checkMafiaWinCondition(states)
+  const winningTeam = checkLoversWin(states) ? 'lovers' : winTeam
+
+  const { error } = await admin
+    .from('mafia_sessions')
+    .update({ phase: 'game_over', phase_deadline: null, winning_team: winningTeam })
+    .eq('game_id', gameId)
+
+  if (error) {
+    console.error('Failed to end Mafia game early:', error)
+    return { error: 'Failed to end game' }
+  }
+
+  await admin.from('mafia_chat_messages').insert({
+    game_id: gameId,
+    sender_player_id: 'system',
+    sender_name: '📢',
+    message: '🏁 The host ended the game early.',
+    scope: 'day',
+  })
+
+  return { error: null }
+}
+
 export async function clearMafiaSessionData(admin: SupabaseClient, gameId: string): Promise<{ error?: string | null }> {
   try {
     const [{ error: e1 }, { error: e2 }, { error: e3 }] = await Promise.all([
