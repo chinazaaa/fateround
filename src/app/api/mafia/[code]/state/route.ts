@@ -29,6 +29,7 @@ const ROLE_ENABLED_KEYS = [
   'arsonist_enabled',
   'cupid_enabled',
   'cursed_villager_enabled',
+  'medium_enabled',
 ] as const
 
 function enabledRolesFrom(session: Pick<MafiaSession, (typeof ROLE_ENABLED_KEYS)[number]>): MafiaRole[] {
@@ -48,6 +49,7 @@ function enabledRolesFrom(session: Pick<MafiaSession, (typeof ROLE_ENABLED_KEYS)
     arsonist_enabled: 'arsonist',
     cupid_enabled: 'cupid',
     cursed_villager_enabled: 'cursed_villager',
+    medium_enabled: 'medium',
   }
   for (const key of ROLE_ENABLED_KEYS) {
     if (session[key]) roles.push(map[key])
@@ -219,10 +221,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         (session.bodyguard_target_player_id === session.mafia_target_player_id ||
           session.bodyguard_target_player_id === session.serial_kill_player_id)
       ) {
-        // Only a real save if the protected target was actually attacked — otherwise every
-        // uneventful night (bodyguard_target_player_id is set just because they acted) was
-        // misreported as "your target was attacked and you saved them."
-        bodyguardLastOutcome = 'saved'
+        bodyguardLastOutcome = 'absorbed'
+      } else if (
+        session.mafia_target_player_id === myPlayerState.player_id ||
+        session.serial_kill_player_id === myPlayerState.player_id
+      ) {
+        bodyguardLastOutcome = 'absorbed'
       } else {
         bodyguardLastOutcome = 'no_attack'
       }
@@ -238,6 +242,42 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     const vigilanteShotsRemaining =
       role === 'vigilante' ? Math.max(0, 1 - myPlayerState.vigilante_shots_used) : undefined
+    const vigilanteRevealRemaining = role === 'vigilante' ? (myPlayerState.vigilante_reveal_used ? 0 : 1) : undefined
+
+    let vigilanteRevealResult: MafiaMyState['vigilanteRevealResult'] = undefined
+    if (role === 'vigilante' && session.vigilante_reveal_player_id) {
+      const revealedPs = playerStates.find((p) => p.player_id === session.vigilante_reveal_player_id)
+      const revealedPlayer = playersData?.find((p) => p.id === session.vigilante_reveal_player_id)
+      if (revealedPs && revealedPlayer) {
+        vigilanteRevealResult = {
+          targetName: seatLabel(revealedPlayer.id, revealedPlayer.name),
+          role: revealedPs.role,
+        }
+      }
+    }
+
+    const mediumReviveRemaining = role === 'medium' ? (myPlayerState.medium_revive_used ? 0 : 1) : undefined
+
+    let mediumGhostChat: MafiaMyState['mediumGhostChat'] = undefined
+    if (role === 'medium' && myPlayerState.is_alive && session.phase === 'night') {
+      const { data: ghostMessages } = await admin
+        .from('mafia_chat_messages')
+        .select('*')
+        .eq('game_id', gameId)
+        .eq('scope', 'ghost')
+        .order('created_at', { ascending: true })
+        .limit(100)
+      if (ghostMessages) {
+        mediumGhostChat = ghostMessages.map((m) => ({
+          id: m.id,
+          game_id: m.game_id,
+          sender_player_id: m.sender_player_id,
+          sender_name: m.sender_name,
+          message: m.message,
+          created_at: m.created_at,
+        }))
+      }
+    }
 
     let framerLastTargetName: MafiaMyState['framerLastTargetName'] = undefined
     if (role === 'framer' && session.framed_player_id) {
@@ -297,6 +337,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       bodyguardLastOutcome,
       doctorLastOutcome,
       vigilanteShotsRemaining,
+      vigilanteRevealRemaining,
+      vigilanteRevealResult,
+      mediumReviveRemaining,
+      mediumGhostChat,
       framerLastTargetName,
       cupidLinkedNames,
       isLover,
@@ -336,9 +380,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
   }
 
-  // Ghost chat — only for eliminated players
+  // Ghost chat — for eliminated players and alive Medium at night
   let ghostChatMessages: MafiaChatMessage[] | undefined = undefined
-  if (myPlayerState && !myPlayerState.is_alive) {
+  const isMediumAtNight = myPlayerState?.is_alive && myPlayerState?.role === 'medium' && session.phase === 'night'
+  if ((myPlayerState && !myPlayerState.is_alive) || isMediumAtNight) {
     const { data: ghostMessages } = await admin
       .from('mafia_chat_messages')
       .select('*')

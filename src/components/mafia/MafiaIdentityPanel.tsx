@@ -75,8 +75,8 @@ export function MafiaIdentityPanel({ myState }: MafiaIdentityPanelProps) {
         <div className="glass-card border border-[var(--border)] rounded-2xl p-3 text-left">
           <p className="text-sm text-[var(--foreground)]">
             {myState.bodyguardLastOutcome === 'sacrificed'
-              ? 'You died protecting your target last night.'
-              : 'Your target was attacked and you saved them last night.'}
+              ? 'You took a second hit and died protecting your target.'
+              : 'You absorbed an attack last night but survived! One more hit will kill you.'}
           </p>
         </div>
       )}
