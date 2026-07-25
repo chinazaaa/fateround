@@ -25,6 +25,7 @@ export function useCrazyEightsNotifications({
   const prevStatusRef = useRef<string | null>(null)
   const prevPhaseRef = useRef<string | null>(null)
   const prevHandCountRef = useRef<number | null>(null)
+  const prevStatusMessageRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!enabled || !game) return
@@ -35,6 +36,7 @@ export function useCrazyEightsNotifications({
       prevStatusRef.current = game.status
       prevPhaseRef.current = session?.phase ?? null
       prevHandCountRef.current = myHandCount
+      prevStatusMessageRef.current = session?.status_message ?? null
       return
     }
 
@@ -42,12 +44,25 @@ export function useCrazyEightsNotifications({
     const prevTurnIndex = prevTurnIndexRef.current
     const prevPhase = prevPhaseRef.current
     const prevHandCount = prevHandCountRef.current
+    const prevStatusMessage = prevStatusMessageRef.current
     const currentTurnIndex = session?.current_turn_index ?? null
+    const statusMessage = session?.status_message ?? null
 
     if (prevHandCount !== null && myHandCount > prevHandCount) {
       const gained = myHandCount - prevHandCount
       info(`You drew ${gained} card${gained === 1 ? '' : 's'} 🃏`)
       playVoteSubmittedSound()
+    }
+
+    // The draw pile auto-reshuffles the discards when it empties; if even that leaves nothing,
+    // the turn silently passes with no hand-count change — call both out so no one wonders why
+    // a Pick 2/Pick 3 penalty (or a plain draw) didn't add any cards.
+    if (statusMessage && statusMessage !== prevStatusMessage && game.status === 'active') {
+      if (statusMessage.includes('deck reshuffled')) {
+        info('🔄 Draw pile empty — discards shuffled back in')
+      } else if (statusMessage.includes('draw pile empty')) {
+        info('🚫 No cards left to draw — turn passes')
+      }
     }
 
     if (prevStatus === 'waiting' && game.status === 'active') {
@@ -84,6 +99,7 @@ export function useCrazyEightsNotifications({
     prevStatusRef.current = game.status
     prevPhaseRef.current = session?.phase ?? null
     prevHandCountRef.current = myHandCount
+    prevStatusMessageRef.current = statusMessage
   }, [enabled, game, info, myHandCount, myPlayerId, session])
 }
 
