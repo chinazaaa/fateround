@@ -28,6 +28,20 @@ describe('matchesGameSearch', () => {
   it('does not match unrelated queries', () => {
     expect(matchesGameSearch('chess' as GameType, 'never have i ever')).toBe(false)
   })
+
+  it('matches "draughts" as an alias for checkers', () => {
+    expect(matchesGameSearch('checkers' as GameType, 'draughts')).toBe(true)
+  })
+
+  it('matches "international draughts" and "flying kings" as aliases for checkers_international', () => {
+    expect(matchesGameSearch('checkers_international' as GameType, 'international draughts')).toBe(true)
+    expect(matchesGameSearch('checkers_international' as GameType, 'flying kings')).toBe(true)
+  })
+
+  it('matches "naija checkers" and "nigerian draughts" as aliases for checkers_nigeria', () => {
+    expect(matchesGameSearch('checkers_nigeria' as GameType, 'naija checkers')).toBe(true)
+    expect(matchesGameSearch('checkers_nigeria' as GameType, 'nigerian draughts')).toBe(true)
+  })
 })
 
 describe('game categories', () => {

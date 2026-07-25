@@ -68,6 +68,8 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   word_hunt: 'word-hunt',
   chess: 'chess',
   checkers: 'checkers',
+  checkers_international: 'checkers-international',
+  checkers_nigeria: 'checkers-nigeria',
   ayo: 'ayo',
   describe_it: 'text-charades',
   word_rush: 'word-rush',
@@ -2299,6 +2301,10 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'two player checkers online',
       'checkers online free no download',
       'checkers online no sign up',
+      'draughts',
+      'play draughts online',
+      'draughts with friends',
+      'draughts online free',
     ],
     heroSubtitle: 'Classic checkers, head-to-head — jump your friend’s pieces and crown your kings.',
     bodyParagraph:
@@ -2370,6 +2376,164 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'How do you get a king in checkers?',
         answer:
           'Move one of your pieces all the way to the opponent’s back row. It’s crowned a king and can then move and capture one square diagonally in any direction. FateRound crowns kings automatically — crowning ends a multi-jump chain.',
+      },
+      {
+        question: 'Is this the same as International or Nigerian Draughts?',
+        answer:
+          'No — this page is American Checkers (8×8, short kings, forward-only capture). If you want the 10×10 flying-kings tournament ruleset, look for International Draughts; for the same 10×10 game with local seed terminology and a mirrored board, look for Nigerian Draughts (Naija Checkers). All three are separate listings on FateRound.',
+      },
+    ],
+  }),
+
+  checkers_international: landing('checkers_international', {
+    seoTitle: 'International Draughts Online — Flying Kings, 10×10 Board',
+    seoDescription:
+      'Play International Draughts (flying kings) online with a friend. 10×10 board, 20 pieces each, mandatory majority capture and flying kings. No sign-up.',
+    keywords: [
+      'international draughts online',
+      'flying kings checkers',
+      'play international draughts',
+      '10x10 draughts online',
+      'international checkers online',
+      'majority capture draughts',
+      'polish draughts online',
+      'draughts with friends',
+      'international draughts rules',
+      'flying kings draughts online',
+    ],
+    heroSubtitle: 'Flying kings, 10×10 board — the international draughts tournament rules, online.',
+    bodyParagraph:
+      'International Draughts on FateRound uses the full 10×10 board with 20 pieces per side. Men capture in any direction — forward or backward — and captures are mandatory. When more than one capture sequence is available, you must play the sequence that takes the most pieces (the majority capture rule). Kings fly across the whole open diagonal, like a bishop, and can capture from a distance. Crowning only happens once a capture sequence ends, never mid-jump. Capture every enemy piece or leave them with no legal move to win; a 25-move rule without a capture or man move ends the game in a draw. Add an optional clock — each player gets their own time bank that only ticks on their turn.',
+    highlights: ['2 players', 'Flying kings', 'Majority capture'],
+    features: [
+      {
+        title: 'Real international rules',
+        description: 'Majority capture, flying kings, and end-of-sequence crowning all enforced automatically.',
+        emoji: '⛀',
+      },
+      {
+        title: 'Capture to win',
+        description: 'Take every enemy piece, or block their last move — wins and draws are detected automatically.',
+        emoji: '👑',
+      },
+      SHARED_FEATURES.mobile,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Join a room', description: 'Two players join with their name — the host can join as a player too.' },
+      {
+        title: 'White moves first',
+        description: 'Tap a piece, then its diagonal destination. Captures are shown and forced automatically.',
+      },
+      {
+        title: 'Capture to win',
+        description: 'Jump every enemy piece or leave them no move. Kings fly the diagonal once crowned.',
+      },
+    ],
+    perfectFor: ['Draughts purists', 'Tournament players', 'Friend rivalries'],
+    extraFaqs: [
+      {
+        question: 'What is the majority capture rule?',
+        answer:
+          'When you have a choice between multiple capture sequences, you must play the one that captures the most pieces — not just any legal jump. FateRound highlights only the sequences that satisfy this rule.',
+      },
+      {
+        question: 'What is a flying king?',
+        answer:
+          'A crowned king can move and capture along the entire open diagonal, like a bishop in chess, rather than one square at a time. It can also capture from several squares away by landing anywhere beyond the captured piece.',
+      },
+      {
+        question: 'How is this different from American checkers?',
+        answer:
+          'International Draughts is played on a 10×10 board with 20 pieces per side instead of 8×8 with 12. Men can capture backward as well as forward, captures must take the maximum number of pieces, and kings fly the full diagonal instead of moving one square at a time.',
+      },
+      {
+        question: 'When is a game a draw?',
+        answer:
+          'A draw is declared automatically after 25 moves by each player with no capture and no man move, or by standard repetition.',
+      },
+      {
+        question: 'Can more than 2 people play?',
+        answer:
+          'No — International Draughts is strictly 2 players. The host can play as one of the two if they want in on the match.',
+      },
+      {
+        question: 'Is this the same as regular Checkers or Nigerian Draughts?',
+        answer:
+          'It runs the same 10×10, flying-kings, majority-capture engine as Nigerian Draughts (Naija Checkers) — that listing just uses local seed terminology, a mirrored board, and an optional Street Rules toggle. Regular Checkers on FateRound is a different, simpler ruleset: American Checkers on an 8×8 board with short kings and forward-only capture.',
+      },
+    ],
+  }),
+
+  checkers_nigeria: landing('checkers_nigeria', {
+    seoTitle: 'Nigerian Draughts Online — Play Naija Checkers with a Friend',
+    seoDescription:
+      'Play Nigerian draughts (Naija checkers) online. Same flying-kings rules as international draughts, seed terminology, optional Street Rules. No sign-up.',
+    keywords: [
+      'nigerian draughts online',
+      'naija draughts',
+      'nigerian checkers online',
+      'play draughts nigeria',
+      'street rules draughts',
+      'seed draughts online',
+      'nigeria checkers with friends',
+      'flying kings draughts nigeria',
+      'draughts online free nigeria',
+    ],
+    heroSubtitle: 'Naija draughts, online — seed your way to a flying-king finish.',
+    bodyParagraph:
+      'Nigerian Draughts on FateRound runs on the same 10×10 flying-kings engine as International Draughts, presented with local "seed" terminology and a mirrored board orientation. Each side starts with 20 seeds; captures are mandatory and must take the maximum number of seeds when there is a choice. Seeds capture in any direction, and kings fly the full open diagonal once crowned — crowning happens only at the end of a capture sequence. Hosts can optionally switch on Street Rules for a house-rules variant popular in casual play. Capture every enemy seed or leave them with no legal move to win; 25 moves without a capture or seed-only move ends the game in a draw. Add an optional clock — each player gets their own time bank that only ticks on their turn.',
+    highlights: ['2 players', 'Seed capture', 'Street Rules option'],
+    features: [
+      {
+        title: 'Naija draughts rules',
+        description: 'Majority seed capture, flying kings, and optional Street Rules all handled automatically.',
+        emoji: '⛀',
+      },
+      {
+        title: 'Capture to win',
+        description: 'Take every enemy seed, or block their last move — wins and draws are detected automatically.',
+        emoji: '👑',
+      },
+      SHARED_FEATURES.mobile,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Join a room', description: 'Two players join with their name — the host can join as a player too.' },
+      {
+        title: 'Sow your seeds',
+        description: 'Tap a seed, then its diagonal destination. Captures are shown and forced automatically.',
+      },
+      {
+        title: 'Capture to win',
+        description: 'Jump every enemy seed or leave them no move. Kings fly the diagonal once crowned.',
+      },
+    ],
+    perfectFor: ['Naija draughts fans', 'Friend rivalries', 'Quick matches'],
+    extraFaqs: [
+      {
+        question: 'What are Street Rules?',
+        answer:
+          'Street Rules is an optional, house-rules toggle a host can switch on for the room — a casual variant familiar to street/park draughts play in Nigeria. It layers on top of the same flying-kings engine.',
+      },
+      {
+        question: 'Is this the same as international draughts?',
+        answer:
+          'Mechanically, yes — same 10×10 board, 20 seeds each, mandatory majority capture, and flying kings. Nigerian draughts uses local seed terminology and a mirrored board, plus the optional Street Rules toggle.',
+      },
+      {
+        question: 'When is a game a draw?',
+        answer: 'A draw is declared automatically after 25 moves by each player with no capture and no seed-only move.',
+      },
+      {
+        question: 'Can more than 2 people play?',
+        answer:
+          'No — Nigerian Draughts is strictly 2 players. The host can play as one of the two if they want in on the match.',
+      },
+      {
+        question: 'Is this different from International Draughts or regular Checkers?',
+        answer:
+          'Mechanically it is the same 10×10 flying-kings engine as International Draughts — this listing just uses seed terminology, a mirrored board, and an optional Street Rules toggle. Regular Checkers on FateRound is a separate, simpler game: American Checkers on an 8×8 board with short kings and forward-only capture.',
       },
     ],
   }),

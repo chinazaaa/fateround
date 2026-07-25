@@ -43,6 +43,8 @@ export type GameType =
   | 'snake_and_ladder'
   | 'crazy_eights'
   | 'checkers'
+  | 'checkers_international'
+  | 'checkers_nigeria'
   | 'mafia'
   | 'matching_pairs'
   | 'quiplash'
@@ -207,6 +209,34 @@ export interface CheckersSession {
   board: string
   current_turn: CheckersColor
   must_continue_from: string | null
+  red_time_ms: number | null
+  black_time_ms: number | null
+  turn_started_at: string | null
+  last_move_from: string | null
+  last_move_to: string | null
+  result_reason: string | null
+  status: 'active' | 'finished'
+  winner_player_id: string | null
+  is_draw: boolean
+  status_message: string | null
+}
+
+export type Draughts10Variant = 'international' | 'nigeria'
+
+export interface Draughts10Session {
+  id: string
+  game_id: string
+  variant: Draughts10Variant
+  player_red_id: string
+  player_black_id: string
+  /** 100-char board, indexed by row*10 + col. '.' empty, 'r'/'b' man, 'R'/'B' king (flying). */
+  board: string
+  current_turn: CheckersColor
+  must_continue_from: string | null
+  /** Captures still required to complete the majority-rule sequence in progress. */
+  must_continue_remaining: number | null
+  /** Nigeria-only opt-in "street rules" (huffing) room setting. */
+  huffing_enabled: boolean
   red_time_ms: number | null
   black_time_ms: number | null
   turn_started_at: string | null
