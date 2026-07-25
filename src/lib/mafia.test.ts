@@ -84,8 +84,8 @@ const NIGHT_SESSION_BASE: Pick<
 }
 
 describe('assignMafiaRoles', () => {
-  it('fills all 16 roles when everything is enabled and slots allow', () => {
-    const playerIds = ids(16)
+  it('fills all 17 roles when everything is enabled and slots allow', () => {
+    const playerIds = ids(17)
     const assignments = assignMafiaRoles(playerIds, ALL_ENABLED, 4)
     const roles = new Set(Object.values(assignments))
     // mafiaCount=4 with alpha_wolf+wolf_cub each converting one base mafia slot leaves 2 plain 'mafia'
@@ -96,6 +96,7 @@ describe('assignMafiaRoles', () => {
       'doctor',
       'detective',
       'bodyguard',
+      'medium',
       'mayor',
       'vigilante',
       'tracker',
@@ -109,7 +110,7 @@ describe('assignMafiaRoles', () => {
     for (const role of optionalRoles) {
       expect(roles.has(role)).toBe(true)
     }
-    expect(Object.keys(assignments)).toHaveLength(16)
+    expect(Object.keys(assignments)).toHaveLength(17)
   })
 
   it('does not assign alpha_wolf or wolf_cub when mafiaCount < 2', () => {
@@ -131,12 +132,29 @@ describe('assignMafiaRoles', () => {
 })
 
 describe('resolveMafiaNight', () => {
-  it('bodyguard sacrifices themselves when protecting the mafia kill target', () => {
+  it('bodyguard absorbs first hit when protecting the mafia kill target', () => {
     const bodyguard = makeState({ id: 'bg', player_id: 'bg', role: 'bodyguard', night_action_target_player_id: 'v1' })
     const mafia = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'v1' })
     const victim = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
     const result = resolveMafiaNight(NIGHT_SESSION_BASE, [bodyguard, mafia, victim])
+    expect(result.bodyguardSacrificePlayerId).toBeNull()
+    expect(result.bodyguardHitsTaken).toBe(1)
+    expect(result.deaths).toEqual([])
+  })
+
+  it('bodyguard dies on second hit', () => {
+    const bodyguard = makeState({
+      id: 'bg',
+      player_id: 'bg',
+      role: 'bodyguard',
+      night_action_target_player_id: 'v1',
+      bodyguard_hits_taken: 1,
+    })
+    const mafia = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'v1' })
+    const victim = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [bodyguard, mafia, victim])
     expect(result.bodyguardSacrificePlayerId).toBe('bg')
+    expect(result.bodyguardHitsTaken).toBe(2)
     expect(result.deaths).toEqual([{ playerId: 'bg', cause: 'mafia_kill' }])
   })
 
