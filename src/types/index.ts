@@ -314,7 +314,10 @@ export interface Game {
   /** Codewords — operative guess phase timer. */
   operative_timer_seconds?: number | null
   mafia_doctor_enabled?: boolean
+  /** Real Detective — two-player same-team check. */
   mafia_detective_enabled?: boolean
+  /** Single-target alignment reveal, formerly (mis)named Detective. */
+  mafia_aura_seer_enabled?: boolean
   mafia_bodyguard_enabled?: boolean
   mafia_mayor_enabled?: boolean
   mafia_vigilante_enabled?: boolean
@@ -329,8 +332,21 @@ export interface Game {
   mafia_cursed_villager_enabled?: boolean
   mafia_medium_enabled?: boolean
   mafia_priest_enabled?: boolean
+  mafia_witch_enabled?: boolean
+  mafia_little_girl_enabled?: boolean
+  mafia_trapper_enabled?: boolean
+  /** Village Seer toggle — full role reveal (stronger than Aura Seer). */
+  mafia_seer_enabled?: boolean
+  /** Mafia-team Seer toggle — full role reveal, can resign into Regular Mafia. */
+  mafia_mafia_seer_enabled?: boolean
   mafia_anonymous_votes?: boolean
+  /** Single Classic/Advanced switch — replaces individually toggling most optional roles.
+   *  See resolveMafiaRoundToggles() in src/lib/mafia.ts for exactly what this changes. */
+  mafia_advanced_mode?: boolean
   mafia_count?: number | null
+  /** player_id -> role from the last round played in this room — used to bias the next role
+   *  assignment away from repeating anyone's exact same role on Play Again. */
+  mafia_last_roles?: Record<string, MafiaRole> | null
   mafia_day_seconds?: number
   mafia_voting_seconds?: number
   monopoly_double_go_salary?: boolean
@@ -1872,13 +1888,29 @@ export type MafiaRole =
   | 'cursed_villager'
   | 'medium'
   | 'priest'
+  | 'witch'
+  | 'little_girl'
+  | 'trapper'
+  | 'aura_seer'
+  | 'seer'
+  | 'mafia_seer'
 export type MafiaTeam = 'village' | 'mafia' | 'jester' | 'serial_killer' | 'arsonist'
-export type MafiaDeathCause = 'mafia_kill' | 'village_vote' | 'serial_kill' | 'arson' | 'vigilante_kill'
+export type MafiaDeathCause =
+  | 'mafia_kill'
+  | 'village_vote'
+  | 'serial_kill'
+  | 'arson'
+  | 'vigilante_kill'
+  | 'witch_kill'
+  | 'trap_kill'
 export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'day' | 'voting' | 'elimination' | 'game_over'
 
 export interface MafiaRoleEnabledFlags {
   doctor_enabled: boolean
+  /** Wolvesville's actual "Detective" — checks two players each night for same-team membership. */
   detective_enabled: boolean
+  /** The single-target alignment-reveal role, formerly (mis)named Detective on this platform. */
+  aura_seer_enabled: boolean
   bodyguard_enabled: boolean
   mayor_enabled: boolean
   vigilante_enabled: boolean
@@ -1893,6 +1925,14 @@ export interface MafiaRoleEnabledFlags {
   cursed_villager_enabled: boolean
   medium_enabled: boolean
   priest_enabled: boolean
+  witch_enabled: boolean
+  little_girl_enabled: boolean
+  trapper_enabled: boolean
+  /** Village Seer — reveals a target's exact role each night (stronger than Aura Seer). */
+  seer_enabled: boolean
+  /** Mafia-team Seer — reveals a target's exact role each night; can resign to become a
+   *  Regular Mafia (gaining the kill vote, losing the reveal). */
+  mafia_seer_enabled: boolean
 }
 
 export interface MafiaSession extends MafiaRoleEnabledFlags {
@@ -1903,7 +1943,9 @@ export interface MafiaSession extends MafiaRoleEnabledFlags {
   phase_deadline: string | null
   mafia_target_player_id: string | null
   doctor_target_player_id: string | null
-  detect_target_player_id: string | null
+  aura_seer_target_player_id: string | null
+  seer_target_player_id: string | null
+  mafia_seer_target_player_id: string | null
   night_kill_player_id: string | null
   vote_result_player_id: string | null
   serial_kill_player_id: string | null
@@ -1947,6 +1989,9 @@ export interface MafiaPlayerState {
   medium_revive_used: boolean
   bodyguard_hits_taken: number
   priest_holy_water_used: boolean
+  witch_heal_used: boolean
+  witch_kill_used: boolean
+  trapper_trap_player_ids: string[]
   is_lover: boolean
   lover_partner_player_id: string | null
   seat_number: number
@@ -1978,7 +2023,8 @@ export interface MafiaMyState {
   team: MafiaTeam
   nightActionSubmitted: boolean
   dayVoteSubmitted: boolean
-  detectiveResult: { targetName: string; alignment: MafiaTeam } | null
+  auraSeerResult: { targetName: string; alignment: 'good' | 'evil' | 'unknown' } | null
+  detectiveTeamCheckResult?: { targetAName: string; targetBName: string; sameTeam: boolean } | null
   mafiaTeammates: string[] // Only for mafia team members (mafia/alpha_wolf/wolf_cub/framer)
   /** Same set as mafiaTeammates but by player id — lets the roster grid mark each teammate's
    *  tile with the shared mafia symbol and reveal their role, without a separate list panel. */
@@ -1998,9 +2044,19 @@ export interface MafiaMyState {
   mediumReviveRemaining?: number
   mediumGhostChat?: MafiaChatMessage[]
   priestHolyWaterRemaining?: number
+  witchHealRemaining?: number
+  witchKillRemaining?: number
+  trapperTrappedNames?: string[]
+  /** Village Seer's full-role reveal of their last target. */
+  seerResult?: { targetName: string; role: MafiaRole } | null
+  /** Mafia Seer's full-role reveal of their last target (before resigning). */
+  mafiaSeerResult?: { targetName: string; role: MafiaRole } | null
   framerLastTargetName?: string | null
   cupidLinkedNames?: [string, string] | null
   isLover?: boolean
   loverPartnerName?: string | null
+  /** The two Lovers' player ids — populated only for Cupid and the two Lovers themselves, so
+   *  the roster grid can mark their tiles with a heart without exposing it to anyone else. */
+  loverIds?: string[]
   enabledRoles?: MafiaRole[]
 }

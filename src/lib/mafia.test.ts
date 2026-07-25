@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   assignMafiaRoles,
   resolveMafiaNight,
@@ -6,6 +6,8 @@ import {
   checkMafiaWinCondition,
   checkJesterWin,
   checkLoversWin,
+  auraSeerAlignment,
+  resolveMafiaRoundToggles,
   type MafiaRoleToggles,
 } from '@/lib/mafia'
 import type { MafiaPlayerState, MafiaSession, MafiaRole } from '@/types'
@@ -13,6 +15,7 @@ import type { MafiaPlayerState, MafiaSession, MafiaRole } from '@/types'
 const ALL_ENABLED: MafiaRoleToggles = {
   doctor_enabled: true,
   detective_enabled: true,
+  aura_seer_enabled: true,
   bodyguard_enabled: true,
   mayor_enabled: true,
   vigilante_enabled: true,
@@ -27,6 +30,11 @@ const ALL_ENABLED: MafiaRoleToggles = {
   cursed_villager_enabled: true,
   medium_enabled: true,
   priest_enabled: true,
+  witch_enabled: true,
+  little_girl_enabled: true,
+  trapper_enabled: true,
+  seer_enabled: true,
+  mafia_seer_enabled: true,
 }
 const NONE_ENABLED: MafiaRoleToggles = Object.fromEntries(
   Object.keys(ALL_ENABLED).map((k) => [k, false])
@@ -54,6 +62,9 @@ function makeState(overrides: Partial<MafiaPlayerState>): MafiaPlayerState {
     medium_revive_used: false,
     bodyguard_hits_taken: 0,
     priest_holy_water_used: false,
+    witch_heal_used: false,
+    witch_kill_used: false,
+    trapper_trap_player_ids: [],
     is_lover: false,
     lover_partner_player_id: null,
     seat_number: 0,
@@ -66,29 +77,104 @@ function makeState(overrides: Partial<MafiaPlayerState>): MafiaPlayerState {
 const NIGHT_SESSION_BASE: Pick<
   MafiaSession,
   | 'doctor_enabled'
-  | 'detective_enabled'
+  | 'aura_seer_enabled'
   | 'bodyguard_enabled'
   | 'tracker_enabled'
   | 'framer_enabled'
   | 'serial_killer_enabled'
   | 'arsonist_enabled'
   | 'medium_enabled'
+  | 'witch_enabled'
+  | 'little_girl_enabled'
+  | 'trapper_enabled'
+  | 'seer_enabled'
+  | 'mafia_seer_enabled'
   | 'wolf_cub_revenge_pending'
 > = {
   doctor_enabled: true,
-  detective_enabled: true,
+  aura_seer_enabled: true,
   bodyguard_enabled: true,
   tracker_enabled: true,
   framer_enabled: true,
   serial_killer_enabled: true,
   arsonist_enabled: true,
   medium_enabled: true,
+  witch_enabled: true,
+  little_girl_enabled: true,
+  trapper_enabled: true,
+  seer_enabled: true,
+  mafia_seer_enabled: true,
   wolf_cub_revenge_pending: false,
 }
 
+describe('resolveMafiaRoundToggles', () => {
+  it('always includes the fixed core roles', () => {
+    for (const advanced of [false, true]) {
+      const toggles = resolveMafiaRoundToggles(advanced)
+      expect(toggles.doctor_enabled).toBe(true)
+      expect(toggles.mayor_enabled).toBe(true)
+      expect(toggles.cupid_enabled).toBe(true)
+      expect(toggles.cursed_villager_enabled).toBe(true)
+      expect(toggles.jester_enabled).toBe(true)
+      expect(toggles.medium_enabled).toBe(true)
+      expect(toggles.mafia_seer_enabled).toBe(true)
+    }
+  })
+
+  it('never enables all three investigators at once, always exactly two', () => {
+    for (let i = 0; i < 25; i++) {
+      const toggles = resolveMafiaRoundToggles(false)
+      const investigatorCount = [toggles.aura_seer_enabled, toggles.seer_enabled, toggles.detective_enabled].filter(
+        Boolean
+      ).length
+      expect(investigatorCount).toBe(2)
+    }
+  })
+
+  it('swaps Bodyguard/Serial Killer/Priest for Trapper/Arsonist/Vigilante in Advanced mode', () => {
+    const classic = resolveMafiaRoundToggles(false)
+    expect(classic.bodyguard_enabled).toBe(true)
+    expect(classic.trapper_enabled).toBe(false)
+    expect(classic.serial_killer_enabled).toBe(true)
+    expect(classic.arsonist_enabled).toBe(false)
+    expect(classic.priest_enabled).toBe(true)
+    expect(classic.vigilante_enabled).toBe(false)
+    expect(classic.witch_enabled).toBe(false)
+    expect(classic.little_girl_enabled).toBe(false)
+
+    const advanced = resolveMafiaRoundToggles(true)
+    expect(advanced.bodyguard_enabled).toBe(false)
+    expect(advanced.trapper_enabled).toBe(true)
+    expect(advanced.serial_killer_enabled).toBe(false)
+    expect(advanced.arsonist_enabled).toBe(true)
+    expect(advanced.priest_enabled).toBe(false)
+    expect(advanced.vigilante_enabled).toBe(true)
+    expect(advanced.witch_enabled).toBe(true)
+    expect(advanced.little_girl_enabled).toBe(true)
+  })
+
+  it('Detective becomes Tracker in Advanced mode, never both, and still exactly 2 investigators', () => {
+    for (let i = 0; i < 25; i++) {
+      const toggles = resolveMafiaRoundToggles(true)
+      expect(toggles.detective_enabled).toBe(false)
+      const investigatorSlotCount = [toggles.aura_seer_enabled, toggles.seer_enabled, toggles.tracker_enabled].filter(
+        Boolean
+      ).length
+      expect(investigatorSlotCount).toBe(2)
+    }
+  })
+
+  it('never enables both Wolf Cub and Framer in the same game', () => {
+    for (let i = 0; i < 25; i++) {
+      const toggles = resolveMafiaRoundToggles(false)
+      expect(toggles.wolf_cub_enabled && toggles.framer_enabled).toBe(false)
+    }
+  })
+})
+
 describe('assignMafiaRoles', () => {
-  it('fills all 18 roles when everything is enabled and slots allow', () => {
-    const playerIds = ids(18)
+  it('fills all 24 roles when everything is enabled and slots allow', () => {
+    const playerIds = ids(24)
     const assignments = assignMafiaRoles(playerIds, ALL_ENABLED, 4)
     const roles = new Set(Object.values(assignments))
     // mafiaCount=4 with alpha_wolf+wolf_cub each converting one base mafia slot leaves 2 plain 'mafia'
@@ -97,6 +183,7 @@ describe('assignMafiaRoles', () => {
     expect(roles.has('mafia')).toBe(true)
     const optionalRoles: MafiaRole[] = [
       'doctor',
+      'aura_seer',
       'detective',
       'bodyguard',
       'medium',
@@ -110,11 +197,16 @@ describe('assignMafiaRoles', () => {
       'cupid',
       'cursed_villager',
       'priest',
+      'witch',
+      'little_girl',
+      'trapper',
+      'seer',
+      'mafia_seer',
     ]
     for (const role of optionalRoles) {
       expect(roles.has(role)).toBe(true)
     }
-    expect(Object.keys(assignments)).toHaveLength(18)
+    expect(Object.keys(assignments)).toHaveLength(24)
   })
 
   it('does not assign alpha_wolf or wolf_cub when mafiaCount < 2', () => {
@@ -132,6 +224,62 @@ describe('assignMafiaRoles', () => {
     const roles = Object.values(assignments)
     expect(roles.filter((r) => r === 'mafia')).toHaveLength(1)
     expect(roles.filter((r) => r === 'villager')).toHaveLength(4)
+  })
+
+  it('swaps away from repeating the exact same role for the same player on the next round', () => {
+    const playerIds = ids(5)
+    // Force the RNG so the shuffle is deterministic, then find who it hands mafia to.
+    const originalRandom = Math.random
+    Math.random = () => 0
+    try {
+      const withoutAvoid = assignMafiaRoles(playerIds, NONE_ENABLED, 1)
+      const repeatMafiaId = Object.keys(withoutAvoid).find((id) => withoutAvoid[id] === 'mafia')!
+      expect(repeatMafiaId).toBeDefined()
+
+      const withAvoid = assignMafiaRoles(playerIds, NONE_ENABLED, 1, { [repeatMafiaId]: 'mafia' })
+      expect(withAvoid[repeatMafiaId]).not.toBe('mafia')
+      expect(Object.values(withAvoid).filter((r) => r === 'mafia')).toHaveLength(1)
+    } finally {
+      Math.random = originalRandom
+    }
+  })
+
+  it('the fairness pass never changes the overall role composition', () => {
+    const playerIds = ids(3)
+    const lastRoles = assignMafiaRoles(playerIds, NONE_ENABLED, 1)
+    const assignments = assignMafiaRoles(playerIds, NONE_ENABLED, 1, lastRoles)
+    expect(Object.values(assignments).filter((r) => r === 'mafia')).toHaveLength(1)
+    expect(Object.values(assignments).filter((r) => r === 'villager')).toHaveLength(2)
+  })
+})
+
+describe('resolveMafiaNight — Seer / Mafia Seer', () => {
+  it('reveals the Seer and Mafia Seer targets', () => {
+    const seer = makeState({ id: 's', player_id: 's', role: 'seer', night_action_target_player_id: 'v1' })
+    const mafiaSeer = makeState({
+      id: 'ms',
+      player_id: 'ms',
+      role: 'mafia_seer',
+      night_action_target_player_id: 'v2',
+    })
+    const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+    const v2 = makeState({ id: 'v2', player_id: 'v2', role: 'doctor' })
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [seer, mafiaSeer, v1, v2])
+    expect(result.seerTarget).toBe('v1')
+    expect(result.mafiaSeerTarget).toBe('v2')
+  })
+
+  it('Mafia Seer does not count toward the Mafia kill vote unless resigned', () => {
+    const mafiaSeer = makeState({
+      id: 'ms',
+      player_id: 'ms',
+      role: 'mafia_seer',
+      night_action_target_player_id: 'v1', // this is a seer pick, not a kill vote
+    })
+    const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [mafiaSeer, v1])
+    expect(result.mafiaTarget).toBeNull()
+    expect(result.deaths).toEqual([])
   })
 })
 
@@ -180,6 +328,93 @@ describe('resolveMafiaNight', () => {
     const result = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, cursed])
     expect(result.cursedConvertedPlayerId).toBe('cv')
     expect(result.deaths).toHaveLength(0)
+  })
+
+  it('witch heal potion blocks the mafia kill (only consumed if it actually saves) and kill potion is unblockable', () => {
+    const mafia = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'v1' })
+    const witch = makeState({
+      id: 'w',
+      player_id: 'w',
+      role: 'witch',
+      night_action_target_player_id: 'v2',
+      night_action_target_player_id_2: 'v1',
+    })
+    const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+    const v2 = makeState({ id: 'v2', player_id: 'v2', role: 'villager' })
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, witch, v1, v2])
+    const ids = result.deaths.map((d) => d.playerId).sort()
+    expect(ids).toEqual(['v2'])
+    expect(result.deaths.find((d) => d.playerId === 'v2')?.cause).toBe('witch_kill')
+    expect(result.witchHealActuallySaved).toBe(true)
+
+    // A heal on a player who wasn't attacked should NOT report as consumed.
+    const witchWhiff = makeState({ id: 'w', player_id: 'w', role: 'witch', night_action_target_player_id_2: 'v2' })
+    const whiffResult = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, witchWhiff, v1, v2])
+    expect(whiffResult.witchHealActuallySaved).toBe(false)
+  })
+
+  it('trapper blocks the mafia kill only once activated and kills the weakest living mafia member', () => {
+    const mafia = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'v1' })
+    const alpha = makeState({ id: 'a1', player_id: 'a1', role: 'alpha_wolf' })
+    const trapper = makeState({
+      id: 't',
+      player_id: 't',
+      role: 'trapper',
+      night_action_target_player_id: 't', // self-target = activate
+      trapper_trap_player_ids: ['v1'],
+    })
+    const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, alpha, trapper, v1])
+    expect(result.deaths.map((d) => d.playerId).sort()).toEqual(['m1'])
+    expect(result.deaths.find((d) => d.playerId === 'm1')?.cause).toBe('trap_kill')
+    expect(result.trapperActivated).toBe(true)
+    expect(result.trapperBlockedPlayerIds).toEqual(['v1'])
+    expect(result.trapperKilledMafiaId).toBe('m1')
+  })
+
+  it('trapper set (not activated) does not protect anyone that night', () => {
+    const mafia = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'v1' })
+    const trapper = makeState({ id: 't', player_id: 't', role: 'trapper', night_action_target_player_id: 'v1' })
+    const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, trapper, v1])
+    expect(result.trapperActivated).toBe(false)
+    expect(result.deaths.map((d) => d.playerId)).toEqual(['v1'])
+  })
+
+  it('little girl only peeks if she opens her eyes, with a 20% detect / 5% caught split', () => {
+    const mafia = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'v1' })
+    const littleGirl = makeState({
+      id: 'lg',
+      player_id: 'lg',
+      role: 'little_girl',
+      night_action_target_player_id: 'lg', // self-target = open eyes
+    })
+    const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+
+    const nothingRoll = vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    const nothingResult = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, littleGirl, v1])
+    expect(nothingResult.littleGirlOpenedEyes).toBe(true)
+    expect(nothingResult.littleGirlOutcome).toBe('none')
+    expect(nothingResult.deaths.map((d) => d.playerId)).not.toContain('lg')
+    nothingRoll.mockRestore()
+
+    const detectRoll = vi.spyOn(Math, 'random').mockReturnValue(0.1)
+    const detectResult = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, littleGirl, v1])
+    expect(detectResult.littleGirlOutcome).toBe('detected')
+    expect(detectResult.littleGirlDetectedMafiaId).toBe('m1')
+    detectRoll.mockRestore()
+
+    const caughtRoll = vi.spyOn(Math, 'random').mockReturnValue(0.01)
+    const caughtResult = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, littleGirl, v1])
+    expect(caughtResult.littleGirlOutcome).toBe('caught')
+    expect(caughtResult.deaths.map((d) => d.playerId)).toContain('lg')
+    caughtRoll.mockRestore()
+
+    // Didn't open her eyes — no outcome at all.
+    const passiveGirl = makeState({ id: 'lg', player_id: 'lg', role: 'little_girl' })
+    const passiveResult = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, passiveGirl, v1])
+    expect(passiveResult.littleGirlOpenedEyes).toBe(false)
+    expect(passiveResult.littleGirlOutcome).toBeNull()
   })
 
   it('sets wolfCubDiedThisNight when the wolf cub is killed', () => {
@@ -243,6 +478,38 @@ describe('checkJesterWin', () => {
     expect(checkJesterWin('j', [jester, villager])).toBe(true)
     expect(checkJesterWin('v', [jester, villager])).toBe(false)
     expect(checkJesterWin(null, [jester, villager])).toBe(false)
+  })
+})
+
+describe('auraSeerAlignment', () => {
+  it('reads Mafia team as evil', () => {
+    expect(auraSeerAlignment('mafia', false)).toBe('evil')
+    expect(auraSeerAlignment('alpha_wolf', false)).toBe('evil')
+    expect(auraSeerAlignment('wolf_cub', false)).toBe('evil')
+    expect(auraSeerAlignment('framer', false)).toBe('evil')
+  })
+
+  it('reads solo killers/voters and kill-or-revive village roles as unknown', () => {
+    expect(auraSeerAlignment('serial_killer', false)).toBe('unknown')
+    expect(auraSeerAlignment('arsonist', false)).toBe('unknown')
+    expect(auraSeerAlignment('jester', false)).toBe('unknown')
+    expect(auraSeerAlignment('vigilante', false)).toBe('unknown')
+    expect(auraSeerAlignment('medium', false)).toBe('unknown')
+    expect(auraSeerAlignment('witch', false)).toBe('unknown')
+    expect(auraSeerAlignment('trapper', false)).toBe('unknown')
+  })
+
+  it('reads everyone else as good, including the Priest despite killing Mafia', () => {
+    expect(auraSeerAlignment('villager', false)).toBe('good')
+    expect(auraSeerAlignment('doctor', false)).toBe('good')
+    expect(auraSeerAlignment('priest', false)).toBe('good')
+    expect(auraSeerAlignment('bodyguard', false)).toBe('good')
+    expect(auraSeerAlignment('detective', false)).toBe('good')
+  })
+
+  it('a framed target always reads evil regardless of their real role', () => {
+    expect(auraSeerAlignment('villager', true)).toBe('evil')
+    expect(auraSeerAlignment('serial_killer', true)).toBe('evil')
   })
 })
 

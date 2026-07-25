@@ -1211,22 +1211,10 @@ export async function POST(req: NextRequest) {
                               }
                             : isMafiaGame(game_type)
                               ? {
-                                  mafia_doctor_enabled: parsed.data.mafia_doctor_enabled !== false,
-                                  mafia_detective_enabled: parsed.data.mafia_detective_enabled !== false,
-                                  // Classic = the full 16-role roster, so all optional roles default ON
-                                  // unless the host explicitly customized one off via the Advanced checklist.
-                                  mafia_bodyguard_enabled: parsed.data.mafia_bodyguard_enabled !== false,
-                                  mafia_mayor_enabled: parsed.data.mafia_mayor_enabled !== false,
-                                  mafia_vigilante_enabled: parsed.data.mafia_vigilante_enabled !== false,
-                                  mafia_tracker_enabled: parsed.data.mafia_tracker_enabled !== false,
-                                  mafia_alpha_wolf_enabled: parsed.data.mafia_alpha_wolf_enabled !== false,
-                                  mafia_wolf_cub_enabled: parsed.data.mafia_wolf_cub_enabled !== false,
-                                  mafia_framer_enabled: parsed.data.mafia_framer_enabled !== false,
-                                  mafia_jester_enabled: parsed.data.mafia_jester_enabled !== false,
-                                  mafia_serial_killer_enabled: parsed.data.mafia_serial_killer_enabled !== false,
-                                  mafia_arsonist_enabled: parsed.data.mafia_arsonist_enabled !== false,
-                                  mafia_cupid_enabled: parsed.data.mafia_cupid_enabled !== false,
-                                  mafia_cursed_villager_enabled: parsed.data.mafia_cursed_villager_enabled !== false,
+                                  // Role selection is automatic (see resolveMafiaRoundToggles in
+                                  // @/lib/mafia) — the only role-affecting setting left is this
+                                  // single Classic/Advanced switch.
+                                  mafia_advanced_mode: parsed.data.mafia_advanced_mode === true,
                                   mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
                                   ...(parsed.data.mafia_day_seconds !== undefined
                                     ? { mafia_day_seconds: parsed.data.mafia_day_seconds }

@@ -10,13 +10,14 @@ import type {
   MafiaPhase,
   MafiaChatMessage,
 } from '@/types'
-import { mafiaRoleTeam } from '@/lib/mafia'
+import { mafiaRoleTeam, auraSeerAlignment } from '@/lib/mafia'
 
-const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer']
+const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer', 'mafia_seer']
 
 const ROLE_ENABLED_KEYS = [
   'doctor_enabled',
   'detective_enabled',
+  'aura_seer_enabled',
   'bodyguard_enabled',
   'mayor_enabled',
   'vigilante_enabled',
@@ -31,6 +32,11 @@ const ROLE_ENABLED_KEYS = [
   'cursed_villager_enabled',
   'medium_enabled',
   'priest_enabled',
+  'witch_enabled',
+  'little_girl_enabled',
+  'trapper_enabled',
+  'seer_enabled',
+  'mafia_seer_enabled',
 ] as const
 
 function enabledRolesFrom(session: Pick<MafiaSession, (typeof ROLE_ENABLED_KEYS)[number]>): MafiaRole[] {
@@ -38,6 +44,7 @@ function enabledRolesFrom(session: Pick<MafiaSession, (typeof ROLE_ENABLED_KEYS)
   const map: Record<(typeof ROLE_ENABLED_KEYS)[number], MafiaRole> = {
     doctor_enabled: 'doctor',
     detective_enabled: 'detective',
+    aura_seer_enabled: 'aura_seer',
     bodyguard_enabled: 'bodyguard',
     mayor_enabled: 'mayor',
     vigilante_enabled: 'vigilante',
@@ -52,6 +59,11 @@ function enabledRolesFrom(session: Pick<MafiaSession, (typeof ROLE_ENABLED_KEYS)
     cursed_villager_enabled: 'cursed_villager',
     medium_enabled: 'medium',
     priest_enabled: 'priest',
+    witch_enabled: 'witch',
+    little_girl_enabled: 'little_girl',
+    trapper_enabled: 'trapper',
+    seer_enabled: 'seer',
+    mafia_seer_enabled: 'mafia_seer',
   }
   for (const key of ROLE_ENABLED_KEYS) {
     if (session[key]) roles.push(map[key])
@@ -107,6 +119,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         phaseDeadline: null,
         doctorEnabled: true,
         detectiveEnabled: true,
+        auraSeerEnabled: true,
         anonymousVotes: true,
         winningTeam: null,
         players: publicPlayers,
@@ -114,7 +127,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         lastNightMafiaHadTarget: false,
         lastVoteResultPlayerId: null,
         voteTallies: {},
-        enabledRoles: ['villager', 'mafia', 'doctor', 'detective'],
+        enabledRoles: ['villager', 'mafia', 'doctor', 'aura_seer'],
         myState: null,
       })
     }
@@ -185,17 +198,64 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       return seat != null ? `#${seat} ${name}` : name
     }
 
-    // Detective result — honors Framer's frame (reads as 'mafia' if framed that night)
-    let detectiveResult: MafiaMyState['detectiveResult'] = null
-    if (role === 'detective' && session.detect_target_player_id) {
-      const targetState = playerStates.find((p) => p.player_id === session.detect_target_player_id)
-      const targetPlayer = playersData?.find((p) => p.id === session.detect_target_player_id)
+    // Aura Seer result — Good/Evil/Unknown, honors Framer's frame (always reads Evil if framed)
+    let auraSeerResult: MafiaMyState['auraSeerResult'] = null
+    if (role === 'aura_seer' && session.aura_seer_target_player_id) {
+      const targetState = playerStates.find((p) => p.player_id === session.aura_seer_target_player_id)
+      const targetPlayer = playersData?.find((p) => p.id === session.aura_seer_target_player_id)
       if (targetState && targetPlayer) {
-        const framed = session.framed_player_id === session.detect_target_player_id
-        detectiveResult = {
+        const framed = session.framed_player_id === session.aura_seer_target_player_id
+        auraSeerResult = {
           targetName: seatLabel(targetPlayer.id, targetPlayer.name),
-          alignment: framed ? 'mafia' : mafiaRoleTeam(targetState.role),
+          alignment: auraSeerAlignment(targetState.role, framed),
         }
+      }
+    }
+
+    // Detective result — checks two players for same-team membership, honoring the Framer's
+    // frame on either target. Only shown after the night resolves (picks are made THIS night).
+    let detectiveTeamCheckResult: MafiaMyState['detectiveTeamCheckResult'] = null
+    if (
+      role === 'detective' &&
+      session.phase !== 'night' &&
+      myPlayerState.night_action_target_player_id &&
+      myPlayerState.night_action_target_player_id_2
+    ) {
+      const aId = myPlayerState.night_action_target_player_id
+      const bId = myPlayerState.night_action_target_player_id_2
+      const aState = playerStates.find((p) => p.player_id === aId)
+      const bState = playerStates.find((p) => p.player_id === bId)
+      const aPlayer = playersData?.find((p) => p.id === aId)
+      const bPlayer = playersData?.find((p) => p.id === bId)
+      if (aState && bState && aPlayer && bPlayer) {
+        const teamOf = (playerId: string, state: MafiaPlayerState) =>
+          session.framed_player_id === playerId ? 'mafia' : mafiaRoleTeam(state.role)
+        detectiveTeamCheckResult = {
+          targetAName: seatLabel(aPlayer.id, aPlayer.name),
+          targetBName: seatLabel(bPlayer.id, bPlayer.name),
+          sameTeam: teamOf(aId, aState) === teamOf(bId, bState),
+        }
+      }
+    }
+
+    // Seer result — full role reveal, village-aligned, no restrictions
+    let seerResult: MafiaMyState['seerResult'] = null
+    if (role === 'seer' && session.seer_target_player_id) {
+      const targetState = playerStates.find((p) => p.player_id === session.seer_target_player_id)
+      const targetPlayer = playersData?.find((p) => p.id === session.seer_target_player_id)
+      if (targetState && targetPlayer) {
+        seerResult = { targetName: seatLabel(targetPlayer.id, targetPlayer.name), role: targetState.role }
+      }
+    }
+
+    // Mafia Seer result — full role reveal (nothing auto-shared with the crew; they relay it
+    // themselves via the secret chat)
+    let mafiaSeerResult: MafiaMyState['mafiaSeerResult'] = null
+    if (role === 'mafia_seer' && session.mafia_seer_target_player_id) {
+      const targetState = playerStates.find((p) => p.player_id === session.mafia_seer_target_player_id)
+      const targetPlayer = playersData?.find((p) => p.id === session.mafia_seer_target_player_id)
+      if (targetState && targetPlayer) {
+        mafiaSeerResult = { targetName: seatLabel(targetPlayer.id, targetPlayer.name), role: targetState.role }
       }
     }
 
@@ -260,6 +320,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     const mediumReviveRemaining = role === 'medium' ? (myPlayerState.medium_revive_used ? 0 : 1) : undefined
     const priestHolyWaterRemaining = role === 'priest' ? (myPlayerState.priest_holy_water_used ? 0 : 1) : undefined
+    const witchHealRemaining = role === 'witch' ? (myPlayerState.witch_heal_used ? 0 : 1) : undefined
+    const witchKillRemaining = role === 'witch' ? (myPlayerState.witch_kill_used ? 0 : 1) : undefined
+
+    let trapperTrappedNames: MafiaMyState['trapperTrappedNames'] = undefined
+    if (role === 'trapper') {
+      const trappedIds = myPlayerState.trapper_trap_player_ids ?? []
+      trapperTrappedNames = trappedIds.map((id) => {
+        const p = playersData?.find((pd) => pd.id === id)
+        return p ? seatLabel(p.id, p.name) : 'Unknown'
+      })
+    }
 
     let mediumGhostChat: MafiaMyState['mediumGhostChat'] = undefined
     if (role === 'medium' && myPlayerState.is_alive && session.phase === 'night') {
@@ -303,6 +374,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     const loverPartner = isLover ? playersData?.find((p) => p.id === myPlayerState!.lover_partner_player_id) : undefined
     const loverPartnerName = isLover ? (loverPartner ? seatLabel(loverPartner.id, loverPartner.name) : null) : null
 
+    // Lover ids for the roster grid's heart badge — only visible to Cupid and the two Lovers
+    // themselves, so their tiles are marked for people who already know, without outing them.
+    let loverIds: MafiaMyState['loverIds'] = undefined
+    if (session.cupid_lover_ids) {
+      const [aId, bId] = session.cupid_lover_ids
+      if (role === 'cupid' || myPlayerState.player_id === aId || myPlayerState.player_id === bId) {
+        loverIds = [aId, bId]
+      }
+    }
+
     // Mafia secret chat — persistent across all phases for alive wolf-team members
     let mafiaChatMessages: MafiaMyState['mafiaChatMessages'] = undefined
     if (MAFIA_TEAM_ROLES.includes(role) && myPlayerState.is_alive) {
@@ -330,7 +411,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       team,
       nightActionSubmitted: !!myPlayerState.night_action_target_player_id,
       dayVoteSubmitted: !!myPlayerState.day_vote_target_player_id,
-      detectiveResult,
+      auraSeerResult,
+      detectiveTeamCheckResult,
+      seerResult,
+      mafiaSeerResult,
       mafiaTeammates,
       mafiaTeammateIds,
       mafiaTeammateRoles,
@@ -344,11 +428,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       vigilanteRevealResult,
       mediumReviveRemaining,
       priestHolyWaterRemaining,
+      witchHealRemaining,
+      witchKillRemaining,
+      trapperTrappedNames,
       mediumGhostChat,
       framerLastTargetName,
       cupidLinkedNames,
       isLover,
       loverPartnerName,
+      loverIds,
       enabledRoles: enabledRolesFrom(session),
     }
   }
@@ -453,6 +541,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     phaseDeadline: session.phase_deadline,
     doctorEnabled: session.doctor_enabled,
     detectiveEnabled: session.detective_enabled,
+    auraSeerEnabled: session.aura_seer_enabled,
     anonymousVotes: session.anonymous_votes,
     winningTeam: session.winning_team,
     players: publicPlayers,

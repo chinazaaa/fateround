@@ -151,6 +151,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mahjong_rule_options,
     mafia_doctor_enabled,
     mafia_detective_enabled,
+    mafia_aura_seer_enabled,
+    mafia_medium_enabled,
+    mafia_priest_enabled,
+    mafia_witch_enabled,
+    mafia_little_girl_enabled,
+    mafia_trapper_enabled,
+    mafia_seer_enabled,
+    mafia_mafia_seer_enabled,
     mafia_bodyguard_enabled,
     mafia_mayor_enabled,
     mafia_vigilante_enabled,
@@ -164,6 +172,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mafia_cupid_enabled,
     mafia_cursed_villager_enabled,
     mafia_anonymous_votes,
+    mafia_advanced_mode,
     mafia_day_seconds,
     mafia_voting_seconds,
     operative_timer_seconds,
@@ -216,6 +225,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mahjong_rule_options === undefined &&
     mafia_doctor_enabled === undefined &&
     mafia_detective_enabled === undefined &&
+    mafia_aura_seer_enabled === undefined &&
+    mafia_medium_enabled === undefined &&
+    mafia_priest_enabled === undefined &&
+    mafia_witch_enabled === undefined &&
+    mafia_little_girl_enabled === undefined &&
+    mafia_trapper_enabled === undefined &&
+    mafia_seer_enabled === undefined &&
+    mafia_mafia_seer_enabled === undefined &&
     mafia_bodyguard_enabled === undefined &&
     mafia_mayor_enabled === undefined &&
     mafia_vigilante_enabled === undefined &&
@@ -229,6 +246,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mafia_cupid_enabled === undefined &&
     mafia_cursed_villager_enabled === undefined &&
     mafia_anonymous_votes === undefined &&
+    mafia_advanced_mode === undefined &&
     mafia_day_seconds === undefined &&
     mafia_voting_seconds === undefined &&
     operative_timer_seconds === undefined &&
@@ -612,6 +630,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (timedLobbyType === 'mafia') {
     if (mafia_doctor_enabled !== undefined) gameUpdate.mafia_doctor_enabled = mafia_doctor_enabled
     if (mafia_detective_enabled !== undefined) gameUpdate.mafia_detective_enabled = mafia_detective_enabled
+    if (mafia_aura_seer_enabled !== undefined) gameUpdate.mafia_aura_seer_enabled = mafia_aura_seer_enabled
+    if (mafia_medium_enabled !== undefined) gameUpdate.mafia_medium_enabled = mafia_medium_enabled
+    if (mafia_priest_enabled !== undefined) gameUpdate.mafia_priest_enabled = mafia_priest_enabled
+    if (mafia_witch_enabled !== undefined) gameUpdate.mafia_witch_enabled = mafia_witch_enabled
+    if (mafia_little_girl_enabled !== undefined) gameUpdate.mafia_little_girl_enabled = mafia_little_girl_enabled
+    if (mafia_trapper_enabled !== undefined) gameUpdate.mafia_trapper_enabled = mafia_trapper_enabled
+    if (mafia_seer_enabled !== undefined) gameUpdate.mafia_seer_enabled = mafia_seer_enabled
+    if (mafia_mafia_seer_enabled !== undefined) gameUpdate.mafia_mafia_seer_enabled = mafia_mafia_seer_enabled
     if (mafia_bodyguard_enabled !== undefined) gameUpdate.mafia_bodyguard_enabled = mafia_bodyguard_enabled
     if (mafia_mayor_enabled !== undefined) gameUpdate.mafia_mayor_enabled = mafia_mayor_enabled
     if (mafia_vigilante_enabled !== undefined) gameUpdate.mafia_vigilante_enabled = mafia_vigilante_enabled
@@ -627,11 +653,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.mafia_cursed_villager_enabled = mafia_cursed_villager_enabled
     }
     if (mafia_anonymous_votes !== undefined) gameUpdate.mafia_anonymous_votes = mafia_anonymous_votes
+    if (mafia_advanced_mode !== undefined) gameUpdate.mafia_advanced_mode = mafia_advanced_mode
     if (mafia_day_seconds !== undefined) gameUpdate.mafia_day_seconds = mafia_day_seconds
     if (mafia_voting_seconds !== undefined) gameUpdate.mafia_voting_seconds = mafia_voting_seconds
   } else if (
     mafia_doctor_enabled !== undefined ||
     mafia_detective_enabled !== undefined ||
+    mafia_aura_seer_enabled !== undefined ||
+    mafia_medium_enabled !== undefined ||
+    mafia_priest_enabled !== undefined ||
+    mafia_witch_enabled !== undefined ||
+    mafia_little_girl_enabled !== undefined ||
+    mafia_trapper_enabled !== undefined ||
+    mafia_seer_enabled !== undefined ||
+    mafia_mafia_seer_enabled !== undefined ||
     mafia_bodyguard_enabled !== undefined ||
     mafia_mayor_enabled !== undefined ||
     mafia_vigilante_enabled !== undefined ||
@@ -645,6 +680,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mafia_cupid_enabled !== undefined ||
     mafia_cursed_villager_enabled !== undefined ||
     mafia_anonymous_votes !== undefined ||
+    mafia_advanced_mode !== undefined ||
     mafia_day_seconds !== undefined ||
     mafia_voting_seconds !== undefined
   ) {

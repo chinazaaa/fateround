@@ -5,7 +5,7 @@ export const MAFIA_MIN_PLAYERS = 5
 export const MAFIA_MAX_PLAYERS = 16
 export const MAFIA_DEFAULT_MAX_PLAYERS = 16
 
-const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer']
+const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer', 'mafia_seer']
 
 /**
  * Derives which team a role belongs to. Cursed Villager starts on 'village' — on
@@ -18,6 +18,31 @@ export function mafiaRoleTeam(role: MafiaRole): MafiaTeam {
   if (role === 'serial_killer') return 'serial_killer'
   if (role === 'arsonist') return 'arsonist'
   return 'village'
+}
+
+export type AuraSeerAlignment = 'good' | 'evil' | 'unknown'
+
+// Roles the Aura Seer reads as "Unknown" rather than Good — Solo killers/voters and any
+// Village-aligned role that can itself kill or revive, per Wolvesville's actual rule (which
+// carves out the Priest as an explicit exception, staying Good despite killing Mafia).
+const AURA_SEER_UNKNOWN_ROLES: MafiaRole[] = [
+  'serial_killer',
+  'arsonist',
+  'jester',
+  'vigilante',
+  'medium',
+  'witch',
+  'trapper',
+]
+
+/**
+ * Aura Seer's actual reveal — Good/Evil/Unknown, not a plain Village/Mafia binary. A framed
+ * target always reads Evil, matching the Framer's effect on the old binary check.
+ */
+export function auraSeerAlignment(role: MafiaRole, framed: boolean): AuraSeerAlignment {
+  if (framed || MAFIA_TEAM_ROLES.includes(role)) return 'evil'
+  if (AURA_SEER_UNKNOWN_ROLES.includes(role)) return 'unknown'
+  return 'good'
 }
 
 /**
@@ -41,10 +66,59 @@ export type MafiaRoleToggles = MafiaRoleEnabledFlags
  * roles are additive: pushed onto the role pool only if a slot remains, same pattern
  * as the original Doctor/Detective toggles. Remaining slots are filled with Villager.
  */
+/**
+ * Computes this round's per-role toggles automatically — replaces the old long checklist of
+ * individual host toggles with a single Classic/Advanced switch plus built-in variety:
+ *
+ * - A fixed set of roles is always in: Doctor, Mayor, Cupid, Cursed Villager, Jester, Medium,
+ *   Mafia Seer (no toggle, no rotation).
+ * - The investigator trio (Aura Seer, Seer, Detective) never all appear together — exactly 2
+ *   of the 3 are picked at random each game.
+ * - Classic/Advanced swap pairs: Bodyguard↔Trapper, Serial Killer↔Arsonist, Priest↔Vigilante.
+ *   Detective, if it wins the investigator slot, becomes Tracker in Advanced mode.
+ * - Witch and Little Girl have no Classic counterpart — only available in Advanced mode.
+ * - Mafia specialists: Alpha Wolf is independently ~70% likely (still needs mafiaCount >= 2 to
+ *   actually apply); Wolf Cub and Framer are mutually exclusive, never both in the same game.
+ */
+export function resolveMafiaRoundToggles(advancedMode: boolean): MafiaRoleToggles {
+  const investigators: MafiaRole[] = ['aura_seer', 'seer', 'detective']
+  const excludedInvestigator = investigators[Math.floor(Math.random() * investigators.length)]
+  const hasInvestigator = (role: MafiaRole) => role !== excludedInvestigator
+
+  const alphaWolfIn = Math.random() < 0.7
+  const wolfCubOrFramer: MafiaRole = Math.random() < 0.5 ? 'wolf_cub' : 'framer'
+
+  return {
+    doctor_enabled: true,
+    mayor_enabled: true,
+    cupid_enabled: true,
+    cursed_villager_enabled: true,
+    jester_enabled: true,
+    medium_enabled: true,
+    mafia_seer_enabled: true,
+    aura_seer_enabled: hasInvestigator('aura_seer'),
+    seer_enabled: hasInvestigator('seer'),
+    detective_enabled: hasInvestigator('detective') && !advancedMode,
+    tracker_enabled: hasInvestigator('detective') && advancedMode,
+    bodyguard_enabled: !advancedMode,
+    trapper_enabled: advancedMode,
+    serial_killer_enabled: !advancedMode,
+    arsonist_enabled: advancedMode,
+    priest_enabled: !advancedMode,
+    vigilante_enabled: advancedMode,
+    witch_enabled: advancedMode,
+    little_girl_enabled: advancedMode,
+    alpha_wolf_enabled: alphaWolfIn,
+    wolf_cub_enabled: wolfCubOrFramer === 'wolf_cub',
+    framer_enabled: wolfCubOrFramer === 'framer',
+  }
+}
+
 export function assignMafiaRoles(
   playerIds: string[],
   toggles: MafiaRoleToggles,
-  mafiaCountOverride?: number
+  mafiaCountOverride?: number,
+  lastRoleByPlayerId?: Record<string, MafiaRole>
 ): Record<string, MafiaRole> {
   const playerCount = playerIds.length
   const mafiaCount =
@@ -69,12 +143,17 @@ export function assignMafiaRoles(
     if (enabled && roles.length < playerCount) roles.push(role)
   }
 
-  // Core village roles (appear every game when enabled)
+  // Core village roles (appear every game when enabled) — Aura Seer and Detective are not
+  // exposed as host toggles at all (like Doctor), so they're always in the pool given room.
   pushIfRoom('doctor', toggles.doctor_enabled)
+  pushIfRoom('aura_seer', toggles.aura_seer_enabled)
   pushIfRoom('detective', toggles.detective_enabled)
   pushIfRoom('bodyguard', toggles.bodyguard_enabled)
   pushIfRoom('medium', toggles.medium_enabled)
   pushIfRoom('priest', toggles.priest_enabled)
+  pushIfRoom('witch', toggles.witch_enabled)
+  pushIfRoom('little_girl', toggles.little_girl_enabled)
+  pushIfRoom('trapper', toggles.trapper_enabled)
 
   // Round 1: one Solo, one Special
   pushIfRoom('arsonist', toggles.arsonist_enabled)
@@ -83,6 +162,8 @@ export function assignMafiaRoles(
   // Round 2: more village + mafia specialist
   pushIfRoom('vigilante', toggles.vigilante_enabled)
   pushIfRoom('framer', toggles.framer_enabled)
+  pushIfRoom('seer', toggles.seer_enabled)
+  pushIfRoom('mafia_seer', toggles.mafia_seer_enabled)
 
   // Round 3: another Solo, another Special, more village
   pushIfRoom('serial_killer', toggles.serial_killer_enabled)
@@ -102,6 +183,39 @@ export function assignMafiaRoles(
   playerIds.forEach((id, index) => {
     assignments[id] = shuffledRoles[index]
   })
+
+  // Fairness pass: nobody should keep landing the same role two rounds running by pure
+  // chance (most noticeable with rare roles like Mafia, Detective, Aura Seer). Best-effort —
+  // repeatedly try to swap a repeat-holder's role with another player's, preferring a swap
+  // that clears both players' repeats, until no more repeats can be resolved this way. Small
+  // rosters with few distinct roles may not fully clear (e.g. 2 players cycling 2 roles).
+  if (lastRoleByPlayerId) {
+    const maxAttempts = playerIds.length * 4
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const repeatIds = playerIds.filter((id) => lastRoleByPlayerId[id] && assignments[id] === lastRoleByPlayerId[id])
+      if (repeatIds.length === 0) break
+      const id = repeatIds[Math.floor(Math.random() * repeatIds.length)]
+      // A valid swap partner must actually change this player's role, must resolve this
+      // player's repeat (their incoming role must differ from their own last role), and must
+      // not itself create a fresh repeat for the partner (their last role shouldn't be what
+      // they'd receive, i.e. this player's current role).
+      const candidates = playerIds.filter(
+        (otherId) =>
+          otherId !== id &&
+          assignments[otherId] !== assignments[id] &&
+          assignments[otherId] !== lastRoleByPlayerId[id] &&
+          lastRoleByPlayerId[otherId] !== assignments[id]
+      )
+      if (candidates.length === 0) continue
+      // Prefer a partner who is themselves a repeat (clears two repeats in one swap).
+      const repeatCandidates = candidates.filter((otherId) => repeatIds.includes(otherId))
+      const pool = repeatCandidates.length > 0 ? repeatCandidates : candidates
+      const swapWith = pool[Math.floor(Math.random() * pool.length)]
+      const tmp = assignments[id]
+      assignments[id] = assignments[swapWith]
+      assignments[swapWith] = tmp
+    }
+  }
 
   return assignments
 }
@@ -186,13 +300,25 @@ function resolveMajorityVote(votes: string[], aliveCount: number): string | null
 
 export interface MafiaNightDeath {
   playerId: string
-  cause: 'mafia_kill' | 'serial_kill' | 'vigilante_kill' | 'arson'
+  cause: 'mafia_kill' | 'serial_kill' | 'vigilante_kill' | 'arson' | 'witch_kill' | 'trap_kill'
+}
+
+// Order the Trapper's trap kills the weakest-first: a plain Mafia foot soldier before any
+// specialist, and the Alpha (team leader) last of all.
+const MAFIA_WEAKNESS_ORDER: MafiaRole[] = ['mafia', 'wolf_cub', 'mafia_seer', 'framer', 'alpha_wolf']
+
+function pickWeakestMafia(playerStates: MafiaPlayerState[]): string | null {
+  for (const role of MAFIA_WEAKNESS_ORDER) {
+    const found = playerStates.find((p) => p.is_alive && p.role === role)
+    if (found) return found.player_id
+  }
+  return null
 }
 
 export interface MafiaNightResolution {
   mafiaTarget: string | null
   doctorTarget: string | null
-  detectiveTarget: string | null
+  auraSeerTarget: string | null
   bodyguardTarget: string | null
   trackerTarget: string | null
   trackerVisited: string | null
@@ -207,6 +333,17 @@ export interface MafiaNightResolution {
   bodyguardHitsTaken: number
   cursedConvertedPlayerId: string | null
   wolfCubDiedThisNight: boolean
+  witchHealTarget: string | null
+  witchKillTarget: string | null
+  witchHealActuallySaved: boolean
+  littleGirlOpenedEyes: boolean
+  littleGirlOutcome: 'none' | 'detected' | 'caught' | null
+  littleGirlDetectedMafiaId: string | null
+  trapperActivated: boolean
+  trapperBlockedPlayerIds: string[]
+  trapperKilledMafiaId: string | null
+  seerTarget: string | null
+  mafiaSeerTarget: string | null
 }
 
 /**
@@ -216,13 +353,18 @@ export function resolveMafiaNight(
   session: Pick<
     MafiaSession,
     | 'doctor_enabled'
-    | 'detective_enabled'
+    | 'aura_seer_enabled'
     | 'bodyguard_enabled'
     | 'tracker_enabled'
     | 'framer_enabled'
     | 'serial_killer_enabled'
     | 'arsonist_enabled'
     | 'medium_enabled'
+    | 'witch_enabled'
+    | 'little_girl_enabled'
+    | 'trapper_enabled'
+    | 'seer_enabled'
+    | 'mafia_seer_enabled'
     | 'wolf_cub_revenge_pending'
   >,
   playerStates: MafiaPlayerState[]
@@ -259,8 +401,8 @@ export function resolveMafiaNight(
   const bodyguardPlayer = session.bodyguard_enabled ? aliveOfRole('bodyguard') : undefined
   const bodyguardTarget = bodyguardPlayer?.night_action_target_player_id ?? null
 
-  const detectivePlayer = session.detective_enabled ? aliveOfRole('detective') : undefined
-  const detectiveTarget = detectivePlayer?.night_action_target_player_id ?? null
+  const auraSeerPlayer = session.aura_seer_enabled ? aliveOfRole('aura_seer') : undefined
+  const auraSeerTarget = auraSeerPlayer?.night_action_target_player_id ?? null
 
   const trackerPlayer = session.tracker_enabled ? aliveOfRole('tracker') : undefined
   const trackerTarget = trackerPlayer?.night_action_target_player_id ?? null
@@ -288,6 +430,62 @@ export function resolveMafiaNight(
   const arsonistDouseTarget2 =
     arsonistPlayer && !arsonistIgnited ? (arsonistPlayer.night_action_target_player_id_2 ?? null) : null
 
+  // Witch: heal potion protects like the Doctor (only actually consumed if it saves someone —
+  // see witchHealActuallySaved below), kill potion is an unblockable poison. Both once per game;
+  // the kill potion additionally can't be used night 1 (enforced at submission in the API route).
+  const witchPlayer = session.witch_enabled ? aliveOfRole('witch') : undefined
+  const witchHealTarget =
+    witchPlayer && !witchPlayer.witch_heal_used ? (witchPlayer.night_action_target_player_id_2 ?? null) : null
+  const witchKillTarget =
+    witchPlayer && !witchPlayer.witch_kill_used ? (witchPlayer.night_action_target_player_id ?? null) : null
+
+  // Little Girl: an opt-in "open eyes" action (self-target signals she chose to peek this
+  // night) — 75% see nothing, 20% identify a random living Mafia-team member, 5% get caught
+  // and killed for spying.
+  const littleGirlPlayer = session.little_girl_enabled ? aliveOfRole('little_girl') : undefined
+  const littleGirlOpenedEyes =
+    !!littleGirlPlayer && littleGirlPlayer.night_action_target_player_id === littleGirlPlayer.player_id
+  let littleGirlOutcome: MafiaNightResolution['littleGirlOutcome'] = null
+  let littleGirlDetectedMafiaId: string | null = null
+  if (littleGirlOpenedEyes) {
+    const roll = Math.random()
+    if (roll < 0.05) {
+      littleGirlOutcome = 'caught'
+    } else if (roll < 0.25) {
+      const aliveMafiaTeam = playerStates.filter((p) => p.is_alive && MAFIA_TEAM_ROLES.includes(p.role))
+      if (aliveMafiaTeam.length > 0) {
+        littleGirlOutcome = 'detected'
+        littleGirlDetectedMafiaId = aliveMafiaTeam[Math.floor(Math.random() * aliveMafiaTeam.length)].player_id
+      } else {
+        littleGirlOutcome = 'none'
+      }
+    } else {
+      littleGirlOutcome = 'none'
+    }
+  }
+
+  // Trapper: each night either sets a trap on a player (self-target isn't a valid trap choice —
+  // that signals "activate" instead, see the API route) accumulating up to 3, or activates all
+  // currently-set traps at once (self-target). Trapped players can't be killed at night while
+  // active; a Mafia kill on a trapped player is blocked AND kills the Mafia's weakest living
+  // member instead, while any other attacker is simply blocked (they survive). Traps are
+  // consumed (cleared) once activated, whether or not anything actually triggered them.
+  const trapperPlayer = session.trapper_enabled ? aliveOfRole('trapper') : undefined
+  const trapperActivated = !!trapperPlayer && trapperPlayer.night_action_target_player_id === trapperPlayer.player_id
+  const trapperTrappedIds = trapperActivated ? (trapperPlayer?.trapper_trap_player_ids ?? []) : []
+  const trapperBlockedPlayerIds: string[] = []
+  let trapperKilledMafiaId: string | null = null
+
+  // Seer / Mafia Seer: reveal a target's exact role each night, reusable (no "used" flag).
+  // Mafia Seer's own kill-vote exclusion is structural (their night_action_target_player_id
+  // is never read by the mafiaVotes loop above) — resigning converts their stored role to
+  // 'mafia' immediately at submission time, so a resigned player simply stops being found by
+  // aliveOfRole('mafia_seer') from that point on.
+  const seerPlayer = session.seer_enabled ? aliveOfRole('seer') : undefined
+  const seerTarget = seerPlayer?.night_action_target_player_id ?? null
+  const mafiaSeerPlayer = session.mafia_seer_enabled ? aliveOfRole('mafia_seer') : undefined
+  const mafiaSeerTarget = mafiaSeerPlayer?.night_action_target_player_id ?? null
+
   const deaths: MafiaNightDeath[] = []
   const deadIds = new Set<string>()
   const addDeath = (playerId: string, cause: MafiaNightDeath['cause']) => {
@@ -309,9 +507,22 @@ export function resolveMafiaNight(
     return true
   }
 
+  let witchHealActuallySaved = false
+
   const applyAttack = (targetId: string | null, cause: 'mafia_kill' | 'serial_kill' | 'vigilante_kill') => {
     if (!targetId) return
     if (doctorTarget === targetId) return
+    if (witchHealTarget === targetId) {
+      witchHealActuallySaved = true
+      return
+    }
+    if (trapperActivated && trapperTrappedIds.includes(targetId)) {
+      trapperBlockedPlayerIds.push(targetId)
+      if (cause === 'mafia_kill' && !trapperKilledMafiaId) {
+        trapperKilledMafiaId = pickWeakestMafia(playerStates)
+      }
+      return
+    }
     if (cause === 'mafia_kill') {
       const targetState = playerStates.find((p) => p.player_id === targetId)
       if (targetState?.role === 'arsonist') return
@@ -332,6 +543,20 @@ export function resolveMafiaNight(
   applyAttack(bonusMafiaTarget, 'mafia_kill')
   applyAttack(serialKillerTarget, 'serial_kill')
 
+  if (trapperKilledMafiaId) {
+    addDeath(trapperKilledMafiaId, 'trap_kill')
+  }
+
+  // Witch kill potion is an unblockable poison — resolved directly, bypassing doctor/bodyguard.
+  if (witchKillTarget) {
+    addDeath(witchKillTarget, 'witch_kill')
+  }
+
+  // Little Girl caught spying — killed directly, independent of doctor/bodyguard protection.
+  if (littleGirlOutcome === 'caught' && littleGirlPlayer) {
+    addDeath(littleGirlPlayer.player_id, 'mafia_kill')
+  }
+
   // Ignite kills everyone doused so far, bypassing doctor/bodyguard (fire, not an attack roll).
   if (arsonistIgnited) {
     playerStates.filter((p) => p.is_alive && p.doused_by_arsonist).forEach((p) => addDeath(p.player_id, 'arson'))
@@ -344,7 +569,7 @@ export function resolveMafiaNight(
   return {
     mafiaTarget,
     doctorTarget,
-    detectiveTarget,
+    auraSeerTarget,
     bodyguardTarget,
     trackerTarget,
     trackerVisited,
@@ -359,6 +584,17 @@ export function resolveMafiaNight(
     bodyguardHitsTaken,
     cursedConvertedPlayerId,
     wolfCubDiedThisNight,
+    witchHealTarget,
+    witchKillTarget,
+    witchHealActuallySaved,
+    littleGirlOpenedEyes,
+    littleGirlOutcome,
+    littleGirlDetectedMafiaId,
+    trapperActivated,
+    trapperBlockedPlayerIds,
+    trapperKilledMafiaId,
+    seerTarget,
+    mafiaSeerTarget,
   }
 }
 
@@ -388,42 +624,28 @@ export async function initializeMafiaGame(
   // 1. Fetch game config
   const { data: gameData, error: gameError } = await admin
     .from('games')
-    .select(
-      'mafia_doctor_enabled, mafia_detective_enabled, mafia_bodyguard_enabled, mafia_mayor_enabled, mafia_vigilante_enabled, mafia_tracker_enabled, mafia_alpha_wolf_enabled, mafia_wolf_cub_enabled, mafia_framer_enabled, mafia_jester_enabled, mafia_serial_killer_enabled, mafia_arsonist_enabled, mafia_cupid_enabled, mafia_cursed_villager_enabled, mafia_medium_enabled, mafia_priest_enabled, mafia_count, mafia_anonymous_votes'
-    )
+    .select('mafia_advanced_mode, mafia_count, mafia_anonymous_votes, mafia_last_roles')
     .eq('id', gameId)
     .single()
 
   if (gameError || !gameData) {
+    console.error('[mafia] failed to load game settings', { gameId, gameError })
     return { error: 'Failed to load game settings' }
   }
 
-  const toggles: MafiaRoleToggles = {
-    doctor_enabled: gameData.mafia_doctor_enabled !== false,
-    detective_enabled: gameData.mafia_detective_enabled !== false,
-    bodyguard_enabled: gameData.mafia_bodyguard_enabled !== false,
-    mayor_enabled: gameData.mafia_mayor_enabled !== false,
-    vigilante_enabled: gameData.mafia_vigilante_enabled !== false,
-    tracker_enabled: gameData.mafia_tracker_enabled !== false,
-    alpha_wolf_enabled: gameData.mafia_alpha_wolf_enabled !== false,
-    wolf_cub_enabled: gameData.mafia_wolf_cub_enabled !== false,
-    framer_enabled: gameData.mafia_framer_enabled !== false,
-    jester_enabled: gameData.mafia_jester_enabled !== false,
-    serial_killer_enabled: gameData.mafia_serial_killer_enabled !== false,
-    arsonist_enabled: gameData.mafia_arsonist_enabled !== false,
-    cupid_enabled: gameData.mafia_cupid_enabled !== false,
-    cursed_villager_enabled: gameData.mafia_cursed_villager_enabled !== false,
-    medium_enabled: gameData.mafia_medium_enabled !== false,
-    priest_enabled: gameData.mafia_priest_enabled !== false,
-  }
+  // Role selection is fully automatic now — a single Classic/Advanced switch plus built-in
+  // variety (investigator trio, Mafia specialist rotation) replaces the old per-role checklist.
+  const toggles: MafiaRoleToggles = resolveMafiaRoundToggles(gameData.mafia_advanced_mode === true)
   const anonymousVotes = gameData.mafia_anonymous_votes === true
   const resolvedMafiaCount =
     gameData.mafia_count != null && gameData.mafia_count > 0
       ? gameData.mafia_count
       : Math.max(1, Math.floor(playerIds.length / 4))
 
-  // 2. Assign roles
-  const roleAssignments = assignMafiaRoles(playerIds, toggles, resolvedMafiaCount)
+  // 2. Assign roles — bias away from repeating anyone's exact same role from last round in
+  // this room, so Play Again doesn't keep handing the same person Mafia, Detective, etc.
+  const lastRoleByPlayerId = (gameData.mafia_last_roles ?? undefined) as Record<string, MafiaRole> | undefined
+  const roleAssignments = assignMafiaRoles(playerIds, toggles, resolvedMafiaCount, lastRoleByPlayerId)
 
   // Seat numbers must be a fixed, permanent order (the player who was #1 stays #1 all game),
   // so they're assigned here once from real join order — not derived later from query order,
@@ -469,6 +691,9 @@ export async function initializeMafiaGame(
     await admin.from('mafia_player_states').delete().eq('game_id', gameId)
     return { error: 'Failed to initialize game session' }
   }
+
+  // Remember this round's full role map for the next Play Again's fairness check above.
+  await admin.from('games').update({ mafia_last_roles: roleAssignments }).eq('id', gameId)
 
   return { error: null }
 }

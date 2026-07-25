@@ -1,6 +1,7 @@
 'use client'
 
 import type { MafiaMyState } from '@/types'
+import { MAFIA_ROLE_INFO, mafiaRoleEmoji } from './mafia-role-info'
 
 interface MafiaIdentityPanelProps {
   myState: MafiaMyState | null
@@ -20,7 +21,10 @@ export function MafiaIdentityPanel({ myState }: MafiaIdentityPanelProps) {
   const hasDynamicInfo =
     !!myState &&
     (myState.isLover ||
-      !!myState.detectiveResult ||
+      !!myState.auraSeerResult ||
+      !!myState.detectiveTeamCheckResult ||
+      !!myState.seerResult ||
+      !!myState.mafiaSeerResult ||
       !!myState.trackerResult ||
       (myRole === 'doctor' && !!myState.doctorLastOutcome && myState.doctorLastOutcome !== 'no_attack') ||
       myRole === 'vigilante' ||
@@ -41,19 +45,72 @@ export function MafiaIdentityPanel({ myState }: MafiaIdentityPanelProps) {
         </div>
       )}
 
-      {myState?.detectiveResult && (
+      {myState?.auraSeerResult && (
         <div className="glass-card border border-[var(--border)] rounded-2xl p-3 text-left">
           <p className="text-[10px] font-bold text-[var(--primary)] uppercase tracking-wider mb-1">Investigation</p>
           <p className="text-sm">
-            <strong className="text-[var(--foreground)]">{myState.detectiveResult.targetName}</strong>
+            <strong className="text-[var(--foreground)]">{myState.auraSeerResult.targetName}</strong>
             {' is '}
             <span
               className={
-                myState.detectiveResult.alignment === 'mafia' ? 'text-red-400 font-bold' : 'text-emerald-400 font-bold'
+                myState.auraSeerResult.alignment === 'evil'
+                  ? 'text-red-400 font-bold'
+                  : myState.auraSeerResult.alignment === 'unknown'
+                    ? 'text-amber-400 font-bold'
+                    : 'text-emerald-400 font-bold'
               }
             >
-              {myState.detectiveResult.alignment === 'mafia' ? 'MAFIA 🔪' : 'INNOCENT 🏘️'}
+              {myState.auraSeerResult.alignment === 'evil'
+                ? 'EVIL 🔪'
+                : myState.auraSeerResult.alignment === 'unknown'
+                  ? 'UNKNOWN ❓'
+                  : 'GOOD 🏘️'}
             </span>
+          </p>
+        </div>
+      )}
+
+      {myState?.detectiveTeamCheckResult && (
+        <div className="glass-card border border-[var(--border)] rounded-2xl p-3 text-left">
+          <p className="text-[10px] font-bold text-[var(--primary)] uppercase tracking-wider mb-1">
+            🕵️ Detective Check
+          </p>
+          <p className="text-sm">
+            <strong className="text-[var(--foreground)]">{myState.detectiveTeamCheckResult.targetAName}</strong>
+            {' & '}
+            <strong className="text-[var(--foreground)]">{myState.detectiveTeamCheckResult.targetBName}</strong>
+            {' are '}
+            <span
+              className={
+                myState.detectiveTeamCheckResult.sameTeam ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'
+              }
+            >
+              {myState.detectiveTeamCheckResult.sameTeam ? 'on the SAME team' : 'NOT on the same team'}
+            </span>
+          </p>
+        </div>
+      )}
+
+      {myState?.seerResult && (
+        <div className="glass-card border border-[var(--border)] rounded-2xl p-3 text-left">
+          <p className="text-[10px] font-bold text-[var(--primary)] uppercase tracking-wider mb-1">👁️ Role Revealed</p>
+          <p className="text-sm text-[var(--foreground)]">
+            <strong>{myState.seerResult.targetName}</strong> is{' '}
+            <strong>
+              {mafiaRoleEmoji(myState.seerResult.role)} {MAFIA_ROLE_INFO[myState.seerResult.role]?.name}
+            </strong>
+          </p>
+        </div>
+      )}
+
+      {myState?.mafiaSeerResult && (
+        <div className="glass-card border border-[var(--border)] rounded-2xl p-3 text-left">
+          <p className="text-[10px] font-bold text-[var(--primary)] uppercase tracking-wider mb-1">👁️‍🗨️ Role Revealed</p>
+          <p className="text-sm text-[var(--foreground)]">
+            <strong>{myState.mafiaSeerResult.targetName}</strong> is{' '}
+            <strong>
+              {mafiaRoleEmoji(myState.mafiaSeerResult.role)} {MAFIA_ROLE_INFO[myState.mafiaSeerResult.role]?.name}
+            </strong>
           </p>
         </div>
       )}

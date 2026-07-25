@@ -8,6 +8,7 @@ export interface MafiaStateResponse {
   phaseDeadline: string | null
   doctorEnabled: boolean
   detectiveEnabled: boolean
+  auraSeerEnabled: boolean
   anonymousVotes: boolean
   winningTeam: (MafiaTeam | 'lovers') | null
   players: MafiaPublicPlayer[]

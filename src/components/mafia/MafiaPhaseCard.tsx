@@ -9,11 +9,13 @@ const NIGHT_ACTION_PROMPT: Partial<Record<MafiaRole, string>> = {
   alpha_wolf: '🐺 Tap a player below for the crew to eliminate tonight (your vote counts double).',
   framer: '🎭 Tap a player below to frame — the Detective will read them as Mafia tonight.',
   doctor: '🏥 Tap a player below to protect from any attack tonight.',
-  detective: '🔍 Tap a player below to investigate their alignment.',
+  aura_seer: '🔍 Tap a player below to investigate their alignment.',
   bodyguard: '🛡️ Tap a player below to protect tonight. You auto-protect yourself too.',
   vigilante: '🔫 Your actions happen during the day. Wait for sunrise...',
   tracker: '👣 Tap a player below to track — learn who they visit tonight.',
   serial_killer: '🔪 Tap a player below to kill tonight.',
+  medium: '🔮 Tap a dead player below to revive them.',
+  seer: '👁️ Tap a player below to reveal their exact role.',
 }
 
 interface MafiaPhaseCardProps {
@@ -28,6 +30,8 @@ interface MafiaPhaseCardProps {
   arsonistMode: 'douse' | 'ignite' | null
   onArsonistModeChange: (mode: 'douse' | 'ignite' | null) => void
   arsonistFirstPickName: string | null
+  detectiveFirstPickName: string | null
+  hasDeadPlayers: boolean
 }
 
 /**
@@ -49,6 +53,8 @@ export function MafiaPhaseCard({
   arsonistMode,
   onArsonistModeChange,
   arsonistFirstPickName,
+  detectiveFirstPickName,
+  hasDeadPlayers,
 }: MafiaPhaseCardProps) {
   const myRole = myState?.role
 
@@ -139,8 +145,17 @@ export function MafiaPhaseCard({
               </>
             )}
           </div>
+        ) : myRole === 'detective' ? (
+          <p className="text-sm text-[var(--muted)]">
+            🕵️ Tap two players below (in order) to check if they're on the same team.{' '}
+            {detectiveFirstPickName ? `First pick: ${detectiveFirstPickName} — now tap the second.` : ''}
+          </p>
         ) : myRole === 'vigilante' && (myState?.vigilanteShotsRemaining ?? 0) < 1 ? (
           <p className="text-sm text-[var(--muted)]">You've used your one shot already. Nothing to do tonight.</p>
+        ) : myRole === 'medium' && (myState?.mediumReviveRemaining ?? 0) < 1 ? (
+          <p className="text-sm text-[var(--muted)]">You've already used your revive. Nothing to do tonight.</p>
+        ) : myRole === 'medium' && !hasDeadPlayers ? (
+          <p className="text-sm text-[var(--muted)]">🔮 No one has died yet — nothing to revive tonight.</p>
         ) : (
           <div className="space-y-2">
             <p className="text-sm text-[var(--muted)]">{myRole ? NIGHT_ACTION_PROMPT[myRole] : ''}</p>

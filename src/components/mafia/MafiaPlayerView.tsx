@@ -91,6 +91,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
   const [vigilanteMode, setVigilanteMode] = useState<'shoot' | 'reveal' | null>(null)
   const [vigilanteRevealResult, setVigilanteRevealResult] = useState<{ targetName: string; role: string } | null>(null)
   const [priestMode, setPriestMode] = useState(false)
+  const [witchMode, setWitchMode] = useState<'heal' | 'kill' | null>(null)
 
   // A late joiner's client can load state well after the game's shared role_reveal phase has
   // already ended (it's a one-time, whole-game window) — without this they'd be dropped
@@ -333,6 +334,31 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
     }
   }
 
+  const submitWitchAction = async (targetId: string, potionType: 'heal' | 'kill') => {
+    if (!myResumeToken) return
+    setActing(true)
+    try {
+      const res = await fetch(`/api/mafia/${gameCode}/night-action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumeToken: myResumeToken, targetPlayerId: targetId, potionType }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toastError(data.error ?? 'Action failed')
+        await load()
+      } else {
+        toastSuccess(potionType === 'heal' ? 'Heal potion used' : 'Kill potion used')
+        await load()
+      }
+    } catch {
+      toastError('Action failed')
+    } finally {
+      setActing(false)
+      setWitchMode(null)
+    }
+  }
+
   const submitPriestAction = async (targetId: string) => {
     if (!myResumeToken) return
     setActing(true)
@@ -371,12 +397,14 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
 
   const [cupidFirstPick, setCupidFirstPick] = useState<string | null>(null)
   const [arsonistFirstPick, setArsonistFirstPick] = useState<string | null>(null)
+  const [detectiveFirstPick, setDetectiveFirstPick] = useState<string | null>(null)
   const [arsonistMode, setArsonistMode] = useState<'douse' | 'ignite' | null>(null)
   const [nightSelection, setNightSelection] = useState<string | null>(null)
   const [voteSelection, setVoteSelection] = useState<string | null>(null)
   const phaseKey = `${mafiaState?.phase ?? ''}:${mafiaState?.dayNumber ?? 0}`
   useEffect(() => {
     setCupidFirstPick(null)
+    setDetectiveFirstPick(null)
     setNightSelection(null)
     setVoteSelection(null)
   }, [phaseKey])
@@ -678,7 +706,11 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             }
             gridSelectedIds = cupidFirstPick ? [cupidFirstPick] : []
           }
-        } else if (myRole === 'medium' && (myState?.mediumReviveRemaining ?? 0) > 0) {
+        } else if (
+          myRole === 'medium' &&
+          (myState?.mediumReviveRemaining ?? 0) > 0 &&
+          publicPlayers.some((p) => !p.isAlive)
+        ) {
           gridAllowDeadSelect = true
           gridOnSelect = (id) => {
             setNightSelection(id)
@@ -695,8 +727,35 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             }
           }
           gridSelectedIds = arsonistFirstPick ? [arsonistFirstPick] : []
+        } else if (myRole === 'detective') {
+          gridOnSelect = (id) => {
+            if (!detectiveFirstPick) {
+              setDetectiveFirstPick(id)
+            } else {
+              void submitNightAction(detectiveFirstPick, id)
+              setDetectiveFirstPick(null)
+            }
+          }
+          gridSelectedIds = detectiveFirstPick ? [detectiveFirstPick] : []
         } else if (myRole === 'arsonist' && arsonistMode === 'ignite') {
           // Ignite is a one-click self-target — handled in the panel below, not via grid
+        } else if (myRole === 'witch') {
+          if (witchMode) {
+            gridOnSelect = (id) => {
+              void submitWitchAction(id, witchMode)
+            }
+            gridSelectedIds = []
+          }
+          // No mode selected yet — handled by the Witch Actions panel below
+        } else if (myRole === 'little_girl') {
+          // Self-only "open eyes" toggle — handled by the Little Girl panel below, not the grid
+        } else if (myRole === 'trapper') {
+          // Tapping a tile sets a new trap; "activate all traps" is a self-target button below
+          gridOnSelect = (id) => {
+            setNightSelection(id)
+            void submitNightAction(id)
+          }
+          gridSelectedIds = nightSelection ? [nightSelection] : []
         } else if (myRole !== 'medium' && myRole !== 'arsonist') {
           gridOnSelect = (id) => {
             setNightSelection(id)
@@ -727,6 +786,9 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
     const cupidFirstPickName = cupidFirstPick
       ? (publicPlayers.find((p) => p.id === cupidFirstPick)?.name ?? null)
       : null
+    const detectiveFirstPickName = detectiveFirstPick
+      ? (publicPlayers.find((p) => p.id === detectiveFirstPick)?.name ?? null)
+      : null
 
     const isWolfTeam = !!myRole && MAFIA_TEAM_ROLES.includes(myRole)
     const showSecretChat = isWolfTeam && amIAlive && phase === 'night'
@@ -741,6 +803,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
           mafiaTeammateIds={myState?.mafiaTeammateIds}
           mafiaTeammateRoles={myState?.mafiaTeammateRoles}
           mafiaTeammateNightTargets={myState?.mafiaTeammateNightTargets}
+          loverIds={myState?.loverIds}
           phase={phase}
           voteTallies={voteTallies}
           voteChoices={voteChoices}
@@ -841,6 +904,112 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
           </div>
         )}
 
+        {phase === 'night' && myRole === 'witch' && amIAlive && !amISpectator && (
+          <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-3">
+            <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">🧪 Witch Potions</h3>
+            {witchMode ? (
+              <div className="space-y-2">
+                <p className="text-sm text-[var(--foreground)]">
+                  Tap a player to {witchMode === 'heal' ? 'heal' : 'kill'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setWitchMode(null)}
+                  className="text-xs text-[var(--muted)] underline"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                {(myState?.witchHealRemaining ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    disabled={acting}
+                    onClick={() => setWitchMode('heal')}
+                    className="flex-1 px-3 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold disabled:opacity-40"
+                  >
+                    💚 Heal Potion
+                  </button>
+                )}
+                {(myState?.witchKillRemaining ?? 0) > 0 && dayNumber > 1 && (
+                  <button
+                    type="button"
+                    disabled={acting}
+                    onClick={() => setWitchMode('kill')}
+                    className="flex-1 px-3 py-2 rounded-xl bg-purple-700 text-white text-sm font-bold disabled:opacity-40"
+                  >
+                    ☠️ Kill Potion
+                  </button>
+                )}
+                {(myState?.witchKillRemaining ?? 0) > 0 && dayNumber === 1 && (
+                  <p className="text-xs text-[var(--muted)] flex-1 self-center">☠️ Kill potion unlocks night 2.</p>
+                )}
+                {(myState?.witchHealRemaining ?? 0) <= 0 && (myState?.witchKillRemaining ?? 0) <= 0 && (
+                  <p className="text-xs text-[var(--muted)]">Both potions used.</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {phase === 'night' && myRole === 'little_girl' && amIAlive && !amISpectator && (
+          <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-3">
+            <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">🎀 Little Girl</h3>
+            {myState?.nightActionSubmitted ? (
+              <p className="text-sm text-[var(--foreground)]">
+                Your eyes are open tonight — 75% you see nothing, 20% you spot a Mafia member, 5% they catch you.
+              </p>
+            ) : (
+              <button
+                type="button"
+                disabled={acting}
+                onClick={() => myPlayerId && void submitNightAction(myPlayerId)}
+                className="w-full px-3 py-2 rounded-xl bg-pink-600 text-white text-sm font-bold disabled:opacity-40"
+              >
+                👀 Open your eyes
+              </button>
+            )}
+          </div>
+        )}
+
+        {phase === 'night' && myRole === 'trapper' && amIAlive && !amISpectator && (
+          <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-3">
+            <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">🪤 Trapper</h3>
+            <p className="text-sm text-[var(--foreground)]">
+              Traps set: {myState?.trapperTrappedNames?.length ?? 0}/3
+              {(myState?.trapperTrappedNames?.length ?? 0) > 0 && ` — ${myState?.trapperTrappedNames?.join(', ')}`}
+            </p>
+            <p className="text-xs text-[var(--muted)]">Tap a player to set a trap on their house.</p>
+            <button
+              type="button"
+              disabled={acting || (myState?.trapperTrappedNames?.length ?? 0) === 0}
+              onClick={() => myPlayerId && void submitNightAction(myPlayerId)}
+              className="w-full px-3 py-2 rounded-xl bg-amber-700 text-white text-sm font-bold disabled:opacity-40"
+            >
+              💥 Activate all traps
+            </button>
+          </div>
+        )}
+
+        {phase === 'night' && myRole === 'mafia_seer' && amIAlive && !amISpectator && (
+          <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-3">
+            <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">👁️‍🗨️ Mafia Seer</h3>
+            <p className="text-xs text-[var(--muted)]">
+              Tap a player to reveal their exact role. You cannot vote to kill unless you resign this ability,
+              permanently becoming a Regular Mafia.
+            </p>
+            <button
+              type="button"
+              disabled={acting}
+              onClick={() => myPlayerId && void submitNightAction(myPlayerId)}
+              className="w-full px-3 py-2 rounded-xl bg-red-800 text-white text-sm font-bold disabled:opacity-40"
+            >
+              🔪 Resign — become Regular Mafia
+            </button>
+          </div>
+        )}
+
         {(phase === 'day' || phase === 'voting') && amIAlive && !amISpectator && (
           <MafiaSkipPhaseBar
             phase={phase}
@@ -861,6 +1030,8 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             amISpectator={amISpectator}
             acting={acting}
             cupidFirstPickName={cupidFirstPickName}
+            detectiveFirstPickName={detectiveFirstPickName}
+            hasDeadPlayers={publicPlayers.some((p) => !p.isAlive)}
             onIgnite={() => {
               if (myPlayerId) void submitNightAction(myPlayerId)
             }}
@@ -910,7 +1081,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
               onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
               myPlayerId={myPlayerId}
               players={publicPlayers}
-              readOnly
+              readOnly={amIAlive}
               readOnlyLabel="night"
             />
           </>
@@ -939,7 +1110,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             <div>
               <h1 className="font-bold text-base text-[var(--primary)] leading-tight">{gameTitle || 'Mafia'}</h1>
               <p className="text-[10px] text-[var(--muted)] uppercase tracking-widest font-semibold">
-                {showRoleReveal ? 'Role Reveal' : `Day ${dayNumber} · ${PHASE_LABEL[phase] ?? phase}`}
+                {showRoleReveal ? 'Role Reveal' : `${PHASE_LABEL[phase] ?? phase} ${dayNumber}`}
               </p>
             </div>
           </div>
