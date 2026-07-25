@@ -436,7 +436,33 @@ export function ChessGamePanel({
   return (
     <div className="space-y-4">
       {session.status === 'active' && (
-        <ChessTurnBar turnPlayerName={turnPlayer?.name} isMyTurn={isMyTurn} inCheck={session.in_check} />
+        <ChessTurnBar
+          kicker={
+            session.in_check && isMyTurn
+              ? 'Check'
+              : isMyTurn
+                ? 'Your move'
+                : premove
+                  ? 'Premove queued'
+                  : "Opponent's turn"
+          }
+          text={
+            session.in_check && isMyTurn
+              ? 'Check! Your move'
+              : selected
+                ? (() => {
+                    const label = PIECE_NAMES[(chess.get(selected as Square)?.type ?? 'p') as ChessPieceType]
+                    return `${label.charAt(0).toUpperCase()}${label.slice(1)} selected — tap a dot to move`
+                  })()
+                : isMyTurn
+                  ? 'Your turn'
+                  : premove
+                    ? `Premove ${premove.from}→${premove.to} queued — tap the board to cancel`
+                    : canPremove
+                      ? `${turnPlayer?.name ?? 'Opponent'}'s turn — tap a piece to queue a premove`
+                      : `${turnPlayer?.name ?? 'Opponent'}'s turn`
+          }
+        />
       )}
 
       {timed && timeControlSeconds ? (

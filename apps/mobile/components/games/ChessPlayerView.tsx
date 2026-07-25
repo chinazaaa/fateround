@@ -13,7 +13,7 @@ import {
 import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
 import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import type { Theme } from '@/constants/theme'
@@ -32,7 +32,13 @@ import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 import { useChessAppearance, type ChessPieceType } from './chess/chess-appearance'
 import { ChessPieceGlyph } from './chess/ChessPieceGlyph'
 import { ChessAppearancePicker } from './chess/ChessAppearancePicker'
-import { ChessCapturedSummary, ChessPlayerCard, computeMaterial, KingGlyph } from './chess/ChessCapturedTray'
+import {
+  ChessCapturedSummary,
+  ChessMoveBanner,
+  ChessPlayerCard,
+  computeMaterial,
+  KingGlyph,
+} from './chess/ChessCapturedTray'
 import { ChessResultsExtras } from './chess/ChessResultsExtras'
 import { ChessShareCard } from './chess/ChessShareCard'
 import { type Premove, premoveNeedsPromotion, premoveTargets, type PremovePiece } from './chess/chess-premove'
@@ -50,6 +56,14 @@ type Promotion = 'q' | 'r' | 'b' | 'n'
 
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const
 const RANKS = [8, 7, 6, 5, 4, 3, 2, 1] as const
+const PIECE_NAMES: Record<ChessPieceType, string> = {
+  p: 'Pawn',
+  r: 'Rook',
+  n: 'Knight',
+  b: 'Bishop',
+  q: 'Queen',
+  k: 'King',
+}
 const PROMOTION_OPTIONS: { piece: Promotion; label: string }[] = [
   { piece: 'q', label: 'Queen' },
   { piece: 'r', label: 'Rook' },
@@ -438,12 +452,21 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <TurnBanner
+        <ChessMoveBanner
+          kicker={
+            activeSession.in_check && isMyTurn
+              ? 'Check'
+              : isMyTurn
+                ? 'Your move'
+                : premove
+                  ? 'Premove queued'
+                  : "Opponent's turn"
+          }
           text={
             activeSession.in_check && isMyTurn
               ? 'Check! Your move'
               : selected
-                ? `Selected ${selected} — tap destination`
+                ? `${PIECE_NAMES[(chess?.get(selected as Square)?.type ?? 'p') as ChessPieceType]} selected — tap a dot to move`
                 : isMyTurn
                   ? 'Your turn'
                   : premove
@@ -452,7 +475,6 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
                       ? `${turnPlayer?.name ?? 'Opponent'}'s turn — tap a piece to queue a premove`
                       : `${turnPlayer?.name ?? 'Opponent'}'s turn`
           }
-          isMyTurn={isMyTurn}
         />
 
         <View style={styles.playerCards}>

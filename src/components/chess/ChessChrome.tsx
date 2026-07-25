@@ -129,28 +129,26 @@ export function ChessLoadingScreen() {
   )
 }
 
-export function ChessTurnBar({
-  turnPlayerName,
-  isMyTurn,
-  inCheck,
-}: {
-  turnPlayerName?: string
-  isMyTurn?: boolean
-  inCheck?: boolean
-}) {
+/** Splits a banner sentence like "Selected e4 — tap destination" into a bold headline and a
+ *  muted continuation, matching the reference design (plain page, no card/border). Sentences
+ *  with no em-dash render as a single bold headline. */
+function splitBanner(text: string): { headline: string; detail?: string } {
+  const idx = text.indexOf(' — ')
+  if (idx === -1) return { headline: text }
+  return { headline: text.slice(0, idx), detail: text.slice(idx + 3) }
+}
+
+/** Chess's move-status banner: a small caps kicker ("YOUR MOVE") above a bold headline, with
+ *  an optional muted continuation — no card/border, just plain text on the page background. */
+export function ChessTurnBar({ kicker, text }: { kicker: string; text: string }) {
+  const { headline, detail } = splitBanner(text)
   return (
-    <div
-      className={[
-        'flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold border',
-        isMyTurn
-          ? 'bg-[var(--primary)]/15 border-[var(--primary)]/40 text-[var(--foreground)]'
-          : 'bg-[var(--surface-inset-bg)] border-[var(--border)] text-muted',
-      ].join(' ')}
-    >
-      <span>
-        {isMyTurn ? 'Your turn' : turnPlayerName ? `${turnPlayerName}'s turn` : 'Waiting…'}
-        {inCheck && <span className="ml-1.5 text-rose-400 font-black">Check!</span>}
-      </span>
+    <div className="flex flex-col items-center gap-1 py-0.5">
+      <span className="text-[11px] font-extrabold tracking-wider text-faint uppercase">{kicker}</span>
+      <p className="text-xl font-extrabold text-center">
+        {headline}
+        {detail ? <span className="text-muted font-semibold"> — {detail}</span> : null}
+      </p>
     </div>
   )
 }

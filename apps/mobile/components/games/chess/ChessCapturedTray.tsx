@@ -106,6 +106,31 @@ export function ChessCapturedSummary({
   )
 }
 
+/** Splits a banner sentence like "Selected e4 — tap destination" into a bold headline and a
+ *  muted continuation, matching the reference design (plain page, no card/border). Sentences
+ *  with no em-dash render as a single bold headline. */
+function splitBanner(text: string): { headline: string; detail?: string } {
+  const idx = text.indexOf(' — ')
+  if (idx === -1) return { headline: text }
+  return { headline: text.slice(0, idx), detail: text.slice(idx + 3) }
+}
+
+/** Chess's move-status banner: a small caps kicker ("YOUR MOVE") above a bold headline, with
+ *  an optional muted continuation — no card/border, just plain text on the page background. */
+export function ChessMoveBanner({ kicker, text }: { kicker: string; text: string }) {
+  const styles = useThemedStyles(makeStyles)
+  const { headline, detail } = splitBanner(text)
+  return (
+    <View style={styles.moveBannerWrap}>
+      <Text style={styles.moveBannerKicker}>{kicker.toUpperCase()}</Text>
+      <Text style={styles.moveBannerHeadline}>
+        {headline}
+        {detail ? <Text style={styles.moveBannerDetail}> — {detail}</Text> : null}
+      </Text>
+    </View>
+  )
+}
+
 /** A player identity card: avatar, name, colour label, and (optionally) a live clock —
  *  two of these sit side by side above the board, mirroring the chess.com-style header. */
 export function ChessPlayerCard({
@@ -159,6 +184,10 @@ const makeStyles = (theme: Theme) =>
     summaryName: { color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.3, marginRight: 1 },
     summaryPiece: { flexDirection: 'row', alignItems: 'center' },
     summaryCount: { color: theme.textFaint, fontSize: 10, fontWeight: '700', marginLeft: 1 },
+    moveBannerWrap: { alignItems: 'center', gap: 4, paddingVertical: 2 },
+    moveBannerKicker: { color: theme.textFaint, fontSize: 11, fontWeight: '800', letterSpacing: 1.2 },
+    moveBannerHeadline: { color: theme.text, fontSize: 20, fontWeight: '800', textAlign: 'center' },
+    moveBannerDetail: { color: theme.textMuted, fontWeight: '600' },
     card: {
       flex: 1,
       flexDirection: 'row',
