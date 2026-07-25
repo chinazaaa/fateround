@@ -26,6 +26,7 @@ export function useUnoNotifications({
   const prevPhaseRef = useRef<string | null>(null)
   const prevHandCountRef = useRef<number | null>(null)
   const prevUnoCallRef = useRef<string | null>(null)
+  const prevStatusMessageRef = useRef<string | null>(null)
   // The round whose opening deal we've already accounted for. The initial deal fills your hand
   // (0 → 7, or leftover → 7 on play-again) and must NOT be announced as a draw; only increases
   // AFTER the deal are real draws. Keyed on the session id (recreated each round).
@@ -47,6 +48,7 @@ export function useUnoNotifications({
       prevPhaseRef.current = session?.phase ?? null
       prevHandCountRef.current = myHandCount
       prevUnoCallRef.current = unoCallKey
+      prevStatusMessageRef.current = session?.status_message ?? null
       // Mounting into an already-dealt active round: treat its deal as done so the player's
       // first real draw still notifies (only a fresh 0 → 7 deal should ever be suppressed).
       if (activeRoundKey !== null && myHandCount > 0) dealtRoundRef.current = activeRoundKey
@@ -74,6 +76,7 @@ export function useUnoNotifications({
     // don't mislabel it. The server writes the descriptive status before the hand rows, so it's
     // current here; announce that instead. (Either direction of size change, not just a gain.)
     const statusMsg = session?.status_message ?? ''
+    const prevStatusMessage = prevStatusMessageRef.current
     const isZeroSeven = /played a 0|swapped hands with/i.test(statusMsg)
     if (prevHandCount !== null && myHandCount !== prevHandCount && isZeroSeven) {
       info(statusMsg)
@@ -83,6 +86,17 @@ export function useUnoNotifications({
       const gained = myHandCount - prevHandCount
       info(`You drew ${gained} card${gained === 1 ? '' : 's'} 🃏`)
       playVoteSubmittedSound()
+    }
+
+    // The draw pile auto-reshuffles the discards when it empties; if even that leaves nothing,
+    // the turn silently passes with no hand-count change — call both out so no one wonders why
+    // a penalty draw (or a plain draw) didn't add any cards.
+    if (statusMsg && statusMsg !== prevStatusMessage && game.status === 'active') {
+      if (statusMsg.includes('deck reshuffled')) {
+        info('🔄 Draw pile empty — discards shuffled back in')
+      } else if (statusMsg.includes('draw pile empty')) {
+        info('🚫 No cards left to draw — turn passes')
+      }
     }
 
     // Mark this active round's deal accounted-for once the hand is populated, so the very first
@@ -123,6 +137,7 @@ export function useUnoNotifications({
     prevStatusRef.current = game.status
     prevPhaseRef.current = session?.phase ?? null
     prevHandCountRef.current = myHandCount
+    prevStatusMessageRef.current = statusMsg
   }, [enabled, game, info, myHandCount, myPlayerId, session, unoCallKey])
 }
 
