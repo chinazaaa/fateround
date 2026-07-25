@@ -71,7 +71,7 @@ export function assignMafiaRoles(
 
   // Core village roles (appear every game when enabled)
   pushIfRoom('doctor', toggles.doctor_enabled)
-  pushIfRoom('detective', toggles.detective_enabled)
+  pushIfRoom('aura_seer', toggles.aura_seer_enabled)
   pushIfRoom('bodyguard', toggles.bodyguard_enabled)
   pushIfRoom('medium', toggles.medium_enabled)
   pushIfRoom('priest', toggles.priest_enabled)
@@ -86,6 +86,7 @@ export function assignMafiaRoles(
   // Round 2: more village + mafia specialist
   pushIfRoom('vigilante', toggles.vigilante_enabled)
   pushIfRoom('framer', toggles.framer_enabled)
+  pushIfRoom('detective', toggles.detective_enabled)
 
   // Round 3: another Solo, another Special, more village
   pushIfRoom('serial_killer', toggles.serial_killer_enabled)
@@ -207,7 +208,7 @@ function pickWeakestMafia(playerStates: MafiaPlayerState[]): string | null {
 export interface MafiaNightResolution {
   mafiaTarget: string | null
   doctorTarget: string | null
-  detectiveTarget: string | null
+  auraSeerTarget: string | null
   bodyguardTarget: string | null
   trackerTarget: string | null
   trackerVisited: string | null
@@ -240,7 +241,7 @@ export function resolveMafiaNight(
   session: Pick<
     MafiaSession,
     | 'doctor_enabled'
-    | 'detective_enabled'
+    | 'aura_seer_enabled'
     | 'bodyguard_enabled'
     | 'tracker_enabled'
     | 'framer_enabled'
@@ -286,8 +287,8 @@ export function resolveMafiaNight(
   const bodyguardPlayer = session.bodyguard_enabled ? aliveOfRole('bodyguard') : undefined
   const bodyguardTarget = bodyguardPlayer?.night_action_target_player_id ?? null
 
-  const detectivePlayer = session.detective_enabled ? aliveOfRole('detective') : undefined
-  const detectiveTarget = detectivePlayer?.night_action_target_player_id ?? null
+  const auraSeerPlayer = session.aura_seer_enabled ? aliveOfRole('aura_seer') : undefined
+  const auraSeerTarget = auraSeerPlayer?.night_action_target_player_id ?? null
 
   const trackerPlayer = session.tracker_enabled ? aliveOfRole('tracker') : undefined
   const trackerTarget = trackerPlayer?.night_action_target_player_id ?? null
@@ -444,7 +445,7 @@ export function resolveMafiaNight(
   return {
     mafiaTarget,
     doctorTarget,
-    detectiveTarget,
+    auraSeerTarget,
     bodyguardTarget,
     trackerTarget,
     trackerVisited,
@@ -498,7 +499,7 @@ export async function initializeMafiaGame(
   const { data: gameData, error: gameError } = await admin
     .from('games')
     .select(
-      'mafia_doctor_enabled, mafia_detective_enabled, mafia_bodyguard_enabled, mafia_mayor_enabled, mafia_vigilante_enabled, mafia_tracker_enabled, mafia_alpha_wolf_enabled, mafia_wolf_cub_enabled, mafia_framer_enabled, mafia_jester_enabled, mafia_serial_killer_enabled, mafia_arsonist_enabled, mafia_cupid_enabled, mafia_cursed_villager_enabled, mafia_medium_enabled, mafia_priest_enabled, mafia_witch_enabled, mafia_little_girl_enabled, mafia_trapper_enabled, mafia_count, mafia_anonymous_votes'
+      'mafia_doctor_enabled, mafia_detective_enabled, mafia_aura_seer_enabled, mafia_bodyguard_enabled, mafia_mayor_enabled, mafia_vigilante_enabled, mafia_tracker_enabled, mafia_alpha_wolf_enabled, mafia_wolf_cub_enabled, mafia_framer_enabled, mafia_jester_enabled, mafia_serial_killer_enabled, mafia_arsonist_enabled, mafia_cupid_enabled, mafia_cursed_villager_enabled, mafia_medium_enabled, mafia_priest_enabled, mafia_witch_enabled, mafia_little_girl_enabled, mafia_trapper_enabled, mafia_count, mafia_anonymous_votes'
     )
     .eq('id', gameId)
     .single()
@@ -511,6 +512,7 @@ export async function initializeMafiaGame(
   const toggles: MafiaRoleToggles = {
     doctor_enabled: gameData.mafia_doctor_enabled !== false,
     detective_enabled: gameData.mafia_detective_enabled !== false,
+    aura_seer_enabled: gameData.mafia_aura_seer_enabled !== false,
     bodyguard_enabled: gameData.mafia_bodyguard_enabled !== false,
     mayor_enabled: gameData.mafia_mayor_enabled !== false,
     vigilante_enabled: gameData.mafia_vigilante_enabled !== false,

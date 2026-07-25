@@ -51,7 +51,8 @@ const TEAM_TEXT: Record<string, string> = {
 const NIGHT_ACTION_VERB: Partial<Record<MafiaRole, string>> = {
   doctor: 'the player to protect',
   bodyguard: 'the player to protect',
-  detective: 'the player to reveal the role of',
+  aura_seer: 'the player to reveal the alignment of',
+  detective: 'two players to compare teams',
   tracker: 'the player to watch',
   vigilante: 'the player to kill',
   mafia: 'the player to kill',

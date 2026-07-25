@@ -865,6 +865,7 @@ function CreateGameInner() {
               timer_seconds: 60,
               mafia_doctor_enabled: true,
               mafia_detective_enabled: true,
+              mafia_aura_seer_enabled: true,
               mafia_anonymous_votes: true,
               mafia_day_seconds: 90,
               mafia_voting_seconds: 45,
@@ -1321,6 +1322,11 @@ function CreateGameInner() {
     mafia_detective_enabled: {
       get: () => settings.mafia_detective_enabled,
       set: (v) => setSettings((s) => ({ ...s, mafia_detective_enabled: v as boolean })),
+      appliesTo: isMafiaGame,
+    },
+    mafia_aura_seer_enabled: {
+      get: () => settings.mafia_aura_seer_enabled,
+      set: (v) => setSettings((s) => ({ ...s, mafia_aura_seer_enabled: v as boolean })),
       appliesTo: isMafiaGame,
     },
     mafia_anonymous_votes: {

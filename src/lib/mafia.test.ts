@@ -13,6 +13,7 @@ import type { MafiaPlayerState, MafiaSession, MafiaRole } from '@/types'
 const ALL_ENABLED: MafiaRoleToggles = {
   doctor_enabled: true,
   detective_enabled: true,
+  aura_seer_enabled: true,
   bodyguard_enabled: true,
   mayor_enabled: true,
   vigilante_enabled: true,
@@ -72,7 +73,7 @@ function makeState(overrides: Partial<MafiaPlayerState>): MafiaPlayerState {
 const NIGHT_SESSION_BASE: Pick<
   MafiaSession,
   | 'doctor_enabled'
-  | 'detective_enabled'
+  | 'aura_seer_enabled'
   | 'bodyguard_enabled'
   | 'tracker_enabled'
   | 'framer_enabled'
@@ -85,7 +86,7 @@ const NIGHT_SESSION_BASE: Pick<
   | 'wolf_cub_revenge_pending'
 > = {
   doctor_enabled: true,
-  detective_enabled: true,
+  aura_seer_enabled: true,
   bodyguard_enabled: true,
   tracker_enabled: true,
   framer_enabled: true,
@@ -99,8 +100,8 @@ const NIGHT_SESSION_BASE: Pick<
 }
 
 describe('assignMafiaRoles', () => {
-  it('fills all 21 roles when everything is enabled and slots allow', () => {
-    const playerIds = ids(21)
+  it('fills all 22 roles when everything is enabled and slots allow', () => {
+    const playerIds = ids(22)
     const assignments = assignMafiaRoles(playerIds, ALL_ENABLED, 4)
     const roles = new Set(Object.values(assignments))
     // mafiaCount=4 with alpha_wolf+wolf_cub each converting one base mafia slot leaves 2 plain 'mafia'
@@ -109,6 +110,7 @@ describe('assignMafiaRoles', () => {
     expect(roles.has('mafia')).toBe(true)
     const optionalRoles: MafiaRole[] = [
       'doctor',
+      'aura_seer',
       'detective',
       'bodyguard',
       'medium',
@@ -129,7 +131,7 @@ describe('assignMafiaRoles', () => {
     for (const role of optionalRoles) {
       expect(roles.has(role)).toBe(true)
     }
-    expect(Object.keys(assignments)).toHaveLength(21)
+    expect(Object.keys(assignments)).toHaveLength(22)
   })
 
   it('does not assign alpha_wolf or wolf_cub when mafiaCount < 2', () => {

@@ -42,6 +42,7 @@ export interface Settings {
   game_duration_seconds?: number
   mafia_doctor_enabled?: boolean
   mafia_detective_enabled?: boolean
+  mafia_aura_seer_enabled?: boolean
   mafia_bodyguard_enabled?: boolean
   mafia_mayor_enabled?: boolean
   mafia_vigilante_enabled?: boolean

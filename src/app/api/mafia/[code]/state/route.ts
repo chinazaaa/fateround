@@ -17,6 +17,7 @@ const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'frame
 const ROLE_ENABLED_KEYS = [
   'doctor_enabled',
   'detective_enabled',
+  'aura_seer_enabled',
   'bodyguard_enabled',
   'mayor_enabled',
   'vigilante_enabled',
@@ -41,6 +42,7 @@ function enabledRolesFrom(session: Pick<MafiaSession, (typeof ROLE_ENABLED_KEYS)
   const map: Record<(typeof ROLE_ENABLED_KEYS)[number], MafiaRole> = {
     doctor_enabled: 'doctor',
     detective_enabled: 'detective',
+    aura_seer_enabled: 'aura_seer',
     bodyguard_enabled: 'bodyguard',
     mayor_enabled: 'mayor',
     vigilante_enabled: 'vigilante',
@@ -113,6 +115,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         phaseDeadline: null,
         doctorEnabled: true,
         detectiveEnabled: true,
+        auraSeerEnabled: true,
         anonymousVotes: true,
         winningTeam: null,
         players: publicPlayers,
@@ -120,7 +123,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         lastNightMafiaHadTarget: false,
         lastVoteResultPlayerId: null,
         voteTallies: {},
-        enabledRoles: ['villager', 'mafia', 'doctor', 'detective'],
+        enabledRoles: ['villager', 'mafia', 'doctor', 'aura_seer'],
         myState: null,
       })
     }
@@ -191,16 +194,42 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       return seat != null ? `#${seat} ${name}` : name
     }
 
-    // Detective result — honors Framer's frame (reads as 'mafia' if framed that night)
-    let detectiveResult: MafiaMyState['detectiveResult'] = null
-    if (role === 'detective' && session.detect_target_player_id) {
-      const targetState = playerStates.find((p) => p.player_id === session.detect_target_player_id)
-      const targetPlayer = playersData?.find((p) => p.id === session.detect_target_player_id)
+    // Aura Seer result — honors Framer's frame (reads as 'mafia' if framed that night)
+    let auraSeerResult: MafiaMyState['auraSeerResult'] = null
+    if (role === 'aura_seer' && session.aura_seer_target_player_id) {
+      const targetState = playerStates.find((p) => p.player_id === session.aura_seer_target_player_id)
+      const targetPlayer = playersData?.find((p) => p.id === session.aura_seer_target_player_id)
       if (targetState && targetPlayer) {
-        const framed = session.framed_player_id === session.detect_target_player_id
-        detectiveResult = {
+        const framed = session.framed_player_id === session.aura_seer_target_player_id
+        auraSeerResult = {
           targetName: seatLabel(targetPlayer.id, targetPlayer.name),
           alignment: framed ? 'mafia' : mafiaRoleTeam(targetState.role),
+        }
+      }
+    }
+
+    // Detective result — checks two players for same-team membership, honoring the Framer's
+    // frame on either target. Only shown after the night resolves (picks are made THIS night).
+    let detectiveTeamCheckResult: MafiaMyState['detectiveTeamCheckResult'] = null
+    if (
+      role === 'detective' &&
+      session.phase !== 'night' &&
+      myPlayerState.night_action_target_player_id &&
+      myPlayerState.night_action_target_player_id_2
+    ) {
+      const aId = myPlayerState.night_action_target_player_id
+      const bId = myPlayerState.night_action_target_player_id_2
+      const aState = playerStates.find((p) => p.player_id === aId)
+      const bState = playerStates.find((p) => p.player_id === bId)
+      const aPlayer = playersData?.find((p) => p.id === aId)
+      const bPlayer = playersData?.find((p) => p.id === bId)
+      if (aState && bState && aPlayer && bPlayer) {
+        const teamOf = (playerId: string, state: MafiaPlayerState) =>
+          session.framed_player_id === playerId ? 'mafia' : mafiaRoleTeam(state.role)
+        detectiveTeamCheckResult = {
+          targetAName: seatLabel(aPlayer.id, aPlayer.name),
+          targetBName: seatLabel(bPlayer.id, bPlayer.name),
+          sameTeam: teamOf(aId, aState) === teamOf(bId, bState),
         }
       }
     }
@@ -347,7 +376,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       team,
       nightActionSubmitted: !!myPlayerState.night_action_target_player_id,
       dayVoteSubmitted: !!myPlayerState.day_vote_target_player_id,
-      detectiveResult,
+      auraSeerResult,
+      detectiveTeamCheckResult,
       mafiaTeammates,
       mafiaTeammateIds,
       mafiaTeammateRoles,
@@ -473,6 +503,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     phaseDeadline: session.phase_deadline,
     doctorEnabled: session.doctor_enabled,
     detectiveEnabled: session.detective_enabled,
+    auraSeerEnabled: session.aura_seer_enabled,
     anonymousVotes: session.anonymous_votes,
     winningTeam: session.winning_team,
     players: publicPlayers,

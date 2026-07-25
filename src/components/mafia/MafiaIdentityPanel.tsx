@@ -20,7 +20,8 @@ export function MafiaIdentityPanel({ myState }: MafiaIdentityPanelProps) {
   const hasDynamicInfo =
     !!myState &&
     (myState.isLover ||
-      !!myState.detectiveResult ||
+      !!myState.auraSeerResult ||
+      !!myState.detectiveTeamCheckResult ||
       !!myState.trackerResult ||
       (myRole === 'doctor' && !!myState.doctorLastOutcome && myState.doctorLastOutcome !== 'no_attack') ||
       myRole === 'vigilante' ||
@@ -41,18 +42,39 @@ export function MafiaIdentityPanel({ myState }: MafiaIdentityPanelProps) {
         </div>
       )}
 
-      {myState?.detectiveResult && (
+      {myState?.auraSeerResult && (
         <div className="glass-card border border-[var(--border)] rounded-2xl p-3 text-left">
           <p className="text-[10px] font-bold text-[var(--primary)] uppercase tracking-wider mb-1">Investigation</p>
           <p className="text-sm">
-            <strong className="text-[var(--foreground)]">{myState.detectiveResult.targetName}</strong>
+            <strong className="text-[var(--foreground)]">{myState.auraSeerResult.targetName}</strong>
             {' is '}
             <span
               className={
-                myState.detectiveResult.alignment === 'mafia' ? 'text-red-400 font-bold' : 'text-emerald-400 font-bold'
+                myState.auraSeerResult.alignment === 'mafia' ? 'text-red-400 font-bold' : 'text-emerald-400 font-bold'
               }
             >
-              {myState.detectiveResult.alignment === 'mafia' ? 'MAFIA 🔪' : 'INNOCENT 🏘️'}
+              {myState.auraSeerResult.alignment === 'mafia' ? 'MAFIA 🔪' : 'INNOCENT 🏘️'}
+            </span>
+          </p>
+        </div>
+      )}
+
+      {myState?.detectiveTeamCheckResult && (
+        <div className="glass-card border border-[var(--border)] rounded-2xl p-3 text-left">
+          <p className="text-[10px] font-bold text-[var(--primary)] uppercase tracking-wider mb-1">
+            🕵️ Detective Check
+          </p>
+          <p className="text-sm">
+            <strong className="text-[var(--foreground)]">{myState.detectiveTeamCheckResult.targetAName}</strong>
+            {' & '}
+            <strong className="text-[var(--foreground)]">{myState.detectiveTeamCheckResult.targetBName}</strong>
+            {' are '}
+            <span
+              className={
+                myState.detectiveTeamCheckResult.sameTeam ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'
+              }
+            >
+              {myState.detectiveTeamCheckResult.sameTeam ? 'on the SAME team' : 'NOT on the same team'}
             </span>
           </p>
         </div>

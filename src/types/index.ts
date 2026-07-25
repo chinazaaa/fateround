@@ -314,7 +314,10 @@ export interface Game {
   /** Codewords — operative guess phase timer. */
   operative_timer_seconds?: number | null
   mafia_doctor_enabled?: boolean
+  /** Real Detective — two-player same-team check. */
   mafia_detective_enabled?: boolean
+  /** Single-target alignment reveal, formerly (mis)named Detective. */
+  mafia_aura_seer_enabled?: boolean
   mafia_bodyguard_enabled?: boolean
   mafia_mayor_enabled?: boolean
   mafia_vigilante_enabled?: boolean
@@ -1878,6 +1881,7 @@ export type MafiaRole =
   | 'witch'
   | 'little_girl'
   | 'trapper'
+  | 'aura_seer'
 export type MafiaTeam = 'village' | 'mafia' | 'jester' | 'serial_killer' | 'arsonist'
 export type MafiaDeathCause =
   | 'mafia_kill'
@@ -1891,7 +1895,10 @@ export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'day' | 'votin
 
 export interface MafiaRoleEnabledFlags {
   doctor_enabled: boolean
+  /** Wolvesville's actual "Detective" — checks two players each night for same-team membership. */
   detective_enabled: boolean
+  /** The single-target alignment-reveal role, formerly (mis)named Detective on this platform. */
+  aura_seer_enabled: boolean
   bodyguard_enabled: boolean
   mayor_enabled: boolean
   vigilante_enabled: boolean
@@ -1919,7 +1926,7 @@ export interface MafiaSession extends MafiaRoleEnabledFlags {
   phase_deadline: string | null
   mafia_target_player_id: string | null
   doctor_target_player_id: string | null
-  detect_target_player_id: string | null
+  aura_seer_target_player_id: string | null
   night_kill_player_id: string | null
   vote_result_player_id: string | null
   serial_kill_player_id: string | null
@@ -1997,7 +2004,8 @@ export interface MafiaMyState {
   team: MafiaTeam
   nightActionSubmitted: boolean
   dayVoteSubmitted: boolean
-  detectiveResult: { targetName: string; alignment: MafiaTeam } | null
+  auraSeerResult: { targetName: string; alignment: MafiaTeam } | null
+  detectiveTeamCheckResult?: { targetAName: string; targetBName: string; sameTeam: boolean } | null
   mafiaTeammates: string[] // Only for mafia team members (mafia/alpha_wolf/wolf_cub/framer)
   /** Same set as mafiaTeammates but by player id — lets the roster grid mark each teammate's
    *  tile with the shared mafia symbol and reveal their role, without a separate list panel. */

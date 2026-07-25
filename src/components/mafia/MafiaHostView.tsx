@@ -71,6 +71,7 @@ interface MafiaHostStateResponse {
   timerSeconds?: number
   doctorEnabled: boolean
   detectiveEnabled: boolean
+  auraSeerEnabled: boolean
   anonymousVotes: boolean
   replayPending: boolean
   theme?: ThemeId
@@ -81,7 +82,7 @@ interface MafiaHostStateResponse {
   lastVoteResultPlayerId: string | null
   mafiaTargetPlayerId: string | null
   doctorTargetPlayerId: string | null
-  detectTargetPlayerId: string | null
+  auraSeerTargetPlayerId: string | null
 }
 
 export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
@@ -359,6 +360,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     timer_seconds: mafiaState.timerSeconds ?? 60,
     mafia_doctor_enabled: mafiaState.doctorEnabled ?? true,
     mafia_detective_enabled: mafiaState.detectiveEnabled ?? true,
+    mafia_aura_seer_enabled: mafiaState.auraSeerEnabled ?? true,
     mafia_anonymous_votes: mafiaState.anonymousVotes ?? false,
     replay_pending: mafiaState.replayPending,
     theme: mafiaState.theme,
@@ -378,8 +380,15 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     is_eliminated: !p.isAlive,
   })) as unknown as Player[]
 
-  const { phase, dayNumber, phaseDeadline, players, doctorTargetPlayerId, detectTargetPlayerId, mafiaTargetPlayerId } =
-    mafiaState
+  const {
+    phase,
+    dayNumber,
+    phaseDeadline,
+    players,
+    doctorTargetPlayerId,
+    auraSeerTargetPlayerId,
+    mafiaTargetPlayerId,
+  } = mafiaState
 
   const activePlayers = players.filter((p) => p.isAlive && !p.spectator)
   const deadPlayers = players.filter((p) => !p.isAlive)
@@ -436,8 +445,8 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
                 <span className="font-semibold text-emerald-400">{playerName(doctorTargetPlayerId)}</span>
               </div>
               <div className="flex justify-between items-center bg-slate-950/40 p-2 rounded">
-                <span className="text-slate-400">Detective Probe:</span>
-                <span className="font-semibold text-blue-400">{playerName(detectTargetPlayerId)}</span>
+                <span className="text-slate-400">Aura Seer Probe:</span>
+                <span className="font-semibold text-blue-400">{playerName(auraSeerTargetPlayerId)}</span>
               </div>
             </div>
           ) : (

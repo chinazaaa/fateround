@@ -134,6 +134,7 @@ const FIELD_LABELS: Record<string, string> = {
   landmine_review: 'Review before reveal',
   mafia_doctor_enabled: 'Doctor role',
   mafia_detective_enabled: 'Detective role',
+  mafia_aura_seer_enabled: 'Aura Seer role',
   mafia_anonymous_votes: 'Anonymous votes',
   mafia_role_set: 'Advanced roles',
   elimination_enabled: 'Elimination',
@@ -173,6 +174,7 @@ const FIELD_DEFAULTS: Record<string, unknown> = {
   landmine_review: true,
   mafia_doctor_enabled: true,
   mafia_detective_enabled: true,
+  mafia_aura_seer_enabled: true,
   mafia_anonymous_votes: true,
   mafia_role_set: false,
 }

@@ -1554,8 +1554,8 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'Setup',
       points: [
         '5 to 16 players join the lobby. Each player is secretly assigned a role.',
-        'The host picks which roles are in the game — from 21 available roles across Village, Mafia, Solo, and Special teams.',
-        'Village roles include Villager, Doctor, Detective, Bodyguard, Mayor, Vigilante, Tracker, Medium, Priest, Witch, Little Girl, and Trapper.',
+        'The host picks which roles are in the game — from 22 available roles across Village, Mafia, Solo, and Special teams.',
+        'Village roles include Villager, Doctor, Aura Seer, Bodyguard, Mayor, Vigilante, Tracker, Medium, Priest, Witch, Little Girl, Trapper, and Detective.',
         'Mafia roles include Mafia, Alpha Mafia, Junior Mafia, and Framer.',
         'Solo roles (Jester, Serial Killer, Arsonist) and Special roles (Cupid, Cursed Villager) add extra twists.',
       ],
@@ -1565,7 +1565,8 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         'The Mafia secretly vote on a player to eliminate.',
         'The Doctor chooses a player to save from elimination (cannot self-heal).',
-        'The Detective investigates one player to learn their alignment (beware the Framer!).',
+        'The Aura Seer investigates one player to learn their alignment (beware the Framer!).',
+        'The Detective checks two players to learn whether they are on the same team.',
         'The Bodyguard protects a player — that player cannot be killed, but the Bodyguard is attacked instead (survives the first attack, dies on the second).',
         'The Tracker sees who their target visited that night.',
         'The Medium can read ghost chat and may revive one dead player (once per game).',

@@ -157,7 +157,7 @@ export async function runMafiaAdvance(
     const {
       mafiaTarget,
       doctorTarget,
-      detectiveTarget,
+      auraSeerTarget,
       bodyguardTarget,
       bodyguardSacrificePlayerId,
       bodyguardHitsTaken,
@@ -183,7 +183,7 @@ export async function runMafiaAdvance(
 
     updateFields.mafia_target_player_id = mafiaTarget
     updateFields.doctor_target_player_id = doctorTarget
-    updateFields.detect_target_player_id = detectiveTarget
+    updateFields.aura_seer_target_player_id = auraSeerTarget
     updateFields.bodyguard_target_player_id = bodyguardTarget
     updateFields.bodyguard_sacrifice_player_id = bodyguardSacrificePlayerId
     updateFields.tracker_visited_player_id = trackerVisited
@@ -277,12 +277,12 @@ export async function runMafiaAdvance(
     // what they investigated/tracked on each night.
     const privateMessages: Array<{ target_player_id: string; message: string }> = []
 
-    // Detective
-    if (detectiveTarget) {
-      const detective = playerStates.find((p) => p.role === 'detective' && p.is_alive)
-      if (detective) {
-        const framed = framedPlayerId === detectiveTarget
-        const targetState = playerStates.find((p) => p.player_id === detectiveTarget)
+    // Aura Seer
+    if (auraSeerTarget) {
+      const auraSeer = playerStates.find((p) => p.role === 'aura_seer' && p.is_alive)
+      if (auraSeer) {
+        const framed = framedPlayerId === auraSeerTarget
+        const targetState = playerStates.find((p) => p.player_id === auraSeerTarget)
         const alignment = targetState
           ? framed
             ? 'MAFIA 🔪'
@@ -291,8 +291,28 @@ export async function runMafiaAdvance(
               : 'INNOCENT 🏘️'
           : 'UNKNOWN'
         privateMessages.push({
+          target_player_id: auraSeer.player_id,
+          message: `🔍 Night ${session.day_number}: ${playerLabel(auraSeerTarget)} is ${alignment}`,
+        })
+      }
+    }
+
+    // Detective — checks two players for same-team membership (honors the Framer's frame)
+    const detective = playerStates.find((p) => p.role === 'detective' && p.is_alive)
+    if (detective?.night_action_target_player_id && detective.night_action_target_player_id_2) {
+      const targetAId = detective.night_action_target_player_id
+      const targetBId = detective.night_action_target_player_id_2
+      const targetAState = playerStates.find((p) => p.player_id === targetAId)
+      const targetBState = playerStates.find((p) => p.player_id === targetBId)
+      if (targetAState && targetBState) {
+        const teamOf = (playerId: string, state: MafiaPlayerState) =>
+          framedPlayerId === playerId ? 'mafia' : mafiaRoleTeam(state.role)
+        const sameTeam = teamOf(targetAId, targetAState) === teamOf(targetBId, targetBState)
+        privateMessages.push({
           target_player_id: detective.player_id,
-          message: `🔍 Night ${session.day_number}: ${playerLabel(detectiveTarget)} is ${alignment}`,
+          message: `🕵️ Night ${session.day_number}: ${playerLabel(targetAId)} and ${playerLabel(targetBId)} are ${
+            sameTeam ? 'on the SAME team!' : 'NOT on the same team.'
+          }`,
         })
       }
     }
@@ -550,7 +570,7 @@ export async function runMafiaAdvance(
     // would keep showing on every subsequent day for the rest of the game.
     updateFields.mafia_target_player_id = null
     updateFields.doctor_target_player_id = null
-    updateFields.detect_target_player_id = null
+    updateFields.aura_seer_target_player_id = null
     updateFields.bodyguard_target_player_id = null
     updateFields.bodyguard_sacrifice_player_id = null
     updateFields.tracker_visited_player_id = null

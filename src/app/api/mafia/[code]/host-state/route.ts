@@ -5,6 +5,7 @@ import type { MafiaPlayerState, MafiaSession, MafiaRole } from '@/types'
 const ROLE_ENABLED_KEYS = [
   'doctor_enabled',
   'detective_enabled',
+  'aura_seer_enabled',
   'bodyguard_enabled',
   'mayor_enabled',
   'vigilante_enabled',
@@ -27,6 +28,7 @@ function enabledRolesFrom(session: Pick<MafiaSession, (typeof ROLE_ENABLED_KEYS)
   const map: Record<(typeof ROLE_ENABLED_KEYS)[number], MafiaRole> = {
     doctor_enabled: 'doctor',
     detective_enabled: 'detective',
+    aura_seer_enabled: 'aura_seer',
     bodyguard_enabled: 'bodyguard',
     mayor_enabled: 'mayor',
     vigilante_enabled: 'vigilante',
@@ -70,7 +72,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { data: game } = await admin
     .from('games')
     .select(
-      'host_token, status, title, max_players, timer_seconds, mafia_doctor_enabled, mafia_detective_enabled, mafia_bodyguard_enabled, mafia_mayor_enabled, mafia_vigilante_enabled, mafia_tracker_enabled, mafia_alpha_wolf_enabled, mafia_wolf_cub_enabled, mafia_framer_enabled, mafia_jester_enabled, mafia_serial_killer_enabled, mafia_arsonist_enabled, mafia_cupid_enabled, mafia_cursed_villager_enabled, mafia_witch_enabled, mafia_little_girl_enabled, mafia_trapper_enabled, mafia_anonymous_votes, replay_pending, theme, is_public'
+      'host_token, status, title, max_players, timer_seconds, mafia_doctor_enabled, mafia_detective_enabled, mafia_aura_seer_enabled, mafia_bodyguard_enabled, mafia_mayor_enabled, mafia_vigilante_enabled, mafia_tracker_enabled, mafia_alpha_wolf_enabled, mafia_wolf_cub_enabled, mafia_framer_enabled, mafia_jester_enabled, mafia_serial_killer_enabled, mafia_arsonist_enabled, mafia_cupid_enabled, mafia_cursed_villager_enabled, mafia_witch_enabled, mafia_little_girl_enabled, mafia_trapper_enabled, mafia_anonymous_votes, replay_pending, theme, is_public'
     )
     .eq('id', gameId)
     .maybeSingle()
@@ -116,6 +118,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         timerSeconds: game.timer_seconds ?? 60,
         doctorEnabled: game.mafia_doctor_enabled !== false,
         detectiveEnabled: game.mafia_detective_enabled !== false,
+        auraSeerEnabled: game.mafia_aura_seer_enabled !== false,
         anonymousVotes: game.mafia_anonymous_votes === true,
         replayPending: game.replay_pending === true,
         theme: game.theme,
@@ -126,10 +129,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         lastVoteResultPlayerId: null,
         mafiaTargetPlayerId: null,
         doctorTargetPlayerId: null,
-        detectTargetPlayerId: null,
+        auraSeerTargetPlayerId: null,
         enabledRoles: enabledRolesFrom({
           doctor_enabled: game.mafia_doctor_enabled !== false,
           detective_enabled: game.mafia_detective_enabled !== false,
+          aura_seer_enabled: game.mafia_aura_seer_enabled !== false,
           bodyguard_enabled: game.mafia_bodyguard_enabled !== false,
           mayor_enabled: game.mafia_mayor_enabled !== false,
           vigilante_enabled: game.mafia_vigilante_enabled !== false,
@@ -199,6 +203,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     timerSeconds: game.timer_seconds ?? 60,
     doctorEnabled: session.doctor_enabled,
     detectiveEnabled: session.detective_enabled,
+    auraSeerEnabled: session.aura_seer_enabled,
     anonymousVotes: session.anonymous_votes,
     replayPending: game.replay_pending === true,
     theme: game.theme,
@@ -209,7 +214,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     lastVoteResultPlayerId: session.vote_result_player_id,
     mafiaTargetPlayerId: session.mafia_target_player_id,
     doctorTargetPlayerId: session.doctor_target_player_id,
-    detectTargetPlayerId: session.detect_target_player_id,
+    auraSeerTargetPlayerId: session.aura_seer_target_player_id,
     enabledRoles: enabledRolesFrom(session),
   })
 }

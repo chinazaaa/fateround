@@ -61,6 +61,7 @@ type GameMeta = {
   landmine_mine_source?: string | null
   mafia_doctor_enabled?: boolean | null
   mafia_detective_enabled?: boolean | null
+  mafia_aura_seer_enabled?: boolean | null
   mafia_bodyguard_enabled?: boolean | null
   mafia_mayor_enabled?: boolean | null
   mafia_vigilante_enabled?: boolean | null

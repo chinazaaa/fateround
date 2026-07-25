@@ -11,6 +11,7 @@ export interface MafiaStateResponse {
   phaseDeadline: string | null
   doctorEnabled: boolean
   detectiveEnabled: boolean
+  auraSeerEnabled: boolean
   anonymousVotes: boolean
   winningTeam: (MafiaTeam | 'lovers') | null
   players: MafiaPublicPlayer[]
@@ -63,6 +64,8 @@ export function mafiaRoleEmoji(role: string): string {
     case 'doctor':
       return '🏥'
     case 'detective':
+      return '🕵️'
+    case 'aura_seer':
       return '🔍'
     case 'bodyguard':
       return '🛡️'
@@ -125,6 +128,12 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'detective',
     name: 'Detective',
     team: 'village',
+    description: 'Each night, select two players to uncover whether they are on the same team.',
+  },
+  aura_seer: {
+    role: 'aura_seer',
+    name: 'Aura Seer',
+    team: 'village',
     description: "Each night, investigate one player to learn whether they're Village or Mafia-aligned.",
   },
   bodyguard: {
@@ -173,7 +182,7 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'framer',
     name: 'Framer',
     team: 'mafia',
-    description: "Each night, frame a player so the Detective's investigation on them reads as Mafia.",
+    description: "Each night, frame a player so the Aura Seer and Detective's investigations on them read as Mafia.",
   },
   jester: {
     role: 'jester',

@@ -36,6 +36,7 @@ const ADVANCED_ROLE_FIELDS = [
   'mafia_witch_enabled',
   'mafia_little_girl_enabled',
   'mafia_trapper_enabled',
+  'mafia_detective_enabled',
 ] as const satisfies readonly (keyof Game)[]
 
 const ADVANCED_ROLE_LABELS: Record<(typeof ADVANCED_ROLE_FIELDS)[number], { label: string; description: string }> = {
@@ -51,7 +52,10 @@ const ADVANCED_ROLE_LABELS: Record<(typeof ADVANCED_ROLE_FIELDS)[number], { labe
     label: 'Junior Mafia',
     description: 'Mafia gets a bonus kill next night if this role dies',
   },
-  mafia_framer_enabled: { label: 'Framer', description: 'Frames a player so the Detective reads them as Mafia' },
+  mafia_framer_enabled: {
+    label: 'Framer',
+    description: 'Frames a player so the Aura Seer and Detective read them as Mafia',
+  },
   mafia_jester_enabled: { label: 'Jester', description: 'Wins alone if lynched' },
   mafia_serial_killer_enabled: { label: 'Serial Killer', description: 'Kills alone, wins as last one standing' },
   mafia_arsonist_enabled: {
@@ -82,6 +86,10 @@ const ADVANCED_ROLE_LABELS: Record<(typeof ADVANCED_ROLE_FIELDS)[number], { labe
   mafia_trapper_enabled: {
     label: 'Trapper',
     description: 'Sets up to 3 traps, then activates them to block a Mafia kill and take out their weakest member',
+  },
+  mafia_detective_enabled: {
+    label: 'Detective',
+    description: 'Each night, checks two players to see if they are on the same team',
   },
 }
 
@@ -288,7 +296,7 @@ export function HostMafiaLobbyPanel({ gameCode, hostToken, game, playerCount, on
           </div>
           <p className="text-xs text-muted">
             {showCustomize || isCustomized
-              ? 'Pick exactly which of the 21 roles are in play.'
+              ? 'Pick exactly which of the 22 roles are in play.'
               : 'The full 17-role roster — Villager, Mafia, Doctor, Detective, plus 13 more mixed in when there are enough player slots.'}
           </p>
           {(showCustomize || isCustomized) && (

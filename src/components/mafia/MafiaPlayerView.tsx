@@ -397,12 +397,14 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
 
   const [cupidFirstPick, setCupidFirstPick] = useState<string | null>(null)
   const [arsonistFirstPick, setArsonistFirstPick] = useState<string | null>(null)
+  const [detectiveFirstPick, setDetectiveFirstPick] = useState<string | null>(null)
   const [arsonistMode, setArsonistMode] = useState<'douse' | 'ignite' | null>(null)
   const [nightSelection, setNightSelection] = useState<string | null>(null)
   const [voteSelection, setVoteSelection] = useState<string | null>(null)
   const phaseKey = `${mafiaState?.phase ?? ''}:${mafiaState?.dayNumber ?? 0}`
   useEffect(() => {
     setCupidFirstPick(null)
+    setDetectiveFirstPick(null)
     setNightSelection(null)
     setVoteSelection(null)
   }, [phaseKey])
@@ -721,6 +723,16 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             }
           }
           gridSelectedIds = arsonistFirstPick ? [arsonistFirstPick] : []
+        } else if (myRole === 'detective') {
+          gridOnSelect = (id) => {
+            if (!detectiveFirstPick) {
+              setDetectiveFirstPick(id)
+            } else {
+              void submitNightAction(detectiveFirstPick, id)
+              setDetectiveFirstPick(null)
+            }
+          }
+          gridSelectedIds = detectiveFirstPick ? [detectiveFirstPick] : []
         } else if (myRole === 'arsonist' && arsonistMode === 'ignite') {
           // Ignite is a one-click self-target — handled in the panel below, not via grid
         } else if (myRole === 'witch') {
@@ -769,6 +781,9 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
     }
     const cupidFirstPickName = cupidFirstPick
       ? (publicPlayers.find((p) => p.id === cupidFirstPick)?.name ?? null)
+      : null
+    const detectiveFirstPickName = detectiveFirstPick
+      ? (publicPlayers.find((p) => p.id === detectiveFirstPick)?.name ?? null)
       : null
 
     const isWolfTeam = !!myRole && MAFIA_TEAM_ROLES.includes(myRole)
@@ -992,6 +1007,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             amISpectator={amISpectator}
             acting={acting}
             cupidFirstPickName={cupidFirstPickName}
+            detectiveFirstPickName={detectiveFirstPickName}
             onIgnite={() => {
               if (myPlayerId) void submitNightAction(myPlayerId)
             }}

@@ -6,6 +6,7 @@ import type { MafiaPlayerState, MafiaSession } from '@/types'
 const NO_NIGHT_ACTION_ROLES = new Set(['villager', 'mayor', 'jester', 'cursed_villager', 'vigilante', 'priest'])
 const ROLE_ENABLED_FIELD: Partial<Record<string, keyof MafiaSession>> = {
   doctor: 'doctor_enabled',
+  aura_seer: 'aura_seer_enabled',
   detective: 'detective_enabled',
   bodyguard: 'bodyguard_enabled',
   vigilante: 'vigilante_enabled',
@@ -24,7 +25,15 @@ const ROLE_ENABLED_FIELD: Partial<Record<string, keyof MafiaSession>> = {
 // for a different action, e.g. Arsonist self-target signals "ignite" instead of "douse").
 // Little Girl and Trapper are deliberately absent — self-target is how each of them signals
 // their alternate action (open eyes / activate traps), handled in their own custom branches.
-const NO_SELF_TARGET_ROLES = new Set(['doctor', 'bodyguard', 'vigilante', 'tracker', 'framer', 'serial_killer'])
+const NO_SELF_TARGET_ROLES = new Set([
+  'doctor',
+  'aura_seer',
+  'bodyguard',
+  'vigilante',
+  'tracker',
+  'framer',
+  'serial_killer',
+])
 const TRAPPER_MAX_TRAPS = 3
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
@@ -224,6 +233,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         trapper_trap_player_ids: [...existingTraps, targetPlayerId],
         night_action_target_player_id: targetPlayerId,
       })
+      .eq('id', myState.id)
+    if (updateError) return NextResponse.json({ error: 'Failed to submit night action' }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  // Detective: checks two players each night for same-team membership. Reusable every night
+  // (no "used" flag) — a fresh submission simply overwrites the previous pick.
+  if (role === 'detective') {
+    if (typeof secondTargetPlayerId !== 'string') {
+      return NextResponse.json({ error: 'Detective must choose two players to compare' }, { status: 400 })
+    }
+    if (targetPlayerId === secondTargetPlayerId) {
+      return NextResponse.json({ error: 'Choose two different players' }, { status: 400 })
+    }
+    const t1 = playerStates.find((p) => p.player_id === targetPlayerId)
+    const t2 = playerStates.find((p) => p.player_id === secondTargetPlayerId)
+    if (!t1 || !t2 || !t1.is_alive || !t2.is_alive) {
+      return NextResponse.json({ error: 'Both targets must be alive players' }, { status: 400 })
+    }
+    const { error: updateError } = await admin
+      .from('mafia_player_states')
+      .update({ night_action_target_player_id: targetPlayerId, night_action_target_player_id_2: secondTargetPlayerId })
       .eq('id', myState.id)
     if (updateError) return NextResponse.json({ error: 'Failed to submit night action' }, { status: 500 })
     return NextResponse.json({ success: true })

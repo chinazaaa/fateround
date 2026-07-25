@@ -1213,6 +1213,7 @@ export async function POST(req: NextRequest) {
                               ? {
                                   mafia_doctor_enabled: parsed.data.mafia_doctor_enabled !== false,
                                   mafia_detective_enabled: parsed.data.mafia_detective_enabled !== false,
+                                  mafia_aura_seer_enabled: parsed.data.mafia_aura_seer_enabled !== false,
                                   // Classic = the full 16-role roster, so all optional roles default ON
                                   // unless the host explicitly customized one off via the Advanced checklist.
                                   mafia_bodyguard_enabled: parsed.data.mafia_bodyguard_enabled !== false,
