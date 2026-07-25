@@ -64,6 +64,13 @@ const JACKBOX: MarketingPageContent = {
     'games like jackbox free',
     'party games like jackbox',
     'jackbox free version',
+    'quiplash free',
+    'quiplash online free',
+    'free quiplash alternative',
+    'jackbox games free alternative',
+    'games like jackbox for free',
+    'free party games like jackbox',
+    'jackbox alternative no download',
   ],
   heroTitle: 'The free Jackbox alternative — no pack to buy, no screen to share',
   heroSubtitle:
@@ -160,6 +167,21 @@ const JACKBOX: MarketingPageContent = {
     {
       question: 'Is it like Jackbox where my phone is the controller?',
       answer: 'Exactly like that — minus the host screen you have to buy and run. Your phone is the whole game.',
+    },
+    {
+      question: 'Is there a free version of Quiplash?',
+      answer:
+        'Fate Round has Quiplash — the same write-funny-answers, vote-for-your-favourite format — completely free, no pack to buy. Share a code and everyone plays from their phone.',
+    },
+    {
+      question: 'What games are like Jackbox but free?',
+      answer:
+        'Fate Round gives you 20+ party games for free — including Quiplash, trivia, voting games like Would You Rather and Most Likely To, plus board and card classics like Monopoly and Whot.',
+    },
+    {
+      question: 'Can I play Jackbox-style games on my phone without buying packs?',
+      answer:
+        'Yes. Fate Round is free with no packs to unlock. Every game is available from day one — just share a link and everyone joins from their phone browser.',
     },
   ],
   ctaHeading: 'Ready to ditch the pack?',
@@ -1234,6 +1256,12 @@ const HOUSEPARTY: MarketingPageContent = {
     'games with friends over video',
     'houseparty shut down alternative',
     'free houseparty alternative',
+    'apps like house party',
+    'houseparty app replacement',
+    'houseparty games app',
+    'houseparty app alternative 2026',
+    'games to play with friends on video call',
+    'apps like houseparty 2026',
   ],
   heroTitle: 'The Houseparty alternative — games with friends, back for good',
   heroSubtitle:
@@ -1335,6 +1363,16 @@ const HOUSEPARTY: MarketingPageContent = {
       question: 'Is it free?',
       answer: 'Yes, free forever — no sign-up, no download, no premium tier.',
     },
+    {
+      question: 'What apps are like Houseparty in 2026?',
+      answer:
+        'Fate Round plus your existing video app (FaceTime, Zoom, Discord) replaces what Houseparty did. You get casual games with friends over a call — 20+ of them — without needing one all-in-one app.',
+    },
+    {
+      question: 'Can I play games over FaceTime like Houseparty?',
+      answer:
+        'Yes. Keep FaceTime open and share a Fate Round link — everyone plays from their phone browser right alongside the call. Trivia, Would You Rather, Monopoly, and more.',
+    },
   ],
   ctaHeading: 'Bring back game night',
   ctaSubtext: 'Free forever. One link over any video call — start in under a minute.',
@@ -1362,6 +1400,14 @@ const NAIJA: MarketingPageContent = {
     'stop game name place animal thing online',
     'play nigerian games with family abroad',
     'whot online with friends free',
+    'african board games online',
+    'african games online free',
+    'ayo game online',
+    'play ayo online free',
+    'nigerian board games',
+    'mancala online nigeria',
+    'naija card game',
+    'nigerian games for friends',
   ],
   heroTitle: 'Naija game night, online — Whot, Ludo and the classics',
   heroSubtitle:
@@ -1416,9 +1462,9 @@ const NAIJA: MarketingPageContent = {
         Play proper Naija <GameLink type="whot" /> with the real house rules — call WHOT, stack Pick 2 and Pick 3, Hold
         On, and General Market — then run it back with <GameLink type="ludo" />,{' '}
         <GameLink type="checkers">Draughts</GameLink>, <GameLink type="snake_and_ladder">Snakes &amp; Ladders</GameLink>
-        , and <GameLink type="i_call_on">Stop (Name, Place, Animal, Thing)</GameLink>. Feeling competitive? Bankrupt the
-        family in <GameLink type="monopoly" />. It’s the whole game night behind one link — perfect for the diaspora
-        keeping game night alive across time zones.
+        , <GameLink type="ayo" />, and <GameLink type="i_call_on">Stop (Name, Place, Animal, Thing)</GameLink>. Feeling
+        competitive? Bankrupt the family in <GameLink type="monopoly" />. It’s the whole game night behind one link —
+        perfect for the diaspora keeping game night alive across time zones.
       </p>
     </>
   ),
@@ -1440,6 +1486,10 @@ const NAIJA: MarketingPageContent = {
       {
         game: <GameLink type="snake_and_ladder">Snakes &amp; Ladders</GameLink>,
         description: 'climb the ladders, dodge the snakes — the whole family, kids included.',
+      },
+      {
+        game: <GameLink type="ayo" />,
+        description: 'the traditional Yoruba seed game — sow, capture 2s and 3s, and crown Ota.',
       },
       {
         game: <GameLink type="i_call_on">Stop (Name, Place, Animal, Thing)</GameLink>,
@@ -1475,6 +1525,21 @@ const NAIJA: MarketingPageContent = {
     {
       question: 'Is it really free?',
       answer: 'Yes — free forever, no sign-up and no download. Just share the link and play.',
+    },
+    {
+      question: 'What is Ayo?',
+      answer:
+        "Ayo (also called Ayoayo or Ayo Olopon) is a traditional Nigerian mancala board game from Yoruba culture. Two players take turns sowing seeds anti-clockwise around a wooden board with 12 houses. You capture seeds when your last sown seed lands in an opponent's house containing 2 or 3 seeds. Play it free on Fate Round — no board needed.",
+    },
+    {
+      question: 'What African games can I play online?',
+      answer:
+        'Fate Round has a growing collection of African games you can play free in your browser: Whot (the Nigerian card game), Ludo, Draughts (Checkers), Ayo (Yoruba mancala), Snakes & Ladders, and Stop (Name, Place, Animal, Thing). All multiplayer, all real-time — just share a link.',
+    },
+    {
+      question: 'How do I play Nigerian games with family in the diaspora?',
+      answer:
+        'Start a video call on WhatsApp or Zoom, create a game on Fate Round, and share the short link in your family group chat. Everyone joins from their phone — Lagos, London, Houston, Toronto, wherever. No app to download, no account needed. Works on any phone browser.',
     },
   ],
   ctaHeading: 'Start the game night',
