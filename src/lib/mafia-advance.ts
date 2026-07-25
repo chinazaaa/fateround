@@ -206,8 +206,8 @@ export async function runMafiaAdvance(
             .eq('game_id', gameId)
             .eq('player_id', bgState.player_id)
         )
-        if (!bodyguardSacrificePlayerId) {
-          systemMessages.push(`🛡️ ${playerLabel(bgState.player_id)} (Bodyguard) absorbed an attack but survived!`)
+        if (!bodyguardSacrificePlayerId && mafiaTarget) {
+          systemMessages.push('🛡️ Someone was protected!')
         }
       }
     }
