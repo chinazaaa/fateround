@@ -420,6 +420,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
     name: (color === 'w' ? white : black)?.name ?? (color === 'w' ? 'White' : 'Black'),
     pieces: color === 'w' ? material.capturedByWhite : material.capturedByBlack,
     glyphColor: (color === 'w' ? 'b' : 'w') as ChessColor,
+    active: activeSession.status === 'active' && activeSession.current_turn === color,
   })
   const timeControlSeconds = bootstrap.game?.timer_seconds ?? 0
 
@@ -447,29 +448,18 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           isMyTurn={isMyTurn}
         />
 
-        {timed ? (
-          <>
-            <View style={styles.clocks}>
+        <CapturedTray
+          {...trayFor(topColor)}
+          set={pieceSet}
+          clock={
+            timed ? (
               <ClockChip
-                label={white?.name ?? 'White'}
-                ms={liveChessClockMs(activeSession, 'w')}
-                active={activeSession.current_turn === 'w'}
+                ms={liveChessClockMs(activeSession, topColor)}
+                active={activeSession.current_turn === topColor}
               />
-              <ClockChip
-                label={black?.name ?? 'Black'}
-                ms={liveChessClockMs(activeSession, 'b')}
-                active={activeSession.current_turn === 'b'}
-              />
-            </View>
-            {timeControlSeconds > 0 ? (
-              <Text style={styles.timeNote}>
-                ⏱ {Math.round(timeControlSeconds / 60)} min each — your clock only counts down on your turn
-              </Text>
-            ) : null}
-          </>
-        ) : null}
-
-        <CapturedTray {...trayFor(topColor)} set={pieceSet} />
+            ) : undefined
+          }
+        />
 
         <View style={styles.board}>
           {displayRanks.map((rank, rankIdx) => (
@@ -518,7 +508,23 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           ))}
         </View>
 
-        <CapturedTray {...trayFor(bottomColor)} set={pieceSet} />
+        <CapturedTray
+          {...trayFor(bottomColor)}
+          set={pieceSet}
+          clock={
+            timed ? (
+              <ClockChip
+                ms={liveChessClockMs(activeSession, bottomColor)}
+                active={activeSession.current_turn === bottomColor}
+              />
+            ) : undefined
+          }
+        />
+        {timed && timeControlSeconds > 0 ? (
+          <Text style={styles.timeNote}>
+            ⏱ {Math.round(timeControlSeconds / 60)} min each — your clock only counts down on your turn
+          </Text>
+        ) : null}
 
         {myColor && activeSession.status === 'active' ? (
           <Text style={styles.identity}>
@@ -575,7 +581,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
-function ClockChip({ label, ms, active }: { label: string; ms: number; active: boolean }) {
+function ClockChip({ ms, active }: { ms: number; active: boolean }) {
   const styles = useThemedStyles(makeStyles)
   // Under 30s the active clock turns red and pulses — a quick visual "you're low".
   const lowTime = active && ms <= 30000
@@ -604,9 +610,6 @@ function ClockChip({ label, ms, active }: { label: string; ms: number; active: b
         lowTime ? { opacity: pulse } : null,
       ]}
     >
-      <Text style={[styles.clockLabel, lowTime && styles.clockLowText]} numberOfLines={1}>
-        {label}
-      </Text>
       <Text style={[styles.clockValue, lowTime && styles.clockLowText]}>{formatChessClock(ms)}</Text>
     </Animated.View>
   )
@@ -635,21 +638,17 @@ const makeStyles = (theme: Theme) =>
       borderWidth: 4,
       borderColor: 'rgba(0,0,0,0.3)',
     },
-    clocks: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginBottom: 8 },
     clockChip: {
-      flex: 1,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      padding: 8,
-      borderRadius: 8,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
       backgroundColor: theme.surface,
     },
     clockActive: { borderWidth: 1, borderColor: theme.primary },
     clockLow: { backgroundColor: 'rgba(244,63,94,0.18)', borderWidth: 1, borderColor: '#f43f5e' },
     clockLowText: { color: '#fb7185' },
-    clockLabel: { color: theme.textMuted, fontWeight: '600', flexShrink: 1, marginRight: 6 },
     clockValue: { color: theme.text, fontWeight: '800', fontVariant: ['tabular-nums'], flexShrink: 0 },
-    timeNote: { color: theme.textFaint, fontSize: 11, textAlign: 'center', marginTop: -2, marginBottom: 6 },
+    timeNote: { color: theme.textFaint, fontSize: 11, textAlign: 'center', marginTop: -6 },
     coordRank: { position: 'absolute', top: 1, left: 2, fontSize: 8, fontWeight: '700' },
     coordFile: { position: 'absolute', bottom: 1, right: 2, fontSize: 8, fontWeight: '700' },
     identity: { color: theme.textMuted, fontSize: 12, textAlign: 'center', marginTop: 10 },
