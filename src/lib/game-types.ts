@@ -2779,6 +2779,28 @@ export function isPingPongGame(gameType: GameType | string | undefined): boolean
   return parseGameType(gameType) === 'ping_pong'
 }
 
+const TEMPLATABLE_GAME_TYPES: readonly GameType[] = [
+  'uno',
+  'monopoly',
+  'whot',
+  'crazy_eights',
+  'ludo',
+  'chess',
+  'checkers',
+  'tic_tac_toe',
+  'ayo',
+  'mahjong',
+  'snake_and_ladder',
+  'scrabble',
+  'yahtzee',
+  'ping_pong',
+]
+
+/** Card/board games that support create-screen "save as template" (see src/lib/game-templates.ts). */
+export function templatableGame(gameType: GameType | string | undefined): boolean {
+  return TEMPLATABLE_GAME_TYPES.includes(parseGameType(gameType))
+}
+
 export function isQuickDrawGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'quick_draw'
 }

@@ -17,6 +17,10 @@ import { LIBRARY_GAME_TYPE_MAP } from './constants'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 import { GenderBadge } from './components/GenderBadge'
 import { Avatar } from './components/Avatar'
+import { TemplateQuickStart } from './components/TemplateQuickStart'
+import { SaveTemplateModal } from './components/SaveTemplateModal'
+import { UseTemplateConfirmModal } from './components/UseTemplateConfirmModal'
+import { getTemplates, saveTemplate, deleteTemplate, type GameTemplate, type TemplateSlots } from '@/lib/game-templates'
 import { rememberHostToken } from '@/lib/host-session'
 import { THEMES } from '@/lib/themes'
 import { ThemePreviewCard, ThemePreviewModal } from '@/components/ThemePreviewModal'
@@ -84,6 +88,7 @@ import {
   isMahjongGame,
   isQuiplashGame,
   isQuickDrawGame,
+  templatableGame,
 } from '@/lib/game-types'
 import { DEFAULT_MAHJONG_RULESET, MAHJONG_RULESETS, MAHJONG_RULESET_CONFIG } from '@/lib/mahjong-rulesets'
 import type { MahjongRuleset } from '@/types'
@@ -363,6 +368,21 @@ function CreateGameInner() {
   const [nameInput, setNameInput] = useState('')
   const [defaultGender, setDefaultGender] = useState<ParticipantGender>('female')
   const [loading, setLoading] = useState(false)
+  // Set by a template's "Use & create" button: applies the template's values (via
+  // setState calls), then this effect fires once those commit so createGame's
+  // closure sees the applied values rather than whatever was on screen before.
+  const [pendingAutoCreate, setPendingAutoCreate] = useState(false)
+  // Save-as-template widgets (TemplateQuickStart at top, save button+modal at bottom of the
+  // settings column) share this slot state + save modal rather than each owning their own copy,
+  // so saving/deleting from either place is instantly reflected in the other.
+  const [templateSlots, setTemplateSlots] = useState<TemplateSlots | null>(null)
+  const [templateModal, setTemplateModal] = useState<{ open: boolean; presetSlot: number | null }>({
+    open: false,
+    presetSlot: null,
+  })
+  // Set when a Quick Start pill is tapped; confirmed via UseTemplateConfirmModal before it
+  // actually applies the template and creates the game (see runUseTemplate/confirmUseTemplate).
+  const [useTemplateConfirm, setUseTemplateConfirm] = useState<GameTemplate | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -521,6 +541,12 @@ function CreateGameInner() {
       })
       .catch(() => {})
   }, [])
+
+  // Hydrate saved templates after mount (avoids SSR/localStorage mismatch), and whenever the
+  // game type changes — each game type has its own independent set of slots.
+  useEffect(() => {
+    setTemplateSlots(getTemplates(settings.game_type))
+  }, [settings.game_type])
 
   useEffect(() => {
     if (questionSource !== 'library') return
@@ -942,6 +968,229 @@ function CreateGameInner() {
   )
   const isCustomTwoSlot = isCustom && (customSlots?.slots.length ?? 0) === 2
   const supportsGender = supportsGenderToggle(settings.game_type)
+
+  // Save-as-template field registry (see src/lib/game-templates.ts + ./components/TemplateBar).
+  // Settings are split across the shared `Settings` object and dozens of per-game useState
+  // hooks above, so there's no single object to serialize — this maps each tunable field to
+  // its own get/set, scoped to the game type(s) it applies to. `title`, participants, and any
+  // custom question/CSV content are deliberately excluded — those aren't "settings" to reuse.
+  const TEMPLATE_FIELDS: Record<
+    string,
+    { get: () => unknown; set: (v: unknown) => void; appliesTo: (t: GameType) => boolean }
+  > = {
+    timer_seconds: {
+      get: () => settings.timer_seconds,
+      set: (v) => setSettings((s) => ({ ...s, timer_seconds: v as number })),
+      appliesTo: templatableGame,
+    },
+    theme: {
+      get: () => settings.theme,
+      set: (v) => setSettings((s) => ({ ...s, theme: v as Settings['theme'] })),
+      appliesTo: templatableGame,
+    },
+    is_public: {
+      get: () => settings.isPublic,
+      set: (v) => setSettings((s) => ({ ...s, isPublic: v as boolean })),
+      appliesTo: templatableGame,
+    },
+    late_join_policy: {
+      get: () => lateJoinPolicy,
+      set: (v) => setLateJoinPolicy(v as LateJoinPolicy),
+      appliesTo: templatableGame,
+    },
+    // Uno
+    uno_max_players: { get: () => unoMaxPlayers, set: (v) => setUnoMaxPlayers(v as number), appliesTo: isUnoGame },
+    uno_game_duration: {
+      get: () => unoGameDuration,
+      set: (v) => setUnoGameDuration(v as number),
+      appliesTo: isUnoGame,
+    },
+    uno_wd4_challenge: {
+      get: () => unoWd4Challenge,
+      set: (v) => setUnoWd4Challenge(v as boolean),
+      appliesTo: isUnoGame,
+    },
+    uno_uno_penalty: { get: () => unoUnoPenalty, set: (v) => setUnoUnoPenalty(v as number), appliesTo: isUnoGame },
+    uno_zero_seven: { get: () => unoZeroSeven, set: (v) => setUnoZeroSeven(v as boolean), appliesTo: isUnoGame },
+    uno_stacking: { get: () => unoStacking, set: (v) => setUnoStacking(v as boolean), appliesTo: isUnoGame },
+    uno_jump_in: { get: () => unoJumpIn, set: (v) => setUnoJumpIn(v as boolean), appliesTo: isUnoGame },
+    uno_multi_play_mode: {
+      get: () => unoMultiPlayMode,
+      set: (v) => setUnoMultiPlayMode(v as typeof unoMultiPlayMode),
+      appliesTo: isUnoGame,
+    },
+    uno_team_mode: { get: () => unoTeamMode, set: (v) => setUnoTeamMode(v as boolean), appliesTo: isUnoGame },
+    // Monopoly
+    monopoly_max_players: {
+      get: () => monopolyMaxPlayers,
+      set: (v) => setMonopolyMaxPlayers(v as number),
+      appliesTo: isMonopolyGame,
+    },
+    monopoly_game_duration: {
+      get: () => monopolyGameDuration,
+      set: (v) => setMonopolyGameDuration(v as number),
+      appliesTo: isMonopolyGame,
+    },
+    // Whot
+    whot_max_players: { get: () => whotMaxPlayers, set: (v) => setWhotMaxPlayers(v as number), appliesTo: isWhotGame },
+    whot_game_duration: {
+      get: () => whotGameDuration,
+      set: (v) => setWhotGameDuration(v as number),
+      appliesTo: isWhotGame,
+    },
+    whot_pick3_enabled: {
+      get: () => whotPick3Enabled,
+      set: (v) => setWhotPick3Enabled(v as boolean),
+      appliesTo: isWhotGame,
+    },
+    whot_pick2_stacking: {
+      get: () => whotPick2Stacking,
+      set: (v) => setWhotPick2Stacking(v as boolean),
+      appliesTo: isWhotGame,
+    },
+    whot_cards_enabled: {
+      get: () => whotCardsEnabled,
+      set: (v) => setWhotCardsEnabled(v as boolean),
+      appliesTo: isWhotGame,
+    },
+    whot_number_calls_enabled: {
+      get: () => whotNumberCallsEnabled,
+      set: (v) => setWhotNumberCallsEnabled(v as boolean),
+      appliesTo: isWhotGame,
+    },
+    // Crazy Eights
+    crazy8_max_players: {
+      get: () => crazy8MaxPlayers,
+      set: (v) => setCrazy8MaxPlayers(v as number),
+      appliesTo: isCrazyEightsGame,
+    },
+    crazy8_game_duration: {
+      get: () => crazy8GameDuration,
+      set: (v) => setCrazy8GameDuration(v as number),
+      appliesTo: isCrazyEightsGame,
+    },
+    crazy8_action_cards: {
+      get: () => crazy8ActionCards,
+      set: (v) => setCrazy8ActionCards(v as boolean),
+      appliesTo: isCrazyEightsGame,
+    },
+    crazy8_jokers: {
+      get: () => crazy8Jokers,
+      set: (v) => setCrazy8Jokers(v as boolean),
+      appliesTo: isCrazyEightsGame,
+    },
+    crazy8_pick2_stacking: {
+      get: () => crazy8Pick2Stacking,
+      set: (v) => setCrazy8Pick2Stacking(v as boolean),
+      appliesTo: isCrazyEightsGame,
+    },
+    // Ludo
+    ludo_max_players: { get: () => ludoMaxPlayers, set: (v) => setLudoMaxPlayers(v as number), appliesTo: isLudoGame },
+    ludo_variant: { get: () => ludoVariant, set: (v) => setLudoVariant(v as LudoVariant), appliesTo: isLudoGame },
+    // Snake & Ladder
+    snake_ladder_max_players: {
+      get: () => snakeLadderMaxPlayers,
+      set: (v) => setSnakeLadderMaxPlayers(v as number),
+      appliesTo: isSnakeAndLadderGame,
+    },
+    // Chess
+    chess_board_theme: {
+      get: () => chessBoardTheme,
+      set: (v) => setChessBoardTheme(v as string),
+      appliesTo: isChessGame,
+    },
+    chess_piece_set: { get: () => chessPieceSet, set: (v) => setChessPieceSet(v as string), appliesTo: isChessGame },
+    // Ayo
+    ayo_variant: { get: () => ayoVariant, set: (v) => setAyoVariant(v as AyoVariant), appliesTo: isAyoGame },
+    // Mahjong
+    mahjong_ruleset: {
+      get: () => mahjongRuleset,
+      set: (v) => setMahjongRuleset(v as MahjongRuleset),
+      appliesTo: isMahjongGame,
+    },
+    // Scrabble
+    scrabble_game_duration: {
+      get: () => scrabbleGameDuration,
+      set: (v) => setScrabbleGameDuration(v as number),
+      appliesTo: isScrabbleGame,
+    },
+    scrabble_dictionary: {
+      get: () => scrabbleDictionary,
+      set: (v) => setScrabbleDictionary(v as ScrabbleDictionaryId),
+      appliesTo: isScrabbleGame,
+    },
+    scrabble_clock_mode: {
+      get: () => scrabbleClockMode,
+      set: (v) => setScrabbleClockMode(v as ScrabbleClockMode),
+      appliesTo: isScrabbleGame,
+    },
+    scrabble_clock_seconds: {
+      get: () => scrabbleClockSeconds,
+      set: (v) => setScrabbleClockSeconds(v as number),
+      appliesTo: isScrabbleGame,
+    },
+    // Yahtzee
+    yahtzee_max_players: {
+      get: () => yahtzeeMaxPlayers,
+      set: (v) => setYahtzeeMaxPlayers(v as number),
+      appliesTo: isYahtzeeGame,
+    },
+    // Ping Pong
+    ping_pong_points_to_win: {
+      get: () => settings.ping_pong_points_to_win,
+      set: (v) => setSettings((s) => ({ ...s, ping_pong_points_to_win: v as number })),
+      appliesTo: isPingPongGame,
+    },
+    ping_pong_game_duration: {
+      get: () => settings.game_duration_seconds,
+      set: (v) => setSettings((s) => ({ ...s, game_duration_seconds: v as number })),
+      appliesTo: isPingPongGame,
+    },
+  }
+  const captureTemplateValues = (): Record<string, unknown> => {
+    const out: Record<string, unknown> = {}
+    for (const [key, field] of Object.entries(TEMPLATE_FIELDS)) {
+      if (field.appliesTo(settings.game_type)) out[key] = field.get()
+    }
+    return out
+  }
+  const applyTemplateValues = (values: Record<string, unknown>) => {
+    for (const [key, value] of Object.entries(values)) {
+      const field = TEMPLATE_FIELDS[key]
+      if (field && field.appliesTo(settings.game_type)) field.set(value)
+    }
+  }
+  const refreshTemplateSlots = () => setTemplateSlots(getTemplates(settings.game_type))
+  const handlePrefillTemplate = (tpl: GameTemplate) => {
+    applyTemplateValues(tpl.values)
+    toast.info(`Prefilled from "${tpl.name}" — review below, then Create when ready`)
+  }
+  // "Use & create" skips straight to creating a game, so it's confirmed first (see
+  // useTemplateConfirm + UseTemplateConfirmModal below) rather than firing on the first tap.
+  const runUseTemplate = (tpl: GameTemplate) => {
+    // A blank game name would otherwise silently block creation (the server requires a
+    // title) — default it to the template's name so this is a genuine one-tap action
+    // instead of a no-op when the host hasn't typed anything yet.
+    if (!settings.title.trim()) setSettings((s) => ({ ...s, title: tpl.name }))
+    applyTemplateValues(tpl.values)
+    setPendingAutoCreate(true)
+  }
+  const confirmUseTemplate = () => {
+    if (useTemplateConfirm) runUseTemplate(useTemplateConfirm)
+    setUseTemplateConfirm(null)
+  }
+  const openSaveTemplateModal = (presetSlot: number | null = null) => setTemplateModal({ open: true, presetSlot })
+  const confirmSaveTemplate = (slot: number, name: string) => {
+    saveTemplate(settings.game_type, slot, { name, savedAt: Date.now(), values: captureTemplateValues() })
+    setTemplateModal({ open: false, presetSlot: null })
+    refreshTemplateSlots()
+    toast.success(`Saved as "${name}"`)
+  }
+  const handleDeleteTemplate = (slot: number) => {
+    deleteTemplate(settings.game_type, slot)
+    refreshTemplateSlots()
+  }
+
   const participantOpts = {
     genderBased: settings.gender_based,
     customSlots: customSlots,
@@ -2038,6 +2287,14 @@ function CreateGameInner() {
     }
   }
 
+  // Fires once a template's applied values have committed to state (see
+  // pendingAutoCreate above), then runs the normal create flow.
+  useEffect(() => {
+    if (!pendingAutoCreate) return
+    setPendingAutoCreate(false)
+    void createGame()
+  }, [pendingAutoCreate]) // eslint-disable-line react-hooks/exhaustive-deps -- intentionally only re-fire on the flag
+
   if (step === 'settings') {
     return (
       <>
@@ -2095,6 +2352,21 @@ function CreateGameInner() {
               </p>
             </Field>
           </div>
+
+          {templatableGame(settings.game_type) && templateSlots && (
+            <TemplateQuickStart
+              slots={templateSlots}
+              onUse={setUseTemplateConfirm}
+              onPrefill={handlePrefillTemplate}
+              onOverride={(slot) => openSaveTemplateModal(slot)}
+              onDelete={handleDeleteTemplate}
+            />
+          )}
+          <UseTemplateConfirmModal
+            template={useTemplateConfirm}
+            onCancel={() => setUseTemplateConfirm(null)}
+            onConfirm={confirmUseTemplate}
+          />
 
           {/* Theme */}
           <div className="glass-card p-5 space-y-3">
@@ -5811,6 +6083,25 @@ function CreateGameInner() {
               </p>
             </SettingsGroup>
           </div>
+
+          {templatableGame(settings.game_type) && (
+            <>
+              <button
+                type="button"
+                onClick={() => openSaveTemplateModal()}
+                className="btn-secondary w-full py-2.5 text-sm"
+              >
+                Save current settings as template
+              </button>
+              <SaveTemplateModal
+                open={templateModal.open}
+                slots={templateSlots ?? [null, null]}
+                presetSlot={templateModal.presetSlot}
+                onClose={() => setTemplateModal({ open: false, presetSlot: null })}
+                onConfirm={confirmSaveTemplate}
+              />
+            </>
+          )}
 
           <StickyActionBar>
             {isQuickLobby ? (
