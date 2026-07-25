@@ -189,7 +189,19 @@ function resolveMajorityVote(votes: string[], aliveCount: number): string | null
 
 export interface MafiaNightDeath {
   playerId: string
-  cause: 'mafia_kill' | 'serial_kill' | 'vigilante_kill' | 'arson' | 'witch_kill'
+  cause: 'mafia_kill' | 'serial_kill' | 'vigilante_kill' | 'arson' | 'witch_kill' | 'trap_kill'
+}
+
+// Order the Trapper's trap kills the weakest-first: a plain Mafia foot soldier before any
+// specialist, and the Alpha (team leader) last of all.
+const MAFIA_WEAKNESS_ORDER: MafiaRole[] = ['mafia', 'wolf_cub', 'framer', 'alpha_wolf']
+
+function pickWeakestMafia(playerStates: MafiaPlayerState[]): string | null {
+  for (const role of MAFIA_WEAKNESS_ORDER) {
+    const found = playerStates.find((p) => p.is_alive && p.role === role)
+    if (found) return found.player_id
+  }
+  return null
 }
 
 export interface MafiaNightResolution {
@@ -212,11 +224,13 @@ export interface MafiaNightResolution {
   wolfCubDiedThisNight: boolean
   witchHealTarget: string | null
   witchKillTarget: string | null
-  littleGirlPeekTarget: string | null
-  littleGirlCaught: boolean
-  trapperTarget: string | null
-  trapTriggered: boolean
-  trapCaughtPlayerIds: string[]
+  witchHealActuallySaved: boolean
+  littleGirlOpenedEyes: boolean
+  littleGirlOutcome: 'none' | 'detected' | 'caught' | null
+  littleGirlDetectedMafiaId: string | null
+  trapperActivated: boolean
+  trapperBlockedPlayerIds: string[]
+  trapperKilledMafiaId: string | null
 }
 
 /**
@@ -301,32 +315,51 @@ export function resolveMafiaNight(
   const arsonistDouseTarget2 =
     arsonistPlayer && !arsonistIgnited ? (arsonistPlayer.night_action_target_player_id_2 ?? null) : null
 
-  // Witch: heal potion protects like the Doctor (once per game), kill potion is an
-  // unblockable poison (once per game) resolved directly below.
+  // Witch: heal potion protects like the Doctor (only actually consumed if it saves someone —
+  // see witchHealActuallySaved below), kill potion is an unblockable poison. Both once per game;
+  // the kill potion additionally can't be used night 1 (enforced at submission in the API route).
   const witchPlayer = session.witch_enabled ? aliveOfRole('witch') : undefined
   const witchHealTarget =
     witchPlayer && !witchPlayer.witch_heal_used ? (witchPlayer.night_action_target_player_id_2 ?? null) : null
   const witchKillTarget =
     witchPlayer && !witchPlayer.witch_kill_used ? (witchPlayer.night_action_target_player_id ?? null) : null
 
-  // Little Girl: passively peeks at the Mafia's target each night, with a chance of being
-  // noticed and killed for it.
-  const LITTLE_GIRL_CATCH_CHANCE = 0.2
+  // Little Girl: an opt-in "open eyes" action (self-target signals she chose to peek this
+  // night) — 75% see nothing, 20% identify a random living Mafia-team member, 5% get caught
+  // and killed for spying.
   const littleGirlPlayer = session.little_girl_enabled ? aliveOfRole('little_girl') : undefined
-  const littleGirlPeekTarget = littleGirlPlayer ? mafiaTarget : null
-  const littleGirlCaught = !!littleGirlPlayer && !!mafiaTarget && Math.random() < LITTLE_GIRL_CATCH_CHANCE
+  const littleGirlOpenedEyes =
+    !!littleGirlPlayer && littleGirlPlayer.night_action_target_player_id === littleGirlPlayer.player_id
+  let littleGirlOutcome: MafiaNightResolution['littleGirlOutcome'] = null
+  let littleGirlDetectedMafiaId: string | null = null
+  if (littleGirlOpenedEyes) {
+    const roll = Math.random()
+    if (roll < 0.05) {
+      littleGirlOutcome = 'caught'
+    } else if (roll < 0.25) {
+      const aliveMafiaTeam = playerStates.filter((p) => p.is_alive && MAFIA_TEAM_ROLES.includes(p.role))
+      if (aliveMafiaTeam.length > 0) {
+        littleGirlOutcome = 'detected'
+        littleGirlDetectedMafiaId = aliveMafiaTeam[Math.floor(Math.random() * aliveMafiaTeam.length)].player_id
+      } else {
+        littleGirlOutcome = 'none'
+      }
+    } else {
+      littleGirlOutcome = 'none'
+    }
+  }
 
-  // Trapper: reusable nightly trap. If the Mafia's kill target matches the trapped house, the
-  // kill is blocked and the Mafia members who voted for that target are revealed to the Trapper.
+  // Trapper: each night either sets a trap on a player (self-target isn't a valid trap choice —
+  // that signals "activate" instead, see the API route) accumulating up to 3, or activates all
+  // currently-set traps at once (self-target). Trapped players can't be killed at night while
+  // active; a Mafia kill on a trapped player is blocked AND kills the Mafia's weakest living
+  // member instead, while any other attacker is simply blocked (they survive). Traps are
+  // consumed (cleared) once activated, whether or not anything actually triggered them.
   const trapperPlayer = session.trapper_enabled ? aliveOfRole('trapper') : undefined
-  const trapperTarget = trapperPlayer?.night_action_target_player_id ?? null
-  const trapTriggered = !!trapperTarget && !!mafiaTarget && trapperTarget === mafiaTarget
-  const trapCaughtPlayerIds = trapTriggered
-    ? playerStates
-        .filter((p) => p.is_alive && p.night_action_target_player_id === mafiaTarget)
-        .filter((p) => p.role === 'mafia' || p.role === 'wolf_cub' || p.role === 'alpha_wolf')
-        .map((p) => p.player_id)
-    : []
+  const trapperActivated = !!trapperPlayer && trapperPlayer.night_action_target_player_id === trapperPlayer.player_id
+  const trapperTrappedIds = trapperActivated ? (trapperPlayer?.trapper_trap_player_ids ?? []) : []
+  const trapperBlockedPlayerIds: string[] = []
+  let trapperKilledMafiaId: string | null = null
 
   const deaths: MafiaNightDeath[] = []
   const deadIds = new Set<string>()
@@ -349,11 +382,22 @@ export function resolveMafiaNight(
     return true
   }
 
+  let witchHealActuallySaved = false
+
   const applyAttack = (targetId: string | null, cause: 'mafia_kill' | 'serial_kill' | 'vigilante_kill') => {
     if (!targetId) return
     if (doctorTarget === targetId) return
-    if (witchHealTarget === targetId) return
-    if (cause === 'mafia_kill' && trapTriggered && targetId === mafiaTarget) return
+    if (witchHealTarget === targetId) {
+      witchHealActuallySaved = true
+      return
+    }
+    if (trapperActivated && trapperTrappedIds.includes(targetId)) {
+      trapperBlockedPlayerIds.push(targetId)
+      if (cause === 'mafia_kill' && !trapperKilledMafiaId) {
+        trapperKilledMafiaId = pickWeakestMafia(playerStates)
+      }
+      return
+    }
     if (cause === 'mafia_kill') {
       const targetState = playerStates.find((p) => p.player_id === targetId)
       if (targetState?.role === 'arsonist') return
@@ -374,13 +418,17 @@ export function resolveMafiaNight(
   applyAttack(bonusMafiaTarget, 'mafia_kill')
   applyAttack(serialKillerTarget, 'serial_kill')
 
+  if (trapperKilledMafiaId) {
+    addDeath(trapperKilledMafiaId, 'trap_kill')
+  }
+
   // Witch kill potion is an unblockable poison — resolved directly, bypassing doctor/bodyguard.
   if (witchKillTarget) {
     addDeath(witchKillTarget, 'witch_kill')
   }
 
   // Little Girl caught spying — killed directly, independent of doctor/bodyguard protection.
-  if (littleGirlCaught && littleGirlPlayer) {
+  if (littleGirlOutcome === 'caught' && littleGirlPlayer) {
     addDeath(littleGirlPlayer.player_id, 'mafia_kill')
   }
 
@@ -413,11 +461,13 @@ export function resolveMafiaNight(
     wolfCubDiedThisNight,
     witchHealTarget,
     witchKillTarget,
-    littleGirlPeekTarget,
-    littleGirlCaught,
-    trapperTarget,
-    trapTriggered,
-    trapCaughtPlayerIds,
+    witchHealActuallySaved,
+    littleGirlOpenedEyes,
+    littleGirlOutcome,
+    littleGirlDetectedMafiaId,
+    trapperActivated,
+    trapperBlockedPlayerIds,
+    trapperKilledMafiaId,
   }
 }
 
@@ -454,6 +504,7 @@ export async function initializeMafiaGame(
     .single()
 
   if (gameError || !gameData) {
+    console.error('[mafia] failed to load game settings', gameError)
     return { error: 'Failed to load game settings' }
   }
 

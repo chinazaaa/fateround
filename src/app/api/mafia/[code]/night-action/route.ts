@@ -3,15 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import type { MafiaPlayerState, MafiaSession } from '@/types'
 
-const NO_NIGHT_ACTION_ROLES = new Set([
-  'villager',
-  'mayor',
-  'jester',
-  'cursed_villager',
-  'vigilante',
-  'priest',
-  'little_girl',
-])
+const NO_NIGHT_ACTION_ROLES = new Set(['villager', 'mayor', 'jester', 'cursed_villager', 'vigilante', 'priest'])
 const ROLE_ENABLED_FIELD: Partial<Record<string, keyof MafiaSession>> = {
   doctor: 'doctor_enabled',
   detective: 'detective_enabled',
@@ -25,19 +17,15 @@ const ROLE_ENABLED_FIELD: Partial<Record<string, keyof MafiaSession>> = {
   cupid: 'cupid_enabled',
   medium: 'medium_enabled',
   witch: 'witch_enabled',
+  little_girl: 'little_girl_enabled',
   trapper: 'trapper_enabled',
 }
 // Roles that may never target themselves (self-target is either meaningless or reserved
 // for a different action, e.g. Arsonist self-target signals "ignite" instead of "douse").
-const NO_SELF_TARGET_ROLES = new Set([
-  'doctor',
-  'bodyguard',
-  'vigilante',
-  'tracker',
-  'framer',
-  'serial_killer',
-  'trapper',
-])
+// Little Girl and Trapper are deliberately absent — self-target is how each of them signals
+// their alternate action (open eyes / activate traps), handled in their own custom branches.
+const NO_SELF_TARGET_ROLES = new Set(['doctor', 'bodyguard', 'vigilante', 'tracker', 'framer', 'serial_killer'])
+const TRAPPER_MAX_TRAPS = 3
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -159,6 +147,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       return NextResponse.json({ error: 'Witch must choose a potion type' }, { status: 400 })
     }
     if (potionType === 'kill') {
+      if (session.day_number === 1) {
+        return NextResponse.json({ error: 'The kill potion cannot be used on night 1' }, { status: 400 })
+      }
       if (myState.witch_kill_used) {
         return NextResponse.json({ error: 'Kill potion already used' }, { status: 400 })
       }

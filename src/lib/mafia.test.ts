@@ -59,6 +59,7 @@ function makeState(overrides: Partial<MafiaPlayerState>): MafiaPlayerState {
     priest_holy_water_used: false,
     witch_heal_used: false,
     witch_kill_used: false,
+    trapper_trap_player_ids: [],
     is_lover: false,
     lover_partner_player_id: null,
     seat_number: 0,
@@ -196,7 +197,7 @@ describe('resolveMafiaNight', () => {
     expect(result.deaths).toHaveLength(0)
   })
 
-  it('witch heal potion blocks the mafia kill and kill potion is unblockable', () => {
+  it('witch heal potion blocks the mafia kill (only consumed if it actually saves) and kill potion is unblockable', () => {
     const mafia = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'v1' })
     const witch = makeState({
       id: 'w',
@@ -211,35 +212,76 @@ describe('resolveMafiaNight', () => {
     const ids = result.deaths.map((d) => d.playerId).sort()
     expect(ids).toEqual(['v2'])
     expect(result.deaths.find((d) => d.playerId === 'v2')?.cause).toBe('witch_kill')
+    expect(result.witchHealActuallySaved).toBe(true)
+
+    // A heal on a player who wasn't attacked should NOT report as consumed.
+    const witchWhiff = makeState({ id: 'w', player_id: 'w', role: 'witch', night_action_target_player_id_2: 'v2' })
+    const whiffResult = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, witchWhiff, v1, v2])
+    expect(whiffResult.witchHealActuallySaved).toBe(false)
   })
 
-  it('trapper blocks the mafia kill when trap matches the target and reveals the culprit', () => {
+  it('trapper blocks the mafia kill only once activated and kills the weakest living mafia member', () => {
+    const mafia = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'v1' })
+    const alpha = makeState({ id: 'a1', player_id: 'a1', role: 'alpha_wolf' })
+    const trapper = makeState({
+      id: 't',
+      player_id: 't',
+      role: 'trapper',
+      night_action_target_player_id: 't', // self-target = activate
+      trapper_trap_player_ids: ['v1'],
+    })
+    const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, alpha, trapper, v1])
+    expect(result.deaths.map((d) => d.playerId).sort()).toEqual(['m1'])
+    expect(result.deaths.find((d) => d.playerId === 'm1')?.cause).toBe('trap_kill')
+    expect(result.trapperActivated).toBe(true)
+    expect(result.trapperBlockedPlayerIds).toEqual(['v1'])
+    expect(result.trapperKilledMafiaId).toBe('m1')
+  })
+
+  it('trapper set (not activated) does not protect anyone that night', () => {
     const mafia = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'v1' })
     const trapper = makeState({ id: 't', player_id: 't', role: 'trapper', night_action_target_player_id: 'v1' })
     const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
     const result = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, trapper, v1])
-    expect(result.deaths).toHaveLength(0)
-    expect(result.trapTriggered).toBe(true)
-    expect(result.trapCaughtPlayerIds).toEqual(['m1'])
+    expect(result.trapperActivated).toBe(false)
+    expect(result.deaths.map((d) => d.playerId)).toEqual(['v1'])
   })
 
-  it('little girl peeks the mafia target and is caught only on the unlucky roll', () => {
+  it('little girl only peeks if she opens her eyes, with a 20% detect / 5% caught split', () => {
     const mafia = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'v1' })
-    const littleGirl = makeState({ id: 'lg', player_id: 'lg', role: 'little_girl' })
+    const littleGirl = makeState({
+      id: 'lg',
+      player_id: 'lg',
+      role: 'little_girl',
+      night_action_target_player_id: 'lg', // self-target = open eyes
+    })
     const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
 
-    const safeRoll = vi.spyOn(Math, 'random').mockReturnValue(0.99)
-    const safeResult = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, littleGirl, v1])
-    expect(safeResult.littleGirlPeekTarget).toBe('v1')
-    expect(safeResult.littleGirlCaught).toBe(false)
-    expect(safeResult.deaths.map((d) => d.playerId)).not.toContain('lg')
-    safeRoll.mockRestore()
+    const nothingRoll = vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    const nothingResult = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, littleGirl, v1])
+    expect(nothingResult.littleGirlOpenedEyes).toBe(true)
+    expect(nothingResult.littleGirlOutcome).toBe('none')
+    expect(nothingResult.deaths.map((d) => d.playerId)).not.toContain('lg')
+    nothingRoll.mockRestore()
+
+    const detectRoll = vi.spyOn(Math, 'random').mockReturnValue(0.1)
+    const detectResult = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, littleGirl, v1])
+    expect(detectResult.littleGirlOutcome).toBe('detected')
+    expect(detectResult.littleGirlDetectedMafiaId).toBe('m1')
+    detectRoll.mockRestore()
 
     const caughtRoll = vi.spyOn(Math, 'random').mockReturnValue(0.01)
     const caughtResult = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, littleGirl, v1])
-    expect(caughtResult.littleGirlCaught).toBe(true)
+    expect(caughtResult.littleGirlOutcome).toBe('caught')
     expect(caughtResult.deaths.map((d) => d.playerId)).toContain('lg')
     caughtRoll.mockRestore()
+
+    // Didn't open her eyes — no outcome at all.
+    const passiveGirl = makeState({ id: 'lg', player_id: 'lg', role: 'little_girl' })
+    const passiveResult = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, passiveGirl, v1])
+    expect(passiveResult.littleGirlOpenedEyes).toBe(false)
+    expect(passiveResult.littleGirlOutcome).toBeNull()
   })
 
   it('sets wolfCubDiedThisNight when the wolf cub is killed', () => {

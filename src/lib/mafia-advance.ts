@@ -8,7 +8,7 @@ import {
   resolveMafiaDayVote,
   mafiaRoleTeam,
 } from '@/lib/mafia'
-import { MAFIA_ROLE_INFO } from '@/components/mafia/mafia-role-info'
+import { MAFIA_ROLE_INFO, mafiaRoleEmoji } from '@/components/mafia/mafia-role-info'
 import type { MafiaPlayerState, MafiaSession, MafiaPhase } from '@/types'
 
 const KILLER_LABEL: Record<string, string> = {
@@ -17,6 +17,7 @@ const KILLER_LABEL: Record<string, string> = {
   arson: 'The Arsonist',
   vigilante_kill: 'The Vigilante',
   witch_kill: 'The Witch',
+  trap_kill: 'A Trapper trap',
 }
 
 /**
@@ -171,11 +172,13 @@ export async function runMafiaAdvance(
       deaths,
       witchHealTarget,
       witchKillTarget,
-      littleGirlPeekTarget,
-      littleGirlCaught,
-      trapperTarget,
-      trapTriggered,
-      trapCaughtPlayerIds,
+      witchHealActuallySaved,
+      littleGirlOpenedEyes,
+      littleGirlOutcome,
+      littleGirlDetectedMafiaId,
+      trapperActivated,
+      trapperBlockedPlayerIds,
+      trapperKilledMafiaId,
     } = resolution
 
     updateFields.mafia_target_player_id = mafiaTarget
@@ -364,21 +367,23 @@ export async function runMafiaAdvance(
       })
     }
 
-    // Witch heal potion
+    // Witch heal potion — only actually consumed if it saved someone from a real attack; a
+    // whiffed heal (target wasn't attacked) costs nothing and can be reused another night.
     if (witchHealTarget) {
       const witch = playerStates.find((p) => p.role === 'witch' && p.is_alive)
       if (witch) {
-        pendingEffects.push(() =>
-          admin.from('mafia_player_states').update({ witch_heal_used: true }).eq('id', witch.id)
-        )
-        const healedAttacked = witchHealTarget === mafiaTarget || witchHealTarget === serialKillerTarget
+        if (witchHealActuallySaved) {
+          pendingEffects.push(() =>
+            admin.from('mafia_player_states').update({ witch_heal_used: true }).eq('id', witch.id)
+          )
+        }
         privateMessages.push({
           target_player_id: witch.player_id,
-          message: healedAttacked
-            ? `🧪 Night ${session.day_number}: Your heal potion saved your target!`
-            : `🧪 Night ${session.day_number}: Your heal potion wasn't needed — your target wasn't attacked.`,
+          message: witchHealActuallySaved
+            ? `🧪 Night ${session.day_number}: Your heal potion saved your target! (Potion used up.)`
+            : `🧪 Night ${session.day_number}: Your target wasn't attacked — your heal potion is still available.`,
         })
-        if (healedAttacked && witchHealTarget !== witch.player_id) {
+        if (witchHealActuallySaved && witchHealTarget !== witch.player_id) {
           privateMessages.push({
             target_player_id: witchHealTarget,
             message: `🧪 Night ${session.day_number}: You were saved last night!`,
@@ -387,7 +392,7 @@ export async function runMafiaAdvance(
       }
     }
 
-    // Witch kill potion
+    // Witch kill potion — unblockable poison, once per game (night-1 use blocked at submission)
     if (witchKillTarget) {
       const witch = playerStates.find((p) => p.role === 'witch' && p.is_alive)
       if (witch) {
@@ -401,30 +406,60 @@ export async function runMafiaAdvance(
       }
     }
 
-    // Little Girl — passive peek, with a chance of being caught
-    if (littleGirlPeekTarget) {
+    // Little Girl — chose to open her eyes: 75% nothing, 20% identifies a Mafia member, 5% caught
+    if (littleGirlOpenedEyes) {
       const littleGirl = playerStates.find((p) => p.role === 'little_girl')
       if (littleGirl) {
-        privateMessages.push({
-          target_player_id: littleGirl.player_id,
-          message: littleGirlCaught
-            ? `🎀 Night ${session.day_number}: You were caught spying on the Mafia... and paid the price.`
-            : `🎀 Night ${session.day_number}: You spied on the Mafia — they targeted ${playerLabel(littleGirlPeekTarget)}.`,
-        })
+        if (littleGirlOutcome === 'caught') {
+          privateMessages.push({
+            target_player_id: littleGirl.player_id,
+            message: `🎀 Night ${session.day_number}: The Mafia caught you! You will die tonight.`,
+          })
+        } else if (littleGirlOutcome === 'detected' && littleGirlDetectedMafiaId) {
+          const detected = playerStates.find((p) => p.player_id === littleGirlDetectedMafiaId)
+          const roleTag = detected
+            ? `${mafiaRoleEmoji(detected.role)} ${MAFIA_ROLE_INFO[detected.role]?.name ?? detected.role}`
+            : ''
+          privateMessages.push({
+            target_player_id: littleGirl.player_id,
+            message: `🎀 Night ${session.day_number}: You found a mafia! ${playerLabel(littleGirlDetectedMafiaId)} ${roleTag}`,
+          })
+        } else {
+          privateMessages.push({
+            target_player_id: littleGirl.player_id,
+            message: `🎀 Night ${session.day_number}: It was too dark. You couldn't see anything tonight.`,
+          })
+        }
       }
     }
 
-    // Trapper
-    if (trapperTarget) {
-      const trapper = playerStates.find((p) => p.role === 'trapper' && p.is_alive)
-      if (trapper) {
+    // Trapper — either set a new trap (accumulates, up to 3) or activated all set traps this
+    // night (traps are consumed on activation regardless of whether anything triggered them).
+    const trapper = playerStates.find((p) => p.role === 'trapper' && p.is_alive)
+    if (trapper) {
+      if (trapperActivated) {
+        pendingEffects.push(() =>
+          admin.from('mafia_player_states').update({ trapper_trap_player_ids: [] }).eq('id', trapper.id)
+        )
+        if (trapperBlockedPlayerIds.length > 0) {
+          const blockedNames = trapperBlockedPlayerIds.map((id) => playerLabel(id)).join(', ')
+          privateMessages.push({
+            target_player_id: trapper.player_id,
+            message: trapperKilledMafiaId
+              ? `🪤 Night ${session.day_number}: Your traps caught the Mafia attacking ${blockedNames}! ${playerLabel(trapperKilledMafiaId)} died in the blast.`
+              : `🪤 Night ${session.day_number}: Your traps blocked an attack on ${blockedNames} — the attacker survived.`,
+          })
+        } else {
+          privateMessages.push({
+            target_player_id: trapper.player_id,
+            message: `🪤 Night ${session.day_number}: You activated your traps, but nothing triggered them.`,
+          })
+        }
+      } else if (trapper.night_action_target_player_id && trapper.night_action_target_player_id !== trapper.player_id) {
+        const trapCount = trapper.trapper_trap_player_ids?.length ?? 0
         privateMessages.push({
           target_player_id: trapper.player_id,
-          message: trapTriggered
-            ? `🪤 Night ${session.day_number}: Your trap caught the Mafia targeting ${playerLabel(trapperTarget)}! Culprit(s): ${
-                trapCaughtPlayerIds.map((id) => playerLabel(id)).join(', ') || 'unknown'
-              }.`
-            : `🪤 Night ${session.day_number}: Your trap on ${playerLabel(trapperTarget)} wasn't triggered.`,
+          message: `🪤 Night ${session.day_number}: You set a trap on ${playerLabel(trapper.night_action_target_player_id)}. (${trapCount}/3 traps set)`,
         })
       }
     }

@@ -1879,7 +1879,14 @@ export type MafiaRole =
   | 'little_girl'
   | 'trapper'
 export type MafiaTeam = 'village' | 'mafia' | 'jester' | 'serial_killer' | 'arsonist'
-export type MafiaDeathCause = 'mafia_kill' | 'village_vote' | 'serial_kill' | 'arson' | 'vigilante_kill' | 'witch_kill'
+export type MafiaDeathCause =
+  | 'mafia_kill'
+  | 'village_vote'
+  | 'serial_kill'
+  | 'arson'
+  | 'vigilante_kill'
+  | 'witch_kill'
+  | 'trap_kill'
 export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'day' | 'voting' | 'elimination' | 'game_over'
 
 export interface MafiaRoleEnabledFlags {
@@ -1958,6 +1965,7 @@ export interface MafiaPlayerState {
   priest_holy_water_used: boolean
   witch_heal_used: boolean
   witch_kill_used: boolean
+  trapper_trap_player_ids: string[]
   is_lover: boolean
   lover_partner_player_id: string | null
   seat_number: number
@@ -2011,6 +2019,7 @@ export interface MafiaMyState {
   priestHolyWaterRemaining?: number
   witchHealRemaining?: number
   witchKillRemaining?: number
+  trapperTrappedNames?: string[]
   framerLastTargetName?: string | null
   cupidLinkedNames?: [string, string] | null
   isLover?: boolean
