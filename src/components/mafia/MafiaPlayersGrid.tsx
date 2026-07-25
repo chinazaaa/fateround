@@ -73,7 +73,7 @@ export function MafiaPlayersGrid({
           </button>
         )}
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
         {players.map((p) => {
           const isMe = p.id === myPlayerId
           const voteCount = voteTallies?.[p.id] ?? 0

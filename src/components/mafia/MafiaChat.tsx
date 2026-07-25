@@ -62,16 +62,17 @@ export interface MafiaSystemLine {
 interface ChatMessagesProps {
   messages: MafiaChatMessage[]
   myPlayerId: string | null
-  sentBubbleClass: string
-  /** Player roster (for seat numbers) — when provided, sender names show "#N" and any
-   *  message mentioning the local player's own number gets a highlighted border, matching
-   *  Wolvesville's convention of referring to players by seat number in chat. */
+  /** Player roster (for seat numbers + alive status) — sender names show "#N", any message
+   *  mentioning the local player's own number highlights the whole row (not just the text),
+   *  and dead senders render in muted grey vs the living's normal foreground color —
+   *  matching Wolvesville's flat chat-log style (no speech bubbles). */
   players?: MafiaPublicPlayer[]
   /** Synthesized public phase-narrative lines (day started, sunrise/vote results, votes
    *  required) — appended at the END of the feed (below the chat history), so it's the
    *  first thing visible without scrolling up, matching Wolvesville, instead of a separate
    *  result card or a banner stuck above older messages. */
   systemLines?: MafiaSystemLine[]
+  className?: string
 }
 
 const SYSTEM_LINE_TONE: Record<NonNullable<MafiaSystemLine['tone']>, string> = {
@@ -80,45 +81,48 @@ const SYSTEM_LINE_TONE: Record<NonNullable<MafiaSystemLine['tone']>, string> = {
   success: 'text-emerald-400',
 }
 
-export function ChatMessages({ messages, myPlayerId, sentBubbleClass, players, systemLines = [] }: ChatMessagesProps) {
+/** Flat chat-log renderer (Wolvesville style): "#N Name: message" rows, no bubbles. Dead
+ *  senders render muted grey; the living render in normal foreground color. A message that
+ *  mentions the local player's own seat number highlights its entire row, not just the text. */
+export function ChatMessages({
+  messages,
+  myPlayerId,
+  players,
+  systemLines = [],
+  className = 'h-40',
+}: ChatMessagesProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length, systemLines.length])
 
-  const seatNumberById = new Map(players?.map((p) => [p.id, p.seatNumber]) ?? [])
-  const mySeatNumber = myPlayerId ? seatNumberById.get(myPlayerId) : undefined
+  const playerById = new Map(players?.map((p) => [p.id, p]) ?? [])
+  const mySeatNumber = myPlayerId ? playerById.get(myPlayerId)?.seatNumber : undefined
   const myMentionPattern = mySeatNumber != null ? new RegExp(`(?<!\\d)${mySeatNumber}(?!\\d)`) : null
 
   return (
-    <div className="h-40 overflow-y-auto space-y-1.5 flex flex-col p-1">
+    <div className={`${className} overflow-y-auto space-y-1 p-1`}>
       {messages.length === 0 && systemLines.length === 0 ? (
-        <p className="text-xs text-[var(--muted)] italic text-center py-6 m-auto">No messages yet.</p>
+        <p className="text-xs text-[var(--muted)] italic text-center py-6">No messages yet.</p>
       ) : (
         messages.map((m) => {
+          const sender = playerById.get(m.sender_player_id)
           const isMe = m.sender_player_id === myPlayerId
           const mentionsMe = !isMe && !!myMentionPattern?.test(m.message)
-          const senderNumber = seatNumberById.get(m.sender_player_id)
+          const senderIsDead = sender ? !sender.isAlive : false
           return (
-            <div key={m.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-              <div
-                className={`px-3 py-1.5 rounded-xl text-sm max-w-[85%] ${
-                  isMe
-                    ? sentBubbleClass
-                    : mentionsMe
-                      ? 'bg-amber-500/10 text-[var(--foreground)] border-2 border-amber-400'
-                      : 'bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)]'
-                }`}
-              >
-                {!isMe && (
-                  <span className="block text-[10px] font-bold text-[var(--muted)] mb-0.5">
-                    {senderNumber != null ? `#${senderNumber} ` : ''}
-                    {m.sender_name}
-                  </span>
-                )}
-                <span>{m.message}</span>
-              </div>
-            </div>
+            <p
+              key={m.id}
+              className={`text-sm leading-snug px-1.5 py-0.5 rounded ${
+                mentionsMe ? 'bg-pink-500/15' : ''
+              } ${senderIsDead ? 'text-[var(--muted)]' : 'text-[var(--foreground)]'}`}
+            >
+              <strong className="font-bold">
+                {sender ? `#${sender.seatNumber} ` : ''}
+                {m.sender_name}:
+              </strong>{' '}
+              {m.message}
+            </p>
           )
         })
       )}
@@ -171,12 +175,7 @@ export function MafiaSecretChat({ messages, onSendMessage, myPlayerId, players }
         <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
         Mafia Secret Chat
       </p>
-      <ChatMessages
-        messages={messages}
-        myPlayerId={myPlayerId}
-        players={players}
-        sentBubbleClass="bg-red-600 text-white"
-      />
+      <ChatMessages messages={messages} myPlayerId={myPlayerId} players={players} />
       <form onSubmit={handleSubmit} className="flex gap-2">
         <input
           type="text"
@@ -198,14 +197,23 @@ export function MafiaSecretChat({ messages, onSendMessage, myPlayerId, players }
   )
 }
 
-// ── Town day chat ─────────────────────────────────────────────────────────────
+// ── Town discussion — one shared feed for living and dead ────────────────────
+//
+// Living players only ever receive day-scope messages from the server (ghost messages
+// are never sent to them), so they simply never see the dead's chat. Dead players get
+// both merged into one timeline here, with dead senders rendered in muted grey. There is
+// no separate "Ghost Chat" box — the send box is the same one, and the scope a message
+// is posted to is decided by the caller (living -> day scope, dead -> ghost scope).
 
 interface DayChatProps extends ChatProps {
   disabled?: boolean
+  /** Only present for dead viewers — merged into `messages` and sorted by time. */
+  ghostMessages?: MafiaChatMessage[]
 }
 
 export function MafiaDayChat({
   messages,
+  ghostMessages,
   onSendMessage,
   myPlayerId,
   players,
@@ -213,17 +221,20 @@ export function MafiaDayChat({
   disabled = false,
 }: DayChatProps) {
   const { text, setText, sending, handleSubmit } = useChatInput(onSendMessage, disabled)
+  const merged = ghostMessages?.length
+    ? [...messages, ...ghostMessages].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))
+    : messages
   return (
-    <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-2">
+    <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-2 h-full flex flex-col">
       <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)] flex items-center gap-1.5">
         💬 Town Discussion
       </p>
       <ChatMessages
-        messages={messages}
+        messages={merged}
         myPlayerId={myPlayerId}
         players={players}
         systemLines={systemLines}
-        sentBubbleClass="bg-[var(--primary)] text-white"
+        className="flex-1 min-h-[16rem]"
       />
       <form onSubmit={handleSubmit} className="flex gap-2">
         <input
@@ -238,42 +249,6 @@ export function MafiaDayChat({
           type="submit"
           disabled={sending || !text.trim() || disabled}
           className="px-3 py-2 btn-primary btn-fit text-sm font-semibold rounded-lg transition disabled:opacity-50"
-        >
-          Send
-        </button>
-      </form>
-    </div>
-  )
-}
-
-// ── Ghost chat (dead players) ─────────────────────────────────────────────────
-
-export function MafiaGhostChat({ messages, onSendMessage, myPlayerId, players }: ChatProps) {
-  const { text, setText, sending, handleSubmit } = useChatInput(onSendMessage)
-  return (
-    <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-2 opacity-80">
-      <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--muted)] flex items-center gap-1.5">
-        👻 Ghost Chat <span className="normal-case font-normal text-[var(--muted)]">(only the dead can see this)</span>
-      </p>
-      <ChatMessages
-        messages={messages}
-        myPlayerId={myPlayerId}
-        players={players}
-        sentBubbleClass="bg-[var(--card)] text-[var(--muted)] border border-[var(--border)]"
-      />
-      <form onSubmit={handleSubmit} className="flex gap-2">
-        <input
-          type="text"
-          value={text}
-          disabled={sending}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Chat with fellow ghosts..."
-          className="flex-1 px-3 py-2 bg-[var(--surface-inset-bg)] border border-[var(--border)] rounded-lg text-sm focus:outline-none text-[var(--foreground)] placeholder:text-[var(--muted)]"
-        />
-        <button
-          type="submit"
-          disabled={sending || !text.trim()}
-          className="px-3 py-2 btn-secondary text-sm font-semibold rounded-lg transition disabled:opacity-50"
         >
           Send
         </button>

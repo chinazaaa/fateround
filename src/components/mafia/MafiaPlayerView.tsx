@@ -29,7 +29,6 @@ import { MAFIA_MIN_PLAYERS } from '@/lib/mafia'
 import { clearPlayerSession, getPlayerSession } from '@/lib/utils'
 import { MafiaPhaseTimer } from './MafiaChat'
 import { MafiaDayChat } from './MafiaChat'
-import { MafiaGhostChat } from './MafiaChat'
 import { MafiaIdentityPanel } from './MafiaIdentityPanel'
 import { MafiaPhaseCard } from './MafiaPhaseCard'
 import { MafiaPlayersGrid } from './MafiaPlayersGrid'
@@ -609,64 +608,60 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           label={PHASE_LABEL[phase] ?? undefined}
         />
 
-        <main className="flex-1 max-w-3xl w-full mx-auto p-4 md:p-6 space-y-4">
-          <MafiaPlayersGrid
-            players={publicPlayers}
-            myPlayerId={myPlayerId}
-            myRole={myRole}
-            phase={phase}
-            voteTallies={voteTallies}
-            voteChoices={voteChoices}
-            votedPlayerIds={votedPlayerIds}
-            anonymousVotes={anonymousVotes}
-            onSelect={gridOnSelect}
-            selectedIds={gridSelectedIds}
-            onSkipVote={amIAlive && !amISpectator ? () => void submitDayVote(null) : undefined}
-            skipDisabled={acting}
-          />
-
-          {(phase === 'role_reveal' || phase === 'night' || (phase === 'voting' && amIAlive && !amISpectator)) && (
-            <MafiaPhaseCard
+        <main className="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6 flex flex-col md:grid md:grid-cols-3 gap-4 md:gap-6 md:items-start">
+          <div className="md:col-span-2 space-y-4">
+            <MafiaPlayersGrid
+              players={publicPlayers}
+              myPlayerId={myPlayerId}
+              myRole={myRole}
               phase={phase}
-              dayNumber={dayNumber}
-              myState={myState}
-              amIAlive={amIAlive}
-              amISpectator={amISpectator}
-              acting={acting}
-              cupidFirstPickName={cupidFirstPickName}
-              onIgnite={() => {
-                if (myPlayerId) void submitNightAction(myPlayerId)
-              }}
+              voteTallies={voteTallies}
+              voteChoices={voteChoices}
+              votedPlayerIds={votedPlayerIds}
+              anonymousVotes={anonymousVotes}
+              onSelect={gridOnSelect}
+              selectedIds={gridSelectedIds}
+              onSkipVote={amIAlive && !amISpectator ? () => void submitDayVote(null) : undefined}
+              skipDisabled={acting}
             />
-          )}
 
-          <MafiaIdentityPanel
-            myState={myState}
-            myPlayerId={myPlayerId}
-            mySeatNumber={me?.seatNumber ?? null}
-            amIAlive={amIAlive}
-            mafiaChatMessages={myState?.mafiaChatMessages ?? []}
-            onSendMafiaMessage={sendMafiaMessage}
-          />
+            {(phase === 'role_reveal' || phase === 'night' || (phase === 'voting' && amIAlive && !amISpectator)) && (
+              <MafiaPhaseCard
+                phase={phase}
+                dayNumber={dayNumber}
+                myState={myState}
+                amIAlive={amIAlive}
+                amISpectator={amISpectator}
+                acting={acting}
+                cupidFirstPickName={cupidFirstPickName}
+                onIgnite={() => {
+                  if (myPlayerId) void submitNightAction(myPlayerId)
+                }}
+              />
+            )}
+
+            <MafiaIdentityPanel
+              myState={myState}
+              myPlayerId={myPlayerId}
+              mySeatNumber={me?.seatNumber ?? null}
+              amIAlive={amIAlive}
+              mafiaChatMessages={myState?.mafiaChatMessages ?? []}
+              onSendMafiaMessage={sendMafiaMessage}
+            />
+          </div>
 
           {phase !== 'night' && phase !== 'role_reveal' && (
-            <MafiaDayChat
-              messages={dayChatMessages ?? []}
-              onSendMessage={sendDayMessage}
-              myPlayerId={myPlayerId}
-              players={publicPlayers}
-              systemLines={systemLines}
-              disabled={!amIAlive || amISpectator}
-            />
-          )}
-
-          {!amIAlive && myPlayerId && (
-            <MafiaGhostChat
-              messages={ghostChatMessages ?? []}
-              onSendMessage={sendGhostMessage}
-              myPlayerId={myPlayerId}
-              players={publicPlayers}
-            />
+            <div className="md:col-span-1">
+              <MafiaDayChat
+                messages={dayChatMessages ?? []}
+                ghostMessages={!amIAlive ? (ghostChatMessages ?? []) : undefined}
+                onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
+                myPlayerId={myPlayerId}
+                players={publicPlayers}
+                systemLines={systemLines}
+                disabled={amISpectator}
+              />
+            </div>
           )}
         </main>
       </div>
