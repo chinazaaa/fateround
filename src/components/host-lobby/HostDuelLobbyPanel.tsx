@@ -57,9 +57,11 @@ export function HostDuelLobbyPanel({ gameCode, hostToken, game, duelType, onGame
   const { error: toastError } = useToast()
   const { setBoardTheme: setDeviceBoardTheme, setPieceSet: setDevicePieceSet } = useChessAppearance()
   const isChess = duelType === 'chess'
+  const isCheckersNigeria = duelType === 'checkers_nigeria'
   const [turnTimer, setTurnTimer] = useState(game.timer_seconds ?? 0)
   const [boardTheme, setBoardTheme] = useState(game.chess_board_theme ?? 'green')
   const [pieceSet, setPieceSet] = useState(game.chess_piece_set ?? 'neo')
+  const [streetRules, setStreetRules] = useState(game.checkers_nigeria_street_rules === true)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -67,7 +69,8 @@ export function HostDuelLobbyPanel({ gameCode, hostToken, game, duelType, onGame
     setTurnTimer(game.timer_seconds ?? 0)
     setBoardTheme(game.chess_board_theme ?? 'green')
     setPieceSet(game.chess_piece_set ?? 'neo')
-  }, [game.timer_seconds, game.chess_board_theme, game.chess_piece_set])
+    setStreetRules(game.checkers_nigeria_street_rules === true)
+  }, [game.timer_seconds, game.chess_board_theme, game.chess_piece_set, game.checkers_nigeria_street_rules])
 
   useEffect(() => {
     return () => {
@@ -133,6 +136,15 @@ export function HostDuelLobbyPanel({ gameCode, hostToken, game, duelType, onGame
     })
   }
 
+  const onStreetRulesChange = (next: boolean) => {
+    if (saveState === 'saving' || next === streetRules) return
+    const previous = streetRules
+    setStreetRules(next)
+    void patchSettings({ checkers_nigeria_street_rules: next }).then((ok) => {
+      if (!ok) setStreetRules(previous)
+    })
+  }
+
   const timerOptions = useMemo(
     () => TURN_TIMER_OPTIONS[duelType].map((s) => ({ value: s, label: timerLabel(s) })),
     [duelType]
@@ -146,6 +158,22 @@ export function HostDuelLobbyPanel({ gameCode, hostToken, game, duelType, onGame
         <HostLobbySettingBlock title={TIMER_TITLE[duelType]}>
           <HostLobbyOptionChips value={turnTimer} options={timerOptions} onChange={onTurnTimerChange} />
         </HostLobbySettingBlock>
+
+        {isCheckersNigeria && (
+          <HostLobbySettingBlock title="Street Rules">
+            <label className="flex items-center justify-between gap-2">
+              <span className="text-xs text-faint pr-2">
+                Capturing stays optional — decline one and your opponent may huff (remove) the piece instead of moving.
+              </span>
+              <input
+                type="checkbox"
+                checked={streetRules}
+                onChange={(e) => onStreetRulesChange(e.target.checked)}
+                disabled={saveState === 'saving'}
+              />
+            </label>
+          </HostLobbySettingBlock>
+        )}
 
         {isChess && (
           <>

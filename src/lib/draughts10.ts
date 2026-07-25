@@ -263,14 +263,23 @@ export function maxChainLength(board: string, sq: string): number {
  * Legal hops for the piece on `square`, honoring forced-capture AND the
  * majority-capture rule. When `mustContinue`/`mustRemaining` are set (a
  * multi-jump is in progress), only that square may move, and only via a
- * continuation that stays on a maximal-length sequence.
+ * continuation that stays on a maximal-length sequence — this holds even
+ * under Street Rules, which only relaxes whether a capture chain must be
+ * *started*, not whether one must be *finished* once begun.
+ *
+ * `allowSkip` (Nigeria's "Street Rules" room setting) lets a player decline
+ * an available capture and make an ordinary simple move instead — captures
+ * remain legal to play, just no longer mandatory. The caller (processDraughts10Move)
+ * is responsible for tracking which pieces become "huffable" when a capture
+ * is declined.
  */
 export function legalStepsFromSquare(
   board: string,
   color: CheckersColor,
   square: string,
   mustContinue: string | null,
-  mustRemaining: number | null
+  mustRemaining: number | null,
+  allowSkip = false
 ): Draughts10Step[] {
   if (mustContinue) {
     if (square !== mustContinue || mustRemaining == null) return []
@@ -293,10 +302,11 @@ export function legalStepsFromSquare(
       }
     }
   }
-  return captureStepsFrom(board, square).filter((s) => {
+  const forced = captureStepsFrom(board, square).filter((s) => {
     const next = applyStepRaw(board, s)
     return 1 + maxChainLength(next, s.to) === globalMax
   })
+  return allowSkip ? [...forced, ...simpleStepsFrom(board, square)] : forced
 }
 
 /** Every legal hop available to `color` right now (used for stalemate detection). */
@@ -304,20 +314,40 @@ export function legalMovesForColor(
   board: string,
   color: CheckersColor,
   mustContinue: string | null = null,
-  mustRemaining: number | null = null
+  mustRemaining: number | null = null,
+  allowSkip = false
 ): Draughts10Step[] {
-  if (mustContinue) return legalStepsFromSquare(board, color, mustContinue, mustContinue, mustRemaining)
+  if (mustContinue) return legalStepsFromSquare(board, color, mustContinue, mustContinue, mustRemaining, allowSkip)
   const all: Draughts10Step[] = []
   for (let r = 0; r < BOARD_SIZE; r += 1) {
     for (let c = 0; c < BOARD_SIZE; c += 1) {
       if (!isDarkSquare(r, c)) continue
       const sq = squareId(r, c)
       if (colorOfPiece(board[idx(r, c)]) !== color) continue
-      all.push(...legalStepsFromSquare(board, color, sq, null, null))
+      all.push(...legalStepsFromSquare(board, color, sq, null, null, allowSkip))
     }
   }
   return all
 }
+
+/** Squares of `color`'s pieces that currently have a capture available — used to compute
+ *  which pieces become huffable when a player declines to capture under Street Rules. */
+function capturablePieceSquares(board: string, color: CheckersColor): string[] {
+  const squares: string[] = []
+  for (let r = 0; r < BOARD_SIZE; r += 1) {
+    for (let c = 0; c < BOARD_SIZE; c += 1) {
+      if (!isDarkSquare(r, c)) continue
+      const sq = squareId(r, c)
+      if (colorOfPiece(board[idx(r, c)]) === color && captureStepsFrom(board, sq).length > 0) {
+        squares.push(sq)
+      }
+    }
+  }
+  return squares
+}
+
+/** Test-only alias for the internal huffable-squares generator. */
+export const capturablePieceSquaresForTest = capturablePieceSquares
 
 // ---------------------------------------------------------------------------
 // Session helpers (DB-backed) — mirrors src/lib/checkers.ts.
@@ -369,6 +399,8 @@ export function draughts10ResultDetail(reason: string | null | undefined): strin
   switch (reason) {
     case 'capture_all':
       return 'by capturing every piece'
+    case 'huff_all':
+      return 'by huffing every piece'
     case 'no_moves':
       return 'by blocking all moves'
     case 'timeout':
@@ -525,12 +557,14 @@ export async function processDraughts10Move(
 
   if (!isValidSquare(move.from) || !isValidSquare(move.to)) return { error: 'Illegal move' }
 
+  const allowSkip = session.huffing_enabled && !session.must_continue_from
   const steps = legalStepsFromSquare(
     session.board,
     color,
     move.from,
     session.must_continue_from,
-    session.must_continue_remaining
+    session.must_continue_remaining,
+    allowSkip
   )
   const step = steps.find((s) => s.to === move.to)
   if (!step) return { error: 'Illegal move' }
@@ -538,6 +572,13 @@ export async function processDraughts10Move(
   const mover = pieceAt(session.board, move.from)
   const [toRow] = parseSquare(step.to)
   const captured = !!step.captured
+
+  // Street Rules: declining an available capture makes every one of the mover's
+  // pieces that could have captured "huffable" by the opponent next turn. Any
+  // huff opportunity the mover chose not to use (their own prior skip being
+  // huffed, or an unused one from further back) lapses the moment they act.
+  const huffableSquares =
+    allowSkip && !captured && hasAnyCapture(session.board, color) ? capturablePieceSquares(session.board, color) : []
 
   // legalStepsFromSquare only offers hops on an optimal (majority-rule) path, so
   // the exact captures still required after this hop is just the landing square's
@@ -628,7 +669,9 @@ export async function processDraughts10Move(
             : "It's a draw — 25-move rule!"
           : continues
             ? `${moverName} must keep jumping!`
-            : turnMessage(nextName, nextTurn)
+            : huffableSquares.length > 0
+              ? `${moverName} passed up a capture — ${nextName} may huff a piece or move.`
+              : turnMessage(nextName, nextTurn)
 
   const nextRemaining = nextTurn === 'r' ? redMs : blackMs
   const nextDeadline = !finished && timed && nextRemaining != null ? new Date(now + nextRemaining).toISOString() : null
@@ -643,6 +686,7 @@ export async function processDraughts10Move(
       position_counts: positionCounts,
       must_continue_from: continues ? step.to : null,
       must_continue_remaining: continues ? remainingAfterThisHop : null,
+      huffable_squares: huffableSquares,
       red_time_ms: redMs,
       black_time_ms: blackMs,
       turn_started_at: finished ? null : new Date(now).toISOString(),
@@ -652,6 +696,123 @@ export async function processDraughts10Move(
       result_reason: reason,
       winner_player_id: winnerPlayerId,
       is_draw: draw,
+      status_message: statusMessage,
+      turn_deadline_at: nextDeadline,
+    },
+    session.updated_at
+  )
+  if (!won) return {}
+
+  if (finished) {
+    await markGameFinished(supabase, gameId)
+  }
+
+  return {}
+}
+
+/**
+ * Street Rules only: instead of moving, spend your turn removing one of the
+ * opponent's pieces that they left un-captured last turn (the classic "huffing"
+ * penalty). Ends the turn — huffing counts as progress, same as a capture.
+ */
+export async function processDraughts10Huff(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  square: string
+): Promise<{ error?: string }> {
+  const { session, error: loadError } = await loadSession(supabase, gameId)
+  if (loadError) return { error: loadError }
+  if (!session) return { error: 'Game not found' }
+  if (session.status === 'finished') return { error: 'Game already finished' }
+  if (!session.huffing_enabled) return { error: 'Street Rules is not enabled for this game' }
+
+  const color = colorForPlayer(session, playerId)
+  if (!color) return { error: 'You are not in this game' }
+  if (session.current_turn !== color) return { error: "It's not your turn" }
+  if (session.must_continue_from) return { error: 'Finish your capture chain before huffing' }
+  if (!session.huffable_squares?.includes(square)) return { error: 'That piece is not eligible to be huffed' }
+
+  const opponent: CheckersColor = color === 'r' ? 'b' : 'r'
+  if (colorOfPiece(pieceAt(session.board, square)) !== opponent) {
+    return { error: 'That piece is not eligible to be huffed' }
+  }
+
+  const [r, c] = parseSquare(square)
+  const arr = session.board.split('')
+  arr[idx(r, c)] = '.'
+  const nextBoard = arr.join('')
+  const nextTurn = opponent
+
+  let finished = false
+  let reason: string | null = null
+  let winnerColor: CheckersColor | null = null
+
+  if (!hasPieces(nextBoard, nextTurn)) {
+    finished = true
+    winnerColor = color
+    reason = 'huff_all'
+  } else if (legalMovesForColor(nextBoard, nextTurn, null, null, session.huffing_enabled).length === 0) {
+    finished = true
+    winnerColor = color
+    reason = 'no_moves'
+  }
+
+  // --- Cumulative clock: deduct the time the huffer spent on this turn. ---
+  const timed = draughts10IsTimed(session)
+  const now = Date.now()
+  let redMs = session.red_time_ms
+  let blackMs = session.black_time_ms
+
+  if (timed) {
+    const startedAt = session.turn_started_at ? new Date(session.turn_started_at).getTime() : now
+    const elapsed = Math.max(0, now - startedAt)
+    if (color === 'r') redMs = Math.max(0, (session.red_time_ms ?? 0) - elapsed)
+    else blackMs = Math.max(0, (session.black_time_ms ?? 0) - elapsed)
+
+    const huffedRemaining = (color === 'r' ? redMs : blackMs) ?? 0
+    if (huffedRemaining <= 0 && !finished) {
+      finished = true
+      reason = 'timeout'
+      winnerColor = opponent
+    }
+  }
+
+  const names = await loadPlayerNames(supabase, gameId)
+  const winnerPlayerId = winnerColor ? playerIdForColor(session, winnerColor) : null
+  const huffedByName = names.get(playerId) ?? (color === 'r' ? 'Red' : 'Black')
+  const nextPlayerId = nextTurn === 'r' ? session.player_red_id : session.player_black_id
+  const nextName = names.get(nextPlayerId) ?? (nextTurn === 'r' ? 'Red' : 'Black')
+
+  const statusMessage =
+    reason === 'timeout'
+      ? `${huffedByName} ran out of time — ${names.get(winnerPlayerId!) ?? 'Opponent'} wins!`
+      : winnerColor
+        ? `${huffedByName} wins!`
+        : `${huffedByName} huffed a piece! ${turnMessage(nextName, nextTurn)}`
+
+  const nextRemaining = nextTurn === 'r' ? redMs : blackMs
+  const nextDeadline = !finished && timed && nextRemaining != null ? new Date(now + nextRemaining).toISOString() : null
+
+  const won = await persistSession(
+    supabase,
+    gameId,
+    {
+      board: nextBoard,
+      current_turn: nextTurn,
+      move_count: 0,
+      must_continue_from: null,
+      must_continue_remaining: null,
+      huffable_squares: [],
+      red_time_ms: redMs,
+      black_time_ms: blackMs,
+      turn_started_at: finished ? null : new Date(now).toISOString(),
+      last_move_from: null,
+      last_move_to: square,
+      status: finished ? 'finished' : 'active',
+      result_reason: reason,
+      winner_player_id: winnerPlayerId,
+      is_draw: false,
       status_message: statusMessage,
       turn_deadline_at: nextDeadline,
     },
