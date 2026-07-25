@@ -23,6 +23,7 @@ import {
   MATURE_NOTICE_TITLE,
 } from '@/lib/game-maturity'
 import { FaqList } from '@/components/marketing/FaqList'
+import { MafiaRolesLanding } from '@/components/mafia/MafiaRolesLanding'
 
 type Props = { params: Promise<{ slug: string }> }
 
@@ -231,6 +232,8 @@ export default async function GameLandingRoute({ params }: Props) {
                 ))}
               </div>
             </section>
+
+            {content.gameType === 'mafia' && <MafiaRolesLanding />}
 
             {/* Game rules */}
             <section id="rules" className="scroll-mt-24">
