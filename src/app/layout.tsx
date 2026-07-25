@@ -18,7 +18,7 @@ import './globals.css'
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'], display: 'swap' })
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'], display: 'swap' })
 
-// Fate Round design-system fonts — scoped to the public/marketing pages via
+// FateRound design-system fonts — scoped to the public/marketing pages via
 // the `.fr-site` wrapper (see fate-round-ds.css). Declared here only as CSS
 // variables so the rest of the app keeps its Geist body font.
 const brandDisplay = Bricolage_Grotesque({

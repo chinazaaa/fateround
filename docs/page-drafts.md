@@ -1,10 +1,10 @@
-# Fate Round — Page Drafts (v1)
+# FateRound — Page Drafts (v1)
 
 Three flagship pages, written to the approved brand voice, targeting the highest-leverage questions people ask AI. Each is structured to match your existing `/games` landing anatomy (SEO title, meta description, hero, highlights, feature cards, steps, body, FAQ) so it drops straight into `game-landing`-style content or a new marketing route.
 
 **Shared implementation notes (apply to all three):** add a primary CTA button (`Create a free room →` linking to `/create`) after the hero and again after the FAQ; link every game name to its `/games/[slug]` page; and link "20+ games" to `/games`. Wrap each FAQ block in FAQPage JSON-LD schema (you already do this pattern elsewhere) so the Q&As are eligible for AI-answer and rich-result extraction.
 
-Why these three: they cover the three biggest demand clusters the research surfaced — **video-call play** (largest recurring cluster), **free Jackbox alternative** (highest-intent comparison keyword, and the gap Fate Round's breadth is built to win), and **long-distance** (underserved, loyal, recurring 2-player audience). A prioritized backlog of the rest is at the bottom.
+Why these three: they cover the three biggest demand clusters the research surfaced — **video-call play** (largest recurring cluster), **free Jackbox alternative** (highest-intent comparison keyword, and the gap FateRound's breadth is built to win), and **long-distance** (underserved, loyal, recurring 2-player audience). A prioritized backlog of the rest is at the bottom.
 
 ---
 ---
@@ -14,12 +14,12 @@ Why these three: they cover the three biggest demand clusters the research surfa
 **Route:** `/free-jackbox-alternative`
 **Primary query cluster:** "free Jackbox alternatives," "games like Jackbox no download," "free Jackbox alternative no signup"
 
-**SEO title:** Free Jackbox Alternative — No Download, No Sign-Up | Fate Round
-**Meta description:** Want Jackbox without the price tag or the download? Fate Round is free forever — share one link and your whole group joins from their phones. 20+ games, no app, no account.
+**SEO title:** Free Jackbox Alternative — No Download, No Sign-Up | FateRound
+**Meta description:** Want Jackbox without the price tag or the download? FateRound is free forever — share one link and your whole group joins from their phones. 20+ games, no app, no account.
 
 ### Hero
 **Title:** The free Jackbox alternative — no pack to buy, no screen to share
-**Subtitle:** Love the "everyone plays from their phone" chaos, hate paying per pack and downloading on a host screen? Fate Round gives you the same energy — one link, everyone's in — across 20+ games. Free forever.
+**Subtitle:** Love the "everyone plays from their phone" chaos, hate paying per pack and downloading on a host screen? FateRound gives you the same energy — one link, everyone's in — across 20+ games. Free forever.
 
 ### Highlights
 - Free forever — no pack to buy, no upsell, no "premium" wall
@@ -39,12 +39,12 @@ Why these three: they cover the three biggest demand clusters the research surfa
 3. **Play from your phones.** Vote, guess, and roll in real time. Switch to a new game without leaving the room.
 
 ### Body
-Jackbox is great — and it costs money, needs a screen everyone can see, and locks each night to whichever pack the host owns. Fate Round keeps the part everyone actually loves (your phone is the controller, the reveals are the punchline) and drops the friction. There's no pack to buy, no download, and no account. You share a link, your group joins from wherever they are, and you jump between 20+ games in the same room.
+Jackbox is great — and it costs money, needs a screen everyone can see, and locks each night to whichever pack the host owns. FateRound keeps the part everyone actually loves (your phone is the controller, the reveals are the punchline) and drops the friction. There's no pack to buy, no download, and no account. You share a link, your group joins from wherever they are, and you jump between 20+ games in the same room.
 
-And Fate Round isn't just party trivia. The same room that runs Smash Marry Kill and Would You Rather also runs Monopoly, Yahtzee, Whot, Ludo, Chess, Codewords, and Trivia. It's the whole game night behind one link — not one pack at a time. Perfect over a Discord or Zoom call, on a couch, or across the country.
+And FateRound isn't just party trivia. The same room that runs Smash Marry Kill and Would You Rather also runs Monopoly, Yahtzee, Whot, Ludo, Chess, Codewords, and Trivia. It's the whole game night behind one link — not one pack at a time. Perfect over a Discord or Zoom call, on a couch, or across the country.
 
-### How Fate Round compares to Jackbox
-| | Fate Round | Jackbox |
+### How FateRound compares to Jackbox
+| | FateRound | Jackbox |
 |---|---|---|
 | Price | Free forever | Paid — one-time purchase per pack (~$25–30, varies) |
 | Download | None | Host installs a screen |
@@ -56,11 +56,11 @@ And Fate Round isn't just party trivia. The same room that runs Smash Marry Kill
 *Comparison reflects Jackbox as of July 2026 — check jackboxgames.com for current pricing.*
 
 ### FAQ
-**Is Fate Round really free?**
+**Is FateRound really free?**
 Yes — free forever. Every game, every round. No pack to buy, no premium tier, no card required.
 
 **Do I need to download anything?**
-No. Fate Round runs in any phone or laptop browser. No app, no install, nothing to update.
+No. FateRound runs in any phone or laptop browser. No app, no install, nothing to update.
 
 **Does everyone need an account?**
 No. The host creates a game, shares a code, and everyone joins with just a display name.
@@ -79,12 +79,12 @@ Exactly like that — minus the host screen you have to buy and run. Your phone 
 **Route:** `/video-call-games` (target FaceTime, Zoom, Discord, Google Meet)
 **Primary query cluster:** "games to play on FaceTime with friends," "Zoom games no download," "Discord video call games"
 
-**SEO title:** Free Video Call Games — FaceTime, Zoom, Discord | Fate Round
-**Meta description:** Already on a call? Fate Round adds games without ending it. Share one link — everyone plays from their own phone. Free, no app, no sign-up. Works on FaceTime, Zoom, and Discord.
+**SEO title:** Free Video Call Games — FaceTime, Zoom, Discord | FateRound
+**Meta description:** Already on a call? FateRound adds games without ending it. Share one link — everyone plays from their own phone. Free, no app, no sign-up. Works on FaceTime, Zoom, and Discord.
 
 ### Hero
 **Title:** Games to play on your next FaceTime, Zoom, or Discord call
-**Subtitle:** You're already on the call — now give everyone something to do. Share one Fate Round link and the whole group joins from their own phone. No app, no sign-up, no ending the call to open something.
+**Subtitle:** You're already on the call — now give everyone something to do. Share one FateRound link and the whole group joins from their own phone. No app, no sign-up, no ending the call to open something.
 
 ### Highlights
 - Keep the call going — play alongside FaceTime, Zoom, Discord, or Meet
@@ -104,11 +104,11 @@ Exactly like that — minus the host screen you have to buy and run. Your phone 
 3. **Play while you talk** — Vote, guess, and reveal in real time without leaving the call.
 
 ### Body
-The best call games don't hijack the call. Fate Round runs in the browser right next to FaceTime, Zoom, or Discord — nobody has to screen-share, download an app, or make an account. You share one short code, everyone joins from their own phone, and the game plays out live while you keep talking and laughing.
+The best call games don't hijack the call. FateRound runs in the browser right next to FaceTime, Zoom, or Discord — nobody has to screen-share, download an app, or make an account. You share one short code, everyone joins from their own phone, and the game plays out live while you keep talking and laughing.
 
 Because there are 20+ modes behind one link, a single call can go anywhere. Break the ice with Most Likely To, get spicy with Never Have I Ever, settle a debate with Would You Rather, then turn it into a real game night with Monopoly, Whot, Ludo, or Trivia. Long-distance friends, a Discord server, a family spread across three time zones — same link, everyone's in.
 
-### Best Fate Round games for a video call
+### Best FateRound games for a video call
 - **Would You Rather** — impossible choices, anonymous votes. Instant warm-up.
 - **Most Likely To** — vote for the friend who fits. Savage reveals, zero mercy.
 - **Smash Marry Kill** — three names a round, chaos guaranteed.
@@ -118,10 +118,10 @@ Because there are 20+ modes behind one link, a single call can go anywhere. Brea
 
 ### FAQ
 **What games can you play on FaceTime?**
-Any Fate Round mode works over FaceTime — Would You Rather, Most Likely To, Smash Marry Kill, Trivia, and board games like Monopoly and Ludo. Keep FaceTime open and play in the browser beside it.
+Any FateRound mode works over FaceTime — Would You Rather, Most Likely To, Smash Marry Kill, Trivia, and board games like Monopoly and Ludo. Keep FaceTime open and play in the browser beside it.
 
 **Do we need to download an app for Zoom or Discord games?**
-No. Fate Round runs in the browser. Share the room code in your Zoom or Discord chat and everyone joins — no app, no bot, no install.
+No. FateRound runs in the browser. Share the room code in your Zoom or Discord chat and everyone joins — no app, no bot, no install.
 
 **How do people join?**
 The host creates a game and shares one short code or link. Everyone opens it in their phone or laptop browser and joins with a display name.
@@ -140,12 +140,12 @@ From two friends on a call up to a big group — modes support large lobbies, so
 **Route:** `/long-distance-games`
 **Primary query cluster:** "online games for long distance couples," "games to play with friends far away free," "long distance relationship games"
 
-**SEO title:** Free Online Games for Long Distance Couples & Friends | Fate Round
-**Meta description:** Miles apart? Fate Round keeps you close — one link, play together in real time. Free, no download, no sign-up. Voting games for two, plus Chess, Checkers, and card classics.
+**SEO title:** Free Online Games for Long Distance Couples & Friends | FateRound
+**Meta description:** Miles apart? FateRound keeps you close — one link, play together in real time. Free, no download, no sign-up. Voting games for two, plus Chess, Checkers, and card classics.
 
 ### Hero
 **Title:** Long distance, same game — free games to play together from anywhere
-**Subtitle:** Distance is the only thing between you. Share one Fate Round link and play in real time tonight — from a quick "how well do you know me" round to a full Chess rematch. Free, no app, no sign-up.
+**Subtitle:** Distance is the only thing between you. Share one FateRound link and play in real time tonight — from a quick "how well do you know me" round to a full Chess rematch. Free, no app, no sign-up.
 
 ### Highlights
 - Made for two (and up) — great for couples and small friend groups
@@ -165,11 +165,11 @@ From two friends on a call up to a big group — modes support large lobbies, so
 3. **Play together, live** — every move and vote syncs in real time. Keep the call open and make a night of it.
 
 ### Body
-When you're apart, the hard part isn't finding time — it's finding something to actually *do* together. Fate Round turns "we're both just on our phones" into a game you're playing side by side. Share one link, and you're both in the same room in real time. No app to download, no account to make, no friction between you and the fun.
+When you're apart, the hard part isn't finding time — it's finding something to actually *do* together. FateRound turns "we're both just on our phones" into a game you're playing side by side. Share one link, and you're both in the same room in real time. No app to download, no account to make, no friction between you and the fun.
 
 For two people, that means quiet head-to-head games — Chess, Checkers, Crazy Eights, Whot — when you want something slow and competitive. And when you want to *learn* each other, the two-player voting modes are perfect: Would You Rather, Never Have I Ever, and This or That turn into little "how well do you actually know me" moments. Got a few more friends scattered across cities? The same link scales up — and modes like Most Likely To and Two Truths and a Lie kick in once you're three or more.
 
-### Best Fate Round games for long distance (just the two of you)
+### Best FateRound games for long distance (just the two of you)
 - **Would You Rather** — trade impossible choices and find out how they think.
 - **Never Have I Ever** — a two-player confession round that gets tellingly honest.
 - **This or That** — quick-fire A or B; upload your own prompts.
@@ -181,7 +181,7 @@ For two people, that means quiet head-to-head games — Chess, Checkers, Crazy E
 
 ### FAQ
 **What are good online games for long distance couples?**
-For two people, Fate Round's Chess, Checkers, Crazy Eights, and Whot are great head-to-head, while Would You Rather, Never Have I Ever, and This or That are perfect for learning each other. All free, all in the browser.
+For two people, FateRound's Chess, Checkers, Crazy Eights, and Whot are great head-to-head, while Would You Rather, Never Have I Ever, and This or That are perfect for learning each other. All free, all in the browser.
 
 **Can just two people play?**
 Yes — plenty of modes are built for two, including Would You Rather, Chess, Checkers, Whot, Crazy Eights, and Never Have I Ever. Group modes like Most Likely To unlock once a third friend joins.
@@ -208,7 +208,7 @@ Ranked by leverage (demand × fit × winnability × AI-citation likelihood):
 4. **Virtual icebreakers & team games (join by code, no download)** — high commercial intent (HR / team leads).
 5. **Virtual game night / birthday party games (different houses)** — occasion hub that funnels into modes.
 6. **"What to play with friends online when you're bored" (one link, 20+ games)** — written specifically to be the clean single answer AI assistants cite.
-7. **Houseparty alternative (2026)** — orphaned, low-competition demand since Houseparty shut down; Fate Round is a natural answer.
+7. **Houseparty alternative (2026)** — orphaned, low-competition demand since Houseparty shut down; FateRound is a natural answer.
 8. **Play [Kiss Marry Kill / Would You Rather / Most Likely To] online with friends** — bottom-funnel game pages where everyone votes from their own phone (the gap vs. static question-list sites).
 
 ---

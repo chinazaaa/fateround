@@ -1,4 +1,4 @@
-/** Fate Round mobile design tokens — light + dark, semantic parity. */
+/** FateRound mobile design tokens — light + dark, semantic parity. */
 
 // Shape-only tokens shared by both schemes.
 const radius = {

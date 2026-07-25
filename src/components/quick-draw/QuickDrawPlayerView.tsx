@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { QuickDrawGuessPlayerView } from '@/components/quick-draw/QuickDrawGuessPlayerView'
 import { QuickDrawActiveRound } from '@/components/quick-draw/QuickDrawActiveRound'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
@@ -322,14 +323,7 @@ function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
           title={game?.title}
           gameType="quick_draw"
           contentLabel={game?.content_label}
-          meta={
-            game ? (
-              <>
-                {game.rounds_count} rounds · {game.timer_seconds}s to draw · {game.operative_timer_seconds ?? 45}s for
-                titles
-              </>
-            ) : null
-          }
+          meta={game ? <GameInfoChips game={game} /> : null}
         />
         <NameJoinForm
           value={joinName}

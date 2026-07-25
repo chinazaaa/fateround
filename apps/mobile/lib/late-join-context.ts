@@ -9,6 +9,7 @@ import {
   isQuiplashGame,
   isSudokuGame,
   isTriviaGame,
+  isUnoGame,
   isWhotGame,
   isWordHuntGame,
   isWordRushGame,
@@ -224,6 +225,14 @@ export async function fetchLateJoinContext(
     return {
       statusLine: 'Game in progress',
       playerDetail: 'Whot does not allow late players — watch only.',
+      viewerDetail: "Watch the table and hands live — you can't play.",
+    }
+  }
+
+  if (isUnoGame(type)) {
+    return {
+      statusLine: 'Game in progress',
+      playerDetail: 'Uno does not allow late players — watch only.',
       viewerDetail: "Watch the table and hands live — you can't play.",
     }
   }

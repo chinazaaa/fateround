@@ -42,6 +42,8 @@ export type GameType =
   | 'snake_and_ladder'
   | 'crazy_eights'
   | 'checkers'
+  | 'checkers_international'
+  | 'checkers_nigeria'
   | 'mafia'
   | 'matching_pairs'
   | 'quiplash'
@@ -449,6 +451,8 @@ export interface Game {
   landmine_review?: boolean | null
   /** Landmine — the review-window length in seconds (15/20/30/45/60). */
   landmine_review_seconds?: number | null
+  /** Nigerian Draughts — opt-in "Street Rules" (huffing): decline a capture, risk the piece. */
+  checkers_nigeria_street_rules?: boolean | null
   /** Ping Pong — points required to win the match (3, 5, 7, 11, 15, or 21). */
   ping_pong_points_to_win?: number | null
 }
@@ -1099,6 +1103,54 @@ export interface CheckersSession {
   position_counts: Record<string, number>
   /** Square id ('rc') a multi-jump must continue from; null when no chain is active. */
   must_continue_from: string | null
+  /** Remaining clock for each player in milliseconds; null when the game is untimed. */
+  red_time_ms: number | null
+  black_time_ms: number | null
+  /** When the player on the move started their clock — used to compute elapsed time. */
+  turn_started_at: string | null
+  /** Squares of the most recent hop, for highlighting. */
+  last_move_from: string | null
+  last_move_to: string | null
+  status: 'active' | 'finished'
+  /** capture_all | no_moves | draw_moves | timeout | resignation */
+  result_reason: string | null
+  winner_player_id: string | null
+  is_draw: boolean
+  status_message: string | null
+  turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type Draughts10Variant = 'international' | 'nigeria'
+
+export interface Draughts10Session {
+  id: string
+  game_id: string
+  variant: Draughts10Variant
+  player_red_id: string
+  player_black_id: string
+  /**
+   * 100-char board, indexed by row*10 + col (row 0 = top, col 0 = left). Only dark
+   * squares are occupied. '.' empty, 'r'/'b' man, 'R'/'B' king (flying). Black moves first.
+   */
+  board: string
+  current_turn: CheckersColor
+  /** Consecutive king-only, non-capture plies — drives the 25-move draw rule (50 plies). */
+  move_count: number
+  /** Occurrences of each "<board>:<turn>" position; drives threefold-repetition draws. */
+  position_counts: Record<string, number>
+  /** Square id ('rc') a multi-jump must continue from; null when no chain is active. */
+  must_continue_from: string | null
+  /** Captures still required to complete the majority-rule sequence in progress. */
+  must_continue_remaining: number | null
+  /** Nigeria-only opt-in "street rules" (huffing) room setting. */
+  huffing_enabled: boolean
+  /**
+   * Squares of the mover's own pieces that had a capture available but went unplayed
+   * (Street Rules only) — the opponent may "huff" one of these instead of moving.
+   */
+  huffable_squares: string[]
   /** Remaining clock for each player in milliseconds; null when the game is untimed. */
   red_time_ms: number | null
   black_time_ms: number | null

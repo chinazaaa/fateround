@@ -10,6 +10,7 @@ import { monopolyTokenEmoji, type MonopolyTokenId } from '@/lib/monopoly-tokens'
 import { MONOPOLY_COLOR_CLASSES } from '@/lib/monopoly'
 import type { MonopolyColorGroup } from '@/lib/monopoly'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { LeaderboardJoinNote } from '@/components/game-lobby/LeaderboardJoinNote'
 import { MonopolyPageHeader } from '@/components/monopoly/MonopolyChrome'
@@ -355,7 +356,14 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       <GameJoinLobbyShell
         gameCode={gameCode}
         wide
-        header={<GameJoinHeader emoji={cfg.headerEmoji} title={game?.title} gameType="monopoly" />}
+        header={
+          <GameJoinHeader
+            emoji={cfg.headerEmoji}
+            title={game?.title}
+            gameType="monopoly"
+            meta={game ? <GameInfoChips game={game} /> : null}
+          />
+        }
       >
         <MonopolyJoinForm
           name={joinName}

@@ -16,6 +16,7 @@ import { removeSnakeAndLadderPlayer } from '@/lib/snake-and-ladder'
 import { removeYahtzeePlayer } from '@/lib/yahtzee'
 import { removeChessPlayer } from '@/lib/chess'
 import { removeCheckersPlayer } from '@/lib/checkers'
+import { removeDraughts10Player } from '@/lib/draughts10'
 import { removeAyoPlayer } from '@/lib/ayo'
 import { removeTicTacToePlayer } from '@/lib/tic-tac-toe'
 import { removePingPongPlayer } from '@/lib/ping-pong'
@@ -56,6 +57,7 @@ import {
   isTicTacToeGame,
   isChessGame,
   isCheckersGame,
+  isDraughts10Game,
   isAyoGame,
   isScrabbleGame,
   isDescribeItGame,
@@ -1776,6 +1778,12 @@ export async function DELETE(req: NextRequest) {
 
   if (isCheckersGame(gameType)) {
     const { error } = await removeCheckersPlayer(getSupabaseAdmin(), id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isDraughts10Game(gameType)) {
+    const { error } = await removeDraughts10Player(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }

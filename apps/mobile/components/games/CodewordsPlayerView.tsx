@@ -27,6 +27,7 @@ import {
   teamLabel,
   waitingTurnMessage,
 } from '@fateround/shared/codewords'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { CodewordsAchievementPosts } from '@/components/games/CodewordsAchievementPosts'
@@ -322,6 +323,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
         onJoin={() => void bootstrap.join()}
         lobbyFull={bootstrap.lobbyFull}
         onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
       />
     )
   }

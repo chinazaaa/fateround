@@ -6,6 +6,7 @@ import { QuickDrawGuessFinishedResults } from '@/components/quick-draw/QuickDraw
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
@@ -553,6 +554,7 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
         gameCode={gameCode}
         hostToken={hostToken}
         game={game}
+        titleMeta={<GameInfoChips game={game} className="mt-2" />}
         gameTypeLabel={cfg.label}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('quick_draw', game) ?? game.max_players}

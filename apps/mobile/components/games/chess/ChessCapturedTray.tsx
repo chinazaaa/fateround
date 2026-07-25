@@ -65,46 +65,158 @@ export function KingGlyph({ color, size = 16 }: { color: ChessColor; size?: numb
   )
 }
 
-/** A player's row: name, captured opponent pieces, and (optionally) a clock. */
-export function CapturedTray({
-  name,
-  pieces,
-  glyphColor,
+/** Collapse repeated captures into type+count (e.g. 6 pawns -> one pawn glyph + "×6") so a
+ *  long capture streak never grows past 5 icons (one per piece type) and can't force a wrap
+ *  mid-name. Order follows {@link CAPTURABLE_TYPES} (queen down to pawn). */
+function groupPieces(pieces: ChessPieceType[]): { type: ChessPieceType; count: number }[] {
+  const counts = new Map<ChessPieceType, number>()
+  for (const type of pieces) counts.set(type, (counts.get(type) ?? 0) + 1)
+  return CAPTURABLE_TYPES.filter((type) => counts.has(type)).map((type) => ({ type, count: counts.get(type)! }))
+}
+
+/** One combined captured-material line for both sides (e.g. "ADA ♟ · KOJO ♙×6"), sitting
+ *  below the player cards. Each entry that has no captures yet is skipped. */
+export function ChessCapturedSummary({
+  entries,
   set,
-  clock,
 }: {
-  name: string
-  pieces: ChessPieceType[]
-  glyphColor: ChessColor
+  entries: { name: string; pieces: ChessPieceType[]; glyphColor: ChessColor }[]
   set: ChessPieceSet
-  clock?: ReactNode
 }) {
   const styles = useThemedStyles(makeStyles)
+  const shown = entries.filter((e) => e.pieces.length > 0)
+  if (shown.length === 0) return null
   return (
-    <View style={styles.tray}>
-      <Text style={styles.name} numberOfLines={1}>
-        <KingGlyph color={glyphColor} /> {name}
+    <View style={styles.summaryRow}>
+      {shown.map((e, i) => (
+        <View key={e.name + i} style={styles.summaryItem}>
+          {i > 0 ? <Text style={styles.summaryDot}>·</Text> : null}
+          <Text style={styles.summaryName} numberOfLines={1}>
+            {e.name.toUpperCase()}
+          </Text>
+          {groupPieces(e.pieces).map(({ type, count }) => (
+            <View key={type} style={styles.summaryPiece}>
+              <ChessPieceGlyph set={set} color={e.glyphColor} type={type} size={14} />
+              {count > 1 ? <Text style={styles.summaryCount}>×{count}</Text> : null}
+            </View>
+          ))}
+        </View>
+      ))}
+    </View>
+  )
+}
+
+/** Splits a banner sentence like "Selected e4 — tap destination" into a bold headline and a
+ *  muted continuation, matching the reference design (plain page, no card/border). Sentences
+ *  with no em-dash render as a single bold headline. */
+function splitBanner(text: string): { headline: string; detail?: string } {
+  const idx = text.indexOf(' — ')
+  if (idx === -1) return { headline: text }
+  return { headline: text.slice(0, idx), detail: text.slice(idx + 3) }
+}
+
+/** Chess's move-status banner: a small caps kicker ("YOUR MOVE") above a bold headline, with
+ *  an optional muted continuation — no card/border, just plain text on the page background. */
+export function ChessMoveBanner({ kicker, text }: { kicker: string; text: string }) {
+  const styles = useThemedStyles(makeStyles)
+  const { headline, detail } = splitBanner(text)
+  return (
+    <View style={styles.moveBannerWrap}>
+      <Text style={styles.moveBannerKicker}>{kicker.toUpperCase()}</Text>
+      <Text style={styles.moveBannerHeadline}>
+        {headline}
+        {detail ? <Text style={styles.moveBannerDetail}> — {detail}</Text> : null}
       </Text>
-      <View style={styles.pieces}>
-        {pieces.map((type, i) => (
-          <ChessPieceGlyph key={`${type}-${i}`} set={set} color={glyphColor} type={type} size={18} />
-        ))}
+    </View>
+  )
+}
+
+/** A player identity card: avatar, name, colour label, and (optionally) a live clock —
+ *  two of these sit side by side above the board, mirroring the chess.com-style header. */
+export function ChessPlayerCard({
+  name,
+  color,
+  clock,
+  active,
+}: {
+  name: string
+  color: ChessColor
+  clock?: ReactNode
+  active?: boolean
+}) {
+  const styles = useThemedStyles(makeStyles)
+  const initial = name.trim().charAt(0).toUpperCase() || '?'
+  return (
+    <View style={[styles.card, active && styles.cardActive]}>
+      <View style={[styles.avatar, color === 'w' ? styles.avatarWhite : styles.avatarBlack]}>
+        <Text style={[styles.avatarText, color === 'w' ? styles.avatarTextWhite : styles.avatarTextBlack]}>
+          {initial}
+        </Text>
       </View>
-      {clock ? <View style={styles.clockSlot}>{clock}</View> : null}
+      <View style={styles.identity}>
+        <Text style={styles.name} numberOfLines={1}>
+          {name}
+        </Text>
+        <Text style={styles.colorLabel}>{color === 'w' ? 'White' : 'Black'}</Text>
+      </View>
+      {clock ? (
+        <View style={styles.clockSlot}>
+          {active ? <View style={styles.activeDot} /> : null}
+          {clock}
+        </View>
+      ) : null}
     </View>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-    tray: {
+    summaryRow: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       alignItems: 'center',
-      gap: 6,
-      minHeight: 26,
+      justifyContent: 'center',
+      gap: 4,
       paddingHorizontal: 2,
     },
-    name: { color: theme.text, fontSize: 12, fontWeight: '700', flexShrink: 0 },
-    pieces: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', flexShrink: 1 },
-    clockSlot: { marginLeft: 'auto' },
+    summaryItem: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 2 },
+    summaryDot: { color: theme.textFaint, fontSize: 12, marginRight: 2 },
+    summaryName: { color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.3, marginRight: 1 },
+    summaryPiece: { flexDirection: 'row', alignItems: 'center' },
+    summaryCount: { color: theme.textFaint, fontSize: 10, fontWeight: '700', marginLeft: 1 },
+    moveBannerWrap: { alignItems: 'center', gap: 4, paddingVertical: 2 },
+    moveBannerKicker: { color: theme.textFaint, fontSize: 11, fontWeight: '800', letterSpacing: 1.2 },
+    moveBannerHeadline: { color: theme.text, fontSize: 20, fontWeight: '800', textAlign: 'center' },
+    moveBannerDetail: { color: theme.textMuted, fontWeight: '600' },
+    card: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      minHeight: 52,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderRadius: theme.radius.sm,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surface,
+    },
+    cardActive: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+    avatar: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarWhite: { backgroundColor: theme.primarySoft },
+    avatarBlack: { backgroundColor: '#1a1a1a' },
+    avatarText: { fontWeight: '800', fontSize: 13 },
+    avatarTextWhite: { color: theme.primary },
+    avatarTextBlack: { color: '#f5f5f5' },
+    identity: { flex: 1, minWidth: 0 },
+    name: { color: theme.text, fontSize: 13, fontWeight: '700' },
+    colorLabel: { color: theme.textMuted, fontSize: 11, fontWeight: '600' },
+    clockSlot: { flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 5 },
+    activeDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: theme.success },
   })

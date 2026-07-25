@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
@@ -247,7 +248,14 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     return (
       <GameJoinLobbyShell
         gameCode={gameCode}
-        header={<GameJoinHeader emoji={cfg.headerEmoji} title={game?.title} gameType="two_truths" />}
+        header={
+          <GameJoinHeader
+            emoji={cfg.headerEmoji}
+            title={game?.title}
+            gameType="two_truths"
+            meta={game ? <GameInfoChips game={game} /> : null}
+          />
+        }
       >
         <NameJoinForm
           value={joinName}

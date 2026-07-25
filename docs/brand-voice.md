@@ -1,4 +1,4 @@
-# Fate Round — Brand Voice & Style Guide (v2)
+# FateRound — Brand Voice & Style Guide (v2)
 
 *Reverse-engineered from the copy you already ship — now covering both surfaces: marketing (`llms.txt`, homepage SEO, game landing pages) **and** in-product microcopy (buttons, empty states, errors, share text). v2 adds four things v1 missed: a product/UI voice section (§7), a real edge-and-safety boundary (§8), a spelling convention (§9), and a copy-paste microcopy library (§10). Approve or tweak, then we build against it.*
 
@@ -6,7 +6,7 @@
 
 ## 1. In one line
 
-**Fate Round sounds like the funniest friend in the group chat who also happens to be organized.** Playful and a little savage, but always clear about how the thing actually works. Never corporate, never try-hard.
+**FateRound sounds like the funniest friend in the group chat who also happens to be organized.** Playful and a little savage, but always clear about how the thing actually works. Never corporate, never try-hard.
 
 ---
 
@@ -50,7 +50,7 @@ Three beats. Tension then release. Use this shape for hero subtitles and section
 
 **Avoid:** leverage, seamless, revolutionary, cutting-edge, solution, platform (in the product-y sense — "party game platform" is fine as a factual descriptor, not as a brag), users (say *players*, *friends*, *your group*), engage/engagement, elevate, unlock, empower.
 
-**Naming:** Always "**Fate Round**" (two words, both capitalized). Call each game by its real/common name and its alias where useful — "Smash Marry Kill (also called Kiss Marry Kill)," "Whot — the Nigerian card classic."
+**Naming:** Always "**FateRound**" (two words, both capitalized). Call each game by its real/common name and its alias where useful — "Smash Marry Kill (also called Kiss Marry Kill)," "Whot — the Nigerian card classic."
 
 ---
 
@@ -96,7 +96,7 @@ Most of your words aren't on landing pages — they're buttons, empty lobbies, w
 
 ## 8. The edge & safety boundary (where the fun stops being funny)
 
-The voice is "playful with an edge aimed at the game, never the reader." That works — but Fate Round runs genuinely spicy modes (Smash Marry Kill, Smash or Pass, Date My Kid, Never Have I Ever) and **anonymous** surfaces (Anonymous Room, confessions, secret messages) where the same edge can curdle into harassment. This section draws the line so the brand stays fun without becoming a liability.
+The voice is "playful with an edge aimed at the game, never the reader." That works — but FateRound runs genuinely spicy modes (Smash Marry Kill, Smash or Pass, Date My Kid, Never Have I Ever) and **anonymous** surfaces (Anonymous Room, confessions, secret messages) where the same edge can curdle into harassment. This section draws the line so the brand stays fun without becoming a liability.
 
 **The edge is aimed at the *game*, never a person.** "Results get messy," "zero mercy" — the target is the format's chaos, not any individual. Copy never tells players to be cruel to each other.
 
@@ -106,7 +106,7 @@ The voice is "playful with an edge aimed at the game, never the reader." That wo
 
 **Minors and anything near them: no edge, ever.** No sexualised framing, no adult content, in any copy that a younger audience could plausibly hit. "Date My Kid" and similar are played straight and light — parental-approval comedy, never anything creepy.
 
-**The hard-line word list — never in Fate Round's voice:** slurs; sexual explicitness; content sexualising minors; encouragement of self-harm, bullying, or harassment; punching-down "jokes" at protected groups. No amount of "it's just a party game" overrides this.
+**The hard-line word list — never in FateRound's voice:** slurs; sexual explicitness; content sexualising minors; encouragement of self-harm, bullying, or harassment; punching-down "jokes" at protected groups. No amount of "it's just a party game" overrides this.
 
 **Quick test:** if a line would make the *target* of the joke feel genuinely unsafe rather than playfully called-out, it's over the line — rewrite it.
 
@@ -150,8 +150,8 @@ So nobody reinvents the wheel. All on-voice, all reusable.
 
 ## 12. One-paragraph reference sample (this *is* the voice)
 
-> Fate Round is a free online party game where your friend group votes, laughs, and reveals together — no sign-up, no download, no app store. Create a game in seconds, share a short code, and everyone joins the lobby from their phone in real time. Smash Marry Kill chaos, anonymous Would You Rather votes, a Whot showdown, or a Monopoly night — pick a mode and go. Free forever, runs in the browser, results get messy.
+> FateRound is a free online party game where your friend group votes, laughs, and reveals together — no sign-up, no download, no app store. Create a game in seconds, share a short code, and everyone joins the lobby from their phone in real time. Smash Marry Kill chaos, anonymous Would You Rather votes, a Whot showdown, or a Monopoly night — pick a mode and go. Free forever, runs in the browser, results get messy.
 
 ---
 
-*If this reads like Fate Round, approve it and I'll write every new page to this spec. If you want it more PG, more savage, or more minimal, tell me which dial to turn and I'll re-cut it.*
+*If this reads like FateRound, approve it and I'll write every new page to this spec. If you want it more PG, more savage, or more minimal, tell me which dial to turn and I'll re-cut it.*

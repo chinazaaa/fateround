@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text } from 'react-native'
 import { legalMovesForSide, sideForPlayer, currentTurnPlayerId } from '@fateround/shared/ayo'
 import type { AyoSession, Game, Player } from '@fateround/shared'
 import { preJoinScreen } from '@fateround/shared/viewers'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
@@ -185,6 +186,7 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
         }
         submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
         footer={<GameRulesLink gameType="ayo" variant="subtle" />}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
       />
     )
   }

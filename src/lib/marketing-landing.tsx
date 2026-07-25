@@ -11,7 +11,7 @@ export type MarketingStep = { title: string; description: string }
 
 export type MarketingComparison = {
   heading: string
-  /** Column headers: [Fate Round, competitor]. */
+  /** Column headers: [FateRound, competitor]. */
   columns: [string, string]
   rows: { label: string; a: string; b: string }[]
   note?: string
@@ -54,7 +54,7 @@ const JACKBOX: MarketingPageContent = {
   breadcrumbName: 'Free Jackbox alternative',
   seoTitle: 'Free Jackbox Alternative — No Download, No Sign-Up',
   seoDescription:
-    'Want Jackbox without the price tag or the download? Fate Round is free forever — share one link and your whole group joins from their phones. 20+ games, no app, no account.',
+    'Want Jackbox without the price tag or the download? FateRound is free forever — share one link and your whole group joins from their phones. 20+ games, no app, no account.',
   keywords: [
     'free jackbox alternative',
     'free jackbox alternatives',
@@ -74,7 +74,7 @@ const JACKBOX: MarketingPageContent = {
   ],
   heroTitle: 'The free Jackbox alternative — no pack to buy, no screen to share',
   heroSubtitle:
-    "Love the “everyone plays from their phone” chaos, hate paying per pack and downloading on a host screen? Fate Round gives you the same energy — one link, everyone's in — across 20+ games. Free forever.",
+    "Love the “everyone plays from their phone” chaos, hate paying per pack and downloading on a host screen? FateRound gives you the same energy — one link, everyone's in — across 20+ games. Free forever.",
   highlights: [
     'Free forever — no pack to buy',
     'No download, no sign-up',
@@ -118,13 +118,13 @@ const JACKBOX: MarketingPageContent = {
     <>
       <p>
         Jackbox is great — and it costs money, needs a screen everyone can see, and locks each night to whichever pack
-        the host owns. Fate Round keeps the part everyone actually loves (your phone is the controller, the reveals are
+        the host owns. FateRound keeps the part everyone actually loves (your phone is the controller, the reveals are
         the punchline) and drops the friction. There&apos;s no pack to buy, no download, and no account. You share a
         link, your group joins from wherever they are, and you jump between <GameLink type="custom">20+ games</GameLink>{' '}
         in the same room.
       </p>
       <p>
-        And Fate Round isn&apos;t just party trivia. The same room runs <GameLink type="monopoly" />,{' '}
+        And FateRound isn&apos;t just party trivia. The same room runs <GameLink type="monopoly" />,{' '}
         <GameLink type="yahtzee" />, <GameLink type="whot" />, <GameLink type="uno" />, <GameLink type="ludo" />,{' '}
         <GameLink type="scrabble" />, and <GameLink type="chess" /> — plus quick word and voting games like{' '}
         <GameLink type="codewords" />, <GameLink type="would_you_rather" />, and <GameLink type="trivia" />. It&apos;s
@@ -134,8 +134,8 @@ const JACKBOX: MarketingPageContent = {
     </>
   ),
   comparison: {
-    heading: 'How Fate Round compares to Jackbox',
-    columns: ['Fate Round', 'Jackbox'],
+    heading: 'How FateRound compares to Jackbox',
+    columns: ['FateRound', 'Jackbox'],
     rows: [
       { label: 'Price', a: 'Free forever', b: 'Paid — one-time purchase per pack (~$25–30, varies)' },
       { label: 'Download', a: 'None', b: 'Host installs a screen' },
@@ -148,12 +148,12 @@ const JACKBOX: MarketingPageContent = {
   },
   faqs: [
     {
-      question: 'Is Fate Round really free?',
+      question: 'Is FateRound really free?',
       answer: 'Yes — free forever. Every game, every round. No pack to buy, no premium tier, no card required.',
     },
     {
       question: 'Do I need to download anything?',
-      answer: 'No. Fate Round runs in any phone or laptop browser. No app, no install, nothing to update.',
+      answer: 'No. FateRound runs in any phone or laptop browser. No app, no install, nothing to update.',
     },
     {
       question: 'Does everyone need an account?',
@@ -171,17 +171,17 @@ const JACKBOX: MarketingPageContent = {
     {
       question: 'Is there a free version of Quiplash?',
       answer:
-        'Fate Round has Quiplash — the same write-funny-answers, vote-for-your-favourite format — completely free, no pack to buy. Share a code and everyone plays from their phone.',
+        'FateRound has Quiplash — the same write-funny-answers, vote-for-your-favourite format — completely free, no pack to buy. Share a code and everyone plays from their phone.',
     },
     {
       question: 'What games are like Jackbox but free?',
       answer:
-        'Fate Round gives you 20+ party games for free — including Quiplash, trivia, voting games like Would You Rather and Most Likely To, plus board and card classics like Monopoly and Whot.',
+        'FateRound gives you 20+ party games for free — including Quiplash, trivia, voting games like Would You Rather and Most Likely To, plus board and card classics like Monopoly and Whot.',
     },
     {
       question: 'Can I play Jackbox-style games on my phone without buying packs?',
       answer:
-        'Yes. Fate Round is free with no packs to unlock. Every game is available from day one — just share a link and everyone joins from their phone browser.',
+        'Yes. FateRound is free with no packs to unlock. Every game is available from day one — just share a link and everyone joins from their phone browser.',
     },
   ],
   ctaHeading: 'Ready to ditch the pack?',
@@ -194,7 +194,7 @@ const VIDEO_CALL: MarketingPageContent = {
   breadcrumbName: 'Video call games',
   seoTitle: 'Free Video Call Games — FaceTime, Zoom, Discord',
   seoDescription:
-    'Already on a call? Fate Round adds games without ending it. Share one link — everyone plays from their own phone. Free, no app, no sign-up. Works on FaceTime, Zoom, and Discord.',
+    'Already on a call? FateRound adds games without ending it. Share one link — everyone plays from their own phone. Free, no app, no sign-up. Works on FaceTime, Zoom, and Discord.',
   keywords: [
     'games to play on facetime',
     'games to play on facetime with friends',
@@ -207,7 +207,7 @@ const VIDEO_CALL: MarketingPageContent = {
   ],
   heroTitle: 'Games to play on your next FaceTime, Zoom, or Discord call',
   heroSubtitle:
-    "You're already on the call — now give everyone something to do. Share one Fate Round link and the whole group joins from their own phone. No app, no sign-up, no ending the call to open something.",
+    "You're already on the call — now give everyone something to do. Share one FateRound link and the whole group joins from their own phone. No app, no sign-up, no ending the call to open something.",
   highlights: [
     'Play alongside FaceTime, Zoom, Discord & Meet',
     'One shared code, everyone joins',
@@ -251,7 +251,7 @@ const VIDEO_CALL: MarketingPageContent = {
   body: (
     <>
       <p>
-        The best call games don&apos;t hijack the call. Fate Round runs in the browser right next to FaceTime, Zoom, or
+        The best call games don&apos;t hijack the call. FateRound runs in the browser right next to FaceTime, Zoom, or
         Discord — nobody has to screen-share, download an app, or make an account. You share one short code, everyone
         joins from their own phone, and the game plays out live while you keep talking and laughing.
       </p>
@@ -266,7 +266,7 @@ const VIDEO_CALL: MarketingPageContent = {
     </>
   ),
   gameList: {
-    heading: 'Best Fate Round games for a video call',
+    heading: 'Best FateRound games for a video call',
     items: [
       {
         game: <GameLink type="would_you_rather" />,
@@ -297,12 +297,12 @@ const VIDEO_CALL: MarketingPageContent = {
     {
       question: 'What games can you play on FaceTime?',
       answer:
-        'Any Fate Round mode works over FaceTime — Would You Rather, Most Likely To, Smash Marry Kill, Trivia, and board games like Monopoly and Ludo. Keep FaceTime open and play in the browser beside it.',
+        'Any FateRound mode works over FaceTime — Would You Rather, Most Likely To, Smash Marry Kill, Trivia, and board games like Monopoly and Ludo. Keep FaceTime open and play in the browser beside it.',
     },
     {
       question: 'Do we need to download an app for Zoom or Discord games?',
       answer:
-        'No. Fate Round runs in the browser. Share the room code in your Zoom or Discord chat and everyone joins — no app, no bot, no install.',
+        'No. FateRound runs in the browser. Share the room code in your Zoom or Discord chat and everyone joins — no app, no bot, no install.',
     },
     {
       question: 'How do people join?',
@@ -329,7 +329,7 @@ const LONG_DISTANCE: MarketingPageContent = {
   breadcrumbName: 'Long distance games',
   seoTitle: 'Free Online Games for Long Distance Couples & Friends',
   seoDescription:
-    'Miles apart? Fate Round keeps you close — one link, play together in real time. Free, no download, no sign-up. Two-player Chess, Monopoly, Yahtzee, Scrabble & Whot, plus voting games for two.',
+    'Miles apart? FateRound keeps you close — one link, play together in real time. Free, no download, no sign-up. Two-player Chess, Monopoly, Yahtzee, Scrabble & Whot, plus voting games for two.',
   keywords: [
     'online games for long distance couples',
     'games to play with friends far away free',
@@ -341,7 +341,7 @@ const LONG_DISTANCE: MarketingPageContent = {
   ],
   heroTitle: 'Long distance, same game — free games to play together from anywhere',
   heroSubtitle:
-    'Distance is the only thing between you. Share one Fate Round link and play in real time tonight — from a quick “how well do you know me” round to a full Chess rematch. Free, no app, no sign-up.',
+    'Distance is the only thing between you. Share one FateRound link and play in real time tonight — from a quick “how well do you know me” round to a full Chess rematch. Free, no app, no sign-up.',
   highlights: [
     'Made for two (and up)',
     'Real-time play from anywhere',
@@ -389,7 +389,7 @@ const LONG_DISTANCE: MarketingPageContent = {
     <>
       <p>
         When you&apos;re apart, the hard part isn&apos;t finding time — it&apos;s finding something to actually do
-        together. Fate Round turns “we&apos;re both just on our phones” into a game you&apos;re playing side by side.
+        together. FateRound turns “we&apos;re both just on our phones” into a game you&apos;re playing side by side.
         Share one link, and you&apos;re both in the same room in real time. No app to download, no account to make, no
         friction between you and the fun.
       </p>
@@ -408,7 +408,7 @@ const LONG_DISTANCE: MarketingPageContent = {
     </>
   ),
   gameList: {
-    heading: 'Best Fate Round games for long distance (just the two of you)',
+    heading: 'Best FateRound games for long distance (just the two of you)',
     items: [
       {
         game: <GameLink type="would_you_rather" />,
@@ -466,7 +466,7 @@ const LONG_DISTANCE: MarketingPageContent = {
     {
       question: 'What are good online games for long distance couples?',
       answer:
-        "For two people, Fate Round's Chess, Checkers, Crazy Eights, and Whot are great head-to-head, and the board and word classics all play two — Monopoly, Yahtzee, Scrabble, Ludo, and Snakes & Ladders — for a proper game night. When you want to learn each other, Would You Rather, Never Have I Ever, and This or That are perfect. All free, all in the browser.",
+        "For two people, FateRound's Chess, Checkers, Crazy Eights, and Whot are great head-to-head, and the board and word classics all play two — Monopoly, Yahtzee, Scrabble, Ludo, and Snakes & Ladders — for a proper game night. When you want to learn each other, Would You Rather, Never Have I Ever, and This or That are perfect. All free, all in the browser.",
     },
     {
       question: 'Can just two people play?',
@@ -497,7 +497,7 @@ const DISCORD: MarketingPageContent = {
   breadcrumbName: 'Discord games',
   seoTitle: 'Free Discord Games — No Bot, No Download, Just a Link',
   seoDescription:
-    'Add games to any Discord server without a bot or download. Fate Round runs in the browser — drop one link in the channel and everyone plays from their phone. Free, no sign-up. 20+ games.',
+    'Add games to any Discord server without a bot or download. FateRound runs in the browser — drop one link in the channel and everyone plays from their phone. Free, no sign-up. 20+ games.',
   keywords: [
     'discord games',
     'games to play on discord',
@@ -510,7 +510,7 @@ const DISCORD: MarketingPageContent = {
   ],
   heroTitle: 'Discord games — no bot to add, no download, just a link',
   heroSubtitle:
-    'Skip the bot setup and the permissions headache. Drop one Fate Round link in your channel and everyone plays from their own phone while you stay in voice. Free, no sign-up, 20+ games.',
+    'Skip the bot setup and the permissions headache. Drop one FateRound link in your channel and everyone plays from their own phone while you stay in voice. Free, no sign-up, 20+ games.',
   highlights: [
     'No bot, no permissions',
     'One link in any channel',
@@ -552,7 +552,7 @@ const DISCORD: MarketingPageContent = {
     <>
       <p>
         Discord bots are powerful — and a hassle. Someone has to find one, invite it, grant permissions, and learn its
-        slash commands before anyone plays. Fate Round skips all of it: paste one link in a channel and the whole server
+        slash commands before anyone plays. FateRound skips all of it: paste one link in a channel and the whole server
         plays from the browser, right beside your voice chat. No bot, no OAuth prompt, no permissions to approve.
       </p>
       <p>
@@ -565,7 +565,7 @@ const DISCORD: MarketingPageContent = {
     </>
   ),
   gameList: {
-    heading: 'Best Fate Round games for Discord',
+    heading: 'Best FateRound games for Discord',
     items: [
       {
         game: <GameLink type="codewords" />,
@@ -596,7 +596,7 @@ const DISCORD: MarketingPageContent = {
   faqs: [
     {
       question: 'Do I need a Discord bot to play?',
-      answer: 'No. Fate Round runs in the browser — paste a link, with no bot to invite or authorize.',
+      answer: 'No. FateRound runs in the browser — paste a link, with no bot to invite or authorize.',
     },
     {
       question: 'How do people join from Discord?',
@@ -676,7 +676,7 @@ const PARTY_HUB: MarketingPageContent = {
   body: (
     <>
       <p>
-        Fate Round packs <HubLink>20+ multiplayer games</HubLink> into a single browser tab — no sign-up, no download,
+        FateRound packs <HubLink>20+ multiplayer games</HubLink> into a single browser tab — no sign-up, no download,
         free forever. Pick a mode, create a game, and share the room code so friends can join from any phone or laptop.
         Everything syncs in real time, so it works over a video call, a Discord server, or in the same room.
       </p>
@@ -770,7 +770,7 @@ const KAHOOT: MarketingPageContent = {
   ],
   heroTitle: 'The free Kahoot alternative — no login, up to 40 players',
   heroSubtitle:
-    "Kahoot's free tier caps your players and nudges you to pay. Fate Round doesn't lock the essentials behind a paywall — host trivia and 20+ other games with no login, up to 40 players a room. Share a code, everyone joins from their phone. Free forever.",
+    "Kahoot's free tier caps your players and nudges you to pay. FateRound doesn't lock the essentials behind a paywall — host trivia and 20+ other games with no login, up to 40 players a room. Share a code, everyone joins from their phone. Free forever.",
   highlights: ['Up to 40 players', 'No login to host or join', 'Trivia + 20 more games', 'Free forever'],
   featureCards: [
     {
@@ -810,7 +810,7 @@ const KAHOOT: MarketingPageContent = {
   body: (
     <>
       <p>
-        Kahoot is great for a classroom quiz — until the free plan caps your players and the paywall appears. Fate Round
+        Kahoot is great for a classroom quiz — until the free plan caps your players and the paywall appears. FateRound
         keeps the fast-finger, big-screen energy without the squeeze: no login to host, up to 40 players a room, and no
         premium tier gating your questions. Share a code and the whole class, team, or party jumps in from any browser.
       </p>
@@ -823,8 +823,8 @@ const KAHOOT: MarketingPageContent = {
     </>
   ),
   comparison: {
-    heading: 'How Fate Round compares to Kahoot',
-    columns: ['Fate Round', 'Kahoot (free)'],
+    heading: 'How FateRound compares to Kahoot',
+    columns: ['FateRound', 'Kahoot (free)'],
     rows: [
       { label: 'Price', a: 'Free forever', b: 'Free tier limited; paid plans to unlock more' },
       { label: 'Player limit', a: 'Up to 40 in Trivia', b: 'Capped on the free plan' },
@@ -924,7 +924,7 @@ const TEAM: MarketingPageContent = {
   body: (
     <>
       <p>
-        The best virtual icebreaker doesn&apos;t need a download, an account, or an IT approval. Fate Round runs in the
+        The best virtual icebreaker doesn&apos;t need a download, an account, or an IT approval. FateRound runs in the
         browser — share one code in the meeting chat and the whole team joins from wherever they are. No installs to
         push, no logins to provision, nothing to clean up afterward.
       </p>
@@ -938,7 +938,7 @@ const TEAM: MarketingPageContent = {
     </>
   ),
   gameList: {
-    heading: 'Best Fate Round games for teams',
+    heading: 'Best FateRound games for teams',
     items: [
       {
         game: <GameLink type="two_truths">Two Truths and a Lie</GameLink>,
@@ -1007,7 +1007,7 @@ const GAME_NIGHT: MarketingPageContent = {
   ],
   heroTitle: 'Virtual game night — everyone playing from different houses',
   heroSubtitle:
-    'Different cities, same game night. Share one Fate Round link and the whole group plays from their own couch — party votes, board classics, and trivia, all free. No app, no sign-up.',
+    'Different cities, same game night. Share one FateRound link and the whole group plays from their own couch — party votes, board classics, and trivia, all free. No app, no sign-up.',
   highlights: [
     'Play from different houses',
     'Party, board & trivia modes',
@@ -1051,9 +1051,9 @@ const GAME_NIGHT: MarketingPageContent = {
   body: (
     <>
       <p>
-        A virtual game night lives or dies on how easy it is to join. Fate Round makes it one tap: share a link and
-        every guest plays from their own phone, from their own house, in real time. Keep a video call open so you can
-        see and hear each other, and let the games carry the night — no app to install, no account to make.
+        A virtual game night lives or dies on how easy it is to join. FateRound makes it one tap: share a link and every
+        guest plays from their own phone, from their own house, in real time. Keep a video call open so you can see and
+        hear each other, and let the games carry the night — no app to install, no account to make.
       </p>
       <p>
         Ease in with <GameLink type="would_you_rather" />, roast the birthday guest with{' '}
@@ -1090,7 +1090,7 @@ const GAME_NIGHT: MarketingPageContent = {
     {
       question: "How do we play if everyone's in different houses?",
       answer:
-        'Share one Fate Round link. Everyone joins from their own phone and plays in real time — keep a video call open so you can see and hear each other.',
+        'Share one FateRound link. Everyone joins from their own phone and plays in real time — keep a video call open so you can see and hear each other.',
     },
     {
       question: 'Is it good for an online birthday party?',
@@ -1121,7 +1121,7 @@ const BORED: MarketingPageContent = {
   breadcrumbName: 'Bored? Play now',
   seoTitle: 'Games to Play When Bored — Free, Online, With Friends',
   seoDescription:
-    'Bored? Fate Round has 20+ free games to play with friends online — share one link and start in seconds. No sign-up, no download. Party votes, board games, trivia and more.',
+    'Bored? FateRound has 20+ free games to play with friends online — share one link and start in seconds. No sign-up, no download. Party votes, board games, trivia and more.',
   keywords: [
     'games to play when bored',
     'what to play when bored',
@@ -1133,7 +1133,7 @@ const BORED: MarketingPageContent = {
   ],
   heroTitle: "Bored? Here's what to play with friends online — one link, 20+ games",
   heroSubtitle:
-    'Group chat gone quiet? Share one Fate Round link and pick from 20+ games — party votes, board classics, trivia, word games. Everyone plays from their phone. Free, no sign-up.',
+    'Group chat gone quiet? Share one FateRound link and pick from 20+ games — party votes, board classics, trivia, word games. Everyone plays from their phone. Free, no sign-up.',
   highlights: ['20+ games, one link', 'Start in seconds', 'Play from any phone', 'Free, no sign-up'],
   featureCards: [
     {
@@ -1169,7 +1169,7 @@ const BORED: MarketingPageContent = {
   body: (
     <>
       <p>
-        The fastest fix for a bored group chat is a single link everyone can tap. Fate Round gives you exactly that:
+        The fastest fix for a bored group chat is a single link everyone can tap. FateRound gives you exactly that:
         create a room, drop the code, and pick from <HubLink>20+ games</HubLink> — no sign-up, no download, nothing to
         install. Everyone plays from their own phone, so it works whether you&apos;re on a call or scattered across the
         country.
@@ -1215,7 +1215,7 @@ const BORED: MarketingPageContent = {
     {
       question: 'What can I play with friends online right now?',
       answer:
-        'Share a Fate Round link and pick any of 20+ games — Would You Rather and Smash Marry Kill for quick chaos, Monopoly or Whot for a longer session, Trivia for a big group.',
+        'Share a FateRound link and pick any of 20+ games — Would You Rather and Smash Marry Kill for quick chaos, Monopoly or Whot for a longer session, Trivia for a big group.',
     },
     {
       question: 'Do we need to download or sign up?',
@@ -1246,7 +1246,7 @@ const HOUSEPARTY: MarketingPageContent = {
   breadcrumbName: 'Houseparty alternative',
   seoTitle: 'Houseparty Alternative (2026) — Free Games With Friends',
   seoDescription:
-    'Miss Houseparty? Fate Round brings back games with friends over a video call — share one link, everyone plays from their phone. Free, no sign-up, 20+ games. Works with any video app.',
+    'Miss Houseparty? FateRound brings back games with friends over a video call — share one link, everyone plays from their phone. Free, no sign-up, 20+ games. Works with any video app.',
   keywords: [
     'houseparty alternative',
     'apps like houseparty',
@@ -1265,7 +1265,7 @@ const HOUSEPARTY: MarketingPageContent = {
   ],
   heroTitle: 'The Houseparty alternative — games with friends, back for good',
   heroSubtitle:
-    "Houseparty shut down, but the thing you loved — casual games over a video call — didn't have to. Fate Round brings it back: one link, everyone plays from their phone. Free, no sign-up, 20+ games.",
+    "Houseparty shut down, but the thing you loved — casual games over a video call — didn't have to. FateRound brings it back: one link, everyone plays from their phone. Free, no sign-up, 20+ games.",
   highlights: ['Games over any video call', 'One link, everyone joins', 'Free, no sign-up', '20+ games'],
   featureCards: [
     {
@@ -1292,14 +1292,14 @@ const HOUSEPARTY: MarketingPageContent = {
   stepsHeading: 'How it works',
   steps: [
     { title: 'Start a video call', description: 'Any app you already use — FaceTime, Zoom, Discord, Meet.' },
-    { title: 'Share a Fate Round link', description: 'One code in the chat. Friends join from any browser.' },
+    { title: 'Share a FateRound link', description: 'One code in the chat. Friends join from any browser.' },
     { title: 'Play like the old days', description: 'Trivia, Would You Rather, Monopoly and more — live, together.' },
   ],
   body: (
     <>
       <p>
         Houseparty — the video-chat app with built-in games — shut down in 2021, and nothing quite replaced the easy
-        &ldquo;jump on and play&rdquo; feeling. Fate Round brings back the games-with-friends part and pairs it with
+        &ldquo;jump on and play&rdquo; feeling. FateRound brings back the games-with-friends part and pairs it with
         whatever video app you already use. Keep FaceTime, Zoom, or Discord open, share one link, and everyone plays
         from their phone.
       </p>
@@ -1343,21 +1343,21 @@ const HOUSEPARTY: MarketingPageContent = {
     {
       question: 'What happened to Houseparty?',
       answer:
-        'Houseparty, the video-chat app with built-in games, shut down in 2021. Fate Round brings back the games-with-friends part and works alongside any video app you already use.',
+        'Houseparty, the video-chat app with built-in games, shut down in 2021. FateRound brings back the games-with-friends part and works alongside any video app you already use.',
     },
     {
-      question: 'Is Fate Round like Houseparty?',
+      question: 'Is FateRound like Houseparty?',
       answer:
         "It's the games layer Houseparty was loved for — but you keep your own video call (FaceTime, Zoom, Discord) and get 20+ games instead of a handful.",
     },
     {
       question: 'Do we need to download an app?',
-      answer: 'No. Fate Round runs in the browser — share a link and everyone joins with a display name.',
+      answer: 'No. FateRound runs in the browser — share a link and everyone joins with a display name.',
     },
     {
       question: 'Does it have video chat built in?',
       answer:
-        "No — and that's on purpose. Keep the video app you already use and play Fate Round beside it, so nobody has to switch platforms.",
+        "No — and that's on purpose. Keep the video app you already use and play FateRound beside it, so nobody has to switch platforms.",
     },
     {
       question: 'Is it free?',
@@ -1366,12 +1366,12 @@ const HOUSEPARTY: MarketingPageContent = {
     {
       question: 'What apps are like Houseparty in 2026?',
       answer:
-        'Fate Round plus your existing video app (FaceTime, Zoom, Discord) replaces what Houseparty did. You get casual games with friends over a call — 20+ of them — without needing one all-in-one app.',
+        'FateRound plus your existing video app (FaceTime, Zoom, Discord) replaces what Houseparty did. You get casual games with friends over a call — 20+ of them — without needing one all-in-one app.',
     },
     {
       question: 'Can I play games over FaceTime like Houseparty?',
       answer:
-        'Yes. Keep FaceTime open and share a Fate Round link — everyone plays from their phone browser right alongside the call. Trivia, Would You Rather, Monopoly, and more.',
+        'Yes. Keep FaceTime open and share a FateRound link — everyone plays from their phone browser right alongside the call. Trivia, Would You Rather, Monopoly, and more.',
     },
   ],
   ctaHeading: 'Bring back game night',
@@ -1454,7 +1454,7 @@ const NAIJA: MarketingPageContent = {
     <>
       <p>
         Whot on a Friday night, Ludo that runs till someone’s vexed, Draughts on the veranda — Naija game night is a
-        whole vibe. Fate Round brings it online without losing the spirit: everyone plays from their own phone, over one
+        whole vibe. FateRound brings it online without losing the spirit: everyone plays from their own phone, over one
         shared link, in real time. No app to download, no account to make — just drop the link in the WhatsApp group and
         the crew is in.
       </p>
@@ -1505,7 +1505,7 @@ const NAIJA: MarketingPageContent = {
     {
       question: 'What Nigerian games can I play online?',
       answer:
-        'Fate Round has Whot (with real Naija house rules), Ludo, Draughts (Checkers), Snakes & Ladders, and Stop / Name-Place-Animal-Thing, plus classics like Monopoly. All free, all in the browser — no app to download.',
+        'FateRound has Whot (with real Naija house rules), Ludo, Draughts (Checkers), Snakes & Ladders, and Stop / Name-Place-Animal-Thing, plus classics like Monopoly. All free, all in the browser — no app to download.',
     },
     {
       question: 'Can I play Whot online with friends and family abroad?',
@@ -1529,17 +1529,17 @@ const NAIJA: MarketingPageContent = {
     {
       question: 'What is Ayo?',
       answer:
-        "Ayo (also called Ayoayo or Ayo Olopon) is a traditional Nigerian mancala board game from Yoruba culture. Two players take turns sowing seeds anti-clockwise around a wooden board with 12 houses. You capture seeds when your last sown seed lands in an opponent's house containing 2 or 3 seeds. Play it free on Fate Round — no board needed.",
+        "Ayo (also called Ayoayo or Ayo Olopon) is a traditional Nigerian mancala board game from Yoruba culture. Two players take turns sowing seeds anti-clockwise around a wooden board with 12 houses. You capture seeds when your last sown seed lands in an opponent's house containing 2 or 3 seeds. Play it free on FateRound — no board needed.",
     },
     {
       question: 'What African games can I play online?',
       answer:
-        'Fate Round has a growing collection of African games you can play free in your browser: Whot (the Nigerian card game), Ludo, Draughts (Checkers), Ayo (Yoruba mancala), Snakes & Ladders, and Stop (Name, Place, Animal, Thing). All multiplayer, all real-time — just share a link.',
+        'FateRound has a growing collection of African games you can play free in your browser: Whot (the Nigerian card game), Ludo, Draughts (Checkers), Ayo (Yoruba mancala), Snakes & Ladders, and Stop (Name, Place, Animal, Thing). All multiplayer, all real-time — just share a link.',
     },
     {
       question: 'How do I play Nigerian games with family in the diaspora?',
       answer:
-        'Start a video call on WhatsApp or Zoom, create a game on Fate Round, and share the short link in your family group chat. Everyone joins from their phone — Lagos, London, Houston, Toronto, wherever. No app to download, no account needed. Works on any phone browser.',
+        'Start a video call on WhatsApp or Zoom, create a game on FateRound, and share the short link in your family group chat. Everyone joins from their phone — Lagos, London, Houston, Toronto, wherever. No app to download, no account needed. Works on any phone browser.',
     },
   ],
   ctaHeading: 'Start the game night',
@@ -1611,8 +1611,8 @@ const LUDO_KING: MarketingPageContent = {
     </>
   ),
   comparison: {
-    heading: 'How Fate Round compares to Ludo King',
-    columns: ['Fate Round', 'Ludo King'],
+    heading: 'How FateRound compares to Ludo King',
+    columns: ['FateRound', 'Ludo King'],
     rows: [
       { label: 'Price', a: 'Free forever', b: 'Free with ads + in-app purchases' },
       { label: 'Download', a: 'None — runs in the browser', b: 'App install required' },
@@ -1627,7 +1627,7 @@ const LUDO_KING: MarketingPageContent = {
     {
       question: 'Is there a free Ludo King alternative with no download?',
       answer:
-        'Yes — Fate Round’s Ludo plays right in your browser, free, with no app to install and no sign-up. Share one link and 2 to 4 players join from any phone or laptop.',
+        'Yes — FateRound’s Ludo plays right in your browser, free, with no app to install and no sign-up. Share one link and 2 to 4 players join from any phone or laptop.',
     },
     {
       question: 'Can I play Ludo online without the app?',
@@ -1655,7 +1655,7 @@ const WHOT_UNO: MarketingPageContent = {
   breadcrumbName: 'Whot vs Uno',
   seoTitle: 'Whot vs Uno — Differences, and Where to Play Both Free',
   seoDescription:
-    'Whot vs Uno: how the two card classics compare, and where to play both free online. Whot uses shapes and WHOT wilds; Uno uses colours and Wild cards. Play both free on Fate Round — no app, no sign-up.',
+    'Whot vs Uno: how the two card classics compare, and where to play both free online. Whot uses shapes and WHOT wilds; Uno uses colours and Wild cards. Play both free on FateRound — no app, no sign-up.',
   keywords: [
     'whot vs uno',
     'is whot like uno',
@@ -1691,7 +1691,7 @@ const WHOT_UNO: MarketingPageContent = {
       emoji: '🎮',
       title: 'Play both here',
       description:
-        'Fate Round has real Whot and real Uno — plus Crazy Eights, the classic where 8s are wild — free, in the browser.',
+        'FateRound has real Whot and real Uno — plus Crazy Eights, the classic where 8s are wild — free, in the browser.',
     },
   ],
   stepsHeading: 'How they compare',
@@ -1703,7 +1703,7 @@ const WHOT_UNO: MarketingPageContent = {
     },
     {
       title: 'Try each free',
-      description: 'Play Whot or Uno on Fate Round — share a link and your crew joins.',
+      description: 'Play Whot or Uno on FateRound — share a link and your crew joins.',
     },
   ],
   body: (
@@ -1716,7 +1716,7 @@ const WHOT_UNO: MarketingPageContent = {
         General Market for extra chaos.
       </p>
       <p>
-        The best part: you don’t have to choose. Fate Round has proper Naija <GameLink type="whot" /> and real{' '}
+        The best part: you don’t have to choose. FateRound has proper Naija <GameLink type="whot" /> and real{' '}
         <GameLink type="uno">Uno</GameLink> — plus <GameLink type="crazy_eights">Crazy Eights</GameLink>, the classic
         where 8s are wild — all free, all in the browser, no app to download. Share a link and your crew joins from any
         phone. Part of the <HubLink>Naija game night</HubLink> lineup.
@@ -1732,7 +1732,7 @@ const WHOT_UNO: MarketingPageContent = {
       { label: 'Wild card', a: 'WHOT (20) — call the next shape', b: 'Wild — call the next colour' },
       { label: 'Draw cards', a: 'Pick 2, Pick 3', b: 'Draw 2, Draw 4' },
       { label: 'Extra cards', a: 'Hold On, Suspension, General Market', b: 'Skip, Reverse' },
-      { label: 'Play free online', a: 'Yes — on Fate Round', b: 'Yes — on Fate Round (plus Crazy Eights)' },
+      { label: 'Play free online', a: 'Yes — on FateRound', b: 'Yes — on FateRound (plus Crazy Eights)' },
     ],
   },
   faqs: [
@@ -1749,12 +1749,12 @@ const WHOT_UNO: MarketingPageContent = {
     {
       question: 'Can I play Whot and Uno online free?',
       answer:
-        'Yes — both Whot and Uno are free on Fate Round, plus Crazy Eights (the classic where 8s are wild). They all run in the browser with no app and no sign-up.',
+        'Yes — both Whot and Uno are free on FateRound, plus Crazy Eights (the classic where 8s are wild). They all run in the browser with no app and no sign-up.',
     },
     {
       question: 'Which should I play?',
       answer:
-        'If you want the Naija classic with shapes and General Market, play Whot. If you want the colour-matching game, play Uno (or Crazy Eights, the 8s-are-wild variant). On Fate Round you can jump between all three in the same session.',
+        'If you want the Naija classic with shapes and General Market, play Whot. If you want the colour-matching game, play Uno (or Crazy Eights, the 8s-are-wild variant). On FateRound you can jump between all three in the same session.',
     },
   ],
   ctaHeading: 'Play Whot or Uno',
@@ -1782,7 +1782,7 @@ const CHRISTMAS: MarketingPageContent = {
   ],
   heroTitle: 'Christmas game night — wherever the family is this year',
   heroSubtitle:
-    'Everyone home, or scattered across the world? Either way, the game night happens. Share one Fate Round link over WhatsApp and the whole family plays from their phones — Whot, Ludo, Bingo, trivia and more. Free, no app, no sign-up.',
+    'Everyone home, or scattered across the world? Either way, the game night happens. Share one FateRound link over WhatsApp and the whole family plays from their phones — Whot, Ludo, Bingo, trivia and more. Free, no app, no sign-up.',
   highlights: [
     'Whot, Ludo, Bingo & more',
     'Everyone plays from their phone',
@@ -1830,7 +1830,7 @@ const CHRISTMAS: MarketingPageContent = {
     <>
       <p>
         Christmas game night doesn’t need everyone in the same room — just the same link. Whether it’s full Detty
-        December in Lagos or a video call with family abroad, Fate Round gets the whole family playing from their own
+        December in Lagos or a video call with family abroad, FateRound gets the whole family playing from their own
         phones in real time. No app to download, no accounts — drop one link in the family WhatsApp group and even the
         aunties are in.
       </p>
@@ -1858,7 +1858,7 @@ const CHRISTMAS: MarketingPageContent = {
     {
       question: 'What games can I play online with family at Christmas?',
       answer:
-        'Fate Round has Whot, Ludo, Bingo, trivia, Monopoly, and party games like Most Likely To — all free in the browser. Share one link and the whole family joins from their phones, in one house or across the world.',
+        'FateRound has Whot, Ludo, Bingo, trivia, Monopoly, and party games like Most Likely To — all free in the browser. Share one link and the whole family joins from their phones, in one house or across the world.',
     },
     {
       question: 'Can we play if family are in different countries?',
@@ -1946,8 +1946,8 @@ const TOURNAMENTS: MarketingPageContent = {
   body: (
     <>
       <p>
-        A tournament makes any game night feel like an event. On Fate Round you can run one free, in the browser, with
-        no app and no accounts — just share a link and your group competes across multiple rounds. Choose a format that
+        A tournament makes any game night feel like an event. On FateRound you can run one free, in the browser, with no
+        app and no accounts — just share a link and your group competes across multiple rounds. Choose a format that
         fits the game: head-to-head brackets for <GameLink type="chess" />, <GameLink type="scrabble" />, and{' '}
         <GameLink type="whot" />; or round-robin and knockout rounds for <GameLink type="trivia" />.
       </p>
@@ -1955,7 +1955,7 @@ const TOURNAMENTS: MarketingPageContent = {
         It’s built for friends and teams, but also for schools — the class-based{' '}
         <GameLink type="whot">School Whot championship</GameLink> makes it easy to run a school-wide competition, and
         you can run <GameLink type="trivia" /> as a league or knockout too. Scores, brackets, and who advances are all
-        handled for you, so you host the event and Fate Round runs it. Part of the same platform as{' '}
+        handled for you, so you host the event and FateRound runs it. Part of the same platform as{' '}
         <HubLink>20+ games</HubLink>.
       </p>
     </>
@@ -1984,7 +1984,7 @@ const TOURNAMENTS: MarketingPageContent = {
     {
       question: 'What tournament formats are there?',
       answer:
-        'Round-robin (everyone plays everyone), head-to-head brackets, single-elimination knockout, and a class-based school championship. Fate Round pairs players, runs the rounds, and advances winners automatically.',
+        'Round-robin (everyone plays everyone), head-to-head brackets, single-elimination knockout, and a class-based school championship. FateRound pairs players, runs the rounds, and advances winners automatically.',
     },
     {
       question: 'How do players join a tournament?',

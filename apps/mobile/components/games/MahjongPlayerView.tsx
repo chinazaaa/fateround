@@ -12,6 +12,7 @@ import {
   type MahjongStateResponse,
 } from '@fateround/shared/mahjong'
 import { JoinScreen } from '@/components/JoinScreen'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
@@ -212,6 +213,7 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
         }
         lobbyFull={bootstrap.lobbyFull}
         onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
       />
     )
   }

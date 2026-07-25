@@ -5,7 +5,7 @@ export async function ensureMicPermission(): Promise<boolean> {
   try {
     const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO, {
       title: 'Microphone access',
-      message: 'Fate Round needs the microphone for in-game voice chat.',
+      message: 'FateRound needs the microphone for in-game voice chat.',
       buttonPositive: 'Allow',
       buttonNegative: 'Deny',
     })

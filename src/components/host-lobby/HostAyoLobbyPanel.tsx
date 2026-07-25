@@ -20,15 +20,6 @@ type Props = {
 
 type SaveState = 'idle' | 'saving' | 'saved'
 
-function formatAyoTimer(seconds: number): string {
-  if (!seconds) return 'Casual'
-  if (seconds === 30) return 'Ranked · 30s'
-  if (seconds === 180) return '3m each'
-  if (seconds === 300) return '5m each'
-  if (seconds === 600) return '10m each'
-  return `${seconds}s each`
-}
-
 function shortAyoTimerLabel(seconds: number): string {
   if (!seconds) return 'Off'
   if (seconds === 30) return '30s'
@@ -117,11 +108,10 @@ export function HostAyoLobbyPanel({ gameCode, hostToken, game, onGameUpdate }: P
     []
   )
 
-  const summary = `${isPublic ? 'Public' : 'Private'} · ${variant === 'traditional' ? 'Traditional' : 'Oware'} · ${formatAyoTimer(turnTimer)}`
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 
   return (
-    <HostLobbySettingsSection status={statusLabel} summary={summary}>
+    <HostLobbySettingsSection status={statusLabel}>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
         <HostLobbySettingBlock title="Rules" className="sm:col-span-2">
           <div className="flex flex-wrap gap-1.5">

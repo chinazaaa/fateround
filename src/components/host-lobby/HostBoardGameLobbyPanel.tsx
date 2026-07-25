@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   boardGameToLobbyLimitType,
-  formatBoardGameTurnTimer,
   turnTimerOptionsFor,
   type BoardGameLobbyType,
 } from '@/lib/board-game-lobby-settings'
@@ -12,8 +11,6 @@ import { formatWhotGameDuration, WHOT_GAME_DURATION_OPTIONS } from '@/lib/whot'
 import { formatCrazyEightsGameDuration, CRAZY8_GAME_DURATION_OPTIONS } from '@/lib/crazy-eights'
 import { formatUnoGameDuration, UNO_GAME_DURATION_OPTIONS } from '@/lib/uno'
 import { lobbyMaxPlayersFromGame, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
-import { MAHJONG_RULESET_CONFIG, parseMahjongRuleOptions, parseMahjongRuleset } from '@/lib/mahjong-rulesets'
-import { gameSupportsViewerSetting, lateJoinPolicyFromGame } from '@/lib/viewers'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
@@ -57,7 +54,7 @@ export function HostBoardGameLobbyPanel({
 }: Props) {
   const { error: toastError } = useToast()
   const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
-  const [isPublic, setIsPublic] = useState(false)
+  const [, setIsPublic] = useState(false)
   const [maxPlayers, setMaxPlayers] = useState(6)
   const [turnTimer, setTurnTimer] = useState(0)
   const [gameDuration, setGameDuration] = useState(0)
@@ -284,41 +281,11 @@ export function HostBoardGameLobbyPanel({
     [durationFormatter, durationOptionsSource]
   )
 
-  const summary = useMemo(() => {
-    // Max players is shown always-visible above, so the collapsed summary describes the
-    // settings that ARE hidden (visibility / timer / length / rules) rather than the cap.
-    const parts = [isPublic ? 'Public' : 'Private', formatBoardGameTurnTimer(turnTimer)]
-    if (
-      boardGameType === 'monopoly' ||
-      boardGameType === 'whot' ||
-      boardGameType === 'crazy_eights' ||
-      boardGameType === 'uno'
-    ) {
-      parts.push(durationFormatter(gameDuration))
-    }
-    if (boardGameType === 'ludo') {
-      parts.push(ludoVariant === 'traditional' ? 'Traditional' : 'Modern')
-    }
-    if (boardGameType === 'mahjong') {
-      const ruleset = parseMahjongRuleset(game.mahjong_ruleset)
-      const ruleOptions = parseMahjongRuleOptions(game.mahjong_rule_options)
-      const cfg = MAHJONG_RULESET_CONFIG[ruleset]
-      parts.push(cfg.shortLabel)
-      if (ruleset === 'riichi') parts.push(ruleOptions.matchLength === 'east' ? 'East only' : 'Hanchan')
-    }
-    if (gameSupportsViewerSetting(game.game_type)) {
-      const policy = lateJoinPolicyFromGame(game)
-      parts.push(policy === 'lobby_only' ? 'Lobby only' : policy === 'viewers_only' ? 'Viewers OK' : 'Late play OK')
-    }
-    return parts.join(' · ')
-  }, [boardGameType, durationFormatter, game, gameDuration, isPublic, ludoVariant, turnTimer])
-
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 
   return (
     <HostLobbySettingsSection
       status={statusLabel}
-      summary={summary}
       alwaysVisible={
         // Surfaced above the collapse: the player cap is the setting hosts reach for most
         // (let more people in / trim an empty lobby), so it must never hide behind "Edit".

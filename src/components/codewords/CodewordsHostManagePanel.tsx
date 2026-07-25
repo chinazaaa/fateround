@@ -212,8 +212,6 @@ export function CodewordsHostManagePanel({
     onSetSpymaster(playerId, team, makeSpymaster)
   }
 
-  const settingsSummary = `${lobbyMaxPlayers} max · Spymaster ${spymasterTimer}s · Operative ${operativeTimer}s${lateJoin ? ' · Late join on' : ''}`
-
   const startDisabled = starting || players.length < CODEWORDS_MIN_PLAYERS || !ready.ok
   const startDisabledHint =
     players.length < CODEWORDS_MIN_PLAYERS
@@ -378,11 +376,7 @@ export function CodewordsHostManagePanel({
 
       {/* Before you start — every other setup option lives here, collapsed by default */}
       {showSettings && inLobby && (
-        <HostLobbySettingsSection
-          title="Before you start"
-          summary={settingsSummary}
-          status={savingMaxPlayers || savingTimers ? 'Saving…' : null}
-        >
+        <HostLobbySettingsSection title="Before you start" status={savingMaxPlayers || savingTimers ? 'Saving…' : null}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
             <HostLobbySettingBlock title={`Max players · ${players.length} joined`}>
               <HostLobbyOptionChips

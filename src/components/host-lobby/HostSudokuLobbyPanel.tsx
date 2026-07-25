@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { lobbyMaxPlayersFromGame, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
-import { formatSudokuGameDuration, SUDOKU_GAME_DURATION_OPTIONS } from '@/lib/sudoku'
+import { SUDOKU_GAME_DURATION_OPTIONS } from '@/lib/sudoku'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
@@ -20,7 +20,6 @@ type Props = {
   /** Timer choices (seconds) + label formatter. Defaults to Sudoku's; Crossword and Word
    *  Search pass their own so their extra options (e.g. 2m/3m) show in the lobby edit too. */
   durationChoices?: readonly number[]
-  formatDuration?: (seconds: number) => string
   /** Puzzle theme/difficulty editor. When provided (Crossword/Word Search) it replaces the
    *  generic visual-theme picker, which those games don't use. */
   puzzleSettings?: ReactNode
@@ -35,7 +34,6 @@ export function HostSudokuLobbyPanel({
   playerCount,
   onGameUpdate,
   durationChoices = SUDOKU_GAME_DURATION_OPTIONS,
-  formatDuration = formatSudokuGameDuration,
   puzzleSettings,
 }: Props) {
   const { error: toastError } = useToast()
@@ -146,7 +144,7 @@ export function HostSudokuLobbyPanel({
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 
   return (
-    <HostLobbySettingsSection status={statusLabel} summary={`${maxPlayers} max · ${formatDuration(gameDuration)}`}>
+    <HostLobbySettingsSection status={statusLabel}>
       <HostLobbySettingBlock title={`Max players · ${playerCount} joined`}>
         <HostLobbyOptionChips value={maxPlayers} options={maxPlayerOptions} onChange={onMaxPlayersChange} />
       </HostLobbySettingBlock>

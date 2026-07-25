@@ -7,6 +7,7 @@ import type { Game, Player, TicTacToeBoardResult, TicTacToeMark, TicTacToeSessio
 import { useTicTacToeTurnTimer } from './tic-tac-toe/useTicTacToeTurnTimer'
 import { TicTacToeShareCard } from './tic-tac-toe/TicTacToeShareCard'
 import { JoinScreen } from '@/components/JoinScreen'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
@@ -162,6 +163,7 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
             : 'No account needed — enter a display name and play.'
         }
         submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
       />
     )
   }

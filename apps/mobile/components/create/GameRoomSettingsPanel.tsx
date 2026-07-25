@@ -16,6 +16,7 @@ import {
   turnTimerOptionsFor,
 } from '@fateround/shared/create-board-games'
 import { WHOT_GAME_DURATION_OPTIONS } from '@fateround/shared/whot'
+import { UNO_GAME_DURATION_OPTIONS } from '@fateround/shared/uno'
 import { MAHJONG_RULESET_LABELS, MAHJONG_RULESETS } from '@fateround/shared/mahjong-rulesets'
 import {
   SCRABBLE_DICTIONARY_OPTIONS,
@@ -126,14 +127,26 @@ export function GameRoomSettingsPanel({ gameType, room, onChange }: Props) {
           </>
         ) : null}
 
-        {gameType === 'checkers' ? (
-          <TimerPicker
-            label="Time per player"
-            value={room.timerSeconds}
-            options={turnTimerOptionsFor('checkers')}
-            format={formatChessClockLabel}
-            onChange={(timerSeconds) => onChange({ timerSeconds })}
-          />
+        {gameType === 'checkers' || gameType === 'checkers_international' || gameType === 'checkers_nigeria' ? (
+          <>
+            <TimerPicker
+              label="Time per player"
+              value={room.timerSeconds}
+              options={turnTimerOptionsFor('checkers')}
+              format={formatChessClockLabel}
+              onChange={(timerSeconds) => onChange({ timerSeconds })}
+            />
+            {gameType === 'checkers_nigeria' ? (
+              <View style={styles.toggles}>
+                <SettingToggle
+                  label="Street Rules"
+                  description="Capturing stays optional — decline one and your opponent may huff (remove) the piece instead of moving"
+                  value={room.checkersNigeriaStreetRules}
+                  onChange={(checkersNigeriaStreetRules) => onChange({ checkersNigeriaStreetRules })}
+                />
+              </View>
+            ) : null}
+          </>
         ) : null}
 
         {gameType === 'ayo' ? (
@@ -248,6 +261,85 @@ export function GameRoomSettingsPanel({ gameType, room, onChange }: Props) {
                 value={room.crazy8Pick2Stacking}
                 onChange={(crazy8Pick2Stacking) => onChange({ crazy8Pick2Stacking })}
               />
+            </View>
+          </>
+        ) : null}
+
+        {gameType === 'uno' ? (
+          <>
+            <View style={styles.field}>
+              <Text style={styles.label}>Team-Up (2v2)</Text>
+              <SettingToggle
+                label="Team-Up mode"
+                description="4 players in 2 teams of 2. Teammates sit across and see each other's hands; a team wins the round the moment either partner empties their hand."
+                value={room.unoTeamMode}
+                onChange={(unoTeamMode) => onChange({ unoTeamMode })}
+              />
+              {room.unoTeamMode ? <Text style={styles.hint}>4 players (2 teams of 2)</Text> : null}
+            </View>
+            <TimerPicker
+              label="Turn timer"
+              value={room.timerSeconds}
+              options={turnTimerOptionsFor('uno')}
+              format={formatBoardGameTurnTimer}
+              onChange={(timerSeconds) => onChange({ timerSeconds })}
+            />
+            <View style={styles.field}>
+              <Text style={styles.label}>Game length</Text>
+              <SegmentedControl
+                value={String(room.gameDurationSeconds)}
+                options={UNO_GAME_DURATION_OPTIONS.map((seconds) => ({
+                  value: String(seconds),
+                  label: formatSessionDuration(seconds),
+                }))}
+                onChange={(value) => onChange({ gameDurationSeconds: Number(value) })}
+              />
+            </View>
+            <View style={styles.toggles}>
+              <SettingToggle
+                label="Wild +4 challenge"
+                description="Let the next player challenge a Wild Draw Four"
+                value={room.unoWd4Challenge}
+                onChange={(unoWd4Challenge) => onChange({ unoWd4Challenge })}
+              />
+              <SettingToggle
+                label="Draw stacking"
+                description="Stack a Draw Two on a Draw Two, or a Wild +4 on a Wild +4"
+                value={room.unoStacking}
+                onChange={(unoStacking) => onChange({ unoStacking })}
+              />
+              <SettingToggle
+                label="0/7 rule"
+                description="Playing a 0 passes every hand · playing a 7 swaps hands with a player"
+                value={room.unoZeroSeven}
+                onChange={(unoZeroSeven) => onChange({ unoZeroSeven })}
+              />
+              <SettingToggle
+                label="Double penalty"
+                description="Missed UNO calls draw 4 cards instead of 2"
+                value={room.unoUnoPenalty === 4}
+                onChange={(on) => onChange({ unoUnoPenalty: on ? 4 : 2 })}
+              />
+              <SettingToggle
+                label="Jump-In"
+                description="Hold an exact match for the top card (same colour + number, or same colour + symbol)? Play it instantly, even out of turn."
+                value={room.unoJumpIn}
+                onChange={(unoJumpIn) => onChange({ unoJumpIn })}
+              />
+            </View>
+            <View style={styles.field}>
+              <Text style={styles.label}>Multi-Play</Text>
+              <SegmentedControl
+                value={room.unoMultiPlayMode}
+                options={[
+                  { value: 'off', label: 'Off' },
+                  { value: 'same_color_or_number', label: 'Colour or number' },
+                  { value: 'same_color', label: 'Colour only' },
+                  { value: 'same_number', label: 'Number only' },
+                ]}
+                onChange={(value) => onChange({ unoMultiPlayMode: value as GameRoomSettings['unoMultiPlayMode'] })}
+              />
+              <Text style={styles.hint}>Lay several matching cards in a single turn.</Text>
             </View>
           </>
         ) : null}
@@ -382,4 +474,5 @@ const makeStyles = (theme: Theme) =>
       fontWeight: '800',
     },
     toggles: { gap: theme.space.sm },
+    hint: { color: theme.textMuted, fontSize: 12 },
   })

@@ -754,11 +754,15 @@ function computeGeneralMarket(
   discardPile: WhotCard[]
   hands: WhotPlayerHand[]
   marketWrites: { player_id: string; cards: WhotCard[] }[]
+  reshuffled: boolean
+  deckExhausted: boolean
 } {
   let pile = [...drawPile]
   let discard = [...discardPile]
   let nextHands = [...hands]
   const marketWrites: { player_id: string; cards: WhotCard[] }[] = []
+  let reshuffled = false
+  let deckExhausted = false
 
   for (const row of nextHands) {
     if (row.player_id === currentPlayerId) continue
@@ -767,14 +771,29 @@ function computeGeneralMarket(
     const result = drawCardsWithRefill(pile, discard, 1)
     pile = result.drawPile
     discard = result.discardPile
+    if (result.reshuffled) reshuffled = true
     if (result.drawn.length > 0) {
       const cards = [...existing, ...result.drawn]
       nextHands = updateHand(nextHands, row.player_id, cards)
       marketWrites.push({ player_id: row.player_id, cards })
+    } else {
+      // Draw pile and discard pile both empty — this player couldn't be dealt in.
+      deckExhausted = true
     }
   }
 
-  return { drawPile: pile, discardPile: discard, hands: nextHands, marketWrites }
+  return { drawPile: pile, discardPile: discard, hands: nextHands, marketWrites, reshuffled, deckExhausted }
+}
+
+// Card 14 (General Market) keeps the current player's turn (holdOn) even when dealing ran the
+// pile dry, unlike a normal draw where "draw pile empty" means the turn passed on to the next
+// player. So this never reuses that phrase — it has its own marker ('not everyone could be dealt
+// in') that useWhotNotifications watches for separately, alongside the shared 'deck reshuffled'
+// marker for the case where a reshuffle mid-market still got everyone their card.
+function generalMarketDetail(deckExhausted: boolean, reshuffled: boolean): string {
+  if (deckExhausted) return 'General Market — not everyone could be dealt in, the deck ran out'
+  if (reshuffled) return 'General Market! Everyone drew — go again · deck reshuffled'
+  return 'General Market! Everyone drew — go again'
 }
 
 /**
@@ -873,6 +892,8 @@ export async function processWhotPlay(
     // Normal play — and a WHOT played as the last card, which wins immediately.
     let drawPile = (session.draw_pile as WhotCard[]) ?? []
     let discardPile = discardPlayedTop(session)
+    let marketReshuffled = false
+    let marketDeckExhausted = false
 
     if (card.number === 14) {
       const market = computeGeneralMarket(playerId, drawPile, discardPile, nextHands)
@@ -880,6 +901,8 @@ export async function processWhotPlay(
       discardPile = market.discardPile
       nextHands = market.hands
       marketWrites = market.marketWrites
+      marketReshuffled = market.reshuffled
+      marketDeckExhausted = market.deckExhausted
     }
 
     const board: Partial<WhotSession> = {
@@ -898,8 +921,9 @@ export async function processWhotPlay(
       const advance = resolveNextTurnIndex(session, nextHands, card.number)
       const nextPlayerId = session.turn_order[advance.nextIndex]
       const special = specialCardMessage(card.number)
+      const marketDetail = generalMarketDetail(marketDeckExhausted, marketReshuffled)
       let status = advance.holdOn
-        ? `${name} — ${card.number === 14 ? 'General Market! Everyone drew — go again' : 'Hold On, go again'}!`
+        ? `${name} — ${card.number === 14 ? marketDetail : 'Hold On, go again'}!`
         : `${playerName(playerNames, nextPlayerId)}'s turn — match ${cardLabel(card)}`
       if (special && !advance.holdOn) status = `${status} · ${special}`
       if (pickTwo > 0) status = `${status} · Pick 2 active (${pickTwo} cards to draw)`

@@ -1,4 +1,4 @@
-# Fate Round — Non-SEO Launch Kit
+# FateRound — Non-SEO Launch Kit
 
 Ready-to-use assets for seeding the channels SEO can't reach: short-form video, Reddit, Discord, and occasion spikes. This is the manual, off-platform half of growth — copy, adapt, and post as yourself.
 

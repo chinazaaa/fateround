@@ -15,13 +15,14 @@ import {
 import { initializeTicTacToeGame, TIC_TAC_TOE_MIN_PLAYERS } from '@/lib/tic-tac-toe'
 import { initializeChessGame, CHESS_MIN_PLAYERS } from '@/lib/chess'
 import { initializeCheckersGame, CHECKERS_MIN_PLAYERS } from '@/lib/checkers'
+import { initializeDraughts10Game, DRAUGHTS10_MIN_PLAYERS } from '@/lib/draughts10'
 import { initializeAyoGame, AYO_MIN_PLAYERS } from '@/lib/ayo'
 import { initializeScrabbleGame, SCRABBLE_MIN_PLAYERS, SCRABBLE_MAX_PLAYERS } from '@/lib/scrabble'
 import { initializeMafiaGame, MAFIA_MIN_PLAYERS, MAFIA_MAX_PLAYERS } from '@/lib/mafia'
 import { initializePingPongGame, PING_PONG_MIN_PLAYERS } from '@/lib/ping-pong'
 
 /** The slice of the game row a start initializer may need. */
-type StartGame = { timer_seconds?: number | null }
+type StartGame = { timer_seconds?: number | null; checkers_nigeria_street_rules?: boolean | null }
 
 export interface StartSpec {
   /** minimum players required (or the exact count when `exact`). */
@@ -100,6 +101,18 @@ export const GAME_START_SPECS: Partial<Record<GameType, StartSpec>> = {
     minPlayers: CHECKERS_MIN_PLAYERS,
     exact: true,
     initialize: (admin, code, ids) => initializeCheckersGame(admin, code, ids),
+  },
+  checkers_international: {
+    minPlayers: DRAUGHTS10_MIN_PLAYERS,
+    exact: true,
+    // Street Rules (huffing) is a Nigeria-only house rule — not applicable here.
+    initialize: (admin, code, ids) => initializeDraughts10Game(admin, code, ids, 'international'),
+  },
+  checkers_nigeria: {
+    minPlayers: DRAUGHTS10_MIN_PLAYERS,
+    exact: true,
+    initialize: (admin, code, ids, game) =>
+      initializeDraughts10Game(admin, code, ids, 'nigeria', game.checkers_nigeria_street_rules === true),
   },
   ayo: {
     minPlayers: AYO_MIN_PLAYERS,

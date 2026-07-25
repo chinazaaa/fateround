@@ -5,6 +5,7 @@ import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
@@ -627,6 +628,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
         hostToken={hostToken}
         game={game}
         gameTypeLabel={cfg.label}
+        titleMeta={<GameInfoChips game={game} className="mt-2" />}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('crazy_eights', game) ?? game.max_players}
         playCard={

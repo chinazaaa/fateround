@@ -29,6 +29,7 @@ import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWait
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { emptyStrokeData, normalizeStrokeData } from '@fateround/shared/quick-draw-strokes'
 import { JoinScreen } from '@/components/JoinScreen'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner, WaitingPanel } from '@/components/game/GameChrome'
 import { QuickDrawLiePlayerView } from '@/components/games/QuickDrawLiePlayerView'
@@ -359,6 +360,7 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
         onJoin={() => void bootstrap.join()}
         lobbyFull={bootstrap.lobbyFull}
         onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
       />
     )
   }

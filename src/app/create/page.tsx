@@ -72,6 +72,8 @@ import {
   isPingPongGame,
   isChessGame,
   isCheckersGame,
+  isDraughts10Game,
+  isCheckersNigeriaGame,
   isAyoGame,
   isScrabbleGame,
   isDescribeItGame,
@@ -506,6 +508,8 @@ function CreateGameInner() {
   const [landmineMineSource, setLandmineMineSource] = useState<'system' | 'manual'>('system')
   const [landmineMineCount, setLandmineMineCount] = useState(1)
   const [landmineOriginality, setLandmineOriginality] = useState(true)
+  // Nigerian Draughts "Street Rules" (huffing) — off by default, matching standard competitive play.
+  const [checkersNigeriaStreetRules, setCheckersNigeriaStreetRules] = useState(false)
   // Review-before-reveal: on by default for both modes (host can turn it off for instant reveal).
   const [landmineReview, setLandmineReview] = useState(true)
   // Review-window length (seconds); default seeded per mode (manual 45, auto 20).
@@ -925,6 +929,8 @@ function CreateGameInner() {
   const isPingPong = isPingPongGame(settings.game_type)
   const isChess = isChessGame(settings.game_type)
   const isCheckers = isCheckersGame(settings.game_type)
+  const isDraughts10 = isDraughts10Game(settings.game_type)
+  const isCheckersNigeria = isCheckersNigeriaGame(settings.game_type)
   const isAyo = isAyoGame(settings.game_type)
   const isScrabble = isScrabbleGame(settings.game_type)
   const isDescribeIt = isDescribeItGame(settings.game_type)
@@ -2491,6 +2497,7 @@ function CreateGameInner() {
           landmine_originality_bonus: isLandmine ? landmineOriginality : undefined,
           landmine_review: isLandmine ? landmineReview : undefined,
           landmine_review_seconds: isLandmine ? landmineReviewSeconds : undefined,
+          checkers_nigeria_street_rules: isCheckersNigeria ? checkersNigeriaStreetRules : undefined,
           quick_draw_variant: isQuickDraw ? settings.quick_draw_variant : undefined,
           quick_draw_play_mode:
             isQuickDraw && settings.quick_draw_variant === 'guess' ? settings.quick_draw_play_mode : undefined,
@@ -3988,6 +3995,44 @@ function CreateGameInner() {
                   Classic checkers — Black moves first, jumps are forced, and reaching the far row crowns a king.
                   Capture all your opponent’s pieces to win. Each player gets their own clock that only ticks on their
                   turn.
+                </p>
+              </SettingsGroup>
+            ) : isDraughts10 ? (
+              <SettingsGroup title={isCheckersNigeria ? 'Nigerian Draughts room' : 'International Draughts room'}>
+                <p className="text-faint text-sm">Exactly 2 players — the host can join as one of them.</p>
+                <Field label="Time per player">
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    <option value={0}>No timer</option>
+                    <option value={180}>3 minutes each</option>
+                    <option value={300}>5 minutes each</option>
+                    <option value={600}>10 minutes each</option>
+                  </select>
+                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType={settings.game_type} />
+                {isCheckersNigeria && (
+                  <label className="flex items-center justify-between gap-2 py-1">
+                    <span className="text-sm font-semibold">
+                      Street Rules
+                      <span className="block text-xs font-normal text-faint">
+                        Capturing stays optional — decline one and your opponent may huff (remove) the piece instead of
+                        moving.
+                      </span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={checkersNigeriaStreetRules}
+                      onChange={(e) => setCheckersNigeriaStreetRules(e.target.checked)}
+                    />
+                  </label>
+                )}
+                <p className="text-faint text-sm leading-relaxed">
+                  {isCheckersNigeria
+                    ? 'Nigerian Draughts — 10×10 board, 20 seeds each, flying kings, and mandatory majority capture (you must take the biggest jump available). Reaching the far row caps a seed into a king.'
+                    : 'International Draughts — 10×10 board, 20 pieces each, flying kings, and mandatory majority capture (you must take the biggest jump available). Reaching the far row crowns a king.'}
                 </p>
               </SettingsGroup>
             ) : isMahjong ? (

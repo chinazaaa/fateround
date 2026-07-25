@@ -53,6 +53,11 @@ export function GameChromeSettings({
 
   const rowClass =
     'flex w-full items-center justify-center gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] px-3.5 py-3 text-sm font-semibold text-body transition-colors hover:text-[var(--foreground)]'
+  // Rotate player code invalidates the caller's existing continue link (a security action, and
+  // its confirm dialog is already marked destructive) — give it a distinct warm accent so it's
+  // never mistaken for the neutral "Transfer" row sitting right above it.
+  const rotateRowClass =
+    'flex w-full items-center justify-center gap-2.5 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-3 text-sm font-semibold text-red-500 transition-colors hover:text-red-400'
 
   return (
     <>
@@ -87,7 +92,7 @@ export function GameChromeSettings({
           ) : null}
           {gameSettings}
           {role === 'host' ? <TransferHostControl triggerClassName={rowClass} /> : null}
-          {gameCode && resumeToken ? <RotatePlayerCodeButton gameCode={gameCode} className={rowClass} /> : null}
+          {gameCode && resumeToken ? <RotatePlayerCodeButton gameCode={gameCode} className={rotateRowClass} /> : null}
           <WhatsAppChannelLink className="w-full justify-center" />
         </GameSettingsCloseProvider>
       </HostLobbySettingsSheet>

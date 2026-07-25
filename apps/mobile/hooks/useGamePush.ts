@@ -59,7 +59,7 @@ export function useGamePush(gameCode: string, enabled: boolean) {
 export function useForegroundPushBanner(onMessage: (title: string, body: string) => void) {
   useEffect(() => {
     const sub = Notifications.addNotificationReceivedListener((notification) => {
-      const title = notification.request.content.title ?? 'Fate Round'
+      const title = notification.request.content.title ?? 'FateRound'
       const body = notification.request.content.body ?? ''
       if (body || title) onMessage(title, body)
     })

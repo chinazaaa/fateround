@@ -22,7 +22,7 @@ interface Props {
 type CategoryFilter = GameCategory | 'all'
 
 /**
- * Homepage game picker, styled with the Fate Round design system (`.fr-modal`).
+ * Homepage game picker, styled with the FateRound design system (`.fr-modal`).
  * Kept separate from the shared `GameTypeModal` (used on /create) so the app
  * pages are untouched by the public-page overhaul.
  */

@@ -99,6 +99,8 @@ export const gameTypeEnum = z.enum([
   'matching_pairs',
   'chess',
   'checkers',
+  'checkers_international',
+  'checkers_nigeria',
   'ayo',
   'describe_it',
   'scrabble',

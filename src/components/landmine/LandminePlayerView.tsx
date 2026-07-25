@@ -6,6 +6,7 @@ import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
@@ -271,7 +272,14 @@ export function LandminePlayerView({ gameCode }: { gameCode: string }) {
     return (
       <GameJoinLobbyShell
         gameCode={gameCode}
-        header={<GameJoinHeader emoji={cfg.headerEmoji} title={game?.title} gameType="landmine" />}
+        header={
+          <GameJoinHeader
+            emoji={cfg.headerEmoji}
+            title={game?.title}
+            gameType="landmine"
+            meta={game ? <GameInfoChips game={game} /> : null}
+          />
+        }
       >
         <NameJoinForm
           value={joinName}

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
@@ -290,14 +291,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
           emoji={cfg.headerEmoji}
           title={game?.title}
           gameType="quiplash"
-          meta={
-            game ? (
-              <>
-                {game.rounds_count} rounds · {game.timer_seconds}s to answer · {game.operative_timer_seconds ?? 15}s to
-                vote
-              </>
-            ) : null
-          }
+          meta={game ? <GameInfoChips game={game} /> : null}
         />
         <NameJoinForm
           value={joinName}

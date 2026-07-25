@@ -30,6 +30,7 @@ import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
@@ -312,6 +313,7 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
             emoji={cfg.headerEmoji}
             title={game?.title ?? cfg.label}
             gameType="checkers"
+            meta={game ? <GameInfoChips game={game} /> : null}
             subtitle={joiningAsViewer ? 'Game in progress — join as a viewer (read-only).' : cfg.tagline}
           />
         }

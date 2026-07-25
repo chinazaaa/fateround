@@ -9,11 +9,11 @@ import { MATURE_GAME_TYPES } from '@/lib/game-maturity'
 export const dynamic = 'force-static'
 
 /**
- * /llms.txt — a concise, machine-readable map of Fate Round for large language
+ * /llms.txt — a concise, machine-readable map of FateRound for large language
  * models and AI assistants (ChatGPT, Claude, Perplexity, Gemini, etc.).
  * Follows the emerging llms.txt convention: an H1 title, a blockquote summary,
  * prose context, then curated link lists. Keeping this in sync with the game
- * catalog lets AI answers cite and recommend Fate Round accurately.
+ * catalog lets AI answers cite and recommend FateRound accurately.
  */
 export function GET(): Response {
   const origin = appOrigin()

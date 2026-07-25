@@ -6,7 +6,7 @@ import { chessResultDetail, colorForPlayer, currentTurnPlayerId } from '@/lib/ch
 import { type Premove, premoveNeedsPromotion, premoveTargets } from '@/lib/chess-premove'
 import type { ChessColor, Player, ChessSession } from '@/types'
 import { ChessCard, ChessTurnBar } from '@/components/chess/ChessChrome'
-import { ChessAppearancePicker } from '@/components/chess/ChessAppearancePicker'
+import { ChessAppearanceIconButton, ChessAppearancePanel } from '@/components/chess/ChessAppearancePicker'
 import {
   type ChessAppearanceDefaults,
   type ChessPieceSet,
@@ -15,6 +15,7 @@ import {
 } from '@/lib/chess-appearance'
 import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
 import { useChessTurnSound } from '@/hooks/useChessTurnSound'
+import { useToast } from '@/components/ui/Toast'
 
 const PIECE_NAMES: Record<ChessPieceType, string> = {
   p: 'pawn',
@@ -59,12 +60,8 @@ function ChessClockChip({ session, color }: { session: ChessSession; color: Ches
   return (
     <span
       className={[
-        'ml-auto shrink-0 tabular-nums font-black rounded-md px-2 py-0.5 text-sm border',
-        active
-          ? lowTime
-            ? 'bg-rose-500/20 border-rose-400 text-rose-300 animate-pulse'
-            : 'bg-[var(--primary)]/15 border-[var(--primary)]/50 text-[var(--foreground)]'
-          : 'bg-[var(--surface-inset-bg)] border-[var(--border)] text-muted',
+        'shrink-0 tabular-nums font-black text-base',
+        active ? (lowTime ? 'text-rose-400 animate-pulse' : 'text-[var(--primary)]') : 'text-muted',
       ].join(' ')}
     >
       {formatClock(ms)}
@@ -134,37 +131,88 @@ function KingGlyph({ color }: { color: ChessColor }) {
   )
 }
 
-/** A player's row: name, captured opponent pieces, and clock. */
-function CapturedTray({
-  name,
-  pieces,
-  glyphColor,
+/** Collapse repeated captures into type+count (e.g. 6 pawns -> one pawn glyph + "×6") so a
+ *  long capture streak never grows past 5 icons (one per piece type) and can't force a wrap
+ *  mid-name. Order follows {@link CAPTURABLE_TYPES} (queen down to pawn). */
+function groupPieces(pieces: string[]): { type: string; count: number }[] {
+  const counts = new Map<string, number>()
+  for (const type of pieces) counts.set(type, (counts.get(type) ?? 0) + 1)
+  return CAPTURABLE_TYPES.filter((type) => counts.has(type)).map((type) => ({ type, count: counts.get(type)! }))
+}
+
+/** One combined captured-material line for both sides (e.g. "ADA ♟ · KOJO ♙×6"), sitting below
+ *  the player cards. Each entry that has no captures yet is skipped. */
+function ChessCapturedSummary({
+  entries,
   set,
+}: {
+  entries: { name: string; pieces: string[]; glyphColor: ChessColor }[]
+  set: ChessPieceSet
+}) {
+  const shown = entries.filter((e) => e.pieces.length > 0)
+  if (shown.length === 0) return null
+  return (
+    <div className="flex items-center justify-center flex-wrap gap-1 px-1">
+      {shown.map((e, i) => (
+        <div key={e.name + i} className="flex items-center flex-wrap gap-0.5">
+          {i > 0 ? <span className="text-faint text-xs mr-1">·</span> : null}
+          <span className="text-muted text-[11px] font-bold tracking-wide mr-0.5">{e.name.toUpperCase()}</span>
+          {groupPieces(e.pieces).map(({ type, count }) => (
+            <span key={type} className="flex items-center">
+              <ChessPieceGlyph
+                set={set}
+                color={e.glyphColor}
+                type={type as ChessPieceType}
+                className="h-3.5 w-3.5 sm:h-4 sm:w-4"
+              />
+              {count > 1 ? <span className="text-faint text-[10px] font-bold ml-px">×{count}</span> : null}
+            </span>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** A player identity card: avatar, name, colour label, and (optionally) a live clock — two of
+ *  these sit side by side above the board, mirroring the chess.com-style header. */
+function ChessPlayerCard({
+  name,
+  color,
   clock,
+  active,
 }: {
   name: string
-  pieces: string[]
-  glyphColor: ChessColor
-  set: ChessPieceSet
+  color: ChessColor
   clock?: ReactNode
+  active?: boolean
 }) {
   return (
-    <div className="flex items-center gap-1.5 min-h-[1.75rem] px-1">
-      <span className="text-xs font-bold shrink-0">
-        <KingGlyph color={glyphColor} /> {name}
+    <div
+      className={[
+        'flex-1 flex items-center gap-2 min-h-[3.25rem] px-2.5 py-2 rounded-lg border transition-colors',
+        active ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--border)] bg-[var(--surface-bg)]',
+      ].join(' ')}
+    >
+      <span
+        className={[
+          'flex items-center justify-center shrink-0 h-8 w-8 rounded-full text-sm font-black',
+          color === 'w' ? 'bg-[var(--primary)]/15 text-[var(--primary)]' : 'bg-[#1a1a1a] text-[#f5f5f5]',
+        ].join(' ')}
+        aria-hidden
+      >
+        {name.trim().charAt(0).toUpperCase() || '?'}
       </span>
-      <div className="flex items-center flex-wrap gap-0.5 leading-none">
-        {pieces.map((type, i) => (
-          <ChessPieceGlyph
-            key={`${type}-${i}`}
-            set={set}
-            color={glyphColor}
-            type={type as ChessPieceType}
-            className="h-5 w-5 sm:h-6 sm:w-6"
-          />
-        ))}
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-bold truncate">{name}</p>
+        <p className="text-xs text-faint">{color === 'w' ? 'White' : 'Black'}</p>
       </div>
-      {clock}
+      {clock ? (
+        <div className="flex items-center gap-1.5 shrink-0">
+          {active ? <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden /> : null}
+          {clock}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -203,7 +251,9 @@ export function ChessGamePanel({
   onResign?: () => void
   acting?: boolean
 }) {
+  const { info: toastInfo } = useToast()
   const [selected, setSelected] = useState<string | null>(null)
+  const [appearanceOpen, setAppearanceOpen] = useState(false)
   const [pendingPromotion, setPendingPromotion] = useState<{ from: string; to: string; isPremove?: boolean } | null>(
     null
   )
@@ -315,16 +365,20 @@ export function ChessGamePanel({
   const black = players.find((p) => p.id === session.player_black_id)
   const winnerName = players.find((p) => p.id === session.winner_player_id)?.name
 
-  // Captured-pieces tray props for a given side. Each side shows the
-  // opponent-colored pieces it has taken, plus its material lead (if any).
-  const trayFor = (color: ChessColor) => ({
+  // The two identity cards: your own seat leads (left), the opponent trails (right) —
+  // falling back to White-then-Black for a spectator with no seat of their own.
+  const cardOrder: ChessColor[] = myColor === 'b' ? ['b', 'w'] : ['w', 'b']
+  const playerCardFor = (color: ChessColor) => ({
+    name: (color === 'w' ? white : black)?.name ?? (color === 'w' ? 'White' : 'Black'),
+    color,
+    active: session.status === 'active' && session.current_turn === color,
+  })
+  const capturedSummaryEntries = cardOrder.map((color) => ({
     name: (color === 'w' ? white : black)?.name ?? (color === 'w' ? 'White' : 'Black'),
     pieces: color === 'w' ? material.capturedByWhite : material.capturedByBlack,
     glyphColor: (color === 'w' ? 'b' : 'w') as ChessColor,
-  })
+  }))
 
-  const bottomColor: ChessColor = flip ? 'b' : 'w'
-  const topColor: ChessColor = flip ? 'w' : 'b'
   const timed = session.white_time_ms != null && session.black_time_ms != null
 
   const handleSquareClick = (square: string) => {
@@ -352,6 +406,7 @@ export function ChessGamePanel({
             premoveAt.current = session.updated_at
             setPremove({ from: selected, to: square })
             setSelected(null)
+            toastInfo('Premove saved — it plays automatically once it’s your turn')
           }
         }
         return
@@ -371,6 +426,7 @@ export function ChessGamePanel({
     if (pendingPromotion.isPremove) {
       premoveAt.current = session.updated_at
       setPremove({ from: pendingPromotion.from, to: pendingPromotion.to, promotion: piece })
+      toastInfo('Premove saved — it plays automatically once it’s your turn')
     } else {
       onMove?.(pendingPromotion.from, pendingPromotion.to, piece)
     }
@@ -381,18 +437,34 @@ export function ChessGamePanel({
   return (
     <div className="space-y-4">
       {session.status === 'active' && (
-        <ChessTurnBar turnPlayerName={turnPlayer?.name} isMyTurn={isMyTurn} inCheck={session.in_check} />
+        <ChessTurnBar
+          kicker={
+            session.in_check && isMyTurn
+              ? 'Check'
+              : isMyTurn
+                ? 'Your move'
+                : premove
+                  ? 'Premove queued'
+                  : "Opponent's turn"
+          }
+          text={
+            session.in_check && isMyTurn
+              ? 'Check! Your move'
+              : selected
+                ? (() => {
+                    const label = PIECE_NAMES[(chess.get(selected as Square)?.type ?? 'p') as ChessPieceType]
+                    return `${label.charAt(0).toUpperCase()}${label.slice(1)} selected — tap a dot to move`
+                  })()
+                : isMyTurn
+                  ? 'Your turn'
+                  : premove
+                    ? `Premove ${premove.from}→${premove.to} queued — tap the board to cancel`
+                    : canPremove
+                      ? `${turnPlayer?.name ?? 'Opponent'}'s turn — tap a piece to queue a premove`
+                      : `${turnPlayer?.name ?? 'Opponent'}'s turn`
+          }
+        />
       )}
-
-      <ChessCard className="p-3 flex items-center justify-between text-sm">
-        <span className="font-bold">
-          <KingGlyph color="w" /> {white?.name ?? 'White'}
-        </span>
-        <span className="text-faint">vs</span>
-        <span className="font-bold">
-          <KingGlyph color="b" /> {black?.name ?? 'Black'}
-        </span>
-      </ChessCard>
 
       {timed && timeControlSeconds ? (
         <p className="text-center text-faint text-xs -mt-2">
@@ -411,11 +483,16 @@ export function ChessGamePanel({
       )}
 
       <div className="max-w-lg sm:max-w-xl lg:max-w-2xl mx-auto w-full space-y-1.5">
-        <CapturedTray
-          {...trayFor(topColor)}
-          set={pieceSet}
-          clock={<ChessClockChip session={session} color={topColor} />}
-        />
+        <div className="flex gap-2">
+          {cardOrder.map((color) => (
+            <ChessPlayerCard
+              key={color}
+              {...playerCardFor(color)}
+              clock={timed ? <ChessClockChip session={session} color={color} /> : undefined}
+            />
+          ))}
+        </div>
+        <ChessCapturedSummary entries={capturedSummaryEntries} set={pieceSet} />
         <div className="grid grid-cols-8 rounded-lg overflow-hidden border-2 border-[var(--border-strong)] shadow-lg">
           {orderedRanks.map((rank, rankIdx) =>
             orderedFiles.map((file, fileIdx) => {
@@ -485,14 +562,7 @@ export function ChessGamePanel({
             })
           )}
         </div>
-        <CapturedTray
-          {...trayFor(bottomColor)}
-          set={pieceSet}
-          clock={<ChessClockChip session={session} color={bottomColor} />}
-        />
       </div>
-
-      <ChessAppearancePicker defaults={appearanceDefaults} />
 
       {pendingPromotion && (
         <ChessCard className="p-3 space-y-2">
@@ -512,8 +582,8 @@ export function ChessGamePanel({
         </ChessCard>
       )}
 
-      {myColor && session.status === 'active' && (
-        <div className="space-y-2">
+      <div className="max-w-lg sm:max-w-xl lg:max-w-2xl mx-auto w-full space-y-2">
+        {myColor && session.status === 'active' && (
           <p className="text-center text-faint text-xs">
             You are <KingGlyph color={myColor} />{' '}
             <span className="font-bold">{myColor === 'w' ? 'White' : 'Black'}</span>
@@ -525,20 +595,23 @@ export function ChessGamePanel({
                   ? ' · waiting for your opponent — tap a piece to queue a premove'
                   : ' · waiting for your opponent'}
           </p>
-          {onResign && (
-            <div className="flex justify-center">
-              <button
-                type="button"
-                onClick={onResign}
-                disabled={!!acting}
-                className="rounded-lg border-2 border-[var(--border-strong)] px-6 py-2 text-sm font-semibold text-muted hover:bg-rose-500/10 hover:text-rose-300 disabled:opacity-50"
-              >
-                Resign
-              </button>
-            </div>
+        )}
+        <div className="flex gap-2.5">
+          <ChessAppearanceIconButton open={appearanceOpen} onToggle={() => setAppearanceOpen((v) => !v)} />
+          {onResign && myColor && session.status === 'active' && (
+            <button
+              type="button"
+              onClick={onResign}
+              disabled={!!acting}
+              className="flex-1 flex items-center justify-center gap-2 h-12 rounded-lg border border-[var(--border)] bg-[var(--surface-bg)] text-sm font-bold text-[var(--foreground)] hover:bg-rose-500/10 hover:border-rose-400/60 disabled:opacity-50"
+            >
+              <span aria-hidden>🏳️</span>
+              Resign
+            </button>
           )}
         </div>
-      )}
+        {appearanceOpen && <ChessAppearancePanel defaults={appearanceDefaults} />}
+      </div>
     </div>
   )
 }

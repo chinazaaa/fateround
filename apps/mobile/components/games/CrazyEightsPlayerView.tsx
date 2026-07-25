@@ -34,6 +34,7 @@ import { useTurnDeadlineSeconds } from '@/components/games/cards/useTurnDeadline
 import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import {
@@ -300,6 +301,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
         }
         submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
         footer={<GameRulesLink gameType="crazy_eights" variant="subtle" />}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
       />
     )
   }

@@ -42,7 +42,10 @@ export type GameType =
   | 'scrabble'
   | 'snake_and_ladder'
   | 'crazy_eights'
+  | 'uno'
   | 'checkers'
+  | 'checkers_international'
+  | 'checkers_nigeria'
   | 'mafia'
   | 'matching_pairs'
   | 'quiplash'
@@ -69,6 +72,8 @@ export interface Game {
   allow_viewers?: boolean | null
   allow_late_players?: boolean | null
   is_public?: boolean | null
+  /** Whether responses are shown without attribution (poll-family games only). */
+  anonymous?: boolean | null
   theme?: string | null
   ayo_variant?: string | null
   participant_mode?: ParticipantMode | string | null
@@ -88,6 +93,15 @@ export interface Game {
   whot_cards_enabled?: boolean | null
   whot_number_calls_enabled?: boolean | null
   whot_pick2_stacking?: boolean | null
+  uno_wd4_challenge?: boolean | null
+  uno_uno_penalty?: number | null
+  uno_wd4_challenge_penalty?: number | null
+  uno_zero_seven?: boolean | null
+  uno_stacking?: boolean | null
+  uno_multi_play?: boolean | null
+  uno_multi_play_mode?: string | null
+  uno_team_mode?: boolean | null
+  uno_jump_in?: boolean | null
   describe_it_mode?: string | null
   describe_it_num_teams?: number | null
   word_rush_mode?: string | null
@@ -118,6 +132,7 @@ export interface Game {
   mafia_anonymous_votes?: boolean | null
   monopoly_double_go_salary?: boolean | null
   monopoly_forced_auctions?: boolean | null
+  monopoly_auction_timer_seconds?: number | null
   monopoly_no_rent_in_jail?: boolean | null
   monopoly_estate_dividend?: boolean | null
   quick_draw_variant?: QuickDrawVariant | null
@@ -132,6 +147,8 @@ export interface Game {
   landmine_elim_seconds?: number | null
   landmine_review?: boolean | null
   landmine_review_seconds?: number | null
+  /** Nigerian Draughts — opt-in "Street Rules" (huffing): decline a capture, risk the piece. */
+  checkers_nigeria_street_rules?: boolean | null
   question_source?: string | null
   /** Who Said This: 'player' (players submit) or 'deck' (host Platform/Library/CSV deck). */
   wst_quote_source?: string | null
@@ -206,6 +223,39 @@ export interface CheckersSession {
   board: string
   current_turn: CheckersColor
   must_continue_from: string | null
+  red_time_ms: number | null
+  black_time_ms: number | null
+  turn_started_at: string | null
+  last_move_from: string | null
+  last_move_to: string | null
+  result_reason: string | null
+  status: 'active' | 'finished'
+  winner_player_id: string | null
+  is_draw: boolean
+  status_message: string | null
+}
+
+export type Draughts10Variant = 'international' | 'nigeria'
+
+export interface Draughts10Session {
+  id: string
+  game_id: string
+  variant: Draughts10Variant
+  player_red_id: string
+  player_black_id: string
+  /** 100-char board, indexed by row*10 + col. '.' empty, 'r'/'b' man, 'R'/'B' king (flying). */
+  board: string
+  current_turn: CheckersColor
+  must_continue_from: string | null
+  /** Captures still required to complete the majority-rule sequence in progress. */
+  must_continue_remaining: number | null
+  /** Nigeria-only opt-in "street rules" (huffing) room setting. */
+  huffing_enabled: boolean
+  /**
+   * Squares of the mover's own pieces that had a capture available but went unplayed
+   * (Street Rules only) — the opponent may "huff" one of these instead of moving.
+   */
+  huffable_squares: string[]
   red_time_ms: number | null
   black_time_ms: number | null
   turn_started_at: string | null
@@ -720,6 +770,85 @@ export interface WhotPlayerHand {
   game_id: string
   player_id: string
   cards: WhotCard[]
+  player_order: number
+}
+
+// ── UNO ──────────────────────────────────────────────────────────────────────
+export type UnoColor = 'red' | 'yellow' | 'green' | 'blue'
+export type UnoCardColor = UnoColor | 'wild'
+
+/** What a card does. Number cards carry `value` 0–9; everything else is an action. */
+export type UnoCardKind = 'number' | 'skip' | 'reverse' | 'draw2' | 'wild' | 'wild_draw4'
+
+/**
+ * Phase-1 (this port) only reaches `playing` / `choose_color` / `challenge_window` / `finished`.
+ * `swap_target` (0-7 rule) and `team_leave_decision` (Team-Up, Phase 2) are carried in the shared
+ * type for parity with web's session shape but are not driven by any mobile UI yet.
+ */
+export type UnoPhase =
+  | 'playing'
+  | 'choose_color'
+  | 'challenge_window'
+  | 'swap_target'
+  | 'team_leave_decision'
+  | 'finished'
+
+export interface UnoCard {
+  id: string
+  color: UnoCardColor
+  kind: UnoCardKind
+  /** 0–9 for number cards; omitted for action / wild cards. */
+  value?: number
+}
+
+export interface UnoSession {
+  id: string
+  game_id: string
+  turn_order: string[]
+  current_turn_index: number
+  /** 1 = forward through turn_order, -1 = reversed (Reverse flips it). */
+  direction: number
+  phase: UnoPhase
+  draw_pile: UnoCard[]
+  discard_pile: UnoCard[]
+  top_card: UnoCard | null
+  /** Colour demanded by a played Wild / Wild Draw Four. */
+  required_color: UnoColor | null
+  /** Pending forced draw the current player must take (Draw Two / Draw Four target). */
+  draw_penalty: number
+  /** Which card can stack onto the pending penalty ('draw2' | 'wild_draw4'); null = must draw it. */
+  draw_penalty_kind: 'draw2' | 'wild_draw4' | null
+  /** Set to the card the current player just drew while they may still play it or keep it (pass). */
+  drawn_card_id: string | null
+  last_play_cards?: UnoCard[] | null
+  /** During `choose_color`, which wild is being coloured. */
+  pending_wild: 'wild' | 'wild_draw4' | null
+  /** Colour in effect immediately before a Wild Draw Four (for challenge reveal). */
+  challenge_prev_color: UnoColor | null
+  /** Who played the Wild Draw Four currently in `challenge_window`. */
+  wd4_player_id: string | null
+  /** Player who dropped to one card and still owes an "UNO" call. */
+  uno_pending_player: string | null
+  /** Whether `uno_pending_player` has satisfied their UNO call. */
+  uno_called: boolean
+  status_message: string | null
+  winner_player_id: string | null
+  /** Player ids in the order they emptied their hands. Drives final placement. */
+  finish_order: string[]
+  /** Team-Up (Phase 2, unwired on mobile): players who left mid-round. */
+  left_player_ids?: string[]
+  /** Team-Up (Phase 2, unwired on mobile). */
+  team_decider_id?: string | null
+  turn_deadline_at: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface UnoPlayerHand {
+  id: string
+  game_id: string
+  player_id: string
+  cards: UnoCard[]
   player_order: number
 }
 

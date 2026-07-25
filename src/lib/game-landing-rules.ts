@@ -1178,6 +1178,140 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     },
   ],
 
+  checkers_international: [
+    {
+      title: 'Objective',
+      points: [
+        'International Draughts (flying kings, 10×10 board) — capture all of your opponent’s pieces, or leave them with no legal move, to win.',
+        'Mandatory majority capture and flying kings are enforced automatically. Optional per-player clocks are available.',
+      ],
+    },
+    {
+      title: 'Board & setup',
+      points: [
+        'The board is 10×10 — only the 50 dark squares are used. Light squares are never occupied.',
+        'Each player starts with 20 pieces on the first four rows of their side.',
+        'Exactly 2 players join a room. The host can play too. White always moves first.',
+        'Optional clock — each player gets their own time bank (3, 5, or 10 minutes) that only counts down on their turn.',
+      ],
+    },
+    {
+      title: 'Men (regular pieces)',
+      points: [
+        'Move one square diagonally forward to an empty dark square.',
+        'Capture by jumping diagonally over an adjacent opponent piece — unlike American checkers, men can capture in any direction, forward or backward.',
+      ],
+    },
+    {
+      title: 'Kings',
+      points: [
+        'When a man reaches the opponent’s back row, it is crowned a king automatically — but only at the end of a capture sequence, never mid-jump.',
+        'Kings "fly" — they move and capture along the entire open diagonal, like a bishop, not just one square at a time.',
+        'A flying king can capture from several squares away, landing on any empty square beyond the captured piece.',
+      ],
+    },
+    {
+      title: 'Captures & majority rule',
+      points: [
+        'Mandatory capture: if any jump is available anywhere on the board, you must capture.',
+        'Majority capture: when more than one capture sequence is available, you must play the sequence that captures the most pieces — FateRound only allows moves that satisfy this.',
+        'Multiple jumps: if the same piece can jump again after landing, you must keep going in the same turn.',
+      ],
+    },
+    {
+      title: 'Winning & draws',
+      points: [
+        'Win by capturing every enemy piece, or by blocking all of the opponent’s legal moves.',
+        'You can also win if your opponent resigns or runs out of time on the clock.',
+        'Draw — 25-move rule: 25 consecutive moves by each player with no capture and no man move.',
+        'Play again starts a fresh game — colors swap so the previous Black player opens as White.',
+      ],
+    },
+    {
+      title: 'Rules that trip up beginners',
+      points: [
+        'Unlike American checkers, men here capture backward too, not just forward.',
+        'You must take the capture sequence that removes the most pieces — you cannot pick a shorter one.',
+        'Kings fly the whole diagonal — they are not limited to one square at a time like American kings.',
+      ],
+    },
+    {
+      title: 'Quick strategy',
+      points: [
+        'Control the center — pieces there have more movement options.',
+        'A flying king is very strong — protect your back rows to delay your opponent’s promotions.',
+        'Count capture sequences before moving — the majority rule can force a jump you didn’t plan on.',
+      ],
+    },
+  ],
+
+  checkers_nigeria: [
+    {
+      title: 'Objective',
+      points: [
+        'Nigerian Draughts (Naija checkers) — the same 10×10 flying-kings engine as International Draughts, with local "seed" terminology.',
+        'Capture all of your opponent’s seeds, or leave them with no legal move, to win. Optional per-player clocks are available.',
+      ],
+    },
+    {
+      title: 'Board & setup',
+      points: [
+        'The board is 10×10, mirrored to the familiar Nigerian orientation — only the dark squares are used.',
+        'Each player starts with 20 seeds on the first four rows of their side.',
+        'Exactly 2 players join a room. The host can play too.',
+        'Optional clock — each player gets their own time bank (3, 5, or 10 minutes) that only counts down on their turn.',
+        'Hosts can optionally switch on Street Rules for a house-rules variant popular in casual street/park play.',
+      ],
+    },
+    {
+      title: 'Seeds (regular pieces)',
+      points: [
+        'Move one square diagonally forward to an empty dark square.',
+        'Capture by jumping diagonally over an adjacent opponent seed — seeds can capture in any direction, forward or backward.',
+      ],
+    },
+    {
+      title: 'Kings',
+      points: [
+        'When a seed reaches the opponent’s back row, it is crowned a king automatically — only at the end of a capture sequence, never mid-jump.',
+        'Kings fly the full open diagonal, capturing from a distance, just like International Draughts.',
+      ],
+    },
+    {
+      title: 'Captures & majority rule',
+      points: [
+        'Mandatory capture: if any jump is available anywhere on the board, you must capture.',
+        'Majority capture: when more than one capture sequence is available, you must play the sequence that captures the most seeds.',
+        'Multiple jumps: if the same seed can jump again after landing, you must keep going in the same turn.',
+      ],
+    },
+    {
+      title: 'Winning & draws',
+      points: [
+        'Win by capturing every enemy seed, or by blocking all of the opponent’s legal moves.',
+        'You can also win if your opponent resigns or runs out of time on the clock.',
+        'Draw — 25-move rule: 25 consecutive moves by each player with no capture and no seed-only move.',
+        'Play again starts a fresh game — colors swap sides.',
+      ],
+    },
+    {
+      title: 'Rules that trip up beginners',
+      points: [
+        'This is the same engine as International Draughts — seeds capture backward too, not just forward.',
+        'You must take the capture sequence that removes the most seeds — you cannot pick a shorter one.',
+        'Street Rules is an optional toggle a host can turn on — off by default, matching standard flying-kings play.',
+      ],
+    },
+    {
+      title: 'Quick strategy',
+      points: [
+        'Control the center — seeds there have more movement options.',
+        'A flying king is very strong — protect your back rows to delay your opponent’s promotions.',
+        'Count capture sequences before moving — the majority rule can force a jump you didn’t plan on.',
+      ],
+    },
+  ],
+
   ayo: [
     {
       title: 'Objective',

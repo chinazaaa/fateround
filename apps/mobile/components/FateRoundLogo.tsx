@@ -14,7 +14,7 @@ const ROUND_BRAND = '#ff8898'
 
 function LogoMark({ size }: { size: number }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 144 144" accessibilityLabel="Fate Round">
+    <Svg width={size} height={size} viewBox="0 0 144 144" accessibilityLabel="FateRound">
       <Defs>
         <LinearGradient id="logoBg" x1="0%" y1="0%" x2="100%" y2="100%">
           <Stop offset="0%" stopColor="#f43f5e" />
@@ -32,15 +32,7 @@ function LogoMark({ size }: { size: number }) {
   )
 }
 
-function LogoWordmark({
-  size,
-  fateColor,
-  roundColor,
-}: {
-  size: number
-  fateColor: string
-  roundColor: string
-}) {
+function LogoWordmark({ size, fateColor, roundColor }: { size: number; fateColor: string; roundColor: string }) {
   return (
     <Text
       style={[styles.wordmark, { fontSize: size, lineHeight: size * 1.05 }]}
@@ -57,7 +49,7 @@ function LogoWordmark({
   )
 }
 
-/** Branded Fate Round logo — SVG icon + native wordmark (avoids SVG Text layout events). */
+/** Branded FateRound logo — SVG icon + native wordmark (avoids SVG Text layout events). */
 export function FateRoundLogo({ variant = 'stacked', width = 220 }: Props) {
   const theme = useTheme()
   const { scheme } = useThemeMode()
@@ -74,7 +66,7 @@ export function FateRoundLogo({ variant = 'stacked', width = 220 }: Props) {
 
   if (variant === 'horizontal') {
     return (
-      <View style={[styles.row, { width }]} accessibilityLabel="Fate Round">
+      <View style={[styles.row, { width }]} accessibilityLabel="FateRound">
         {icon}
         {wordmark}
       </View>
@@ -82,7 +74,7 @@ export function FateRoundLogo({ variant = 'stacked', width = 220 }: Props) {
   }
 
   return (
-    <View style={[styles.stack, { width }]} accessibilityLabel="Fate Round">
+    <View style={[styles.stack, { width }]} accessibilityLabel="FateRound">
       {icon}
       {wordmark}
     </View>

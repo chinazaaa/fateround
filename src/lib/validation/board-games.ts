@@ -352,6 +352,28 @@ export const checkersResignSchema = z.object({
 
 export type CheckersMoveInput = z.infer<typeof checkersMoveSchema>
 
+// Draughts10 (International/Nigerian checkers, 10x10 board)
+const draughts10Square = z.string().regex(/^[0-9][0-9]$/, 'Invalid square')
+
+export const draughts10MoveSchema = z.object({
+  gameId: gameCodeString(),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
+  from: draughts10Square,
+  to: draughts10Square,
+})
+
+export type Draughts10MoveInput = z.infer<typeof draughts10MoveSchema>
+
+// Nigerian Draughts "Street Rules" — huff a piece instead of moving.
+export const draughts10HuffSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  square: draughts10Square,
+})
+
+export type Draughts10HuffInput = z.infer<typeof draughts10HuffSchema>
+
 // Ayo (pit index 0–11)
 export const ayoMoveSchema = z.object({
   gameId: gameCodeString(),

@@ -209,7 +209,7 @@ You don't need a physical deck or everyone in the same room:
 3. Share the room code with your friends.
 4. Everyone joins from their phone and you're dealt in.
 
-It plays exactly like the table version — same shapes, same special cards, same arguments about whether you can stack a Pick Two. [Start a game of Whot](/games/whot) or [browse every card game](/games).$md$,
+It plays exactly like the table version — same shapes, same special cards, same arguments about whether you can stack a Pick Two. [Start a game of Whot](/games/whot) or [browse every card game](/games?category=cards).$md$,
   'Fate Round',
   array['guides', 'card-games', 'whot'],
   'published',

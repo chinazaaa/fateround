@@ -104,10 +104,13 @@ export function HostMaxPlayersLobbyPanel({ gameCode, hostToken, game, limitType,
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 
   return (
-    <HostLobbySettingsSection status={statusLabel} summary={`${maxPlayers} max`}>
-      <HostLobbySettingBlock title={`Max players · ${playerCount} joined`}>
-        <HostLobbyOptionChips value={maxPlayers} options={maxPlayerOptions} onChange={onMaxPlayersChange} />
-      </HostLobbySettingBlock>
-    </HostLobbySettingsSection>
+    <HostLobbySettingsSection
+      status={statusLabel}
+      alwaysVisible={
+        <HostLobbySettingBlock title={`Max players · ${playerCount} joined`}>
+          <HostLobbyOptionChips value={maxPlayers} options={maxPlayerOptions} onChange={onMaxPlayersChange} />
+        </HostLobbySettingBlock>
+      }
+    />
   )
 }

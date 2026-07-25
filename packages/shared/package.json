@@ -25,6 +25,7 @@
     "./batch-3-games": "./src/batch-3-games.ts",
     "./crazy-eights": "./src/crazy-eights.ts",
     "./whot": "./src/whot.ts",
+    "./uno": "./src/uno.ts",
     "./two-truths": "./src/two-truths.ts",
     "./describe-it": "./src/describe-it.ts",
     "./batch-4-games": "./src/batch-4-games.ts",
@@ -67,6 +68,8 @@
     "./participant-mode": "./src/participant-mode.ts",
     "./round-timing": "./src/round-timing.ts",
     "./bingo": "./src/bingo.ts",
-    "./vote-stats": "./src/vote-stats.ts"
+    "./vote-stats": "./src/vote-stats.ts",
+    "./draughts10": "./src/draughts10.ts",
+    "./batch-10-games": "./src/batch-10-games.ts"
   }
 }

@@ -115,7 +115,7 @@ export function MarketingHeader() {
   return (
     <>
       <header className="site-header">
-        <Link href="/" aria-label="Fate Round home">
+        <Link href="/" aria-label="FateRound home">
           <FateRoundLogo className="h-8 w-auto" />
         </Link>
 

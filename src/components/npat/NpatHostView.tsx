@@ -14,6 +14,7 @@ import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostMaxPlayersLobbyPanel } from '@/components/host-lobby/HostMaxPlayersLobbyPanel'
@@ -612,6 +613,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
         hostToken={hostToken}
         game={game}
         gameTypeLabel={cfg.label}
+        titleMeta={<GameInfoChips game={game} className="mt-2" />}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('i_call_on', game) ?? game.max_players}
         resumeToken={hostResumeToken}

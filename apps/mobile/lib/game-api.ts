@@ -81,6 +81,35 @@ export function postCheckersExpireTurn(gameId: string) {
   return postJson<{ success: boolean }>('/api/checkers/expire-turn', { gameId })
 }
 
+export function postCheckersInternationalMove(gameId: string, resumeToken: string, from: string, to: string) {
+  return postJson<{ success: boolean }>('/api/checkers-international/move', { gameId, resumeToken, from, to })
+}
+
+export function postCheckersInternationalResign(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/checkers-international/resign', { gameId, resumeToken })
+}
+
+export function postCheckersInternationalExpireTurn(gameId: string) {
+  return postJson<{ success: boolean }>('/api/checkers-international/expire-turn', { gameId })
+}
+
+export function postCheckersNigeriaMove(gameId: string, resumeToken: string, from: string, to: string) {
+  return postJson<{ success: boolean }>('/api/checkers-nigeria/move', { gameId, resumeToken, from, to })
+}
+
+export function postCheckersNigeriaResign(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/checkers-nigeria/resign', { gameId, resumeToken })
+}
+
+export function postCheckersNigeriaExpireTurn(gameId: string) {
+  return postJson<{ success: boolean }>('/api/checkers-nigeria/expire-turn', { gameId })
+}
+
+/** Street Rules only: spend the turn huffing (removing) a declined-capture piece instead of moving. */
+export function postCheckersNigeriaHuff(gameId: string, resumeToken: string, square: string) {
+  return postJson<{ success: boolean }>('/api/checkers-nigeria/huff', { gameId, resumeToken, square })
+}
+
 export function postAyoMove(gameId: string, resumeToken: string, pitIndex: number) {
   return postJson<{ success: boolean }>('/api/ayo/move', { gameId, resumeToken, pitIndex })
 }
@@ -335,6 +364,54 @@ export function postWhotChooseShape(gameId: string, resumeToken: string, shape: 
 
 export function postWhotChooseNumber(gameId: string, resumeToken: string, number: number) {
   return postJson<{ success: boolean }>('/api/whot/choose', { gameId, resumeToken, number })
+}
+
+export function postUnoPlay(gameId: string, resumeToken: string, cardId: string, callUno = false) {
+  return postJson<{ success: boolean }>('/api/uno/play', { gameId, resumeToken, cardId, callUno })
+}
+
+export function postUnoDraw(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/uno/draw', { gameId, resumeToken })
+}
+
+export function postUnoChooseColor(gameId: string, resumeToken: string, color: string) {
+  return postJson<{ success: boolean }>('/api/uno/choose', { gameId, resumeToken, color })
+}
+
+export function postUnoPass(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/uno/pass', { gameId, resumeToken })
+}
+
+export function postUnoCallUno(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/uno/call-uno', { gameId, resumeToken })
+}
+
+export function postUnoChallenge(gameId: string, resumeToken: string, challenge: boolean) {
+  return postJson<{ success: boolean }>('/api/uno/challenge', { gameId, resumeToken, challenge })
+}
+
+export function postUnoExpireTurn(gameId: string) {
+  return postJson<{ ok?: boolean; skipped?: boolean }>('/api/uno/expire-turn', { gameId })
+}
+
+// 0/7 rule: swap hands with `targetId` (only valid while phase === 'swap_target').
+export function postUnoSwap(gameId: string, resumeToken: string, targetId: string) {
+  return postJson<{ success: boolean }>('/api/uno/swap', { gameId, resumeToken, targetId })
+}
+
+// Multi-Play: lay several matching cards in one turn, `cardIds` in play order (last stays on top).
+export function postUnoPlayMulti(gameId: string, resumeToken: string, cardIds: string[], callUno = false) {
+  return postJson<{ success: boolean }>('/api/uno/play-multi', { gameId, resumeToken, cardIds, callUno })
+}
+
+// Jump-In: play an exact-match card out of turn.
+export function postUnoJumpIn(gameId: string, resumeToken: string, cardId: string, callUno = false) {
+  return postJson<{ success: boolean }>('/api/uno/jump-in', { gameId, resumeToken, cardId, callUno })
+}
+
+// Team-Up: after a teammate leaves mid-round, continue solo or forfeit.
+export function postUnoTeamLeaveDecision(gameId: string, resumeToken: string, decision: 'continue' | 'forfeit') {
+  return postJson<{ success: boolean }>('/api/uno/team-leave', { gameId, resumeToken, decision })
 }
 
 export function postTtlStatements(
@@ -1047,13 +1124,23 @@ export type BoardLobbyPatch = {
   crazy8_action_cards?: boolean
   crazy8_jokers?: boolean
   crazy8_pick2_stacking?: boolean
+  uno_wd4_challenge?: boolean
+  uno_uno_penalty?: number
+  uno_wd4_challenge_penalty?: number
+  uno_zero_seven?: boolean
+  uno_stacking?: boolean
+  uno_jump_in?: boolean
+  uno_multi_play_mode?: string
+  uno_team_mode?: boolean
   ludo_variant?: 'modern' | 'traditional'
   ayo_variant?: 'traditional' | 'oware'
+  checkers_nigeria_street_rules?: boolean
   mafia_doctor_enabled?: boolean
   mafia_detective_enabled?: boolean
   mafia_anonymous_votes?: boolean
   monopoly_double_go_salary?: boolean
   monopoly_forced_auctions?: boolean
+  monopoly_auction_timer_seconds?: number
   monopoly_no_rent_in_jail?: boolean
   operative_timer_seconds?: number
   quick_draw_variant?: 'lie' | 'guess'

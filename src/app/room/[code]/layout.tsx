@@ -8,7 +8,7 @@ type Props = {
 export async function generateMetadata({ params }: Pick<Props, 'params'>): Promise<Metadata> {
   const { code } = await params
   return {
-    title: `Room ${code} — Fate Round`,
+    title: `Room ${code} — FateRound`,
     description: 'Your friend group game room. Play, chat, and track stats together.',
   }
 }

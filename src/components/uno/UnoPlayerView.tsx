@@ -7,6 +7,7 @@ import { UnoPlaySurface } from '@/components/uno/UnoPlaySurface'
 import { PlayerRoomShell } from '@/components/rooms/PlayerRoomShell'
 import { UnoFinalResultsShareBlock } from '@/components/uno/UnoFinalResultsShareBlock'
 import { UnoRulePills } from '@/components/uno/UnoRulePills'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
@@ -383,10 +384,10 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
                   ? 'Team-Up · 4 players in 2 teams of 2'
                   : '2–10 players · match colour or number'
             }
+            meta={game ? <GameInfoChips game={game} /> : null}
           />
         }
       >
-        {game ? <UnoRulePills game={game} className="mb-4" /> : null}
         <NameJoinForm
           value={joinName}
           onChange={setJoinName}

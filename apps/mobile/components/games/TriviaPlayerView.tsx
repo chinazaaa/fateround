@@ -3,6 +3,7 @@ import { type Game, type Player, type Round, type TriviaAnswer } from '@fateroun
 import { tallyTriviaPlayerScores } from '@fateround/shared/trivia'
 import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
@@ -116,6 +117,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
         onJoin={() => void bootstrap.join()}
         lobbyFull={bootstrap.lobbyFull}
         onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
       />
     )
   }

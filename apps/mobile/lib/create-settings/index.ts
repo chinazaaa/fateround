@@ -29,6 +29,7 @@ import {
 } from '@/lib/create-settings/custom-content'
 import {
   defaultPeopleSettings,
+  isCustomGame,
   needsPeopleStep,
   peoplePayload,
   validateCustomSlots,
@@ -47,7 +48,7 @@ import {
   type LandmineCreateState,
 } from '@/lib/create-settings/landmine'
 import { isWhoSaidThis } from '@fateround/shared/poll-games'
-import { isLandmineGame } from '@fateround/shared/game-type-checks'
+import { isLandmineGame, isSecretMessageGame } from '@fateround/shared/game-type-checks'
 
 export type { GameRoomSettings } from '@/lib/create-settings/board-games'
 export { hasGameRoomSettings, BATCH_19_BOARD_GAMES } from '@/lib/create-settings/board-games'
@@ -171,6 +172,9 @@ export function buildCreatePayload(state: CreateWizardState, limits: GamePlayerL
     const fallback = lobbyDefaultMaxPlayers(gameType, limits)
     maxPlayers = clampLobbyMaxPlayers(gameType, state.maxPlayers ?? fallback, limits)
   }
+  // UNO Team-Up is fixed at 4 players (2 teams of 2) — overrides whatever max-players the host
+  // picked before turning Team-Up on.
+  if (gameType === 'uno' && state.room.unoTeamMode) maxPlayers = 4
 
   const payload: Record<string, unknown> = {
     title: state.title.trim(),
@@ -219,4 +223,12 @@ export function buildCreatePayload(state: CreateWizardState, limits: GamePlayerL
 
 export function supportsMaxPlayersSetting(gameType: GameType): boolean {
   return isLobbyLimitGameType(gameType)
+}
+
+// secret_message has no inputs at all, and custom's defining content is per-game participant
+// slots (CustomSlotBuilder) that change every time — not a "setting" worth reusing. Every other
+// game type has at least one genuinely reusable setting, so this is an exclude-list rather than
+// an allowlist (mirrors web `templatableGame` in `src/lib/game-types.ts`).
+export function templatableGame(gameType: GameType): boolean {
+  return !isSecretMessageGame(gameType) && !isCustomGame(gameType)
 }

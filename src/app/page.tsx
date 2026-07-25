@@ -11,9 +11,9 @@ function HomeSeoContent() {
     <section className="mk-seo">
       <div className="mk-wrap space-y-0">
         <div className="blk">
-          <h2>What is Fate Round?</h2>
+          <h2>What is FateRound?</h2>
           <p>
-            Fate Round is a free online party game platform where friend groups vote, laugh, and reveal together — no
+            FateRound is a free online party game platform where friend groups vote, laugh, and reveal together — no
             sign-up, no download, and no app store required. Create a game in seconds, share a short code or link, and
             everyone joins the lobby from their phone or laptop in real time.
           </p>
@@ -22,7 +22,7 @@ function HomeSeoContent() {
         <div className="blk">
           <h2>Who is it for?</h2>
           <p>
-            Fate Round is built for friend groups, Discord calls, birthday parties, icebreakers, and late-night group
+            FateRound is built for friend groups, Discord calls, birthday parties, icebreakers, and late-night group
             chats. Whether you want a Yahtzee dice night, a Whot or Monopoly showdown, Smash Marry Kill chaos, or
             anonymous Would You Rather votes, every mode runs in the browser so nobody needs to install anything.
           </p>

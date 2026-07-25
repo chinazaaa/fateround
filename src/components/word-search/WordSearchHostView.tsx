@@ -11,6 +11,7 @@ import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
@@ -35,7 +36,6 @@ import {
   wordSearchCompletionPercent,
   WORD_SEARCH_MIN_PLAYERS,
   WORD_SEARCH_GAME_DURATION_OPTIONS,
-  formatWordSearchGameDuration,
   type WordSearchMetadata,
   type WordSearchFound,
   type WordSearchPlacement,
@@ -537,7 +537,6 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
             playerCount={players.length}
             onGameUpdate={setGame}
             durationChoices={WORD_SEARCH_GAME_DURATION_OPTIONS}
-            formatDuration={formatWordSearchGameDuration}
             puzzleSettings={
               <HostPuzzleSettings
                 gameCode={gameCode}
@@ -643,7 +642,6 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
         playerCount={players.length}
         onGameUpdate={setGame}
         durationChoices={WORD_SEARCH_GAME_DURATION_OPTIONS}
-        formatDuration={formatWordSearchGameDuration}
         puzzleSettings={
           <HostPuzzleSettings
             gameCode={gameCode}
@@ -665,6 +663,7 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
         hostToken={hostToken}
         game={game}
         gameTypeLabel={cfg.label}
+        titleMeta={<GameInfoChips game={game} className="mt-2" />}
         resumeToken={hostResumeToken}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('word_search', game) ?? game.max_players}

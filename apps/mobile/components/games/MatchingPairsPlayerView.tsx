@@ -23,6 +23,7 @@ import {
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
@@ -381,6 +382,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         onJoin={() => void bootstrap.join()}
         lobbyFull={bootstrap.lobbyFull}
         onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
       />
     )
   }

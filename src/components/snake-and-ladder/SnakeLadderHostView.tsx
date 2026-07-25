@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
@@ -527,6 +528,7 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
         gameCode={gameCode}
         hostToken={hostToken}
         game={game}
+        titleMeta={<GameInfoChips game={game} className="mt-2" />}
         gameTypeLabel={cfg.label}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('snake_and_ladder', game) ?? game.max_players}

@@ -21,6 +21,8 @@ import {
   isScrabbleGame,
   isChessGame,
   isCheckersGame,
+  isDraughts10Game,
+  isCheckersNigeriaGame,
   isTicTacToeGame,
   isPingPongGame,
   isLandmineGame,
@@ -39,6 +41,7 @@ import { clampNpatGameDuration, clampNpatMarkingTimer, clampNpatTimer } from '@/
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { clampChessTimer, clampChessBoardTheme, clampChessPieceSet } from '@/lib/chess'
 import { clampCheckersTimer } from '@/lib/checkers'
+import { clampDraughts10Timer } from '@/lib/draughts10'
 import { clampTicTacToeTimer } from '@/lib/tic-tac-toe'
 import {
   clampScrabbleTimer,
@@ -198,9 +201,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
             ? clampChessTimer(rawTimerSeconds)
             : isCheckersGame(gameType)
               ? clampCheckersTimer(rawTimerSeconds)
-              : isTicTacToeGame(gameType)
-                ? clampTicTacToeTimer(rawTimerSeconds)
-                : parseTimerSeconds(rawTimerSeconds)
+              : isDraughts10Game(gameType)
+                ? clampDraughts10Timer(rawTimerSeconds)
+                : isTicTacToeGame(gameType)
+                  ? clampTicTacToeTimer(rawTimerSeconds)
+                  : parseTimerSeconds(rawTimerSeconds)
   }
 
   // Chess host-default appearance (board colours + piece set). Cosmetic — the pre-start
@@ -251,6 +256,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     if (rawGameDurationSeconds !== undefined) {
       updatePayload.game_duration_seconds = clampLandmineCategoryTimer(rawGameDurationSeconds)
     }
+  }
+
+  // Nigerian Draughts "Street Rules" (huffing) toggle. Pre-start only, same as the timer.
+  if (isCheckersNigeriaGame(gameType) && body.checkers_nigeria_street_rules !== undefined) {
+    updatePayload.checkers_nigeria_street_rules = body.checkers_nigeria_street_rules === true
   }
 
   if (rawOperativeTimerSeconds !== undefined) {
