@@ -405,6 +405,7 @@ export const GAME_LANDING_OG_BY_SLUG: Record<string, string> = {
   'word-scramble': '/og/word-scramble.png',
   landmine: '/og/landmine.png',
   'ping-pong': '/og/ping-pong.png',
+  uno: '/og/uno.png',
 }
 
 export function gameLandingOgPath(slug: string): string {
