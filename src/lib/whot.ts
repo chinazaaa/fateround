@@ -754,11 +754,15 @@ function computeGeneralMarket(
   discardPile: WhotCard[]
   hands: WhotPlayerHand[]
   marketWrites: { player_id: string; cards: WhotCard[] }[]
+  reshuffled: boolean
+  deckExhausted: boolean
 } {
   let pile = [...drawPile]
   let discard = [...discardPile]
   let nextHands = [...hands]
   const marketWrites: { player_id: string; cards: WhotCard[] }[] = []
+  let reshuffled = false
+  let deckExhausted = false
 
   for (const row of nextHands) {
     if (row.player_id === currentPlayerId) continue
@@ -767,14 +771,27 @@ function computeGeneralMarket(
     const result = drawCardsWithRefill(pile, discard, 1)
     pile = result.drawPile
     discard = result.discardPile
+    if (result.reshuffled) reshuffled = true
     if (result.drawn.length > 0) {
       const cards = [...existing, ...result.drawn]
       nextHands = updateHand(nextHands, row.player_id, cards)
       marketWrites.push({ player_id: row.player_id, cards })
+    } else {
+      // Draw pile and discard pile both empty — this player couldn't be dealt in.
+      deckExhausted = true
     }
   }
 
-  return { drawPile: pile, discardPile: discard, hands: nextHands, marketWrites }
+  return { drawPile: pile, discardPile: discard, hands: nextHands, marketWrites, reshuffled, deckExhausted }
+}
+
+// Uses the exact substrings the notification hooks watch for ('deck reshuffled' / 'draw pile
+// empty') so a General Market that ran the pile dry still surfaces a toast instead of silently
+// claiming everyone drew when some players couldn't be dealt in.
+function marketStatusNote(deckExhausted: boolean, reshuffled: boolean): string {
+  if (deckExhausted) return ' — draw pile empty, not everyone could be dealt in'
+  if (reshuffled) return ' · deck reshuffled'
+  return ''
 }
 
 /**
@@ -873,6 +890,8 @@ export async function processWhotPlay(
     // Normal play — and a WHOT played as the last card, which wins immediately.
     let drawPile = (session.draw_pile as WhotCard[]) ?? []
     let discardPile = discardPlayedTop(session)
+    let marketReshuffled = false
+    let marketDeckExhausted = false
 
     if (card.number === 14) {
       const market = computeGeneralMarket(playerId, drawPile, discardPile, nextHands)
@@ -880,6 +899,8 @@ export async function processWhotPlay(
       discardPile = market.discardPile
       nextHands = market.hands
       marketWrites = market.marketWrites
+      marketReshuffled = market.reshuffled
+      marketDeckExhausted = market.deckExhausted
     }
 
     const board: Partial<WhotSession> = {
@@ -898,8 +919,9 @@ export async function processWhotPlay(
       const advance = resolveNextTurnIndex(session, nextHands, card.number)
       const nextPlayerId = session.turn_order[advance.nextIndex]
       const special = specialCardMessage(card.number)
+      const marketNote = marketStatusNote(marketDeckExhausted, marketReshuffled)
       let status = advance.holdOn
-        ? `${name} — ${card.number === 14 ? 'General Market! Everyone drew — go again' : 'Hold On, go again'}!`
+        ? `${name} — ${card.number === 14 ? `General Market! Everyone drew — go again${marketNote}` : 'Hold On, go again'}!`
         : `${playerName(playerNames, nextPlayerId)}'s turn — match ${cardLabel(card)}`
       if (special && !advance.holdOn) status = `${status} · ${special}`
       if (pickTwo > 0) status = `${status} · Pick 2 active (${pickTwo} cards to draw)`
