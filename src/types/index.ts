@@ -1962,6 +1962,12 @@ export interface MafiaMyState {
   dayVoteSubmitted: boolean
   detectiveResult: { targetName: string; alignment: MafiaTeam } | null
   mafiaTeammates: string[] // Only for mafia team members (mafia/alpha_wolf/wolf_cub/framer)
+  /** Same set as mafiaTeammates but by player id — lets the roster grid mark each teammate's
+   *  tile with the shared mafia symbol and reveal their role, without a separate list panel. */
+  mafiaTeammateIds: string[]
+  /** Each teammate's actual role (Mafia/Alpha Wolf/Wolf Cub/Framer) keyed by player id — the
+   *  crew sees exactly what each other plays, not just "they're mafia too". */
+  mafiaTeammateRoles: Record<string, MafiaRole>
   mafiaChatMessages?: MafiaChatMessage[]
   trackerResult?: { targetName: string; visitedName: string | null } | null
   bodyguardLastOutcome?: 'saved' | 'sacrificed' | 'no_attack' | null

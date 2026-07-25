@@ -154,9 +154,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     // Mafia teammates names (mafia/alpha_wolf/wolf_cub/framer all share the wolf-team view)
     let mafiaTeammates: string[] = []
+    let mafiaTeammateIds: string[] = []
+    let mafiaTeammateRoles: MafiaMyState['mafiaTeammateRoles'] = {}
     if (MAFIA_TEAM_ROLES.includes(role)) {
-      const mafiaIds = playerStates.filter((p) => MAFIA_TEAM_ROLES.includes(p.role)).map((p) => p.player_id)
-      mafiaTeammates = playersData?.filter((p) => mafiaIds.includes(p.id)).map((p) => p.name) ?? []
+      const teammates = playerStates.filter(
+        (p) => MAFIA_TEAM_ROLES.includes(p.role) && p.player_id !== myPlayerState.player_id
+      )
+      mafiaTeammateIds = teammates.map((p) => p.player_id)
+      mafiaTeammates = playersData?.filter((p) => mafiaTeammateIds.includes(p.id)).map((p) => p.name) ?? []
+      mafiaTeammateRoles = Object.fromEntries(teammates.map((p) => [p.player_id, p.role]))
     }
 
     // Detective result — honors Framer's frame (reads as 'mafia' if framed that night)
@@ -247,6 +253,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       dayVoteSubmitted: !!myPlayerState.day_vote_target_player_id,
       detectiveResult,
       mafiaTeammates,
+      mafiaTeammateIds,
+      mafiaTeammateRoles,
       mafiaChatMessages,
       trackerResult,
       bodyguardLastOutcome,

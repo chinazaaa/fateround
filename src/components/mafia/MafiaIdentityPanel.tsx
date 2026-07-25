@@ -1,43 +1,25 @@
 'use client'
 
-import { MafiaSecretChat } from './MafiaChat'
-import type { MafiaMyState, MafiaChatMessage, MafiaPhase } from '@/types'
-import { MAFIA_TEAM_ROLES } from './mafia-role-info'
+import type { MafiaMyState } from '@/types'
 
 interface MafiaIdentityPanelProps {
   myState: MafiaMyState | null
-  myPlayerId: string | null
-  mySeatNumber: number | null
-  amIAlive: boolean
-  phase: MafiaPhase
-  mafiaChatMessages: MafiaChatMessage[]
-  onSendMafiaMessage: (msg: string) => Promise<void>
 }
 
 /**
- * Dynamic private results only (investigation/tracking results, teammates, lover status,
- * bodyguard/vigilante/framer/cupid outcomes) plus the Mafia secret chat. Your role/team card
- * itself lives on your own tile in MafiaPlayersGrid instead of a separate panel, to keep the
- * page compact.
+ * Dynamic private results only (investigation/tracking results, lover status,
+ * bodyguard/vigilante/framer/cupid outcomes). Mafia teammates are shown via the shared mafia
+ * symbol on their tiles in MafiaPlayersGrid instead of a name list here — Wolvesville doesn't
+ * spell teammates out in a text panel, it marks their tile. Your own role/team card lives on
+ * your own tile too, and the secret chat is rendered by the caller (MafiaPlayerView) so it can
+ * sit in the right-hand column on desktop, matching Town Discussion.
  */
-export function MafiaIdentityPanel({
-  myState,
-  myPlayerId,
-  amIAlive,
-  phase,
-  mafiaChatMessages,
-  onSendMafiaMessage,
-}: MafiaIdentityPanelProps) {
+export function MafiaIdentityPanel({ myState }: MafiaIdentityPanelProps) {
   const myRole = myState?.role
-  const isWolfTeam = !!myRole && MAFIA_TEAM_ROLES.includes(myRole)
-  // The wolf-team secret chat is night-only — during the day it's just noise, and coordination
-  // for the next kill only matters once night starts again.
-  const showSecretChat = isWolfTeam && amIAlive && phase === 'night'
 
   const hasDynamicInfo =
     !!myState &&
     (myState.isLover ||
-      myState.mafiaTeammates.length > 0 ||
       !!myState.detectiveResult ||
       !!myState.trackerResult ||
       (myRole === 'bodyguard' && !!myState.bodyguardLastOutcome && myState.bodyguardLastOutcome !== 'no_attack') ||
@@ -46,7 +28,7 @@ export function MafiaIdentityPanel({
       (myRole === 'framer' && !!myState.framerLastTargetName) ||
       (myRole === 'cupid' && !!myState.cupidLinkedNames))
 
-  if (!hasDynamicInfo && !showSecretChat) return null
+  if (!hasDynamicInfo) return null
 
   return (
     <div className="space-y-3">
@@ -57,15 +39,6 @@ export function MafiaIdentityPanel({
             You are linked with <strong>{myState.loverPartnerName ?? 'someone'}</strong>. You win together if you both
             survive.
           </p>
-        </div>
-      )}
-
-      {myState && myState.mafiaTeammates.length > 0 && (
-        <div className="glass-card border border-red-500/20 rounded-2xl p-3 text-left">
-          <p className="text-[10px] font-bold text-red-400 uppercase tracking-wider mb-1">
-            {isWolfTeam ? 'Mafia Crew' : 'Mafia Allies'}
-          </p>
-          <p className="text-sm text-[var(--foreground)]">{myState.mafiaTeammates.join(', ')}</p>
         </div>
       )}
 
@@ -137,10 +110,6 @@ export function MafiaIdentityPanel({
             {myState.cupidLinkedNames[0]} &amp; {myState.cupidLinkedNames[1]}
           </p>
         </div>
-      )}
-
-      {showSecretChat && (
-        <MafiaSecretChat messages={mafiaChatMessages} onSendMessage={onSendMafiaMessage} myPlayerId={myPlayerId} />
       )}
     </div>
   )

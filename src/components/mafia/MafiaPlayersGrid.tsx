@@ -9,6 +9,11 @@ interface MafiaPlayersGridProps {
   /** The local player's own role — shown directly on their own tile (not just on death),
    *  so there's no need for a separate "Your Identity" card taking up page space. */
   myRole?: MafiaRole | null
+  /** Fellow mafia-team ids (from myState.mafiaTeammateIds) — their tiles get the shared mafia
+   *  symbol and their real role shown, since the crew can see each other regardless of a text
+   *  list, matching Wolvesville's shared crew marker on the roster instead of a name panel. */
+  mafiaTeammateIds?: string[]
+  mafiaTeammateRoles?: Record<string, MafiaRole>
   phase: MafiaPhase
   voteTallies: Record<string, number>
   /** voterId -> targetId, when votes are public — shown as a "→ #N" sign on the voter's own
@@ -46,6 +51,8 @@ export function MafiaPlayersGrid({
   players,
   myPlayerId,
   myRole,
+  mafiaTeammateIds = [],
+  mafiaTeammateRoles = {},
   phase,
   voteTallies,
   voteChoices = {},
@@ -82,10 +89,13 @@ export function MafiaPlayersGrid({
             phase === 'voting' && p.isAlive && !anonymousVotes ? seatNumberById.get(voteChoices[p.id]) : undefined
           const isSelected = selectedIds.includes(p.id)
           const clickable = !!onSelect && p.isAlive && !isMe
-          const roleTeamColor = p.role
-            ? MAFIA_TEAM_ROLES.includes(p.role)
+          const isTeammate = !isMe && mafiaTeammateIds.includes(p.id)
+          const teammateRole = isTeammate ? mafiaTeammateRoles[p.id] : undefined
+          const revealedRole = p.role ?? teammateRole
+          const roleTeamColor = revealedRole
+            ? MAFIA_TEAM_ROLES.includes(revealedRole)
               ? 'text-red-400'
-              : p.role === 'jester'
+              : revealedRole === 'jester'
                 ? 'text-amber-400'
                 : 'text-emerald-400'
             : ''
@@ -102,7 +112,9 @@ export function MafiaPlayersGrid({
                     ? 'bg-emerald-500/10 border-emerald-400'
                     : isMe
                       ? 'bg-[var(--surface-inset-bg)] border-[var(--primary)]'
-                      : 'bg-[var(--surface-inset-bg)] border-[var(--border)]'
+                      : isTeammate
+                        ? 'bg-red-500/10 border-red-500/40'
+                        : 'bg-[var(--surface-inset-bg)] border-[var(--border)]'
               } ${clickable ? 'cursor-pointer hover:border-[var(--primary)]' : ''}`}
             >
               <span className="absolute top-1 left-1 text-[10px] font-black bg-black/55 text-white rounded-full w-5 h-5 flex items-center justify-center leading-none">
@@ -116,6 +128,11 @@ export function MafiaPlayersGrid({
               {isSelected && (
                 <span className="absolute bottom-1 right-1 text-xs" aria-hidden>
                   ✅
+                </span>
+              )}
+              {isTeammate && p.isAlive && (
+                <span className="absolute bottom-1 left-1 text-xs" aria-hidden title="Mafia crew">
+                  🔪
                 </span>
               )}
               <span className="text-3xl leading-none">{p.isAlive ? '🧑' : '🪦'}</span>
@@ -136,10 +153,9 @@ export function MafiaPlayersGrid({
                   {mafiaRoleEmoji(myRole)} {MAFIA_ROLE_INFO[myRole].name}
                 </span>
               ) : (
-                !p.isAlive &&
-                p.role && (
+                revealedRole && (
                   <span className={`text-[9px] font-bold uppercase leading-none ${roleTeamColor}`}>
-                    {mafiaRoleEmoji(p.role)} {p.role.replace(/_/g, ' ')}
+                    {mafiaRoleEmoji(revealedRole)} {revealedRole.replace(/_/g, ' ')}
                   </span>
                 )
               )}

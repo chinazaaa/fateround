@@ -28,7 +28,7 @@ import { gameTypeConfig } from '@/lib/game-types'
 import { MAFIA_MIN_PLAYERS } from '@/lib/mafia'
 import { clearPlayerSession, getPlayerSession } from '@/lib/utils'
 import { MafiaPhaseTimer } from './MafiaChat'
-import { MafiaDayChat } from './MafiaChat'
+import { MafiaDayChat, MafiaSecretChat } from './MafiaChat'
 import { MafiaIdentityPanel } from './MafiaIdentityPanel'
 import { MafiaPhaseCard } from './MafiaPhaseCard'
 import { MafiaPlayersGrid } from './MafiaPlayersGrid'
@@ -552,6 +552,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               players={publicPlayers}
               myPlayerId={myPlayerId}
               myRole={myRole}
+              mafiaTeammateIds={myState?.mafiaTeammateIds}
+              mafiaTeammateRoles={myState?.mafiaTeammateRoles}
               phase={phase}
               voteTallies={voteTallies}
               voteChoices={voteChoices}
@@ -578,29 +580,43 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               />
             )}
 
-            <MafiaIdentityPanel
-              myState={myState}
-              myPlayerId={myPlayerId}
-              mySeatNumber={me?.seatNumber ?? null}
-              amIAlive={amIAlive}
-              phase={phase}
-              mafiaChatMessages={myState?.mafiaChatMessages ?? []}
-              onSendMafiaMessage={sendMafiaMessage}
-            />
+            <MafiaIdentityPanel myState={myState} />
           </div>
 
-          {phase !== 'night' && phase !== 'role_reveal' && (
-            <div className="md:col-span-1">
-              <MafiaDayChat
-                messages={dayChatMessages ?? []}
-                ghostMessages={!amIAlive ? (ghostChatMessages ?? []) : undefined}
-                onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
-                myPlayerId={myPlayerId}
-                players={publicPlayers}
-                disabled={amISpectator}
-              />
-            </div>
-          )}
+          {/* Right column mirrors Town Discussion's slot: the Mafia secret chat lives here on
+              desktop during the night (rather than stacked in the left column), and Town
+              Discussion takes the same slot once night ends — same position, matching
+              Wolvesville's chat placement regardless of which chat is currently active. */}
+          {(() => {
+            const isWolfTeam = !!myRole && MAFIA_TEAM_ROLES.includes(myRole)
+            const showSecretChat = isWolfTeam && amIAlive && phase === 'night'
+            if (showSecretChat) {
+              return (
+                <div className="md:col-span-1">
+                  <MafiaSecretChat
+                    messages={myState?.mafiaChatMessages ?? []}
+                    onSendMessage={sendMafiaMessage}
+                    myPlayerId={myPlayerId}
+                  />
+                </div>
+              )
+            }
+            if (phase !== 'night' && phase !== 'role_reveal') {
+              return (
+                <div className="md:col-span-1">
+                  <MafiaDayChat
+                    messages={dayChatMessages ?? []}
+                    ghostMessages={!amIAlive ? (ghostChatMessages ?? []) : undefined}
+                    onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
+                    myPlayerId={myPlayerId}
+                    players={publicPlayers}
+                    disabled={amISpectator}
+                  />
+                </div>
+              )
+            }
+            return null
+          })()}
         </main>
       </div>
     )
