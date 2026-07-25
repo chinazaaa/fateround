@@ -77,7 +77,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         .from('players')
         .select('id, name, spectator, is_eliminated')
         .eq('game_id', gameId)
-        .order('created_at', { ascending: true }),
+        .order('joined_at', { ascending: true }),
       admin.from('mafia_sessions').select('*').eq('game_id', gameId).maybeSingle(),
       admin.from('mafia_player_states').select('*').eq('game_id', gameId).order('created_at', { ascending: true }),
     ])
