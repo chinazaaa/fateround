@@ -40,6 +40,8 @@ const BATCH_9_GAMES: GameType[] = ['secret_message', 'hot_seat', 'custom', 'anon
 
 const BATCH_10_GAMES: GameType[] = ['uno']
 
+const BATCH_11_GAMES: GameType[] = ['word_scramble', 'landmine', 'checkers_international', 'checkers_nigeria']
+
 /**
  * Server-driven mobile feature flags. Flip `mobileSupportedGames` when a native
  * screen is ready — no app store review required.
@@ -58,6 +60,7 @@ export async function GET() {
       ...BATCH_8_GAMES,
       ...BATCH_9_GAMES,
       ...BATCH_10_GAMES,
+      ...BATCH_11_GAMES,
     ],
     maintenanceMessage: null,
     forceWebFallbackFor: [] as GameType[],
