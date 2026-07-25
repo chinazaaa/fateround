@@ -36,6 +36,7 @@ import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useChessClockExpiry } from '@/hooks/useChessClocks'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 
 type Screen =
   | 'loading'
@@ -323,6 +324,15 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   const myName = activePlayer?.name ?? ''
 
   useChessClockExpiry(gameCode, session, game?.status === 'active' && !isViewer)
+
+  useTurnNotifications({
+    status: game?.status,
+    isMyTurn: isViewer ? null : isMyTurn,
+    enabled: !isViewer,
+    // The opening player's first move is a waiting->active transition, not a turn
+    // change — without this they'd see "Game started!" instead of "Your turn!".
+    startMessage: isMyTurn ? 'Your turn!' : 'Game started! 🎮',
+  })
 
   // Change name · Leave game for players/spectators live behind the main chrome's ⚙
   // gear (top header). Available whenever the player holds a seat — lobby, active play,
