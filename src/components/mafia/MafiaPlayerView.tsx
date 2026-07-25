@@ -171,9 +171,15 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     [{ table: 'games', column: 'id' }, 'players', 'mafia_sessions', 'mafia_player_states', 'mafia_chat_messages'],
     load
   )
+  // `mafia_chat_messages` is deliberately excluded from the realtime publication (the state
+  // API enforces scope/role visibility server-side, so clients never read it directly) — so
+  // postgres_changes on games/players/mafia_sessions/mafia_player_states never fires for a
+  // new chat message on its own, and previously chat only refreshed on the next unrelated
+  // state change (or never, until a manual reload). Poll on a short interval whenever the
+  // game is active, even while otherwise realtime-connected, specifically to catch new chat.
   usePolling(() => load(), [gameCode, load], {
-    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
-    enabled: game?.status === 'waiting' || !connected,
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : connected ? 4000 : POLL_INTERVALS.realtimeFallback,
+    enabled: true,
     runImmediately: false,
   })
   useLobbyOpenNotification(game?.status, () => {

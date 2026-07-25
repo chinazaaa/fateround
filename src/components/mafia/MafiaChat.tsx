@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import type { MafiaChatMessage, MafiaPublicPlayer } from '@/types'
 
 // ── Phase Timer ───────────────────────────────────────────────────────────────
@@ -72,9 +72,14 @@ interface ChatMessagesProps {
  *  chronological order and stay in history permanently — never overwritten by the next
  *  phase's announcement the way a single ephemeral "current phase" banner would be. */
 export function ChatMessages({ messages, myPlayerId, players, className = 'h-40' }: ChatMessagesProps) {
-  const bottomRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  const containerRef = useRef<HTMLDivElement>(null)
+  // Jump straight to the newest message by default — there's no reason to land on a message
+  // from 4 nights ago first, the reader can always scroll back up if they want it. Runs
+  // before paint (useLayoutEffect) so there's no visible flash of the top of the log first,
+  // and is instant (not 'smooth') so it doesn't feel like an animated scroll on every poll.
+  useLayoutEffect(() => {
+    const el = containerRef.current
+    if (el) el.scrollTop = el.scrollHeight
   }, [messages.length])
 
   const playerById = new Map(players?.map((p) => [p.id, p]) ?? [])
@@ -82,7 +87,7 @@ export function ChatMessages({ messages, myPlayerId, players, className = 'h-40'
   const myMentionPattern = mySeatNumber != null ? new RegExp(`(?<!\\d)${mySeatNumber}(?!\\d)`) : null
 
   return (
-    <div className={`${className} overflow-y-auto space-y-1 p-1`}>
+    <div ref={containerRef} className={`${className} overflow-y-auto space-y-1 p-1`}>
       {messages.length === 0 ? (
         <p className="text-xs text-[var(--muted)] italic text-center py-6">No messages yet.</p>
       ) : (
@@ -114,7 +119,6 @@ export function ChatMessages({ messages, myPlayerId, players, className = 'h-40'
           )
         })
       )}
-      <div ref={bottomRef} />
     </div>
   )
 }
