@@ -206,11 +206,14 @@ export function MafiaDayChat({
     ? [...messages, ...ghostMessages].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))
     : messages
   return (
-    <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-2 h-full flex flex-col">
+    // A fixed (not content-grown) height keeps this box from stretching the page taller as
+    // messages pile up — the roster grid above it stays put and only this box scrolls, on
+    // both mobile (where the layout stacks) and desktop.
+    <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-2 flex flex-col md:sticky md:top-20">
       <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)] flex items-center gap-1.5">
         💬 Town Discussion
       </p>
-      <ChatMessages messages={merged} myPlayerId={myPlayerId} players={players} className="flex-1 min-h-[16rem]" />
+      <ChatMessages messages={merged} myPlayerId={myPlayerId} players={players} className="h-[24rem]" />
       <form onSubmit={handleSubmit} className="flex gap-2">
         <input
           type="text"

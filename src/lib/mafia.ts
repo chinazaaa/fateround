@@ -443,6 +443,24 @@ export async function initializeMafiaGame(
   return { error: null }
 }
 
+/**
+ * A friendly heads-up in Town Discussion when someone joins mid-game — they're dropped into
+ * an in-progress town with no seat/role of their own (Mafia doesn't assign roles after the
+ * game has started), so a warm, unambiguous "you weren't missed anything, just settle in"
+ * note matters more here than a terse system line.
+ */
+export async function announceMafiaLateJoin(admin: SupabaseClient, gameId: string, playerName: string): Promise<void> {
+  const { count } = await admin.from('players').select('id', { count: 'exact', head: true }).eq('game_id', gameId)
+  const joinNumber = count ?? 1
+  await admin.from('mafia_chat_messages').insert({
+    game_id: gameId,
+    sender_player_id: 'system',
+    sender_name: '📢',
+    message: `👋 Player ${joinNumber} ${playerName} just joined! Welcome — feel free to jump into the discussion, no rush getting settled in.`,
+    scope: 'day',
+  })
+}
+
 export async function clearMafiaSessionData(admin: SupabaseClient, gameId: string): Promise<{ error?: string | null }> {
   try {
     const [{ error: e1 }, { error: e2 }, { error: e3 }] = await Promise.all([

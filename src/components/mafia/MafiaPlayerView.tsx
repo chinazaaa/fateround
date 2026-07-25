@@ -31,6 +31,7 @@ import { MafiaPhaseTimer } from './MafiaChat'
 import { MafiaDayChat, MafiaSecretChat } from './MafiaChat'
 import { MafiaIdentityPanel } from './MafiaIdentityPanel'
 import { MafiaPhaseCard } from './MafiaPhaseCard'
+import { MafiaRoleRevealScreen } from './MafiaRoleRevealScreen'
 import { MafiaPlayersGrid } from './MafiaPlayersGrid'
 import { MafiaRolesDrawer } from './MafiaRolesDrawer'
 import { MafiaSkipPhaseBar } from './MafiaSkipPhaseBar'
@@ -81,6 +82,13 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   const [mafiaState, setMafiaState] = useState<MafiaStateResponse | null>(null)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
+
+  // A late joiner's client can load state well after the game's shared role_reveal phase has
+  // already ended (it's a one-time, whole-game window) — without this they'd be dropped
+  // straight into an in-progress night/day with no "you are..." moment at all. Give them a
+  // one-time few-second local reveal instead, gated on a per-player localStorage flag so it
+  // only ever fires once and never re-interrupts a returning player.
+  const [forceRoleReveal, setForceRoleReveal] = useState(false)
 
   const loadGameState = useCallback(async (): Promise<{ state: MafiaStateResponse | null; ok: boolean }> => {
     const session = getPlayerSession(gameCode)
@@ -141,6 +149,22 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(game?.theme)
+
+  useEffect(() => {
+    if (screen !== 'active' || !myPlayerId || !mafiaState?.myState?.role) return
+    const key = `mafia:${gameCode}:roleSeen:${myPlayerId}`
+    if (mafiaState.phase === 'role_reveal') {
+      // Seen naturally via the shared role_reveal phase — mark it so a late refresh doesn't
+      // also trigger the late-join overlay once that phase has passed.
+      localStorage.setItem(key, '1')
+      return
+    }
+    if (localStorage.getItem(key)) return
+    localStorage.setItem(key, '1')
+    setForceRoleReveal(true)
+    const t = setTimeout(() => setForceRoleReveal(false), 5000)
+    return () => clearTimeout(t)
+  }, [screen, myPlayerId, gameCode, mafiaState?.myState?.role, mafiaState?.phase])
 
   const connected = useGameTableSync(
     gameCode,
@@ -500,6 +524,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     const amISpectator = !!myPlayerId && me == null
     const amIAlive = me != null && me.isAlive !== false
     const myRole = myState?.role
+    // A late joiner never gets a real 'role_reveal' phase (it's a one-time whole-game window),
+    // so forceRoleReveal substitutes a local few-second version of the same screen for them.
+    const showRoleReveal = phase === 'role_reveal' || forceRoleReveal
 
     // Tap-a-tile action routing: which roster taps do what, depending on phase/role. Cupid's
     // two-step pick and the current highlighted selection are tracked in local state above.
@@ -553,7 +580,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
             <div>
               <h1 className="font-bold text-base text-[var(--primary)] leading-tight">Mafia</h1>
               <p className="text-[10px] text-[var(--muted)] uppercase tracking-widest font-semibold">
-                {phase === 'role_reveal' ? 'Role Reveal' : `Day ${dayNumber} · ${PHASE_LABEL[phase] ?? phase}`}
+                {showRoleReveal ? 'Role Reveal' : `Day ${dayNumber} · ${PHASE_LABEL[phase] ?? phase}`}
               </p>
             </div>
           </div>
@@ -569,89 +596,97 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           label={PHASE_LABEL[phase] ?? undefined}
         />
 
-        <main className="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6 flex flex-col md:grid md:grid-cols-3 gap-4 md:gap-6 md:items-start">
-          <div className="md:col-span-2 space-y-4">
-            <MafiaPlayersGrid
-              players={publicPlayers}
-              myPlayerId={myPlayerId}
-              myRole={myRole}
-              mafiaTeammateIds={myState?.mafiaTeammateIds}
-              mafiaTeammateRoles={myState?.mafiaTeammateRoles}
-              phase={phase}
-              voteTallies={voteTallies}
-              voteChoices={voteChoices}
-              votedPlayerIds={votedPlayerIds}
-              anonymousVotes={anonymousVotes}
-              onSelect={gridOnSelect}
-              selectedIds={gridSelectedIds}
-              onSkipVote={amIAlive && !amISpectator ? () => void submitDayVote(null) : undefined}
-              skipDisabled={acting}
-            />
-
-            {(phase === 'day' || phase === 'voting') && amIAlive && !amISpectator && (
-              <MafiaSkipPhaseBar
+        {showRoleReveal ? (
+          // Role reveal is its own moment — just the role card and its description, no
+          // player roster or chat competing for attention while everyone reads who they are.
+          <main className="flex-1 max-w-md w-full mx-auto p-4 md:p-6">
+            <MafiaRoleRevealScreen myState={myState} />
+          </main>
+        ) : (
+          <main className="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6 flex flex-col md:grid md:grid-cols-3 gap-4 md:gap-6 md:items-start">
+            <div className="md:col-span-2 space-y-4">
+              <MafiaPlayersGrid
+                players={publicPlayers}
+                myPlayerId={myPlayerId}
+                myRole={myRole}
+                mafiaTeammateIds={myState?.mafiaTeammateIds}
+                mafiaTeammateRoles={myState?.mafiaTeammateRoles}
                 phase={phase}
-                skipRequestCount={skipRequestCount ?? 0}
-                skipRequiredCount={skipRequiredCount ?? 1}
-                hasRequestedSkip={!!hasRequestedSkip}
-                disabled={acting}
-                onSkip={() => void submitSkipPhase()}
+                voteTallies={voteTallies}
+                voteChoices={voteChoices}
+                votedPlayerIds={votedPlayerIds}
+                anonymousVotes={anonymousVotes}
+                onSelect={gridOnSelect}
+                selectedIds={gridSelectedIds}
+                onSkipVote={amIAlive && !amISpectator ? () => void submitDayVote(null) : undefined}
+                skipDisabled={acting}
               />
-            )}
 
-            {(phase === 'role_reveal' || phase === 'night' || (phase === 'voting' && amIAlive && !amISpectator)) && (
-              <MafiaPhaseCard
-                phase={phase}
-                dayNumber={dayNumber}
-                myState={myState}
-                amIAlive={amIAlive}
-                amISpectator={amISpectator}
-                acting={acting}
-                cupidFirstPickName={cupidFirstPickName}
-                onIgnite={() => {
-                  if (myPlayerId) void submitNightAction(myPlayerId)
-                }}
-              />
-            )}
+              {(phase === 'day' || phase === 'voting') && amIAlive && !amISpectator && (
+                <MafiaSkipPhaseBar
+                  phase={phase}
+                  skipRequestCount={skipRequestCount ?? 0}
+                  skipRequiredCount={skipRequiredCount ?? 1}
+                  hasRequestedSkip={!!hasRequestedSkip}
+                  disabled={acting}
+                  onSkip={() => void submitSkipPhase()}
+                />
+              )}
 
-            <MafiaIdentityPanel myState={myState} />
-          </div>
+              {(phase === 'night' || (phase === 'voting' && amIAlive && !amISpectator)) && (
+                <MafiaPhaseCard
+                  phase={phase}
+                  dayNumber={dayNumber}
+                  myState={myState}
+                  amIAlive={amIAlive}
+                  amISpectator={amISpectator}
+                  acting={acting}
+                  cupidFirstPickName={cupidFirstPickName}
+                  onIgnite={() => {
+                    if (myPlayerId) void submitNightAction(myPlayerId)
+                  }}
+                />
+              )}
 
-          {/* Right column mirrors Town Discussion's slot: the Mafia secret chat lives here on
+              <MafiaIdentityPanel myState={myState} />
+            </div>
+
+            {/* Right column mirrors Town Discussion's slot: the Mafia secret chat lives here on
               desktop during the night (rather than stacked in the left column), and Town
               Discussion takes the same slot once night ends — same position, matching
               Wolvesville's chat placement regardless of which chat is currently active. */}
-          {(() => {
-            const isWolfTeam = !!myRole && MAFIA_TEAM_ROLES.includes(myRole)
-            const showSecretChat = isWolfTeam && amIAlive && phase === 'night'
-            if (showSecretChat) {
-              return (
-                <div className="md:col-span-1">
-                  <MafiaSecretChat
-                    messages={myState?.mafiaChatMessages ?? []}
-                    onSendMessage={sendMafiaMessage}
-                    myPlayerId={myPlayerId}
-                  />
-                </div>
-              )
-            }
-            if (phase !== 'night' && phase !== 'role_reveal') {
-              return (
-                <div className="md:col-span-1">
-                  <MafiaDayChat
-                    messages={dayChatMessages ?? []}
-                    ghostMessages={!amIAlive ? (ghostChatMessages ?? []) : undefined}
-                    onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
-                    myPlayerId={myPlayerId}
-                    players={publicPlayers}
-                    disabled={amISpectator}
-                  />
-                </div>
-              )
-            }
-            return null
-          })()}
-        </main>
+            {(() => {
+              const isWolfTeam = !!myRole && MAFIA_TEAM_ROLES.includes(myRole)
+              const showSecretChat = isWolfTeam && amIAlive && phase === 'night'
+              if (showSecretChat) {
+                return (
+                  <div className="md:col-span-1">
+                    <MafiaSecretChat
+                      messages={myState?.mafiaChatMessages ?? []}
+                      onSendMessage={sendMafiaMessage}
+                      myPlayerId={myPlayerId}
+                    />
+                  </div>
+                )
+              }
+              if (phase !== 'night') {
+                return (
+                  <div className="md:col-span-1">
+                    <MafiaDayChat
+                      messages={dayChatMessages ?? []}
+                      ghostMessages={!amIAlive ? (ghostChatMessages ?? []) : undefined}
+                      onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
+                      myPlayerId={myPlayerId}
+                      players={publicPlayers}
+                      disabled={amISpectator}
+                    />
+                  </div>
+                )
+              }
+              return null
+            })()}
+          </main>
+        )}
       </div>
     )
   }

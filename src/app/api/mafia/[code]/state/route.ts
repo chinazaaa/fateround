@@ -165,6 +165,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       mafiaTeammateRoles = Object.fromEntries(teammates.map((p) => [p.player_id, p.role]))
     }
 
+    // Seat-numbered display name ("#5 Naza") — used for every player mentioned in a private
+    // reveal below, so it always reads unambiguously which of possibly-several same-named
+    // players is meant, matching the "#N Name" convention already used in chat.
+    const seatById = new Map(playerStates.map((p) => [p.player_id, p.seat_number]))
+    const seatLabel = (playerId: string, name: string) => {
+      const seat = seatById.get(playerId)
+      return seat != null ? `#${seat} ${name}` : name
+    }
+
     // Detective result — honors Framer's frame (reads as 'mafia' if framed that night)
     let detectiveResult: MafiaMyState['detectiveResult'] = null
     if (role === 'detective' && session.detect_target_player_id) {
@@ -173,7 +182,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       if (targetState && targetPlayer) {
         const framed = session.framed_player_id === session.detect_target_player_id
         detectiveResult = {
-          targetName: targetPlayer.name,
+          targetName: seatLabel(targetPlayer.id, targetPlayer.name),
           alignment: framed ? 'mafia' : mafiaRoleTeam(targetState.role),
         }
       }
@@ -184,7 +193,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       const targetPlayer = playersData?.find((p) => p.id === myPlayerState!.night_action_target_player_id)
       const visitedPlayer = playersData?.find((p) => p.id === session.tracker_visited_player_id)
       if (targetPlayer) {
-        trackerResult = { targetName: targetPlayer.name, visitedName: visitedPlayer?.name ?? null }
+        trackerResult = {
+          targetName: seatLabel(targetPlayer.id, targetPlayer.name),
+          visitedName: visitedPlayer ? seatLabel(visitedPlayer.id, visitedPlayer.name) : null,
+        }
       }
     }
 
@@ -208,21 +220,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     let framerLastTargetName: MafiaMyState['framerLastTargetName'] = undefined
     if (role === 'framer' && session.framed_player_id) {
-      framerLastTargetName = playersData?.find((p) => p.id === session.framed_player_id)?.name ?? null
+      const framed = playersData?.find((p) => p.id === session.framed_player_id)
+      framerLastTargetName = framed ? seatLabel(framed.id, framed.name) : null
     }
 
     let cupidLinkedNames: MafiaMyState['cupidLinkedNames'] = undefined
     if (role === 'cupid' && session.cupid_lover_ids) {
       const [aId, bId] = session.cupid_lover_ids
-      const aName = playersData?.find((p) => p.id === aId)?.name ?? 'Unknown'
-      const bName = playersData?.find((p) => p.id === bId)?.name ?? 'Unknown'
-      cupidLinkedNames = [aName, bName]
+      const aPlayer = playersData?.find((p) => p.id === aId)
+      const bPlayer = playersData?.find((p) => p.id === bId)
+      cupidLinkedNames = [
+        aPlayer ? seatLabel(aPlayer.id, aPlayer.name) : 'Unknown',
+        bPlayer ? seatLabel(bPlayer.id, bPlayer.name) : 'Unknown',
+      ]
     }
 
     const isLover = myPlayerState.is_lover
-    const loverPartnerName = isLover
-      ? (playersData?.find((p) => p.id === myPlayerState!.lover_partner_player_id)?.name ?? null)
-      : null
+    const loverPartner = isLover ? playersData?.find((p) => p.id === myPlayerState!.lover_partner_player_id) : undefined
+    const loverPartnerName = isLover ? (loverPartner ? seatLabel(loverPartner.id, loverPartner.name) : null) : null
 
     // Mafia secret chat — persistent across all phases for alive wolf-team members
     let mafiaChatMessages: MafiaMyState['mafiaChatMessages'] = undefined
