@@ -1078,6 +1078,7 @@ export type BoardLobbyPatch = {
   crazy8_pick2_stacking?: boolean
   ludo_variant?: 'modern' | 'traditional'
   ayo_variant?: 'traditional' | 'oware'
+  checkers_nigeria_street_rules?: boolean
   mafia_doctor_enabled?: boolean
   mafia_detective_enabled?: boolean
   mafia_anonymous_votes?: boolean

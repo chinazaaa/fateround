@@ -22,9 +22,14 @@ import {
   isWordSearchGame,
   isWordScrambleGame,
   isPingPongGame,
+  isCheckersGame,
+  isDraughts10Game,
+  isCheckersNigeriaGame,
   parseGameType,
 } from '@/lib/game-types'
 import { clampAyoTimer, parseAyoVariant } from '@/lib/ayo'
+import { clampCheckersTimer } from '@/lib/checkers'
+import { clampDraughts10Timer } from '@/lib/draughts10'
 import { clampBoardGameTurnTimer, type BoardGameLobbyType } from '@/lib/board-game-lobby-settings'
 import { clampMonopolyGameDuration } from '@/lib/monopoly'
 import { clampWhotGameDuration } from '@/lib/whot'
@@ -89,6 +94,13 @@ function ayoLobbyType(gameType: string): boolean {
   return isAyoGame(parseGameType(gameType))
 }
 
+/** American Checkers + International/Nigerian Draughts — same timer options, no house rules
+ *  except Nigeria's Street Rules toggle (handled separately below). */
+function checkersLobbyType(gameType: string): boolean {
+  const parsed = parseGameType(gameType)
+  return isCheckersGame(parsed) || isDraughts10Game(parsed)
+}
+
 /** Games with only a max-players lobby setting — no timer or house rules. */
 function limitOnlyLobbyType(gameType: string): LobbyLimitGameType | null {
   const parsed = parseGameType(gameType)
@@ -145,6 +157,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     quick_draw_play_mode,
     quick_draw_num_teams,
     ayo_variant,
+    checkers_nigeria_street_rules,
     crossword_theme,
     crossword_difficulty,
     word_search_theme,
@@ -195,6 +208,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     quick_draw_play_mode === undefined &&
     quick_draw_num_teams === undefined &&
     ayo_variant === undefined &&
+    checkers_nigeria_street_rules === undefined &&
     crossword_theme === undefined &&
     crossword_difficulty === undefined &&
     word_search_theme === undefined &&
@@ -225,6 +239,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const quickDrawLobby = isQuickDrawGame(parseGameType(game.game_type))
   const pingPongLobby = isPingPongGame(parseGameType(game.game_type))
   const ayoLobby = ayoLobbyType(game.game_type)
+  const checkersLobby = checkersLobbyType(game.game_type)
   // max_players + is_public are generic to every lobby-limit game; the more
   // specific classifications below only gate the per-game fields (timers, rules,
   // etc.). So accept any lobby-limit game here — otherwise games with their own
@@ -295,6 +310,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.timer_seconds = clampBoardGameTurnTimer(timer_seconds, boardLobbyType)
     } else if (ayoLobby) {
       gameUpdate.timer_seconds = clampAyoTimer(timer_seconds)
+    } else if (checkersLobby) {
+      gameUpdate.timer_seconds = isCheckersGame(parseGameType(game.game_type))
+        ? clampCheckersTimer(timer_seconds)
+        : clampDraughts10Timer(timer_seconds)
     } else if (limitOnlyType === 'matching_pairs') {
       // Matching Pairs game time limit (0 = no limit)
       const maxOption = MATCHING_PAIRS_GAME_DURATION_OPTIONS[MATCHING_PAIRS_GAME_DURATION_OPTIONS.length - 1]
@@ -540,6 +559,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (ayo_variant !== undefined) gameUpdate.ayo_variant = parseAyoVariant(ayo_variant)
   } else if (ayo_variant !== undefined) {
     return NextResponse.json({ error: 'The Ayo variant only applies to Ayo games' }, { status: 400 })
+  }
+
+  if (isCheckersNigeriaGame(parseGameType(game.game_type))) {
+    if (checkers_nigeria_street_rules !== undefined) {
+      gameUpdate.checkers_nigeria_street_rules = checkers_nigeria_street_rules
+    }
+  } else if (checkers_nigeria_street_rules !== undefined) {
+    return NextResponse.json({ error: 'Street Rules only applies to Nigerian Draughts games' }, { status: 400 })
   }
 
   if (boardLobbyType === 'mahjong') {
