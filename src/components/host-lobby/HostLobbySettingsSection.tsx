@@ -5,7 +5,6 @@ import { ChevronRightIcon, SlidersIcon } from '@/components/host/host-icons'
 
 type Props = {
   title?: string
-  summary?: string
   status?: string | null
   defaultOpen?: boolean
   /** Rendered inside the card but ALWAYS shown (not gated by the collapse) — for the
@@ -17,7 +16,6 @@ type Props = {
 
 export function HostLobbySettingsSection({
   title = 'Before you start',
-  summary,
   status,
   defaultOpen = false,
   alwaysVisible,
@@ -60,9 +58,6 @@ export function HostLobbySettingsSection({
               </span>
             ) : null}
           </div>
-          {summary ? (
-            <p className={`text-faint text-xs mt-0.5 leading-snug ${open ? '' : 'truncate'}`}>{summary}</p>
-          ) : null}
         </div>
 
         <span
@@ -71,7 +66,7 @@ export function HostLobbySettingsSection({
             open ? 'text-muted' : 'text-[var(--primary-strong)]',
           ].join(' ')}
         >
-          {open ? 'Done' : 'Edit'}
+          {open ? 'Collapse' : 'Expand'}
           <ChevronRightIcon size={15} className={`transition-transform ${open ? '-rotate-90' : 'rotate-90'}`} />
         </span>
       </button>

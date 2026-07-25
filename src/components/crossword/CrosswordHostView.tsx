@@ -38,7 +38,6 @@ import {
   playerCompletionPercent,
   CROSSWORD_MIN_PLAYERS,
   CROSSWORD_GAME_DURATION_OPTIONS,
-  formatCrosswordGameDuration,
   type CrosswordMetadata,
   type CrosswordSubmission,
 } from '@/lib/crossword'
@@ -548,7 +547,6 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
             playerCount={players.length}
             onGameUpdate={setGame}
             durationChoices={CROSSWORD_GAME_DURATION_OPTIONS}
-            formatDuration={formatCrosswordGameDuration}
             puzzleSettings={
               <HostPuzzleSettings
                 gameCode={gameCode}
@@ -654,7 +652,6 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
         playerCount={players.length}
         onGameUpdate={setGame}
         durationChoices={CROSSWORD_GAME_DURATION_OPTIONS}
-        formatDuration={formatCrosswordGameDuration}
         puzzleSettings={
           <HostPuzzleSettings
             gameCode={gameCode}

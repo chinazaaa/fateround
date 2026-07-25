@@ -32,7 +32,6 @@ import {
   wordScrambleCompletionPercent,
   WORD_SCRAMBLE_MIN_PLAYERS,
   WORD_SCRAMBLE_GAME_DURATION_OPTIONS,
-  formatWordScrambleGameDuration,
   type WordScrambleMetadata,
   type WordScrambleSolve,
   type WordScrambleHint,
@@ -435,7 +434,6 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
             playerCount={players.length}
             onGameUpdate={setGame}
             durationChoices={WORD_SCRAMBLE_GAME_DURATION_OPTIONS}
-            formatDuration={formatWordScrambleGameDuration}
             puzzleSettings={
               <HostPuzzleSettings
                 gameCode={gameCode}
@@ -541,7 +539,6 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
         playerCount={players.length}
         onGameUpdate={setGame}
         durationChoices={WORD_SCRAMBLE_GAME_DURATION_OPTIONS}
-        formatDuration={formatWordScrambleGameDuration}
         puzzleSettings={
           <HostPuzzleSettings
             gameCode={gameCode}

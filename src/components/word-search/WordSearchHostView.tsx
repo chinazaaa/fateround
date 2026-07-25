@@ -36,7 +36,6 @@ import {
   wordSearchCompletionPercent,
   WORD_SEARCH_MIN_PLAYERS,
   WORD_SEARCH_GAME_DURATION_OPTIONS,
-  formatWordSearchGameDuration,
   type WordSearchMetadata,
   type WordSearchFound,
   type WordSearchPlacement,
@@ -538,7 +537,6 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
             playerCount={players.length}
             onGameUpdate={setGame}
             durationChoices={WORD_SEARCH_GAME_DURATION_OPTIONS}
-            formatDuration={formatWordSearchGameDuration}
             puzzleSettings={
               <HostPuzzleSettings
                 gameCode={gameCode}
@@ -644,7 +642,6 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
         playerCount={players.length}
         onGameUpdate={setGame}
         durationChoices={WORD_SEARCH_GAME_DURATION_OPTIONS}
-        formatDuration={formatWordSearchGameDuration}
         puzzleSettings={
           <HostPuzzleSettings
             gameCode={gameCode}

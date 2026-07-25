@@ -18,6 +18,7 @@ import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { HostMaxPlayersLobbyPanel } from '@/components/host-lobby/HostMaxPlayersLobbyPanel'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { gameTypeConfig } from '@/lib/game-types'
+import { TRIVIA_MIN_PLAYERS } from '@/lib/trivia'
 import { useTriviaHostRoundAutomation } from '@/hooks/useTriviaHostRoundAutomation'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
@@ -374,7 +375,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
   // Fresh lobby (not the play-again ready-up flow, which keeps the tabbed layout for now).
   const waitingLobby = game.status === 'waiting' && !game.replay_pending
   const activePlayers = players.filter((p) => !p.spectator)
-  const canStart = activePlayers.length >= 1
+  const canStart = activePlayers.length >= TRIVIA_MIN_PLAYERS
 
   const lobbyModeCard = game.tournament_id ? (
     <p className="surface-inset rounded-xl px-4 py-3 text-sm text-muted">
@@ -436,7 +437,11 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
           onStart={() => void startGame()}
           starting={starting}
           startDisabled={!canStart}
-          startDisabledHint={!canStart ? 'Waiting for at least one player to join.' : null}
+          startDisabledHint={
+            !canStart
+              ? `Need at least ${TRIVIA_MIN_PLAYERS} players to start (${activePlayers.length}/${TRIVIA_MIN_PLAYERS})`
+              : null
+          }
           startLabel="Start trivia"
           onRemovePlayer={removePlayer}
           removingPlayerId={removingPlayerId}

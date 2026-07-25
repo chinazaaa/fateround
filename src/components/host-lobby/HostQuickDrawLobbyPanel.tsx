@@ -243,12 +243,8 @@ export function HostQuickDrawLobbyPanel({ gameCode, hostToken, game, playerCount
 
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 
-  const summary = isGuess
-    ? `Guess · ${playMode === 'individual' ? 'solo' : `${numTeams} teams`} · ${maxPlayers} max · ${roundsCount} rounds · ${formatQuickDrawTurnTimer(turnTimer)} per turn`
-    : `${maxPlayers} max · ${roundsCount} rounds · ${drawTimer}s draw · ${titleTimer}s titles · ${voteTimer}s vote`
-
   return (
-    <HostLobbySettingsSection status={statusLabel} summary={summary}>
+    <HostLobbySettingsSection status={statusLabel}>
       <HostLobbySettingBlock title="Game style">
         <HostLobbyOptionChips value={variant} options={VARIANT_OPTIONS} onChange={onVariantChange} />
         <p className="text-faint text-[11px] pt-1">

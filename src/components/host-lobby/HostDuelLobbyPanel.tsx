@@ -133,19 +133,10 @@ export function HostDuelLobbyPanel({ gameCode, hostToken, game, duelType, onGame
     [duelType]
   )
 
-  const summary = useMemo(() => {
-    const parts = [turnTimer ? `${timerLabel(turnTimer)}${isChess ? ' each' : ''}` : 'No timer']
-    if (isChess) {
-      parts.push(BOARD_THEMES.find((t) => t.id === boardTheme)?.name ?? 'Green')
-      parts.push(PIECE_SETS.find((s) => s.id === pieceSet)?.name ?? 'Neo')
-    }
-    return parts.join(' · ')
-  }, [boardTheme, isChess, pieceSet, turnTimer])
-
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 
   return (
-    <HostLobbySettingsSection status={statusLabel} summary={summary}>
+    <HostLobbySettingsSection status={statusLabel}>
       <div className="space-y-4">
         <HostLobbySettingBlock title={TIMER_TITLE[duelType]}>
           <HostLobbyOptionChips value={turnTimer} options={timerOptions} onChange={onTurnTimerChange} />
