@@ -39,6 +39,7 @@ export function HostGameLayout({
   onHostRejoined,
   onRemovePlayer,
   noManageTab = false,
+  suppressViewerBanner = false,
 }: {
   gameCode: string
   status: GameStatus | undefined
@@ -74,6 +75,10 @@ export function HostGameLayout({
    * finished-screen fallback. The mobile-parity target for in-game host UI.
    */
   noManageTab?: boolean
+  /** Set when `primary` already renders its own "you're spectating" banner (e.g. a game view
+   *  reused as-is for a host-only spectator) — skips this layout's own copy so the two don't
+   *  stack on top of each other. */
+  suppressViewerBanner?: boolean
 }) {
   const isFinished = status === 'finished'
   const layout = hostPlayLayoutFlags(tab, showTabs, status)
@@ -98,6 +103,7 @@ export function HostGameLayout({
   // the host actually holds a (now-spectating) player row.
   const hostPlayer = hostPlayerId && players ? (players.find((p) => p.id === hostPlayerId) ?? null) : null
   const showHostRejoin = !!(
+    !suppressViewerBanner &&
     !isFinished &&
     game &&
     game.status === 'active' &&

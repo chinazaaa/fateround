@@ -151,7 +151,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mahjong_rule_options,
     mafia_doctor_enabled,
     mafia_detective_enabled,
+    mafia_bodyguard_enabled,
+    mafia_mayor_enabled,
+    mafia_vigilante_enabled,
+    mafia_tracker_enabled,
+    mafia_alpha_wolf_enabled,
+    mafia_wolf_cub_enabled,
+    mafia_framer_enabled,
+    mafia_jester_enabled,
+    mafia_serial_killer_enabled,
+    mafia_arsonist_enabled,
+    mafia_cupid_enabled,
+    mafia_cursed_villager_enabled,
     mafia_anonymous_votes,
+    mafia_day_seconds,
+    mafia_voting_seconds,
     operative_timer_seconds,
     quick_draw_variant,
     quick_draw_play_mode,
@@ -202,7 +216,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mahjong_rule_options === undefined &&
     mafia_doctor_enabled === undefined &&
     mafia_detective_enabled === undefined &&
+    mafia_bodyguard_enabled === undefined &&
+    mafia_mayor_enabled === undefined &&
+    mafia_vigilante_enabled === undefined &&
+    mafia_tracker_enabled === undefined &&
+    mafia_alpha_wolf_enabled === undefined &&
+    mafia_wolf_cub_enabled === undefined &&
+    mafia_framer_enabled === undefined &&
+    mafia_jester_enabled === undefined &&
+    mafia_serial_killer_enabled === undefined &&
+    mafia_arsonist_enabled === undefined &&
+    mafia_cupid_enabled === undefined &&
+    mafia_cursed_villager_enabled === undefined &&
     mafia_anonymous_votes === undefined &&
+    mafia_day_seconds === undefined &&
+    mafia_voting_seconds === undefined &&
     operative_timer_seconds === undefined &&
     quick_draw_variant === undefined &&
     quick_draw_play_mode === undefined &&
@@ -584,11 +612,41 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (timedLobbyType === 'mafia') {
     if (mafia_doctor_enabled !== undefined) gameUpdate.mafia_doctor_enabled = mafia_doctor_enabled
     if (mafia_detective_enabled !== undefined) gameUpdate.mafia_detective_enabled = mafia_detective_enabled
+    if (mafia_bodyguard_enabled !== undefined) gameUpdate.mafia_bodyguard_enabled = mafia_bodyguard_enabled
+    if (mafia_mayor_enabled !== undefined) gameUpdate.mafia_mayor_enabled = mafia_mayor_enabled
+    if (mafia_vigilante_enabled !== undefined) gameUpdate.mafia_vigilante_enabled = mafia_vigilante_enabled
+    if (mafia_tracker_enabled !== undefined) gameUpdate.mafia_tracker_enabled = mafia_tracker_enabled
+    if (mafia_alpha_wolf_enabled !== undefined) gameUpdate.mafia_alpha_wolf_enabled = mafia_alpha_wolf_enabled
+    if (mafia_wolf_cub_enabled !== undefined) gameUpdate.mafia_wolf_cub_enabled = mafia_wolf_cub_enabled
+    if (mafia_framer_enabled !== undefined) gameUpdate.mafia_framer_enabled = mafia_framer_enabled
+    if (mafia_jester_enabled !== undefined) gameUpdate.mafia_jester_enabled = mafia_jester_enabled
+    if (mafia_serial_killer_enabled !== undefined) gameUpdate.mafia_serial_killer_enabled = mafia_serial_killer_enabled
+    if (mafia_arsonist_enabled !== undefined) gameUpdate.mafia_arsonist_enabled = mafia_arsonist_enabled
+    if (mafia_cupid_enabled !== undefined) gameUpdate.mafia_cupid_enabled = mafia_cupid_enabled
+    if (mafia_cursed_villager_enabled !== undefined) {
+      gameUpdate.mafia_cursed_villager_enabled = mafia_cursed_villager_enabled
+    }
     if (mafia_anonymous_votes !== undefined) gameUpdate.mafia_anonymous_votes = mafia_anonymous_votes
+    if (mafia_day_seconds !== undefined) gameUpdate.mafia_day_seconds = mafia_day_seconds
+    if (mafia_voting_seconds !== undefined) gameUpdate.mafia_voting_seconds = mafia_voting_seconds
   } else if (
     mafia_doctor_enabled !== undefined ||
     mafia_detective_enabled !== undefined ||
-    mafia_anonymous_votes !== undefined
+    mafia_bodyguard_enabled !== undefined ||
+    mafia_mayor_enabled !== undefined ||
+    mafia_vigilante_enabled !== undefined ||
+    mafia_tracker_enabled !== undefined ||
+    mafia_alpha_wolf_enabled !== undefined ||
+    mafia_wolf_cub_enabled !== undefined ||
+    mafia_framer_enabled !== undefined ||
+    mafia_jester_enabled !== undefined ||
+    mafia_serial_killer_enabled !== undefined ||
+    mafia_arsonist_enabled !== undefined ||
+    mafia_cupid_enabled !== undefined ||
+    mafia_cursed_villager_enabled !== undefined ||
+    mafia_anonymous_votes !== undefined ||
+    mafia_day_seconds !== undefined ||
+    mafia_voting_seconds !== undefined
   ) {
     return NextResponse.json({ error: 'Special rules only apply to Mafia games' }, { status: 400 })
   }

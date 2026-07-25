@@ -79,7 +79,14 @@ import { UNO_QUICK_MESSAGES, unoQuickMessage } from '@/lib/uno-quick-messages'
  */
 
 type Screen =
-  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'playing' | 'finished' | 'not_found'
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
@@ -136,7 +143,8 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [{ table: 'games', column: 'id' }, 'uno_sessions', 'uno_player_hands'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   const rules = parseUnoRules(bootstrap.game)

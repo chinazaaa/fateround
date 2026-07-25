@@ -238,11 +238,17 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
 
 type WatchedTable = string | { table: string; column?: string }
 
+// Supabase postgres_changes occasionally drops a players INSERT/UPDATE event, and the
+// lobby (join / ready-up / play-again ring) has no other traffic to mask a drop the way
+// active play does. Reconcile on a short poll while waiting, on top of realtime.
+const LOBBY_POLL_INTERVAL_MS = 8000
+
 export function useGameTableSync(
   gameCode: string,
   tables: readonly WatchedTable[],
   reload: () => void | Promise<unknown>,
-  enabled = true
+  enabled = true,
+  gameStatus?: string
 ) {
   const reloadRef = useRef(reload)
   reloadRef.current = reload
@@ -317,12 +323,22 @@ export function useGameTableSync(
         .catch(() => {})
     })
 
+    const pollId =
+      gameStatus === 'waiting'
+        ? setInterval(() => {
+            void Promise.resolve()
+              .then(() => reloadRef.current())
+              .catch(() => {})
+          }, LOBBY_POLL_INTERVAL_MS)
+        : null
+
     return () => {
       if (debounce) clearTimeout(debounce)
+      if (pollId) clearInterval(pollId)
       appStateSub.remove()
       void supabase.removeChannel(channel)
     }
     // `tables` is intentionally keyed via tablesKey (contents, not identity).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, gameCode, tablesKey])
+  }, [enabled, gameCode, tablesKey, gameStatus])
 }

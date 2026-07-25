@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
-import type { GameType } from '@/types'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
+import type { Game, GameType } from '@/types'
 
 /**
  * The shared "waiting for the host to start" room for standard games (not team /
@@ -21,6 +22,7 @@ export function GameWaitingRoom({
   myPlayerId,
   myPlayerName,
   gameType,
+  game,
   spectating = false,
   onRenamed,
   onLeft,
@@ -35,6 +37,9 @@ export function GameWaitingRoom({
   myPlayerId: string
   myPlayerName: string
   gameType?: GameType | string
+  /** When set, renders the same settings pills shown on the join screen — so a player who
+   *  joined without reading closely can still see what they signed up for. */
+  game?: Game | null
   /** Show "Watching as" + a ready-to-play button for a spectator waiting to join. */
   spectating?: boolean
   onRenamed: (name: string) => void
@@ -80,6 +85,7 @@ export function GameWaitingRoom({
         </span>
         <h2 className="text-xl sm:text-2xl font-black text-body">{title}</h2>
         <p className="mt-1 text-sm text-muted">{subtitle}</p>
+        {game ? <GameInfoChips game={game} className="pt-3" /> : null}
         {spectating && onReady ? (
           <button
             type="button"

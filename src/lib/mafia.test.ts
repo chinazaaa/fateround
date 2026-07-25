@@ -1,0 +1,263 @@
+import { describe, it, expect } from 'vitest'
+import {
+  assignMafiaRoles,
+  resolveMafiaNight,
+  resolveMafiaDayVote,
+  checkMafiaWinCondition,
+  checkJesterWin,
+  checkLoversWin,
+  type MafiaRoleToggles,
+} from '@/lib/mafia'
+import type { MafiaPlayerState, MafiaSession, MafiaRole } from '@/types'
+
+const ALL_ENABLED: MafiaRoleToggles = {
+  doctor_enabled: true,
+  detective_enabled: true,
+  bodyguard_enabled: true,
+  mayor_enabled: true,
+  vigilante_enabled: true,
+  tracker_enabled: true,
+  alpha_wolf_enabled: true,
+  wolf_cub_enabled: true,
+  framer_enabled: true,
+  jester_enabled: true,
+  serial_killer_enabled: true,
+  arsonist_enabled: true,
+  cupid_enabled: true,
+  cursed_villager_enabled: true,
+}
+const NONE_ENABLED: MafiaRoleToggles = Object.fromEntries(
+  Object.keys(ALL_ENABLED).map((k) => [k, false])
+) as unknown as MafiaRoleToggles
+
+function ids(n: number): string[] {
+  return Array.from({ length: n }, (_, i) => `p${i + 1}`)
+}
+
+function makeState(overrides: Partial<MafiaPlayerState>): MafiaPlayerState {
+  return {
+    id: overrides.player_id ?? 'id',
+    game_id: 'G',
+    player_id: 'p1',
+    role: 'villager',
+    is_alive: true,
+    death_day: null,
+    death_cause: null,
+    night_action_target_player_id: null,
+    day_vote_target_player_id: null,
+    doused_by_arsonist: false,
+    vigilante_shots_used: 0,
+    is_lover: false,
+    lover_partner_player_id: null,
+    seat_number: 0,
+    created_at: '',
+    updated_at: '',
+    ...overrides,
+  }
+}
+
+const NIGHT_SESSION_BASE: Pick<
+  MafiaSession,
+  | 'doctor_enabled'
+  | 'detective_enabled'
+  | 'bodyguard_enabled'
+  | 'vigilante_enabled'
+  | 'tracker_enabled'
+  | 'framer_enabled'
+  | 'serial_killer_enabled'
+  | 'arsonist_enabled'
+  | 'wolf_cub_revenge_pending'
+> = {
+  doctor_enabled: true,
+  detective_enabled: true,
+  bodyguard_enabled: true,
+  vigilante_enabled: true,
+  tracker_enabled: true,
+  framer_enabled: true,
+  serial_killer_enabled: true,
+  arsonist_enabled: true,
+  wolf_cub_revenge_pending: false,
+}
+
+describe('assignMafiaRoles', () => {
+  it('fills all 16 roles when everything is enabled and slots allow', () => {
+    const playerIds = ids(16)
+    const assignments = assignMafiaRoles(playerIds, ALL_ENABLED, 4)
+    const roles = new Set(Object.values(assignments))
+    // mafiaCount=4 with alpha_wolf+wolf_cub each converting one base mafia slot leaves 2 plain 'mafia'
+    expect(roles.has('alpha_wolf')).toBe(true)
+    expect(roles.has('wolf_cub')).toBe(true)
+    expect(roles.has('mafia')).toBe(true)
+    const optionalRoles: MafiaRole[] = [
+      'doctor',
+      'detective',
+      'bodyguard',
+      'mayor',
+      'vigilante',
+      'tracker',
+      'framer',
+      'jester',
+      'serial_killer',
+      'arsonist',
+      'cupid',
+      'cursed_villager',
+    ]
+    for (const role of optionalRoles) {
+      expect(roles.has(role)).toBe(true)
+    }
+    expect(Object.keys(assignments)).toHaveLength(16)
+  })
+
+  it('does not assign alpha_wolf or wolf_cub when mafiaCount < 2', () => {
+    const playerIds = ids(6)
+    const assignments = assignMafiaRoles(playerIds, ALL_ENABLED, 1)
+    const roles = Object.values(assignments)
+    expect(roles).not.toContain('alpha_wolf')
+    expect(roles).not.toContain('wolf_cub')
+    expect(roles).toContain('mafia')
+  })
+
+  it('falls back to villagers when everything is disabled', () => {
+    const playerIds = ids(5)
+    const assignments = assignMafiaRoles(playerIds, NONE_ENABLED, 1)
+    const roles = Object.values(assignments)
+    expect(roles.filter((r) => r === 'mafia')).toHaveLength(1)
+    expect(roles.filter((r) => r === 'villager')).toHaveLength(4)
+  })
+})
+
+describe('resolveMafiaNight', () => {
+  it('bodyguard sacrifices themselves when protecting the mafia kill target', () => {
+    const bodyguard = makeState({ id: 'bg', player_id: 'bg', role: 'bodyguard', night_action_target_player_id: 'v1' })
+    const mafia = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'v1' })
+    const victim = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [bodyguard, mafia, victim])
+    expect(result.bodyguardSacrificePlayerId).toBe('bg')
+    expect(result.deaths).toEqual([{ playerId: 'bg', cause: 'mafia_kill' }])
+  })
+
+  it('produces independent mafia-kill and serial-kill deaths the same night', () => {
+    const mafia = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'v1' })
+    const sk = makeState({ id: 'sk', player_id: 'sk', role: 'serial_killer', night_action_target_player_id: 'v2' })
+    const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+    const v2 = makeState({ id: 'v2', player_id: 'v2', role: 'villager' })
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, sk, v1, v2])
+    const ids = result.deaths.map((d) => d.playerId).sort()
+    expect(ids).toEqual(['v1', 'v2'])
+    expect(result.deaths.find((d) => d.playerId === 'v1')?.cause).toBe('mafia_kill')
+    expect(result.deaths.find((d) => d.playerId === 'v2')?.cause).toBe('serial_kill')
+  })
+
+  it('converts Cursed Villager to mafia instead of killing them', () => {
+    const mafia = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'cv' })
+    const cursed = makeState({ id: 'cv', player_id: 'cv', role: 'cursed_villager' })
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, cursed])
+    expect(result.cursedConvertedPlayerId).toBe('cv')
+    expect(result.deaths).toHaveLength(0)
+  })
+
+  it('sets wolfCubDiedThisNight when the wolf cub is killed', () => {
+    const mafia = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'wc' })
+    const cub = makeState({ id: 'wc', player_id: 'wc', role: 'wolf_cub' })
+    // A second mafia-team member must vote too so the plurality points at the cub's killer,
+    // but here we simulate the cub having been voted (e.g. lynched earlier) by making it the mafia kill target directly.
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, cub])
+    expect(result.deaths.map((d) => d.playerId)).toContain('wc')
+    expect(result.wolfCubDiedThisNight).toBe(true)
+  })
+
+  it('applies the wolf cub revenge bonus kill to the runner-up vote', () => {
+    const m1 = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'v1' })
+    const m2 = makeState({ id: 'm2', player_id: 'm2', role: 'mafia', night_action_target_player_id: 'v1' })
+    const m3 = makeState({ id: 'm3', player_id: 'm3', role: 'mafia', night_action_target_player_id: 'v2' })
+    const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+    const v2 = makeState({ id: 'v2', player_id: 'v2', role: 'villager' })
+    const result = resolveMafiaNight({ ...NIGHT_SESSION_BASE, wolf_cub_revenge_pending: true }, [m1, m2, m3, v1, v2])
+    const ids = result.deaths.map((d) => d.playerId).sort()
+    expect(ids).toEqual(['v1', 'v2'])
+  })
+})
+
+describe('resolveMafiaDayVote', () => {
+  it('lynches only on a strict majority, no lynch on a tie', () => {
+    const a = makeState({ id: 'a', player_id: 'a', day_vote_target_player_id: 'x' })
+    const b = makeState({ id: 'b', player_id: 'b', day_vote_target_player_id: 'y' })
+    expect(resolveMafiaDayVote([a, b])).toBeNull()
+  })
+
+  it('lynches the majority target', () => {
+    const a = makeState({ id: 'a', player_id: 'a', day_vote_target_player_id: 'x' })
+    const b = makeState({ id: 'b', player_id: 'b', day_vote_target_player_id: 'x' })
+    const c = makeState({ id: 'c', player_id: 'c', day_vote_target_player_id: 'y' })
+    expect(resolveMafiaDayVote([a, b, c])).toBe('x')
+  })
+
+  it('no lynch when the leader falls short of a strict majority', () => {
+    const a = makeState({ id: 'a', player_id: 'a', day_vote_target_player_id: 'x' })
+    const b = makeState({ id: 'b', player_id: 'b', day_vote_target_player_id: 'y' })
+    const c = makeState({ id: 'c', player_id: 'c', day_vote_target_player_id: 'z' })
+    const d = makeState({ id: 'd', player_id: 'd', day_vote_target_player_id: null })
+    expect(resolveMafiaDayVote([a, b, c, d])).toBeNull()
+  })
+
+  it("doubles the mayor's vote toward the majority", () => {
+    const mayor = makeState({ id: 'mayor', player_id: 'mayor', role: 'mayor', day_vote_target_player_id: 'x' })
+    const b = makeState({ id: 'b', player_id: 'b', day_vote_target_player_id: 'y' })
+    const c = makeState({ id: 'c', player_id: 'c', day_vote_target_player_id: 'y' })
+    // Without the mayor's double vote this would be a 2-1 for 'y' (2/3 = majority for y);
+    // with mayor's double vote it's x:2, y:2 → tie → no lynch.
+    expect(resolveMafiaDayVote([mayor, b, c])).toBeNull()
+  })
+})
+
+describe('checkJesterWin', () => {
+  it('is true only when the just-lynched player is the jester', () => {
+    const jester = makeState({ id: 'j', player_id: 'j', role: 'jester', is_alive: false })
+    const villager = makeState({ id: 'v', player_id: 'v', role: 'villager', is_alive: false })
+    expect(checkJesterWin('j', [jester, villager])).toBe(true)
+    expect(checkJesterWin('v', [jester, villager])).toBe(false)
+    expect(checkJesterWin(null, [jester, villager])).toBe(false)
+  })
+})
+
+describe('checkLoversWin', () => {
+  it('is true only when both lovers are alive', () => {
+    const a = makeState({ id: 'a', player_id: 'a', is_lover: true, is_alive: true })
+    const b = makeState({ id: 'b', player_id: 'b', is_lover: true, is_alive: true })
+    expect(checkLoversWin([a, b])).toBe(true)
+    const bDead = { ...b, is_alive: false }
+    expect(checkLoversWin([a, bDead])).toBe(false)
+  })
+
+  it('is false when there are no lovers', () => {
+    const a = makeState({ id: 'a', player_id: 'a' })
+    expect(checkLoversWin([a])).toBe(false)
+  })
+})
+
+describe('checkMafiaWinCondition priority', () => {
+  it('village wins when no mafia or solo killers remain alive', () => {
+    const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+    const v2 = makeState({ id: 'v2', player_id: 'v2', role: 'doctor' })
+    expect(checkMafiaWinCondition([v1, v2])).toBe('village')
+  })
+
+  it('mafia wins at parity with villagers', () => {
+    const m = makeState({ id: 'm', player_id: 'm', role: 'mafia' })
+    const v = makeState({ id: 'v', player_id: 'v', role: 'villager' })
+    expect(checkMafiaWinCondition([m, v])).toBe('mafia')
+  })
+
+  it('serial killer wins as the last one standing alone', () => {
+    const sk = makeState({ id: 'sk', player_id: 'sk', role: 'serial_killer' })
+    const deadVillager = makeState({ id: 'v', player_id: 'v', role: 'villager', is_alive: false })
+    expect(checkMafiaWinCondition([sk, deadVillager])).toBe('serial_killer')
+  })
+
+  it('returns null mid-game when no win condition is met', () => {
+    const m = makeState({ id: 'm', player_id: 'm', role: 'mafia' })
+    const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+    const v2 = makeState({ id: 'v2', player_id: 'v2', role: 'villager' })
+    expect(checkMafiaWinCondition([m, v1, v2])).toBeNull()
+  })
+})

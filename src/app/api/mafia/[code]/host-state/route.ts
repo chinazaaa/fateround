@@ -1,6 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import type { MafiaPlayerState, MafiaSession } from '@/types'
+import type { MafiaPlayerState, MafiaSession, MafiaRole } from '@/types'
+
+const ROLE_ENABLED_KEYS = [
+  'doctor_enabled',
+  'detective_enabled',
+  'bodyguard_enabled',
+  'mayor_enabled',
+  'vigilante_enabled',
+  'tracker_enabled',
+  'alpha_wolf_enabled',
+  'wolf_cub_enabled',
+  'framer_enabled',
+  'jester_enabled',
+  'serial_killer_enabled',
+  'arsonist_enabled',
+  'cupid_enabled',
+  'cursed_villager_enabled',
+] as const
+
+function enabledRolesFrom(session: Pick<MafiaSession, (typeof ROLE_ENABLED_KEYS)[number]>): MafiaRole[] {
+  const roles: MafiaRole[] = ['villager', 'mafia']
+  const map: Record<(typeof ROLE_ENABLED_KEYS)[number], MafiaRole> = {
+    doctor_enabled: 'doctor',
+    detective_enabled: 'detective',
+    bodyguard_enabled: 'bodyguard',
+    mayor_enabled: 'mayor',
+    vigilante_enabled: 'vigilante',
+    tracker_enabled: 'tracker',
+    alpha_wolf_enabled: 'alpha_wolf',
+    wolf_cub_enabled: 'wolf_cub',
+    framer_enabled: 'framer',
+    jester_enabled: 'jester',
+    serial_killer_enabled: 'serial_killer',
+    arsonist_enabled: 'arsonist',
+    cupid_enabled: 'cupid',
+    cursed_villager_enabled: 'cursed_villager',
+  }
+  for (const key of ROLE_ENABLED_KEYS) {
+    if (session[key]) roles.push(map[key])
+  }
+  return roles
+}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -23,7 +64,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { data: game } = await admin
     .from('games')
     .select(
-      'host_token, status, title, max_players, timer_seconds, mafia_doctor_enabled, mafia_detective_enabled, mafia_anonymous_votes, replay_pending, theme, is_public'
+      'host_token, status, title, max_players, timer_seconds, mafia_doctor_enabled, mafia_detective_enabled, mafia_bodyguard_enabled, mafia_mayor_enabled, mafia_vigilante_enabled, mafia_tracker_enabled, mafia_alpha_wolf_enabled, mafia_wolf_cub_enabled, mafia_framer_enabled, mafia_jester_enabled, mafia_serial_killer_enabled, mafia_arsonist_enabled, mafia_cupid_enabled, mafia_cursed_villager_enabled, mafia_anonymous_votes, replay_pending, theme, is_public'
     )
     .eq('id', gameId)
     .maybeSingle()
@@ -36,25 +77,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   // 2. Fetch mafia sessions and player states
   const [{ data: playersData }, { data: mafiaSession }, { data: mafiaPlayerStates }] = await Promise.all([
-    admin.from('players').select('id, name, spectator, is_eliminated').eq('game_id', gameId),
+    admin
+      .from('players')
+      .select('id, name, spectator, is_eliminated')
+      .eq('game_id', gameId)
+      .order('joined_at', { ascending: true }),
     admin.from('mafia_sessions').select('*').eq('game_id', gameId).maybeSingle(),
-    admin.from('mafia_player_states').select('*').eq('game_id', gameId),
+    admin.from('mafia_player_states').select('*').eq('game_id', gameId).order('seat_number', { ascending: true }),
   ])
 
   if (!mafiaSession || !mafiaPlayerStates) {
     if (game.status === 'waiting') {
-      const hostPlayers = (playersData ?? [])
-        .filter((p) => p.spectator !== true)
-        .map((p) => ({
-          id: p.id,
-          name: p.name ?? 'Unknown',
-          isAlive: true,
-          role: 'villager' as const,
-          deathDay: null,
-          deathCause: null,
-          nightActionTargetPlayerId: null,
-          dayVoteTargetPlayerId: null,
-        }))
+      const hostPlayers = (playersData ?? []).map((p, index) => ({
+        id: p.id,
+        seatNumber: index + 1,
+        name: p.name ?? 'Unknown',
+        isAlive: true,
+        role: 'villager' as const,
+        deathDay: null,
+        deathCause: null,
+        nightActionTargetPlayerId: null,
+        dayVoteTargetPlayerId: null,
+        spectator: p.spectator === true,
+      }))
       return NextResponse.json({
         gameTitle: game.title,
         status: 'waiting',
@@ -76,6 +121,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         mafiaTargetPlayerId: null,
         doctorTargetPlayerId: null,
         detectTargetPlayerId: null,
+        enabledRoles: enabledRolesFrom({
+          doctor_enabled: game.mafia_doctor_enabled !== false,
+          detective_enabled: game.mafia_detective_enabled !== false,
+          bodyguard_enabled: game.mafia_bodyguard_enabled !== false,
+          mayor_enabled: game.mafia_mayor_enabled !== false,
+          vigilante_enabled: game.mafia_vigilante_enabled !== false,
+          tracker_enabled: game.mafia_tracker_enabled !== false,
+          alpha_wolf_enabled: game.mafia_alpha_wolf_enabled !== false,
+          wolf_cub_enabled: game.mafia_wolf_cub_enabled !== false,
+          framer_enabled: game.mafia_framer_enabled !== false,
+          jester_enabled: game.mafia_jester_enabled !== false,
+          serial_killer_enabled: game.mafia_serial_killer_enabled !== false,
+          arsonist_enabled: game.mafia_arsonist_enabled !== false,
+          cupid_enabled: game.mafia_cupid_enabled !== false,
+          cursed_villager_enabled: game.mafia_cursed_villager_enabled !== false,
+        }),
       })
     }
     return NextResponse.json({ error: 'Game session not initialized' }, { status: 404 })
@@ -84,19 +145,38 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const session = mafiaSession as MafiaSession
   const playerStates = mafiaPlayerStates as MafiaPlayerState[]
 
-  // Combine player info with their mafia states
-  const playersMap = new Map(playersData?.map((p) => [p.id, p]) ?? [])
-  const hostPlayers = playerStates.map((ps) => {
-    const p = playersMap.get(ps.player_id)
+  // Combine player info with their mafia states. Every seated player has a mafia_player_state
+  // row (assigned at game start), but a host who joined "Host only" mid-game is a spectator
+  // row with no game role at all — included here as a placeholder entry (not in the play, but
+  // still needs to show up in the roster/manage list and the host-seat mode reconciliation).
+  const stateByPlayerId = new Map(playerStates.map((ps) => [ps.player_id, ps]))
+  const hostPlayers = (playersData ?? []).map((p) => {
+    const ps = stateByPlayerId.get(p.id)
+    if (ps) {
+      return {
+        id: p.id,
+        seatNumber: ps.seat_number,
+        name: p.name ?? 'Unknown',
+        isAlive: ps.is_alive,
+        role: ps.role,
+        deathDay: ps.death_day,
+        deathCause: ps.death_cause,
+        nightActionTargetPlayerId: ps.night_action_target_player_id,
+        dayVoteTargetPlayerId: ps.day_vote_target_player_id,
+        spectator: p.spectator === true,
+      }
+    }
     return {
-      id: ps.player_id,
-      name: p?.name ?? 'Unknown',
-      isAlive: ps.is_alive,
-      role: ps.role,
-      deathDay: ps.death_day,
-      deathCause: ps.death_cause,
-      nightActionTargetPlayerId: ps.night_action_target_player_id,
-      dayVoteTargetPlayerId: ps.day_vote_target_player_id,
+      id: p.id,
+      seatNumber: 0,
+      name: p.name ?? 'Unknown',
+      isAlive: true,
+      role: 'villager' as const,
+      deathDay: null,
+      deathCause: null,
+      nightActionTargetPlayerId: null,
+      dayVoteTargetPlayerId: null,
+      spectator: true,
     }
   })
 
@@ -121,5 +201,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mafiaTargetPlayerId: session.mafia_target_player_id,
     doctorTargetPlayerId: session.doctor_target_player_id,
     detectTargetPlayerId: session.detect_target_player_id,
+    enabledRoles: enabledRolesFrom(session),
   })
 }

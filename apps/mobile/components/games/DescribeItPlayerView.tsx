@@ -168,7 +168,8 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
       'describe_it_guesses',
     ],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   const mode = clampDescribeItMode(bootstrap.game?.describe_it_mode)

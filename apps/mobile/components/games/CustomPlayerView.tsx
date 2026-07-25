@@ -84,7 +84,8 @@ export function CustomPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [{ table: 'games', column: 'id' }, 'rounds', 'participants', 'votes'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   const currentRound = useMemo(() => {

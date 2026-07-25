@@ -211,7 +211,8 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [{ table: 'games', column: 'id' }, 'rounds', 'crossword_submissions'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   // Tick once a second while playing so the live time column stays fresh.

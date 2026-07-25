@@ -88,7 +88,8 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     ['players', { table: 'games', column: 'id' }, 'tic_tac_toe_sessions'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   const activeSessionEarly = session ?? bootstrap.gameState

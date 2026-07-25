@@ -108,7 +108,8 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [{ table: 'games', column: 'id' }, 'rounds', 'participants'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   const currentRound = useMemo(() => {

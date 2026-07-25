@@ -66,7 +66,9 @@ import {
   isSudokuGame,
   isTwoTruthsGame,
   isPingPongGame,
+  isMafiaGame,
 } from '@/lib/game-types'
+import { announceMafiaLateJoin } from '@/lib/mafia'
 import { fetchGamePlayerLimits, isLobbyLimitGameType, lobbyMaxPlayersFromGame } from '@/lib/game-limits'
 import { isGenderFreeImportJoin, isGenderFreeJoinersJoin, isGenderFreeVotersJoin } from '@/lib/gender-based'
 import { isImportClaimMode, isJoinersPollMode, isVoterOnlyMode } from '@/lib/participant-mode'
@@ -984,6 +986,10 @@ export async function POST(req: NextRequest) {
         await getSupabaseAdmin().from('players').delete().eq('id', player.id)
         return NextResponse.json({ error: assignError }, { status: 500 })
       }
+    }
+
+    if (isMafiaGame(gameType) && game.status === 'active') {
+      await announceMafiaLateJoin(getSupabaseAdmin(), id, player.name)
     }
 
     return jsonPlayerJoin(roomMemberId, player, game as Game)

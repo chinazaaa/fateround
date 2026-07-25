@@ -39,6 +39,7 @@ export const GAME_LABELS: Partial<Record<GameType, string>> = {
   anonymous_messages: 'Anonymous Messages',
   secret_message: 'Secret Message',
   landmine: 'Landmine',
+  ping_pong: 'Ping Pong',
 }
 
 export { MOBILE_SUPPORTED_GAMES }
