@@ -309,17 +309,41 @@ export async function runMafiaAdvance(
             ? `🏥 Night ${session.day_number}: Your target was attacked — you saved them!`
             : `🏥 Night ${session.day_number}: Your target was not attacked.`,
         })
+        if (wasAttacked) {
+          privateMessages.push({
+            target_player_id: doctorTarget,
+            message: `🏥 Night ${session.day_number}: You were saved last night!`,
+          })
+        }
       }
     }
 
     // Bodyguard
     if (bodyguardTarget) {
-      const bodyguard = playerStates.find((p) => p.role === 'bodyguard' && p.is_alive)
-      if (bodyguard && bodyguardSacrificePlayerId) {
-        privateMessages.push({
-          target_player_id: bodyguard.player_id,
-          message: `🛡️ Night ${session.day_number}: Your target was attacked — you sacrificed yourself to save them.`,
-        })
+      const bodyguard = playerStates.find((p) => p.role === 'bodyguard')
+      if (bodyguard) {
+        const bodyguardProtectedTarget = bodyguardTarget === mafiaTarget || bodyguardTarget === serialKillerTarget
+        const bodyguardProtectedSelf = bodyguard.player_id === mafiaTarget || bodyguard.player_id === serialKillerTarget
+
+        if (bodyguardSacrificePlayerId) {
+          privateMessages.push({
+            target_player_id: bodyguard.player_id,
+            message: `🛡️ Night ${session.day_number}: Your target was attacked — you took a fatal hit protecting them.`,
+          })
+        } else if (bodyguardProtectedTarget || bodyguardProtectedSelf) {
+          privateMessages.push({
+            target_player_id: bodyguard.player_id,
+            message: `🛡️ Night ${session.day_number}: You absorbed an attack but survived! One more hit will kill you.`,
+          })
+        }
+
+        // Tell the protected player they were saved
+        if (bodyguardProtectedTarget && bodyguardTarget !== bodyguard.player_id) {
+          privateMessages.push({
+            target_player_id: bodyguardTarget,
+            message: `🛡️ Night ${session.day_number}: You were protected last night — someone took the hit for you.`,
+          })
+        }
       }
     }
 
