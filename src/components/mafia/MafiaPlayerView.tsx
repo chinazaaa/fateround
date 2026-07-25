@@ -463,15 +463,12 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       phaseDeadline,
       players: publicPlayers,
       myState,
-      lastNightMafiaHadTarget,
-      lastVoteResultPlayerId,
       dayChatMessages,
       ghostChatMessages,
       voteTallies,
       voteChoices,
       votedPlayerIds,
       anonymousVotes,
-      votesRequired,
       enabledRoles,
       roleCounts,
     } = mafiaState
@@ -479,11 +476,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     const me = publicPlayers.find((p) => p.id === myPlayerId)
     const amISpectator = !!myPlayerId && me == null
     const amIAlive = me != null && me.isAlive !== false
-    const votedPlayer = publicPlayers.find((p) => p.id === lastVoteResultPlayerId)
     const myRole = myState?.role
-    const newlyDeadTonight = publicPlayers.filter(
-      (p) => !p.isAlive && p.deathDay === dayNumber && p.deathCause !== 'village_vote'
-    )
 
     // Tap-a-tile action routing: which roster taps do what, depending on phase/role. Cupid's
     // two-step pick and the current highlighted selection are tracked in local state above.
@@ -523,61 +516,6 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     const cupidFirstPickName = cupidFirstPick
       ? (publicPlayers.find((p) => p.id === cupidFirstPick)?.name ?? null)
       : null
-
-    // Public phase narrative — folded into the shared activity feed (below) as system lines,
-    // since it's visible to the whole town, not just the acting player. Killer attribution
-    // matches Wolvesville's "The Mafia killed #8 Michelle (Villager)" style — the role is
-    // already publicly revealed on death (the roster tile shows it too), so naming it here
-    // doesn't leak anything new.
-    const KILLER_LABEL: Record<string, string> = {
-      mafia_kill: 'The Mafia',
-      serial_kill: 'The Serial Killer',
-      arson: 'The Arsonist',
-      vigilante_kill: 'The Vigilante',
-    }
-    const systemLines: { id: string; text: string; tone?: 'default' | 'danger' | 'success' }[] = []
-    if (phase === 'day_report') {
-      if (newlyDeadTonight.length > 0) {
-        newlyDeadTonight.forEach((p) => {
-          const killer = p.deathCause ? (KILLER_LABEL[p.deathCause] ?? 'Someone') : 'Someone'
-          const roleText = p.role ? ` (${p.role.replace(/_/g, ' ')})` : ''
-          systemLines.push({
-            id: `death-${p.id}`,
-            text: `☠️ ${killer} killed #${p.seatNumber} ${p.name}${roleText}`,
-            tone: 'danger',
-          })
-        })
-      } else {
-        systemLines.push({
-          id: 'no-death',
-          text: lastNightMafiaHadTarget
-            ? '🏥 The Doctor saved the village last night!'
-            : '😴 No one was attacked last night.',
-          tone: 'success',
-        })
-      }
-    } else if (phase === 'day') {
-      systemLines.push({ id: `day-${dayNumber}`, text: `☀️ Day ${dayNumber} has started. Get ready to discuss!` })
-    } else if (phase === 'voting') {
-      systemLines.push({
-        id: `voting-${dayNumber}`,
-        text: votesRequired
-          ? `🗳️ Get ready to vote! (${votesRequired} vote${votesRequired === 1 ? '' : 's'} required)`
-          : '🗳️ Voting has begun.',
-      })
-    } else if (phase === 'elimination') {
-      systemLines.push(
-        votedPlayer
-          ? {
-              id: `elim-${dayNumber}`,
-              text: `⚖️ The Village killed #${votedPlayer.seatNumber} ${votedPlayer.name}${
-                votedPlayer.role ? ` (${votedPlayer.role.replace(/_/g, ' ')})` : ''
-              }`,
-              tone: 'danger',
-            }
-          : { id: `elim-${dayNumber}`, text: '🤝 No majority reached — nobody was eliminated.' }
-      )
-    }
 
     return (
       <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col">
@@ -659,7 +597,6 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                 onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
                 myPlayerId={myPlayerId}
                 players={publicPlayers}
-                systemLines={systemLines}
                 disabled={amISpectator}
               />
             </div>

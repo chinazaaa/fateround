@@ -10,6 +10,13 @@ import {
 } from '@/lib/mafia'
 import type { MafiaPlayerState, MafiaSession, MafiaPhase } from '@/types'
 
+const KILLER_LABEL: Record<string, string> = {
+  mafia_kill: 'The Mafia',
+  serial_kill: 'The Serial Killer',
+  arson: 'The Arsonist',
+  vigilante_kill: 'The Vigilante',
+}
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
   const gameId = code.toUpperCase()
@@ -24,16 +31,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { hostToken, nextPhase, isAuto } = body
 
-  // 1. Fetch game, session, and player states
-  const [{ data: game }, { data: mafiaSession }, { data: mafiaPlayerStates }] = await Promise.all([
-    admin
-      .from('games')
-      .select('host_token, status, timer_seconds, mafia_day_seconds, mafia_voting_seconds')
-      .eq('id', gameId)
-      .maybeSingle(),
-    admin.from('mafia_sessions').select('*').eq('game_id', gameId).maybeSingle(),
-    admin.from('mafia_player_states').select('*').eq('game_id', gameId),
-  ])
+  // 1. Fetch game, session, player states, and player names (for system-message text)
+  const [{ data: game }, { data: mafiaSession }, { data: mafiaPlayerStates }, { data: playersData }] =
+    await Promise.all([
+      admin
+        .from('games')
+        .select('host_token, status, timer_seconds, mafia_day_seconds, mafia_voting_seconds')
+        .eq('id', gameId)
+        .maybeSingle(),
+      admin.from('mafia_sessions').select('*').eq('game_id', gameId).maybeSingle(),
+      admin.from('mafia_player_states').select('*').eq('game_id', gameId),
+      admin.from('players').select('id, name').eq('game_id', gameId),
+    ])
 
   if (!game || !mafiaSession || !mafiaPlayerStates) {
     return NextResponse.json({ error: 'Game or session not initialized' }, { status: 404 })
@@ -41,6 +50,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const session = mafiaSession as MafiaSession
   const playerStates = mafiaPlayerStates as MafiaPlayerState[]
+  const nameById = new Map((playersData ?? []).map((p) => [p.id, p.name]))
+  const playerLabel = (playerId: string) => {
+    const ps = playerStates.find((p) => p.player_id === playerId)
+    const name = nameById.get(playerId) ?? 'Unknown'
+    return ps ? `#${ps.seat_number} ${name}` : name
+  }
+  const roleLabel = (role: string) => `(${role.replace(/_/g, ' ')})`
 
   let authorized = false
   if (typeof hostToken === 'string' && game.host_token === hostToken) {
@@ -62,10 +78,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const currentPhase = session.phase
   const phaseOrder: MafiaPhase[] = ['role_reveal', 'night', 'day_report', 'day', 'voting', 'elimination']
+  const idxForCurrent = phaseOrder.indexOf(currentPhase)
+  // The only legal target from any given phase is the very next one in sequence (or 'night'
+  // when wrapping from 'elimination') — an explicit nextPhase that skips ahead would bypass
+  // the night/vote resolution branches below (deaths, win checks, system messages), silently
+  // fast-forwarding the game. Reject anything else instead of trusting the caller.
+  const legalNextPhase: MafiaPhase =
+    idxForCurrent === -1 || currentPhase === 'elimination' ? 'night' : phaseOrder[idxForCurrent + 1]
   let targetPhase: MafiaPhase
   if (typeof nextPhase === 'string') {
     if (!phaseOrder.includes(nextPhase as MafiaPhase)) {
       return NextResponse.json({ error: 'Invalid phase' }, { status: 400 })
+    }
+    if (nextPhase !== legalNextPhase) {
+      return NextResponse.json(
+        { error: `Cannot advance from ${currentPhase} to ${nextPhase} — next phase must be ${legalNextPhase}` },
+        { status: 400 }
+      )
     }
     targetPhase = nextPhase as MafiaPhase
   } else {
@@ -82,21 +111,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     phase: targetPhase,
   }
 
+  // Public system-log lines for this transition — persisted as real chat messages (scope
+  // 'day', sentinel sender) below, so the full history stays in the feed permanently instead
+  // of a single ephemeral "current phase" banner that gets replaced the moment the phase
+  // (often a brief 10s one) moves on.
+  const systemMessages: string[] = []
+
   // Define timer durations — Night, Day (discussion), and Voting each have their own dial,
   // matching Wolvesville's separate phase timers rather than one duration doubled for day.
+  // Day Report/Elimination are brief announcement beats, not player-input phases — kept
+  // short but not razor-thin, so the outcome is readable before the next phase starts.
   let durationSeconds = 30
   if (targetPhase === 'role_reveal') {
     durationSeconds = 10
   } else if (targetPhase === 'night') {
     durationSeconds = game.timer_seconds || 45
   } else if (targetPhase === 'day_report') {
-    durationSeconds = 8
+    durationSeconds = 12
   } else if (targetPhase === 'day') {
     durationSeconds = game.mafia_day_seconds || 90
   } else if (targetPhase === 'voting') {
     durationSeconds = game.mafia_voting_seconds || 45
   } else if (targetPhase === 'elimination') {
-    durationSeconds = 8
+    durationSeconds = 12
   }
 
   updateFields.phase_deadline = new Date(Date.now() + durationSeconds * 1000).toISOString()
@@ -146,6 +183,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
 
     for (const death of deaths) {
+      const deadState = playerStates.find((p) => p.player_id === death.playerId)
       await admin
         .from('mafia_player_states')
         .update({ is_alive: false, death_day: session.day_number, death_cause: death.cause })
@@ -154,6 +192,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       await admin.from('players').update({ is_eliminated: true }).eq('game_id', gameId).eq('id', death.playerId)
       const pIndex = playerStates.findIndex((p) => p.player_id === death.playerId)
       if (pIndex !== -1) playerStates[pIndex].is_alive = false
+      systemMessages.push(
+        `☠️ ${KILLER_LABEL[death.cause] ?? 'Someone'} killed ${playerLabel(death.playerId)}${
+          deadState ? ` ${roleLabel(deadState.role)}` : ''
+        }`
+      )
+    }
+    if (deaths.length === 0) {
+      systemMessages.push(mafiaTarget ? '🏥 Someone was saved!' : '😴 No one was attacked last night.')
     }
 
     // Check win condition
@@ -170,6 +216,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     updateFields.vote_result_player_id = votedPlayerId
 
     if (votedPlayerId) {
+      const votedState = playerStates.find((p) => p.player_id === votedPlayerId)
       // Set eliminated player is_alive = false
       await admin
         .from('mafia_player_states')
@@ -189,6 +236,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       if (pIndex !== -1) {
         playerStates[pIndex].is_alive = false
       }
+      systemMessages.push(
+        `⚖️ The Village killed ${playerLabel(votedPlayerId)}${votedState ? ` ${roleLabel(votedState.role)}` : ''}`
+      )
+    } else {
+      systemMessages.push('🤝 No majority reached — nobody was eliminated.')
     }
 
     // Jester wins outright if they were just lynched, ahead of the normal team win check
@@ -264,6 +316,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .eq('game_id', gameId)
   }
 
+  if (targetPhase === 'day' && currentPhase === 'day_report') {
+    systemMessages.push(`☀️ Day ${session.day_number} has started. Get ready to discuss!`)
+  } else if (targetPhase === 'voting' && currentPhase === 'day') {
+    const aliveCount = playerStates.filter((p) => p.is_alive).length
+    const votesRequired = Math.floor(aliveCount / 2) + 1
+    systemMessages.push(`🗳️ Get ready to vote! (${votesRequired} vote${votesRequired === 1 ? '' : 's'} required)`)
+  }
+
   // 4. Save session updates — guard with current phase to prevent double-processing
   const { error: sessionError, data: updatedSession } = await admin
     .from('mafia_sessions')
@@ -278,8 +338,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   if (!updatedSession || updatedSession.length === 0) {
-    // Another request already advanced this phase — treat as success
+    // Another request already advanced this phase — treat as success, and skip logging (the
+    // request that actually applied the transition already did).
     return NextResponse.json({ success: true })
+  }
+
+  if (systemMessages.length > 0) {
+    await admin.from('mafia_chat_messages').insert(
+      systemMessages.map((message) => ({
+        game_id: gameId,
+        sender_player_id: 'system',
+        sender_name: '📢',
+        message,
+        scope: 'day',
+      }))
+    )
   }
 
   return NextResponse.json({ success: true })

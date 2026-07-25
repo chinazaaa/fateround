@@ -144,8 +144,8 @@ export function MafiaPlayersGrid({
                 )
               )}
               {(votingForSeat != null || (anonymousVotes && hasVoted)) && (
-                <span className="absolute bottom-0 inset-x-0 h-[38%] flex items-center justify-center rounded-b-2xl bg-gradient-to-b from-amber-800 to-amber-900 border-t-2 border-amber-950/40">
-                  <span className="text-lg font-black text-white drop-shadow leading-none">
+                <span className="absolute bottom-0 inset-x-0 h-[22%] flex items-center justify-center rounded-b-2xl bg-gradient-to-b from-amber-800 to-amber-900 border-t-2 border-amber-950/40">
+                  <span className="text-sm font-black text-white drop-shadow leading-none">
                     {votingForSeat != null ? votingForSeat : '?'}
                   </span>
                 </span>

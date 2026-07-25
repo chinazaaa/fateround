@@ -414,23 +414,6 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
               <span>➡️</span>
               <span>Advance to Next Phase</span>
             </button>
-
-            <div className="grid grid-cols-2 gap-2 pt-4 border-t border-indigo-950/60">
-              <button
-                disabled={acting || phase === 'game_over'}
-                onClick={() => advancePhase('night')}
-                className="py-2 bg-indigo-950/50 hover:bg-indigo-900/60 text-xs font-medium rounded border border-indigo-900/40 transition"
-              >
-                Force Night
-              </button>
-              <button
-                disabled={acting || phase === 'game_over'}
-                onClick={() => advancePhase('day')}
-                className="py-2 bg-indigo-950/50 hover:bg-indigo-900/60 text-xs font-medium rounded border border-indigo-900/40 transition"
-              >
-                Force Day
-              </button>
-            </div>
           </div>
         </div>
 
