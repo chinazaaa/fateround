@@ -24,4 +24,8 @@ AS $$
   RETURNING skip_requested_player_ids;
 $$;
 
+-- Postgres grants EXECUTE to PUBLIC by default on a new function — without revoking it,
+-- anon/authenticated could call this RPC directly via PostgREST, appending arbitrary player
+-- ids and bypassing the route's assertPlayer/resumeToken check entirely.
+REVOKE EXECUTE ON FUNCTION mafia_append_skip_request(text, text, uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION mafia_append_skip_request(text, text, uuid) TO service_role;
