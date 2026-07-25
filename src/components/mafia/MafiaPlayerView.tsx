@@ -343,6 +343,8 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
   const lastSeenChatCountRef = useRef(0)
 
   const [cupidFirstPick, setCupidFirstPick] = useState<string | null>(null)
+  const [arsonistFirstPick, setArsonistFirstPick] = useState<string | null>(null)
+  const [arsonistMode, setArsonistMode] = useState<'douse' | 'ignite' | null>(null)
   const [nightSelection, setNightSelection] = useState<string | null>(null)
   const [voteSelection, setVoteSelection] = useState<string | null>(null)
   const phaseKey = `${mafiaState?.phase ?? ''}:${mafiaState?.dayNumber ?? 0}`
@@ -656,7 +658,19 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             void submitNightAction(id)
           }
           gridSelectedIds = nightSelection ? [nightSelection] : []
-        } else if (myRole !== 'medium') {
+        } else if (myRole === 'arsonist' && arsonistMode === 'douse') {
+          gridOnSelect = (id) => {
+            if (!arsonistFirstPick) {
+              setArsonistFirstPick(id)
+            } else {
+              void submitNightAction(arsonistFirstPick, id)
+              setArsonistFirstPick(null)
+            }
+          }
+          gridSelectedIds = arsonistFirstPick ? [arsonistFirstPick] : []
+        } else if (myRole === 'arsonist' && arsonistMode === 'ignite') {
+          // Ignite is a one-click self-target — handled in the panel below, not via grid
+        } else if (myRole !== 'medium' && myRole !== 'arsonist') {
           gridOnSelect = (id) => {
             setNightSelection(id)
             void submitNightAction(id)
@@ -786,6 +800,14 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             onIgnite={() => {
               if (myPlayerId) void submitNightAction(myPlayerId)
             }}
+            arsonistMode={arsonistMode}
+            onArsonistModeChange={(mode) => {
+              setArsonistMode(mode)
+              if (!mode) setArsonistFirstPick(null)
+            }}
+            arsonistFirstPickName={
+              arsonistFirstPick ? (publicPlayers.find((p) => p.id === arsonistFirstPick)?.name ?? null) : null
+            }
           />
         )}
 

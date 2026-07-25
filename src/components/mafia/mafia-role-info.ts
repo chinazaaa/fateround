@@ -140,7 +140,7 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     name: 'Arsonist',
     team: 'solo',
     description:
-      'Each night, douse a player in fuel, or ignite everyone doused so far to kill them all at once. You win if you are the last one standing.',
+      'Each night, douse 2 players in gasoline or ignite all doused players to kill them. You cannot be killed by the Mafia at night. You win if you are the last one standing.',
   },
   cupid: {
     role: 'cupid',

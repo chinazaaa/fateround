@@ -45,6 +45,7 @@ function makeState(overrides: Partial<MafiaPlayerState>): MafiaPlayerState {
     death_day: null,
     death_cause: null,
     night_action_target_player_id: null,
+    night_action_target_player_id_2: null,
     day_vote_target_player_id: null,
     doused_by_arsonist: false,
     vigilante_shots_used: 0,

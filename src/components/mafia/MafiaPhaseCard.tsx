@@ -10,8 +10,8 @@ const NIGHT_ACTION_PROMPT: Partial<Record<MafiaRole, string>> = {
   framer: '🎭 Tap a player below to frame — the Detective will read them as Mafia tonight.',
   doctor: '🏥 Tap a player below to protect from any attack tonight.',
   detective: '🔍 Tap a player below to investigate their alignment.',
-  bodyguard: '🛡️ Tap a player below to protect. If they are attacked, you die in their place.',
-  vigilante: '🔫 Tap a player below to kill. You only get one shot for the whole game.',
+  bodyguard: '🛡️ Tap a player below to protect tonight. You auto-protect yourself too.',
+  vigilante: '🔫 Your actions happen during the day. Wait for sunrise...',
   tracker: '👣 Tap a player below to track — learn who they visit tonight.',
   serial_killer: '🔪 Tap a player below to kill tonight.',
 }
@@ -25,6 +25,9 @@ interface MafiaPhaseCardProps {
   acting: boolean
   cupidFirstPickName: string | null
   onIgnite: () => void
+  arsonistMode: 'douse' | 'ignite' | null
+  onArsonistModeChange: (mode: 'douse' | 'ignite' | null) => void
+  arsonistFirstPickName: string | null
 }
 
 /**
@@ -43,6 +46,9 @@ export function MafiaPhaseCard({
   acting,
   cupidFirstPickName,
   onIgnite,
+  arsonistMode,
+  onArsonistModeChange,
+  arsonistFirstPickName,
 }: MafiaPhaseCardProps) {
   const myRole = myState?.role
 
@@ -86,20 +92,51 @@ export function MafiaPhaseCard({
           )
         ) : myRole === 'arsonist' ? (
           <div className="space-y-2">
-            <p className="text-sm text-[var(--muted)]">
-              🔥 Tap a player below to douse them in fuel, or ignite everyone doused so far.
-            </p>
-            <button
-              disabled={acting}
-              onClick={onIgnite}
-              className="w-full py-2 text-sm font-bold text-orange-400 border border-orange-500/30 hover:bg-orange-500/10 rounded-xl transition"
-            >
-              🔥 Ignite (kill everyone doused so far)
-            </button>
-            {myState?.nightActionSubmitted && (
-              <p className="text-xs text-emerald-400 font-semibold text-center">
-                ✓ Action submitted. Tap a different player to change it.
-              </p>
+            {!arsonistMode ? (
+              <>
+                <p className="text-sm text-[var(--muted)]">🔥 Choose your action for tonight:</p>
+                <div className="flex gap-2">
+                  <button
+                    disabled={acting}
+                    onClick={() => onArsonistModeChange('douse')}
+                    className="flex-1 py-2 text-sm font-bold text-orange-400 border border-orange-500/30 hover:bg-orange-500/10 rounded-xl transition"
+                  >
+                    🛢️ Douse (2 players)
+                  </button>
+                  <button
+                    disabled={acting}
+                    onClick={() => {
+                      onArsonistModeChange('ignite')
+                      onIgnite()
+                    }}
+                    className="flex-1 py-2 text-sm font-bold text-red-400 border border-red-500/30 hover:bg-red-500/10 rounded-xl transition"
+                  >
+                    🔥 Ignite all
+                  </button>
+                </div>
+              </>
+            ) : arsonistMode === 'douse' ? (
+              <>
+                <p className="text-sm text-[var(--muted)]">
+                  🛢️ Tap two players below to douse in gasoline.{' '}
+                  {arsonistFirstPickName ? `First pick: ${arsonistFirstPickName} — now tap the second.` : ''}
+                </p>
+                <button onClick={() => onArsonistModeChange(null)} className="text-xs text-[var(--muted)] underline">
+                  Cancel
+                </button>
+                {myState?.nightActionSubmitted && (
+                  <p className="text-xs text-emerald-400 font-semibold text-center">✓ Douse targets submitted.</p>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-emerald-400 font-semibold text-center">
+                  🔥 Ignite submitted — all doused players will burn!
+                </p>
+                <button onClick={() => onArsonistModeChange(null)} className="text-xs text-[var(--muted)] underline">
+                  Cancel
+                </button>
+              </>
             )}
           </div>
         ) : myRole === 'vigilante' && (myState?.vigilanteShotsRemaining ?? 0) < 1 ? (

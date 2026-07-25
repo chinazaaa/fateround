@@ -41,3 +41,7 @@ ADD COLUMN IF NOT EXISTS vigilante_reveal_used boolean NOT NULL DEFAULT false;
 ALTER TABLE mafia_sessions
 ADD COLUMN IF NOT EXISTS vigilante_day_kill_player_id uuid REFERENCES players(id) ON DELETE SET NULL,
 ADD COLUMN IF NOT EXISTS vigilante_reveal_player_id uuid REFERENCES players(id) ON DELETE SET NULL;
+
+-- 7. Arsonist rework: douse 2 players per night, immune to mafia kill
+ALTER TABLE mafia_player_states
+ADD COLUMN IF NOT EXISTS night_action_target_player_id_2 uuid REFERENCES players(id) ON DELETE SET NULL;

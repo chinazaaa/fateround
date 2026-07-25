@@ -1936,6 +1936,7 @@ export interface MafiaPlayerState {
   death_day: number | null
   death_cause: MafiaDeathCause | null
   night_action_target_player_id: string | null
+  night_action_target_player_id_2: string | null
   day_vote_target_player_id: string | null
   doused_by_arsonist: boolean
   vigilante_shots_used: number

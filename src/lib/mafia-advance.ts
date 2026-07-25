@@ -430,20 +430,21 @@ export async function runMafiaAdvance(
     updateFields.medium_revive_player_id = null
     updateFields.vigilante_day_kill_player_id = null
     updateFields.vigilante_reveal_player_id = null
-    // Arsonist's douse target (from the night just resolved) becomes permanently doused.
+    // Arsonist's douse targets (from the night just resolved) become permanently doused.
     const arsonist = playerStates.find((p) => p.role === 'arsonist' && p.is_alive)
-    if (
-      arsonist &&
-      arsonist.night_action_target_player_id &&
-      arsonist.night_action_target_player_id !== arsonist.player_id
-    ) {
-      pendingEffects.push(() =>
-        admin
-          .from('mafia_player_states')
-          .update({ doused_by_arsonist: true })
-          .eq('game_id', gameId)
-          .eq('player_id', arsonist.night_action_target_player_id)
+    if (arsonist && arsonist.night_action_target_player_id !== arsonist.player_id) {
+      const douseIds = [arsonist.night_action_target_player_id, arsonist.night_action_target_player_id_2].filter(
+        (id): id is string => !!id && id !== arsonist.player_id
       )
+      for (const douseId of douseIds) {
+        pendingEffects.push(() =>
+          admin
+            .from('mafia_player_states')
+            .update({ doused_by_arsonist: true })
+            .eq('game_id', gameId)
+            .eq('player_id', douseId)
+        )
+      }
     }
     // Clear all targets and votes in player states
     pendingEffects.push(() =>
@@ -451,6 +452,7 @@ export async function runMafiaAdvance(
         .from('mafia_player_states')
         .update({
           night_action_target_player_id: null,
+          night_action_target_player_id_2: null,
           day_vote_target_player_id: null,
         })
         .eq('game_id', gameId)

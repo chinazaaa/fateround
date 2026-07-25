@@ -198,6 +198,7 @@ export interface MafiaNightResolution {
   framedPlayerId: string | null
   serialKillerTarget: string | null
   arsonistDouseTarget: string | null
+  arsonistDouseTarget2: string | null
   arsonistIgnited: boolean
   mediumRevivePlayerId: string | null
   deaths: MafiaNightDeath[]
@@ -278,11 +279,13 @@ export function resolveMafiaNight(
   const serialKillerPlayer = session.serial_killer_enabled ? aliveOfRole('serial_killer') : undefined
   const serialKillerTarget = serialKillerPlayer?.night_action_target_player_id ?? null
 
-  // Arsonist ignite is signaled by self-targeting (otherwise a meaningless douse target).
+  // Arsonist ignite is signaled by self-targeting; otherwise douse up to 2 players.
   const arsonistPlayer = session.arsonist_enabled ? aliveOfRole('arsonist') : undefined
   const arsonistIgnited = !!arsonistPlayer && arsonistPlayer.night_action_target_player_id === arsonistPlayer.player_id
   const arsonistDouseTarget =
     arsonistPlayer && !arsonistIgnited ? (arsonistPlayer.night_action_target_player_id ?? null) : null
+  const arsonistDouseTarget2 =
+    arsonistPlayer && !arsonistIgnited ? (arsonistPlayer.night_action_target_player_id_2 ?? null) : null
 
   const deaths: MafiaNightDeath[] = []
   const deadIds = new Set<string>()
@@ -310,6 +313,7 @@ export function resolveMafiaNight(
     if (doctorTarget === targetId) return
     if (cause === 'mafia_kill') {
       const targetState = playerStates.find((p) => p.player_id === targetId)
+      if (targetState?.role === 'arsonist') return
       if (targetState?.role === 'cursed_villager') {
         cursedConvertedPlayerId = targetId
         return
@@ -346,6 +350,7 @@ export function resolveMafiaNight(
     framedPlayerId,
     serialKillerTarget,
     arsonistDouseTarget,
+    arsonistDouseTarget2,
     arsonistIgnited,
     mediumRevivePlayerId,
     deaths,
