@@ -1,54 +1,8 @@
-import type { MafiaChatMessage, MafiaMyState, MafiaPhase, MafiaPublicPlayer, MafiaRole, MafiaTeam } from './types'
+import type { MafiaRole } from '@/types'
 
-export const MAFIA_MIN_PLAYERS = 5
-export const MAFIA_MAX_PLAYERS = 16
-
-export interface MafiaStateResponse {
-  gameTitle: string
-  status: string
-  phase: MafiaPhase
-  dayNumber: number
-  phaseDeadline: string | null
-  doctorEnabled: boolean
-  detectiveEnabled: boolean
-  anonymousVotes: boolean
-  winningTeam: (MafiaTeam | 'lovers') | null
-  players: MafiaPublicPlayer[]
-  lastNightKillPlayerId: string | null
-  lastNightMafiaHadTarget: boolean
-  lastVoteResultPlayerId: string | null
-  voteTallies: Record<string, number>
-  dayChatMessages?: MafiaChatMessage[]
-  ghostChatMessages?: MafiaChatMessage[]
-  enabledRoles: MafiaRole[]
-  myState: MafiaMyState | null
-}
-
-export function mafiaPhaseLabel(phase: MafiaPhase): string {
-  switch (phase) {
-    case 'role_reveal':
-      return 'Role reveal'
-    case 'night':
-      return 'Night'
-    case 'day_report':
-      return 'Sunrise'
-    case 'day':
-      return 'Day discussion'
-    case 'voting':
-      return 'Voting'
-    case 'elimination':
-      return 'Elimination'
-    case 'game_over':
-      return 'Game over'
-    default:
-      return phase
-  }
-}
-
-export function secondsUntilMafiaDeadline(deadline: string | null | undefined): number {
-  if (!deadline) return 0
-  return Math.max(0, Math.ceil((Date.parse(deadline) - Date.now()) / 1000))
-}
+// Mirrors packages/shared/src/mafia.ts's MAFIA_ROLE_INFO/mafiaRoleEmoji — web and shared
+// keep separate copies per this codebase's web/shared parallel-copies convention (web
+// does not import from packages/shared).
 
 export function mafiaRoleEmoji(role: string): string {
   switch (role) {
@@ -95,8 +49,7 @@ export interface MafiaRoleInfo {
 }
 
 /**
- * Static rules-text catalog for the Wolvesville-style "Roles" info drawer — one shared
- * source so web and mobile render identical role descriptions.
+ * Static rules-text catalog for the Wolvesville-style "Roles" info drawer.
  */
 export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
   villager: {
@@ -151,7 +104,7 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'alpha_wolf',
     name: 'Alpha Mafia',
     team: 'mafia',
-    description: 'Leads the Mafia — your kill vote counts twice, and you can chat with your crew during the day too.',
+    description: 'Leads the Mafia — your kill vote counts twice toward the nightly kill.',
   },
   wolf_cub: {
     role: 'wolf_cub',
@@ -200,4 +153,5 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
   },
 }
 
-export type { MafiaChatMessage, MafiaMyState, MafiaPhase, MafiaPublicPlayer, MafiaRole, MafiaTeam }
+export const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer']
+export const NO_NIGHT_ACTION_ROLES: MafiaRole[] = ['villager', 'mayor', 'wolf_cub', 'jester', 'cursed_villager']

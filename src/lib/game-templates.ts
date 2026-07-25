@@ -135,6 +135,7 @@ const FIELD_LABELS: Record<string, string> = {
   mafia_doctor_enabled: 'Doctor role',
   mafia_detective_enabled: 'Detective role',
   mafia_anonymous_votes: 'Anonymous votes',
+  mafia_role_set: 'Advanced roles',
   elimination_enabled: 'Elimination',
 }
 
@@ -173,6 +174,7 @@ const FIELD_DEFAULTS: Record<string, unknown> = {
   mafia_doctor_enabled: true,
   mafia_detective_enabled: true,
   mafia_anonymous_votes: true,
+  mafia_role_set: false,
 }
 
 const UNO_MULTI_PLAY_LABELS: Record<string, string> = {

@@ -4,13 +4,56 @@ import { assertPlayer } from '@/lib/game-admin'
 import type {
   MafiaPlayerState,
   MafiaSession,
-  MafiaTeam,
+  MafiaRole,
   MafiaPublicPlayer,
   MafiaMyState,
   MafiaPhase,
   MafiaChatMessage,
 } from '@/types'
-import { checkMafiaWinCondition } from '@/lib/mafia'
+import { mafiaRoleTeam } from '@/lib/mafia'
+
+const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer']
+
+const ROLE_ENABLED_KEYS = [
+  'doctor_enabled',
+  'detective_enabled',
+  'bodyguard_enabled',
+  'mayor_enabled',
+  'vigilante_enabled',
+  'tracker_enabled',
+  'alpha_wolf_enabled',
+  'wolf_cub_enabled',
+  'framer_enabled',
+  'jester_enabled',
+  'serial_killer_enabled',
+  'arsonist_enabled',
+  'cupid_enabled',
+  'cursed_villager_enabled',
+] as const
+
+function enabledRolesFrom(session: Pick<MafiaSession, (typeof ROLE_ENABLED_KEYS)[number]>): MafiaRole[] {
+  const roles: MafiaRole[] = ['villager', 'mafia']
+  const map: Record<(typeof ROLE_ENABLED_KEYS)[number], MafiaRole> = {
+    doctor_enabled: 'doctor',
+    detective_enabled: 'detective',
+    bodyguard_enabled: 'bodyguard',
+    mayor_enabled: 'mayor',
+    vigilante_enabled: 'vigilante',
+    tracker_enabled: 'tracker',
+    alpha_wolf_enabled: 'alpha_wolf',
+    wolf_cub_enabled: 'wolf_cub',
+    framer_enabled: 'framer',
+    jester_enabled: 'jester',
+    serial_killer_enabled: 'serial_killer',
+    arsonist_enabled: 'arsonist',
+    cupid_enabled: 'cupid',
+    cursed_villager_enabled: 'cursed_villager',
+  }
+  for (const key of ROLE_ENABLED_KEYS) {
+    if (session[key]) roles.push(map[key])
+  }
+  return roles
+}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -30,9 +73,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const [{ data: game }, { data: playersData }, { data: mafiaSession }, { data: mafiaPlayerStates }] =
     await Promise.all([
       admin.from('games').select('status, title').eq('id', gameId).maybeSingle(),
-      admin.from('players').select('id, name, spectator, is_eliminated').eq('game_id', gameId),
+      admin
+        .from('players')
+        .select('id, name, spectator, is_eliminated')
+        .eq('game_id', gameId)
+        .order('joined_at', { ascending: true }),
       admin.from('mafia_sessions').select('*').eq('game_id', gameId).maybeSingle(),
-      admin.from('mafia_player_states').select('*').eq('game_id', gameId),
+      admin.from('mafia_player_states').select('*').eq('game_id', gameId).order('seat_number', { ascending: true }),
     ])
 
   if (!game) {
@@ -40,8 +87,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
   if (!mafiaSession || !mafiaPlayerStates) {
     if (game.status === 'waiting') {
-      const publicPlayers = (playersData ?? []).map((p) => ({
+      const publicPlayers = (playersData ?? []).map((p, index) => ({
         id: p.id,
+        seatNumber: index + 1,
         name: p.name ?? 'Unknown',
         isAlive: true,
         deathDay: null,
@@ -62,6 +110,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         lastNightMafiaHadTarget: false,
         lastVoteResultPlayerId: null,
         voteTallies: {},
+        enabledRoles: ['villager', 'mafia', 'doctor', 'detective'],
         myState: null,
       })
     }
@@ -73,12 +122,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   // Determine auth player
   let myPlayerState: MafiaPlayerState | undefined = undefined
-  let isAuthorizedPlayer = false
   if (resumeToken) {
     const auth = await assertPlayer(admin, gameId, resumeToken)
     if (auth.player) {
       myPlayerState = playerStates.find((p) => p.player_id === auth.player.id)
-      isAuthorizedPlayer = !!myPlayerState
     }
   }
 
@@ -90,6 +137,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     const revealRole = !ps.is_alive || isGameOver
     return {
       id: ps.player_id,
+      seatNumber: ps.seat_number,
       name: p?.name ?? 'Unknown',
       isAlive: ps.is_alive,
       deathDay: ps.death_day,
@@ -102,31 +150,109 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   let myState: MafiaMyState | null = null
   if (myPlayerState) {
     const role = myPlayerState.role
-    const team: MafiaTeam = role === 'mafia' ? 'mafia' : 'village'
+    const team = mafiaRoleTeam(role)
 
-    // Mafia teammates names
+    // Mafia teammates names (mafia/alpha_wolf/wolf_cub/framer all share the wolf-team view)
     let mafiaTeammates: string[] = []
-    if (role === 'mafia') {
-      const mafiaIds = playerStates.filter((p) => p.role === 'mafia').map((p) => p.player_id)
-      mafiaTeammates = playersData?.filter((p) => mafiaIds.includes(p.id)).map((p) => p.name) ?? []
+    let mafiaTeammateIds: string[] = []
+    let mafiaTeammateRoles: MafiaMyState['mafiaTeammateRoles'] = {}
+    if (MAFIA_TEAM_ROLES.includes(role)) {
+      const teammates = playerStates.filter(
+        (p) => MAFIA_TEAM_ROLES.includes(p.role) && p.player_id !== myPlayerState.player_id
+      )
+      mafiaTeammateIds = teammates.map((p) => p.player_id)
+      mafiaTeammates = playersData?.filter((p) => mafiaTeammateIds.includes(p.id)).map((p) => p.name) ?? []
+      mafiaTeammateRoles = Object.fromEntries(teammates.map((p) => [p.player_id, p.role]))
     }
 
-    // Detective result — available during night so detective sees result while choosing next target
+    // Seat-numbered display name ("#5 Naza") — used for every player mentioned in a private
+    // reveal below, so it always reads unambiguously which of possibly-several same-named
+    // players is meant, matching the "#N Name" convention already used in chat.
+    const seatById = new Map(playerStates.map((p) => [p.player_id, p.seat_number]))
+    const seatLabel = (playerId: string, name: string) => {
+      const seat = seatById.get(playerId)
+      return seat != null ? `#${seat} ${name}` : name
+    }
+
+    // Detective result — honors Framer's frame (reads as 'mafia' if framed that night)
     let detectiveResult: MafiaMyState['detectiveResult'] = null
     if (role === 'detective' && session.detect_target_player_id) {
       const targetState = playerStates.find((p) => p.player_id === session.detect_target_player_id)
       const targetPlayer = playersData?.find((p) => p.id === session.detect_target_player_id)
       if (targetState && targetPlayer) {
+        const framed = session.framed_player_id === session.detect_target_player_id
         detectiveResult = {
-          targetName: targetPlayer.name,
-          alignment: targetState.role === 'mafia' ? 'mafia' : 'village',
+          targetName: seatLabel(targetPlayer.id, targetPlayer.name),
+          alignment: framed ? 'mafia' : mafiaRoleTeam(targetState.role),
         }
       }
     }
 
-    // Mafia secret chat — persistent across all phases for alive Mafia members
+    let trackerResult: MafiaMyState['trackerResult'] = null
+    if (role === 'tracker' && myPlayerState.night_action_target_player_id) {
+      const targetPlayer = playersData?.find((p) => p.id === myPlayerState!.night_action_target_player_id)
+      const visitedPlayer = playersData?.find((p) => p.id === session.tracker_visited_player_id)
+      if (targetPlayer) {
+        trackerResult = {
+          targetName: seatLabel(targetPlayer.id, targetPlayer.name),
+          visitedName: visitedPlayer ? seatLabel(visitedPlayer.id, visitedPlayer.name) : null,
+        }
+      }
+    }
+
+    let bodyguardLastOutcome: MafiaMyState['bodyguardLastOutcome'] = null
+    if (role === 'bodyguard') {
+      if (session.bodyguard_sacrifice_player_id === myPlayerState.player_id) {
+        bodyguardLastOutcome = 'sacrificed'
+      } else if (
+        session.bodyguard_target_player_id &&
+        (session.bodyguard_target_player_id === session.mafia_target_player_id ||
+          session.bodyguard_target_player_id === session.serial_kill_player_id)
+      ) {
+        // Only a real save if the protected target was actually attacked — otherwise every
+        // uneventful night (bodyguard_target_player_id is set just because they acted) was
+        // misreported as "your target was attacked and you saved them."
+        bodyguardLastOutcome = 'saved'
+      } else {
+        bodyguardLastOutcome = 'no_attack'
+      }
+    }
+
+    let doctorLastOutcome: MafiaMyState['doctorLastOutcome'] = null
+    if (role === 'doctor' && session.doctor_target_player_id) {
+      const wasAttacked =
+        session.doctor_target_player_id === session.mafia_target_player_id ||
+        session.doctor_target_player_id === session.serial_kill_player_id
+      doctorLastOutcome = wasAttacked ? 'saved' : 'no_attack'
+    }
+
+    const vigilanteShotsRemaining =
+      role === 'vigilante' ? Math.max(0, 1 - myPlayerState.vigilante_shots_used) : undefined
+
+    let framerLastTargetName: MafiaMyState['framerLastTargetName'] = undefined
+    if (role === 'framer' && session.framed_player_id) {
+      const framed = playersData?.find((p) => p.id === session.framed_player_id)
+      framerLastTargetName = framed ? seatLabel(framed.id, framed.name) : null
+    }
+
+    let cupidLinkedNames: MafiaMyState['cupidLinkedNames'] = undefined
+    if (role === 'cupid' && session.cupid_lover_ids) {
+      const [aId, bId] = session.cupid_lover_ids
+      const aPlayer = playersData?.find((p) => p.id === aId)
+      const bPlayer = playersData?.find((p) => p.id === bId)
+      cupidLinkedNames = [
+        aPlayer ? seatLabel(aPlayer.id, aPlayer.name) : 'Unknown',
+        bPlayer ? seatLabel(bPlayer.id, bPlayer.name) : 'Unknown',
+      ]
+    }
+
+    const isLover = myPlayerState.is_lover
+    const loverPartner = isLover ? playersData?.find((p) => p.id === myPlayerState!.lover_partner_player_id) : undefined
+    const loverPartnerName = isLover ? (loverPartner ? seatLabel(loverPartner.id, loverPartner.name) : null) : null
+
+    // Mafia secret chat — persistent across all phases for alive wolf-team members
     let mafiaChatMessages: MafiaMyState['mafiaChatMessages'] = undefined
-    if (role === 'mafia' && myPlayerState.is_alive) {
+    if (MAFIA_TEAM_ROLES.includes(role) && myPlayerState.is_alive) {
       const { data: messages } = await admin
         .from('mafia_chat_messages')
         .select('*')
@@ -153,13 +279,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       dayVoteSubmitted: !!myPlayerState.day_vote_target_player_id,
       detectiveResult,
       mafiaTeammates,
+      mafiaTeammateIds,
+      mafiaTeammateRoles,
       mafiaChatMessages,
+      trackerResult,
+      bodyguardLastOutcome,
+      doctorLastOutcome,
+      vigilanteShotsRemaining,
+      framerLastTargetName,
+      cupidLinkedNames,
+      isLover,
+      loverPartnerName,
+      enabledRoles: enabledRolesFrom(session),
     }
   }
 
-  // Fetch day chat messages (public to all players during daytime phases)
+  // Fetch Town Discussion history — visible at night too now (read-only there; see
+  // MafiaDayChat's readOnly prop), so only role_reveal (before any town chat exists) skips it.
   let dayChatMessages: MafiaChatMessage[] = []
-  const dayPhases: MafiaPhase[] = ['day_report', 'day', 'elimination', 'game_over']
+  const dayPhases: MafiaPhase[] = ['night', 'day_report', 'day', 'voting', 'elimination', 'game_over']
   if (dayPhases.includes(session.phase)) {
     const { data: messages } = await admin
       .from('mafia_chat_messages')
@@ -182,8 +320,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   // Ghost chat — only for eliminated players
   let ghostChatMessages: MafiaChatMessage[] | undefined = undefined
-  const myStateForGhost = myPlayerState
-  if (myStateForGhost && !myStateForGhost.is_alive) {
+  if (myPlayerState && !myPlayerState.is_alive) {
     const { data: ghostMessages } = await admin
       .from('mafia_chat_messages')
       .select('*')
@@ -203,14 +340,42 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
   }
 
-  // Calculate vote tallies if public votes
-  // Let's count day votes for display
+  // Calculate vote tallies + per-voter choices (who voted for whom), if votes are public.
+  // votedPlayerIds (just *whether* someone voted, not for whom) is exposed even when
+  // anonymous, so anonymous mode can still show a "?" sign on a voter's tile instead of no
+  // sign at all — matching Wolvesville's anonymous-voting display.
   const voteTallies: Record<string, number> = {}
+  const voteChoices: Record<string, string> = {}
+  const votedPlayerIds: string[] = []
   playerStates.forEach((ps) => {
     if (ps.day_vote_target_player_id) {
-      voteTallies[ps.day_vote_target_player_id] = (voteTallies[ps.day_vote_target_player_id] || 0) + 1
+      // The Mayor's vote counts double toward the lynch majority (see resolveMafiaDayVote) —
+      // weight the displayed tally the same way so it agrees with the actual resolved outcome.
+      const weight = ps.role === 'mayor' ? 2 : 1
+      voteTallies[ps.day_vote_target_player_id] = (voteTallies[ps.day_vote_target_player_id] || 0) + weight
+      voteChoices[ps.player_id] = ps.day_vote_target_player_id
+      votedPlayerIds.push(ps.player_id)
     }
   })
+  const aliveCount = playerStates.filter((ps) => ps.is_alive).length
+  const votesRequired = Math.floor(aliveCount / 2) + 1
+
+  // How many players are still alive with each role — shown as "x{count}" in the roles
+  // drawer, matching Wolvesville, and decrementing as role-holders are eliminated.
+  const roleCounts: Partial<Record<MafiaRole, number>> = {}
+  playerStates.forEach((ps) => {
+    if (ps.is_alive) roleCounts[ps.role] = (roleCounts[ps.role] ?? 0) + 1
+  })
+
+  // Roles actually assigned to someone this game (alive or dead) — the Roles drawer should
+  // only advertise roles someone is really playing, not every role the host toggled on.
+  const rolesInGame = Array.from(new Set(playerStates.map((ps) => ps.role)))
+
+  // Skip-ahead tally for the current Discussion/Voting phase — same majority threshold as a
+  // lynch vote, reset whenever a fresh 'day'/'voting' phase starts (see advance/route.ts).
+  const skipRequestCount = session.skip_requested_player_ids?.length ?? 0
+  const hasRequestedSkip =
+    !!myPlayerState && (session.skip_requested_player_ids ?? []).includes(myPlayerState.player_id)
 
   return NextResponse.json({
     // Public state
@@ -227,9 +392,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     lastNightKillPlayerId: session.night_kill_player_id,
     lastNightMafiaHadTarget: session.mafia_target_player_id != null,
     lastVoteResultPlayerId: session.vote_result_player_id,
-    voteTallies: session.anonymous_votes && session.phase === 'day' ? {} : voteTallies,
+    voteTallies: session.anonymous_votes && session.phase === 'voting' ? {} : voteTallies,
+    voteChoices: session.anonymous_votes && session.phase === 'voting' ? {} : voteChoices,
+    votedPlayerIds,
+    votesRequired,
     dayChatMessages,
     ghostChatMessages,
+    enabledRoles: enabledRolesFrom(session),
+    rolesInGame,
+    roleCounts,
+    skipRequiredCount: votesRequired,
+    skipRequestCount,
+    hasRequestedSkip,
 
     // Private state
     myState,

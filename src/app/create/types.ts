@@ -42,7 +42,21 @@ export interface Settings {
   game_duration_seconds?: number
   mafia_doctor_enabled?: boolean
   mafia_detective_enabled?: boolean
+  mafia_bodyguard_enabled?: boolean
+  mafia_mayor_enabled?: boolean
+  mafia_vigilante_enabled?: boolean
+  mafia_tracker_enabled?: boolean
+  mafia_alpha_wolf_enabled?: boolean
+  mafia_wolf_cub_enabled?: boolean
+  mafia_framer_enabled?: boolean
+  mafia_jester_enabled?: boolean
+  mafia_serial_killer_enabled?: boolean
+  mafia_arsonist_enabled?: boolean
+  mafia_cupid_enabled?: boolean
+  mafia_cursed_villager_enabled?: boolean
   mafia_anonymous_votes?: boolean
+  mafia_day_seconds?: number
+  mafia_voting_seconds?: number
   ping_pong_points_to_win?: number
 }
 

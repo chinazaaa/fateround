@@ -1,249 +1,132 @@
 'use client'
 
-import type { MafiaPhase, MafiaPublicPlayer, MafiaMyState } from '@/types'
+import type { MafiaPhase, MafiaMyState, MafiaRole } from '@/types'
+import { MafiaRoleRevealScreen } from './MafiaRoleRevealScreen'
+import { NO_NIGHT_ACTION_ROLES } from './mafia-role-info'
+
+const NIGHT_ACTION_PROMPT: Partial<Record<MafiaRole, string>> = {
+  mafia: '🔪 Tap a player below to eliminate tonight.',
+  alpha_wolf: '🐺 Tap a player below for the crew to eliminate tonight (your vote counts double).',
+  framer: '🎭 Tap a player below to frame — the Detective will read them as Mafia tonight.',
+  doctor: '🏥 Tap a player below to protect from any attack tonight.',
+  detective: '🔍 Tap a player below to investigate their alignment.',
+  bodyguard: '🛡️ Tap a player below to protect. If they are attacked, you die in their place.',
+  vigilante: '🔫 Tap a player below to kill. You only get one shot for the whole game.',
+  tracker: '👣 Tap a player below to track — learn who they visit tonight.',
+  serial_killer: '🔪 Tap a player below to kill tonight.',
+}
 
 interface MafiaPhaseCardProps {
   phase: MafiaPhase
   dayNumber: number
-  publicPlayers: MafiaPublicPlayer[]
-  myPlayerId: string | null
   myState: MafiaMyState | null
-  voteTallies: Record<string, number>
-  killedPlayer: MafiaPublicPlayer | undefined
-  votedPlayer: MafiaPublicPlayer | undefined
-  lastNightMafiaHadTarget: boolean
   amIAlive: boolean
   amISpectator: boolean
   acting: boolean
-  onNightAction: (targetId: string) => void
-  onDayVote: (targetId: string | null) => void
+  cupidFirstPickName: string | null
+  onIgnite: () => void
 }
 
+/**
+ * Private per-player status only (role reveal, night-action instructions, voting's skip
+ * control) — everything that's public narrative (day started, sunrise/vote results, votes
+ * required) lives as system lines in the shared activity feed instead, since it's visible
+ * to the whole town, not just the acting player. Actually picking a target/vote happens by
+ * tapping a tile in MafiaPlayersGrid, not a button list here.
+ */
 export function MafiaPhaseCard({
   phase,
   dayNumber,
-  publicPlayers,
-  myPlayerId,
   myState,
-  voteTallies,
-  killedPlayer,
-  votedPlayer,
-  lastNightMafiaHadTarget,
   amIAlive,
   amISpectator,
   acting,
-  onNightAction,
-  onDayVote,
+  cupidFirstPickName,
+  onIgnite,
 }: MafiaPhaseCardProps) {
   const myRole = myState?.role
 
-  return (
-    <div className="glass-card border border-[var(--border)] rounded-2xl p-5">
-      {phase === 'role_reveal' && (
-        <div className="text-center py-8 space-y-4">
-          <div className="text-5xl animate-bounce">👁️🕵️🐺</div>
-          <h3 className="text-xl font-black text-[var(--foreground)]">Roles have been assigned</h3>
-          <p className="text-sm text-[var(--muted)]">
-            Look at your identity card.
-            <br />
-            Do <strong>not</strong> show your screen to anyone!
+  if (phase === 'role_reveal') {
+    return (
+      <div className="glass-card border border-[var(--border)] rounded-2xl p-5">
+        <MafiaRoleRevealScreen myState={myState} />
+      </div>
+    )
+  }
+
+  if (phase === 'night') {
+    return (
+      <div className="glass-card border border-[var(--border)] rounded-2xl p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">🌙</span>
+          <h3 className="text-lg font-black text-[var(--foreground)]">Night</h3>
+        </div>
+        {amISpectator ? (
+          <p className="text-sm text-[var(--muted)] py-2 text-center">Watching — night actions in progress...</p>
+        ) : !amIAlive ? (
+          <p className="text-sm text-[var(--muted)] py-2 text-center">You are eliminated. Watch the night unfold...</p>
+        ) : myRole && NO_NIGHT_ACTION_ROLES.includes(myRole) ? (
+          <p className="text-sm text-[var(--muted)] py-2 text-center">
+            💤 You have no night action. Wait for sunrise...
           </p>
-          <div className="inline-flex items-center gap-2 text-xs text-[var(--muted)] bg-[var(--surface-inset-bg)] px-4 py-2 rounded-full border border-[var(--border)]">
-            <span className="animate-pulse">⏳</span> Night begins shortly...
-          </div>
-        </div>
-      )}
-
-      {phase === 'night' && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">🌙</span>
-            <h3 className="text-lg font-black text-[var(--foreground)]">Night</h3>
-          </div>
-          {amISpectator ? (
-            <p className="text-sm text-[var(--muted)] py-4 text-center">Watching — night actions in progress...</p>
-          ) : !amIAlive ? (
-            <div className="text-center py-6 space-y-2">
-              <p className="text-3xl">👻</p>
-              <p className="text-sm text-[var(--muted)]">You are eliminated. Watch the night unfold...</p>
-            </div>
-          ) : myRole === 'villager' ? (
-            <div className="text-center py-8 space-y-3">
-              <div className="text-5xl animate-pulse">💤</div>
-              <p className="text-[var(--muted)] text-sm">The village sleeps. Wait for sunrise...</p>
-            </div>
+        ) : myRole === 'cupid' ? (
+          myState?.cupidLinkedNames ? (
+            <p className="text-sm text-pink-400 font-semibold">
+              💘 You linked {myState.cupidLinkedNames[0]} &amp; {myState.cupidLinkedNames[1]} as Lovers.
+            </p>
+          ) : dayNumber !== 1 ? (
+            <p className="text-sm text-[var(--muted)]">
+              Cupid can only link Lovers on night one — nothing to do tonight.
+            </p>
           ) : (
-            <div className="space-y-3">
-              <p className="text-sm text-[var(--muted)]">
-                {myRole === 'mafia' && '🔪 Choose a villager to eliminate tonight.'}
-                {myRole === 'doctor' && '🏥 Choose a player to protect from the Mafia tonight.'}
-                {myRole === 'detective' && '🔍 Choose a player to investigate their alignment.'}
+            <p className="text-sm text-[var(--muted)]">
+              💘 Tap two players below (in order) to link as Lovers.{' '}
+              {cupidFirstPickName ? `First pick: ${cupidFirstPickName} — now tap the second.` : ''}
+            </p>
+          )
+        ) : myRole === 'arsonist' ? (
+          <div className="space-y-2">
+            <p className="text-sm text-[var(--muted)]">
+              🔥 Tap a player below to douse them in fuel, or ignite everyone doused so far.
+            </p>
+            <button
+              disabled={acting}
+              onClick={onIgnite}
+              className="w-full py-2 text-sm font-bold text-orange-400 border border-orange-500/30 hover:bg-orange-500/10 rounded-xl transition"
+            >
+              🔥 Ignite (kill everyone doused so far)
+            </button>
+            {myState?.nightActionSubmitted && (
+              <p className="text-xs text-emerald-400 font-semibold text-center">
+                ✓ Action submitted. Tap a different player to change it.
               </p>
-              {myState?.nightActionSubmitted ? (
-                <div className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3">
-                  <span>✓</span>
-                  <span className="font-semibold">Action submitted. Waiting for others...</span>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  {publicPlayers
-                    .filter((p) => p.isAlive && p.id !== myPlayerId)
-                    .map((p) => (
-                      <button
-                        key={p.id}
-                        disabled={acting}
-                        onClick={() => onNightAction(p.id)}
-                        className="px-4 py-3 bg-[var(--surface-inset-bg)] border border-[var(--border)] hover:border-[var(--primary)] hover:bg-[var(--card)] rounded-xl text-left text-sm font-medium transition-all group flex justify-between items-center"
-                      >
-                        <span className="text-[var(--foreground)]">{p.name}</span>
-                        <span className="text-xs text-[var(--muted)] group-hover:text-[var(--primary)] font-bold uppercase tracking-wider">
-                          Select
-                        </span>
-                      </button>
-                    ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {phase === 'day_report' && (
-        <div className="text-center py-8 space-y-4">
-          <div className="text-4xl">🌅</div>
-          <h3 className="text-2xl font-black text-[var(--foreground)]">Sunrise</h3>
-          {killedPlayer ? (
-            <div className="space-y-2">
-              <p className="text-sm text-[var(--muted)]">Last night, the Mafia eliminated:</p>
-              <p className="text-3xl font-black text-red-400">{killedPlayer.name}</p>
-              {killedPlayer.role && (
-                <p className="text-sm text-[var(--muted)]">
-                  They were a{' '}
-                  <span className={`font-bold ${killedPlayer.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}>
-                    {killedPlayer.role.toUpperCase()}
-                  </span>
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <p
-                className={`text-lg font-bold ${lastNightMafiaHadTarget ? 'text-emerald-400' : 'text-[var(--muted)]'}`}
-              >
-                {lastNightMafiaHadTarget ? '🏥 The Doctor saved the village!' : '😴 The Mafia chose no target.'}
-              </p>
-              <p className="text-sm text-[var(--muted)]">Nobody died last night.</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {phase === 'day' && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">☀️</span>
-            <div>
-              <h3 className="text-lg font-black text-[var(--foreground)]">Day {dayNumber} — Discuss &amp; Vote</h3>
-              <p className="text-xs text-[var(--muted)]">Debate and vote out who you think is Mafia</p>
-            </div>
+            )}
           </div>
+        ) : myRole === 'vigilante' && (myState?.vigilanteShotsRemaining ?? 0) < 1 ? (
+          <p className="text-sm text-[var(--muted)]">You've used your one shot already. Nothing to do tonight.</p>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-sm text-[var(--muted)]">{myRole ? NIGHT_ACTION_PROMPT[myRole] : ''}</p>
+            {myState?.nightActionSubmitted && (
+              <p className="text-xs text-emerald-400 font-semibold">
+                ✓ Action submitted. Tap a different player to change it.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
 
-          {amISpectator ? (
-            <p className="text-sm text-[var(--muted)] text-center py-4">Watching — voting in progress...</p>
-          ) : !amIAlive ? (
-            <div className="text-center py-4 space-y-1">
-              <p className="text-2xl">👻</p>
-              <p className="text-sm text-[var(--muted)]">You are eliminated — watch the vote.</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {myState?.dayVoteSubmitted && (
-                <div className="flex items-center justify-between text-sm bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3">
-                  <span className="flex items-center gap-2 text-emerald-400 font-semibold">
-                    <span>✓</span>
-                    <span>Vote cast</span>
-                  </span>
-                  <button
-                    disabled={acting}
-                    onClick={() => onDayVote(null)}
-                    className="text-xs text-[var(--muted)] hover:text-[var(--foreground)] underline transition"
-                  >
-                    Change vote
-                  </button>
-                </div>
-              )}
+  if (phase === 'voting' && amIAlive && !amISpectator && myState?.dayVoteSubmitted) {
+    return (
+      <div className="glass-card border border-[var(--border)] rounded-2xl p-4">
+        <p className="text-xs text-emerald-400 font-semibold">
+          ✓ Vote cast{myRole === 'mayor' ? ' (counts double)' : ''}. Tap a different player to change it.
+        </p>
+      </div>
+    )
+  }
 
-              <div className="grid grid-cols-2 gap-2">
-                {publicPlayers
-                  .filter((p) => p.isAlive && p.id !== myPlayerId)
-                  .map((p) => {
-                    const voteCount = voteTallies?.[p.id] ?? 0
-                    return (
-                      <button
-                        key={p.id}
-                        disabled={acting}
-                        onClick={() => onDayVote(p.id)}
-                        className="px-4 py-3 bg-[var(--surface-inset-bg)] border border-[var(--border)] hover:border-[var(--primary)] hover:bg-[var(--card)] rounded-xl text-left text-sm font-medium transition-all"
-                      >
-                        <div className="flex justify-between items-center">
-                          <span className="text-[var(--foreground)] font-semibold">{p.name}</span>
-                          {voteCount > 0 && (
-                            <span className="text-xs bg-red-500/15 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full font-bold">
-                              {voteCount}
-                            </span>
-                          )}
-                        </div>
-                        {voteCount > 0 && (
-                          <div className="flex gap-0.5 mt-1">
-                            {Array.from({ length: Math.min(voteCount, 8) }).map((_, i) => (
-                              <span key={i} className="text-[10px] text-red-400">
-                                ●
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </button>
-                    )
-                  })}
-              </div>
-
-              <button
-                disabled={acting}
-                onClick={() => onDayVote(null)}
-                className="w-full py-2 text-sm text-[var(--muted)] hover:text-[var(--foreground)] border border-[var(--border)] hover:border-[var(--primary)] rounded-xl transition bg-[var(--surface-inset-bg)]"
-              >
-                ⏭ Skip / No Lynch
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {phase === 'elimination' && (
-        <div className="text-center py-8 space-y-4">
-          <div className="text-4xl">⚖️</div>
-          <h3 className="text-2xl font-black text-[var(--foreground)]">Vote Results</h3>
-          {votedPlayer ? (
-            <div className="space-y-2">
-              <p className="text-sm text-[var(--muted)]">The village voted to eliminate:</p>
-              <p className="text-3xl font-black text-red-400">{votedPlayer.name}</p>
-              {votedPlayer.role && (
-                <p className="text-sm text-[var(--muted)]">
-                  They were a{' '}
-                  <span className={`font-bold ${votedPlayer.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}>
-                    {votedPlayer.role.toUpperCase()}
-                  </span>
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <p className="text-lg font-bold text-[var(--muted)]">🤝 No majority reached.</p>
-              <p className="text-sm text-[var(--muted)]">Nobody was eliminated this round.</p>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
+  return null
 }

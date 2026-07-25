@@ -40,7 +40,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const session = mafiaSession as MafiaSession
   const playerStates = mafiaPlayerStates as MafiaPlayerState[]
 
-  if (session.phase !== 'day') {
+  if (session.phase !== 'voting') {
     return NextResponse.json({ error: 'Voting is not active' }, { status: 400 })
   }
 

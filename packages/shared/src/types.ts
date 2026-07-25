@@ -1254,16 +1254,33 @@ export interface CodewordsMessage {
   created_at: string
 }
 
-export type MafiaRole = 'villager' | 'mafia' | 'doctor' | 'detective'
-export type MafiaTeam = 'village' | 'mafia'
-export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'day' | 'elimination' | 'game_over'
+export type MafiaRole =
+  | 'villager'
+  | 'doctor'
+  | 'detective'
+  | 'bodyguard'
+  | 'mayor'
+  | 'vigilante'
+  | 'tracker'
+  | 'mafia'
+  | 'alpha_wolf'
+  | 'wolf_cub'
+  | 'framer'
+  | 'jester'
+  | 'serial_killer'
+  | 'arsonist'
+  | 'cupid'
+  | 'cursed_villager'
+export type MafiaTeam = 'village' | 'mafia' | 'jester' | 'serial_killer' | 'arsonist'
+export type MafiaDeathCause = 'mafia_kill' | 'village_vote' | 'serial_kill' | 'arson' | 'vigilante_kill'
+export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'day' | 'voting' | 'elimination' | 'game_over'
 
 export interface MafiaPublicPlayer {
   id: string
   name: string
   isAlive: boolean
   deathDay: number | null
-  deathCause: 'mafia_kill' | 'village_vote' | null
+  deathCause: MafiaDeathCause | null
   role?: MafiaRole
 }
 
@@ -1284,6 +1301,14 @@ export interface MafiaMyState {
   detectiveResult: { targetName: string; alignment: MafiaTeam } | null
   mafiaTeammates: string[]
   mafiaChatMessages?: MafiaChatMessage[]
+  trackerResult?: { targetName: string; visitedName: string | null } | null
+  bodyguardLastOutcome?: 'saved' | 'sacrificed' | 'no_attack' | null
+  vigilanteShotsRemaining?: number
+  framerLastTargetName?: string | null
+  cupidLinkedNames?: [string, string] | null
+  isLover?: boolean
+  loverPartnerName?: string | null
+  enabledRoles?: MafiaRole[]
 }
 
 export type MonopolyPhase = 'roll' | 'buy' | 'jail' | 'pay_rent' | 'auction' | 'raise_funds' | 'finished'

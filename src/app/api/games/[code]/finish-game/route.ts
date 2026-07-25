@@ -5,6 +5,7 @@ import { finishAnonymousRoomSession, finishSecretMessageBoard } from '@/lib/anon
 import { finishCodewordsGame } from '@/lib/codewords'
 import { finishScrabbleGameEarly } from '@/lib/scrabble'
 import { finishWordRushGameEarly } from '@/lib/word-rush-server'
+import { finishMafiaGameEarly } from '@/lib/mafia'
 import { markGameFinished } from '@/lib/game-finish'
 import { awardTournamentPlacements } from '@/lib/tournament-scoring'
 import {
@@ -15,6 +16,7 @@ import {
   isMonopolyGame,
   isScrabbleGame,
   isWordRushGame,
+  isMafiaGame,
 } from '@/lib/game-types'
 import { hostActionSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
@@ -85,6 +87,14 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
 
   if (isWordRushGame(gameType) && !inLobby) {
     const { error } = await finishWordRushGameEarly(admin, gameId)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+  }
+
+  // Resolves mafia_sessions.phase to 'game_over' (with whichever team already controls the
+  // game, if any) before the generic markGameFinished below flips games.status — otherwise
+  // the finished screen shows no winning team and only already-dead players' roles reveal.
+  if (isMafiaGame(gameType) && !inLobby) {
+    const { error } = await finishMafiaGameEarly(admin, gameId)
     if (error) return NextResponse.json({ error }, { status: 500 })
   }
 
