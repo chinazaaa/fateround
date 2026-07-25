@@ -696,6 +696,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                     onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
                     myPlayerId={myPlayerId}
                     players={publicPlayers}
+                    // Sending is only allowed during Discussion — Sunrise, Voting, and
+                    // Elimination are read-only viewing of the same feed, not chat time.
+                    readOnly={phase !== 'day'}
                     disabled={amISpectator}
                   />
                 </div>
