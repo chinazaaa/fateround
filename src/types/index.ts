@@ -341,8 +341,6 @@ export interface Game {
   mafia_mafia_seer_enabled?: boolean
   mafia_anonymous_votes?: boolean
   mafia_count?: number | null
-  /** @deprecated superseded by mafia_last_roles */
-  mafia_last_team_player_ids?: string[] | null
   /** player_id -> role from the last round played in this room — used to bias the next role
    *  assignment away from repeating anyone's exact same role on Play Again. */
   mafia_last_roles?: Record<string, MafiaRole> | null
