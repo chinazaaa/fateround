@@ -29,6 +29,7 @@ import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { MAFIA_TEAM_ROLES, NO_NIGHT_ACTION_ROLES } from '@/components/mafia/mafia-role-info'
 import { MafiaPlayerView } from '@/components/mafia/MafiaPlayerView'
+import { EditNameInline } from '@/components/ui/EditNameInline'
 
 const WINNING_TEAM_LABEL: Record<string, string> = {
   mafia: 'MAFIA 🔪',
@@ -214,6 +215,15 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
           endGameConfirmTitle="End this game early?"
           endGameConfirmMessage="The current game will end and players will return to the lobby."
         >
+          {!!hostPlayerId && (
+            <EditNameInline
+              gameCode={gameCode}
+              playerId={hostPlayerId}
+              currentName={hostPlayerName}
+              onRenamed={() => void load()}
+              spectating={hostMode === 'spectator'}
+            />
+          )}
           {hostMode === 'player' && !!hostPlayerId && (
             <HostLeaveSeatButton
               onLeave={leaveGameRemovePlayer}
@@ -223,7 +233,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
           )}
         </HostActiveSettings>
       ) : null,
-    [mafiaState?.status, gameCode, hostToken, load, hostMode, hostPlayerId, leaveGameRemovePlayer]
+    [mafiaState?.status, gameCode, hostToken, load, hostMode, hostPlayerId, hostPlayerName, leaveGameRemovePlayer]
   )
   useRegisterGameSettings(hostSettingsNode)
 
@@ -528,7 +538,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
   // experience (viewer banner, read-only chat, no purple debug dashboard) matching what any
   // other spectator sees, instead of a bespoke "God View". The full God View below is only a
   // fallback for the rare moment hostPlayerId hasn't been seated yet.
-  const playPrimary = hostPlayerId ? <MafiaPlayerView gameCode={gameCode} /> : null
+  const playPrimary = hostPlayerId ? <MafiaPlayerView gameCode={gameCode} embedded /> : null
 
   const hostFinishedPanel = (
     <div className="max-w-2xl w-full mx-auto glass-card border border-[var(--border)] rounded-2xl p-8 shadow-2xl space-y-6 text-center">

@@ -76,7 +76,7 @@ type Screen =
   | 'finished'
   | 'not_found'
 
-export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
+export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: string; embedded?: boolean }) {
   const router = useRouter()
   const { error: toastError, success: toastSuccess } = useToast()
   useConfirm()
@@ -405,7 +405,11 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       </div>
     )
   }, [myPlayerId, game?.status, gameCode, activePlayer?.name, isViewer, load, router])
-  useRegisterGameSettings(playerSettingsNode)
+  // Embedded inside MafiaHostView (the host is seated/spectating), the host view registers
+  // its OWN settings node (rename + leave-seat + End game) — registering this one too would
+  // just race it for the single settings-sheet slot, sometimes winning and hiding the host's
+  // real "End game" button behind a plain player "Leave".
+  useRegisterGameSettings(embedded ? null : playerSettingsNode)
 
   // ── Screens ──────────────────────────────────────────────────────────────────
 
