@@ -182,13 +182,18 @@ export function maxChainLength(board: string, sq: string): number {
  * Legal hops for the piece on `square`, honoring forced-capture AND the
  * majority-capture rule, mirroring src/lib/draughts10.ts's
  * legalStepsFromSquare exactly.
+ *
+ * `allowSkip` (Nigeria's "Street Rules" room setting) lets a player decline
+ * an available capture and make an ordinary simple move instead — captures
+ * remain legal to play, just no longer mandatory.
  */
 export function legalStepsFromSquare(
   board: string,
   color: CheckersColor,
   square: string,
   mustContinue: string | null,
-  mustRemaining: number | null = null
+  mustRemaining: number | null = null,
+  allowSkip = false
 ): Draughts10Step[] {
   if (mustContinue) {
     if (square !== mustContinue || mustRemaining == null) return []
@@ -211,10 +216,11 @@ export function legalStepsFromSquare(
       }
     }
   }
-  return captureStepsFrom(board, square).filter((s) => {
+  const forced = captureStepsFrom(board, square).filter((s) => {
     const next = applyStepRaw(board, s)
     return 1 + maxChainLength(next, s.to) === globalMax
   })
+  return allowSkip ? [...forced, ...simpleStepsFrom(board, square)] : forced
 }
 
 export function currentTurnPlayerId(session: Draughts10Session): string {
@@ -241,6 +247,8 @@ export function draughts10ResultDetail(reason: string | null | undefined): strin
   switch (reason) {
     case 'capture_all':
       return 'All pieces captured'
+    case 'huff_all':
+      return 'All pieces huffed'
     case 'no_moves':
       return 'No legal moves'
     case 'timeout':
