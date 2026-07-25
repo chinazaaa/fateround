@@ -25,7 +25,14 @@ const KILLER_LABEL: Record<string, string> = {
  */
 export async function runMafiaAdvance(
   gameId: string,
-  opts?: { nextPhase?: MafiaPhase }
+  opts?: {
+    nextPhase?: MafiaPhase
+    /** Set when a majority used Skip Voting to explicitly choose not to lynch anyone this
+     *  round — resolves straight to "nobody eliminated" instead of tallying whatever votes
+     *  happen to have been cast, since skipping voting means the town doesn't want to vote
+     *  at all this round, not "cut the vote short and count what's there". */
+    forceNoLynch?: boolean
+  }
 ): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
   const admin = getSupabaseAdmin()
 
@@ -195,8 +202,10 @@ export async function runMafiaAdvance(
       await markGameFinished(admin, gameId)
     }
   } else if (currentPhase === 'voting' && targetPhase === 'elimination') {
-    // Resolve Voting
-    const votedPlayerId = resolveMafiaDayVote(playerStates)
+    // Resolve Voting — unless the town explicitly skipped voting (majority skip request),
+    // in which case nobody is eliminated regardless of whatever partial votes exist; skipping
+    // voting means "we don't want to vote at all this round", not "cut it short and tally".
+    const votedPlayerId = opts?.forceNoLynch ? null : resolveMafiaDayVote(playerStates)
     updateFields.vote_result_player_id = votedPlayerId
 
     if (votedPlayerId) {
@@ -223,13 +232,10 @@ export async function runMafiaAdvance(
       systemMessages.push(
         `⚖️ The Village killed ${playerLabel(votedPlayerId)}${votedState ? ` ${roleLabel(votedState.role)}` : ''}`
       )
+    } else if (opts?.forceNoLynch) {
+      systemMessages.push('🤝 The town voted to skip — nobody was eliminated this round.')
     } else {
-      // Show how many alive players actually cast a vote — makes it obvious when "no
-      // majority" happened because voting was cut short (a skip vote resolved before
-      // everyone had voted), not because the town's votes were genuinely split evenly.
-      const aliveCount = playerStates.filter((p) => p.is_alive).length
-      const votedCount = playerStates.filter((p) => p.is_alive && p.day_vote_target_player_id).length
-      systemMessages.push(`🤝 No majority reached (${votedCount}/${aliveCount} voted) — nobody was eliminated.`)
+      systemMessages.push('🤝 No majority reached — nobody was eliminated.')
     }
 
     // Jester wins outright if they were just lynched, ahead of the normal team win check

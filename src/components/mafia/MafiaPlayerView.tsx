@@ -634,7 +634,6 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                   skipRequestCount={skipRequestCount ?? 0}
                   skipRequiredCount={skipRequiredCount ?? 1}
                   hasRequestedSkip={!!hasRequestedSkip}
-                  needsVoteFirst={phase === 'voting' && !myState?.dayVoteSubmitted}
                   disabled={acting}
                   onSkip={() => void submitSkipPhase()}
                 />
@@ -665,32 +664,42 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
             {(() => {
               const isWolfTeam = !!myRole && MAFIA_TEAM_ROLES.includes(myRole)
               const showSecretChat = isWolfTeam && amIAlive && phase === 'night'
-              if (showSecretChat) {
+              if (phase === 'night') {
+                // Town Discussion stays visible at night (its history isn't hidden away) but
+                // read-only — nobody can post until day, matching "no talking at night".
+                // Wolf-team members additionally get their private secret chat above it.
                 return (
-                  <div className="md:col-span-1">
-                    <MafiaSecretChat
-                      messages={myState?.mafiaChatMessages ?? []}
-                      onSendMessage={sendMafiaMessage}
-                      myPlayerId={myPlayerId}
-                    />
-                  </div>
-                )
-              }
-              if (phase !== 'night') {
-                return (
-                  <div className="md:col-span-1">
+                  <div className="md:col-span-1 space-y-4">
+                    {showSecretChat && (
+                      <MafiaSecretChat
+                        messages={myState?.mafiaChatMessages ?? []}
+                        onSendMessage={sendMafiaMessage}
+                        myPlayerId={myPlayerId}
+                      />
+                    )}
                     <MafiaDayChat
                       messages={dayChatMessages ?? []}
                       ghostMessages={!amIAlive ? (ghostChatMessages ?? []) : undefined}
                       onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
                       myPlayerId={myPlayerId}
                       players={publicPlayers}
-                      disabled={amISpectator}
+                      readOnly
                     />
                   </div>
                 )
               }
-              return null
+              return (
+                <div className="md:col-span-1">
+                  <MafiaDayChat
+                    messages={dayChatMessages ?? []}
+                    ghostMessages={!amIAlive ? (ghostChatMessages ?? []) : undefined}
+                    onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
+                    myPlayerId={myPlayerId}
+                    players={publicPlayers}
+                    disabled={amISpectator}
+                  />
+                </div>
+              )
             })()}
           </main>
         )}

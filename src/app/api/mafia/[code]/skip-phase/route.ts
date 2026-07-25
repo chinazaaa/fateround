@@ -53,15 +53,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: 'Only living players can vote to skip' }, { status: 400 })
   }
 
-  // During Voting specifically, a skip request only counts once the requester has actually
-  // cast a lynch vote — otherwise a majority could rush the phase to elimination before
-  // everyone (or even the requester) has picked anyone, resolving on a partial/split tally
-  // and eliminating no one even though most of the town intended to vote for someone.
-  // Discussion has no votes yet, so this restriction doesn't apply there.
-  if (session.phase === 'voting' && !myState.day_vote_target_player_id) {
-    return NextResponse.json({ error: 'Cast your vote before skipping ahead' }, { status: 400 })
-  }
-
   const existing = session.skip_requested_player_ids ?? []
   if (existing.includes(playerId)) {
     return NextResponse.json({ success: true, skipRequestCount: existing.length })
@@ -91,7 +82,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const skipRequired = Math.floor(aliveCount / 2) + 1
 
   if (nextSkipIds.length >= skipRequired) {
-    const result = await runMafiaAdvance(gameId)
+    // Skipping Voting means the town doesn't want to vote at all this round — resolve
+    // straight to "nobody eliminated" rather than tallying whatever partial votes exist.
+    const result = await runMafiaAdvance(gameId, { forceNoLynch: session.phase === 'voting' })
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status })
     }

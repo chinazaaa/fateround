@@ -195,6 +195,10 @@ interface DayChatProps extends ChatProps {
   disabled?: boolean
   /** Only present for dead viewers — merged into `messages` and sorted by time. */
   ghostMessages?: MafiaChatMessage[]
+  /** At night, Town Discussion is visible (so its history isn't hidden away) but nobody can
+   *  post to it — hides the input row entirely rather than just disabling it, since there's
+   *  nothing to type into at night. */
+  readOnly?: boolean
 }
 
 export function MafiaDayChat({
@@ -204,6 +208,7 @@ export function MafiaDayChat({
   myPlayerId,
   players,
   disabled = false,
+  readOnly = false,
 }: DayChatProps) {
   const { text, setText, sending, handleSubmit } = useChatInput(onSendMessage, disabled)
   const merged = ghostMessages?.length
@@ -216,25 +221,28 @@ export function MafiaDayChat({
     <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-2 flex flex-col md:sticky md:top-20">
       <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)] flex items-center gap-1.5">
         💬 Town Discussion
+        {readOnly && <span className="font-normal normal-case text-[var(--muted)]"> · night, read-only</span>}
       </p>
       <ChatMessages messages={merged} myPlayerId={myPlayerId} players={players} className="h-[24rem]" />
-      <form onSubmit={handleSubmit} className="flex gap-2">
-        <input
-          type="text"
-          value={text}
-          disabled={sending || disabled}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={disabled ? 'You cannot chat right now' : 'Share your thoughts...'}
-          className="flex-1 px-3 py-2 bg-[var(--surface-inset-bg)] border border-[var(--border)] rounded-lg text-sm focus:outline-none focus:border-[var(--primary)] text-[var(--foreground)] placeholder:text-[var(--muted)] disabled:opacity-50"
-        />
-        <button
-          type="submit"
-          disabled={sending || !text.trim() || disabled}
-          className="px-3 py-2 btn-primary btn-fit text-sm font-semibold rounded-lg transition disabled:opacity-50"
-        >
-          Send
-        </button>
-      </form>
+      {!readOnly && (
+        <form onSubmit={handleSubmit} className="flex gap-2">
+          <input
+            type="text"
+            value={text}
+            disabled={sending || disabled}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={disabled ? 'You cannot chat right now' : 'Share your thoughts...'}
+            className="flex-1 px-3 py-2 bg-[var(--surface-inset-bg)] border border-[var(--border)] rounded-lg text-sm focus:outline-none focus:border-[var(--primary)] text-[var(--foreground)] placeholder:text-[var(--muted)] disabled:opacity-50"
+          />
+          <button
+            type="submit"
+            disabled={sending || !text.trim() || disabled}
+            className="px-3 py-2 btn-primary btn-fit text-sm font-semibold rounded-lg transition disabled:opacity-50"
+          >
+            Send
+          </button>
+        </form>
+      )}
     </div>
   )
 }

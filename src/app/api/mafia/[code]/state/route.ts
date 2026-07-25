@@ -283,9 +283,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
   }
 
-  // Fetch day chat messages (public to all players during daytime phases)
+  // Fetch Town Discussion history — visible at night too now (read-only there; see
+  // MafiaDayChat's readOnly prop), so only role_reveal (before any town chat exists) skips it.
   let dayChatMessages: MafiaChatMessage[] = []
-  const dayPhases: MafiaPhase[] = ['day_report', 'day', 'voting', 'elimination', 'game_over']
+  const dayPhases: MafiaPhase[] = ['night', 'day_report', 'day', 'voting', 'elimination', 'game_over']
   if (dayPhases.includes(session.phase)) {
     const { data: messages } = await admin
       .from('mafia_chat_messages')
