@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState, useEffect } from 'react'
+import { useCallback, useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -8,6 +8,7 @@ import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, usePolling } from '@/hooks/usePolling'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useHostSeat } from '@/hooks/useHostSeat'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import type { MafiaPhase, MafiaTeam, MafiaRole, Game, GameStatus, Player, ThemeId } from '@/types'
 import { MAFIA_MIN_PLAYERS } from '@/lib/mafia'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
@@ -15,15 +16,14 @@ import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout, type HostTab } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
-import { HostManageSection } from '@/components/host/HostManageSection'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { HostMafiaLobbyPanel } from '@/components/host-lobby/HostMafiaLobbyPanel'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
-import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
-import { ExitIcon } from '@/components/host/host-icons'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { MAFIA_TEAM_ROLES, NO_NIGHT_ACTION_ROLES } from '@/components/mafia/mafia-role-info'
@@ -193,6 +193,34 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     }
   }, [mafiaState?.status])
 
+  // Host controls for the active game live in the main-header ⚙ gear — no Manage tab,
+  // gameplay (or the God View, when host-only) is always the body, roster + Remove live
+  // in the drawer (fed by HostGameLayout's game/players/hostPlayerId below).
+  const hostSettingsNode = useMemo(
+    () =>
+      mafiaState?.status === 'active' ? (
+        <HostActiveSettings
+          gameCode={gameCode}
+          hostToken={hostToken}
+          gameType="mafia"
+          onEnded={() => void load()}
+          endGameLabel="End game early"
+          endGameConfirmTitle="End this game early?"
+          endGameConfirmMessage="The current game will end and players will return to the lobby."
+        >
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton
+              onLeave={leaveGameRemovePlayer}
+              variant="remove"
+              className="btn-secondary w-full py-3 text-base"
+            />
+          )}
+        </HostActiveSettings>
+      ) : null,
+    [mafiaState?.status, gameCode, hostToken, load, hostMode, hostPlayerId, leaveGameRemovePlayer]
+  )
+  useRegisterGameSettings(hostSettingsNode)
+
   // Advance phase helper
   const advancePhase = async (nextPhase?: MafiaPhase) => {
     setActing(true)
@@ -333,42 +361,6 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     spectator: p.spectator,
     is_eliminated: !p.isAlive,
   })) as unknown as Player[]
-
-  const manage = (
-    <HostManageSection
-      game={gameObj}
-      players={playersList}
-      highlightPlayerId={hostPlayerId}
-      removingPlayerId={removingPlayerId}
-      onRemovePlayer={removePlayer}
-      gameType="mafia"
-      settings={
-        isWaiting && !mafiaState.replayPending ? (
-          <HostMafiaLobbyPanel
-            gameCode={gameCode}
-            hostToken={hostToken}
-            game={gameObj}
-            playerCount={playersList.filter((p) => !p.spectator).length}
-            onGameUpdate={() => void load()}
-          />
-        ) : undefined
-      }
-      footer={
-        !isWaiting && !isFinished ? (
-          <HostEndGameButton
-            gameCode={gameCode}
-            hostToken={hostToken}
-            onEnded={() => void load()}
-            label="End game early"
-            icon={<ExitIcon size={16} />}
-            confirmTitle="End this game early?"
-            confirmMessage="The current game will end and players will return to the lobby."
-            className="btn-danger-soft"
-          />
-        ) : null
-      }
-    />
-  )
 
   const { phase, dayNumber, phaseDeadline, players, doctorTargetPlayerId, detectTargetPlayerId, mafiaTargetPlayerId } =
     mafiaState
@@ -693,8 +685,9 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
       hostPlayerId={hostPlayerId}
       onHostRejoined={() => void load()}
       primary={hostPlays ? playPrimary : watchPrimary}
-      manage={manage}
+      manage={hostFinishedPanel}
       finished={hostFinishedPanel}
+      noManageTab
     />
   )
 }

@@ -65,12 +65,17 @@ export function MafiaPlayersGrid({
 }: MafiaPlayersGridProps) {
   const seatNumberById = new Map(players.map((p) => [p.id, p.seatNumber]))
   const headerSuffix = phase === 'voting' ? ' · tap to vote' : onSelect ? ' · tap to select' : ''
+  // Roster size varies 5-16 — a fixed 4-wide grid leaves a nearly-empty last row for small
+  // games (e.g. 6 players: 4+2). Pick the tightest square-ish column count instead, so a
+  // 6-player game reads as a clean 3x2/3x3 and a 16-player game still fills a full 4x4.
+  const cols = Math.min(4, Math.max(3, Math.ceil(Math.sqrt(players.length))))
+  const gridColsClass = cols === 3 ? 'grid-cols-3' : 'grid-cols-4'
   return (
     <div className="glass-card border border-[var(--border)] rounded-2xl p-5">
       <div className="flex items-center justify-between gap-2 mb-3">
         <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">Players{headerSuffix}</h3>
       </div>
-      <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
+      <div className={`grid ${gridColsClass} gap-1.5 sm:gap-2`}>
         {players.map((p) => {
           const isMe = p.id === myPlayerId
           const voteCount = voteTallies?.[p.id] ?? 0

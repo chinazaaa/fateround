@@ -199,6 +199,17 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()
   })
+  // Belt-and-suspenders alongside usePolling's own visibilitychange handler: a long-backgrounded
+  // tab can have its Realtime websocket silently die without `connected` ever flipping false, so
+  // a returning player could otherwise sit on stale state (still 'waiting'/mid-role-reveal) until
+  // a manual refresh, even though the game moved on entirely server-side while they were away.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void load()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [load])
   useRoomMemberAutoJoin({
     gameCode,
     displayName: roomDisplayName,
