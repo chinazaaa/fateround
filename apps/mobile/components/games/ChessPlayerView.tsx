@@ -27,11 +27,12 @@ import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { CHESS_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
+import { useToast } from '@/components/ui/Toast'
 import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 import { useChessAppearance, type ChessPieceType } from './chess/chess-appearance'
 import { ChessPieceGlyph } from './chess/ChessPieceGlyph'
 import { ChessAppearancePicker } from './chess/ChessAppearancePicker'
-import { CapturedTray, computeMaterial, KingGlyph } from './chess/ChessCapturedTray'
+import { ChessCapturedSummary, ChessPlayerCard, computeMaterial, KingGlyph } from './chess/ChessCapturedTray'
 import { ChessResultsExtras } from './chess/ChessResultsExtras'
 import { ChessShareCard } from './chess/ChessShareCard'
 import { type Premove, premoveNeedsPromotion, premoveTargets, type PremovePiece } from './chess/chess-premove'
@@ -58,6 +59,7 @@ const PROMOTION_OPTIONS: { piece: Promotion; label: string }[] = [
 
 export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
+  const { show } = useToast()
   const [session, setSession] = useState<ChessSession | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [acting, setActing] = useState(false)
@@ -286,6 +288,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           premoveAt.current = activeSession.updated_at
           setPremove({ from: selected, to: square })
           setSelected(null)
+          show('Premove saved — it plays automatically once it’s your turn')
         }
       }
       return
@@ -302,6 +305,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       setPremove({ from: promotionMove.from, to: promotionMove.to, promotion: piece })
       setPromotionMove(null)
       setSelected(null)
+      show('Premove saved — it plays automatically once it’s your turn')
     } else {
       void submitMove(promotionMove.from, promotionMove.to, piece)
     }
@@ -410,18 +414,21 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   const displayFiles = flipped ? [...FILES].reverse() : FILES
   void clockTick
 
-  // Captured-pieces trays: each side lists the enemy pieces it has taken. Top of
-  // the board shows the opponent, bottom shows the viewer's own side.
   const white = bootstrap.players.find((p) => p.id === activeSession.player_white_id)
   const black = bootstrap.players.find((p) => p.id === activeSession.player_black_id)
-  const topColor: ChessColor = flipped ? 'w' : 'b'
-  const bottomColor: ChessColor = flipped ? 'b' : 'w'
-  const trayFor = (color: ChessColor) => ({
+  // The two identity cards: your own seat leads (left), the opponent trails (right) —
+  // falling back to White-then-Black for a spectator with no seat of their own.
+  const cardOrder: ChessColor[] = myColor === 'b' ? ['b', 'w'] : ['w', 'b']
+  const playerCardFor = (color: ChessColor) => ({
+    name: (color === 'w' ? white : black)?.name ?? (color === 'w' ? 'White' : 'Black'),
+    color,
+    active: activeSession.status === 'active' && activeSession.current_turn === color,
+  })
+  const capturedSummaryEntries = cardOrder.map((color) => ({
     name: (color === 'w' ? white : black)?.name ?? (color === 'w' ? 'White' : 'Black'),
     pieces: color === 'w' ? material.capturedByWhite : material.capturedByBlack,
     glyphColor: (color === 'w' ? 'b' : 'w') as ChessColor,
-    active: activeSession.status === 'active' && activeSession.current_turn === color,
-  })
+  }))
   const timeControlSeconds = bootstrap.game?.timer_seconds ?? 0
 
   return (
@@ -448,18 +455,24 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           isMyTurn={isMyTurn}
         />
 
-        <CapturedTray
-          {...trayFor(topColor)}
-          set={pieceSet}
-          clock={
-            timed ? (
-              <ClockChip
-                ms={liveChessClockMs(activeSession, topColor)}
-                active={activeSession.current_turn === topColor}
-              />
-            ) : undefined
-          }
-        />
+        <View style={styles.playerCards}>
+          {cardOrder.map((color) => (
+            <ChessPlayerCard
+              key={color}
+              {...playerCardFor(color)}
+              clock={
+                timed ? (
+                  <ClockChip
+                    ms={liveChessClockMs(activeSession, color)}
+                    active={activeSession.current_turn === color}
+                  />
+                ) : undefined
+              }
+            />
+          ))}
+        </View>
+
+        <ChessCapturedSummary entries={capturedSummaryEntries} set={pieceSet} />
 
         <View style={styles.board}>
           {displayRanks.map((rank, rankIdx) => (
@@ -508,18 +521,6 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           ))}
         </View>
 
-        <CapturedTray
-          {...trayFor(bottomColor)}
-          set={pieceSet}
-          clock={
-            timed ? (
-              <ClockChip
-                ms={liveChessClockMs(activeSession, bottomColor)}
-                active={activeSession.current_turn === bottomColor}
-              />
-            ) : undefined
-          }
-        />
         {timed && timeControlSeconds > 0 ? (
           <Text style={styles.timeNote}>
             ⏱ {Math.round(timeControlSeconds / 60)} min each — your clock only counts down on your turn
@@ -610,7 +611,9 @@ function ClockChip({ ms, active }: { ms: number; active: boolean }) {
         lowTime ? { opacity: pulse } : null,
       ]}
     >
-      <Text style={[styles.clockValue, lowTime && styles.clockLowText]}>{formatChessClock(ms)}</Text>
+      <Text style={[styles.clockValue, active && styles.clockActiveText, lowTime && styles.clockLowText]}>
+        {formatChessClock(ms)}
+      </Text>
     </Animated.View>
   )
 }
@@ -638,16 +641,13 @@ const makeStyles = (theme: Theme) =>
       borderWidth: 4,
       borderColor: 'rgba(0,0,0,0.3)',
     },
-    clockChip: {
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 6,
-      backgroundColor: theme.surface,
-    },
-    clockActive: { borderWidth: 1, borderColor: theme.primary },
-    clockLow: { backgroundColor: 'rgba(244,63,94,0.18)', borderWidth: 1, borderColor: '#f43f5e' },
+    playerCards: { flexDirection: 'row', gap: 8 },
+    clockChip: { paddingHorizontal: 2 },
+    clockActive: {},
+    clockActiveText: { color: theme.primary },
+    clockLow: { backgroundColor: 'rgba(244,63,94,0.18)', borderRadius: 6, paddingVertical: 2 },
     clockLowText: { color: '#fb7185' },
-    clockValue: { color: theme.text, fontWeight: '800', fontVariant: ['tabular-nums'], flexShrink: 0 },
+    clockValue: { color: theme.text, fontWeight: '800', fontSize: 15, fontVariant: ['tabular-nums'], flexShrink: 0 },
     timeNote: { color: theme.textFaint, fontSize: 11, textAlign: 'center', marginTop: -6 },
     coordRank: { position: 'absolute', top: 1, left: 2, fontSize: 8, fontWeight: '700' },
     coordFile: { position: 'absolute', bottom: 1, right: 2, fontSize: 8, fontWeight: '700' },

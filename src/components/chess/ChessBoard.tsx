@@ -15,6 +15,7 @@ import {
 } from '@/lib/chess-appearance'
 import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
 import { useChessTurnSound } from '@/hooks/useChessTurnSound'
+import { useToast } from '@/components/ui/Toast'
 
 const PIECE_NAMES: Record<ChessPieceType, string> = {
   p: 'pawn',
@@ -59,12 +60,8 @@ function ChessClockChip({ session, color }: { session: ChessSession; color: Ches
   return (
     <span
       className={[
-        'ml-auto shrink-0 tabular-nums font-black rounded-md px-2 py-0.5 text-sm border',
-        active
-          ? lowTime
-            ? 'bg-rose-500/20 border-rose-400 text-rose-300 animate-pulse'
-            : 'bg-[var(--primary)]/15 border-[var(--primary)]/50 text-[var(--foreground)]'
-          : 'bg-[var(--surface-inset-bg)] border-[var(--border)] text-muted',
+        'shrink-0 tabular-nums font-black text-base',
+        active ? (lowTime ? 'text-rose-400 animate-pulse' : 'text-[var(--primary)]') : 'text-muted',
       ].join(' ')}
     >
       {formatClock(ms)}
@@ -134,52 +131,77 @@ function KingGlyph({ color }: { color: ChessColor }) {
   )
 }
 
-/** A player's header card: avatar, name, captured opponent pieces, and clock. */
-function CapturedTray({
-  name,
-  pieces,
-  glyphColor,
+/** One combined captured-material line for both sides (e.g. "ADA ♟ · KOJO ♙♙"), sitting below
+ *  the player cards. Each entry that has no captures yet is skipped. */
+function ChessCapturedSummary({
+  entries,
   set,
+}: {
+  entries: { name: string; pieces: string[]; glyphColor: ChessColor }[]
+  set: ChessPieceSet
+}) {
+  const shown = entries.filter((e) => e.pieces.length > 0)
+  if (shown.length === 0) return null
+  return (
+    <div className="flex items-center justify-center flex-wrap gap-1 px-1">
+      {shown.map((e, i) => (
+        <div key={e.name + i} className="flex items-center gap-0.5">
+          {i > 0 ? <span className="text-faint text-xs mr-1">·</span> : null}
+          <span className="text-muted text-[11px] font-bold tracking-wide mr-0.5">{e.name.toUpperCase()}</span>
+          {e.pieces.map((type, j) => (
+            <ChessPieceGlyph
+              key={`${type}-${j}`}
+              set={set}
+              color={e.glyphColor}
+              type={type as ChessPieceType}
+              className="h-3.5 w-3.5 sm:h-4 sm:w-4"
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** A player identity card: avatar, name, colour label, and (optionally) a live clock — two of
+ *  these sit side by side above the board, mirroring the chess.com-style header. */
+function ChessPlayerCard({
+  name,
+  color,
   clock,
   active,
 }: {
   name: string
-  pieces: string[]
-  glyphColor: ChessColor
-  set: ChessPieceSet
+  color: ChessColor
   clock?: ReactNode
   active?: boolean
 }) {
   return (
     <div
       className={[
-        'flex items-center gap-2 min-h-[2.75rem] px-2 py-1.5 rounded-lg border transition-colors',
-        active ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-transparent bg-[var(--surface-inset-bg)]',
+        'flex-1 flex items-center gap-2 min-h-[3.25rem] px-2.5 py-2 rounded-lg border transition-colors',
+        active ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--border)] bg-[var(--surface-bg)]',
       ].join(' ')}
     >
       <span
-        className="flex items-center justify-center shrink-0 h-7 w-7 rounded-full text-xs font-black bg-[var(--surface-bg)] border border-[var(--border)]"
+        className={[
+          'flex items-center justify-center shrink-0 h-8 w-8 rounded-full text-sm font-black',
+          color === 'w' ? 'bg-[var(--primary)]/15 text-[var(--primary)]' : 'bg-[#1a1a1a] text-[#f5f5f5]',
+        ].join(' ')}
         aria-hidden
       >
         {name.trim().charAt(0).toUpperCase() || '?'}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-xs font-bold truncate">
-          <KingGlyph color={glyphColor} /> {name}
-        </p>
-        <div className="flex items-center flex-wrap gap-0.5 leading-none">
-          {pieces.map((type, i) => (
-            <ChessPieceGlyph
-              key={`${type}-${i}`}
-              set={set}
-              color={glyphColor}
-              type={type as ChessPieceType}
-              className="h-4 w-4 sm:h-5 sm:w-5"
-            />
-          ))}
-        </div>
+        <p className="text-sm font-bold truncate">{name}</p>
+        <p className="text-xs text-faint">{color === 'w' ? 'White' : 'Black'}</p>
       </div>
-      {clock}
+      {clock ? (
+        <div className="flex items-center gap-1.5 shrink-0">
+          {active ? <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden /> : null}
+          {clock}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -218,6 +240,7 @@ export function ChessGamePanel({
   onResign?: () => void
   acting?: boolean
 }) {
+  const { info: toastInfo } = useToast()
   const [selected, setSelected] = useState<string | null>(null)
   const [pendingPromotion, setPendingPromotion] = useState<{ from: string; to: string; isPremove?: boolean } | null>(
     null
@@ -330,17 +353,20 @@ export function ChessGamePanel({
   const black = players.find((p) => p.id === session.player_black_id)
   const winnerName = players.find((p) => p.id === session.winner_player_id)?.name
 
-  // Captured-pieces tray props for a given side. Each side shows the
-  // opponent-colored pieces it has taken, plus its material lead (if any).
-  const trayFor = (color: ChessColor) => ({
+  // The two identity cards: your own seat leads (left), the opponent trails (right) —
+  // falling back to White-then-Black for a spectator with no seat of their own.
+  const cardOrder: ChessColor[] = myColor === 'b' ? ['b', 'w'] : ['w', 'b']
+  const playerCardFor = (color: ChessColor) => ({
+    name: (color === 'w' ? white : black)?.name ?? (color === 'w' ? 'White' : 'Black'),
+    color,
+    active: session.status === 'active' && session.current_turn === color,
+  })
+  const capturedSummaryEntries = cardOrder.map((color) => ({
     name: (color === 'w' ? white : black)?.name ?? (color === 'w' ? 'White' : 'Black'),
     pieces: color === 'w' ? material.capturedByWhite : material.capturedByBlack,
     glyphColor: (color === 'w' ? 'b' : 'w') as ChessColor,
-    active: session.status === 'active' && session.current_turn === color,
-  })
+  }))
 
-  const bottomColor: ChessColor = flip ? 'b' : 'w'
-  const topColor: ChessColor = flip ? 'w' : 'b'
   const timed = session.white_time_ms != null && session.black_time_ms != null
 
   const handleSquareClick = (square: string) => {
@@ -368,6 +394,7 @@ export function ChessGamePanel({
             premoveAt.current = session.updated_at
             setPremove({ from: selected, to: square })
             setSelected(null)
+            toastInfo('Premove saved — it plays automatically once it’s your turn')
           }
         }
         return
@@ -387,6 +414,7 @@ export function ChessGamePanel({
     if (pendingPromotion.isPremove) {
       premoveAt.current = session.updated_at
       setPremove({ from: pendingPromotion.from, to: pendingPromotion.to, promotion: piece })
+      toastInfo('Premove saved — it plays automatically once it’s your turn')
     } else {
       onMove?.(pendingPromotion.from, pendingPromotion.to, piece)
     }
@@ -417,11 +445,16 @@ export function ChessGamePanel({
       )}
 
       <div className="max-w-lg sm:max-w-xl lg:max-w-2xl mx-auto w-full space-y-1.5">
-        <CapturedTray
-          {...trayFor(topColor)}
-          set={pieceSet}
-          clock={<ChessClockChip session={session} color={topColor} />}
-        />
+        <div className="flex gap-2">
+          {cardOrder.map((color) => (
+            <ChessPlayerCard
+              key={color}
+              {...playerCardFor(color)}
+              clock={timed ? <ChessClockChip session={session} color={color} /> : undefined}
+            />
+          ))}
+        </div>
+        <ChessCapturedSummary entries={capturedSummaryEntries} set={pieceSet} />
         <div className="grid grid-cols-8 rounded-lg overflow-hidden border-2 border-[var(--border-strong)] shadow-lg">
           {orderedRanks.map((rank, rankIdx) =>
             orderedFiles.map((file, fileIdx) => {
@@ -491,11 +524,6 @@ export function ChessGamePanel({
             })
           )}
         </div>
-        <CapturedTray
-          {...trayFor(bottomColor)}
-          set={pieceSet}
-          clock={<ChessClockChip session={session} color={bottomColor} />}
-        />
       </div>
 
       <ChessAppearancePicker defaults={appearanceDefaults} />

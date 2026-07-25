@@ -65,71 +65,115 @@ export function KingGlyph({ color, size = 16 }: { color: ChessColor; size?: numb
   )
 }
 
-/** A player's header card: avatar, name, captured opponent pieces, and (optionally) a clock. */
-export function CapturedTray({
-  name,
-  pieces,
-  glyphColor,
+/** One combined captured-material line for both sides (e.g. "ADA ♟ · KOJO ♙♙"), sitting
+ *  below the player cards. Each entry that has no captures yet is skipped. */
+export function ChessCapturedSummary({
+  entries,
   set,
+}: {
+  entries: { name: string; pieces: ChessPieceType[]; glyphColor: ChessColor }[]
+  set: ChessPieceSet
+}) {
+  const styles = useThemedStyles(makeStyles)
+  const shown = entries.filter((e) => e.pieces.length > 0)
+  if (shown.length === 0) return null
+  return (
+    <View style={styles.summaryRow}>
+      {shown.map((e, i) => (
+        <View key={e.name + i} style={styles.summaryItem}>
+          {i > 0 ? <Text style={styles.summaryDot}>·</Text> : null}
+          <Text style={styles.summaryName} numberOfLines={1}>
+            {e.name.toUpperCase()}
+          </Text>
+          {e.pieces.map((type, j) => (
+            <ChessPieceGlyph key={`${type}-${j}`} set={set} color={e.glyphColor} type={type} size={14} />
+          ))}
+        </View>
+      ))}
+    </View>
+  )
+}
+
+/** A player identity card: avatar, name, colour label, and (optionally) a live clock —
+ *  two of these sit side by side above the board, mirroring the chess.com-style header. */
+export function ChessPlayerCard({
+  name,
+  color,
   clock,
   active,
 }: {
   name: string
-  pieces: ChessPieceType[]
-  glyphColor: ChessColor
-  set: ChessPieceSet
+  color: ChessColor
   clock?: ReactNode
   active?: boolean
 }) {
   const styles = useThemedStyles(makeStyles)
   const initial = name.trim().charAt(0).toUpperCase() || '?'
   return (
-    <View style={[styles.tray, active && styles.trayActive]}>
-      <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{initial}</Text>
+    <View style={[styles.card, active && styles.cardActive]}>
+      <View style={[styles.avatar, color === 'w' ? styles.avatarWhite : styles.avatarBlack]}>
+        <Text style={[styles.avatarText, color === 'w' ? styles.avatarTextWhite : styles.avatarTextBlack]}>
+          {initial}
+        </Text>
       </View>
       <View style={styles.identity}>
         <Text style={styles.name} numberOfLines={1}>
           {name}
         </Text>
-        <View style={styles.pieces}>
-          <KingGlyph color={glyphColor} size={12} />
-          {pieces.map((type, i) => (
-            <ChessPieceGlyph key={`${type}-${i}`} set={set} color={glyphColor} type={type} size={16} />
-          ))}
-        </View>
+        <Text style={styles.colorLabel}>{color === 'w' ? 'White' : 'Black'}</Text>
       </View>
-      {clock ? <View style={styles.clockSlot}>{clock}</View> : null}
+      {clock ? (
+        <View style={styles.clockSlot}>
+          {active ? <View style={styles.activeDot} /> : null}
+          {clock}
+        </View>
+      ) : null}
     </View>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-    tray: {
+    summaryRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+      paddingHorizontal: 2,
+    },
+    summaryItem: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+    summaryDot: { color: theme.textFaint, fontSize: 12, marginRight: 2 },
+    summaryName: { color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.3, marginRight: 1 },
+    card: {
+      flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
-      minHeight: 44,
-      paddingHorizontal: 8,
-      paddingVertical: 6,
+      minHeight: 52,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
       borderRadius: theme.radius.sm,
       borderWidth: 1,
-      borderColor: 'transparent',
+      borderColor: theme.border,
       backgroundColor: theme.surface,
     },
-    trayActive: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+    cardActive: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
     avatar: {
       width: 30,
       height: 30,
       borderRadius: 15,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: theme.bgElevated,
     },
-    avatarText: { color: theme.text, fontWeight: '800', fontSize: 13 },
-    identity: { flex: 1, gap: 2, minWidth: 0 },
+    avatarWhite: { backgroundColor: theme.primarySoft },
+    avatarBlack: { backgroundColor: '#1a1a1a' },
+    avatarText: { fontWeight: '800', fontSize: 13 },
+    avatarTextWhite: { color: theme.primary },
+    avatarTextBlack: { color: '#f5f5f5' },
+    identity: { flex: 1, minWidth: 0 },
     name: { color: theme.text, fontSize: 13, fontWeight: '700' },
-    pieces: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 1 },
-    clockSlot: { flexShrink: 0 },
+    colorLabel: { color: theme.textMuted, fontSize: 11, fontWeight: '600' },
+    clockSlot: { flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 5 },
+    activeDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: theme.success },
   })
