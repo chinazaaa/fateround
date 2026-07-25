@@ -25,6 +25,9 @@ const TEAM_LABEL: Record<string, string> = {
 
 interface MafiaRolesDrawerProps {
   enabledRoles: MafiaRole[]
+  /** The local player's own role — sorted first in the list so it's the first (and easiest
+   *  to read) thing they see, matching Wolvesville's role-detail popup. */
+  myRole?: MafiaRole | null
 }
 
 /**
@@ -32,8 +35,9 @@ interface MafiaRolesDrawerProps {
  * game, so players can check what a role does at any time without it being a spoiler —
  * rules text only, no live game info.
  */
-export function MafiaRolesDrawer({ enabledRoles }: MafiaRolesDrawerProps) {
+export function MafiaRolesDrawer({ enabledRoles, myRole }: MafiaRolesDrawerProps) {
   const [open, setOpen] = useState(false)
+  const sortedRoles = myRole ? [myRole, ...enabledRoles.filter((r) => r !== myRole)] : enabledRoles
 
   return (
     <>
@@ -59,18 +63,22 @@ export function MafiaRolesDrawer({ enabledRoles }: MafiaRolesDrawerProps) {
               </button>
             </div>
             <div className="space-y-3">
-              {enabledRoles.map((role) => {
+              {sortedRoles.map((role) => {
                 const info = MAFIA_ROLE_INFO[role]
                 if (!info) return null
+                const isMine = role === myRole
                 return (
                   <div
                     key={role}
-                    className="bg-[var(--surface-inset-bg)] border border-[var(--border)] rounded-xl p-3 flex gap-3"
+                    className={`bg-[var(--surface-inset-bg)] border rounded-xl p-3 flex gap-3 ${
+                      isMine ? 'border-[var(--primary)]' : 'border-[var(--border)]'
+                    }`}
                   >
                     <span className="text-2xl">{mafiaRoleEmoji(role)}</span>
                     <div className="space-y-1">
                       <p className={`font-bold text-sm ${TEAM_TEXT[info.team] ?? 'text-[var(--foreground)]'}`}>
                         {info.name}
+                        {isMine && <span className="text-[var(--primary)] font-normal"> (your role)</span>}
                       </p>
                       <p className="text-xs text-[var(--muted)] leading-relaxed">{info.description}</p>
                       <span

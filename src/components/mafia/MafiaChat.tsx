@@ -5,7 +5,15 @@ import type { MafiaChatMessage, MafiaPublicPlayer } from '@/types'
 
 // ── Phase Timer ───────────────────────────────────────────────────────────────
 
-export function MafiaPhaseTimer({ deadline, onExpired }: { deadline: string | null; onExpired: () => void }) {
+export function MafiaPhaseTimer({
+  deadline,
+  onExpired,
+  label,
+}: {
+  deadline: string | null
+  onExpired: () => void
+  label?: string
+}) {
   const calc = () => (deadline ? Math.max(0, Math.round((new Date(deadline).getTime() - Date.now()) / 1000)) : null)
   const [timeLeft, setTimeLeft] = useState<number | null>(calc)
   const firedRef = useRef(false)
@@ -35,7 +43,10 @@ export function MafiaPhaseTimer({ deadline, onExpired }: { deadline: string | nu
       }`}
     >
       <span className={urgent ? 'animate-pulse' : ''}>⏳</span>
-      <span>{timeLeft}s remaining</span>
+      <span>
+        {label ? `${label} ` : ''}
+        {timeLeft}s
+      </span>
     </div>
   )
 }

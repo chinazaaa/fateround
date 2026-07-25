@@ -54,6 +54,15 @@ const WINNING_TEAM_COLOR: Record<string, string> = {
   arsonist: 'text-orange-400',
   lovers: 'text-pink-400',
 }
+const PHASE_LABEL: Record<string, string> = {
+  role_reveal: 'Role Reveal',
+  night: 'Night',
+  day_report: 'Sunrise',
+  day: 'Discussion',
+  voting: 'Voting',
+  elimination: 'Elimination',
+  game_over: 'Game Over',
+}
 
 type Screen =
   | 'loading'
@@ -546,7 +555,10 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
     return (
       <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col">
-        {isViewer && <ViewerModeBanner />}
+        {/* Only show the generic viewer banner to true spectators (joined as viewer) — an
+            eliminated player was actually playing and just gets the ghost chat below, not a
+            "you're spectating, join when the lobby opens" message that doesn't apply to them. */}
+        {amISpectator && <ViewerModeBanner />}
 
         <header className="px-4 py-3 border-b border-[var(--border)] bg-[var(--card)] flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -554,17 +566,21 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
             <div>
               <h1 className="font-bold text-base text-[var(--primary)] leading-tight">Mafia</h1>
               <p className="text-[10px] text-[var(--muted)] uppercase tracking-widest font-semibold">
-                {phase === 'role_reveal' ? 'Role Reveal' : `Day ${dayNumber} · ${phase.replace(/_/g, ' ')}`}
+                {phase === 'role_reveal' ? 'Role Reveal' : `Day ${dayNumber} · ${PHASE_LABEL[phase] ?? phase}`}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <MafiaRolesDrawer enabledRoles={enabledRoles ?? []} />
+            <MafiaRolesDrawer enabledRoles={enabledRoles ?? []} myRole={myRole} />
             <GameRulesLink gameType="mafia" />
           </div>
         </header>
 
-        <MafiaPhaseTimer deadline={phaseDeadline} onExpired={triggerAutoAdvance} />
+        <MafiaPhaseTimer
+          deadline={phaseDeadline}
+          onExpired={triggerAutoAdvance}
+          label={PHASE_LABEL[phase] ?? undefined}
+        />
 
         <main className="flex-1 max-w-3xl w-full mx-auto p-4 md:p-6 space-y-4">
           <MafiaPlayersGrid
