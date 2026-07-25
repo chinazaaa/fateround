@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import type { MafiaPlayerState, MafiaSession } from '@/types'
 
-const NO_NIGHT_ACTION_ROLES = new Set(['villager', 'mayor', 'wolf_cub', 'jester', 'cursed_villager'])
+const NO_NIGHT_ACTION_ROLES = new Set(['villager', 'mayor', 'jester', 'cursed_villager', 'vigilante'])
 const ROLE_ENABLED_FIELD: Partial<Record<string, keyof MafiaSession>> = {
   doctor: 'doctor_enabled',
   detective: 'detective_enabled',
@@ -15,6 +15,7 @@ const ROLE_ENABLED_FIELD: Partial<Record<string, keyof MafiaSession>> = {
   serial_killer: 'serial_killer_enabled',
   arsonist: 'arsonist_enabled',
   cupid: 'cupid_enabled',
+  medium: 'medium_enabled',
 }
 // Roles that may never target themselves (self-target is either meaningless or reserved
 // for a different action, e.g. Arsonist self-target signals "ignite" instead of "douse").
@@ -127,8 +128,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ success: true })
   }
 
-  if (role === 'vigilante' && myState.vigilante_shots_used >= 1) {
-    return NextResponse.json({ error: 'Vigilante has already used their shot' }, { status: 400 })
+  // Medium targets a DEAD player for revive (opposite of the usual alive check).
+  if (role === 'medium') {
+    if (myState.medium_revive_used) {
+      return NextResponse.json({ error: 'Medium has already used their revive' }, { status: 400 })
+    }
+    const targetState = playerStates.find((p) => p.player_id === targetPlayerId)
+    if (!targetState) {
+      return NextResponse.json({ error: 'Target player not found' }, { status: 404 })
+    }
+    if (targetState.is_alive) {
+      return NextResponse.json({ error: 'Target must be a dead player to revive' }, { status: 400 })
+    }
+    const { error: updateError } = await admin
+      .from('mafia_player_states')
+      .update({ night_action_target_player_id: targetPlayerId })
+      .eq('id', myState.id)
+    if (updateError) {
+      return NextResponse.json({ error: 'Failed to submit night action' }, { status: 500 })
+    }
+    return NextResponse.json({ success: true })
   }
 
   // Arsonist self-targets to signal "ignite" instead of dousing — validated below without

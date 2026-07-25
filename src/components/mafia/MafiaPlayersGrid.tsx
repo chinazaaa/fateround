@@ -34,6 +34,9 @@ interface MafiaPlayersGridProps {
    *  during Cupid's pick so their own tile becomes tappable too, instead of the usual
    *  self-target block that applies to every other role. */
   allowSelfSelect?: boolean
+  /** Medium's revive targets dead players — flip the alive requirement so tombstone tiles
+   *  become tappable instead of alive ones. */
+  allowDeadSelect?: boolean
 }
 
 const TEAM_TEXT: Record<string, string> = {
@@ -53,9 +56,11 @@ const NIGHT_ACTION_VERB: Partial<Record<MafiaRole, string>> = {
   vigilante: 'the player to kill',
   mafia: 'the player to kill',
   alpha_wolf: 'the player to kill',
+  wolf_cub: 'the player to kill',
   framer: 'the player to frame',
   serial_killer: 'the player to kill',
   arsonist: 'the player to douse',
+  medium: 'a dead player to revive',
   cupid: 'two players to link as Lovers',
 }
 
@@ -80,6 +85,7 @@ export function MafiaPlayersGrid({
   onSelect,
   selectedIds = [],
   allowSelfSelect = false,
+  allowDeadSelect = false,
 }: MafiaPlayersGridProps) {
   const seatNumberById = new Map(players.map((p) => [p.id, p.seatNumber]))
   const amIAlive = players.find((p) => p.id === myPlayerId)?.isAlive !== false
@@ -109,7 +115,7 @@ export function MafiaPlayersGrid({
           const votingForSeat =
             phase === 'voting' && p.isAlive && !anonymousVotes ? seatNumberById.get(voteChoices[p.id]) : undefined
           const isSelected = selectedIds.includes(p.id)
-          const clickable = !!onSelect && p.isAlive && (!isMe || allowSelfSelect)
+          const clickable = !!onSelect && (allowDeadSelect ? !p.isAlive : p.isAlive) && (!isMe || allowSelfSelect)
           const isTeammate = !isMe && mafiaTeammateIds.includes(p.id)
           const teammateRole = isTeammate ? mafiaTeammateRoles[p.id] : undefined
           const teammateNightTarget =
