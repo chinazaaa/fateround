@@ -14,6 +14,7 @@ import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { TransferHostControl } from '@/components/TransferHostControl'
@@ -867,6 +868,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
         hostToken={hostToken}
         game={game}
         gameTypeLabel={cfg.label}
+        titleMeta={<GameInfoChips game={game} className="mt-2" />}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('bingo', game) ?? game.max_players}
         resumeToken={hostResumeToken}

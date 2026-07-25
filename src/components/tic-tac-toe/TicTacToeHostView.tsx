@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
@@ -419,6 +420,7 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
         gameCode={gameCode}
         hostToken={hostToken}
         game={game}
+        titleMeta={<GameInfoChips game={game} className="mt-2" />}
         gameTypeLabel={gameTypeConfig('tic_tac_toe').label}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('tic_tac_toe', game) ?? game.max_players}

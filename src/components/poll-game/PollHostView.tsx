@@ -166,6 +166,7 @@ import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostPageShell } from '@/components/host/HostPageShell'
 import { PollHostPlayShell } from '@/components/host/PollHostPlayShell'
 import { HostLobby } from '@/components/host/HostLobby'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { getPollHostMode, setPollHostMode, type PollHostMode } from '@/lib/poll-host-mode'
 import { computeAchievements } from '@/lib/achievements'
@@ -1611,17 +1612,6 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
                                         : `Need ${minPool}+ names joined`
       : null
 
-    // Rounds · timer summary pill shown beside the game-type pill in the HostLobby header.
-    const roundsPill = (
-      <span className="rounded-full border border-[var(--border-strong)] bg-[var(--card-strong)] px-2.5 py-0.5 text-[0.7rem] font-semibold text-muted">
-        {isWst
-          ? `${wstQuestionCount} question${wstQuestionCount === 1 ? '' : 's'} · ${game.timer_seconds}s each`
-          : hotSeatLobby && hotSeatEffective > 0
-            ? `${hotSeatEffective} rounds · ${game.timer_seconds}s each`
-            : `${game.rounds_count} rounds · ${game.timer_seconds}s each`}
-      </span>
-    )
-
     // ── Mobile-parity HostLobby (name-only-join poll subtypes) ─────────────────
     // Would You Rather / This or That / Never Have I Ever / Pick a Number / Most Likely To
     // (non-import) are player-only, name-only-join lobbies with no host-managed roster,
@@ -1817,7 +1807,7 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             hostToken={hostToken}
             game={game}
             gameTypeLabel={gameTypeLabel(gameType) ?? 'Poll'}
-            titleMeta={roundsPill}
+            titleMeta={<GameInfoChips game={game} className="mt-2" />}
             players={players}
             maxPlayers={game.max_players}
             resumeToken={hostResumeToken}
@@ -2873,7 +2863,7 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             hostToken={hostToken}
             game={game}
             gameTypeLabel={gameTypeLabel(gameType) ?? 'Poll'}
-            titleMeta={roundsPill}
+            titleMeta={<GameInfoChips game={game} className="mt-2" />}
             players={players}
             maxPlayers={game.max_players}
             resumeToken={hostResumeToken}

@@ -15,6 +15,7 @@ import { HostGameLayout, type HostTab } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { HostMafiaLobbyPanel } from '@/components/host-lobby/HostMafiaLobbyPanel'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
@@ -584,6 +585,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
         hostToken={hostToken}
         game={gameObj}
         gameTypeLabel={gameTypeConfig('mafia').label}
+        titleMeta={<GameInfoChips game={gameObj} className="mt-2" />}
         players={playersList}
         maxPlayers={lobbyMaxPlayersFromGameClient('mafia', gameObj) ?? gameObj.max_players}
         playCard={

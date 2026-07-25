@@ -6,6 +6,7 @@ import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
@@ -493,6 +494,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
         hostToken={hostToken}
         game={game}
         gameTypeLabel={gameTypeConfig('chess').label}
+        titleMeta={<GameInfoChips game={game} className="mt-2" />}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('chess', game) ?? game.max_players}
         playCard={
