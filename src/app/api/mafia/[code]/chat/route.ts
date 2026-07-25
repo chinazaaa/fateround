@@ -64,10 +64,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         return NextResponse.json({ error: 'Only Mafia members can use the secret chat' }, { status: 403 })
       }
     } else {
-      // Day chat: sending is only allowed during Discussion — Sunrise, Voting, Elimination,
+      // Day chat: sending is allowed during Discussion and Voting — Sunrise, Elimination,
       // and Night can all still view the same feed (see state/route.ts), but not post to it.
-      if (session.phase !== 'day') {
-        return NextResponse.json({ error: 'Day chat is only active during Discussion' }, { status: 403 })
+      if (session.phase !== 'day' && session.phase !== 'voting') {
+        return NextResponse.json({ error: 'Day chat is only active during Discussion or Voting' }, { status: 403 })
       }
     }
   }

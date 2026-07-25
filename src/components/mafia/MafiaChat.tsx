@@ -195,10 +195,13 @@ interface DayChatProps extends ChatProps {
   disabled?: boolean
   /** Only present for dead viewers — merged into `messages` and sorted by time. */
   ghostMessages?: MafiaChatMessage[]
-  /** At night, Town Discussion is visible (so its history isn't hidden away) but nobody can
-   *  post to it — hides the input row entirely rather than just disabling it, since there's
-   *  nothing to type into at night. */
+  /** Outside Discussion/Voting, Town Discussion is visible (so its history isn't hidden
+   *  away) but nobody can post to it — hides the input row entirely rather than just
+   *  disabling it, since there's nothing to type into. */
   readOnly?: boolean
+  /** Short phase name shown next to the header when readOnly (e.g. "night", "sunrise") —
+   *  must reflect the actual current phase, not be hardcoded to one specific phase. */
+  readOnlyLabel?: string
 }
 
 export function MafiaDayChat({
@@ -209,6 +212,7 @@ export function MafiaDayChat({
   players,
   disabled = false,
   readOnly = false,
+  readOnlyLabel,
 }: DayChatProps) {
   const { text, setText, sending, handleSubmit } = useChatInput(onSendMessage, disabled)
   const merged = ghostMessages?.length
@@ -221,7 +225,12 @@ export function MafiaDayChat({
     <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-2 flex flex-col md:sticky md:top-20">
       <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)] flex items-center gap-1.5">
         💬 Town Discussion
-        {readOnly && <span className="font-normal normal-case text-[var(--muted)]"> · night, read-only</span>}
+        {readOnly && (
+          <span className="font-normal normal-case text-[var(--muted)]">
+            {' '}
+            · {readOnlyLabel ? `${readOnlyLabel}, ` : ''}read-only
+          </span>
+        )}
       </p>
       <ChatMessages messages={merged} myPlayerId={myPlayerId} players={players} className="h-[24rem]" />
       {!readOnly && (

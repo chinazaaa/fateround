@@ -698,10 +698,14 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                       myPlayerId={myPlayerId}
                       players={publicPlayers}
                       readOnly
+                      readOnlyLabel="night"
                     />
                   </div>
                 )
               }
+              // Sending is allowed during Discussion and Voting — Sunrise and Elimination
+              // are brief announcement beats, read-only viewing of the same feed.
+              const canSend = phase === 'day' || phase === 'voting'
               return (
                 <div className="md:col-span-1">
                   <MafiaDayChat
@@ -710,9 +714,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                     onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
                     myPlayerId={myPlayerId}
                     players={publicPlayers}
-                    // Sending is only allowed during Discussion — Sunrise, Voting, and
-                    // Elimination are read-only viewing of the same feed, not chat time.
-                    readOnly={phase !== 'day'}
+                    readOnly={!canSend}
+                    readOnlyLabel={PHASE_LABEL[phase]?.toLowerCase()}
                     disabled={amISpectator}
                   />
                 </div>
