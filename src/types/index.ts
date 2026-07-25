@@ -329,6 +329,8 @@ export interface Game {
   mafia_cursed_villager_enabled?: boolean
   mafia_anonymous_votes?: boolean
   mafia_count?: number | null
+  mafia_day_seconds?: number
+  mafia_voting_seconds?: number
   monopoly_double_go_salary?: boolean
   monopoly_forced_auctions?: boolean
   monopoly_auction_timer_seconds?: number | null
@@ -1868,7 +1870,7 @@ export type MafiaRole =
   | 'cursed_villager'
 export type MafiaTeam = 'village' | 'mafia' | 'jester' | 'serial_killer' | 'arsonist'
 export type MafiaDeathCause = 'mafia_kill' | 'village_vote' | 'serial_kill' | 'arson' | 'vigilante_kill'
-export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'day' | 'elimination' | 'game_over'
+export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'day' | 'voting' | 'elimination' | 'game_over'
 
 export interface MafiaRoleEnabledFlags {
   doctor_enabled: boolean
@@ -1907,6 +1909,8 @@ export interface MafiaSession extends MafiaRoleEnabledFlags {
   wolf_cub_revenge_pending: boolean
   cupid_lover_ids: [string, string] | null
   mafia_count: number
+  day_seconds: number
+  voting_seconds: number
   anonymous_votes: boolean
   winning_team: MafiaTeam | 'lovers' | null
   created_at: string
@@ -1933,6 +1937,7 @@ export interface MafiaPlayerState {
 
 export interface MafiaPublicPlayer {
   id: string
+  seatNumber: number
   name: string
   isAlive: boolean
   deathDay: number | null

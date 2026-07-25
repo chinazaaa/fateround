@@ -26,6 +26,7 @@ const TEAM_LABEL: Record<string, string> = {
 interface MafiaIdentityPanelProps {
   myState: MafiaMyState | null
   myPlayerId: string | null
+  mySeatNumber: number | null
   amIAlive: boolean
   mafiaChatMessages: MafiaChatMessage[]
   onSendMafiaMessage: (msg: string) => Promise<void>
@@ -34,6 +35,7 @@ interface MafiaIdentityPanelProps {
 export function MafiaIdentityPanel({
   myState,
   myPlayerId,
+  mySeatNumber,
   amIAlive,
   mafiaChatMessages,
   onSendMafiaMessage,
@@ -46,7 +48,9 @@ export function MafiaIdentityPanel({
   return (
     <div className="md:col-span-1 space-y-4">
       <div className="glass-card border border-[var(--border)] rounded-2xl p-5 flex flex-col items-center text-center space-y-3">
-        <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">Your Identity</p>
+        <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">
+          Your Identity{mySeatNumber != null ? ` · #${mySeatNumber} (you)` : ''}
+        </p>
 
         {myState && info ? (
           <>
@@ -70,7 +74,7 @@ export function MafiaIdentityPanel({
             {myState.mafiaTeammates.length > 0 && (
               <div className="w-full text-left bg-red-500/5 border border-red-500/20 rounded-xl p-3">
                 <p className="text-[10px] font-bold text-red-400 uppercase tracking-wider mb-1">
-                  {isWolfTeam ? 'Wolf Pack' : 'Mafia Allies'}
+                  {isWolfTeam ? 'Mafia Crew' : 'Mafia Allies'}
                 </p>
                 <p className="text-sm text-[var(--foreground)]">{myState.mafiaTeammates.join(', ')}</p>
               </div>

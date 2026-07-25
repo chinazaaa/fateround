@@ -58,13 +58,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       return NextResponse.json({ error: 'Dead players cannot chat' }, { status: 403 })
     }
     if (targetScope === 'night') {
-      // Mafia secret chat: alive mafia only, any phase
-      if (playerState.role !== 'mafia') {
+      // Wolf-team secret chat: alive mafia/alpha_wolf/wolf_cub/framer, any phase
+      const MAFIA_TEAM_ROLES = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer']
+      if (!MAFIA_TEAM_ROLES.includes(playerState.role)) {
         return NextResponse.json({ error: 'Only Mafia members can use the secret chat' }, { status: 403 })
       }
     } else {
       // Day chat: any alive player during daytime phases
-      const dayPhases = ['day_report', 'day', 'elimination']
+      const dayPhases = ['day_report', 'day', 'voting', 'elimination']
       if (!dayPhases.includes(session.phase)) {
         return NextResponse.json({ error: 'Day chat is only active during daytime phases' }, { status: 403 })
       }

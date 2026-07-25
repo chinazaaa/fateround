@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import type { MafiaChatMessage } from '@/types'
+import type { MafiaChatMessage, MafiaPublicPlayer } from '@/types'
 
 // ── Phase Timer ───────────────────────────────────────────────────────────────
 
@@ -46,13 +46,21 @@ interface ChatMessagesProps {
   messages: MafiaChatMessage[]
   myPlayerId: string | null
   sentBubbleClass: string
+  /** Player roster (for seat numbers) — when provided, sender names show "#N" and any
+   *  message mentioning the local player's own number gets a highlighted border, matching
+   *  Wolvesville's convention of referring to players by seat number in chat. */
+  players?: MafiaPublicPlayer[]
 }
 
-export function ChatMessages({ messages, myPlayerId, sentBubbleClass }: ChatMessagesProps) {
+export function ChatMessages({ messages, myPlayerId, sentBubbleClass, players }: ChatMessagesProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length])
+
+  const seatNumberById = new Map(players?.map((p) => [p.id, p.seatNumber]) ?? [])
+  const mySeatNumber = myPlayerId ? seatNumberById.get(myPlayerId) : undefined
+  const myMentionPattern = mySeatNumber != null ? new RegExp(`(?<!\\d)${mySeatNumber}(?!\\d)`) : null
 
   return (
     <div className="h-40 overflow-y-auto space-y-1.5 flex flex-col p-1">
@@ -61,15 +69,24 @@ export function ChatMessages({ messages, myPlayerId, sentBubbleClass }: ChatMess
       ) : (
         messages.map((m) => {
           const isMe = m.sender_player_id === myPlayerId
+          const mentionsMe = !isMe && !!myMentionPattern?.test(m.message)
+          const senderNumber = seatNumberById.get(m.sender_player_id)
           return (
             <div key={m.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
               <div
                 className={`px-3 py-1.5 rounded-xl text-sm max-w-[85%] ${
-                  isMe ? sentBubbleClass : 'bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)]'
+                  isMe
+                    ? sentBubbleClass
+                    : mentionsMe
+                      ? 'bg-amber-500/10 text-[var(--foreground)] border-2 border-amber-400'
+                      : 'bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)]'
                 }`}
               >
                 {!isMe && (
-                  <span className="block text-[10px] font-bold text-[var(--muted)] mb-0.5">{m.sender_name}</span>
+                  <span className="block text-[10px] font-bold text-[var(--muted)] mb-0.5">
+                    {senderNumber != null ? `#${senderNumber} ` : ''}
+                    {m.sender_name}
+                  </span>
                 )}
                 <span>{m.message}</span>
               </div>
@@ -109,9 +126,10 @@ interface ChatProps {
   messages: MafiaChatMessage[]
   onSendMessage: (msg: string) => Promise<void>
   myPlayerId: string | null
+  players?: MafiaPublicPlayer[]
 }
 
-export function MafiaSecretChat({ messages, onSendMessage, myPlayerId }: ChatProps) {
+export function MafiaSecretChat({ messages, onSendMessage, myPlayerId, players }: ChatProps) {
   const { text, setText, sending, handleSubmit } = useChatInput(onSendMessage)
   return (
     <div className="glass-card border border-red-500/20 rounded-2xl p-4 space-y-2">
@@ -119,7 +137,12 @@ export function MafiaSecretChat({ messages, onSendMessage, myPlayerId }: ChatPro
         <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
         Mafia Secret Chat
       </p>
-      <ChatMessages messages={messages} myPlayerId={myPlayerId} sentBubbleClass="bg-red-600 text-white" />
+      <ChatMessages
+        messages={messages}
+        myPlayerId={myPlayerId}
+        players={players}
+        sentBubbleClass="bg-red-600 text-white"
+      />
       <form onSubmit={handleSubmit} className="flex gap-2">
         <input
           type="text"
@@ -147,14 +170,19 @@ interface DayChatProps extends ChatProps {
   disabled?: boolean
 }
 
-export function MafiaDayChat({ messages, onSendMessage, myPlayerId, disabled = false }: DayChatProps) {
+export function MafiaDayChat({ messages, onSendMessage, myPlayerId, players, disabled = false }: DayChatProps) {
   const { text, setText, sending, handleSubmit } = useChatInput(onSendMessage, disabled)
   return (
     <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-2">
       <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)] flex items-center gap-1.5">
         💬 Town Discussion
       </p>
-      <ChatMessages messages={messages} myPlayerId={myPlayerId} sentBubbleClass="bg-[var(--primary)] text-white" />
+      <ChatMessages
+        messages={messages}
+        myPlayerId={myPlayerId}
+        players={players}
+        sentBubbleClass="bg-[var(--primary)] text-white"
+      />
       <form onSubmit={handleSubmit} className="flex gap-2">
         <input
           type="text"
@@ -178,7 +206,7 @@ export function MafiaDayChat({ messages, onSendMessage, myPlayerId, disabled = f
 
 // ── Ghost chat (dead players) ─────────────────────────────────────────────────
 
-export function MafiaGhostChat({ messages, onSendMessage, myPlayerId }: ChatProps) {
+export function MafiaGhostChat({ messages, onSendMessage, myPlayerId, players }: ChatProps) {
   const { text, setText, sending, handleSubmit } = useChatInput(onSendMessage)
   return (
     <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-2 opacity-80">
@@ -188,6 +216,7 @@ export function MafiaGhostChat({ messages, onSendMessage, myPlayerId }: ChatProp
       <ChatMessages
         messages={messages}
         myPlayerId={myPlayerId}
+        players={players}
         sentBubbleClass="bg-[var(--card)] text-[var(--muted)] border border-[var(--border)]"
       />
       <form onSubmit={handleSubmit} className="flex gap-2">

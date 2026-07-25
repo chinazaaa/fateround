@@ -7,7 +7,7 @@ import { NO_NIGHT_ACTION_ROLES, MAFIA_TEAM_ROLES } from './mafia-role-info'
 
 const NIGHT_ACTION_PROMPT: Partial<Record<MafiaRole, string>> = {
   mafia: '🔪 Choose a player to eliminate tonight.',
-  alpha_wolf: '🐺 Choose a player for the pack to eliminate tonight (your vote counts double).',
+  alpha_wolf: '🐺 Choose a player for the crew to eliminate tonight (your vote counts double).',
   framer: '🎭 Choose a player to frame — the Detective will read them as Mafia tonight.',
   doctor: '🏥 Choose a player to protect from any attack tonight.',
   detective: '🔍 Choose a player to investigate their alignment.',
@@ -97,7 +97,7 @@ export function MafiaPhaseCard({
                   <p className="text-sm text-[var(--muted)]">
                     💘 Choose two players (in order) to link as Lovers.{' '}
                     {cupidFirstPick
-                      ? `First pick: ${publicPlayers.find((p) => p.id === cupidFirstPick)?.name ?? '?'} — now choose the second.`
+                      ? `First pick: #${publicPlayers.find((p) => p.id === cupidFirstPick)?.seatNumber ?? '?'} — now choose the second.`
                       : 'Choose the first player.'}
                   </p>
                   <div className="grid grid-cols-2 gap-2">
@@ -120,7 +120,8 @@ export function MafiaPhaseCard({
                               : 'bg-[var(--surface-inset-bg)] border-[var(--border)] hover:border-[var(--primary)]'
                           }`}
                         >
-                          {p.name}
+                          #{p.seatNumber} {p.name}
+                          {p.id === myPlayerId && ' (you)'}
                         </button>
                       ))}
                   </div>
@@ -156,7 +157,7 @@ export function MafiaPhaseCard({
                           onClick={() => onNightAction(p.id)}
                           className="px-4 py-3 bg-[var(--surface-inset-bg)] border border-[var(--border)] hover:border-[var(--primary)] hover:bg-[var(--card)] rounded-xl text-left text-sm font-medium transition-all"
                         >
-                          {p.name}
+                          #{p.seatNumber} {p.name}
                         </button>
                       ))}
                   </div>
@@ -186,7 +187,9 @@ export function MafiaPhaseCard({
                         onClick={() => onNightAction(p.id)}
                         className="px-4 py-3 bg-[var(--surface-inset-bg)] border border-[var(--border)] hover:border-[var(--primary)] hover:bg-[var(--card)] rounded-xl text-left text-sm font-medium transition-all group flex justify-between items-center"
                       >
-                        <span className="text-[var(--foreground)]">{p.name}</span>
+                        <span className="text-[var(--foreground)]">
+                          #{p.seatNumber} {p.name}
+                        </span>
                         <span className="text-xs text-[var(--muted)] group-hover:text-[var(--primary)] font-bold uppercase tracking-wider">
                           Select
                         </span>
@@ -210,7 +213,7 @@ export function MafiaPhaseCard({
               </p>
               {newlyDeadTonight.map((p) => (
                 <p key={p.id} className="text-3xl font-black text-red-400">
-                  {p.name}
+                  #{p.seatNumber} {p.name}
                 </p>
               ))}
             </div>
@@ -232,10 +235,32 @@ export function MafiaPhaseCard({
           <div className="flex items-center gap-2">
             <span className="text-xl">☀️</span>
             <div>
-              <h3 className="text-lg font-black text-[var(--foreground)]">Day {dayNumber} — Discuss &amp; Vote</h3>
-              <p className="text-xs text-[var(--muted)]">
-                Debate and vote out a suspect — a strict majority is needed to lynch.
-              </p>
+              <h3 className="text-lg font-black text-[var(--foreground)]">Day {dayNumber} — Discussion</h3>
+              <p className="text-xs text-[var(--muted)]">Debate who you think is Mafia. Voting opens next.</p>
+            </div>
+          </div>
+          {amISpectator ? (
+            <p className="text-sm text-[var(--muted)] text-center py-4">Watching the discussion...</p>
+          ) : !amIAlive ? (
+            <div className="text-center py-4 space-y-1">
+              <p className="text-2xl">👻</p>
+              <p className="text-sm text-[var(--muted)]">You are eliminated — watch the discussion below.</p>
+            </div>
+          ) : (
+            <p className="text-sm text-[var(--muted)] text-center py-4">
+              Use the chat below to discuss before voting opens.
+            </p>
+          )}
+        </div>
+      )}
+
+      {phase === 'voting' && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🗳️</span>
+            <div>
+              <h3 className="text-lg font-black text-[var(--foreground)]">Day {dayNumber} — Vote</h3>
+              <p className="text-xs text-[var(--muted)]">A strict majority of alive players is needed to lynch.</p>
             </div>
           </div>
 
@@ -277,7 +302,9 @@ export function MafiaPhaseCard({
                         className="px-4 py-3 bg-[var(--surface-inset-bg)] border border-[var(--border)] hover:border-[var(--primary)] hover:bg-[var(--card)] rounded-xl text-left text-sm font-medium transition-all"
                       >
                         <div className="flex justify-between items-center">
-                          <span className="text-[var(--foreground)] font-semibold">{p.name}</span>
+                          <span className="text-[var(--foreground)] font-semibold">
+                            #{p.seatNumber} {p.name}
+                          </span>
                           {voteCount > 0 && (
                             <span className="text-xs bg-red-500/15 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full font-bold">
                               {voteCount}
@@ -317,7 +344,9 @@ export function MafiaPhaseCard({
           {votedPlayer ? (
             <div className="space-y-2">
               <p className="text-sm text-[var(--muted)]">The village voted to eliminate:</p>
-              <p className="text-3xl font-black text-red-400">{votedPlayer.name}</p>
+              <p className="text-3xl font-black text-red-400">
+                #{votedPlayer.seatNumber} {votedPlayer.name}
+              </p>
               {votedPlayer.role && (
                 <p className="text-sm text-[var(--muted)]">
                   They were a{' '}

@@ -26,7 +26,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   // 1. Fetch game, session, and player states
   const [{ data: game }, { data: mafiaSession }, { data: mafiaPlayerStates }] = await Promise.all([
-    admin.from('games').select('host_token, status, timer_seconds').eq('id', gameId).maybeSingle(),
+    admin
+      .from('games')
+      .select('host_token, status, timer_seconds, mafia_day_seconds, mafia_voting_seconds')
+      .eq('id', gameId)
+      .maybeSingle(),
     admin.from('mafia_sessions').select('*').eq('game_id', gameId).maybeSingle(),
     admin.from('mafia_player_states').select('*').eq('game_id', gameId),
   ])
@@ -57,7 +61,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   const currentPhase = session.phase
-  const phaseOrder: MafiaPhase[] = ['role_reveal', 'night', 'day_report', 'day', 'elimination']
+  const phaseOrder: MafiaPhase[] = ['role_reveal', 'night', 'day_report', 'day', 'voting', 'elimination']
   let targetPhase: MafiaPhase
   if (typeof nextPhase === 'string') {
     if (!phaseOrder.includes(nextPhase as MafiaPhase)) {
@@ -78,7 +82,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     phase: targetPhase,
   }
 
-  // Define timer durations
+  // Define timer durations — Night, Day (discussion), and Voting each have their own dial,
+  // matching Wolvesville's separate phase timers rather than one duration doubled for day.
   let durationSeconds = 30
   if (targetPhase === 'role_reveal') {
     durationSeconds = 10
@@ -87,7 +92,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   } else if (targetPhase === 'day_report') {
     durationSeconds = 8
   } else if (targetPhase === 'day') {
-    durationSeconds = game.timer_seconds ? game.timer_seconds * 2 : 120
+    durationSeconds = game.mafia_day_seconds || 90
+  } else if (targetPhase === 'voting') {
+    durationSeconds = game.mafia_voting_seconds || 45
   } else if (targetPhase === 'elimination') {
     durationSeconds = 8
   }
@@ -157,7 +164,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       updateFields.phase_deadline = null
       await markGameFinished(admin, gameId)
     }
-  } else if (currentPhase === 'day' && targetPhase === 'elimination') {
+  } else if (currentPhase === 'voting' && targetPhase === 'elimination') {
     // Resolve Voting
     const votedPlayerId = resolveMafiaDayVote(playerStates)
     updateFields.vote_result_player_id = votedPlayerId

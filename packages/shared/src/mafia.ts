@@ -34,6 +34,8 @@ export function mafiaPhaseLabel(phase: MafiaPhase): string {
       return 'Sunrise'
     case 'day':
       return 'Day discussion'
+    case 'voting':
+      return 'Voting'
     case 'elimination':
       return 'Elimination'
     case 'game_over':
@@ -147,13 +149,13 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
   },
   alpha_wolf: {
     role: 'alpha_wolf',
-    name: 'Alpha Wolf',
+    name: 'Alpha Mafia',
     team: 'mafia',
-    description: 'Leads the Mafia — your kill vote counts twice, and you can chat with your pack during the day too.',
+    description: 'Leads the Mafia — your kill vote counts twice, and you can chat with your crew during the day too.',
   },
   wolf_cub: {
     role: 'wolf_cub',
-    name: 'Wolf Cub',
+    name: 'Junior Mafia',
     team: 'mafia',
     description: 'If you are killed, the Mafia gets a bonus kill the following night in revenge.',
   },

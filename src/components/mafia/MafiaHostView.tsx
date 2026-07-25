@@ -45,6 +45,7 @@ const WINNING_TEAM_COLOR: Record<string, string> = {
 
 interface HostPlayer {
   id: string
+  seatNumber: number
   name: string
   isAlive: boolean
   role: MafiaRole
@@ -475,7 +476,9 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
                 <div className="flex items-center space-x-3">
                   <span className="text-lg">👤</span>
                   <div>
-                    <span className="font-bold text-slate-200">{p.name}</span>
+                    <span className="font-bold text-slate-200">
+                      #{p.seatNumber} {p.name}
+                    </span>
                     <span
                       className={`block text-xs uppercase font-extrabold ${MAFIA_TEAM_ROLES.includes(p.role) ? 'text-red-400' : 'text-emerald-400'}`}
                     >
@@ -492,7 +495,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
                       </strong>
                     </span>
                   )}
-                  {phase === 'day' && (
+                  {phase === 'voting' && (
                     <span className="text-slate-400">
                       Voted for:{' '}
                       <strong className="text-amber-400">
@@ -523,7 +526,9 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
                   <div className="flex items-center space-x-3">
                     <span className="text-lg">💀</span>
                     <div>
-                      <span className="font-bold line-through text-slate-400">{p.name}</span>
+                      <span className="font-bold line-through text-slate-400">
+                        #{p.seatNumber} {p.name}
+                      </span>
                       <span className="block text-xs font-semibold text-red-500/80 uppercase">
                         {p.role.replace(/_/g, ' ')}
                       </span>
@@ -566,7 +571,9 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
               key={p.id}
               className="flex justify-between items-center text-sm p-3 rounded bg-[var(--surface-inset-bg)] border border-[var(--border)]"
             >
-              <span className="font-semibold text-muted">{p.name}</span>
+              <span className="font-semibold text-muted">
+                #{p.seatNumber} {p.name}
+              </span>
               <span
                 className={`font-mono text-xs uppercase ${MAFIA_TEAM_ROLES.includes(p.role) ? 'text-red-400' : 'text-emerald-400'}`}
               >

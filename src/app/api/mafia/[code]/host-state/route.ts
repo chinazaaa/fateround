@@ -77,17 +77,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   // 2. Fetch mafia sessions and player states
   const [{ data: playersData }, { data: mafiaSession }, { data: mafiaPlayerStates }] = await Promise.all([
-    admin.from('players').select('id, name, spectator, is_eliminated').eq('game_id', gameId),
+    admin
+      .from('players')
+      .select('id, name, spectator, is_eliminated')
+      .eq('game_id', gameId)
+      .order('created_at', { ascending: true }),
     admin.from('mafia_sessions').select('*').eq('game_id', gameId).maybeSingle(),
-    admin.from('mafia_player_states').select('*').eq('game_id', gameId),
+    admin.from('mafia_player_states').select('*').eq('game_id', gameId).order('created_at', { ascending: true }),
   ])
 
   if (!mafiaSession || !mafiaPlayerStates) {
     if (game.status === 'waiting') {
       const hostPlayers = (playersData ?? [])
         .filter((p) => p.spectator !== true)
-        .map((p) => ({
+        .map((p, index) => ({
           id: p.id,
+          seatNumber: index + 1,
           name: p.name ?? 'Unknown',
           isAlive: true,
           role: 'villager' as const,
@@ -128,10 +133,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   // Combine player info with their mafia states
   const playersMap = new Map(playersData?.map((p) => [p.id, p]) ?? [])
-  const hostPlayers = playerStates.map((ps) => {
+  const hostPlayers = playerStates.map((ps, index) => {
     const p = playersMap.get(ps.player_id)
     return {
       id: ps.player_id,
+      seatNumber: index + 1,
       name: p?.name ?? 'Unknown',
       isAlive: ps.is_alive,
       role: ps.role,

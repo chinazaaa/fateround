@@ -73,9 +73,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const [{ data: game }, { data: playersData }, { data: mafiaSession }, { data: mafiaPlayerStates }] =
     await Promise.all([
       admin.from('games').select('status, title').eq('id', gameId).maybeSingle(),
-      admin.from('players').select('id, name, spectator, is_eliminated').eq('game_id', gameId),
+      admin
+        .from('players')
+        .select('id, name, spectator, is_eliminated')
+        .eq('game_id', gameId)
+        .order('created_at', { ascending: true }),
       admin.from('mafia_sessions').select('*').eq('game_id', gameId).maybeSingle(),
-      admin.from('mafia_player_states').select('*').eq('game_id', gameId),
+      admin.from('mafia_player_states').select('*').eq('game_id', gameId).order('created_at', { ascending: true }),
     ])
 
   if (!game) {
@@ -83,8 +87,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
   if (!mafiaSession || !mafiaPlayerStates) {
     if (game.status === 'waiting') {
-      const publicPlayers = (playersData ?? []).map((p) => ({
+      const publicPlayers = (playersData ?? []).map((p, index) => ({
         id: p.id,
+        seatNumber: index + 1,
         name: p.name ?? 'Unknown',
         isAlive: true,
         deathDay: null,
@@ -126,12 +131,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   // 2. Map players to public information
   const playersMap = new Map(playersData?.map((p) => [p.id, p]) ?? [])
-  const publicPlayers: MafiaPublicPlayer[] = playerStates.map((ps) => {
+  const publicPlayers: MafiaPublicPlayer[] = playerStates.map((ps, index) => {
     const p = playersMap.get(ps.player_id)
     const isGameOver = session.phase === 'game_over'
     const revealRole = !ps.is_alive || isGameOver
     return {
       id: ps.player_id,
+      seatNumber: index + 1,
       name: p?.name ?? 'Unknown',
       isAlive: ps.is_alive,
       deathDay: ps.death_day,
@@ -247,7 +253,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   // Fetch day chat messages (public to all players during daytime phases)
   let dayChatMessages: MafiaChatMessage[] = []
-  const dayPhases: MafiaPhase[] = ['day_report', 'day', 'elimination', 'game_over']
+  const dayPhases: MafiaPhase[] = ['day_report', 'day', 'voting', 'elimination', 'game_over']
   if (dayPhases.includes(session.phase)) {
     const { data: messages } = await admin
       .from('mafia_chat_messages')
@@ -313,7 +319,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     lastNightKillPlayerId: session.night_kill_player_id,
     lastNightMafiaHadTarget: session.mafia_target_player_id != null,
     lastVoteResultPlayerId: session.vote_result_player_id,
-    voteTallies: session.anonymous_votes && session.phase === 'day' ? {} : voteTallies,
+    voteTallies: session.anonymous_votes && session.phase === 'voting' ? {} : voteTallies,
     dayChatMessages,
     ghostChatMessages,
     enabledRoles: enabledRolesFrom(session),

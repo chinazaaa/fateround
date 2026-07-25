@@ -61,7 +61,21 @@ type GameMeta = {
   landmine_mine_source?: string | null
   mafia_doctor_enabled?: boolean | null
   mafia_detective_enabled?: boolean | null
+  mafia_bodyguard_enabled?: boolean | null
+  mafia_mayor_enabled?: boolean | null
+  mafia_vigilante_enabled?: boolean | null
+  mafia_tracker_enabled?: boolean | null
+  mafia_alpha_wolf_enabled?: boolean | null
+  mafia_wolf_cub_enabled?: boolean | null
+  mafia_framer_enabled?: boolean | null
+  mafia_jester_enabled?: boolean | null
+  mafia_serial_killer_enabled?: boolean | null
+  mafia_arsonist_enabled?: boolean | null
+  mafia_cupid_enabled?: boolean | null
+  mafia_cursed_villager_enabled?: boolean | null
   mafia_anonymous_votes?: boolean | null
+  mafia_day_seconds?: number | null
+  mafia_voting_seconds?: number | null
   ping_pong_points_to_win?: number | null
   codewords_player_picks?: boolean | null
   codewords_randomize_teams?: boolean | null
@@ -183,6 +197,10 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
 
   if (DUEL_CLOCK_LABEL[gt]) {
     items.push(`⏱ ${DUEL_CLOCK_LABEL[gt]} · ${formatDuration(game.timer_seconds ?? 0)}`)
+  } else if (gt === 'mafia') {
+    // Mafia has no overall session-length cap — it runs in per-phase timers (night/day/voting,
+    // shown in the mafia-specific block below) rather than a duration, so skip the generic
+    // "No time limit" chip that would otherwise misleadingly imply untimed phases too.
   } else if (typeof game.game_duration_seconds === 'number') {
     // Session-length cap (currently used by Monopoly-style games). Shown even when unlimited —
     // that's exactly what a time-pressed player needs to know before joining.
@@ -270,8 +288,31 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
     if (game.landmine_originality_bonus) items.push('✨ Originality bonus')
     if (game.landmine_mine_source === 'manual') items.push('🕵️ Manual setter')
   } else if (gt === 'mafia') {
-    if (game.mafia_doctor_enabled) items.push('💉 Doctor')
-    if (game.mafia_detective_enabled) items.push('🔍 Detective')
+    const advancedRoleFields = [
+      game.mafia_bodyguard_enabled,
+      game.mafia_mayor_enabled,
+      game.mafia_vigilante_enabled,
+      game.mafia_tracker_enabled,
+      game.mafia_alpha_wolf_enabled,
+      game.mafia_wolf_cub_enabled,
+      game.mafia_framer_enabled,
+      game.mafia_jester_enabled,
+      game.mafia_serial_killer_enabled,
+      game.mafia_arsonist_enabled,
+      game.mafia_cupid_enabled,
+      game.mafia_cursed_villager_enabled,
+    ]
+    const isCustomized = advancedRoleFields.some((v) => v === false)
+    items.push(isCustomized ? '🎭 Custom roles' : '🎭 Classic (16 roles)')
+    if (typeof game.timer_seconds === 'number' && game.timer_seconds > 0) {
+      items.push(`🌙 ${game.timer_seconds}s night`)
+    }
+    if (typeof game.mafia_day_seconds === 'number' && game.mafia_day_seconds > 0) {
+      items.push(`☀️ ${formatDuration(game.mafia_day_seconds)} day`)
+    }
+    if (typeof game.mafia_voting_seconds === 'number' && game.mafia_voting_seconds > 0) {
+      items.push(`🗳️ ${game.mafia_voting_seconds}s voting`)
+    }
     if (game.mafia_anonymous_votes) items.push('🕶️ Anonymous votes')
   } else if (gt === 'ping_pong') {
     if (game.ping_pong_points_to_win) items.push(`🏓 First to ${game.ping_pong_points_to_win}`)

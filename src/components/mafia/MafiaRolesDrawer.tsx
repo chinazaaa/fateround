@@ -35,7 +35,7 @@ export function MafiaRolesDrawer({ enabledRoles }: MafiaRolesDrawerProps) {
       {open && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
-          <div className="relative w-full max-w-sm h-full bg-[var(--card)] border-l border-[var(--border)] shadow-2xl overflow-y-auto p-5 space-y-4">
+          <div className="relative w-full max-w-sm h-full bg-[var(--background)] border-l border-[var(--border)] shadow-2xl overflow-y-auto p-5 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-black text-[var(--foreground)]">Roles in this game</h2>
               <button

@@ -472,6 +472,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           <MafiaIdentityPanel
             myState={myState}
             myPlayerId={myPlayerId}
+            mySeatNumber={me?.seatNumber ?? null}
             amIAlive={amIAlive}
             mafiaChatMessages={myState?.mafiaChatMessages ?? []}
             onSendMafiaMessage={sendMafiaMessage}
@@ -494,13 +495,14 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               onDayVote={submitDayVote}
             />
 
-            <MafiaPlayersGrid players={publicPlayers} phase={phase} voteTallies={voteTallies} />
+            <MafiaPlayersGrid players={publicPlayers} myPlayerId={myPlayerId} phase={phase} voteTallies={voteTallies} />
 
             {phase !== 'night' && phase !== 'role_reveal' && (
               <MafiaDayChat
                 messages={dayChatMessages ?? []}
                 onSendMessage={sendDayMessage}
                 myPlayerId={myPlayerId}
+                players={publicPlayers}
                 disabled={!amIAlive || amISpectator}
               />
             )}
@@ -510,6 +512,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                 messages={ghostChatMessages ?? []}
                 onSendMessage={sendGhostMessage}
                 myPlayerId={myPlayerId}
+                players={publicPlayers}
               />
             )}
           </div>
@@ -546,7 +549,10 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                 key={p.id}
                 className="flex justify-between items-center text-sm p-2 rounded bg-[var(--surface-inset-bg)] border border-[var(--border)]"
               >
-                <span className="font-semibold text-[var(--muted)]">{p.name}</span>
+                <span className="font-semibold text-[var(--muted)]">
+                  #{p.seatNumber} {p.name}
+                  {p.id === myPlayerId && <span className="text-[var(--primary)] font-normal"> (you)</span>}
+                </span>
                 <span
                   className={`font-mono text-xs uppercase ${
                     p.role && MAFIA_TEAM_ROLES.includes(p.role)
