@@ -9,6 +9,7 @@ import {
   getCustomTitle,
   isCustomAssignmentValid,
 } from '@fateround/shared/custom-game'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
@@ -172,6 +173,7 @@ export function CustomPlayerView({ gameCode }: { gameCode: string }) {
         onJoin={() => void bootstrap.join()}
         lobbyFull={bootstrap.lobbyFull}
         onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
       />
     )
   }

@@ -5,6 +5,7 @@ import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import { YAHTZEE_MIN_PLAYERS, currentPlayerId, totalScore } from '@fateround/shared/yahtzee'
 import { preJoinScreen } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
@@ -211,6 +212,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
             : 'No account needed — enter a display name and play.'
         }
         submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
       />
     )
   }

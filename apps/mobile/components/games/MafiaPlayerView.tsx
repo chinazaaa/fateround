@@ -10,6 +10,7 @@ import {
 } from '@fateround/shared/mafia'
 import { batch7GameLabel } from '@fateround/shared/batch-7-games'
 import { JoinScreen } from '@/components/JoinScreen'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
@@ -144,6 +145,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         lobbyFull={bootstrap.lobbyFull}
         onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
         footer={<GameRulesLink gameType="mafia" variant="subtle" />}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
       />
     )
   }

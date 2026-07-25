@@ -72,6 +72,8 @@ export interface Game {
   allow_viewers?: boolean | null
   allow_late_players?: boolean | null
   is_public?: boolean | null
+  /** Whether responses are shown without attribution (poll-family games only). */
+  anonymous?: boolean | null
   theme?: string | null
   ayo_variant?: string | null
   participant_mode?: ParticipantMode | string | null

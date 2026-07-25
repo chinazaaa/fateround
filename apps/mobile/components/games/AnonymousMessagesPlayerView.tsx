@@ -30,6 +30,7 @@ import { AnonymousSessionTimerBar } from '@/components/games/anonymous/Anonymous
 import { AnonymousRoomSessionSummary } from '@/components/games/anonymous/AnonymousRoomSessionSummary'
 import { AnonymousLobbyDetail } from '@/components/games/anonymous/AnonymousLobbyDetail'
 import { AnonymousRoomHeadcount } from '@/components/games/anonymous/AnonymousRoomHeadcount'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { AnonymousBanCountdownBar } from '@/components/games/anonymous/AnonymousBanCountdownBar'
 import { anonymousRoomMaxPlayers } from '@/components/games/anonymous/anonymous-room-helpers'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
@@ -397,6 +398,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       <GameShell title={game?.title || batch9GameLabel('anonymous_messages')} subtitle="Anonymous room">
         <ScrollView contentContainerStyle={styles.joinScroll}>
           {game ? <AnonymousRoomHeadcount game={game} players={players} /> : null}
+          <GameInfoChips game={game} />
           <Text style={styles.joinHint}>
             {lobbyFull
               ? `This room is full (${roomCapacity} players max). Stick around — once the host starts you can join as a viewer and watch live (read-only).`

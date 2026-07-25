@@ -10,6 +10,7 @@ import {
 } from '@fateround/shared/hot-seat'
 import { isImportClaimMode } from '@fateround/shared/participant-mode'
 import { JoinScreen } from '@/components/JoinScreen'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { ParticipantClaimJoinScreen } from '@/components/join/ParticipantClaimJoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
@@ -225,6 +226,7 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
         onJoin={() => void bootstrap.join()}
         lobbyFull={bootstrap.lobbyFull}
         onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
       />
     )
   }

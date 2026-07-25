@@ -20,6 +20,7 @@ import { LudoMoveList } from '@/components/games/ludo/LudoMoveList'
 import { LudoTurnBar } from '@/components/games/ludo/LudoTurnBar'
 import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { useGameScores } from '@/components/session/RosterDrawerContext'
@@ -224,6 +225,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
             : 'No account needed — enter a display name and play.'
         }
         submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
       />
     )
   }

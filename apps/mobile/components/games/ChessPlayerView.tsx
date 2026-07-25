@@ -11,6 +11,7 @@ import {
   liveChessClockMs,
 } from '@fateround/shared/chess'
 import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
@@ -381,6 +382,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
             : 'No account needed — enter a display name and play.'
         }
         submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
       />
     )
   }
