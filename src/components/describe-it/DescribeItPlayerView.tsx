@@ -39,6 +39,7 @@ import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
@@ -354,6 +355,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
             title={game?.title ?? cfg.label}
             gameType="describe_it"
             contentLabel={game?.content_label}
+            meta={game ? <GameInfoChips game={game} /> : null}
             subtitle={cfg.tagline}
           />
         }

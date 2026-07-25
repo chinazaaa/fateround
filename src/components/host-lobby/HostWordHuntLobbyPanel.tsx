@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { formatWordHuntTimer, WORD_HUNT_TIMER_OPTIONS } from '@/lib/word-hunt'
+import { WORD_HUNT_TIMER_OPTIONS } from '@/lib/word-hunt'
 import { lobbyMaxPlayersFromGame, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
@@ -121,15 +121,10 @@ export function HostWordHuntLobbyPanel({ gameCode, hostToken, game, playerCount,
     []
   )
 
-  const summary = useMemo(
-    () => [`${maxPlayers} max`, formatWordHuntTimer(roundTimer)].join(' · '),
-    [maxPlayers, roundTimer]
-  )
-
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 
   return (
-    <HostLobbySettingsSection status={statusLabel} summary={summary}>
+    <HostLobbySettingsSection status={statusLabel}>
       <HostLobbySettingBlock title={`Max players · ${playerCount} joined`}>
         <HostLobbyOptionChips value={maxPlayers} options={maxPlayerOptions} onChange={onMaxPlayersChange} />
       </HostLobbySettingBlock>

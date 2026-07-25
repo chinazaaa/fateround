@@ -9,7 +9,7 @@ export function FateRoundLogo({ className = 'h-9 w-auto' }: FateRoundLogoProps) 
       {}
       <img
         src="/fateround-logo-horizontal.svg"
-        alt="Fate Round"
+        alt="FateRound"
         className={`logo-theme-light ${className}`}
         width={640}
         height={160}

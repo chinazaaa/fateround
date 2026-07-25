@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Suspense } from 'react'
 import type { Metadata } from 'next'
 import { GAME_TYPE_DISPLAY_ORDER, gameTypeConfig } from '@/lib/game-types'
 import { GAME_LANDING_CONTENT, gameLandingSlug } from '@/lib/game-landing'
@@ -10,12 +11,12 @@ import { SiteFooter } from '@/components/SiteFooter'
 export const metadata: Metadata = {
   title: 'All Party Games',
   description:
-    'Browse free online party games on Fate Round — Smash Marry Kill, Would You Rather, Most Likely To, Red Flag Green Flag, and more.',
+    'Browse free online party games on FateRound — Smash Marry Kill, Would You Rather, Most Likely To, Red Flag Green Flag, and more.',
   alternates: { canonical: '/games' },
   openGraph: {
     title: `All Party Games | ${SITE_NAME}`,
     description:
-      'Browse free online party games on Fate Round — Smash Marry Kill, Would You Rather, Most Likely To, Red Flag Green Flag, and more.',
+      'Browse free online party games on FateRound — Smash Marry Kill, Would You Rather, Most Likely To, Red Flag Green Flag, and more.',
     url: '/games',
     images: [OG_IMAGE],
   },
@@ -63,7 +64,9 @@ export default function GamesIndexPage() {
             </Link>
           </div>
 
-          <GamesGrid games={games} />
+          <Suspense fallback={null}>
+            <GamesGrid games={games} />
+          </Suspense>
         </main>
 
         <section className="mk-seo">

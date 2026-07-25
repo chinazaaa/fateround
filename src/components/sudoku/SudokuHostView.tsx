@@ -10,6 +10,7 @@ import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
@@ -557,6 +558,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
         gameCode={gameCode}
         hostToken={hostToken}
         game={game}
+        titleMeta={<GameInfoChips game={game} className="mt-2" />}
         gameTypeLabel={cfg.label}
         resumeToken={hostResumeToken}
         players={players}

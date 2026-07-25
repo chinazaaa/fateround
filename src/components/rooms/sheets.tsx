@@ -6,7 +6,7 @@ import QRCode from 'react-qr-code'
 import { playerGameUrl, hostGameUrl, hostPlayerUrl, playerResumeUrl, shareOrigin } from '@/lib/site'
 
 /* ══════════════════════════════════════════════════════════════════
-   Fate Round · Rooms — shared host sheet UI
+   FateRound · Rooms — shared host sheet UI
    Ported from project/ui_kits/rooms/rooms-ui.js
    ShareSheet, TransferSheet, HostToolbar, EndGameSheet,
    EditNameSheet, LeaveSheet.

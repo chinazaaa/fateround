@@ -14,6 +14,7 @@ import { CodewordsBoardGrid, CodewordsTeamBadge } from '@/components/codewords/C
 import { CodewordsCurrentClueCard } from '@/components/codewords/CodewordsCurrentClueCard'
 import { CodewordsWaitingPanel } from '@/components/codewords/CodewordsWaitingPanel'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameWaitingRoom } from '@/components/game-lobby/GameWaitingRoom'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
@@ -526,6 +527,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
             title={game?.title}
             gameType="codewords"
             contentLabel={game?.content_label}
+            meta={game ? <GameInfoChips game={game} /> : null}
           />
         }
       >

@@ -6,6 +6,7 @@ import { HostPageShell, hostPlayLayoutFlags } from '@/components/host/HostPageSh
 import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
@@ -352,6 +353,7 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
         hostToken={hostToken}
         game={game}
         gameTypeLabel={gameTypeConfig('mahjong').label}
+        titleMeta={<GameInfoChips game={game} className="mt-2" />}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('mahjong', game) ?? game.max_players}
         resumeToken={hostResumeToken}

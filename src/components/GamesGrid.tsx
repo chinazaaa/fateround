@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import type { GameType } from '@/types'
 import type { GameLandingContent } from '@/lib/game-landing'
 import { GAME_CATEGORIES, gameTypeCategory, type GameCategory, type GameTypeConfig } from '@/lib/game-types'
@@ -23,9 +24,17 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: 'az', label: 'A–Z' },
 ]
 
+const CATEGORY_KEYS = new Set<string>(GAME_CATEGORIES.map((c) => c.key))
+
+/** Lets links like /games?category=cards preselect a filter tab on load. */
+function categoryFromParam(value: string | null): CategoryFilter {
+  return value && CATEGORY_KEYS.has(value) ? (value as GameCategory) : 'all'
+}
+
 export function GamesGrid({ games }: { games: GamesGridItem[] }) {
+  const searchParams = useSearchParams()
   const [query, setQuery] = useState('')
-  const [category, setCategory] = useState<CategoryFilter>('all')
+  const [category, setCategory] = useState<CategoryFilter>(() => categoryFromParam(searchParams.get('category')))
   const [sort, setSort] = useState<SortKey>('featured')
 
   // Searching spans every category, so an active query overrides the category chips —

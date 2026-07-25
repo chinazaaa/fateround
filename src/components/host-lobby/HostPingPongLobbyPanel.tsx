@@ -88,11 +88,10 @@ export function HostPingPongLobbyPanel({ gameCode, hostToken, game, onGameUpdate
     []
   )
 
-  const summary = `${pointsToWin} points to win${gameDuration > 0 ? `, ${formatPingPongDuration(gameDuration)} timer` : ''}`
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 
   return (
-    <HostLobbySettingsSection status={statusLabel} summary={summary}>
+    <HostLobbySettingsSection status={statusLabel}>
       <div className="space-y-4">
         <HostLobbySettingBlock title="Points to win">
           <HostLobbyOptionChips value={pointsToWin} options={pointsOptions} onChange={onPointsChange} />

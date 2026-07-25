@@ -17,7 +17,7 @@ function post(overrides: Partial<BlogPost>): BlogPost {
     excerpt: 'Excerpt',
     body: 'Body',
     cover_image_url: null,
-    author: 'Fate Round',
+    author: 'FateRound',
     tags: [],
     status: 'published',
     pinned: false,

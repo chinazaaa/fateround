@@ -47,6 +47,7 @@ import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
@@ -673,6 +674,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
             title={game?.title ?? 'Sudoku'}
             gameType="sudoku"
             subtitle="Race to fill cells before your friends."
+            meta={game ? <GameInfoChips game={game} /> : null}
           />
         }
       >

@@ -21,7 +21,7 @@ import { trackEvent, GA_EVENTS } from '@/lib/analytics'
  */
 export function ShareInviteButton({
   url,
-  text = 'Join my game on Fate Round:',
+  text = 'Join my game on FateRound:',
   label = 'Share invite',
   copyLabel,
   className = '',
@@ -67,7 +67,7 @@ export function ShareInviteButton({
     // Touch device: native share sheet (WhatsApp / Messages / …).
     if (canNativeShare) {
       try {
-        await navigator.share({ title: 'Fate Round', text, url })
+        await navigator.share({ title: 'FateRound', text, url })
         trackEvent(GA_EVENTS.shareLink)
         return
       } catch (err) {

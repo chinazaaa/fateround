@@ -64,6 +64,31 @@
 const TRI = '<svg viewBox="0 0 24 24" fill="none"><path d="M12 3 L21.5 20 H2.5 Z" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/></svg>';
 
 const GAMES = {
+'uno': {
+  accent:'#ef4444', soft:'rgba(239,68,68,.14)', eyebrow:'Party Card Classic',
+  title:'UNO', titleSize:130,
+  desc:'Match colour or number, drop a Wild, and empty your hand first — call UNO to win.',
+  pills:['2–10 players','Wild + Draw Four','No sign-up'],
+  panel:`
+    <div class="rhead">
+      <span class="tag" style="background:rgba(239,68,68,.18);color:#fca5a5">Naza's turn</span>
+      <span class="mid">Draw pile 62</span>
+      <span class="tag" style="background:rgba(16,185,129,.16);color:#6ee7b7">2 cards left</span>
+    </div>
+    <div class="rbody">
+      <div class="muted" style="font-size:13px;letter-spacing:1.5px;font-weight:600;margin-bottom:14px">TOP CARD</div>
+      <div style="display:flex;align-items:center;gap:26px">
+        ${unoCard('7','#eab308')}
+        <div style="flex:1;display:flex;gap:10px;flex-wrap:wrap">
+          ${unoCard('7','#ef4444',true)}${unoCard('SKIP','#2563eb',true,true)}${unoCard('WILD','#111827',true)}
+        </div>
+      </div>
+      <div style="margin-top:26px;display:flex;gap:10px">
+        ${mjBtn('DRAW')}
+        <div style="flex:1.4;background:linear-gradient(180deg,#ef4444,#b91c1c);color:#2b0505;font-weight:800;border-radius:12px;padding:13px 0;text-align:center;font-size:16px;box-shadow:0 6px 16px rgba(239,68,68,.4)">CALL UNO!</div>
+      </div>
+    </div>`
+},
 'mahjong': {
   accent:'#14b8a6', soft:'rgba(20,184,166,.14)', eyebrow:'Tile Table Classic',
   title:'Mahjong', titleSize:106,
@@ -312,6 +337,11 @@ const GAMES = {
 };
 
 /* ---------- mockup helpers ---------- */
+function unoCard(label,color,small,tiny){
+  const w = small ? 62 : 82, h = small ? 92 : 122, fs = tiny ? 15 : (small ? 20 : 30);
+  return `<div style="width:${w}px;height:${h}px;background:linear-gradient(160deg,${color},${color}dd);border:3px solid #fff;border-radius:10px;box-shadow:0 6px 14px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center">
+    <span style="font-size:${fs}px;font-weight:800;color:#fff;text-shadow:0 2px 4px rgba(0,0,0,.3)">${label}</span></div>`;
+}
 function mjTile(num,suit,color){
   return `<div style="width:40px;height:56px;background:linear-gradient(180deg,#fbf7e9,#efe7ce);border:1px solid #d8cfae;border-radius:7px;box-shadow:0 3px 6px rgba(0,0,0,.25);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1">
     <span style="font-size:17px;font-weight:800;color:${color}">${num}</span>

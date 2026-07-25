@@ -1167,17 +1167,26 @@ body {
 }
 
 /* ── Buttons ────────────────────────────────────────────────────── */
+/* Matches the .fr-btn look used on public/marketing pages (solid, tactile,
+   raised-edge — no gradient/glow) but built from this scope's own tokens so
+   per-game themes ([data-game-theme]) still tint it correctly. */
 .btn-primary {
   width: 100%;
-  border-radius: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
   border: none;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-strong) 100%);
+  background: var(--primary);
   padding: 1rem 1.25rem;
   font-size: 1rem;
   font-weight: 700;
   color: #ffffff;
   letter-spacing: 0.01em;
-  box-shadow: 0 4px 16px var(--primary-glow);
+  box-shadow:
+    0 2px 0 var(--primary-strong),
+    0 6px 16px var(--primary-glow);
   transition:
     background 0.15s,
     transform 0.12s,
@@ -1186,12 +1195,16 @@ body {
 }
 
 .btn-primary:hover:not(:disabled) {
-  box-shadow: 0 6px 28px var(--primary-glow);
+  background: var(--primary-strong);
+  box-shadow:
+    0 2px 0 var(--primary-strong),
+    0 8px 22px var(--primary-glow);
   transform: translateY(-1px);
 }
 
 .btn-primary:active:not(:disabled) {
-  transform: translateY(0) scale(0.99);
+  transform: translateY(1px) scale(0.99);
+  box-shadow: 0 2px 6px var(--primary-glow);
 }
 
 .btn-primary:disabled {
@@ -1213,13 +1226,18 @@ body {
 }
 
 .btn-secondary {
-  border-radius: 0.875rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
   border: 1px solid var(--border-strong);
   background: var(--card);
   backdrop-filter: blur(8px);
   padding: 0.8125rem 1.25rem;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
   transition:
     border-color 0.15s,
     color 0.15s,
@@ -1229,14 +1247,16 @@ body {
 }
 
 .btn-secondary:hover:not(:disabled) {
-  border-color: var(--border-strong);
+  border-color: var(--primary);
   color: var(--foreground);
   background: var(--card-hover);
-  box-shadow: var(--card-shadow);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
 .btn-secondary:active:not(:disabled) {
-  transform: scale(0.99);
+  transform: translateY(0) scale(0.99);
+  box-shadow: none;
 }
 
 .btn-secondary:disabled {
@@ -1286,20 +1306,29 @@ body {
 }
 
 .btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
   border-radius: 0.75rem;
   border: none;
   background: transparent;
   padding: 0.5rem 0.75rem;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--muted);
   transition:
     color 0.15s,
-    background 0.15s;
+    background 0.15s,
+    transform 0.1s;
 }
 
-.btn-ghost:hover {
+.btn-ghost:hover:not(:disabled) {
+  background: var(--card);
   color: var(--foreground);
-  background: var(--surface-inset-bg);
+}
+
+.btn-ghost:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 /* ── Chips ──────────────────────────────────────────────────────── */

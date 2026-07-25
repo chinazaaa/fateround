@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
     root: projectRoot,
   },
   // The Apple App Site Association file has no extension, so serve it explicitly
-  // as JSON (Apple fetches it to verify Universal Links → the Fate Round app).
+  // as JSON (Apple fetches it to verify Universal Links → the FateRound app).
   async headers() {
     return [
       {

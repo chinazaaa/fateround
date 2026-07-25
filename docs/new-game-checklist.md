@@ -1,6 +1,6 @@
 # New game checklist
 
-Use this when adding a **new game type** to Fate Round. Most games share the
+Use this when adding a **new game type** to FateRound. Most games share the
 same shell — lobby, join, spectators, ready-up, play again, finished screen,
 community leaderboard — and bugs usually come from wiring only half of it.
 

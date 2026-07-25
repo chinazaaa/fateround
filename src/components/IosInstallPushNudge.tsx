@@ -38,9 +38,9 @@ export function IosInstallPushNudge({ gameCode }: { gameCode: string }) {
     <div className="fixed bottom-3 right-3 z-50 max-w-xs">
       <div className="glass-card-strong flex flex-col gap-2 px-4 py-3">
         <p className="text-xs text-body">
-          📲 Want a heads-up when the game starts? On iPhone, add Fate Round to your Home Screen first: tap the{' '}
+          📲 Want a heads-up when the game starts? On iPhone, add FateRound to your Home Screen first: tap the{' '}
           <strong>Share</strong> icon (the square with an up arrow), choose <strong>Add to Home Screen</strong>, then
-          open Fate Round from there to turn on alerts.
+          open FateRound from there to turn on alerts.
         </p>
         <button type="button" onClick={dismiss} className="btn-secondary btn-fit self-end text-[11px]">
           Got it

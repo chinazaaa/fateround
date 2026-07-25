@@ -11,6 +11,7 @@ import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
@@ -436,6 +437,7 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
         hostToken={hostToken}
         game={game}
         gameTypeLabel={cfg.label}
+        titleMeta={<GameInfoChips game={game} className="mt-2" />}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('two_truths', game) ?? game.max_players}
         resumeToken={hostResumeToken}

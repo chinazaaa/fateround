@@ -23,7 +23,7 @@ export function GamePlayerChrome() {
     <>
       <header className="fixed top-0 inset-x-0 z-40 flex items-center justify-between gap-3 px-4 py-3 pointer-events-none border-b border-[var(--border)]/50 bg-[var(--background)]/90 backdrop-blur-md">
         <div className="flex items-center gap-2 pointer-events-auto min-w-0">
-          <Link href="/" className="shrink-0 min-w-0" aria-label="Back to Fate Round home">
+          <Link href="/" className="shrink-0 min-w-0" aria-label="Back to FateRound home">
             <FateRoundLogo className="h-8 w-auto max-w-[7.5rem] sm:max-w-[11rem]" />
           </Link>
           <BackToRoomLink gameCode={code} compact />

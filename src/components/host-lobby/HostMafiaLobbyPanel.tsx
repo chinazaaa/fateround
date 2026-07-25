@@ -144,15 +144,10 @@ export function HostMafiaLobbyPanel({ gameCode, hostToken, game, playerCount, on
     []
   )
 
-  const summary = useMemo(
-    () => [`${maxPlayers} max`, `${shortTimerLabel(turnTimer)} phase`].join(' · '),
-    [maxPlayers, turnTimer]
-  )
-
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 
   return (
-    <HostLobbySettingsSection status={statusLabel} summary={summary}>
+    <HostLobbySettingsSection status={statusLabel}>
       <HostLobbySettingBlock title={`Max players · ${playerCount} joined`}>
         <HostLobbyOptionChips value={maxPlayers} options={maxPlayerOptions} onChange={onMaxPlayersChange} />
       </HostLobbySettingBlock>

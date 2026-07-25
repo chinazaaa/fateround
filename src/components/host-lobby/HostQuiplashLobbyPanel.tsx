@@ -157,10 +157,7 @@ export function HostQuiplashLobbyPanel({ gameCode, hostToken, game, playerCount,
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 
   return (
-    <HostLobbySettingsSection
-      status={statusLabel}
-      summary={`${maxPlayers} max · ${roundsCount} rounds · ${submitTimer}s answer · ${voteTimer}s vote`}
-    >
+    <HostLobbySettingsSection status={statusLabel}>
       <HostLobbySettingBlock title={`Max players · ${playerCount} joined`}>
         <HostLobbyOptionChips value={maxPlayers} options={maxPlayerOptions} onChange={onMaxPlayersChange} />
       </HostLobbySettingBlock>

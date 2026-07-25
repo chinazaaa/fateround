@@ -10,7 +10,7 @@ type SocialLink = { href: string; label: string; icon: ReactNode }
 const SOCIAL_LINKS: SocialLink[] = [
   {
     href: 'https://www.tiktok.com/@fateround',
-    label: 'Fate Round on TikTok',
+    label: 'FateRound on TikTok',
     icon: (
       <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden width={18} height={18}>
         <path d="M16.6 5.82a4.28 4.28 0 0 1-1.05-2.82h-3.1v12.4a2.6 2.6 0 1 1-2.6-2.6c.27 0 .53.04.78.12v-3.2a5.8 5.8 0 0 0-.78-.05 5.7 5.7 0 1 0 5.7 5.7V9.01a7.35 7.35 0 0 0 4.3 1.38V7.28a4.28 4.28 0 0 1-3.25-1.46Z" />
@@ -19,7 +19,7 @@ const SOCIAL_LINKS: SocialLink[] = [
   },
   {
     href: 'https://x.com/Fateround',
-    label: 'Fate Round on X',
+    label: 'FateRound on X',
     icon: (
       <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden width={18} height={18}>
         <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z" />
@@ -87,7 +87,7 @@ function FooterColumn({ title, links }: { title: string; links: FooterLink[] }) 
 /**
  * Public-page footer with a nominative-use trademark disclaimer.
  * Rendered on the marketing/landing pages (home, /games, /games/[slug]) —
- * not inside live game rooms. Uses the Fate Round design-system chrome.
+ * not inside live game rooms. Uses the FateRound design-system chrome.
  */
 export function SiteFooter() {
   return (
@@ -113,7 +113,7 @@ export function SiteFooter() {
               ))}
             </div>
           </div>
-          <FooterColumn title="Fate Round" links={PRIMARY_LINKS} />
+          <FooterColumn title="FateRound" links={PRIMARY_LINKS} />
           <FooterColumn title="Ways to play" links={marketingLinks(WAYS_TO_PLAY_SLUGS)} />
           <FooterColumn title="Free alternatives" links={marketingLinks(ALTERNATIVE_SLUGS)} />
         </div>

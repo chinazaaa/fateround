@@ -1,6 +1,6 @@
 import { appOrigin } from '@/lib/site'
 
-// Explicitly welcome the major AI answer/search crawlers so Fate Round can be
+// Explicitly welcome the major AI answer/search crawlers so FateRound can be
 // indexed, cited, and recommended by ChatGPT, Claude, Perplexity, Gemini,
 // Apple, Meta AI, and others. The wildcard rule already permits them, but
 // naming them makes intent unambiguous and future-proofs against wildcard

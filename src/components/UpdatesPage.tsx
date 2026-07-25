@@ -55,7 +55,7 @@ export function UpdatesPage({ updates }: { updates: ProductUpdate[] }) {
             </span>
             <h1 className="text-3xl sm:text-4xl font-black tracking-tight gradient-title">What&apos;s new</h1>
             <p className="text-muted text-sm leading-relaxed max-w-sm mx-auto">
-              New features, recent changes, and what&apos;s coming next on Fate Round.
+              New features, recent changes, and what&apos;s coming next on FateRound.
             </p>
           </div>
 

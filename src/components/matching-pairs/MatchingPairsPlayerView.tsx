@@ -19,6 +19,7 @@ import { MatchingPairsGameTimerBar } from '@/components/matching-pairs/MatchingP
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
@@ -794,6 +795,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             title={game.title ?? 'Matching Pairs'}
             gameType="matching_pairs"
             subtitle="Flip cards, match icons, and race your friends to the finish."
+            meta={<GameInfoChips game={game} />}
           />
         }
       >

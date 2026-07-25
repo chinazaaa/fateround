@@ -33,7 +33,7 @@ function ThemedStack() {
           headerShown: false,
         }}
       >
-        <Stack.Screen name="index" options={{ title: 'Fate Round' }} />
+        <Stack.Screen name="index" options={{ title: 'FateRound' }} />
         <Stack.Screen name="create" options={{ title: 'Create game' }} />
         <Stack.Screen name="game/[code]" options={{ title: 'Game' }} />
         <Stack.Screen name="host/[code]" options={{ title: 'Host' }} />

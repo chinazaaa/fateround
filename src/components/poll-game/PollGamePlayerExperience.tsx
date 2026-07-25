@@ -136,8 +136,9 @@ import { RoundResultsShareBlock } from '@/components/RoundResultsShareBlock'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { ConfessionsTicker } from '@/components/ConfessionsTicker'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
-import { ContentLabelChip } from '@/components/game-lobby/ContentLabelChip'
 import { GameLobbySummary } from '@/components/GameLobbySummary'
+import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import ReactionBar from '@/components/ReactionBar'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -584,18 +585,14 @@ export function PollGamePlayerExperience({
   if (view === 'join') {
     return (
       <CenteredCard>
-        <div className="text-center space-y-1">
-          <div className="text-4xl">{gameTypeConfig(game?.game_type).headerEmoji}</div>
-          <h1 className="text-2xl font-black tracking-tight gradient-title">{game?.title}</h1>
-          <div className="flex flex-wrap items-center justify-center gap-1.5">
-            <GameTypeBadge gameType={game?.game_type} />
-            <ContentLabelChip label={game?.content_label} />
-          </div>
-          <p className="text-muted text-sm">
-            {game?.rounds_count} rounds · {game?.timer_seconds}s each
-          </p>
-          {game && <GameLobbySummary game={game} className="pt-1" />}
-        </div>
+        <GameJoinHeader
+          emoji={gameTypeConfig(game?.game_type).headerEmoji}
+          title={game?.title}
+          gameType={game?.game_type}
+          contentLabel={game?.content_label}
+          meta={game ? <GameInfoChips game={game} /> : null}
+        />
+        {game && <GameLobbySummary game={game} className="pt-1" />}
         <div className="space-y-4">
           <p className="text-muted font-medium text-center">
             {editingJoin

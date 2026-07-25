@@ -8,6 +8,7 @@ import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
@@ -678,6 +679,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
           hostToken={hostToken}
           game={game}
           gameTypeLabel={cfg.label}
+          titleMeta={<GameInfoChips game={game} className="mt-2" />}
           players={players}
           maxPlayers={lobbyMaxPlayersFromGameClient('codewords', game) ?? game.max_players}
           resumeToken={hostResumeToken}

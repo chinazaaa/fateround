@@ -5,7 +5,7 @@ import { gameLandingSlug } from '@/lib/game-landing'
 import { appOrigin } from '@/lib/site'
 import type { GameType } from '@/types'
 
-export const SITE_NAME = 'Fate Round'
+export const SITE_NAME = 'FateRound'
 
 export const OG_IMAGE = {
   url: '/og.png',
@@ -28,7 +28,7 @@ export const DEFAULT_KEYWORDS = [
   'who said this game',
   'free party games',
   'no sign up party games',
-  'Fate Round',
+  'FateRound',
   'fateround',
 ]
 
@@ -94,7 +94,7 @@ export function createMetadata(): Metadata {
   return {
     title: 'Create a Game',
     description:
-      'Start a free Fate Round game — pick Smash Marry Kill, Would You Rather, Most Likely To, or another party game mode and share the code with friends.',
+      'Start a free FateRound game — pick Smash Marry Kill, Would You Rather, Most Likely To, or another party game mode and share the code with friends.',
     alternates: { canonical: '/create' },
     openGraph: {
       title: `Create a Game | ${SITE_NAME}`,
@@ -113,7 +113,7 @@ export function noIndexMetadata(title: string): Metadata {
 }
 
 const JOIN_GAME_FALLBACK_DESCRIPTION =
-  "You're invited to a free party game on Fate Round. Tap to join — no sign-up needed."
+  "You're invited to a free party game on FateRound. Tap to join — no sign-up needed."
 
 function joinGameRobots(): Metadata['robots'] {
   return { index: false, follow: false, googleBot: { index: false, follow: false } }
@@ -148,7 +148,7 @@ export function gameJoinMetadata(code: string, gameType: GameType | null): Metad
   const cfg = gameTypeConfig(gameType)
   const slug = gameLandingSlug(gameType)
   const ogPath = gameLandingOgPath(slug)
-  const description = `You're invited to play ${cfg.label} on Fate Round. Tap to join with code ${gameCode} — no sign-up needed.`
+  const description = `You're invited to play ${cfg.label} on FateRound. Tap to join with code ${gameCode} — no sign-up needed.`
   const title = `Join ${cfg.label} — ${gameCode}`
 
   return {
@@ -318,7 +318,7 @@ export function gamesItemListJsonLd(): string {
     '@context': 'https://schema.org',
     '@type': 'ItemList',
     name: `${SITE_NAME} party games`,
-    description: 'Every free online party game you can play on Fate Round.',
+    description: 'Every free online party game you can play on FateRound.',
     numberOfItems: GAME_TYPE_DISPLAY_ORDER.length,
     itemListElement: GAME_TYPE_DISPLAY_ORDER.map((type, i) => {
       const cfg = gameTypeConfig(type)
@@ -405,6 +405,7 @@ export const GAME_LANDING_OG_BY_SLUG: Record<string, string> = {
   'word-scramble': '/og/word-scramble.png',
   landmine: '/og/landmine.png',
   'ping-pong': '/og/ping-pong.png',
+  uno: '/og/uno.png',
 }
 
 export function gameLandingOgPath(slug: string): string {
