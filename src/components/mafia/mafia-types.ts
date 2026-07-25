@@ -16,6 +16,7 @@ export interface MafiaStateResponse {
   lastVoteResultPlayerId: string | null
   voteTallies: Record<string, number>
   voteChoices?: Record<string, string>
+  votedPlayerIds?: string[]
   votesRequired?: number
   dayChatMessages?: MafiaChatMessage[]
   ghostChatMessages?: MafiaChatMessage[]

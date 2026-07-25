@@ -296,13 +296,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
   }
 
-  // Calculate vote tallies + per-voter choices (who voted for whom), if votes are public
+  // Calculate vote tallies + per-voter choices (who voted for whom), if votes are public.
+  // votedPlayerIds (just *whether* someone voted, not for whom) is exposed even when
+  // anonymous, so anonymous mode can still show a "?" sign on a voter's tile instead of no
+  // sign at all — matching Wolvesville's anonymous-voting display.
   const voteTallies: Record<string, number> = {}
   const voteChoices: Record<string, string> = {}
+  const votedPlayerIds: string[] = []
   playerStates.forEach((ps) => {
     if (ps.day_vote_target_player_id) {
       voteTallies[ps.day_vote_target_player_id] = (voteTallies[ps.day_vote_target_player_id] || 0) + 1
       voteChoices[ps.player_id] = ps.day_vote_target_player_id
+      votedPlayerIds.push(ps.player_id)
     }
   })
   const aliveCount = playerStates.filter((ps) => ps.is_alive).length
@@ -332,6 +337,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     lastVoteResultPlayerId: session.vote_result_player_id,
     voteTallies: session.anonymous_votes && session.phase === 'voting' ? {} : voteTallies,
     voteChoices: session.anonymous_votes && session.phase === 'voting' ? {} : voteChoices,
+    votedPlayerIds,
     votesRequired,
     dayChatMessages,
     ghostChatMessages,

@@ -470,6 +470,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       ghostChatMessages,
       voteTallies,
       voteChoices,
+      votedPlayerIds,
+      anonymousVotes,
       votesRequired,
       enabledRoles,
       roleCounts,
@@ -615,6 +617,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
             phase={phase}
             voteTallies={voteTallies}
             voteChoices={voteChoices}
+            votedPlayerIds={votedPlayerIds}
+            anonymousVotes={anonymousVotes}
             onSelect={gridOnSelect}
             selectedIds={gridSelectedIds}
             onSkipVote={amIAlive && !amISpectator ? () => void submitDayVote(null) : undefined}

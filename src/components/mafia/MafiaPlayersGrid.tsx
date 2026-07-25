@@ -14,6 +14,10 @@ interface MafiaPlayersGridProps {
   /** voterId -> targetId, when votes are public — shown as a "→ #N" sign on the voter's own
    *  tile (Wolvesville shows who cast each vote, not just a tally on the target). */
   voteChoices?: Record<string, string>
+  /** Who has cast a vote, regardless of anonymity — used to show a "?" sign on a voter's tile
+   *  when anonymousVotes is on (Wolvesville still marks that a player voted, just not for whom). */
+  votedPlayerIds?: string[]
+  anonymousVotes?: boolean
   /** When set, alive non-self tiles become tap targets for the current night action or vote —
    *  the primary way to act, matching Wolvesville (tap the player's photo, not a separate list). */
   onSelect?: (id: string) => void
@@ -45,6 +49,8 @@ export function MafiaPlayersGrid({
   phase,
   voteTallies,
   voteChoices = {},
+  votedPlayerIds = [],
+  anonymousVotes = false,
   onSelect,
   selectedIds = [],
   onSkipVote,
@@ -71,7 +77,9 @@ export function MafiaPlayersGrid({
         {players.map((p) => {
           const isMe = p.id === myPlayerId
           const voteCount = voteTallies?.[p.id] ?? 0
-          const votingForSeat = phase === 'voting' && p.isAlive ? seatNumberById.get(voteChoices[p.id]) : undefined
+          const hasVoted = phase === 'voting' && p.isAlive && votedPlayerIds.includes(p.id)
+          const votingForSeat =
+            phase === 'voting' && p.isAlive && !anonymousVotes ? seatNumberById.get(voteChoices[p.id]) : undefined
           const isSelected = selectedIds.includes(p.id)
           const clickable = !!onSelect && p.isAlive && !isMe
           const roleTeamColor = p.role
@@ -111,10 +119,17 @@ export function MafiaPlayersGrid({
                 </span>
               )}
               <span className="text-3xl leading-none">{p.isAlive ? '🧑' : '🪦'}</span>
-              {votingForSeat != null && (
+              {votingForSeat != null ? (
                 <span className="text-[10px] font-black bg-amber-500 text-black rounded-full px-1.5 py-0.5 leading-none">
                   → #{votingForSeat}
                 </span>
+              ) : (
+                anonymousVotes &&
+                hasVoted && (
+                  <span className="text-[10px] font-black bg-amber-500 text-black rounded-full px-1.5 py-0.5 leading-none">
+                    ?
+                  </span>
+                )
               )}
               <span
                 className={`text-xs font-bold truncate w-full leading-tight ${
