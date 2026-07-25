@@ -25,6 +25,7 @@
     "./batch-3-games": "./src/batch-3-games.ts",
     "./crazy-eights": "./src/crazy-eights.ts",
     "./whot": "./src/whot.ts",
+    "./uno": "./src/uno.ts",
     "./two-truths": "./src/two-truths.ts",
     "./describe-it": "./src/describe-it.ts",
     "./batch-4-games": "./src/batch-4-games.ts",

@@ -5,6 +5,7 @@ export const LUDO_TURN_TIMER_OPTIONS = [0, 30, 60, 90] as const
 export const SNAKE_LADDER_TURN_TIMER_OPTIONS = [0, 15, 30, 60, 90] as const
 export const WHOT_TURN_TIMER_OPTIONS = [0, 10, 15, 30, 60, 90, 120] as const
 export const CRAZY8_TURN_TIMER_OPTIONS = [0, 10, 15, 30, 60, 90, 120] as const
+export const UNO_TURN_TIMER_OPTIONS = [0, 10, 15, 30, 60, 90, 120] as const
 export const MAHJONG_TURN_TIMER_OPTIONS = [0, 30, 60, 90, 120] as const
 export const MONOPOLY_TURN_TIMER_OPTIONS = [0, 30, 45, 60, 90] as const
 export const TIC_TAC_TOE_TURN_TIMER_OPTIONS = [0, 15, 30, 60] as const
@@ -23,6 +24,7 @@ export type BoardGameLobbyType =
   | 'yahtzee'
   | 'whot'
   | 'crazy_eights'
+  | 'uno'
   | 'ludo'
   | 'mahjong'
   | 'snake_and_ladder'
@@ -41,6 +43,7 @@ export const BOARD_GAME_DEFAULT_TURN_TIMER: Record<
   yahtzee: 30,
   whot: 30,
   crazy_eights: 30,
+  uno: 30,
   ludo: 30,
   snake_and_ladder: 30,
   tic_tac_toe: 30,
@@ -66,6 +69,7 @@ export function turnTimerOptionsFor(
   if (gameType === 'monopoly') return MONOPOLY_TURN_TIMER_OPTIONS
   if (gameType === 'whot') return WHOT_TURN_TIMER_OPTIONS
   if (gameType === 'crazy_eights') return CRAZY8_TURN_TIMER_OPTIONS
+  if (gameType === 'uno') return UNO_TURN_TIMER_OPTIONS
   if (gameType === 'tic_tac_toe') return TIC_TAC_TOE_TURN_TIMER_OPTIONS
   if (gameType === 'chess' || gameType === 'checkers') return CHESS_TIME_OPTIONS
   if (gameType === 'ayo') return AYO_TIME_OPTIONS

@@ -47,6 +47,7 @@ import {
   isCardHouseRuleGame,
   type CardHouseRulesState,
 } from '@/components/host/lobby-settings/CardHouseRulesSection'
+import { UnoRulesSection, type UnoRulesState } from '@/components/host/lobby-settings/UnoRulesSection'
 import {
   BoardVariantSection,
   isBoardVariantGame,
@@ -142,6 +143,7 @@ const LOBBY_MAX_PLAYERS_GAMES = new Set<GameType>([
   'yahtzee',
   'whot',
   'crazy_eights',
+  'uno',
   'ludo',
   'mahjong',
   'snake_and_ladder',
@@ -213,6 +215,7 @@ export function HostLobbySettingsSheet({
   const gameType = game.game_type as GameType
   const { limits } = useGamePlayerLimits()
   const isCardGame = isCardHouseRuleGame(gameType)
+  const isUno = gameType === 'uno'
   const isVariantGame = isBoardVariantGame(gameType)
   const isTeamRound = isTeamRoundGame(gameType)
   const isQuickDraw = isQuickDrawLobbyGame(gameType)
@@ -241,6 +244,7 @@ export function HostLobbySettingsSheet({
   const isTrivia = isTriviaLobbyGame(gameType)
   const ownsTimer =
     isCardGame ||
+    isUno ||
     isVariantGame ||
     isMafia ||
     isQuiplash ||
@@ -306,6 +310,14 @@ export function HostLobbySettingsSheet({
     crazy8ActionCards: game.crazy8_action_cards ?? true,
     crazy8Jokers: game.crazy8_jokers ?? false,
     crazy8Pick2Stacking: game.crazy8_pick2_stacking ?? true,
+  }))
+  const [uno, setUno] = useState<UnoRulesState>(() => ({
+    timerSeconds: game.timer_seconds ?? 0,
+    gameDurationSeconds: game.game_duration_seconds ?? 0,
+    wd4Challenge: game.uno_wd4_challenge ?? true,
+    stacking: game.uno_stacking ?? false,
+    zeroSeven: game.uno_zero_seven ?? false,
+    unoPenalty: game.uno_uno_penalty === 4 ? 4 : 2,
   }))
   const [variant, setVariant] = useState<BoardVariantState>(() => ({
     timerSeconds: game.timer_seconds ?? 0,
@@ -510,6 +522,14 @@ export function HostLobbySettingsSheet({
         if (card.crazy8Pick2Stacking !== game.crazy8_pick2_stacking)
           board.crazy8_pick2_stacking = card.crazy8Pick2Stacking
       }
+    }
+    if (isUno) {
+      if (uno.timerSeconds !== game.timer_seconds) board.timer_seconds = uno.timerSeconds
+      if (uno.gameDurationSeconds !== game.game_duration_seconds) board.game_duration_seconds = uno.gameDurationSeconds
+      if (uno.wd4Challenge !== game.uno_wd4_challenge) board.uno_wd4_challenge = uno.wd4Challenge
+      if (uno.stacking !== game.uno_stacking) board.uno_stacking = uno.stacking
+      if (uno.zeroSeven !== game.uno_zero_seven) board.uno_zero_seven = uno.zeroSeven
+      if (uno.unoPenalty !== game.uno_uno_penalty) board.uno_uno_penalty = uno.unoPenalty
     }
     if (isMahjong) {
       if (mahjong.timerSeconds !== game.timer_seconds) board.timer_seconds = mahjong.timerSeconds
@@ -801,6 +821,8 @@ export function HostLobbySettingsSheet({
                 onChange={(p) => setCard((prev) => ({ ...prev, ...p }))}
               />
             ) : null}
+
+            {isUno ? <UnoRulesSection value={uno} onChange={(p) => setUno((prev) => ({ ...prev, ...p }))} /> : null}
 
             {isVariantGame ? (
               <BoardVariantSection
