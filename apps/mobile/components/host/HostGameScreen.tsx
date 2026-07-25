@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { ActivityIndicator, StyleSheet, View } from 'react-native'
 import { HostLobbyScreen } from '@/components/HostLobbyScreen'
 import { HostRouter } from '@/components/host/HostRouter'
+import { MatureGameGate } from '@/components/MatureGameGate'
 import { useHostGame } from '@/hooks/useHostGame'
 import { recordRecentGame } from '@/lib/recent-games'
 import type { Theme } from '@/constants/theme'
@@ -64,6 +65,7 @@ export function HostGameScreen({ gameCode, hostToken }: Props) {
           onReload={() => void reload()}
         />
       )}
+      <MatureGameGate gameType={game.game_type} />
     </GameThemeProvider>
   )
 }
