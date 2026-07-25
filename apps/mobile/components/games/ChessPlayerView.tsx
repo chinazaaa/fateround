@@ -13,7 +13,7 @@ import {
 import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
 import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import type { Theme } from '@/constants/theme'
@@ -27,11 +27,18 @@ import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { CHESS_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
+import { useToast } from '@/components/ui/Toast'
 import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 import { useChessAppearance, type ChessPieceType } from './chess/chess-appearance'
 import { ChessPieceGlyph } from './chess/ChessPieceGlyph'
-import { ChessAppearancePicker } from './chess/ChessAppearancePicker'
-import { CapturedTray, computeMaterial, KingGlyph } from './chess/ChessCapturedTray'
+import { ChessAppearanceIconButton, ChessAppearancePanel } from './chess/ChessAppearancePicker'
+import {
+  ChessCapturedSummary,
+  ChessMoveBanner,
+  ChessPlayerCard,
+  computeMaterial,
+  KingGlyph,
+} from './chess/ChessCapturedTray'
 import { ChessResultsExtras } from './chess/ChessResultsExtras'
 import { ChessShareCard } from './chess/ChessShareCard'
 import { type Premove, premoveNeedsPromotion, premoveTargets, type PremovePiece } from './chess/chess-premove'
@@ -49,6 +56,14 @@ type Promotion = 'q' | 'r' | 'b' | 'n'
 
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const
 const RANKS = [8, 7, 6, 5, 4, 3, 2, 1] as const
+const PIECE_NAMES: Record<ChessPieceType, string> = {
+  p: 'Pawn',
+  r: 'Rook',
+  n: 'Knight',
+  b: 'Bishop',
+  q: 'Queen',
+  k: 'King',
+}
 const PROMOTION_OPTIONS: { piece: Promotion; label: string }[] = [
   { piece: 'q', label: 'Queen' },
   { piece: 'r', label: 'Rook' },
@@ -58,6 +73,7 @@ const PROMOTION_OPTIONS: { piece: Promotion; label: string }[] = [
 
 export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
+  const { show } = useToast()
   const [session, setSession] = useState<ChessSession | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [acting, setActing] = useState(false)
@@ -65,6 +81,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   const [premove, setPremove] = useState<Premove | null>(null)
   const [clockTick, setClockTick] = useState(0)
   const [resignOpen, setResignOpen] = useState(false)
+  const [appearanceOpen, setAppearanceOpen] = useState(false)
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: ChessSession | null; ok: boolean }> => {
@@ -134,6 +151,9 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
     status: bootstrap.game?.status,
     isMyTurn,
     enabled: bootstrap.screen === 'active',
+    // The opening player's first move is a waiting->active transition, not a turn
+    // change — without this they'd see "Game started!" instead of "Your turn!".
+    startMessage: isMyTurn ? 'Your turn!' : 'Game started! 🎮',
   })
 
   const chess = useMemo(() => {
@@ -286,6 +306,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           premoveAt.current = activeSession.updated_at
           setPremove({ from: selected, to: square })
           setSelected(null)
+          show('Premove saved — it plays automatically once it’s your turn')
         }
       }
       return
@@ -302,6 +323,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       setPremove({ from: promotionMove.from, to: promotionMove.to, promotion: piece })
       setPromotionMove(null)
       setSelected(null)
+      show('Premove saved — it plays automatically once it’s your turn')
     } else {
       void submitMove(promotionMove.from, promotionMove.to, piece)
     }
@@ -410,18 +432,21 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   const displayFiles = flipped ? [...FILES].reverse() : FILES
   void clockTick
 
-  // Captured-pieces trays: each side lists the enemy pieces it has taken. Top of
-  // the board shows the opponent, bottom shows the viewer's own side.
   const white = bootstrap.players.find((p) => p.id === activeSession.player_white_id)
   const black = bootstrap.players.find((p) => p.id === activeSession.player_black_id)
-  const topColor: ChessColor = flipped ? 'w' : 'b'
-  const bottomColor: ChessColor = flipped ? 'b' : 'w'
-  const trayFor = (color: ChessColor) => ({
+  // The two identity cards: your own seat leads (left), the opponent trails (right) —
+  // falling back to White-then-Black for a spectator with no seat of their own.
+  const cardOrder: ChessColor[] = myColor === 'b' ? ['b', 'w'] : ['w', 'b']
+  const playerCardFor = (color: ChessColor) => ({
+    name: (color === 'w' ? white : black)?.name ?? (color === 'w' ? 'White' : 'Black'),
+    color,
+    active: activeSession.status === 'active' && activeSession.current_turn === color,
+  })
+  const capturedSummaryEntries = cardOrder.map((color) => ({
     name: (color === 'w' ? white : black)?.name ?? (color === 'w' ? 'White' : 'Black'),
     pieces: color === 'w' ? material.capturedByWhite : material.capturedByBlack,
     glyphColor: (color === 'w' ? 'b' : 'w') as ChessColor,
-    active: activeSession.status === 'active' && activeSession.current_turn === color,
-  })
+  }))
   const timeControlSeconds = bootstrap.game?.timer_seconds ?? 0
 
   return (
@@ -431,12 +456,21 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <TurnBanner
+        <ChessMoveBanner
+          kicker={
+            activeSession.in_check && isMyTurn
+              ? 'Check'
+              : isMyTurn
+                ? 'Your move'
+                : premove
+                  ? 'Premove queued'
+                  : "Opponent's turn"
+          }
           text={
             activeSession.in_check && isMyTurn
               ? 'Check! Your move'
               : selected
-                ? `Selected ${selected} — tap destination`
+                ? `${PIECE_NAMES[(chess?.get(selected as Square)?.type ?? 'p') as ChessPieceType]} selected — tap a dot to move`
                 : isMyTurn
                   ? 'Your turn'
                   : premove
@@ -445,21 +479,26 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
                       ? `${turnPlayer?.name ?? 'Opponent'}'s turn — tap a piece to queue a premove`
                       : `${turnPlayer?.name ?? 'Opponent'}'s turn`
           }
-          isMyTurn={isMyTurn}
         />
 
-        <CapturedTray
-          {...trayFor(topColor)}
-          set={pieceSet}
-          clock={
-            timed ? (
-              <ClockChip
-                ms={liveChessClockMs(activeSession, topColor)}
-                active={activeSession.current_turn === topColor}
-              />
-            ) : undefined
-          }
-        />
+        <View style={styles.playerCards}>
+          {cardOrder.map((color) => (
+            <ChessPlayerCard
+              key={color}
+              {...playerCardFor(color)}
+              clock={
+                timed ? (
+                  <ClockChip
+                    ms={liveChessClockMs(activeSession, color)}
+                    active={activeSession.current_turn === color}
+                  />
+                ) : undefined
+              }
+            />
+          ))}
+        </View>
+
+        <ChessCapturedSummary entries={capturedSummaryEntries} set={pieceSet} />
 
         <View style={styles.board}>
           {displayRanks.map((rank, rankIdx) => (
@@ -508,18 +547,6 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           ))}
         </View>
 
-        <CapturedTray
-          {...trayFor(bottomColor)}
-          set={pieceSet}
-          clock={
-            timed ? (
-              <ClockChip
-                ms={liveChessClockMs(activeSession, bottomColor)}
-                active={activeSession.current_turn === bottomColor}
-              />
-            ) : undefined
-          }
-        />
         {timed && timeControlSeconds > 0 ? (
           <Text style={styles.timeNote}>
             ⏱ {Math.round(timeControlSeconds / 60)} min each — your clock only counts down on your turn
@@ -540,13 +567,16 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           </Text>
         ) : null}
 
-        <ChessAppearancePicker defaults={appearanceDefaults} />
-
-        {myColor ? (
-          <Pressable style={styles.resignBtn} disabled={acting} onPress={resign}>
-            <Text style={styles.resignText}>Resign</Text>
-          </Pressable>
-        ) : null}
+        <View style={styles.actionsRow}>
+          <ChessAppearanceIconButton open={appearanceOpen} onToggle={() => setAppearanceOpen((v) => !v)} />
+          {myColor ? (
+            <Pressable style={styles.resignBtn} disabled={acting} onPress={resign}>
+              <Text style={styles.resignIcon}>🏳️</Text>
+              <Text style={styles.resignText}>Resign</Text>
+            </Pressable>
+          ) : null}
+        </View>
+        {appearanceOpen ? <ChessAppearancePanel defaults={appearanceDefaults} /> : null}
       </ScrollView>
 
       <Modal visible={!!promotionMove} transparent animationType="fade">
@@ -610,7 +640,9 @@ function ClockChip({ ms, active }: { ms: number; active: boolean }) {
         lowTime ? { opacity: pulse } : null,
       ]}
     >
-      <Text style={[styles.clockValue, lowTime && styles.clockLowText]}>{formatChessClock(ms)}</Text>
+      <Text style={[styles.clockValue, active && styles.clockActiveText, lowTime && styles.clockLowText]}>
+        {formatChessClock(ms)}
+      </Text>
     </Animated.View>
   )
 }
@@ -638,30 +670,33 @@ const makeStyles = (theme: Theme) =>
       borderWidth: 4,
       borderColor: 'rgba(0,0,0,0.3)',
     },
-    clockChip: {
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 6,
-      backgroundColor: theme.surface,
-    },
-    clockActive: { borderWidth: 1, borderColor: theme.primary },
-    clockLow: { backgroundColor: 'rgba(244,63,94,0.18)', borderWidth: 1, borderColor: '#f43f5e' },
+    playerCards: { flexDirection: 'row', gap: 8 },
+    clockChip: { paddingHorizontal: 2 },
+    clockActive: {},
+    clockActiveText: { color: theme.primary },
+    clockLow: { backgroundColor: 'rgba(244,63,94,0.18)', borderRadius: 6, paddingVertical: 2 },
     clockLowText: { color: '#fb7185' },
-    clockValue: { color: theme.text, fontWeight: '800', fontVariant: ['tabular-nums'], flexShrink: 0 },
+    clockValue: { color: theme.text, fontWeight: '800', fontSize: 15, fontVariant: ['tabular-nums'], flexShrink: 0 },
     timeNote: { color: theme.textFaint, fontSize: 11, textAlign: 'center', marginTop: -6 },
     coordRank: { position: 'absolute', top: 1, left: 2, fontSize: 8, fontWeight: '700' },
     coordFile: { position: 'absolute', bottom: 1, right: 2, fontSize: 8, fontWeight: '700' },
     identity: { color: theme.textMuted, fontSize: 12, textAlign: 'center', marginTop: 10 },
     identityStrong: { color: theme.text, fontWeight: '700' },
+    actionsRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
     resignBtn: {
-      alignSelf: 'center',
-      marginTop: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      borderRadius: 8,
-      backgroundColor: '#3f1515',
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      height: 48,
+      borderRadius: theme.radius.sm,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surface,
     },
-    resignText: { color: '#fca5a5', fontWeight: '700' },
+    resignIcon: { fontSize: 16 },
+    resignText: { color: theme.text, fontWeight: '700' },
     modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 24 },
     modalCard: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 8 },
     modalTitle: { color: theme.text, fontSize: 18, fontWeight: '800', marginBottom: 4 },
