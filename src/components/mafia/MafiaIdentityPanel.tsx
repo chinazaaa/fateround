@@ -1,6 +1,7 @@
 'use client'
 
 import type { MafiaMyState } from '@/types'
+import { MAFIA_ROLE_INFO, mafiaRoleEmoji } from './mafia-role-info'
 
 interface MafiaIdentityPanelProps {
   myState: MafiaMyState | null
@@ -22,6 +23,8 @@ export function MafiaIdentityPanel({ myState }: MafiaIdentityPanelProps) {
     (myState.isLover ||
       !!myState.auraSeerResult ||
       !!myState.detectiveTeamCheckResult ||
+      !!myState.seerResult ||
+      !!myState.mafiaSeerResult ||
       !!myState.trackerResult ||
       (myRole === 'doctor' && !!myState.doctorLastOutcome && myState.doctorLastOutcome !== 'no_attack') ||
       myRole === 'vigilante' ||
@@ -84,6 +87,30 @@ export function MafiaIdentityPanel({ myState }: MafiaIdentityPanelProps) {
             >
               {myState.detectiveTeamCheckResult.sameTeam ? 'on the SAME team' : 'NOT on the same team'}
             </span>
+          </p>
+        </div>
+      )}
+
+      {myState?.seerResult && (
+        <div className="glass-card border border-[var(--border)] rounded-2xl p-3 text-left">
+          <p className="text-[10px] font-bold text-[var(--primary)] uppercase tracking-wider mb-1">👁️ Role Revealed</p>
+          <p className="text-sm text-[var(--foreground)]">
+            <strong>{myState.seerResult.targetName}</strong> is{' '}
+            <strong>
+              {mafiaRoleEmoji(myState.seerResult.role)} {MAFIA_ROLE_INFO[myState.seerResult.role]?.name}
+            </strong>
+          </p>
+        </div>
+      )}
+
+      {myState?.mafiaSeerResult && (
+        <div className="glass-card border border-[var(--border)] rounded-2xl p-3 text-left">
+          <p className="text-[10px] font-bold text-[var(--primary)] uppercase tracking-wider mb-1">👁️‍🗨️ Role Revealed</p>
+          <p className="text-sm text-[var(--foreground)]">
+            <strong>{myState.mafiaSeerResult.targetName}</strong> is{' '}
+            <strong>
+              {mafiaRoleEmoji(myState.mafiaSeerResult.role)} {MAFIA_ROLE_INFO[myState.mafiaSeerResult.role]?.name}
+            </strong>
           </p>
         </div>
       )}

@@ -15,6 +15,7 @@ const NIGHT_ACTION_PROMPT: Partial<Record<MafiaRole, string>> = {
   tracker: '👣 Tap a player below to track — learn who they visit tonight.',
   serial_killer: '🔪 Tap a player below to kill tonight.',
   medium: '🔮 Tap a dead player below to revive them.',
+  seer: '👁️ Tap a player below to reveal their exact role.',
 }
 
 interface MafiaPhaseCardProps {

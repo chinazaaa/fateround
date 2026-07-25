@@ -5,7 +5,7 @@ export const MAFIA_MIN_PLAYERS = 5
 export const MAFIA_MAX_PLAYERS = 16
 export const MAFIA_DEFAULT_MAX_PLAYERS = 16
 
-const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer']
+const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer', 'mafia_seer']
 
 /**
  * Derives which team a role belongs to. Cursed Villager starts on 'village' — on
@@ -70,7 +70,7 @@ export function assignMafiaRoles(
   playerIds: string[],
   toggles: MafiaRoleToggles,
   mafiaCountOverride?: number,
-  avoidMafiaPlayerIds?: string[]
+  lastRoleByPlayerId?: Record<string, MafiaRole>
 ): Record<string, MafiaRole> {
   const playerCount = playerIds.length
   const mafiaCount =
@@ -114,6 +114,8 @@ export function assignMafiaRoles(
   // Round 2: more village + mafia specialist
   pushIfRoom('vigilante', toggles.vigilante_enabled)
   pushIfRoom('framer', toggles.framer_enabled)
+  pushIfRoom('seer', toggles.seer_enabled)
+  pushIfRoom('mafia_seer', toggles.mafia_seer_enabled)
 
   // Round 3: another Solo, another Special, more village
   pushIfRoom('serial_killer', toggles.serial_killer_enabled)
@@ -134,23 +136,36 @@ export function assignMafiaRoles(
     assignments[id] = shuffledRoles[index]
   })
 
-  // Fairness pass: if the entire Mafia-team is a repeat of last round's Mafia-team (most
-  // visible with a single Mafia — same person twice in a row), swap one repeat player for a
-  // non-repeat, non-Mafia-team player when one exists, so Play Again doesn't feel rigged.
-  if (avoidMafiaPlayerIds && avoidMafiaPlayerIds.length > 0 && avoidMafiaPlayerIds.length < playerIds.length) {
-    const mafiaAssigneeIds = playerIds.filter((id) => MAFIA_TEAM_ROLES.includes(assignments[id]))
-    const allRepeat = mafiaAssigneeIds.length > 0 && mafiaAssigneeIds.every((id) => avoidMafiaPlayerIds.includes(id))
-    if (allRepeat) {
+  // Fairness pass: nobody should keep landing the same role two rounds running by pure
+  // chance (most noticeable with rare roles like Mafia, Detective, Aura Seer). Best-effort —
+  // repeatedly try to swap a repeat-holder's role with another player's, preferring a swap
+  // that clears both players' repeats, until no more repeats can be resolved this way. Small
+  // rosters with few distinct roles may not fully clear (e.g. 2 players cycling 2 roles).
+  if (lastRoleByPlayerId) {
+    const maxAttempts = playerIds.length * 4
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const repeatIds = playerIds.filter((id) => lastRoleByPlayerId[id] && assignments[id] === lastRoleByPlayerId[id])
+      if (repeatIds.length === 0) break
+      const id = repeatIds[Math.floor(Math.random() * repeatIds.length)]
+      // A valid swap partner must actually change this player's role, must resolve this
+      // player's repeat (their incoming role must differ from their own last role), and must
+      // not itself create a fresh repeat for the partner (their last role shouldn't be what
+      // they'd receive, i.e. this player's current role).
       const candidates = playerIds.filter(
-        (id) => !MAFIA_TEAM_ROLES.includes(assignments[id]) && !avoidMafiaPlayerIds.includes(id)
+        (otherId) =>
+          otherId !== id &&
+          assignments[otherId] !== assignments[id] &&
+          assignments[otherId] !== lastRoleByPlayerId[id] &&
+          lastRoleByPlayerId[otherId] !== assignments[id]
       )
-      if (candidates.length > 0) {
-        const swapOutId = mafiaAssigneeIds[Math.floor(Math.random() * mafiaAssigneeIds.length)]
-        const swapInId = candidates[Math.floor(Math.random() * candidates.length)]
-        const tmp = assignments[swapOutId]
-        assignments[swapOutId] = assignments[swapInId]
-        assignments[swapInId] = tmp
-      }
+      if (candidates.length === 0) continue
+      // Prefer a partner who is themselves a repeat (clears two repeats in one swap).
+      const repeatCandidates = candidates.filter((otherId) => repeatIds.includes(otherId))
+      const pool = repeatCandidates.length > 0 ? repeatCandidates : candidates
+      const swapWith = pool[Math.floor(Math.random() * pool.length)]
+      const tmp = assignments[id]
+      assignments[id] = assignments[swapWith]
+      assignments[swapWith] = tmp
     }
   }
 
@@ -242,7 +257,7 @@ export interface MafiaNightDeath {
 
 // Order the Trapper's trap kills the weakest-first: a plain Mafia foot soldier before any
 // specialist, and the Alpha (team leader) last of all.
-const MAFIA_WEAKNESS_ORDER: MafiaRole[] = ['mafia', 'wolf_cub', 'framer', 'alpha_wolf']
+const MAFIA_WEAKNESS_ORDER: MafiaRole[] = ['mafia', 'wolf_cub', 'mafia_seer', 'framer', 'alpha_wolf']
 
 function pickWeakestMafia(playerStates: MafiaPlayerState[]): string | null {
   for (const role of MAFIA_WEAKNESS_ORDER) {
@@ -279,6 +294,8 @@ export interface MafiaNightResolution {
   trapperActivated: boolean
   trapperBlockedPlayerIds: string[]
   trapperKilledMafiaId: string | null
+  seerTarget: string | null
+  mafiaSeerTarget: string | null
 }
 
 /**
@@ -298,6 +315,8 @@ export function resolveMafiaNight(
     | 'witch_enabled'
     | 'little_girl_enabled'
     | 'trapper_enabled'
+    | 'seer_enabled'
+    | 'mafia_seer_enabled'
     | 'wolf_cub_revenge_pending'
   >,
   playerStates: MafiaPlayerState[]
@@ -409,6 +428,16 @@ export function resolveMafiaNight(
   const trapperBlockedPlayerIds: string[] = []
   let trapperKilledMafiaId: string | null = null
 
+  // Seer / Mafia Seer: reveal a target's exact role each night, reusable (no "used" flag).
+  // Mafia Seer's own kill-vote exclusion is structural (their night_action_target_player_id
+  // is never read by the mafiaVotes loop above) — resigning converts their stored role to
+  // 'mafia' immediately at submission time, so a resigned player simply stops being found by
+  // aliveOfRole('mafia_seer') from that point on.
+  const seerPlayer = session.seer_enabled ? aliveOfRole('seer') : undefined
+  const seerTarget = seerPlayer?.night_action_target_player_id ?? null
+  const mafiaSeerPlayer = session.mafia_seer_enabled ? aliveOfRole('mafia_seer') : undefined
+  const mafiaSeerTarget = mafiaSeerPlayer?.night_action_target_player_id ?? null
+
   const deaths: MafiaNightDeath[] = []
   const deadIds = new Set<string>()
   const addDeath = (playerId: string, cause: MafiaNightDeath['cause']) => {
@@ -516,6 +545,8 @@ export function resolveMafiaNight(
     trapperActivated,
     trapperBlockedPlayerIds,
     trapperKilledMafiaId,
+    seerTarget,
+    mafiaSeerTarget,
   }
 }
 
@@ -546,7 +577,7 @@ export async function initializeMafiaGame(
   const { data: gameData, error: gameError } = await admin
     .from('games')
     .select(
-      'mafia_doctor_enabled, mafia_detective_enabled, mafia_aura_seer_enabled, mafia_bodyguard_enabled, mafia_mayor_enabled, mafia_vigilante_enabled, mafia_tracker_enabled, mafia_alpha_wolf_enabled, mafia_wolf_cub_enabled, mafia_framer_enabled, mafia_jester_enabled, mafia_serial_killer_enabled, mafia_arsonist_enabled, mafia_cupid_enabled, mafia_cursed_villager_enabled, mafia_medium_enabled, mafia_priest_enabled, mafia_witch_enabled, mafia_little_girl_enabled, mafia_trapper_enabled, mafia_count, mafia_anonymous_votes, mafia_last_team_player_ids'
+      'mafia_doctor_enabled, mafia_detective_enabled, mafia_aura_seer_enabled, mafia_bodyguard_enabled, mafia_mayor_enabled, mafia_vigilante_enabled, mafia_tracker_enabled, mafia_alpha_wolf_enabled, mafia_wolf_cub_enabled, mafia_framer_enabled, mafia_jester_enabled, mafia_serial_killer_enabled, mafia_arsonist_enabled, mafia_cupid_enabled, mafia_cursed_villager_enabled, mafia_medium_enabled, mafia_priest_enabled, mafia_witch_enabled, mafia_little_girl_enabled, mafia_trapper_enabled, mafia_seer_enabled, mafia_mafia_seer_enabled, mafia_count, mafia_anonymous_votes, mafia_last_roles'
     )
     .eq('id', gameId)
     .single()
@@ -577,6 +608,8 @@ export async function initializeMafiaGame(
     witch_enabled: gameData.mafia_witch_enabled !== false,
     little_girl_enabled: gameData.mafia_little_girl_enabled !== false,
     trapper_enabled: gameData.mafia_trapper_enabled !== false,
+    seer_enabled: gameData.mafia_seer_enabled !== false,
+    mafia_seer_enabled: gameData.mafia_mafia_seer_enabled !== false,
   }
   const anonymousVotes = gameData.mafia_anonymous_votes === true
   const resolvedMafiaCount =
@@ -584,11 +617,10 @@ export async function initializeMafiaGame(
       ? gameData.mafia_count
       : Math.max(1, Math.floor(playerIds.length / 4))
 
-  // 2. Assign roles — bias away from repeating the exact same Mafia-team player(s) from
-  // last round in this room (most visible with a single Mafia: same person twice running).
-  const avoidMafiaPlayerIds: string[] = gameData.mafia_last_team_player_ids ?? []
-  const roleAssignments = assignMafiaRoles(playerIds, toggles, resolvedMafiaCount, avoidMafiaPlayerIds)
-  const newMafiaTeamPlayerIds = playerIds.filter((id) => MAFIA_TEAM_ROLES.includes(roleAssignments[id]))
+  // 2. Assign roles — bias away from repeating anyone's exact same role from last round in
+  // this room, so Play Again doesn't keep handing the same person Mafia, Detective, etc.
+  const lastRoleByPlayerId = (gameData.mafia_last_roles ?? undefined) as Record<string, MafiaRole> | undefined
+  const roleAssignments = assignMafiaRoles(playerIds, toggles, resolvedMafiaCount, lastRoleByPlayerId)
 
   // Seat numbers must be a fixed, permanent order (the player who was #1 stays #1 all game),
   // so they're assigned here once from real join order — not derived later from query order,
@@ -635,8 +667,8 @@ export async function initializeMafiaGame(
     return { error: 'Failed to initialize game session' }
   }
 
-  // Remember this round's Mafia team for the next Play Again's fairness check above.
-  await admin.from('games').update({ mafia_last_team_player_ids: newMafiaTeamPlayerIds }).eq('id', gameId)
+  // Remember this round's full role map for the next Play Again's fairness check above.
+  await admin.from('games').update({ mafia_last_roles: roleAssignments }).eq('id', gameId)
 
   return { error: null }
 }

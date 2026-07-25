@@ -992,6 +992,24 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
           </div>
         )}
 
+        {phase === 'night' && myRole === 'mafia_seer' && amIAlive && !amISpectator && (
+          <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-3">
+            <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">👁️‍🗨️ Mafia Seer</h3>
+            <p className="text-xs text-[var(--muted)]">
+              Tap a player to reveal their exact role. You cannot vote to kill unless you resign this ability,
+              permanently becoming a Regular Mafia.
+            </p>
+            <button
+              type="button"
+              disabled={acting}
+              onClick={() => myPlayerId && void submitNightAction(myPlayerId)}
+              className="w-full px-3 py-2 rounded-xl bg-red-800 text-white text-sm font-bold disabled:opacity-40"
+            >
+              🔪 Resign — become Regular Mafia
+            </button>
+          </div>
+        )}
+
         {(phase === 'day' || phase === 'voting') && amIAlive && !amISpectator && (
           <MafiaSkipPhaseBar
             phase={phase}

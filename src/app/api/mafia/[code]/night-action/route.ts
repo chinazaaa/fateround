@@ -20,14 +20,18 @@ const ROLE_ENABLED_FIELD: Partial<Record<string, keyof MafiaSession>> = {
   witch: 'witch_enabled',
   little_girl: 'little_girl_enabled',
   trapper: 'trapper_enabled',
+  seer: 'seer_enabled',
+  mafia_seer: 'mafia_seer_enabled',
 }
 // Roles that may never target themselves (self-target is either meaningless or reserved
 // for a different action, e.g. Arsonist self-target signals "ignite" instead of "douse").
-// Little Girl and Trapper are deliberately absent — self-target is how each of them signals
-// their alternate action (open eyes / activate traps), handled in their own custom branches.
+// Little Girl, Trapper, and Mafia Seer are deliberately absent — self-target is how each of
+// them signals their alternate action (open eyes / activate traps / resign), handled in their
+// own custom branches.
 const NO_SELF_TARGET_ROLES = new Set([
   'doctor',
   'aura_seer',
+  'seer',
   'bodyguard',
   'vigilante',
   'tracker',
@@ -185,6 +189,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       ]),
     ])
     return NextResponse.json({ success: true })
+  }
+
+  // Mafia Seer: self-target resigns the reveal ability, permanently converting to a Regular
+  // Mafia (gaining the kill vote) — resolved immediately, not deferred to phase advance. Any
+  // other target falls through to the generic single-target reveal below, same as Seer.
+  if (role === 'mafia_seer' && targetPlayerId === playerId) {
+    const { error: updateError } = await admin
+      .from('mafia_player_states')
+      .update({ role: 'mafia', night_action_target_player_id: null })
+      .eq('id', myState.id)
+    if (updateError) return NextResponse.json({ error: 'Failed to resign' }, { status: 500 })
+    return NextResponse.json({ success: true, resigned: true })
   }
 
   // Witch: two independent single-use potions, submitted as separate calls (potionType

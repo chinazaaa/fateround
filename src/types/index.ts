@@ -335,11 +335,17 @@ export interface Game {
   mafia_witch_enabled?: boolean
   mafia_little_girl_enabled?: boolean
   mafia_trapper_enabled?: boolean
+  /** Village Seer toggle — full role reveal (stronger than Aura Seer). */
+  mafia_seer_enabled?: boolean
+  /** Mafia-team Seer toggle — full role reveal, can resign into Regular Mafia. */
+  mafia_mafia_seer_enabled?: boolean
   mafia_anonymous_votes?: boolean
   mafia_count?: number | null
-  /** Mafia-team player ids from the last round played in this room — used to bias the next
-   *  role assignment away from repeating the exact same team on Play Again. */
+  /** @deprecated superseded by mafia_last_roles */
   mafia_last_team_player_ids?: string[] | null
+  /** player_id -> role from the last round played in this room — used to bias the next role
+   *  assignment away from repeating anyone's exact same role on Play Again. */
+  mafia_last_roles?: Record<string, MafiaRole> | null
   mafia_day_seconds?: number
   mafia_voting_seconds?: number
   monopoly_double_go_salary?: boolean
@@ -1885,6 +1891,8 @@ export type MafiaRole =
   | 'little_girl'
   | 'trapper'
   | 'aura_seer'
+  | 'seer'
+  | 'mafia_seer'
 export type MafiaTeam = 'village' | 'mafia' | 'jester' | 'serial_killer' | 'arsonist'
 export type MafiaDeathCause =
   | 'mafia_kill'
@@ -1919,6 +1927,11 @@ export interface MafiaRoleEnabledFlags {
   witch_enabled: boolean
   little_girl_enabled: boolean
   trapper_enabled: boolean
+  /** Village Seer — reveals a target's exact role each night (stronger than Aura Seer). */
+  seer_enabled: boolean
+  /** Mafia-team Seer — reveals a target's exact role each night; can resign to become a
+   *  Regular Mafia (gaining the kill vote, losing the reveal). */
+  mafia_seer_enabled: boolean
 }
 
 export interface MafiaSession extends MafiaRoleEnabledFlags {
@@ -1930,6 +1943,8 @@ export interface MafiaSession extends MafiaRoleEnabledFlags {
   mafia_target_player_id: string | null
   doctor_target_player_id: string | null
   aura_seer_target_player_id: string | null
+  seer_target_player_id: string | null
+  mafia_seer_target_player_id: string | null
   night_kill_player_id: string | null
   vote_result_player_id: string | null
   serial_kill_player_id: string | null
@@ -2031,6 +2046,10 @@ export interface MafiaMyState {
   witchHealRemaining?: number
   witchKillRemaining?: number
   trapperTrappedNames?: string[]
+  /** Village Seer's full-role reveal of their last target. */
+  seerResult?: { targetName: string; role: MafiaRole } | null
+  /** Mafia Seer's full-role reveal of their last target (before resigning). */
+  mafiaSeerResult?: { targetName: string; role: MafiaRole } | null
   framerLastTargetName?: string | null
   cupidLinkedNames?: [string, string] | null
   isLover?: boolean

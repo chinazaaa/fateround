@@ -32,6 +32,8 @@ const ALL_ENABLED: MafiaRoleToggles = {
   witch_enabled: true,
   little_girl_enabled: true,
   trapper_enabled: true,
+  seer_enabled: true,
+  mafia_seer_enabled: true,
 }
 const NONE_ENABLED: MafiaRoleToggles = Object.fromEntries(
   Object.keys(ALL_ENABLED).map((k) => [k, false])
@@ -84,6 +86,8 @@ const NIGHT_SESSION_BASE: Pick<
   | 'witch_enabled'
   | 'little_girl_enabled'
   | 'trapper_enabled'
+  | 'seer_enabled'
+  | 'mafia_seer_enabled'
   | 'wolf_cub_revenge_pending'
 > = {
   doctor_enabled: true,
@@ -97,12 +101,14 @@ const NIGHT_SESSION_BASE: Pick<
   witch_enabled: true,
   little_girl_enabled: true,
   trapper_enabled: true,
+  seer_enabled: true,
+  mafia_seer_enabled: true,
   wolf_cub_revenge_pending: false,
 }
 
 describe('assignMafiaRoles', () => {
-  it('fills all 22 roles when everything is enabled and slots allow', () => {
-    const playerIds = ids(22)
+  it('fills all 24 roles when everything is enabled and slots allow', () => {
+    const playerIds = ids(24)
     const assignments = assignMafiaRoles(playerIds, ALL_ENABLED, 4)
     const roles = new Set(Object.values(assignments))
     // mafiaCount=4 with alpha_wolf+wolf_cub each converting one base mafia slot leaves 2 plain 'mafia'
@@ -128,11 +134,13 @@ describe('assignMafiaRoles', () => {
       'witch',
       'little_girl',
       'trapper',
+      'seer',
+      'mafia_seer',
     ]
     for (const role of optionalRoles) {
       expect(roles.has(role)).toBe(true)
     }
-    expect(Object.keys(assignments)).toHaveLength(22)
+    expect(Object.keys(assignments)).toHaveLength(24)
   })
 
   it('does not assign alpha_wolf or wolf_cub when mafiaCount < 2', () => {
@@ -152,7 +160,7 @@ describe('assignMafiaRoles', () => {
     expect(roles.filter((r) => r === 'villager')).toHaveLength(4)
   })
 
-  it('swaps away from repeating the exact same single Mafia player on the next round', () => {
+  it('swaps away from repeating the exact same role for the same player on the next round', () => {
     const playerIds = ids(5)
     // Force the RNG so the shuffle is deterministic, then find who it hands mafia to.
     const originalRandom = Math.random
@@ -162,7 +170,7 @@ describe('assignMafiaRoles', () => {
       const repeatMafiaId = Object.keys(withoutAvoid).find((id) => withoutAvoid[id] === 'mafia')!
       expect(repeatMafiaId).toBeDefined()
 
-      const withAvoid = assignMafiaRoles(playerIds, NONE_ENABLED, 1, [repeatMafiaId])
+      const withAvoid = assignMafiaRoles(playerIds, NONE_ENABLED, 1, { [repeatMafiaId]: 'mafia' })
       expect(withAvoid[repeatMafiaId]).not.toBe('mafia')
       expect(Object.values(withAvoid).filter((r) => r === 'mafia')).toHaveLength(1)
     } finally {
@@ -170,11 +178,12 @@ describe('assignMafiaRoles', () => {
     }
   })
 
-  it('does not swap when the whole roster (minus one) was on the last Mafia team', () => {
+  it('the fairness pass never changes the overall role composition', () => {
     const playerIds = ids(3)
-    // Every non-mafia-assigned player is also in the avoid list — no valid swap candidate.
-    const assignments = assignMafiaRoles(playerIds, NONE_ENABLED, 1, playerIds)
+    const lastRoles = assignMafiaRoles(playerIds, NONE_ENABLED, 1)
+    const assignments = assignMafiaRoles(playerIds, NONE_ENABLED, 1, lastRoles)
     expect(Object.values(assignments).filter((r) => r === 'mafia')).toHaveLength(1)
+    expect(Object.values(assignments).filter((r) => r === 'villager')).toHaveLength(2)
   })
 })
 

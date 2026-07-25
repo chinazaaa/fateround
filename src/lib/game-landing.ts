@@ -2890,13 +2890,13 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     heroSubtitle: 'Trust no one — discuss, vote, and uncover the secret killers in your group.',
     bodyParagraph:
-      'Mafia on FateRound is a real-time multiplayer social deduction game with 22 unique roles across Village, Mafia, Solo, and Special teams. During the Night, the Mafia votes to eliminate a player while power roles like the Doctor, Aura Seer, Bodyguard, Tracker, and Vigilante act in secret. Solo killers pursue their own agendas. During the Day, the village discusses and votes on who they suspect. The village wins by eliminating the Mafia; the Mafia wins by reaching parity — and Solo roles like the Jester, Serial Killer, and Arsonist have their own win conditions.',
+      'Mafia on FateRound is a real-time multiplayer social deduction game with 24 unique roles across Village, Mafia, Solo, and Special teams. During the Night, the Mafia votes to eliminate a player while power roles like the Doctor, Aura Seer, Bodyguard, Tracker, and Vigilante act in secret. Solo killers pursue their own agendas. During the Day, the village discusses and votes on who they suspect. The village wins by eliminating the Mafia; the Mafia wins by reaching parity — and Solo roles like the Jester, Serial Killer, and Arsonist have their own win conditions.',
     highlights: ['5–16 players', 'Secret roles', 'Voice chat supported'],
     features: [
       {
-        title: '22 unique roles',
+        title: '24 unique roles',
         description:
-          'Choose from 22 roles across Village, Mafia, Solo, and Special teams — from the classic Doctor to the holy Priest.',
+          'Choose from 24 roles across Village, Mafia, Solo, and Special teams — from the classic Doctor to the holy Priest.',
         emoji: '🔍',
       },
       {
@@ -2927,7 +2927,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'What are the roles in the game?',
         answer:
-          'There are 22 roles across four teams. Village: Villager, Doctor, Aura Seer, Bodyguard, Mayor, Vigilante, Tracker, Medium, Priest, Witch, Little Girl, Trapper, Detective. Mafia: Mafia, Alpha Mafia, Junior Mafia, Framer. Solo: Jester, Serial Killer, Arsonist. Special: Cupid, Cursed Villager. The host picks which roles to include.',
+          'There are 24 roles across four teams. Village: Villager, Doctor, Aura Seer, Bodyguard, Mayor, Vigilante, Tracker, Medium, Priest, Witch, Little Girl, Trapper, Detective, Seer. Mafia: Mafia, Alpha Mafia, Junior Mafia, Framer, Mafia Seer. Solo: Jester, Serial Killer, Arsonist. Special: Cupid, Cursed Villager. The host picks which roles to include.',
       },
       {
         question: 'Can the Doctor protect themselves?',

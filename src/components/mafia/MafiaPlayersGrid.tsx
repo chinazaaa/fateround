@@ -66,6 +66,8 @@ const NIGHT_ACTION_VERB: Partial<Record<MafiaRole, string>> = {
   arsonist: 'two players to douse',
   medium: 'a dead player to revive',
   cupid: 'two players to link as Lovers',
+  seer: 'the player to reveal the exact role of',
+  mafia_seer: 'the player to reveal the exact role of',
 }
 
 /**

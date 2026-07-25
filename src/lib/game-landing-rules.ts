@@ -1554,7 +1554,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'Setup',
       points: [
         '5 to 16 players join the lobby. Each player is secretly assigned a role.',
-        'The host picks which roles are in the game — from 22 available roles across Village, Mafia, Solo, and Special teams.',
+        'The host picks which roles are in the game — from 24 available roles across Village, Mafia, Solo, and Special teams.',
         'Village roles include Villager, Doctor, Aura Seer, Bodyguard, Mayor, Vigilante, Tracker, Medium, Priest, Witch, Little Girl, Trapper, and Detective.',
         'Mafia roles include Mafia, Alpha Mafia, Junior Mafia, and Framer.',
         'Solo roles (Jester, Serial Killer, Arsonist) and Special roles (Cupid, Cursed Villager) add extra twists.',

@@ -180,11 +180,15 @@ export async function runMafiaAdvance(
       trapperActivated,
       trapperBlockedPlayerIds,
       trapperKilledMafiaId,
+      seerTarget,
+      mafiaSeerTarget,
     } = resolution
 
     updateFields.mafia_target_player_id = mafiaTarget
     updateFields.doctor_target_player_id = doctorTarget
     updateFields.aura_seer_target_player_id = auraSeerTarget
+    updateFields.seer_target_player_id = seerTarget
+    updateFields.mafia_seer_target_player_id = mafiaSeerTarget
     updateFields.bodyguard_target_player_id = bodyguardTarget
     updateFields.bodyguard_sacrifice_player_id = bodyguardSacrificePlayerId
     updateFields.tracker_visited_player_id = trackerVisited
@@ -323,6 +327,31 @@ export async function runMafiaAdvance(
           message: `🕵️ Night ${session.day_number}: ${playerLabel(targetAId)} and ${playerLabel(targetBId)} are ${
             sameTeam ? 'on the SAME team!' : 'NOT on the same team.'
           }`,
+        })
+      }
+    }
+
+    // Seer — reveals the target's exact role (village-aligned, no restrictions)
+    if (seerTarget) {
+      const seer = playerStates.find((p) => p.role === 'seer' && p.is_alive)
+      const targetState = playerStates.find((p) => p.player_id === seerTarget)
+      if (seer && targetState) {
+        privateMessages.push({
+          target_player_id: seer.player_id,
+          message: `👁️ Night ${session.day_number}: ${playerLabel(seerTarget)} is ${roleLabel(targetState.role)}`,
+        })
+      }
+    }
+
+    // Mafia Seer — reveals the target's exact role; shares nothing automatically with the
+    // crew (the role description has them relay it themselves via the secret chat).
+    if (mafiaSeerTarget) {
+      const mafiaSeer = playerStates.find((p) => p.role === 'mafia_seer' && p.is_alive)
+      const targetState = playerStates.find((p) => p.player_id === mafiaSeerTarget)
+      if (mafiaSeer && targetState) {
+        privateMessages.push({
+          target_player_id: mafiaSeer.player_id,
+          message: `👁️‍🗨️ Night ${session.day_number}: ${playerLabel(mafiaSeerTarget)} is ${roleLabel(targetState.role)}`,
         })
       }
     }
@@ -581,6 +610,8 @@ export async function runMafiaAdvance(
     updateFields.mafia_target_player_id = null
     updateFields.doctor_target_player_id = null
     updateFields.aura_seer_target_player_id = null
+    updateFields.seer_target_player_id = null
+    updateFields.mafia_seer_target_player_id = null
     updateFields.bodyguard_target_player_id = null
     updateFields.bodyguard_sacrifice_player_id = null
     updateFields.tracker_visited_player_id = null

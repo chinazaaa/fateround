@@ -12,7 +12,7 @@ import type {
 } from '@/types'
 import { mafiaRoleTeam, auraSeerAlignment } from '@/lib/mafia'
 
-const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer']
+const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer', 'mafia_seer']
 
 const ROLE_ENABLED_KEYS = [
   'doctor_enabled',
@@ -35,6 +35,8 @@ const ROLE_ENABLED_KEYS = [
   'witch_enabled',
   'little_girl_enabled',
   'trapper_enabled',
+  'seer_enabled',
+  'mafia_seer_enabled',
 ] as const
 
 function enabledRolesFrom(session: Pick<MafiaSession, (typeof ROLE_ENABLED_KEYS)[number]>): MafiaRole[] {
@@ -60,6 +62,8 @@ function enabledRolesFrom(session: Pick<MafiaSession, (typeof ROLE_ENABLED_KEYS)
     witch_enabled: 'witch',
     little_girl_enabled: 'little_girl',
     trapper_enabled: 'trapper',
+    seer_enabled: 'seer',
+    mafia_seer_enabled: 'mafia_seer',
   }
   for (const key of ROLE_ENABLED_KEYS) {
     if (session[key]) roles.push(map[key])
@@ -234,6 +238,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       }
     }
 
+    // Seer result — full role reveal, village-aligned, no restrictions
+    let seerResult: MafiaMyState['seerResult'] = null
+    if (role === 'seer' && session.seer_target_player_id) {
+      const targetState = playerStates.find((p) => p.player_id === session.seer_target_player_id)
+      const targetPlayer = playersData?.find((p) => p.id === session.seer_target_player_id)
+      if (targetState && targetPlayer) {
+        seerResult = { targetName: seatLabel(targetPlayer.id, targetPlayer.name), role: targetState.role }
+      }
+    }
+
+    // Mafia Seer result — full role reveal (nothing auto-shared with the crew; they relay it
+    // themselves via the secret chat)
+    let mafiaSeerResult: MafiaMyState['mafiaSeerResult'] = null
+    if (role === 'mafia_seer' && session.mafia_seer_target_player_id) {
+      const targetState = playerStates.find((p) => p.player_id === session.mafia_seer_target_player_id)
+      const targetPlayer = playersData?.find((p) => p.id === session.mafia_seer_target_player_id)
+      if (targetState && targetPlayer) {
+        mafiaSeerResult = { targetName: seatLabel(targetPlayer.id, targetPlayer.name), role: targetState.role }
+      }
+    }
+
     let trackerResult: MafiaMyState['trackerResult'] = null
     // Only reveal the tracker result after night resolves (day_report onward) — during the
     // night itself tracker_visited_player_id isn't set yet, so showing the card would
@@ -388,6 +413,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       dayVoteSubmitted: !!myPlayerState.day_vote_target_player_id,
       auraSeerResult,
       detectiveTeamCheckResult,
+      seerResult,
+      mafiaSeerResult,
       mafiaTeammates,
       mafiaTeammateIds,
       mafiaTeammateRoles,

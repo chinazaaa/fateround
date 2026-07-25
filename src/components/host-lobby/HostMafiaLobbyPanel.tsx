@@ -36,6 +36,8 @@ const ADVANCED_ROLE_FIELDS = [
   'mafia_witch_enabled',
   'mafia_little_girl_enabled',
   'mafia_trapper_enabled',
+  'mafia_seer_enabled',
+  'mafia_mafia_seer_enabled',
 ] as const satisfies readonly (keyof Game)[]
 
 const ADVANCED_ROLE_LABELS: Record<(typeof ADVANCED_ROLE_FIELDS)[number], { label: string; description: string }> = {
@@ -85,6 +87,14 @@ const ADVANCED_ROLE_LABELS: Record<(typeof ADVANCED_ROLE_FIELDS)[number], { labe
   mafia_trapper_enabled: {
     label: 'Trapper',
     description: 'Sets up to 3 traps, then activates them to block a Mafia kill and take out their weakest member',
+  },
+  mafia_seer_enabled: {
+    label: 'Seer',
+    description: 'Each night, reveals a player’s exact role (Village)',
+  },
+  mafia_mafia_seer_enabled: {
+    label: 'Mafia Seer',
+    description: 'Reveals roles for the Mafia; can resign to gain the kill vote instead',
   },
 }
 
@@ -291,7 +301,7 @@ export function HostMafiaLobbyPanel({ gameCode, hostToken, game, playerCount, on
           </div>
           <p className="text-xs text-muted">
             {showCustomize || isCustomized
-              ? 'Pick exactly which of the 22 roles are in play.'
+              ? 'Pick exactly which of the 24 roles are in play.'
               : 'The full 17-role roster — Villager, Mafia, Doctor, Detective, plus 13 more mixed in when there are enough player slots.'}
           </p>
           {(showCustomize || isCustomized) && (
