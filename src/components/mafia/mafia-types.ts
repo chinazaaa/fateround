@@ -20,5 +20,6 @@ export interface MafiaStateResponse {
   dayChatMessages?: MafiaChatMessage[]
   ghostChatMessages?: MafiaChatMessage[]
   enabledRoles: MafiaRole[]
+  roleCounts?: Partial<Record<MafiaRole, number>>
   myState: MafiaMyState | null
 }

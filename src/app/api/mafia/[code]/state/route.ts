@@ -308,6 +308,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const aliveCount = playerStates.filter((ps) => ps.is_alive).length
   const votesRequired = Math.floor(aliveCount / 2) + 1
 
+  // How many players are still alive with each role — shown as "x{count}" in the roles
+  // drawer, matching Wolvesville, and decrementing as role-holders are eliminated.
+  const roleCounts: Partial<Record<MafiaRole, number>> = {}
+  playerStates.forEach((ps) => {
+    if (ps.is_alive) roleCounts[ps.role] = (roleCounts[ps.role] ?? 0) + 1
+  })
+
   return NextResponse.json({
     // Public state
     gameTitle: game.title,
@@ -329,6 +336,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     dayChatMessages,
     ghostChatMessages,
     enabledRoles: enabledRolesFrom(session),
+    roleCounts,
 
     // Private state
     myState,

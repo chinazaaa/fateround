@@ -68,8 +68,9 @@ interface ChatMessagesProps {
    *  Wolvesville's convention of referring to players by seat number in chat. */
   players?: MafiaPublicPlayer[]
   /** Synthesized public phase-narrative lines (day started, sunrise/vote results, votes
-   *  required) shown inline above the chat history — folds the "system log" and chat into
-   *  one feed, matching Wolvesville, instead of a separate result card. */
+   *  required) — appended at the END of the feed (below the chat history), so it's the
+   *  first thing visible without scrolling up, matching Wolvesville, instead of a separate
+   *  result card or a banner stuck above older messages. */
   systemLines?: MafiaSystemLine[]
 }
 
@@ -91,11 +92,6 @@ export function ChatMessages({ messages, myPlayerId, sentBubbleClass, players, s
 
   return (
     <div className="h-40 overflow-y-auto space-y-1.5 flex flex-col p-1">
-      {systemLines.map((line) => (
-        <p key={line.id} className={`text-sm font-bold text-center py-1 ${SYSTEM_LINE_TONE[line.tone ?? 'default']}`}>
-          {line.text}
-        </p>
-      ))}
       {messages.length === 0 && systemLines.length === 0 ? (
         <p className="text-xs text-[var(--muted)] italic text-center py-6 m-auto">No messages yet.</p>
       ) : (
@@ -126,6 +122,11 @@ export function ChatMessages({ messages, myPlayerId, sentBubbleClass, players, s
           )
         })
       )}
+      {systemLines.map((line) => (
+        <p key={line.id} className={`text-sm font-bold text-center py-1 ${SYSTEM_LINE_TONE[line.tone ?? 'default']}`}>
+          {line.text}
+        </p>
+      ))}
       <div ref={bottomRef} />
     </div>
   )

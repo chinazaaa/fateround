@@ -28,6 +28,9 @@ interface MafiaRolesDrawerProps {
   /** The local player's own role — sorted first in the list so it's the first (and easiest
    *  to read) thing they see, matching Wolvesville's role-detail popup. */
   myRole?: MafiaRole | null
+  /** How many players are still alive with each role — shown as "x{count}", matching
+   *  Wolvesville, and decrementing live as role-holders are eliminated. */
+  roleCounts?: Partial<Record<MafiaRole, number>>
 }
 
 /**
@@ -35,7 +38,7 @@ interface MafiaRolesDrawerProps {
  * game, so players can check what a role does at any time without it being a spoiler —
  * rules text only, no live game info.
  */
-export function MafiaRolesDrawer({ enabledRoles, myRole }: MafiaRolesDrawerProps) {
+export function MafiaRolesDrawer({ enabledRoles, myRole, roleCounts }: MafiaRolesDrawerProps) {
   const [open, setOpen] = useState(false)
   const sortedRoles = myRole ? [myRole, ...enabledRoles.filter((r) => r !== myRole)] : enabledRoles
 
@@ -78,6 +81,9 @@ export function MafiaRolesDrawer({ enabledRoles, myRole }: MafiaRolesDrawerProps
                     <div className="space-y-1">
                       <p className={`font-bold text-sm ${TEAM_TEXT[info.team] ?? 'text-[var(--foreground)]'}`}>
                         {info.name}
+                        {roleCounts && (
+                          <span className="text-[var(--muted)] font-normal"> x{roleCounts[role] ?? 0}</span>
+                        )}
                         {isMine && <span className="text-[var(--primary)] font-normal"> (your role)</span>}
                       </p>
                       <p className="text-xs text-[var(--muted)] leading-relaxed">{info.description}</p>

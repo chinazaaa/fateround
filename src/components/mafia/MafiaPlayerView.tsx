@@ -465,6 +465,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       voteChoices,
       votesRequired,
       enabledRoles,
+      roleCounts,
     } = mafiaState
 
     const me = publicPlayers.find((p) => p.id === myPlayerId)
@@ -516,13 +517,28 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       : null
 
     // Public phase narrative — folded into the shared activity feed (below) as system lines,
-    // since it's visible to the whole town, not just the acting player.
+    // since it's visible to the whole town, not just the acting player. Killer attribution
+    // matches Wolvesville's "The Mafia killed #8 Michelle (Villager)" style — the role is
+    // already publicly revealed on death (the roster tile shows it too), so naming it here
+    // doesn't leak anything new.
+    const KILLER_LABEL: Record<string, string> = {
+      mafia_kill: 'The Mafia',
+      serial_kill: 'The Serial Killer',
+      arson: 'The Arsonist',
+      vigilante_kill: 'The Vigilante',
+    }
     const systemLines: { id: string; text: string; tone?: 'default' | 'danger' | 'success' }[] = []
     if (phase === 'day_report') {
       if (newlyDeadTonight.length > 0) {
-        newlyDeadTonight.forEach((p) =>
-          systemLines.push({ id: `death-${p.id}`, text: `#${p.seatNumber} ${p.name} was found dead.`, tone: 'danger' })
-        )
+        newlyDeadTonight.forEach((p) => {
+          const killer = p.deathCause ? (KILLER_LABEL[p.deathCause] ?? 'Someone') : 'Someone'
+          const roleText = p.role ? ` (${p.role.replace(/_/g, ' ')})` : ''
+          systemLines.push({
+            id: `death-${p.id}`,
+            text: `☠️ ${killer} killed #${p.seatNumber} ${p.name}${roleText}`,
+            tone: 'danger',
+          })
+        })
       } else {
         systemLines.push({
           id: 'no-death',
@@ -546,7 +562,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         votedPlayer
           ? {
               id: `elim-${dayNumber}`,
-              text: `⚖️ #${votedPlayer.seatNumber} ${votedPlayer.name} was voted out.`,
+              text: `⚖️ The Village killed #${votedPlayer.seatNumber} ${votedPlayer.name}${
+                votedPlayer.role ? ` (${votedPlayer.role.replace(/_/g, ' ')})` : ''
+              }`,
               tone: 'danger',
             }
           : { id: `elim-${dayNumber}`, text: '🤝 No majority reached — nobody was eliminated.' }
@@ -571,7 +589,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <MafiaRolesDrawer enabledRoles={enabledRoles ?? []} myRole={myRole} />
+            <MafiaRolesDrawer enabledRoles={enabledRoles ?? []} myRole={myRole} roleCounts={roleCounts} />
             <GameRulesLink gameType="mafia" />
           </div>
         </header>
