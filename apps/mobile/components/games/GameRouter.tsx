@@ -41,6 +41,7 @@ const BATCH_3_VIEWS = {
 const BATCH_4_VIEWS = {
   crazy_eights: lazyView(() => import('@/components/games/CrazyEightsPlayerView'), 'CrazyEightsPlayerView'),
   whot: lazyView(() => import('@/components/games/WhotPlayerView'), 'WhotPlayerView'),
+  uno: lazyView(() => import('@/components/games/UnoPlayerView'), 'UnoPlayerView'),
   two_truths: lazyView(() => import('@/components/games/TwoTruthsPlayerView'), 'TwoTruthsPlayerView'),
   describe_it: lazyView(() => import('@/components/games/DescribeItPlayerView'), 'DescribeItPlayerView'),
 } as const satisfies Partial<Record<GameType, PlayerView>>

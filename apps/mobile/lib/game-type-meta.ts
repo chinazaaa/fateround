@@ -34,6 +34,7 @@ const META: Partial<Record<GameType, GameMeta>> = {
   trivia: { emoji: '🧠', blurb: 'Quick quiz rounds', category: 'trivia' },
   two_truths: { emoji: '🤥', blurb: 'Spot the lie', category: 'party' },
   whot: { emoji: '🎯', blurb: 'Nigerian card classic', category: 'cards' },
+  uno: { emoji: '🔴', blurb: 'Match colours, drop your hand', category: 'cards' },
   word_hunt: { emoji: '🔍', blurb: 'Find hidden words', category: 'puzzle' },
   word_rush: { emoji: '⚡', blurb: 'Words under pressure', category: 'puzzle' },
   yahtzee: { emoji: '🎳', blurb: 'Roll for combos', category: 'puzzle' },
