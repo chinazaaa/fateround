@@ -37,6 +37,8 @@ const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   word_hunt: 'word-hunt',
   chess: 'chess',
   checkers: 'checkers',
+  checkers_international: 'checkers-international',
+  checkers_nigeria: 'checkers-nigeria',
   ayo: 'ayo',
   describe_it: 'text-charades',
   word_rush: 'word-rush',
