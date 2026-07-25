@@ -785,13 +785,15 @@ function computeGeneralMarket(
   return { drawPile: pile, discardPile: discard, hands: nextHands, marketWrites, reshuffled, deckExhausted }
 }
 
-// Uses the exact substrings the notification hooks watch for ('deck reshuffled' / 'draw pile
-// empty') so a General Market that ran the pile dry still surfaces a toast instead of silently
-// claiming everyone drew when some players couldn't be dealt in.
-function marketStatusNote(deckExhausted: boolean, reshuffled: boolean): string {
-  if (deckExhausted) return ' — draw pile empty, not everyone could be dealt in'
-  if (reshuffled) return ' · deck reshuffled'
-  return ''
+// Card 14 (General Market) keeps the current player's turn (holdOn) even when dealing ran the
+// pile dry, unlike a normal draw where "draw pile empty" means the turn passed on to the next
+// player. So this never reuses that phrase — it has its own marker ('not everyone could be dealt
+// in') that useWhotNotifications watches for separately, alongside the shared 'deck reshuffled'
+// marker for the case where a reshuffle mid-market still got everyone their card.
+function generalMarketDetail(deckExhausted: boolean, reshuffled: boolean): string {
+  if (deckExhausted) return 'General Market — not everyone could be dealt in, the deck ran out'
+  if (reshuffled) return 'General Market! Everyone drew — go again · deck reshuffled'
+  return 'General Market! Everyone drew — go again'
 }
 
 /**
@@ -919,9 +921,9 @@ export async function processWhotPlay(
       const advance = resolveNextTurnIndex(session, nextHands, card.number)
       const nextPlayerId = session.turn_order[advance.nextIndex]
       const special = specialCardMessage(card.number)
-      const marketNote = marketStatusNote(marketDeckExhausted, marketReshuffled)
+      const marketDetail = generalMarketDetail(marketDeckExhausted, marketReshuffled)
       let status = advance.holdOn
-        ? `${name} — ${card.number === 14 ? `General Market! Everyone drew — go again${marketNote}` : 'Hold On, go again'}!`
+        ? `${name} — ${card.number === 14 ? marketDetail : 'Hold On, go again'}!`
         : `${playerName(playerNames, nextPlayerId)}'s turn — match ${cardLabel(card)}`
       if (special && !advance.holdOn) status = `${status} · ${special}`
       if (pickTwo > 0) status = `${status} · Pick 2 active (${pickTwo} cards to draw)`
