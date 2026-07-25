@@ -638,8 +638,6 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                 anonymousVotes={anonymousVotes}
                 onSelect={gridOnSelect}
                 selectedIds={gridSelectedIds}
-                onSkipVote={amIAlive && !amISpectator ? () => void submitDayVote(null) : undefined}
-                skipDisabled={acting}
               />
 
               {(phase === 'day' || phase === 'voting') && amIAlive && !amISpectator && (
