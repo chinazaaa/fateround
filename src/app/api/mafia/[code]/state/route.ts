@@ -337,6 +337,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (ps.is_alive) roleCounts[ps.role] = (roleCounts[ps.role] ?? 0) + 1
   })
 
+  // Roles actually assigned to someone this game (alive or dead) — the Roles drawer should
+  // only advertise roles someone is really playing, not every role the host toggled on.
+  const rolesInGame = Array.from(new Set(playerStates.map((ps) => ps.role)))
+
+  // Skip-ahead tally for the current Discussion/Voting phase — same majority threshold as a
+  // lynch vote, reset whenever a fresh 'day'/'voting' phase starts (see advance/route.ts).
+  const skipRequestCount = session.skip_requested_player_ids?.length ?? 0
+  const hasRequestedSkip =
+    !!myPlayerState && (session.skip_requested_player_ids ?? []).includes(myPlayerState.player_id)
+
   return NextResponse.json({
     // Public state
     gameTitle: game.title,
@@ -359,7 +369,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     dayChatMessages,
     ghostChatMessages,
     enabledRoles: enabledRolesFrom(session),
+    rolesInGame,
     roleCounts,
+    skipRequiredCount: votesRequired,
+    skipRequestCount,
+    hasRequestedSkip,
 
     // Private state
     myState,

@@ -33,6 +33,7 @@ import { MafiaIdentityPanel } from './MafiaIdentityPanel'
 import { MafiaPhaseCard } from './MafiaPhaseCard'
 import { MafiaPlayersGrid } from './MafiaPlayersGrid'
 import { MafiaRolesDrawer } from './MafiaRolesDrawer'
+import { MafiaSkipPhaseBar } from './MafiaSkipPhaseBar'
 import { MAFIA_TEAM_ROLES, NO_NIGHT_ACTION_ROLES } from './mafia-role-info'
 import type { MafiaStateResponse } from './mafia-types'
 import type { Game } from '@/types'
@@ -219,6 +220,24 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       toastError('Vote failed')
     } finally {
       setActing(false)
+    }
+  }
+
+  const submitSkipPhase = async () => {
+    if (!myResumeToken) return
+    try {
+      const res = await fetch(`/api/mafia/${gameCode}/skip-phase`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumeToken: myResumeToken }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toastError(data.error ?? 'Failed to skip')
+      }
+      await load()
+    } catch {
+      toastError('Failed to skip')
     }
   }
 
@@ -470,7 +489,11 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       votedPlayerIds,
       anonymousVotes,
       enabledRoles,
+      rolesInGame,
       roleCounts,
+      skipRequiredCount,
+      skipRequestCount,
+      hasRequestedSkip,
     } = mafiaState
 
     const me = publicPlayers.find((p) => p.id === myPlayerId)
@@ -535,7 +558,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <MafiaRolesDrawer enabledRoles={enabledRoles ?? []} myRole={myRole} roleCounts={roleCounts} />
+            <MafiaRolesDrawer rolesInGame={rolesInGame ?? enabledRoles ?? []} myRole={myRole} roleCounts={roleCounts} />
             <GameRulesLink gameType="mafia" />
           </div>
         </header>
@@ -564,6 +587,17 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               onSkipVote={amIAlive && !amISpectator ? () => void submitDayVote(null) : undefined}
               skipDisabled={acting}
             />
+
+            {(phase === 'day' || phase === 'voting') && amIAlive && !amISpectator && (
+              <MafiaSkipPhaseBar
+                phase={phase}
+                skipRequestCount={skipRequestCount ?? 0}
+                skipRequiredCount={skipRequiredCount ?? 1}
+                hasRequestedSkip={!!hasRequestedSkip}
+                disabled={acting}
+                onSkip={() => void submitSkipPhase()}
+              />
+            )}
 
             {(phase === 'role_reveal' || phase === 'night' || (phase === 'voting' && amIAlive && !amISpectator)) && (
               <MafiaPhaseCard

@@ -1908,6 +1908,10 @@ export interface MafiaSession extends MafiaRoleEnabledFlags {
   framed_player_id: string | null
   wolf_cub_revenge_pending: boolean
   cupid_lover_ids: [string, string] | null
+  /** Alive players who've asked to skip ahead out of the current Discussion/Voting phase
+   *  early — reset to [] whenever a new 'day' or 'voting' phase starts. Reaching the same
+   *  majority threshold as a lynch vote (floor(alive/2)+1) advances the phase immediately. */
+  skip_requested_player_ids: string[]
   mafia_count: number
   day_seconds: number
   voting_seconds: number

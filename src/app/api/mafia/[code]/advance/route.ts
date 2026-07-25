@@ -17,19 +17,17 @@ const KILLER_LABEL: Record<string, string> = {
   vigilante_kill: 'The Vigilante',
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
-  const { code } = await params
-  const gameId = code.toUpperCase()
+/**
+ * Runs the actual phase transition (resolution, deaths, win checks, system messages) for a
+ * Mafia game. Shared by the timer/host-driven advance route AND the skip-ahead route, so a
+ * majority skip vote goes through exactly the same resolution logic as a natural phase
+ * expiry — no separate, potentially-divergent copy of the night/vote resolution.
+ */
+export async function runMafiaAdvance(
+  gameId: string,
+  opts?: { nextPhase?: MafiaPhase }
+): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
   const admin = getSupabaseAdmin()
-
-  let body: { hostToken?: unknown; nextPhase?: unknown; isAuto?: unknown }
-  try {
-    body = await req.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
-  }
-
-  const { hostToken, nextPhase, isAuto } = body
 
   // 1. Fetch game, session, player states, and player names (for system-message text)
   const [{ data: game }, { data: mafiaSession }, { data: mafiaPlayerStates }, { data: playersData }] =
@@ -45,7 +43,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     ])
 
   if (!game || !mafiaSession || !mafiaPlayerStates) {
-    return NextResponse.json({ error: 'Game or session not initialized' }, { status: 404 })
+    return { ok: false, error: 'Game or session not initialized', status: 404 }
   }
 
   const session = mafiaSession as MafiaSession
@@ -58,22 +56,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
   const roleLabel = (role: string) => `(${role.replace(/_/g, ' ')})`
 
-  let authorized = false
-  if (typeof hostToken === 'string' && game.host_token === hostToken) {
-    authorized = true
-  } else if (isAuto === true && session.phase_deadline) {
-    const deadlineTime = new Date(session.phase_deadline).getTime()
-    if (Date.now() + 1000 >= deadlineTime) {
-      authorized = true
-    }
-  }
-
-  if (!authorized) {
-    return NextResponse.json({ error: 'Unauthorized or phase not expired yet' }, { status: 403 })
-  }
-
   if (game.status === 'finished' || session.phase === 'game_over') {
-    return NextResponse.json({ error: 'Game is already finished' }, { status: 400 })
+    return { ok: false, error: 'Game is already finished', status: 400 }
   }
 
   const currentPhase = session.phase
@@ -81,30 +65,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const idxForCurrent = phaseOrder.indexOf(currentPhase)
   // The only legal target from any given phase is the very next one in sequence (or 'night'
   // when wrapping from 'elimination') — an explicit nextPhase that skips ahead would bypass
-  // the night/vote resolution branches below (deaths, win checks, system messages), silently
-  // fast-forwarding the game. Reject anything else instead of trusting the caller.
+  // the night/vote resolution branches below (deaths, win checks, system messages). Reject
+  // anything else instead of trusting the caller.
   const legalNextPhase: MafiaPhase =
     idxForCurrent === -1 || currentPhase === 'elimination' ? 'night' : phaseOrder[idxForCurrent + 1]
   let targetPhase: MafiaPhase
-  if (typeof nextPhase === 'string') {
-    if (!phaseOrder.includes(nextPhase as MafiaPhase)) {
-      return NextResponse.json({ error: 'Invalid phase' }, { status: 400 })
+  if (typeof opts?.nextPhase === 'string') {
+    if (!phaseOrder.includes(opts.nextPhase)) {
+      return { ok: false, error: 'Invalid phase', status: 400 }
     }
-    if (nextPhase !== legalNextPhase) {
-      return NextResponse.json(
-        { error: `Cannot advance from ${currentPhase} to ${nextPhase} — next phase must be ${legalNextPhase}` },
-        { status: 400 }
-      )
+    if (opts.nextPhase !== legalNextPhase) {
+      return {
+        ok: false,
+        error: `Cannot advance from ${currentPhase} to ${opts.nextPhase} — next phase must be ${legalNextPhase}`,
+        status: 400,
+      }
     }
-    targetPhase = nextPhase as MafiaPhase
+    targetPhase = opts.nextPhase
   } else {
-    // Determine next phase automatically
-    const idx = phaseOrder.indexOf(currentPhase)
-    if (idx === -1 || currentPhase === 'elimination') {
-      targetPhase = 'night'
-    } else {
-      targetPhase = phaseOrder[idx + 1]
-    }
+    targetPhase = legalNextPhase
   }
 
   const updateFields: Partial<MafiaSession> = {
@@ -137,6 +116,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   updateFields.phase_deadline = new Date(Date.now() + durationSeconds * 1000).toISOString()
+
+  // A fresh Discussion/Voting phase starts with a clean skip-ahead tally.
+  if (targetPhase === 'day' || targetPhase === 'voting') {
+    updateFields.skip_requested_player_ids = []
+  }
 
   const applyLoversOverlay = (winTeam: NonNullable<MafiaSession['winning_team']>) => {
     updateFields.winning_team = checkLoversWin(playerStates) ? 'lovers' : winTeam
@@ -334,13 +318,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   if (sessionError) {
     console.error('Failed to advance phase:', sessionError)
-    return NextResponse.json({ error: 'Failed to update game phase' }, { status: 500 })
+    return { ok: false, error: 'Failed to update game phase', status: 500 }
   }
 
   if (!updatedSession || updatedSession.length === 0) {
     // Another request already advanced this phase — treat as success, and skip logging (the
     // request that actually applied the transition already did).
-    return NextResponse.json({ success: true })
+    return { ok: true }
   }
 
   if (systemMessages.length > 0) {
@@ -353,6 +337,54 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         scope: 'day',
       }))
     )
+  }
+
+  return { ok: true }
+}
+
+export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
+  const { code } = await params
+  const gameId = code.toUpperCase()
+  const admin = getSupabaseAdmin()
+
+  let body: { hostToken?: unknown; nextPhase?: unknown; isAuto?: unknown }
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
+  }
+
+  const { hostToken, nextPhase, isAuto } = body
+
+  const [{ data: game }, { data: mafiaSession }] = await Promise.all([
+    admin.from('games').select('host_token').eq('id', gameId).maybeSingle(),
+    admin.from('mafia_sessions').select('phase_deadline').eq('game_id', gameId).maybeSingle(),
+  ])
+
+  if (!game || !mafiaSession) {
+    return NextResponse.json({ error: 'Game or session not initialized' }, { status: 404 })
+  }
+
+  let authorized = false
+  if (typeof hostToken === 'string' && game.host_token === hostToken) {
+    authorized = true
+  } else if (isAuto === true && mafiaSession.phase_deadline) {
+    const deadlineTime = new Date(mafiaSession.phase_deadline).getTime()
+    if (Date.now() + 1000 >= deadlineTime) {
+      authorized = true
+    }
+  }
+
+  if (!authorized) {
+    return NextResponse.json({ error: 'Unauthorized or phase not expired yet' }, { status: 403 })
+  }
+
+  const result = await runMafiaAdvance(gameId, {
+    nextPhase: typeof nextPhase === 'string' ? (nextPhase as MafiaPhase) : undefined,
+  })
+
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status })
   }
 
   return NextResponse.json({ success: true })

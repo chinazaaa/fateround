@@ -24,7 +24,10 @@ const TEAM_LABEL: Record<string, string> = {
 }
 
 interface MafiaRolesDrawerProps {
-  enabledRoles: MafiaRole[]
+  /** Roles actually assigned to a player this game (alive or eliminated) — what the drawer
+   *  should list. Falls back to enabledRoles (the host's toggle settings) only if the game
+   *  hasn't assigned roles yet. */
+  rolesInGame: MafiaRole[]
   /** The local player's own role — sorted first in the list so it's the first (and easiest
    *  to read) thing they see, matching Wolvesville's role-detail popup. */
   myRole?: MafiaRole | null
@@ -34,13 +37,14 @@ interface MafiaRolesDrawerProps {
 }
 
 /**
- * Persistent "Roles" info button + slide-over drawer listing every role enabled in this
- * game, so players can check what a role does at any time without it being a spoiler —
- * rules text only, no live game info.
+ * Persistent "Roles" info button + slide-over drawer listing every role actually assigned to
+ * someone in this game (not every role the host merely toggled on), so players can check what
+ * a role does at any time without it being a spoiler — rules text only, no live game info. A
+ * role a late joiner is assigned appears the next time this list refreshes.
  */
-export function MafiaRolesDrawer({ enabledRoles, myRole, roleCounts }: MafiaRolesDrawerProps) {
+export function MafiaRolesDrawer({ rolesInGame, myRole, roleCounts }: MafiaRolesDrawerProps) {
   const [open, setOpen] = useState(false)
-  const sortedRoles = myRole ? [myRole, ...enabledRoles.filter((r) => r !== myRole)] : enabledRoles
+  const sortedRoles = myRole ? [myRole, ...rolesInGame.filter((r) => r !== myRole)] : rolesInGame
 
   return (
     <>
