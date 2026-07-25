@@ -337,6 +337,9 @@ export interface Game {
   mafia_trapper_enabled?: boolean
   mafia_anonymous_votes?: boolean
   mafia_count?: number | null
+  /** Mafia-team player ids from the last round played in this room — used to bias the next
+   *  role assignment away from repeating the exact same team on Play Again. */
+  mafia_last_team_player_ids?: string[] | null
   mafia_day_seconds?: number
   mafia_voting_seconds?: number
   monopoly_double_go_salary?: boolean

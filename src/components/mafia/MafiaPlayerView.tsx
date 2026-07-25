@@ -706,7 +706,11 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             }
             gridSelectedIds = cupidFirstPick ? [cupidFirstPick] : []
           }
-        } else if (myRole === 'medium' && (myState?.mediumReviveRemaining ?? 0) > 0) {
+        } else if (
+          myRole === 'medium' &&
+          (myState?.mediumReviveRemaining ?? 0) > 0 &&
+          publicPlayers.some((p) => !p.isAlive)
+        ) {
           gridAllowDeadSelect = true
           gridOnSelect = (id) => {
             setNightSelection(id)
@@ -1009,6 +1013,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             acting={acting}
             cupidFirstPickName={cupidFirstPickName}
             detectiveFirstPickName={detectiveFirstPickName}
+            hasDeadPlayers={publicPlayers.some((p) => !p.isAlive)}
             onIgnite={() => {
               if (myPlayerId) void submitNightAction(myPlayerId)
             }}

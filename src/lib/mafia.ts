@@ -69,7 +69,8 @@ export type MafiaRoleToggles = MafiaRoleEnabledFlags
 export function assignMafiaRoles(
   playerIds: string[],
   toggles: MafiaRoleToggles,
-  mafiaCountOverride?: number
+  mafiaCountOverride?: number,
+  avoidMafiaPlayerIds?: string[]
 ): Record<string, MafiaRole> {
   const playerCount = playerIds.length
   const mafiaCount =
@@ -132,6 +133,26 @@ export function assignMafiaRoles(
   playerIds.forEach((id, index) => {
     assignments[id] = shuffledRoles[index]
   })
+
+  // Fairness pass: if the entire Mafia-team is a repeat of last round's Mafia-team (most
+  // visible with a single Mafia — same person twice in a row), swap one repeat player for a
+  // non-repeat, non-Mafia-team player when one exists, so Play Again doesn't feel rigged.
+  if (avoidMafiaPlayerIds && avoidMafiaPlayerIds.length > 0 && avoidMafiaPlayerIds.length < playerIds.length) {
+    const mafiaAssigneeIds = playerIds.filter((id) => MAFIA_TEAM_ROLES.includes(assignments[id]))
+    const allRepeat = mafiaAssigneeIds.length > 0 && mafiaAssigneeIds.every((id) => avoidMafiaPlayerIds.includes(id))
+    if (allRepeat) {
+      const candidates = playerIds.filter(
+        (id) => !MAFIA_TEAM_ROLES.includes(assignments[id]) && !avoidMafiaPlayerIds.includes(id)
+      )
+      if (candidates.length > 0) {
+        const swapOutId = mafiaAssigneeIds[Math.floor(Math.random() * mafiaAssigneeIds.length)]
+        const swapInId = candidates[Math.floor(Math.random() * candidates.length)]
+        const tmp = assignments[swapOutId]
+        assignments[swapOutId] = assignments[swapInId]
+        assignments[swapInId] = tmp
+      }
+    }
+  }
 
   return assignments
 }
@@ -525,7 +546,7 @@ export async function initializeMafiaGame(
   const { data: gameData, error: gameError } = await admin
     .from('games')
     .select(
-      'mafia_doctor_enabled, mafia_detective_enabled, mafia_aura_seer_enabled, mafia_bodyguard_enabled, mafia_mayor_enabled, mafia_vigilante_enabled, mafia_tracker_enabled, mafia_alpha_wolf_enabled, mafia_wolf_cub_enabled, mafia_framer_enabled, mafia_jester_enabled, mafia_serial_killer_enabled, mafia_arsonist_enabled, mafia_cupid_enabled, mafia_cursed_villager_enabled, mafia_medium_enabled, mafia_priest_enabled, mafia_witch_enabled, mafia_little_girl_enabled, mafia_trapper_enabled, mafia_count, mafia_anonymous_votes'
+      'mafia_doctor_enabled, mafia_detective_enabled, mafia_aura_seer_enabled, mafia_bodyguard_enabled, mafia_mayor_enabled, mafia_vigilante_enabled, mafia_tracker_enabled, mafia_alpha_wolf_enabled, mafia_wolf_cub_enabled, mafia_framer_enabled, mafia_jester_enabled, mafia_serial_killer_enabled, mafia_arsonist_enabled, mafia_cupid_enabled, mafia_cursed_villager_enabled, mafia_medium_enabled, mafia_priest_enabled, mafia_witch_enabled, mafia_little_girl_enabled, mafia_trapper_enabled, mafia_count, mafia_anonymous_votes, mafia_last_team_player_ids'
     )
     .eq('id', gameId)
     .single()
@@ -563,8 +584,11 @@ export async function initializeMafiaGame(
       ? gameData.mafia_count
       : Math.max(1, Math.floor(playerIds.length / 4))
 
-  // 2. Assign roles
-  const roleAssignments = assignMafiaRoles(playerIds, toggles, resolvedMafiaCount)
+  // 2. Assign roles — bias away from repeating the exact same Mafia-team player(s) from
+  // last round in this room (most visible with a single Mafia: same person twice running).
+  const avoidMafiaPlayerIds: string[] = gameData.mafia_last_team_player_ids ?? []
+  const roleAssignments = assignMafiaRoles(playerIds, toggles, resolvedMafiaCount, avoidMafiaPlayerIds)
+  const newMafiaTeamPlayerIds = playerIds.filter((id) => MAFIA_TEAM_ROLES.includes(roleAssignments[id]))
 
   // Seat numbers must be a fixed, permanent order (the player who was #1 stays #1 all game),
   // so they're assigned here once from real join order — not derived later from query order,
@@ -610,6 +634,9 @@ export async function initializeMafiaGame(
     await admin.from('mafia_player_states').delete().eq('game_id', gameId)
     return { error: 'Failed to initialize game session' }
   }
+
+  // Remember this round's Mafia team for the next Play Again's fairness check above.
+  await admin.from('games').update({ mafia_last_team_player_ids: newMafiaTeamPlayerIds }).eq('id', gameId)
 
   return { error: null }
 }

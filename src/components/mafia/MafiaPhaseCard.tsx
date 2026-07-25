@@ -14,6 +14,7 @@ const NIGHT_ACTION_PROMPT: Partial<Record<MafiaRole, string>> = {
   vigilante: '🔫 Your actions happen during the day. Wait for sunrise...',
   tracker: '👣 Tap a player below to track — learn who they visit tonight.',
   serial_killer: '🔪 Tap a player below to kill tonight.',
+  medium: '🔮 Tap a dead player below to revive them.',
 }
 
 interface MafiaPhaseCardProps {
@@ -29,6 +30,7 @@ interface MafiaPhaseCardProps {
   onArsonistModeChange: (mode: 'douse' | 'ignite' | null) => void
   arsonistFirstPickName: string | null
   detectiveFirstPickName: string | null
+  hasDeadPlayers: boolean
 }
 
 /**
@@ -51,6 +53,7 @@ export function MafiaPhaseCard({
   onArsonistModeChange,
   arsonistFirstPickName,
   detectiveFirstPickName,
+  hasDeadPlayers,
 }: MafiaPhaseCardProps) {
   const myRole = myState?.role
 
@@ -148,6 +151,10 @@ export function MafiaPhaseCard({
           </p>
         ) : myRole === 'vigilante' && (myState?.vigilanteShotsRemaining ?? 0) < 1 ? (
           <p className="text-sm text-[var(--muted)]">You've used your one shot already. Nothing to do tonight.</p>
+        ) : myRole === 'medium' && (myState?.mediumReviveRemaining ?? 0) < 1 ? (
+          <p className="text-sm text-[var(--muted)]">You've already used your revive. Nothing to do tonight.</p>
+        ) : myRole === 'medium' && !hasDeadPlayers ? (
+          <p className="text-sm text-[var(--muted)]">🔮 No one has died yet — nothing to revive tonight.</p>
         ) : (
           <div className="space-y-2">
             <p className="text-sm text-[var(--muted)]">{myRole ? NIGHT_ACTION_PROMPT[myRole] : ''}</p>

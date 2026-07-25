@@ -151,6 +151,31 @@ describe('assignMafiaRoles', () => {
     expect(roles.filter((r) => r === 'mafia')).toHaveLength(1)
     expect(roles.filter((r) => r === 'villager')).toHaveLength(4)
   })
+
+  it('swaps away from repeating the exact same single Mafia player on the next round', () => {
+    const playerIds = ids(5)
+    // Force the RNG so the shuffle is deterministic, then find who it hands mafia to.
+    const originalRandom = Math.random
+    Math.random = () => 0
+    try {
+      const withoutAvoid = assignMafiaRoles(playerIds, NONE_ENABLED, 1)
+      const repeatMafiaId = Object.keys(withoutAvoid).find((id) => withoutAvoid[id] === 'mafia')!
+      expect(repeatMafiaId).toBeDefined()
+
+      const withAvoid = assignMafiaRoles(playerIds, NONE_ENABLED, 1, [repeatMafiaId])
+      expect(withAvoid[repeatMafiaId]).not.toBe('mafia')
+      expect(Object.values(withAvoid).filter((r) => r === 'mafia')).toHaveLength(1)
+    } finally {
+      Math.random = originalRandom
+    }
+  })
+
+  it('does not swap when the whole roster (minus one) was on the last Mafia team', () => {
+    const playerIds = ids(3)
+    // Every non-mafia-assigned player is also in the avoid list — no valid swap candidate.
+    const assignments = assignMafiaRoles(playerIds, NONE_ENABLED, 1, playerIds)
+    expect(Object.values(assignments).filter((r) => r === 'mafia')).toHaveLength(1)
+  })
 })
 
 describe('resolveMafiaNight', () => {
