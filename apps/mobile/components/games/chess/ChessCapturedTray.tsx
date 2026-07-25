@@ -65,30 +65,39 @@ export function KingGlyph({ color, size = 16 }: { color: ChessColor; size?: numb
   )
 }
 
-/** A player's row: name, captured opponent pieces, and (optionally) a clock. */
+/** A player's header card: avatar, name, captured opponent pieces, and (optionally) a clock. */
 export function CapturedTray({
   name,
   pieces,
   glyphColor,
   set,
   clock,
+  active,
 }: {
   name: string
   pieces: ChessPieceType[]
   glyphColor: ChessColor
   set: ChessPieceSet
   clock?: ReactNode
+  active?: boolean
 }) {
   const styles = useThemedStyles(makeStyles)
+  const initial = name.trim().charAt(0).toUpperCase() || '?'
   return (
-    <View style={styles.tray}>
-      <Text style={styles.name} numberOfLines={1}>
-        <KingGlyph color={glyphColor} /> {name}
-      </Text>
-      <View style={styles.pieces}>
-        {pieces.map((type, i) => (
-          <ChessPieceGlyph key={`${type}-${i}`} set={set} color={glyphColor} type={type} size={18} />
-        ))}
+    <View style={[styles.tray, active && styles.trayActive]}>
+      <View style={styles.avatar}>
+        <Text style={styles.avatarText}>{initial}</Text>
+      </View>
+      <View style={styles.identity}>
+        <Text style={styles.name} numberOfLines={1}>
+          {name}
+        </Text>
+        <View style={styles.pieces}>
+          <KingGlyph color={glyphColor} size={12} />
+          {pieces.map((type, i) => (
+            <ChessPieceGlyph key={`${type}-${i}`} set={set} color={glyphColor} type={type} size={16} />
+          ))}
+        </View>
       </View>
       {clock ? <View style={styles.clockSlot}>{clock}</View> : null}
     </View>
@@ -100,11 +109,27 @@ const makeStyles = (theme: Theme) =>
     tray: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
-      minHeight: 26,
-      paddingHorizontal: 2,
+      gap: 8,
+      minHeight: 44,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+      borderRadius: theme.radius.sm,
+      borderWidth: 1,
+      borderColor: 'transparent',
+      backgroundColor: theme.surface,
     },
-    name: { color: theme.text, fontSize: 12, fontWeight: '700', flexShrink: 0 },
-    pieces: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', flexShrink: 1 },
-    clockSlot: { marginLeft: 'auto' },
+    trayActive: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+    avatar: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.bgElevated,
+    },
+    avatarText: { color: theme.text, fontWeight: '800', fontSize: 13 },
+    identity: { flex: 1, gap: 2, minWidth: 0 },
+    name: { color: theme.text, fontSize: 13, fontWeight: '700' },
+    pieces: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 1 },
+    clockSlot: { flexShrink: 0 },
   })

@@ -178,6 +178,29 @@ export function Draughts10HostView({ gameCode, hostToken }: { gameCode: string; 
     }
   }
 
+  const huffPiece = async (square: string) => {
+    if (!hostPlayerId) return
+    if (!hostResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
+    setHostActing(true)
+    try {
+      const res = await fetch(`${apiBase}/huff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken, square }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Huff failed')
+      await load()
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Huff failed')
+    } finally {
+      setHostActing(false)
+    }
+  }
+
   const resign = async () => {
     if (!hostPlayerId) return
     if (!hostResumeToken) {
@@ -343,6 +366,7 @@ export function Draughts10HostView({ gameCode, hostToken }: { gameCode: string; 
         timeControlSeconds={game?.timer_seconds ?? 0}
         onMove={movePiece}
         onResign={resign}
+        onHuff={huffPiece}
         acting={hostActing}
       />
     </div>

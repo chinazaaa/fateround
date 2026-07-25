@@ -125,6 +125,7 @@ export function Draughts10GamePanel({
   timeControlSeconds,
   onMove,
   onResign,
+  onHuff,
   acting,
 }: {
   session: Draughts10Session
@@ -134,6 +135,8 @@ export function Draughts10GamePanel({
   timeControlSeconds?: number
   onMove?: (from: string, to: string) => void
   onResign?: () => void
+  /** Street Rules only: spend the turn huffing (removing) a declined-capture piece instead of moving. */
+  onHuff?: (square: string) => void
   acting?: boolean
 }) {
   const [selected, setSelected] = useState<string | null>(null)
@@ -165,10 +168,26 @@ export function Draughts10GamePanel({
         myColor,
         selected,
         session.must_continue_from,
-        session.must_continue_remaining
+        session.must_continue_remaining,
+        session.huffing_enabled
       ).map((s) => s.to)
     )
-  }, [session.board, session.must_continue_from, session.must_continue_remaining, selected, interactive, myColor])
+  }, [
+    session.board,
+    session.must_continue_from,
+    session.must_continue_remaining,
+    session.huffing_enabled,
+    selected,
+    interactive,
+    myColor,
+  ])
+
+  // Street Rules: squares the opponent left un-captured last turn — I may huff one
+  // instead of moving. Only offered on my own turn, with no chain already in progress.
+  const huffableSquares = useMemo(() => {
+    if (!interactive || !onHuff || session.must_continue_from) return new Set<string>()
+    return new Set(session.huffable_squares ?? [])
+  }, [interactive, onHuff, session.must_continue_from, session.huffable_squares])
 
   const counts = useMemo(() => {
     let red = 0
@@ -205,6 +224,10 @@ export function Draughts10GamePanel({
 
   const handleSquareClick = (square: string) => {
     if (!interactive || !myColor) return
+    if (!selected && huffableSquares.has(square)) {
+      onHuff?.(square)
+      return
+    }
     if (selected && legalTargets.has(square)) {
       onMove?.(selected, square)
       // Keep selection if a chain may continue; the session update re-selects it.
@@ -263,6 +286,7 @@ export function Draughts10GamePanel({
               const isTarget = legalTargets.has(square)
               const isSelected = selected === square
               const isLastMove = session.last_move_from === square || session.last_move_to === square
+              const isHuffable = huffableSquares.has(square)
 
               return (
                 <button
@@ -272,7 +296,7 @@ export function Draughts10GamePanel({
                   disabled={!interactive || !dark}
                   aria-label={
                     hasPiece
-                      ? `${square}, ${colorOfPiece(piece) === 'r' ? 'red' : 'black'} ${piece === piece.toUpperCase() ? 'king' : word}`
+                      ? `${square}, ${colorOfPiece(piece) === 'r' ? 'red' : 'black'} ${piece === piece.toUpperCase() ? 'king' : word}${isHuffable ? ' — huffable' : ''}`
                       : `${square}, ${dark ? 'empty' : 'unused'}`
                   }
                   style={{ backgroundColor: dark ? DARK_SQUARE : LIGHT_SQUARE }}
@@ -283,6 +307,9 @@ export function Draughts10GamePanel({
                 >
                   {isLastMove && <span className="absolute inset-0 z-0 bg-yellow-300/40" />}
                   {isSelected && <span className="absolute inset-0 z-20 ring-2 ring-inset ring-[var(--primary)]" />}
+                  {isHuffable && (
+                    <span className="absolute inset-0 z-20 ring-2 ring-inset ring-rose-400 animate-pulse" />
+                  )}
                   {hasPiece && <Disc piece={piece} />}
                   {isTarget && !hasPiece && <span className="absolute z-20 w-1/3 h-1/3 rounded-full bg-black/30" />}
                   {isTarget && hasPiece && <span className="absolute inset-1 z-20 rounded-full ring-4 ring-black/30" />}
@@ -304,6 +331,11 @@ export function Draughts10GamePanel({
                 : ` · tap a ${word}, then its destination`
               : ' · waiting for your opponent'}
           </p>
+          {isMyTurn && huffableSquares.size > 0 && (
+            <p className="text-center text-rose-300 text-xs font-semibold">
+              Your opponent passed up a capture — tap a glowing {word} to huff it, or move as usual.
+            </p>
+          )}
           {onResign && (
             <div className="flex justify-center">
               <button

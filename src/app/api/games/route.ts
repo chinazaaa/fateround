@@ -43,6 +43,7 @@ import {
   isChessGame,
   isCheckersGame,
   isDraughts10Game,
+  isCheckersNigeriaGame,
   isAyoGame,
   isMafiaGame,
   isScrabbleGame,
@@ -426,6 +427,7 @@ export async function POST(req: NextRequest) {
     landmine_elim_seconds: rawLandmineElimSeconds,
     landmine_review: rawLandmineReview,
     landmine_review_seconds: rawLandmineReviewSeconds,
+    checkers_nigeria_street_rules: rawCheckersNigeriaStreetRules,
     allow_viewers: rawAllowViewers,
     allow_late_players: rawAllowLatePlayers,
     late_join_policy: rawLateJoinPolicy,
@@ -1012,6 +1014,11 @@ export async function POST(req: NextRequest) {
             rawLandmineReviewSeconds === undefined
               ? landmineDefaultReviewSeconds({ landmine_mine_source: parseLandmineMineSource(rawLandmineMineSource) })
               : clampLandmineReviewTimer(rawLandmineReviewSeconds),
+        }
+      : {}),
+    ...(isCheckersNigeriaGame(game_type)
+      ? {
+          checkers_nigeria_street_rules: rawCheckersNigeriaStreetRules === true,
         }
       : {}),
     ...(isQuickDrawGame(game_type)

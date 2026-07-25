@@ -22,6 +22,7 @@ import {
   isChessGame,
   isCheckersGame,
   isDraughts10Game,
+  isCheckersNigeriaGame,
   isTicTacToeGame,
   isPingPongGame,
   isLandmineGame,
@@ -255,6 +256,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     if (rawGameDurationSeconds !== undefined) {
       updatePayload.game_duration_seconds = clampLandmineCategoryTimer(rawGameDurationSeconds)
     }
+  }
+
+  // Nigerian Draughts "Street Rules" (huffing) toggle. Pre-start only, same as the timer.
+  if (isCheckersNigeriaGame(gameType) && body.checkers_nigeria_street_rules !== undefined) {
+    updatePayload.checkers_nigeria_street_rules = body.checkers_nigeria_street_rules === true
   }
 
   if (rawOperativeTimerSeconds !== undefined) {

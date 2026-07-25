@@ -134,35 +134,50 @@ function KingGlyph({ color }: { color: ChessColor }) {
   )
 }
 
-/** A player's row: name, captured opponent pieces, and clock. */
+/** A player's header card: avatar, name, captured opponent pieces, and clock. */
 function CapturedTray({
   name,
   pieces,
   glyphColor,
   set,
   clock,
+  active,
 }: {
   name: string
   pieces: string[]
   glyphColor: ChessColor
   set: ChessPieceSet
   clock?: ReactNode
+  active?: boolean
 }) {
   return (
-    <div className="flex items-center gap-1.5 min-h-[1.75rem] px-1">
-      <span className="text-xs font-bold shrink-0">
-        <KingGlyph color={glyphColor} /> {name}
+    <div
+      className={[
+        'flex items-center gap-2 min-h-[2.75rem] px-2 py-1.5 rounded-lg border transition-colors',
+        active ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-transparent bg-[var(--surface-inset-bg)]',
+      ].join(' ')}
+    >
+      <span
+        className="flex items-center justify-center shrink-0 h-7 w-7 rounded-full text-xs font-black bg-[var(--surface-bg)] border border-[var(--border)]"
+        aria-hidden
+      >
+        {name.trim().charAt(0).toUpperCase() || '?'}
       </span>
-      <div className="flex items-center flex-wrap gap-0.5 leading-none">
-        {pieces.map((type, i) => (
-          <ChessPieceGlyph
-            key={`${type}-${i}`}
-            set={set}
-            color={glyphColor}
-            type={type as ChessPieceType}
-            className="h-5 w-5 sm:h-6 sm:w-6"
-          />
-        ))}
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-bold truncate">
+          <KingGlyph color={glyphColor} /> {name}
+        </p>
+        <div className="flex items-center flex-wrap gap-0.5 leading-none">
+          {pieces.map((type, i) => (
+            <ChessPieceGlyph
+              key={`${type}-${i}`}
+              set={set}
+              color={glyphColor}
+              type={type as ChessPieceType}
+              className="h-4 w-4 sm:h-5 sm:w-5"
+            />
+          ))}
+        </div>
       </div>
       {clock}
     </div>
@@ -321,6 +336,7 @@ export function ChessGamePanel({
     name: (color === 'w' ? white : black)?.name ?? (color === 'w' ? 'White' : 'Black'),
     pieces: color === 'w' ? material.capturedByWhite : material.capturedByBlack,
     glyphColor: (color === 'w' ? 'b' : 'w') as ChessColor,
+    active: session.status === 'active' && session.current_turn === color,
   })
 
   const bottomColor: ChessColor = flip ? 'b' : 'w'
@@ -383,16 +399,6 @@ export function ChessGamePanel({
       {session.status === 'active' && (
         <ChessTurnBar turnPlayerName={turnPlayer?.name} isMyTurn={isMyTurn} inCheck={session.in_check} />
       )}
-
-      <ChessCard className="p-3 flex items-center justify-between text-sm">
-        <span className="font-bold">
-          <KingGlyph color="w" /> {white?.name ?? 'White'}
-        </span>
-        <span className="text-faint">vs</span>
-        <span className="font-bold">
-          <KingGlyph color="b" /> {black?.name ?? 'Black'}
-        </span>
-      </ChessCard>
 
       {timed && timeControlSeconds ? (
         <p className="text-center text-faint text-xs -mt-2">
