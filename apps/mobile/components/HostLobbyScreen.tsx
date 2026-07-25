@@ -6,6 +6,7 @@ import type { Game, Player } from '@fateround/shared'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 import { startGame, postPlayAgain, postFinishGame, removePlayerAsHost } from '@/lib/game-api'
 import { gameLabel } from '@/lib/mobile-registry'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { HostLobbyPlayCard } from '@/components/host/HostLobbyPlayCard'
@@ -236,6 +237,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
             </Pressable>
           ) : null}
         </View>
+        <GameInfoChips game={game} />
         <Text style={styles.title}>{game?.title || 'Game'}</Text>
 
         <Pressable style={styles.codeCard} onPress={onShare}>

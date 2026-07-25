@@ -18,6 +18,7 @@ import { currentTurnPlayerId, scorePlacement, withPlacedTiles } from '@fateround
 import { tileSetForDictionary } from '@fateround/shared/scrabble-rulesets'
 import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
@@ -366,6 +367,7 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
         }
         submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
         footer={<GameRulesLink gameType={bootstrap.game.game_type} />}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
       />
     )
   }

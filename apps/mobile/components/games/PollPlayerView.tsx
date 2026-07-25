@@ -42,6 +42,7 @@ import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
 import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { JoinScreen } from '@/components/JoinScreen'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { ParticipantClaimJoinScreen } from '@/components/join/ParticipantClaimJoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { PlayerQuestionSubmit, lobbyAllowsPlayerQuestions } from '@/components/games/lobby/PlayerQuestionSubmit'
@@ -411,6 +412,7 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
         onJoin={() => void bootstrap.join()}
         lobbyFull={bootstrap.lobbyFull}
         onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
         hint={
           isWhoSaidThis(bootstrap.game.game_type)
             ? 'Enter your name to join — answer the quotes, fastest correct wins.'

@@ -18,6 +18,7 @@ import {
 import { useDraughts10ClockExpiry } from '@/components/games/draughts10/useDraughts10ClockExpiry'
 import type { CheckersColor, Draughts10Session, Draughts10Variant, Game, GameType, Player } from '@fateround/shared'
 import { JoinScreen } from '@/components/JoinScreen'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import type { Theme } from '@/constants/theme'
@@ -275,6 +276,7 @@ export function Draughts10PlayerView({ gameCode }: { gameCode: string }) {
             : 'No account needed — enter a display name and play.'
         }
         submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
       />
     )
   }

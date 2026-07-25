@@ -20,6 +20,7 @@ import {
 } from '@fateround/shared/monopoly-tokens'
 import { MONOPOLY_EDITION_THEMES } from '@fateround/shared/create-themes'
 import { JoinScreen } from '@/components/JoinScreen'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
@@ -507,6 +508,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           onJoin={() => void joinWithToken()}
           lobbyFull={bootstrap.lobbyFull}
           onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+          infoChips={<GameInfoChips game={bootstrap.game} />}
         />
         {joiningAsViewer ? null : (
           <>

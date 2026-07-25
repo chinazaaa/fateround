@@ -12,6 +12,7 @@ import {
 } from '@/components/games/checkers/checkers-clocks'
 import { useCheckersClockExpiry } from '@/components/games/checkers/useCheckersClockExpiry'
 import type { CheckersSession, Game, Player } from '@fateround/shared'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
@@ -224,6 +225,7 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
             : 'No account needed — enter a display name and play.'
         }
         submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
       />
     )
   }

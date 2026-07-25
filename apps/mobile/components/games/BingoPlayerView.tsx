@@ -11,6 +11,7 @@ import { BingoCardGrid } from '@/components/games/bingo/BingoCardGrid'
 import { BingoCardLegend } from '@/components/games/bingo/BingoCardLegend'
 import { CalledNumbersBoard } from '@/components/games/bingo/CalledNumbersBoard'
 import { CalledNumbersBoardSection } from '@/components/games/bingo/CalledNumbersBoardSection'
+import { GameInfoChips } from '@/components/GameInfoChips'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
@@ -216,6 +217,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
         submitLabel="Join Bingo"
         hint="You'll get a random card when the host starts. Called numbers turn blue on your card — tap them to mark them green."
         footer={<BingoCardLegend />}
+        infoChips={<GameInfoChips game={bootstrap.game} />}
       />
     )
   }
