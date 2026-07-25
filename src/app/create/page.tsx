@@ -974,6 +974,27 @@ function CreateGameInner() {
   // hooks above, so there's no single object to serialize — this maps each tunable field to
   // its own get/set, scoped to the game type(s) it applies to. `title`, participants, and any
   // custom question/CSV content are deliberately excluded — those aren't "settings" to reuse.
+  // Reusable game-type predicates for entries below that apply to more than one `isXGame` helper.
+  const isPollFamilyGame = (t: GameType) =>
+    isWouldYouRather(t) ||
+    isNeverHaveIEver(t) ||
+    isThisOrThat(t) ||
+    isMostLikelyTo(t) ||
+    isPickANumber(t) ||
+    isHotSeat(t) ||
+    isPairGame(t) ||
+    t === 'smash_marry_kill' ||
+    t === 'parent_approval'
+  const roundsCountApplies = (t: GameType) =>
+    isPollFamilyGame(t) ||
+    isTriviaGame(t) ||
+    isQuiplashGame(t) ||
+    isQuickDrawGame(t) ||
+    isDescribeItGame(t) ||
+    isWordRushGame(t) ||
+    isLandmineGame(t) ||
+    isMatchingPairsGame(t)
+  const eliminationApplies = (t: GameType) => (ELIMINATION_COMPATIBLE_TYPES as readonly string[]).includes(t)
   const TEMPLATE_FIELDS: Record<
     string,
     { get: () => unknown; set: (v: unknown) => void; appliesTo: (t: GameType) => boolean }
@@ -996,7 +1017,389 @@ function CreateGameInner() {
     late_join_policy: {
       get: () => lateJoinPolicy,
       set: (v) => setLateJoinPolicy(v as LateJoinPolicy),
-      appliesTo: templatableGame,
+      appliesTo: gameSupportsViewerSetting,
+    },
+    // Poll-family games (would-you-rather, never-have-i-ever, this-or-that, most-likely-to,
+    // pick-a-number, hot-seat, smash-marry-kill, red/green-flag, smash-or-pass, parent-approval)
+    rounds_count: {
+      get: () => settings.rounds_count,
+      set: (v) => setSettings((s) => ({ ...s, rounds_count: v as number })),
+      appliesTo: roundsCountApplies,
+    },
+    participant_mode: {
+      get: () => settings.participant_mode,
+      set: (v) => setSettings((s) => ({ ...s, participant_mode: v as Settings['participant_mode'] })),
+      appliesTo: isPollFamilyGame,
+    },
+    gender_based: {
+      get: () => settings.gender_based,
+      set: (v) => setSettings((s) => ({ ...s, gender_based: v as boolean })),
+      appliesTo: supportsGenderToggle,
+    },
+    pair_vote_mode: {
+      get: () => settings.pair_vote_mode,
+      set: (v) => setSettings((s) => ({ ...s, pair_vote_mode: v as Settings['pair_vote_mode'] })),
+      appliesTo: isPairGame,
+    },
+    // Who Said This
+    wst_quote_source: {
+      get: () => wstQuoteSource,
+      set: (v) => setWstQuoteSource(v as WstQuoteSource),
+      appliesTo: isWhoSaidThis,
+    },
+    // Bingo
+    bingo_max_players: {
+      get: () => bingoMaxPlayers,
+      set: (v) => setBingoMaxPlayers(v as number),
+      appliesTo: isBingoGame,
+    },
+    bingo_call_mode: {
+      get: () => bingoCallMode,
+      set: (v) => setBingoCallMode(v as BingoCallMode),
+      appliesTo: isBingoGame,
+    },
+    bingo_call_interval: {
+      get: () => bingoCallInterval,
+      set: (v) => setBingoCallInterval(v as number),
+      appliesTo: isBingoGame,
+    },
+    // Codewords
+    codewords_max_players: {
+      get: () => codewordsMaxPlayers,
+      set: (v) => setCodewordsMaxPlayers(v as number),
+      appliesTo: isCodewordsGame,
+    },
+    codewords_operative_timer: {
+      get: () => codewordsOperativeTimer,
+      set: (v) => setCodewordsOperativeTimer(v as number),
+      appliesTo: isCodewordsGame,
+    },
+    codewords_player_picks: {
+      get: () => codewordsPlayerPicks,
+      set: (v) => setCodewordsPlayerPicks(v as boolean),
+      appliesTo: isCodewordsGame,
+    },
+    codewords_randomize_teams: {
+      get: () => codewordsRandomizeTeams,
+      set: (v) => setCodewordsRandomizeTeams(v as boolean),
+      appliesTo: isCodewordsGame,
+    },
+    // Trivia
+    trivia_max_players: {
+      get: () => triviaMaxPlayers,
+      set: (v) => setTriviaMaxPlayers(v as number),
+      appliesTo: isTriviaGame,
+    },
+    trivia_category: {
+      get: () => triviaCategory,
+      set: (v) => setTriviaCategory(v as TriviaCategory),
+      appliesTo: isTriviaGame,
+    },
+    // Quiplash
+    quiplash_max_players: {
+      get: () => quiplashMaxPlayers,
+      set: (v) => setQuiplashMaxPlayers(v as number),
+      appliesTo: isQuiplashGame,
+    },
+    quiplash_vote_timer: {
+      get: () => quiplashVoteTimer,
+      set: (v) => setQuiplashVoteTimer(v as number),
+      appliesTo: isQuiplashGame,
+    },
+    // Quick Draw
+    quick_draw_max_players: {
+      get: () => quickDrawMaxPlayers,
+      set: (v) => setQuickDrawMaxPlayers(v as number),
+      appliesTo: isQuickDrawGame,
+    },
+    quick_draw_title_timer: {
+      get: () => quickDrawTitleTimer,
+      set: (v) => setQuickDrawTitleTimer(v as number),
+      appliesTo: isQuickDrawGame,
+    },
+    quick_draw_vote_timer: {
+      get: () => quickDrawVoteTimer,
+      set: (v) => setQuickDrawVoteTimer(v as number),
+      appliesTo: isQuickDrawGame,
+    },
+    quick_draw_variant: {
+      get: () => settings.quick_draw_variant,
+      set: (v) => setSettings((s) => ({ ...s, quick_draw_variant: v as Settings['quick_draw_variant'] })),
+      appliesTo: isQuickDrawGame,
+    },
+    quick_draw_play_mode: {
+      get: () => settings.quick_draw_play_mode,
+      set: (v) => setSettings((s) => ({ ...s, quick_draw_play_mode: v as Settings['quick_draw_play_mode'] })),
+      appliesTo: isQuickDrawGame,
+    },
+    quick_draw_num_teams: {
+      get: () => settings.quick_draw_num_teams,
+      set: (v) => setSettings((s) => ({ ...s, quick_draw_num_teams: v as number })),
+      appliesTo: isQuickDrawGame,
+    },
+    // Two Truths & a Lie
+    two_truths_max_players: {
+      get: () => ttlMaxPlayers,
+      set: (v) => setTtlMaxPlayers(v as number),
+      appliesTo: isTwoTruthsGame,
+    },
+    // Text Charades (describe_it)
+    describe_it_max_players: {
+      get: () => describeItMaxPlayers,
+      set: (v) => setDescribeItMaxPlayers(v as number),
+      appliesTo: isDescribeItGame,
+    },
+    describe_it_mode: {
+      get: () => settings.describe_it_mode,
+      set: (v) => setSettings((s) => ({ ...s, describe_it_mode: v as Settings['describe_it_mode'] })),
+      appliesTo: isDescribeItGame,
+    },
+    describe_it_num_teams: {
+      get: () => settings.describe_it_num_teams,
+      set: (v) => setSettings((s) => ({ ...s, describe_it_num_teams: v as number })),
+      appliesTo: isDescribeItGame,
+    },
+    // Word Rush
+    word_rush_max_players: {
+      get: () => wordRushMaxPlayers,
+      set: (v) => setWordRushMaxPlayers(v as number),
+      appliesTo: isWordRushGame,
+    },
+    word_rush_mode: {
+      get: () => settings.word_rush_mode,
+      set: (v) => setSettings((s) => ({ ...s, word_rush_mode: v as Settings['word_rush_mode'] })),
+      appliesTo: isWordRushGame,
+    },
+    word_rush_prompt_mode: {
+      get: () => settings.word_rush_prompt_mode,
+      set: (v) => setSettings((s) => ({ ...s, word_rush_prompt_mode: v as Settings['word_rush_prompt_mode'] })),
+      appliesTo: isWordRushGame,
+    },
+    word_rush_difficulty: {
+      get: () => settings.word_rush_difficulty,
+      set: (v) => setSettings((s) => ({ ...s, word_rush_difficulty: v as Settings['word_rush_difficulty'] })),
+      appliesTo: isWordRushGame,
+    },
+    word_rush_num_teams: {
+      get: () => settings.word_rush_num_teams,
+      set: (v) => setSettings((s) => ({ ...s, word_rush_num_teams: v as number })),
+      appliesTo: isWordRushGame,
+    },
+    // I Call On (NPAT)
+    npat_max_players: {
+      get: () => npatMaxPlayers,
+      set: (v) => setNpatMaxPlayers(v as number),
+      appliesTo: isICallOnGame,
+    },
+    npat_game_duration: {
+      get: () => npatGameDuration,
+      set: (v) => setNpatGameDuration(v as number),
+      appliesTo: isICallOnGame,
+    },
+    npat_marking_timer: {
+      get: () => npatMarkingTimer,
+      set: (v) => setNpatMarkingTimer(v as number),
+      appliesTo: isICallOnGame,
+    },
+    // Sudoku
+    sudoku_max_players: {
+      get: () => sudokuMaxPlayers,
+      set: (v) => setSudokuMaxPlayers(v as number),
+      appliesTo: isSudokuGame,
+    },
+    sudoku_game_duration: {
+      get: () => sudokuGameDuration,
+      set: (v) => setSudokuGameDuration(v as number),
+      appliesTo: isSudokuGame,
+    },
+    // Word Hunt
+    word_hunt_max_players: {
+      get: () => wordHuntMaxPlayers,
+      set: (v) => setWordHuntMaxPlayers(v as number),
+      appliesTo: isWordHuntGame,
+    },
+    word_hunt_timer: {
+      get: () => wordHuntTimer,
+      set: (v) => setWordHuntTimer(v as number),
+      appliesTo: isWordHuntGame,
+    },
+    // Mafia / Werewolf
+    mafia_max_players: {
+      get: () => settings.max_players,
+      set: (v) => setSettings((s) => ({ ...s, max_players: v as number })),
+      appliesTo: isMafiaGame,
+    },
+    mafia_doctor_enabled: {
+      get: () => settings.mafia_doctor_enabled,
+      set: (v) => setSettings((s) => ({ ...s, mafia_doctor_enabled: v as boolean })),
+      appliesTo: isMafiaGame,
+    },
+    mafia_detective_enabled: {
+      get: () => settings.mafia_detective_enabled,
+      set: (v) => setSettings((s) => ({ ...s, mafia_detective_enabled: v as boolean })),
+      appliesTo: isMafiaGame,
+    },
+    mafia_anonymous_votes: {
+      get: () => settings.mafia_anonymous_votes,
+      set: (v) => setSettings((s) => ({ ...s, mafia_anonymous_votes: v as boolean })),
+      appliesTo: isMafiaGame,
+    },
+    // Matching Pairs
+    matching_pairs_max_players: {
+      get: () => settings.max_players,
+      set: (v) => setSettings((s) => ({ ...s, max_players: v as number })),
+      appliesTo: isMatchingPairsGame,
+    },
+    matching_pairs_grid_size: {
+      get: () => settings.game_duration_seconds,
+      set: (v) => setSettings((s) => ({ ...s, game_duration_seconds: v as number })),
+      appliesTo: isMatchingPairsGame,
+    },
+    // Word Search
+    word_search_max_players: {
+      get: () => wordSearchMaxPlayers,
+      set: (v) => setWordSearchMaxPlayers(v as number),
+      appliesTo: isWordSearchGame,
+    },
+    word_search_game_duration: {
+      get: () => wordSearchGameDuration,
+      set: (v) => setWordSearchGameDuration(v as number),
+      appliesTo: isWordSearchGame,
+    },
+    word_search_theme: {
+      get: () => wordSearchTheme,
+      set: (v) => setWordSearchTheme(v as string),
+      appliesTo: isWordSearchGame,
+    },
+    word_search_difficulty: {
+      get: () => wordSearchDifficulty,
+      set: (v) => setWordSearchDifficulty(v as WordSearchDifficulty),
+      appliesTo: isWordSearchGame,
+    },
+    // Word Scramble
+    word_scramble_max_players: {
+      get: () => wordScrambleMaxPlayers,
+      set: (v) => setWordScrambleMaxPlayers(v as number),
+      appliesTo: isWordScrambleGame,
+    },
+    word_scramble_game_duration: {
+      get: () => wordScrambleGameDuration,
+      set: (v) => setWordScrambleGameDuration(v as number),
+      appliesTo: isWordScrambleGame,
+    },
+    word_scramble_theme: {
+      get: () => wordScrambleTheme,
+      set: (v) => setWordScrambleTheme(v as string),
+      appliesTo: isWordScrambleGame,
+    },
+    word_scramble_difficulty: {
+      get: () => wordScrambleDifficulty,
+      set: (v) => setWordScrambleDifficulty(v as WordScrambleDifficulty),
+      appliesTo: isWordScrambleGame,
+    },
+    // Crossword
+    crossword_max_players: {
+      get: () => crosswordMaxPlayers,
+      set: (v) => setCrosswordMaxPlayers(v as number),
+      appliesTo: isCrosswordGame,
+    },
+    crossword_game_duration: {
+      get: () => crosswordGameDuration,
+      set: (v) => setCrosswordGameDuration(v as number),
+      appliesTo: isCrosswordGame,
+    },
+    crossword_theme: {
+      get: () => crosswordTheme,
+      set: (v) => setCrosswordTheme(v as string),
+      appliesTo: isCrosswordGame,
+    },
+    crossword_difficulty: {
+      get: () => crosswordDifficulty,
+      set: (v) => setCrosswordDifficulty(v as CrosswordDifficulty),
+      appliesTo: isCrosswordGame,
+    },
+    // Landmine
+    landmine_mode: {
+      get: () => landmineMode,
+      set: (v) => setLandmineMode(v as typeof landmineMode),
+      appliesTo: isLandmineGame,
+    },
+    landmine_mine_source: {
+      get: () => landmineMineSource,
+      set: (v) => setLandmineMineSource(v as typeof landmineMineSource),
+      appliesTo: isLandmineGame,
+    },
+    landmine_mine_count: {
+      get: () => landmineMineCount,
+      set: (v) => setLandmineMineCount(v as number),
+      appliesTo: isLandmineGame,
+    },
+    landmine_originality: {
+      get: () => landmineOriginality,
+      set: (v) => setLandmineOriginality(v as boolean),
+      appliesTo: isLandmineGame,
+    },
+    landmine_review: {
+      get: () => landmineReview,
+      set: (v) => setLandmineReview(v as boolean),
+      appliesTo: isLandmineGame,
+    },
+    landmine_review_seconds: {
+      get: () => landmineReviewSeconds,
+      set: (v) => setLandmineReviewSeconds(v as number),
+      appliesTo: isLandmineGame,
+    },
+    landmine_category_timer: {
+      get: () => landmineCategoryTimer,
+      set: (v) => setLandmineCategoryTimer(v as number),
+      appliesTo: isLandmineGame,
+    },
+    landmine_marking_timer: {
+      get: () => landmineMarkingTimer,
+      set: (v) => setLandmineMarkingTimer(v as number),
+      appliesTo: isLandmineGame,
+    },
+    landmine_elim_seconds: {
+      get: () => landmineElimSeconds,
+      set: (v) => setLandmineElimSeconds(v as number),
+      appliesTo: isLandmineGame,
+    },
+    // Anonymous Messages
+    anonymous_max_players: {
+      get: () => anonymousMaxPlayers,
+      set: (v) => setAnonymousMaxPlayers(v as number),
+      appliesTo: isAnonymousMessagesGame,
+    },
+    // Elimination (trivia, i_call_on, two_truths)
+    elimination_enabled: {
+      get: () => eliminationEnabled,
+      set: (v) => setEliminationEnabled(v as boolean),
+      appliesTo: eliminationApplies,
+    },
+    elimination_mode: {
+      get: () => eliminationMode,
+      set: (v) => setEliminationMode(v as typeof eliminationMode),
+      appliesTo: eliminationApplies,
+    },
+    elimination_rule: {
+      get: () => eliminationRule,
+      set: (v) => setEliminationRule(v as typeof eliminationRule),
+      appliesTo: eliminationApplies,
+    },
+    elimination_eliminate_count: {
+      get: () => eliminateCount,
+      set: (v) => setEliminateCount(v as number),
+      appliesTo: eliminationApplies,
+    },
+    elimination_score_threshold: {
+      get: () => scoreThreshold,
+      set: (v) => setScoreThreshold(v as number),
+      appliesTo: eliminationApplies,
+    },
+    elimination_starting_lives: {
+      get: () => startingLives,
+      set: (v) => setStartingLives(v as number),
+      appliesTo: eliminationApplies,
     },
     // Uno
     uno_max_players: { get: () => unoMaxPlayers, set: (v) => setUnoMaxPlayers(v as number), appliesTo: isUnoGame },

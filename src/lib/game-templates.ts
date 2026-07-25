@@ -127,6 +127,31 @@ const FIELD_LABELS: Record<string, string> = {
   crazy8_action_cards: 'Action cards',
   crazy8_jokers: 'Jokers',
   crazy8_pick2_stacking: 'Stack Pick 2',
+  gender_based: 'Gender-based',
+  codewords_player_picks: 'Players pick operative',
+  codewords_randomize_teams: 'Randomize teams',
+  landmine_originality: 'Originality bonus',
+  landmine_review: 'Review before reveal',
+  mafia_doctor_enabled: 'Doctor role',
+  mafia_detective_enabled: 'Detective role',
+  mafia_anonymous_votes: 'Anonymous votes',
+  elimination_enabled: 'Elimination',
+}
+
+// Friendlier labels for common enum/string fields shared across many poll/puzzle game types,
+// so e.g. "Participant Mode: Joiners" reads as "Join mode: Joiners" instead.
+const STRING_FIELD_LABELS: Record<string, string> = {
+  participant_mode: 'Join mode',
+  pair_vote_mode: 'Vote mode',
+  quick_draw_variant: 'Mode',
+  quick_draw_play_mode: 'Team mode',
+  word_rush_mode: 'Mode',
+  word_rush_prompt_mode: 'Prompts',
+  word_rush_difficulty: 'Difficulty',
+  describe_it_mode: 'Mode',
+  wst_quote_source: 'Quotes from',
+  elimination_mode: 'Elimination mode',
+  elimination_rule: 'Elimination rule',
 }
 
 // Defaults for the fields above, so a template only mentions a toggle when it's NOT the usual
@@ -141,6 +166,13 @@ const FIELD_DEFAULTS: Record<string, unknown> = {
   whot_number_calls_enabled: true,
   crazy8_action_cards: true,
   crazy8_pick2_stacking: true,
+  gender_based: true,
+  codewords_player_picks: true,
+  landmine_originality: true,
+  landmine_review: true,
+  mafia_doctor_enabled: true,
+  mafia_detective_enabled: true,
+  mafia_anonymous_votes: true,
 }
 
 const UNO_MULTI_PLAY_LABELS: Record<string, string> = {
@@ -148,6 +180,17 @@ const UNO_MULTI_PLAY_LABELS: Record<string, string> = {
   same_color: 'Multi-play: colour only',
   same_number: 'Multi-play: number only',
 }
+
+// The elimination_* detail fields (mode/rule/counts) are only meaningful once elimination_enabled
+// is true — otherwise every trivia/i_call_on/two_truths template would list an elimination
+// configuration it isn't actually using.
+const ELIMINATION_DETAIL_KEYS = new Set([
+  'elimination_mode',
+  'elimination_rule',
+  'elimination_eliminate_count',
+  'elimination_score_threshold',
+  'elimination_starting_lives',
+])
 
 // Fields whose value is either redundant with something already shown, or a lobby/visual
 // preference rather than a "what kind of game is this" setting — kept out of the summary line
@@ -180,8 +223,9 @@ export function summarizeTemplate(values: Record<string, unknown>): string {
   const gameDurationKey = Object.keys(values).find((k) => k.endsWith('game_duration'))
 
   for (const [key, value] of Object.entries(values)) {
-    if (key === maxPlayersKey || key === gameDurationKey || key === 'timer_seconds') continue
+    if (key === maxPlayersKey || key === gameDurationKey || key === 'timer_seconds' || key === 'rounds_count') continue
     if (SUMMARY_SKIP_KEYS.has(key)) continue
+    if (ELIMINATION_DETAIL_KEYS.has(key) && values.elimination_enabled !== true) continue
 
     if (key === 'is_public') {
       if (value === true) distinguishing.push('Public')
@@ -204,7 +248,7 @@ export function summarizeTemplate(values: Record<string, unknown>): string {
       continue
     }
     if (typeof value === 'string' && value) {
-      distinguishing.push(`${humanize(key)}: ${humanize(value)}`)
+      distinguishing.push(`${STRING_FIELD_LABELS[key] ?? humanize(key)}: ${humanize(value)}`)
       continue
     }
     if (typeof value === 'number') {
@@ -213,6 +257,7 @@ export function summarizeTemplate(values: Record<string, unknown>): string {
   }
 
   if (maxPlayersKey && typeof values[maxPlayersKey] === 'number') baseline.push(`${values[maxPlayersKey]} players`)
+  if (typeof values.rounds_count === 'number') baseline.push(`${values.rounds_count} rounds`)
   if (typeof values.timer_seconds === 'number')
     baseline.push(values.timer_seconds ? `${values.timer_seconds}s turn timer` : 'No turn timer')
   // Always shown, even at 0 — a duration of 0 means "no limit", not "nothing to report".
