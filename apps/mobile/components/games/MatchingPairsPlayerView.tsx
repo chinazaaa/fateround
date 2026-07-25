@@ -212,7 +212,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [{ table: 'games', column: 'id' }, 'rounds', 'memory_match_submissions', 'memory_match_progress'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   // ── Memorization countdown ────────────────────────────────────────────────

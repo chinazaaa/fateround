@@ -87,7 +87,8 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     ['players', { table: 'games', column: 'id' }, 'ayo_sessions'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   const activeSession = session ?? bootstrap.gameState

@@ -177,7 +177,8 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
       'quick_draw_guess_guesses',
     ],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   const isGuessMode = isQuickDrawGuessVariant(bootstrap.game?.quick_draw_variant)

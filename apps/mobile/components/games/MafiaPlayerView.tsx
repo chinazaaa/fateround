@@ -78,7 +78,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [{ table: 'games', column: 'id' }, 'mafia_sessions', 'mafia_player_states'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   const state = mafiaState ?? bootstrap.gameState

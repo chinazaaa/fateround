@@ -124,7 +124,8 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [{ table: 'games', column: 'id' }, 'rounds', 'quiplash_sessions', 'quiplash_answers', 'quiplash_votes'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   // Deadline-driven phase changes (esp. the last reveal → finished) don't happen
