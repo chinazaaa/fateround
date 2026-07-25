@@ -22,6 +22,7 @@ import {
   SNAKE_LADDER_MIN_PLAYERS,
 } from './snake-and-ladder'
 import { TTL_DEFAULT_MAX_PLAYERS, TTL_MAX_PLAYERS, TTL_MIN_PLAYERS } from './two-truths'
+import { UNO_DEFAULT_MAX_PLAYERS, UNO_MAX_PLAYERS, UNO_MIN_PLAYERS } from './uno'
 import { WHOT_DEFAULT_MAX_PLAYERS, WHOT_MAX_PLAYERS, WHOT_MIN_PLAYERS } from './whot'
 import { WORD_HUNT_DEFAULT_MAX_PLAYERS, WORD_HUNT_MAX_PLAYERS, WORD_HUNT_MIN_PLAYERS } from './word-hunt'
 import { WORD_RUSH_DEFAULT_MAX_PLAYERS, WORD_RUSH_MAX_PLAYERS, WORD_RUSH_MIN_PLAYERS } from './word-rush'
@@ -37,6 +38,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'yahtzee',
   'whot',
   'crazy_eights',
+  'uno',
   'landmine',
   'ludo',
   'mahjong',
@@ -137,6 +139,7 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
   yahtzee: { min: YAHTZEE_MIN_PLAYERS, max: YAHTZEE_MAX_PLAYERS, default: YAHTZEE_DEFAULT_MAX_PLAYERS },
   whot: { min: WHOT_MIN_PLAYERS, max: WHOT_MAX_PLAYERS, default: WHOT_DEFAULT_MAX_PLAYERS },
   crazy_eights: { min: CRAZY8_MIN_PLAYERS, max: CRAZY8_MAX_PLAYERS, default: CRAZY8_DEFAULT_MAX_PLAYERS },
+  uno: { min: UNO_MIN_PLAYERS, max: UNO_MAX_PLAYERS, default: UNO_DEFAULT_MAX_PLAYERS },
   landmine: { min: LANDMINE_MIN_PLAYERS, max: LANDMINE_MAX_PLAYERS, default: LANDMINE_DEFAULT_MAX_PLAYERS },
   ludo: { min: LUDO_MIN_PLAYERS, max: LUDO_MAX_PLAYERS, default: LUDO_DEFAULT_MAX_PLAYERS },
   mahjong: { min: MAHJONG_MIN_PLAYERS, max: MAHJONG_MAX_PLAYERS, default: MAHJONG_DEFAULT_MAX_PLAYERS },

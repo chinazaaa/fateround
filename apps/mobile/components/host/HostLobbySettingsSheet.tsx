@@ -47,6 +47,7 @@ import {
   isCardHouseRuleGame,
   type CardHouseRulesState,
 } from '@/components/host/lobby-settings/CardHouseRulesSection'
+import { UnoRulesSection, type UnoRulesState } from '@/components/host/lobby-settings/UnoRulesSection'
 import {
   BoardVariantSection,
   isBoardVariantGame,
@@ -97,6 +98,11 @@ import {
   type MahjongLobbyState,
 } from '@/components/host/lobby-settings/MahjongLobbySection'
 import {
+  CheckersLobbySection,
+  isCheckersLobbyGame,
+  type CheckersLobbyState,
+} from '@/components/host/lobby-settings/CheckersLobbySection'
+import {
   TeamRoundGamesSection,
   isTeamRoundGame,
   type TeamRoundState,
@@ -142,6 +148,7 @@ const LOBBY_MAX_PLAYERS_GAMES = new Set<GameType>([
   'yahtzee',
   'whot',
   'crazy_eights',
+  'uno',
   'ludo',
   'mahjong',
   'snake_and_ladder',
@@ -213,6 +220,7 @@ export function HostLobbySettingsSheet({
   const gameType = game.game_type as GameType
   const { limits } = useGamePlayerLimits()
   const isCardGame = isCardHouseRuleGame(gameType)
+  const isUno = gameType === 'uno'
   const isVariantGame = isBoardVariantGame(gameType)
   const isTeamRound = isTeamRoundGame(gameType)
   const isQuickDraw = isQuickDrawLobbyGame(gameType)
@@ -238,9 +246,11 @@ export function HostLobbySettingsSheet({
     !isWhoSaidThis(gameType)
   const isBingo = isBingoLobbyGame(gameType)
   const isMahjong = isMahjongLobbyGame(gameType)
+  const isCheckers = isCheckersLobbyGame(gameType)
   const isTrivia = isTriviaLobbyGame(gameType)
   const ownsTimer =
     isCardGame ||
+    isUno ||
     isVariantGame ||
     isMafia ||
     isQuiplash ||
@@ -248,6 +258,7 @@ export function HostLobbySettingsSheet({
     isScrabble ||
     isICallOn ||
     isMahjong ||
+    isCheckers ||
     isTeamRound ||
     isQuickDraw ||
     isCodewords
@@ -306,6 +317,14 @@ export function HostLobbySettingsSheet({
     crazy8ActionCards: game.crazy8_action_cards ?? true,
     crazy8Jokers: game.crazy8_jokers ?? false,
     crazy8Pick2Stacking: game.crazy8_pick2_stacking ?? true,
+  }))
+  const [uno, setUno] = useState<UnoRulesState>(() => ({
+    timerSeconds: game.timer_seconds ?? 0,
+    gameDurationSeconds: game.game_duration_seconds ?? 0,
+    wd4Challenge: game.uno_wd4_challenge ?? true,
+    stacking: game.uno_stacking ?? false,
+    zeroSeven: game.uno_zero_seven ?? false,
+    unoPenalty: game.uno_uno_penalty === 4 ? 4 : 2,
   }))
   const [variant, setVariant] = useState<BoardVariantState>(() => ({
     timerSeconds: game.timer_seconds ?? 0,
@@ -374,6 +393,10 @@ export function HostLobbySettingsSheet({
     timerSeconds: game.timer_seconds ?? 0,
     ruleset: game.mahjong_ruleset ?? 'fate_round',
     ruleOptions: parseMahjongRuleOptions(game.mahjong_rule_options),
+  }))
+  const [checkers, setCheckers] = useState<CheckersLobbyState>(() => ({
+    timerSeconds: game.timer_seconds ?? 0,
+    checkersNigeriaStreetRules: game.checkers_nigeria_street_rules === true,
   }))
   const [quickDraw, setQuickDraw] = useState<QuickDrawLobbyState>(() => ({
     variant: game.quick_draw_variant === 'guess' ? 'guess' : 'lie',
@@ -511,11 +534,24 @@ export function HostLobbySettingsSheet({
           board.crazy8_pick2_stacking = card.crazy8Pick2Stacking
       }
     }
+    if (isUno) {
+      if (uno.timerSeconds !== game.timer_seconds) board.timer_seconds = uno.timerSeconds
+      if (uno.gameDurationSeconds !== game.game_duration_seconds) board.game_duration_seconds = uno.gameDurationSeconds
+      if (uno.wd4Challenge !== game.uno_wd4_challenge) board.uno_wd4_challenge = uno.wd4Challenge
+      if (uno.stacking !== game.uno_stacking) board.uno_stacking = uno.stacking
+      if (uno.zeroSeven !== game.uno_zero_seven) board.uno_zero_seven = uno.zeroSeven
+      if (uno.unoPenalty !== game.uno_uno_penalty) board.uno_uno_penalty = uno.unoPenalty
+    }
     if (isMahjong) {
       if (mahjong.timerSeconds !== game.timer_seconds) board.timer_seconds = mahjong.timerSeconds
       if (mahjong.ruleset !== game.mahjong_ruleset) board.mahjong_ruleset = mahjong.ruleset
       if (JSON.stringify(mahjong.ruleOptions) !== JSON.stringify(game.mahjong_rule_options ?? null))
         board.mahjong_rule_options = mahjong.ruleOptions
+    }
+    if (isCheckers) {
+      if (checkers.timerSeconds !== game.timer_seconds) board.timer_seconds = checkers.timerSeconds
+      if (gameType === 'checkers_nigeria' && checkers.checkersNigeriaStreetRules !== game.checkers_nigeria_street_rules)
+        board.checkers_nigeria_street_rules = checkers.checkersNigeriaStreetRules
     }
     if (isQuickDraw) {
       if (quickDraw.variant !== game.quick_draw_variant) board.quick_draw_variant = quickDraw.variant
@@ -802,6 +838,8 @@ export function HostLobbySettingsSheet({
               />
             ) : null}
 
+            {isUno ? <UnoRulesSection value={uno} onChange={(p) => setUno((prev) => ({ ...prev, ...p }))} /> : null}
+
             {isVariantGame ? (
               <BoardVariantSection
                 gameType={gameType}
@@ -858,6 +896,14 @@ export function HostLobbySettingsSheet({
 
             {isMahjong ? (
               <MahjongLobbySection value={mahjong} onChange={(p) => setMahjong((prev) => ({ ...prev, ...p }))} />
+            ) : null}
+
+            {isCheckers ? (
+              <CheckersLobbySection
+                gameType={gameType}
+                value={checkers}
+                onChange={(p) => setCheckers((prev) => ({ ...prev, ...p }))}
+              />
             ) : null}
 
             {isTeamRound ? (

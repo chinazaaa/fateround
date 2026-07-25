@@ -27,6 +27,7 @@ export const BATCH_19_BOARD_GAMES: GameType[] = [
   'ayo',
   'whot',
   'crazy_eights',
+  'uno',
   'scrabble',
   'mahjong',
   'monopoly',
@@ -46,10 +47,18 @@ export type GameRoomSettings = {
   crazy8ActionCards: boolean
   crazy8Jokers: boolean
   crazy8Pick2Stacking: boolean
+  /** Core UNO toggles (Phase 1). Multi-Play/Team-Up/Jump-In exist on the games row but
+   *  have no create-flow control yet — see docs/mobile-web-parity-plan.md. */
+  unoWd4Challenge: boolean
+  unoUnoPenalty: number
+  unoZeroSeven: boolean
+  unoStacking: boolean
   scrabbleDictionaryId: ScrabbleDictionaryId
   scrabbleClockMode: ScrabbleClockMode
   scrabbleClockSeconds: number
   mahjongRuleset: MahjongRuleset
+  /** Nigerian Draughts only — opt-in "Street Rules" (huffing) house rule. Off by default. */
+  checkersNigeriaStreetRules: boolean
 }
 
 export function defaultGameRoomSettings(gameType: GameType): GameRoomSettings {
@@ -72,10 +81,15 @@ export function defaultGameRoomSettings(gameType: GameType): GameRoomSettings {
     crazy8ActionCards: true,
     crazy8Jokers: false,
     crazy8Pick2Stacking: true,
+    unoWd4Challenge: true,
+    unoUnoPenalty: 2,
+    unoZeroSeven: false,
+    unoStacking: false,
     scrabbleDictionaryId: SCRABBLE_DEFAULT_DICTIONARY,
     scrabbleClockMode: 'standard',
     scrabbleClockSeconds: 600,
     mahjongRuleset: DEFAULT_MAHJONG_RULESET,
+    checkersNigeriaStreetRules: false,
   }
 }
 
@@ -90,6 +104,7 @@ export function boardGameTimerKey(
   | 'yahtzee'
   | 'whot'
   | 'crazy_eights'
+  | 'uno'
   | 'ludo'
   | 'mahjong'
   | 'snake_and_ladder'
@@ -109,6 +124,7 @@ export function boardGameTimerKey(
   if (gameType === 'ayo') return 'ayo'
   if (gameType === 'whot') return 'whot'
   if (gameType === 'crazy_eights') return 'crazy_eights'
+  if (gameType === 'uno') return 'uno'
   if (gameType === 'scrabble') return 'scrabble'
   if (gameType === 'mahjong') return 'mahjong'
   if (gameType === 'monopoly') return 'monopoly'
@@ -139,6 +155,9 @@ export function gameRoomSettingsPayload(gameType: GameType, room: GameRoomSettin
 
   if (gameType === 'checkers' || gameType === 'checkers_international' || gameType === 'checkers_nigeria') {
     payload.timer_seconds = room.timerSeconds
+    if (gameType === 'checkers_nigeria') {
+      payload.checkers_nigeria_street_rules = room.checkersNigeriaStreetRules
+    }
     return payload
   }
 
@@ -158,6 +177,16 @@ export function gameRoomSettingsPayload(gameType: GameType, room: GameRoomSettin
     payload.crazy8_action_cards = room.crazy8ActionCards
     payload.crazy8_jokers = room.crazy8Jokers
     payload.crazy8_pick2_stacking = room.crazy8Pick2Stacking
+    return payload
+  }
+
+  if (gameType === 'uno') {
+    payload.timer_seconds = room.timerSeconds
+    payload.game_duration_seconds = room.gameDurationSeconds
+    payload.uno_wd4_challenge = room.unoWd4Challenge
+    payload.uno_uno_penalty = room.unoUnoPenalty
+    payload.uno_zero_seven = room.unoZeroSeven
+    payload.uno_stacking = room.unoStacking
     return payload
   }
 
