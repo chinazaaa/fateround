@@ -1,13 +1,21 @@
 import { StyleSheet, Text, View } from 'react-native'
 import type { GameType } from '@fateround/shared'
 import { SettingToggle } from '@/components/create/SettingToggle'
+import { TimerPicker } from '@/components/create/TimerPicker'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
+
+const AUCTION_TIMER_OPTIONS = [5, 10, 15, 20, 30, 45, 60] as const
+
+function formatAuctionTimer(seconds: number): string {
+  return `${seconds}s`
+}
 
 /** Editable Monopoly house-rules — routed via lobby-settings. */
 export type MonopolyLobbyState = {
   doubleGoSalary: boolean
   forcedAuctions: boolean
+  auctionTimerSeconds: number
   noRentInJail: boolean
 }
 
@@ -25,6 +33,13 @@ export function MonopolyLobbySection({
   const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.wrap}>
+      <TimerPicker
+        label="Auction timer"
+        value={value.auctionTimerSeconds}
+        options={AUCTION_TIMER_OPTIONS}
+        format={formatAuctionTimer}
+        onChange={(auctionTimerSeconds) => onChange({ auctionTimerSeconds })}
+      />
       <Text style={styles.label}>House rules</Text>
       <View style={styles.toggles}>
         <SettingToggle

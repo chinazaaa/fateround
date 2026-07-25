@@ -118,6 +118,7 @@ export interface Game {
   mafia_anonymous_votes?: boolean | null
   monopoly_double_go_salary?: boolean | null
   monopoly_forced_auctions?: boolean | null
+  monopoly_auction_timer_seconds?: number | null
   monopoly_no_rent_in_jail?: boolean | null
   monopoly_estate_dividend?: boolean | null
   quick_draw_variant?: QuickDrawVariant | null
