@@ -79,7 +79,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         .eq('game_id', gameId)
         .order('joined_at', { ascending: true }),
       admin.from('mafia_sessions').select('*').eq('game_id', gameId).maybeSingle(),
-      admin.from('mafia_player_states').select('*').eq('game_id', gameId).order('created_at', { ascending: true }),
+      admin.from('mafia_player_states').select('*').eq('game_id', gameId).order('seat_number', { ascending: true }),
     ])
 
   if (!game) {
@@ -131,13 +131,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   // 2. Map players to public information
   const playersMap = new Map(playersData?.map((p) => [p.id, p]) ?? [])
-  const publicPlayers: MafiaPublicPlayer[] = playerStates.map((ps, index) => {
+  const publicPlayers: MafiaPublicPlayer[] = playerStates.map((ps) => {
     const p = playersMap.get(ps.player_id)
     const isGameOver = session.phase === 'game_over'
     const revealRole = !ps.is_alive || isGameOver
     return {
       id: ps.player_id,
-      seatNumber: index + 1,
+      seatNumber: ps.seat_number,
       name: p?.name ?? 'Unknown',
       isAlive: ps.is_alive,
       deathDay: ps.death_day,

@@ -592,6 +592,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
             voteChoices={voteChoices}
             onSelect={gridOnSelect}
             selectedIds={gridSelectedIds}
+            onSkipVote={amIAlive && !amISpectator ? () => void submitDayVote(null) : undefined}
+            skipDisabled={acting}
           />
 
           {(phase === 'role_reveal' || phase === 'night' || (phase === 'voting' && amIAlive && !amISpectator)) && (
@@ -606,7 +608,6 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               onIgnite={() => {
                 if (myPlayerId) void submitNightAction(myPlayerId)
               }}
-              onSkipVote={() => void submitDayVote(null)}
             />
           )}
 

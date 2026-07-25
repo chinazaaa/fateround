@@ -83,7 +83,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .eq('game_id', gameId)
       .order('joined_at', { ascending: true }),
     admin.from('mafia_sessions').select('*').eq('game_id', gameId).maybeSingle(),
-    admin.from('mafia_player_states').select('*').eq('game_id', gameId).order('created_at', { ascending: true }),
+    admin.from('mafia_player_states').select('*').eq('game_id', gameId).order('seat_number', { ascending: true }),
   ])
 
   if (!mafiaSession || !mafiaPlayerStates) {
@@ -133,11 +133,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   // Combine player info with their mafia states
   const playersMap = new Map(playersData?.map((p) => [p.id, p]) ?? [])
-  const hostPlayers = playerStates.map((ps, index) => {
+  const hostPlayers = playerStates.map((ps) => {
     const p = playersMap.get(ps.player_id)
     return {
       id: ps.player_id,
-      seatNumber: index + 1,
+      seatNumber: ps.seat_number,
       name: p?.name ?? 'Unknown',
       isAlive: ps.is_alive,
       role: ps.role,

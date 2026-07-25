@@ -20,6 +20,9 @@ interface MafiaPlayersGridProps {
   /** Currently chosen target(s) — highlighted so the player can see (and change) their pick
    *  before the phase ends. Cupid's two-step pick can hold up to two ids. */
   selectedIds?: string[]
+  /** Shows a "Skip" button in the header next to "tap to vote", when voting is active. */
+  onSkipVote?: () => void
+  skipDisabled?: boolean
 }
 
 const TEAM_TEXT: Record<string, string> = {
@@ -44,13 +47,26 @@ export function MafiaPlayersGrid({
   voteChoices = {},
   onSelect,
   selectedIds = [],
+  onSkipVote,
+  skipDisabled,
 }: MafiaPlayersGridProps) {
   const seatNumberById = new Map(players.map((p) => [p.id, p.seatNumber]))
+  const headerSuffix = phase === 'voting' ? ' · tap to vote' : onSelect ? ' · tap to select' : ''
   return (
     <div className="glass-card border border-[var(--border)] rounded-2xl p-5">
-      <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)] mb-3">
-        Players{onSelect ? ' · tap to select' : ''}
-      </h3>
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">Players{headerSuffix}</h3>
+        {phase === 'voting' && onSkipVote && (
+          <button
+            type="button"
+            disabled={skipDisabled}
+            onClick={onSkipVote}
+            className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)] hover:text-[var(--foreground)] border border-[var(--border)] hover:border-[var(--primary)] rounded-full px-2.5 py-1 transition bg-[var(--surface-inset-bg)]"
+          >
+            ⏭ Skip
+          </button>
+        )}
+      </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {players.map((p) => {
           const isMe = p.id === myPlayerId

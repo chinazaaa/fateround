@@ -395,12 +395,24 @@ export async function initializeMafiaGame(
   // 2. Assign roles
   const roleAssignments = assignMafiaRoles(playerIds, toggles, resolvedMafiaCount)
 
+  // Seat numbers must be a fixed, permanent order (the player who was #1 stays #1 all game),
+  // so they're assigned here once from real join order — not derived later from query order,
+  // since mafia_player_states rows are all inserted in one statement and so share an identical
+  // created_at, making that order (and any index-derived number) unstable between requests.
+  const { data: joinOrderPlayers } = await admin
+    .from('players')
+    .select('id')
+    .eq('game_id', gameId)
+    .order('joined_at', { ascending: true })
+  const seatNumberByPlayerId = new Map((joinOrderPlayers ?? []).map((p, index) => [p.id, index + 1]))
+
   // 3. Create player states
-  const playerStateRows = playerIds.map((pid) => ({
+  const playerStateRows = playerIds.map((pid, index) => ({
     game_id: gameId,
     player_id: pid,
     role: roleAssignments[pid],
     is_alive: true,
+    seat_number: seatNumberByPlayerId.get(pid) ?? index + 1,
   }))
 
   const { error: playerStateError } = await admin.from('mafia_player_states').insert(playerStateRows)

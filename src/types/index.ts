@@ -1931,6 +1931,7 @@ export interface MafiaPlayerState {
   vigilante_shots_used: number
   is_lover: boolean
   lover_partner_player_id: string | null
+  seat_number: number
   created_at: string
   updated_at: string
 }

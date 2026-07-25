@@ -49,6 +49,7 @@ function makeState(overrides: Partial<MafiaPlayerState>): MafiaPlayerState {
     vigilante_shots_used: 0,
     is_lover: false,
     lover_partner_player_id: null,
+    seat_number: 0,
     created_at: '',
     updated_at: '',
     ...overrides,

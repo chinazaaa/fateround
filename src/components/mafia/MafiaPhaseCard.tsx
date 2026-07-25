@@ -25,7 +25,6 @@ interface MafiaPhaseCardProps {
   acting: boolean
   cupidFirstPickName: string | null
   onIgnite: () => void
-  onSkipVote: () => void
 }
 
 /**
@@ -44,7 +43,6 @@ export function MafiaPhaseCard({
   acting,
   cupidFirstPickName,
   onIgnite,
-  onSkipVote,
 }: MafiaPhaseCardProps) {
   const myRole = myState?.role
 
@@ -120,22 +118,12 @@ export function MafiaPhaseCard({
     )
   }
 
-  if (phase === 'voting' && amIAlive && !amISpectator) {
+  if (phase === 'voting' && amIAlive && !amISpectator && myState?.dayVoteSubmitted) {
     return (
-      <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-2">
-        <p className="text-sm text-[var(--muted)]">Tap a player below to vote for them.</p>
-        {myState?.dayVoteSubmitted && (
-          <p className="text-xs text-emerald-400 font-semibold">
-            ✓ Vote cast{myRole === 'mayor' ? ' (counts double)' : ''}. Tap a different player to change it.
-          </p>
-        )}
-        <button
-          disabled={acting}
-          onClick={onSkipVote}
-          className="w-full py-2 text-sm text-[var(--muted)] hover:text-[var(--foreground)] border border-[var(--border)] hover:border-[var(--primary)] rounded-xl transition bg-[var(--surface-inset-bg)]"
-        >
-          ⏭ Skip / No Lynch
-        </button>
+      <div className="glass-card border border-[var(--border)] rounded-2xl p-4">
+        <p className="text-xs text-emerald-400 font-semibold">
+          ✓ Vote cast{myRole === 'mayor' ? ' (counts double)' : ''}. Tap a different player to change it.
+        </p>
       </div>
     )
   }
