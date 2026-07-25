@@ -340,6 +340,9 @@ export interface Game {
   /** Mafia-team Seer toggle — full role reveal, can resign into Regular Mafia. */
   mafia_mafia_seer_enabled?: boolean
   mafia_anonymous_votes?: boolean
+  /** Single Classic/Advanced switch — replaces individually toggling most optional roles.
+   *  See resolveMafiaRoundToggles() in src/lib/mafia.ts for exactly what this changes. */
+  mafia_advanced_mode?: boolean
   mafia_count?: number | null
   /** player_id -> role from the last round played in this room — used to bias the next role
    *  assignment away from repeating anyone's exact same role on Play Again. */

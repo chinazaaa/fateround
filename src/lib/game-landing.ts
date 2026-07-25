@@ -2927,7 +2927,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'What are the roles in the game?',
         answer:
-          'There are 24 roles across four teams. Village: Villager, Doctor, Aura Seer, Bodyguard, Mayor, Vigilante, Tracker, Medium, Priest, Witch, Little Girl, Trapper, Detective, Seer. Mafia: Mafia, Alpha Mafia, Junior Mafia, Framer, Mafia Seer. Solo: Jester, Serial Killer, Arsonist. Special: Cupid, Cursed Villager. The host picks which roles to include.',
+          'There are 24 roles across four teams. Village: Villager, Doctor, Aura Seer, Bodyguard, Mayor, Vigilante, Tracker, Medium, Priest, Witch, Little Girl, Trapper, Detective, Seer. Mafia: Mafia, Alpha Mafia, Junior Mafia, Framer, Mafia Seer. Solo: Jester, Serial Killer, Arsonist. Special: Cupid, Cursed Villager. Most roles are picked automatically each game — the host only flips one Classic/Advanced switch, which swaps Bodyguard/Serial Killer/Priest for Trapper/Arsonist/Vigilante (plus Witch and Little Girl join the mix).',
       },
       {
         question: 'Can the Doctor protect themselves?',

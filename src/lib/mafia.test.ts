@@ -7,6 +7,7 @@ import {
   checkJesterWin,
   checkLoversWin,
   auraSeerAlignment,
+  resolveMafiaRoundToggles,
   type MafiaRoleToggles,
 } from '@/lib/mafia'
 import type { MafiaPlayerState, MafiaSession, MafiaRole } from '@/types'
@@ -105,6 +106,71 @@ const NIGHT_SESSION_BASE: Pick<
   mafia_seer_enabled: true,
   wolf_cub_revenge_pending: false,
 }
+
+describe('resolveMafiaRoundToggles', () => {
+  it('always includes the fixed core roles', () => {
+    for (const advanced of [false, true]) {
+      const toggles = resolveMafiaRoundToggles(advanced)
+      expect(toggles.doctor_enabled).toBe(true)
+      expect(toggles.mayor_enabled).toBe(true)
+      expect(toggles.cupid_enabled).toBe(true)
+      expect(toggles.cursed_villager_enabled).toBe(true)
+      expect(toggles.jester_enabled).toBe(true)
+      expect(toggles.medium_enabled).toBe(true)
+      expect(toggles.mafia_seer_enabled).toBe(true)
+    }
+  })
+
+  it('never enables all three investigators at once, always exactly two', () => {
+    for (let i = 0; i < 25; i++) {
+      const toggles = resolveMafiaRoundToggles(false)
+      const investigatorCount = [toggles.aura_seer_enabled, toggles.seer_enabled, toggles.detective_enabled].filter(
+        Boolean
+      ).length
+      expect(investigatorCount).toBe(2)
+    }
+  })
+
+  it('swaps Bodyguard/Serial Killer/Priest for Trapper/Arsonist/Vigilante in Advanced mode', () => {
+    const classic = resolveMafiaRoundToggles(false)
+    expect(classic.bodyguard_enabled).toBe(true)
+    expect(classic.trapper_enabled).toBe(false)
+    expect(classic.serial_killer_enabled).toBe(true)
+    expect(classic.arsonist_enabled).toBe(false)
+    expect(classic.priest_enabled).toBe(true)
+    expect(classic.vigilante_enabled).toBe(false)
+    expect(classic.witch_enabled).toBe(false)
+    expect(classic.little_girl_enabled).toBe(false)
+
+    const advanced = resolveMafiaRoundToggles(true)
+    expect(advanced.bodyguard_enabled).toBe(false)
+    expect(advanced.trapper_enabled).toBe(true)
+    expect(advanced.serial_killer_enabled).toBe(false)
+    expect(advanced.arsonist_enabled).toBe(true)
+    expect(advanced.priest_enabled).toBe(false)
+    expect(advanced.vigilante_enabled).toBe(true)
+    expect(advanced.witch_enabled).toBe(true)
+    expect(advanced.little_girl_enabled).toBe(true)
+  })
+
+  it('Detective becomes Tracker in Advanced mode, never both, and still exactly 2 investigators', () => {
+    for (let i = 0; i < 25; i++) {
+      const toggles = resolveMafiaRoundToggles(true)
+      expect(toggles.detective_enabled).toBe(false)
+      const investigatorSlotCount = [toggles.aura_seer_enabled, toggles.seer_enabled, toggles.tracker_enabled].filter(
+        Boolean
+      ).length
+      expect(investigatorSlotCount).toBe(2)
+    }
+  })
+
+  it('never enables both Wolf Cub and Framer in the same game', () => {
+    for (let i = 0; i < 25; i++) {
+      const toggles = resolveMafiaRoundToggles(false)
+      expect(toggles.wolf_cub_enabled && toggles.framer_enabled).toBe(false)
+    }
+  })
+})
 
 describe('assignMafiaRoles', () => {
   it('fills all 24 roles when everything is enabled and slots allow', () => {

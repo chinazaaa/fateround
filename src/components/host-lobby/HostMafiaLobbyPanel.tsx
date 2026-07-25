@@ -15,88 +15,10 @@ const MAFIA_NIGHT_TIMER_OPTIONS = [30, 45, 60, 90, 120, 180] as const
 const MAFIA_DAY_TIMER_OPTIONS = [45, 60, 90, 120, 180, 300] as const
 const MAFIA_VOTING_TIMER_OPTIONS = [20, 30, 45, 60, 90] as const
 
-// Mafia's 12 optional roles (on top of Villager/Mafia/Doctor/Detective). Classic uses the
-// full 16-role roster (all of these default ON); Advanced reveals this checklist so a host
-// can hand-pick a smaller/different mix instead of the full set.
-const ADVANCED_ROLE_FIELDS = [
-  'mafia_bodyguard_enabled',
-  'mafia_mayor_enabled',
-  'mafia_vigilante_enabled',
-  'mafia_tracker_enabled',
-  'mafia_alpha_wolf_enabled',
-  'mafia_wolf_cub_enabled',
-  'mafia_framer_enabled',
-  'mafia_jester_enabled',
-  'mafia_serial_killer_enabled',
-  'mafia_arsonist_enabled',
-  'mafia_cupid_enabled',
-  'mafia_cursed_villager_enabled',
-  'mafia_medium_enabled',
-  'mafia_priest_enabled',
-  'mafia_witch_enabled',
-  'mafia_little_girl_enabled',
-  'mafia_trapper_enabled',
-  'mafia_seer_enabled',
-  'mafia_mafia_seer_enabled',
-] as const satisfies readonly (keyof Game)[]
-
-const ADVANCED_ROLE_LABELS: Record<(typeof ADVANCED_ROLE_FIELDS)[number], { label: string; description: string }> = {
-  mafia_bodyguard_enabled: { label: 'Bodyguard', description: 'Protects one player; dies in their place if attacked' },
-  mafia_mayor_enabled: { label: 'Mayor', description: 'Day vote counts double' },
-  mafia_vigilante_enabled: { label: 'Vigilante', description: 'Day shoot or reveal (each once)' },
-  mafia_tracker_enabled: { label: 'Tracker', description: 'Learns who their target visited' },
-  mafia_alpha_wolf_enabled: {
-    label: 'Alpha Mafia',
-    description: 'Kill vote counts double; can chat with the crew by day too',
-  },
-  mafia_wolf_cub_enabled: {
-    label: 'Junior Mafia',
-    description: 'Mafia gets a bonus kill next night if this role dies',
-  },
-  mafia_framer_enabled: {
-    label: 'Framer',
-    description: 'Frames a player so the Aura Seer and Detective read them as Mafia',
-  },
-  mafia_jester_enabled: { label: 'Jester', description: 'Wins alone if lynched' },
-  mafia_serial_killer_enabled: { label: 'Serial Killer', description: 'Kills alone, wins as last one standing' },
-  mafia_arsonist_enabled: {
-    label: 'Arsonist',
-    description: 'Douses 2 per night, ignites to kill all doused; immune to Mafia',
-  },
-  mafia_cupid_enabled: { label: 'Cupid', description: 'Links two players as Lovers on night one' },
-  mafia_cursed_villager_enabled: {
-    label: 'Cursed Villager',
-    description: 'Converts to Mafia instead of dying if targeted',
-  },
-  mafia_medium_enabled: {
-    label: 'Medium',
-    description: 'Reads ghost chat at night, one-time revive',
-  },
-  mafia_priest_enabled: {
-    label: 'Priest',
-    description: 'Once per day, throw holy water — kills Mafia, or self-destructs',
-  },
-  mafia_witch_enabled: {
-    label: 'Witch',
-    description: 'Protect potion (free unless it saves someone) + kill potion (once, not night 1)',
-  },
-  mafia_little_girl_enabled: {
-    label: 'Little Girl',
-    description: 'Opens her eyes to spy: 75% nothing, 20% IDs a Mafia, 5% she dies',
-  },
-  mafia_trapper_enabled: {
-    label: 'Trapper',
-    description: 'Sets up to 3 traps, then activates them to block a Mafia kill and take out their weakest member',
-  },
-  mafia_seer_enabled: {
-    label: 'Seer',
-    description: 'Each night, reveals a player’s exact role (Village)',
-  },
-  mafia_mafia_seer_enabled: {
-    label: 'Mafia Seer',
-    description: 'Reveals roles for the Mafia; can resign to gain the kill vote instead',
-  },
-}
+// Role selection is fully automatic (see resolveMafiaRoundToggles in @/lib/mafia): a fixed
+// core is always in, the investigator trio (Aura Seer/Seer/Detective) and Mafia specialist
+// pool rotate every game, and this single switch swaps three Classic roles for their Advanced
+// counterpart — no more picking each role on/off individually.
 
 type Props = {
   gameCode: string
@@ -124,7 +46,7 @@ export function HostMafiaLobbyPanel({ gameCode, hostToken, game, playerCount, on
   const [nightTimer, setNightTimer] = useState(60)
   const [dayTimer, setDayTimer] = useState(90)
   const [votingTimer, setVotingTimer] = useState(45)
-  const [showCustomize, setShowCustomize] = useState(false)
+  const [advancedMode, setAdvancedMode] = useState(false)
   const [anonymousVotes, setAnonymousVotes] = useState(false)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -145,6 +67,7 @@ export function HostMafiaLobbyPanel({ gameCode, hostToken, game, playerCount, on
     setDayTimer(game.mafia_day_seconds ?? 90)
     setVotingTimer(game.mafia_voting_seconds ?? 45)
     setAnonymousVotes(game.mafia_anonymous_votes === true)
+    setAdvancedMode(game.mafia_advanced_mode === true)
   }, [game, limits])
 
   useEffect(() => {
@@ -156,10 +79,6 @@ export function HostMafiaLobbyPanel({ gameCode, hostToken, game, playerCount, on
   const limitCfg = limits?.mafia
   const minPlayers = limitCfg?.min ?? 5
   const maxCap = limitCfg?.max ?? 20
-
-  // Customized iff the host has turned at least one of the 12 optional roles off from the
-  // full Classic roster (the DB column default is true, so undefined/true = still on).
-  const isCustomized = ADVANCED_ROLE_FIELDS.some((field) => game[field] === false)
 
   const markSaved = useCallback(() => {
     setSaveState('saved')
@@ -212,15 +131,9 @@ export function HostMafiaLobbyPanel({ gameCode, hostToken, game, playerCount, on
     void patchSettings({ mafia_voting_seconds: next })
   }
 
-  const onResetToClassic = () => {
-    setShowCustomize(false)
-    const patch: Record<string, boolean> = {}
-    for (const field of ADVANCED_ROLE_FIELDS) patch[field] = true
-    void patchSettings(patch)
-  }
-
-  const onRoleFieldChange = (field: (typeof ADVANCED_ROLE_FIELDS)[number], next: boolean) => {
-    void patchSettings({ [field]: next })
+  const onAdvancedModeChange = (next: boolean) => {
+    setAdvancedMode(next)
+    void patchSettings({ mafia_advanced_mode: next })
   }
 
   const onAnonymousVotesChange = (next: boolean) => {
@@ -278,9 +191,9 @@ export function HostMafiaLobbyPanel({ gameCode, hostToken, game, playerCount, on
           <div className="flex gap-1.5">
             <button
               type="button"
-              onClick={onResetToClassic}
+              onClick={() => onAdvancedModeChange(false)}
               className={`px-2.5 py-1.5 rounded-full text-xs font-semibold border transition ${
-                !showCustomize && !isCustomized
+                !advancedMode
                   ? 'bg-[var(--primary)] text-white border-[var(--primary)]'
                   : 'border-[var(--border)] text-muted'
               }`}
@@ -289,9 +202,9 @@ export function HostMafiaLobbyPanel({ gameCode, hostToken, game, playerCount, on
             </button>
             <button
               type="button"
-              onClick={() => setShowCustomize(true)}
+              onClick={() => onAdvancedModeChange(true)}
               className={`px-2.5 py-1.5 rounded-full text-xs font-semibold border transition ${
-                showCustomize || isCustomized
+                advancedMode
                   ? 'bg-[var(--primary)] text-white border-[var(--primary)]'
                   : 'border-[var(--border)] text-muted'
               }`}
@@ -300,26 +213,14 @@ export function HostMafiaLobbyPanel({ gameCode, hostToken, game, playerCount, on
             </button>
           </div>
           <p className="text-xs text-muted">
-            {showCustomize || isCustomized
-              ? 'Pick exactly which of the 24 roles are in play.'
-              : 'The full 17-role roster — Villager, Mafia, Doctor, Detective, plus 13 more mixed in when there are enough player slots.'}
+            {advancedMode
+              ? 'Trapper, Arsonist, and Vigilante replace Bodyguard, Serial Killer, and Priest — Witch and Little Girl join the mix too.'
+              : 'The classic power roles: Bodyguard, Serial Killer, and Priest.'}
           </p>
-          {(showCustomize || isCustomized) && (
-            <div className="space-y-2 pt-1">
-              {ADVANCED_ROLE_FIELDS.map((field) => {
-                const info = ADVANCED_ROLE_LABELS[field]
-                return (
-                  <Toggle
-                    key={field}
-                    label={info.label}
-                    description={info.description}
-                    value={game[field] !== false}
-                    onChange={(v) => onRoleFieldChange(field, v)}
-                  />
-                )
-              })}
-            </div>
-          )}
+          <p className="text-xs text-muted">
+            Everything else is automatic — Aura Seer/Seer/Detective rotate (only 2 of the 3 each game), and the Mafia's
+            specialist lineup varies too.
+          </p>
         </div>
       </HostLobbySettingBlock>
 

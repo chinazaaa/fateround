@@ -132,11 +132,8 @@ const FIELD_LABELS: Record<string, string> = {
   codewords_randomize_teams: 'Randomize teams',
   landmine_originality: 'Originality bonus',
   landmine_review: 'Review before reveal',
-  mafia_doctor_enabled: 'Doctor role',
-  mafia_detective_enabled: 'Detective role',
-  mafia_aura_seer_enabled: 'Aura Seer role',
+  mafia_advanced_mode: 'Advanced roles',
   mafia_anonymous_votes: 'Anonymous votes',
-  mafia_role_set: 'Advanced roles',
   elimination_enabled: 'Elimination',
 }
 
@@ -172,11 +169,8 @@ const FIELD_DEFAULTS: Record<string, unknown> = {
   codewords_player_picks: true,
   landmine_originality: true,
   landmine_review: true,
-  mafia_doctor_enabled: true,
-  mafia_detective_enabled: true,
-  mafia_aura_seer_enabled: true,
   mafia_anonymous_votes: true,
-  mafia_role_set: false,
+  mafia_advanced_mode: false,
 }
 
 const UNO_MULTI_PLAY_LABELS: Record<string, string> = {

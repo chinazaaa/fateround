@@ -172,6 +172,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mafia_cupid_enabled,
     mafia_cursed_villager_enabled,
     mafia_anonymous_votes,
+    mafia_advanced_mode,
     mafia_day_seconds,
     mafia_voting_seconds,
     operative_timer_seconds,
@@ -245,6 +246,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mafia_cupid_enabled === undefined &&
     mafia_cursed_villager_enabled === undefined &&
     mafia_anonymous_votes === undefined &&
+    mafia_advanced_mode === undefined &&
     mafia_day_seconds === undefined &&
     mafia_voting_seconds === undefined &&
     operative_timer_seconds === undefined &&
@@ -651,6 +653,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.mafia_cursed_villager_enabled = mafia_cursed_villager_enabled
     }
     if (mafia_anonymous_votes !== undefined) gameUpdate.mafia_anonymous_votes = mafia_anonymous_votes
+    if (mafia_advanced_mode !== undefined) gameUpdate.mafia_advanced_mode = mafia_advanced_mode
     if (mafia_day_seconds !== undefined) gameUpdate.mafia_day_seconds = mafia_day_seconds
     if (mafia_voting_seconds !== undefined) gameUpdate.mafia_voting_seconds = mafia_voting_seconds
   } else if (
@@ -677,6 +680,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mafia_cupid_enabled !== undefined ||
     mafia_cursed_villager_enabled !== undefined ||
     mafia_anonymous_votes !== undefined ||
+    mafia_advanced_mode !== undefined ||
     mafia_day_seconds !== undefined ||
     mafia_voting_seconds !== undefined
   ) {

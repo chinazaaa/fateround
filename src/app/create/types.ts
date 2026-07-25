@@ -55,6 +55,7 @@ export interface Settings {
   mafia_arsonist_enabled?: boolean
   mafia_cupid_enabled?: boolean
   mafia_cursed_villager_enabled?: boolean
+  mafia_advanced_mode?: boolean
   mafia_anonymous_votes?: boolean
   mafia_day_seconds?: number
   mafia_voting_seconds?: number

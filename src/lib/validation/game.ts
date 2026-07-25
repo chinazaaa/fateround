@@ -178,6 +178,7 @@ export const createGameSchema = z.object({
   mafia_seer_enabled: z.boolean().optional(),
   mafia_mafia_seer_enabled: z.boolean().optional(),
   mafia_anonymous_votes: z.boolean().optional(),
+  mafia_advanced_mode: z.boolean().optional(),
   mafia_day_seconds: z.coerce.number().int().min(10).max(600).optional(),
   mafia_voting_seconds: z.coerce.number().int().min(10).max(600).optional(),
   ping_pong_points_to_win: z.coerce
@@ -390,6 +391,7 @@ export const boardGameLobbySettingsSchema = z.object({
   mafia_seer_enabled: z.boolean().optional(),
   mafia_mafia_seer_enabled: z.boolean().optional(),
   mafia_anonymous_votes: z.boolean().optional(),
+  mafia_advanced_mode: z.boolean().optional(),
   mafia_day_seconds: z.coerce.number().int().min(10).max(600).optional(),
   mafia_voting_seconds: z.coerce.number().int().min(10).max(600).optional(),
   operative_timer_seconds: z.coerce.number().optional(),

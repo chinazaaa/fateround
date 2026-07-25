@@ -66,6 +66,54 @@ export type MafiaRoleToggles = MafiaRoleEnabledFlags
  * roles are additive: pushed onto the role pool only if a slot remains, same pattern
  * as the original Doctor/Detective toggles. Remaining slots are filled with Villager.
  */
+/**
+ * Computes this round's per-role toggles automatically — replaces the old long checklist of
+ * individual host toggles with a single Classic/Advanced switch plus built-in variety:
+ *
+ * - A fixed set of roles is always in: Doctor, Mayor, Cupid, Cursed Villager, Jester, Medium,
+ *   Mafia Seer (no toggle, no rotation).
+ * - The investigator trio (Aura Seer, Seer, Detective) never all appear together — exactly 2
+ *   of the 3 are picked at random each game.
+ * - Classic/Advanced swap pairs: Bodyguard↔Trapper, Serial Killer↔Arsonist, Priest↔Vigilante.
+ *   Detective, if it wins the investigator slot, becomes Tracker in Advanced mode.
+ * - Witch and Little Girl have no Classic counterpart — only available in Advanced mode.
+ * - Mafia specialists: Alpha Wolf is independently ~70% likely (still needs mafiaCount >= 2 to
+ *   actually apply); Wolf Cub and Framer are mutually exclusive, never both in the same game.
+ */
+export function resolveMafiaRoundToggles(advancedMode: boolean): MafiaRoleToggles {
+  const investigators: MafiaRole[] = ['aura_seer', 'seer', 'detective']
+  const excludedInvestigator = investigators[Math.floor(Math.random() * investigators.length)]
+  const hasInvestigator = (role: MafiaRole) => role !== excludedInvestigator
+
+  const alphaWolfIn = Math.random() < 0.7
+  const wolfCubOrFramer: MafiaRole = Math.random() < 0.5 ? 'wolf_cub' : 'framer'
+
+  return {
+    doctor_enabled: true,
+    mayor_enabled: true,
+    cupid_enabled: true,
+    cursed_villager_enabled: true,
+    jester_enabled: true,
+    medium_enabled: true,
+    mafia_seer_enabled: true,
+    aura_seer_enabled: hasInvestigator('aura_seer'),
+    seer_enabled: hasInvestigator('seer'),
+    detective_enabled: hasInvestigator('detective') && !advancedMode,
+    tracker_enabled: hasInvestigator('detective') && advancedMode,
+    bodyguard_enabled: !advancedMode,
+    trapper_enabled: advancedMode,
+    serial_killer_enabled: !advancedMode,
+    arsonist_enabled: advancedMode,
+    priest_enabled: !advancedMode,
+    vigilante_enabled: advancedMode,
+    witch_enabled: advancedMode,
+    little_girl_enabled: advancedMode,
+    alpha_wolf_enabled: alphaWolfIn,
+    wolf_cub_enabled: wolfCubOrFramer === 'wolf_cub',
+    framer_enabled: wolfCubOrFramer === 'framer',
+  }
+}
+
 export function assignMafiaRoles(
   playerIds: string[],
   toggles: MafiaRoleToggles,
@@ -576,9 +624,7 @@ export async function initializeMafiaGame(
   // 1. Fetch game config
   const { data: gameData, error: gameError } = await admin
     .from('games')
-    .select(
-      'mafia_doctor_enabled, mafia_detective_enabled, mafia_aura_seer_enabled, mafia_bodyguard_enabled, mafia_mayor_enabled, mafia_vigilante_enabled, mafia_tracker_enabled, mafia_alpha_wolf_enabled, mafia_wolf_cub_enabled, mafia_framer_enabled, mafia_jester_enabled, mafia_serial_killer_enabled, mafia_arsonist_enabled, mafia_cupid_enabled, mafia_cursed_villager_enabled, mafia_medium_enabled, mafia_priest_enabled, mafia_witch_enabled, mafia_little_girl_enabled, mafia_trapper_enabled, mafia_seer_enabled, mafia_mafia_seer_enabled, mafia_count, mafia_anonymous_votes, mafia_last_roles'
-    )
+    .select('mafia_advanced_mode, mafia_count, mafia_anonymous_votes, mafia_last_roles')
     .eq('id', gameId)
     .single()
 
@@ -587,30 +633,9 @@ export async function initializeMafiaGame(
     return { error: 'Failed to load game settings' }
   }
 
-  const toggles: MafiaRoleToggles = {
-    doctor_enabled: gameData.mafia_doctor_enabled !== false,
-    detective_enabled: gameData.mafia_detective_enabled !== false,
-    aura_seer_enabled: gameData.mafia_aura_seer_enabled !== false,
-    bodyguard_enabled: gameData.mafia_bodyguard_enabled !== false,
-    mayor_enabled: gameData.mafia_mayor_enabled !== false,
-    vigilante_enabled: gameData.mafia_vigilante_enabled !== false,
-    tracker_enabled: gameData.mafia_tracker_enabled !== false,
-    alpha_wolf_enabled: gameData.mafia_alpha_wolf_enabled !== false,
-    wolf_cub_enabled: gameData.mafia_wolf_cub_enabled !== false,
-    framer_enabled: gameData.mafia_framer_enabled !== false,
-    jester_enabled: gameData.mafia_jester_enabled !== false,
-    serial_killer_enabled: gameData.mafia_serial_killer_enabled !== false,
-    arsonist_enabled: gameData.mafia_arsonist_enabled !== false,
-    cupid_enabled: gameData.mafia_cupid_enabled !== false,
-    cursed_villager_enabled: gameData.mafia_cursed_villager_enabled !== false,
-    medium_enabled: gameData.mafia_medium_enabled !== false,
-    priest_enabled: gameData.mafia_priest_enabled !== false,
-    witch_enabled: gameData.mafia_witch_enabled !== false,
-    little_girl_enabled: gameData.mafia_little_girl_enabled !== false,
-    trapper_enabled: gameData.mafia_trapper_enabled !== false,
-    seer_enabled: gameData.mafia_seer_enabled !== false,
-    mafia_seer_enabled: gameData.mafia_mafia_seer_enabled !== false,
-  }
+  // Role selection is fully automatic now — a single Classic/Advanced switch plus built-in
+  // variety (investigator trio, Mafia specialist rotation) replaces the old per-role checklist.
+  const toggles: MafiaRoleToggles = resolveMafiaRoundToggles(gameData.mafia_advanced_mode === true)
   const anonymousVotes = gameData.mafia_anonymous_votes === true
   const resolvedMafiaCount =
     gameData.mafia_count != null && gameData.mafia_count > 0
