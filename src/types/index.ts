@@ -2032,5 +2032,8 @@ export interface MafiaMyState {
   cupidLinkedNames?: [string, string] | null
   isLover?: boolean
   loverPartnerName?: string | null
+  /** The two Lovers' player ids — populated only for Cupid and the two Lovers themselves, so
+   *  the roster grid can mark their tiles with a heart without exposing it to anyone else. */
+  loverIds?: string[]
   enabledRoles?: MafiaRole[]
 }

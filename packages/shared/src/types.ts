@@ -1323,6 +1323,7 @@ export interface MafiaMyState {
   cupidLinkedNames?: [string, string] | null
   isLover?: boolean
   loverPartnerName?: string | null
+  loverIds?: string[]
   enabledRoles?: MafiaRole[]
 }
 

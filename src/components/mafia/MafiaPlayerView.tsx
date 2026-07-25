@@ -799,6 +799,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
           mafiaTeammateIds={myState?.mafiaTeammateIds}
           mafiaTeammateRoles={myState?.mafiaTeammateRoles}
           mafiaTeammateNightTargets={myState?.mafiaTeammateNightTargets}
+          loverIds={myState?.loverIds}
           phase={phase}
           voteTallies={voteTallies}
           voteChoices={voteChoices}
@@ -1057,7 +1058,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
               onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
               myPlayerId={myPlayerId}
               players={publicPlayers}
-              readOnly
+              readOnly={amIAlive}
               readOnlyLabel="night"
             />
           </>

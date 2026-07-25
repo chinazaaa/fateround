@@ -349,6 +349,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     const loverPartner = isLover ? playersData?.find((p) => p.id === myPlayerState!.lover_partner_player_id) : undefined
     const loverPartnerName = isLover ? (loverPartner ? seatLabel(loverPartner.id, loverPartner.name) : null) : null
 
+    // Lover ids for the roster grid's heart badge — only visible to Cupid and the two Lovers
+    // themselves, so their tiles are marked for people who already know, without outing them.
+    let loverIds: MafiaMyState['loverIds'] = undefined
+    if (session.cupid_lover_ids) {
+      const [aId, bId] = session.cupid_lover_ids
+      if (role === 'cupid' || myPlayerState.player_id === aId || myPlayerState.player_id === bId) {
+        loverIds = [aId, bId]
+      }
+    }
+
     // Mafia secret chat — persistent across all phases for alive wolf-team members
     let mafiaChatMessages: MafiaMyState['mafiaChatMessages'] = undefined
     if (MAFIA_TEAM_ROLES.includes(role) && myPlayerState.is_alive) {
@@ -399,6 +409,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       cupidLinkedNames,
       isLover,
       loverPartnerName,
+      loverIds,
       enabledRoles: enabledRolesFrom(session),
     }
   }

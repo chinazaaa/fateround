@@ -15,6 +15,9 @@ interface MafiaPlayersGridProps {
   mafiaTeammateIds?: string[]
   mafiaTeammateRoles?: Record<string, MafiaRole>
   mafiaTeammateNightTargets?: Record<string, string | null>
+  /** The two Lovers' ids (from myState.loverIds) — only populated for Cupid and the two
+   *  Lovers themselves, so their tiles get a heart badge visible only to people in the know. */
+  loverIds?: string[]
   phase: MafiaPhase
   voteTallies: Record<string, number>
   /** voterId -> targetId, when votes are public — shown as a "→ #N" sign on the voter's own
@@ -78,6 +81,7 @@ export function MafiaPlayersGrid({
   mafiaTeammateIds = [],
   mafiaTeammateRoles = {},
   mafiaTeammateNightTargets,
+  loverIds = [],
   phase,
   voteTallies,
   voteChoices = {},
@@ -118,6 +122,7 @@ export function MafiaPlayersGrid({
           const isSelected = selectedIds.includes(p.id)
           const clickable = !!onSelect && (allowDeadSelect ? !p.isAlive : p.isAlive) && (!isMe || allowSelfSelect)
           const isTeammate = !isMe && mafiaTeammateIds.includes(p.id)
+          const isKnownLover = loverIds.includes(p.id)
           const teammateRole = isTeammate ? mafiaTeammateRoles[p.id] : undefined
           const teammateNightTarget =
             isTeammate && phase === 'night' && mafiaTeammateNightTargets ? mafiaTeammateNightTargets[p.id] : undefined
@@ -154,6 +159,11 @@ export function MafiaPlayersGrid({
               {p.isAlive && phase === 'voting' && voteCount > 0 && (
                 <span className="absolute top-1 right-1 text-[10px] font-black bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center leading-none">
                   {voteCount}
+                </span>
+              )}
+              {isKnownLover && !(p.isAlive && phase === 'voting' && voteCount > 0) && (
+                <span className="absolute top-1 right-1 text-xs" aria-hidden title="Lover">
+                  💘
                 </span>
               )}
               {isSelected && (

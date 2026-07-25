@@ -135,6 +135,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (!linked || linked.length === 0) {
       return NextResponse.json({ error: 'Lovers have already been linked' }, { status: 400 })
     }
+    const { data: loverPlayers } = await admin
+      .from('players')
+      .select('id, name')
+      .in('id', [targetPlayerId, secondTargetPlayerId])
+    const firstName =
+      loverPlayers?.find((p) => p.id === targetPlayerId)?.name != null
+        ? `#${first.seat_number} ${loverPlayers.find((p) => p.id === targetPlayerId)!.name}`
+        : 'Someone'
+    const secondName =
+      loverPlayers?.find((p) => p.id === secondTargetPlayerId)?.name != null
+        ? `#${second.seat_number} ${loverPlayers.find((p) => p.id === secondTargetPlayerId)!.name}`
+        : 'Someone'
+
     await Promise.all([
       admin
         .from('mafia_player_states')
@@ -144,6 +157,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         .from('mafia_player_states')
         .update({ is_lover: true, lover_partner_player_id: targetPlayerId })
         .eq('id', second.id),
+      admin.from('mafia_chat_messages').insert([
+        {
+          game_id: gameId,
+          sender_player_id: 'system',
+          sender_name: '💘',
+          message: `💘 Cupid has linked you with ${secondName} as Lovers! You win together if you both survive.`,
+          scope: 'day',
+          target_player_id: targetPlayerId,
+        },
+        {
+          game_id: gameId,
+          sender_player_id: 'system',
+          sender_name: '💘',
+          message: `💘 Cupid has linked you with ${firstName} as Lovers! You win together if you both survive.`,
+          scope: 'day',
+          target_player_id: secondTargetPlayerId,
+        },
+        {
+          game_id: gameId,
+          sender_player_id: 'system',
+          sender_name: '💘',
+          message: `💘 You linked ${firstName} and ${secondName} as Lovers.`,
+          scope: 'day',
+          target_player_id: playerId,
+        },
+      ]),
     ])
     return NextResponse.json({ success: true })
   }
