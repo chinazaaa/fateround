@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { GameTypePicker } from '@/components/create/GameTypePicker'
 import { gameLabel } from '@/lib/mobile-registry'
 import { gameTypeMeta } from '@/lib/game-type-meta'
+import { isMatureGame, MATURE_BADGE_LABEL } from '@/lib/game-maturity'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
@@ -34,7 +35,14 @@ export function GameTypePickerField({ options, value, onChange }: Props) {
       <Pressable style={styles.trigger} onPress={() => setOpen(true)}>
         <Text style={styles.triggerEmoji}>{meta.emoji}</Text>
         <View style={styles.triggerText}>
-          <Text style={styles.triggerLabel}>{gameLabel(value)}</Text>
+          <View style={styles.triggerLabelRow}>
+            <Text style={styles.triggerLabel}>{gameLabel(value)}</Text>
+            {isMatureGame(value) && (
+              <View style={styles.matureBadge}>
+                <Text style={styles.matureBadgeText}>{MATURE_BADGE_LABEL}</Text>
+              </View>
+            )}
+          </View>
           <Text style={styles.triggerBlurb} numberOfLines={1}>
             {meta.blurb}
           </Text>
@@ -42,12 +50,7 @@ export function GameTypePickerField({ options, value, onChange }: Props) {
         <Text style={styles.triggerAction}>Change</Text>
       </Pressable>
 
-      <Modal
-        visible={open}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setOpen(false)}
-      >
+      <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOpen(false)}>
         <SafeAreaView style={styles.sheet} edges={['top', 'bottom']}>
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>Choose a game</Text>
@@ -70,37 +73,50 @@ export function GameTypePickerField({ options, value, onChange }: Props) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  trigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.space.md,
-    backgroundColor: theme.bgElevated,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.primary,
-    paddingHorizontal: theme.space.md,
-    paddingVertical: theme.space.md,
-  },
-  triggerEmoji: { fontSize: 28 },
-  triggerText: { flex: 1, gap: 2 },
-  triggerLabel: { color: theme.text, fontSize: 17, fontWeight: '800' },
-  triggerBlurb: { color: theme.textMuted, fontSize: 13 },
-  triggerAction: { color: theme.primaryMuted, fontSize: 14, fontWeight: '700' },
-  sheet: { flex: 1, backgroundColor: theme.bg },
-  sheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: theme.space.lg,
-    paddingVertical: theme.space.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.border,
-  },
-  sheetTitle: { color: theme.text, fontSize: 20, fontWeight: '800' },
-  sheetClose: { color: theme.primaryMuted, fontSize: 16, fontWeight: '700' },
-  sheetBody: {
-    paddingHorizontal: theme.space.lg,
-    paddingTop: theme.space.md,
-    paddingBottom: 40,
-  },
-})
+    trigger: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.space.md,
+      backgroundColor: theme.bgElevated,
+      borderRadius: theme.radius.md,
+      borderWidth: 1,
+      borderColor: theme.primary,
+      paddingHorizontal: theme.space.md,
+      paddingVertical: theme.space.md,
+    },
+    triggerEmoji: { fontSize: 28 },
+    triggerText: { flex: 1, gap: 2 },
+    triggerLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    triggerLabel: { color: theme.text, fontSize: 17, fontWeight: '800' },
+    matureBadge: {
+      backgroundColor: theme.primarySoft,
+      borderRadius: theme.radius.pill,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    matureBadgeText: {
+      color: theme.error,
+      fontSize: 9,
+      fontWeight: '800',
+      letterSpacing: 0.4,
+    },
+    triggerBlurb: { color: theme.textMuted, fontSize: 13 },
+    triggerAction: { color: theme.primaryMuted, fontSize: 14, fontWeight: '700' },
+    sheet: { flex: 1, backgroundColor: theme.bg },
+    sheetHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: theme.space.lg,
+      paddingVertical: theme.space.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.border,
+    },
+    sheetTitle: { color: theme.text, fontSize: 20, fontWeight: '800' },
+    sheetClose: { color: theme.primaryMuted, fontSize: 16, fontWeight: '700' },
+    sheetBody: {
+      paddingHorizontal: theme.space.lg,
+      paddingTop: theme.space.md,
+      paddingBottom: 40,
+    },
+  })
