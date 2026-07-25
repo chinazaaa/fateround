@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { GameRouter, resolveMobilePlayerView } from '@/components/games/GameRouter'
 import { PlayerSessionShell } from '@/components/session/PlayerSessionShell'
+import { MatureGameGate } from '@/components/MatureGameGate'
 import { GamePushSetup } from '@/components/push/GamePushSetup'
 import { WebFallbackScreen } from '@/components/WebFallbackScreen'
 import { autoJoinGame } from '@/lib/api'
@@ -163,6 +164,7 @@ export default function GameScreen() {
         <GamePushSetup gameCode={gameCode} />
         <GameRouter gameCode={gameCode} gameType={gameType} />
       </PlayerSessionShell>
+      <MatureGameGate gameType={gameType} />
     </GameThemeProvider>
   )
 }

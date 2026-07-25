@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { gameLabel } from '@/lib/mobile-registry'
 import { GAME_CATEGORIES, gameTypeCategory, gameTypeMeta, type GameCategory } from '@/lib/game-type-meta'
+import { isMatureGame, MATURE_BADGE_LABEL } from '@/lib/game-maturity'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
@@ -86,9 +87,16 @@ export function GameTypePicker({ options, value, onChange }: Props) {
                 onPress={() => onChange(type)}
               >
                 <Text style={styles.emoji}>{meta.emoji}</Text>
-                <Text style={[styles.name, selected && styles.nameSelected]} numberOfLines={2}>
-                  {gameLabel(type)}
-                </Text>
+                <View style={styles.nameRow}>
+                  <Text style={[styles.name, selected && styles.nameSelected]} numberOfLines={2}>
+                    {gameLabel(type)}
+                  </Text>
+                  {isMatureGame(type) && (
+                    <View style={styles.matureBadge}>
+                      <Text style={styles.matureBadgeText}>{MATURE_BADGE_LABEL}</Text>
+                    </View>
+                  )}
+                </View>
                 <Text style={styles.blurb} numberOfLines={2}>
                   {meta.blurb}
                 </Text>
@@ -169,13 +177,31 @@ const makeStyles = (theme: Theme) =>
       backgroundColor: theme.primarySoft,
     },
     emoji: { fontSize: 26, marginBottom: 2 },
+    nameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
     name: {
       color: theme.text,
       fontSize: 15,
       fontWeight: '700',
       lineHeight: 20,
+      flexShrink: 1,
     },
     nameSelected: { color: theme.primaryMuted },
+    matureBadge: {
+      backgroundColor: theme.primarySoft,
+      borderRadius: theme.radius.pill,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    matureBadgeText: {
+      color: theme.error,
+      fontSize: 9,
+      fontWeight: '800',
+      letterSpacing: 0.4,
+    },
     blurb: {
       color: theme.textFaint,
       fontSize: 12,

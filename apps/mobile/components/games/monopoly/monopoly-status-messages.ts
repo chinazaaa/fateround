@@ -67,7 +67,7 @@ export function parseTradeEvent(value: unknown): MonopolyLastTradeEvent | null {
   const rec = asRecord(value)
   if (!rec || typeof rec.from_player_id !== 'string' || typeof rec.to_player_id !== 'string') return null
   const outcome = rec.outcome
-  if (outcome !== 'proposed' && outcome !== 'declined' && outcome !== 'accepted') return null
+  if (outcome !== 'proposed' && outcome !== 'declined' && outcome !== 'accepted' && outcome !== 'cancelled') return null
   return {
     seq: Number(rec.seq ?? 0),
     from_player_id: rec.from_player_id,
@@ -129,6 +129,14 @@ export function formatTradeMessageForPlayer(
       msg = `You declined ${from}'s trade offer.`
     } else {
       msg = `${to} declined ${from}'s trade offer.`
+    }
+  } else if (event.outcome === 'cancelled') {
+    if (myPlayerId === event.from_player_id) {
+      msg = `You cancelled your trade offer to ${to}.`
+    } else if (myPlayerId === event.to_player_id) {
+      msg = `${from} cancelled their trade offer.`
+    } else {
+      msg = `${from} cancelled their trade offer to ${to}.`
     }
   } else if (event.outcome === 'accepted') {
     if (myPlayerId === event.from_player_id) {
@@ -212,7 +220,7 @@ export function monopolyEventBanner(
     const e = parseTradeEvent(args.lastTradeEvent)
     if (
       e &&
-      (e.outcome === 'declined' || e.outcome === 'accepted') &&
+      (e.outcome === 'declined' || e.outcome === 'accepted' || e.outcome === 'cancelled') &&
       (e.from_player_id === myPlayerId || e.to_player_id === myPlayerId)
     ) {
       return { message: formatTradeMessageForPlayer(e, myPlayerId, players, themeId), personal: true }

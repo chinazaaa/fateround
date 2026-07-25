@@ -347,6 +347,7 @@ export function HostLobbySettingsSheet({
   const [monopoly, setMonopoly] = useState<MonopolyLobbyState>(() => ({
     doubleGoSalary: game.monopoly_double_go_salary === true,
     forcedAuctions: game.monopoly_forced_auctions === true,
+    auctionTimerSeconds: game.monopoly_auction_timer_seconds ?? 10,
     noRentInJail: game.monopoly_no_rent_in_jail === true,
   }))
   const [icallon, setIcallon] = useState<ICallOnLobbyState>(() => ({
@@ -550,6 +551,8 @@ export function HostLobbySettingsSheet({
         board.monopoly_double_go_salary = monopoly.doubleGoSalary
       if (monopoly.forcedAuctions !== (game.monopoly_forced_auctions === true))
         board.monopoly_forced_auctions = monopoly.forcedAuctions
+      if (monopoly.auctionTimerSeconds !== (game.monopoly_auction_timer_seconds ?? 10))
+        board.monopoly_auction_timer_seconds = monopoly.auctionTimerSeconds
       if (monopoly.noRentInJail !== (game.monopoly_no_rent_in_jail === true))
         board.monopoly_no_rent_in_jail = monopoly.noRentInJail
     }
