@@ -19,7 +19,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const [{ data: game }, { data: mafiaSession }] = await Promise.all([
     admin.from('games').select('host_token').eq('id', gameId).maybeSingle(),
-    admin.from('mafia_sessions').select('phase_deadline').eq('game_id', gameId).maybeSingle(),
+    admin.from('mafia_sessions').select('phase_deadline, phase').eq('game_id', gameId).maybeSingle(),
   ])
 
   if (!game || !mafiaSession) {
@@ -40,8 +40,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: 'Unauthorized or phase not expired yet' }, { status: 403 })
   }
 
+  // Pin the phase we authorized against — prevents a late-arriving racer from seeing an
+  // already-advanced phase and advancing it a second time (the classic role_reveal→night skip).
+  const authorizedPhase = mafiaSession.phase as MafiaPhase
+
   const result = await runMafiaAdvance(gameId, {
     nextPhase: typeof nextPhase === 'string' ? (nextPhase as MafiaPhase) : undefined,
+    expectedPhase: isAuto ? authorizedPhase : undefined,
   })
 
   if (!result.ok) {

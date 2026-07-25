@@ -6,6 +6,7 @@ import {
   checkLoversWin,
   resolveMafiaNight,
   resolveMafiaDayVote,
+  mafiaRoleTeam,
 } from '@/lib/mafia'
 import type { MafiaPlayerState, MafiaSession, MafiaPhase } from '@/types'
 
@@ -28,7 +29,7 @@ const KILLER_LABEL: Record<string, string> = {
  */
 export async function runMafiaAdvance(
   gameId: string,
-  opts?: { nextPhase?: MafiaPhase }
+  opts?: { nextPhase?: MafiaPhase; expectedPhase?: MafiaPhase }
 ): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
   const admin = getSupabaseAdmin()
 
@@ -61,6 +62,12 @@ export async function runMafiaAdvance(
 
   if (game.status === 'finished' || session.phase === 'game_over') {
     return { ok: false, error: 'Game is already finished', status: 400 }
+  }
+
+  // If the caller pinned an expected phase (auto-advance race guard), bail when the phase has
+  // already moved — another request already advanced it, so this racer must not advance again.
+  if (opts?.expectedPhase && session.phase !== opts.expectedPhase) {
+    return { ok: true }
   }
 
   const currentPhase = session.phase
@@ -150,6 +157,7 @@ export async function runMafiaAdvance(
       detectiveTarget,
       bodyguardTarget,
       bodyguardSacrificePlayerId,
+      trackerTarget,
       trackerVisited,
       framedPlayerId,
       serialKillerTarget,
@@ -205,6 +213,92 @@ export async function runMafiaAdvance(
     }
     if (deaths.length === 0) {
       systemMessages.push(mafiaTarget ? '🏥 Someone was saved!' : '😴 No one was attacked last night.')
+    }
+
+    // Private result messages — persisted in the day chat feed with target_player_id so
+    // only the owning player sees them. Lets players scroll back through history to see
+    // what they investigated/tracked on each night.
+    const privateMessages: Array<{ target_player_id: string; message: string }> = []
+
+    // Detective
+    if (detectiveTarget) {
+      const detective = playerStates.find((p) => p.role === 'detective' && p.is_alive)
+      if (detective) {
+        const framed = framedPlayerId === detectiveTarget
+        const targetState = playerStates.find((p) => p.player_id === detectiveTarget)
+        const alignment = targetState
+          ? framed
+            ? 'MAFIA 🔪'
+            : mafiaRoleTeam(targetState.role) === 'mafia'
+              ? 'MAFIA 🔪'
+              : 'INNOCENT 🏘️'
+          : 'UNKNOWN'
+        privateMessages.push({
+          target_player_id: detective.player_id,
+          message: `🔍 Night ${session.day_number}: ${playerLabel(detectiveTarget)} is ${alignment}`,
+        })
+      }
+    }
+
+    // Tracker
+    if (trackerTarget) {
+      const tracker = playerStates.find((p) => p.role === 'tracker' && p.is_alive)
+      if (tracker) {
+        const visitedText = trackerVisited ? `visited ${playerLabel(trackerVisited)}` : 'visited no one'
+        privateMessages.push({
+          target_player_id: tracker.player_id,
+          message: `👣 Night ${session.day_number}: ${playerLabel(trackerTarget)} ${visitedText}`,
+        })
+      }
+    }
+
+    // Doctor
+    if (doctorTarget) {
+      const doctor = playerStates.find((p) => p.role === 'doctor' && p.is_alive)
+      if (doctor) {
+        const wasAttacked = doctorTarget === mafiaTarget || doctorTarget === serialKillerTarget
+        privateMessages.push({
+          target_player_id: doctor.player_id,
+          message: wasAttacked
+            ? `🏥 Night ${session.day_number}: Your target was attacked — you saved them!`
+            : `🏥 Night ${session.day_number}: Your target was not attacked.`,
+        })
+      }
+    }
+
+    // Bodyguard
+    if (bodyguardTarget) {
+      const bodyguard = playerStates.find((p) => p.role === 'bodyguard' && p.is_alive)
+      if (bodyguard && bodyguardSacrificePlayerId) {
+        privateMessages.push({
+          target_player_id: bodyguard.player_id,
+          message: `🛡️ Night ${session.day_number}: Your target was attacked — you sacrificed yourself to save them.`,
+        })
+      }
+    }
+
+    // Framer
+    const framer = playerStates.find((p) => p.role === 'framer' && p.is_alive)
+    if (framer?.night_action_target_player_id) {
+      privateMessages.push({
+        target_player_id: framer.player_id,
+        message: `🎭 Night ${session.day_number}: You framed ${playerLabel(framer.night_action_target_player_id)}`,
+      })
+    }
+
+    if (privateMessages.length > 0) {
+      pendingEffects.push(() =>
+        admin.from('mafia_chat_messages').insert(
+          privateMessages.map((pm) => ({
+            game_id: gameId,
+            sender_player_id: 'system',
+            sender_name: '🔒',
+            message: pm.message,
+            scope: 'day',
+            target_player_id: pm.target_player_id,
+          }))
+        )
+      )
     }
 
     // Check win condition
