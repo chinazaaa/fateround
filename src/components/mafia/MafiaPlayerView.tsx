@@ -728,7 +728,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
     )
 
     return (
-      <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col">
+      <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col overflow-x-hidden">
         {amISpectator && <ViewerModeBanner />}
 
         <header className="px-4 py-3 border-b border-[var(--border)] bg-[var(--card)] flex justify-between items-center">
