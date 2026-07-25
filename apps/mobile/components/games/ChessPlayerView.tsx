@@ -31,7 +31,7 @@ import { useToast } from '@/components/ui/Toast'
 import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 import { useChessAppearance, type ChessPieceType } from './chess/chess-appearance'
 import { ChessPieceGlyph } from './chess/ChessPieceGlyph'
-import { ChessAppearancePicker } from './chess/ChessAppearancePicker'
+import { ChessAppearanceIconButton, ChessAppearancePanel } from './chess/ChessAppearancePicker'
 import {
   ChessCapturedSummary,
   ChessMoveBanner,
@@ -81,6 +81,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   const [premove, setPremove] = useState<Premove | null>(null)
   const [clockTick, setClockTick] = useState(0)
   const [resignOpen, setResignOpen] = useState(false)
+  const [appearanceOpen, setAppearanceOpen] = useState(false)
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: ChessSession | null; ok: boolean }> => {
@@ -563,13 +564,16 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           </Text>
         ) : null}
 
-        <ChessAppearancePicker defaults={appearanceDefaults} />
-
-        {myColor ? (
-          <Pressable style={styles.resignBtn} disabled={acting} onPress={resign}>
-            <Text style={styles.resignText}>Resign</Text>
-          </Pressable>
-        ) : null}
+        <View style={styles.actionsRow}>
+          <ChessAppearanceIconButton open={appearanceOpen} onToggle={() => setAppearanceOpen((v) => !v)} />
+          {myColor ? (
+            <Pressable style={styles.resignBtn} disabled={acting} onPress={resign}>
+              <Text style={styles.resignIcon}>🏳️</Text>
+              <Text style={styles.resignText}>Resign</Text>
+            </Pressable>
+          ) : null}
+        </View>
+        {appearanceOpen ? <ChessAppearancePanel defaults={appearanceDefaults} /> : null}
       </ScrollView>
 
       <Modal visible={!!promotionMove} transparent animationType="fade">
@@ -675,15 +679,21 @@ const makeStyles = (theme: Theme) =>
     coordFile: { position: 'absolute', bottom: 1, right: 2, fontSize: 8, fontWeight: '700' },
     identity: { color: theme.textMuted, fontSize: 12, textAlign: 'center', marginTop: 10 },
     identityStrong: { color: theme.text, fontWeight: '700' },
+    actionsRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
     resignBtn: {
-      alignSelf: 'center',
-      marginTop: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      borderRadius: 8,
-      backgroundColor: '#3f1515',
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      height: 48,
+      borderRadius: theme.radius.sm,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surface,
     },
-    resignText: { color: '#fca5a5', fontWeight: '700' },
+    resignIcon: { fontSize: 16 },
+    resignText: { color: theme.text, fontWeight: '700' },
     modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 24 },
     modalCard: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 8 },
     modalTitle: { color: theme.text, fontSize: 18, fontWeight: '800', marginBottom: 4 },

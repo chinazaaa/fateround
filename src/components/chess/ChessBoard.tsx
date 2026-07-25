@@ -6,7 +6,7 @@ import { chessResultDetail, colorForPlayer, currentTurnPlayerId } from '@/lib/ch
 import { type Premove, premoveNeedsPromotion, premoveTargets } from '@/lib/chess-premove'
 import type { ChessColor, Player, ChessSession } from '@/types'
 import { ChessCard, ChessTurnBar } from '@/components/chess/ChessChrome'
-import { ChessAppearancePicker } from '@/components/chess/ChessAppearancePicker'
+import { ChessAppearanceIconButton, ChessAppearancePanel } from '@/components/chess/ChessAppearancePicker'
 import {
   type ChessAppearanceDefaults,
   type ChessPieceSet,
@@ -253,6 +253,7 @@ export function ChessGamePanel({
 }) {
   const { info: toastInfo } = useToast()
   const [selected, setSelected] = useState<string | null>(null)
+  const [appearanceOpen, setAppearanceOpen] = useState(false)
   const [pendingPromotion, setPendingPromotion] = useState<{ from: string; to: string; isPremove?: boolean } | null>(
     null
   )
@@ -563,8 +564,6 @@ export function ChessGamePanel({
         </div>
       </div>
 
-      <ChessAppearancePicker defaults={appearanceDefaults} />
-
       {pendingPromotion && (
         <ChessCard className="p-3 space-y-2">
           <p className="text-center text-sm font-bold">Promote to…</p>
@@ -583,8 +582,8 @@ export function ChessGamePanel({
         </ChessCard>
       )}
 
-      {myColor && session.status === 'active' && (
-        <div className="space-y-2">
+      <div className="max-w-lg sm:max-w-xl lg:max-w-2xl mx-auto w-full space-y-2">
+        {myColor && session.status === 'active' && (
           <p className="text-center text-faint text-xs">
             You are <KingGlyph color={myColor} />{' '}
             <span className="font-bold">{myColor === 'w' ? 'White' : 'Black'}</span>
@@ -596,20 +595,23 @@ export function ChessGamePanel({
                   ? ' · waiting for your opponent — tap a piece to queue a premove'
                   : ' · waiting for your opponent'}
           </p>
-          {onResign && (
-            <div className="flex justify-center">
-              <button
-                type="button"
-                onClick={onResign}
-                disabled={!!acting}
-                className="rounded-lg border-2 border-[var(--border-strong)] px-6 py-2 text-sm font-semibold text-muted hover:bg-rose-500/10 hover:text-rose-300 disabled:opacity-50"
-              >
-                Resign
-              </button>
-            </div>
+        )}
+        <div className="flex gap-2.5">
+          <ChessAppearanceIconButton open={appearanceOpen} onToggle={() => setAppearanceOpen((v) => !v)} />
+          {onResign && myColor && session.status === 'active' && (
+            <button
+              type="button"
+              onClick={onResign}
+              disabled={!!acting}
+              className="flex-1 flex items-center justify-center gap-2 h-12 rounded-lg border border-[var(--border)] bg-[var(--surface-bg)] text-sm font-bold text-[var(--foreground)] hover:bg-rose-500/10 hover:border-rose-400/60 disabled:opacity-50"
+            >
+              <span aria-hidden>🏳️</span>
+              Resign
+            </button>
           )}
         </div>
-      )}
+        {appearanceOpen && <ChessAppearancePanel defaults={appearanceDefaults} />}
+      </div>
     </div>
   )
 }
