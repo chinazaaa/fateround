@@ -192,10 +192,11 @@ const ELIMINATION_DETAIL_KEYS = new Set([
   'elimination_starting_lives',
 ])
 
-// Fields whose value is either redundant with something already shown, or a lobby/visual
-// preference rather than a "what kind of game is this" setting — kept out of the summary line
-// to stop it from growing unreadable, not because they're not captured/restored (they still are).
-const SUMMARY_SKIP_KEYS = new Set(['theme', 'late_join_policy'])
+const LATE_JOIN_LABELS: Record<string, string> = {
+  lobby_only: 'Lobby only',
+  viewers_only: 'Viewers only',
+  viewers_and_players: 'Viewers & players',
+}
 
 function humanize(text: string): string {
   return text.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
@@ -224,11 +225,26 @@ export function summarizeTemplate(values: Record<string, unknown>): string {
 
   for (const [key, value] of Object.entries(values)) {
     if (key === maxPlayersKey || key === gameDurationKey || key === 'timer_seconds' || key === 'rounds_count') continue
-    if (SUMMARY_SKIP_KEYS.has(key)) continue
     if (ELIMINATION_DETAIL_KEYS.has(key) && values.elimination_enabled !== true) continue
 
     if (key === 'is_public') {
       if (value === true) distinguishing.push('Public')
+      continue
+    }
+    if (key === 'theme') {
+      if (typeof value === 'string') distinguishing.push(`Theme: ${humanize(value)}`)
+      continue
+    }
+    if (key === 'late_join_policy') {
+      if (typeof value === 'string') distinguishing.push(`Late joiners: ${LATE_JOIN_LABELS[value] ?? humanize(value)}`)
+      continue
+    }
+    if (key === 'host_will_play') {
+      distinguishing.push(value ? 'Host + play' : 'Host only')
+      continue
+    }
+    if (key === 'host_name') {
+      if (typeof value === 'string' && value.trim()) distinguishing.push(`Hosting as: ${value.trim()}`)
       continue
     }
     if (key === 'uno_multi_play_mode') {
@@ -267,5 +283,7 @@ export function summarizeTemplate(values: Record<string, unknown>): string {
     )
 
   // Lead with what's distinctive; fill remaining room with the baseline info.
-  return [...distinguishing, ...baseline].slice(0, 8).join(' · ') || 'Saved settings'
+  // No cap — every captured field must be representable here (a template can apply settings
+  // "Use & create" never shows a review step for, so nothing may be silently left out).
+  return [...distinguishing, ...baseline].join(' · ') || 'Saved settings'
 }

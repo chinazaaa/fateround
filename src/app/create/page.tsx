@@ -320,12 +320,14 @@ import { getCodeDefaultLimits, playerCountOptions, type GamePlayerLimitsMap } fr
 import { TriviaTimerPicker } from '@/components/trivia/TriviaTimerPicker'
 import { TRIVIA_QUESTION_COUNT } from '@/lib/trivia-questions'
 import { useToast } from '@/components/ui/Toast'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { ELIMINATION_COMPATIBLE_TYPES } from '@/types/elimination'
 
 function CreateGameInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const toast = useToast()
+  const { confirm } = useConfirm()
   const [step, setStep] = useState<Step>('settings')
   const [showGameTypes, setShowGameTypes] = useState(false)
   const [previewTheme, setPreviewTheme] = useState<(typeof THEMES)[number] | null>(null)
@@ -995,6 +997,20 @@ function CreateGameInner() {
     isLandmineGame(t) ||
     isMatchingPairsGame(t)
   const eliminationApplies = (t: GameType) => (ELIMINATION_COMPATIBLE_TYPES as readonly string[]).includes(t)
+  // Mirrors the `hostPlaySupported` computation below (defined later in this component, from
+  // per-render isX booleans) but as a reusable predicate over an arbitrary game type, since
+  // TEMPLATE_FIELDS needs `appliesTo(t)` rather than a value pinned to the current game type.
+  const hostPlaySupportedFor = (t: GameType) =>
+    !isWouldYouRather(t) &&
+    !isThisOrThat(t) &&
+    !isNeverHaveIEver(t) &&
+    !isMostLikelyTo(t) &&
+    !isPickANumber(t) &&
+    !isHotSeat(t) &&
+    !isPeoplePollGame(t) &&
+    !isAnonymousMessagesGame(t) &&
+    !isSecretMessageGame(t) &&
+    !isMafiaGame(t)
   const TEMPLATE_FIELDS: Record<
     string,
     { get: () => unknown; set: (v: unknown) => void; appliesTo: (t: GameType) => boolean }
@@ -1018,6 +1034,18 @@ function CreateGameInner() {
       get: () => lateJoinPolicy,
       set: (v) => setLateJoinPolicy(v as LateJoinPolicy),
       appliesTo: gameSupportsViewerSetting,
+    },
+    // "You" — host seat choice (Host + play vs Host only) and the host's own display name,
+    // for games whose host panel supports seating the host as a player.
+    host_will_play: {
+      get: () => hostWillPlay,
+      set: (v) => setHostWillPlay(v as boolean),
+      appliesTo: hostPlaySupportedFor,
+    },
+    host_name: {
+      get: () => hostName,
+      set: (v) => setHostName(v as string),
+      appliesTo: hostPlaySupportedFor,
     },
     // Poll-family games (would-you-rather, never-have-i-ever, this-or-that, most-likely-to,
     // pick-a-number, hot-seat, smash-marry-kill, red/green-flag, smash-or-pass, parent-approval)
@@ -1589,9 +1617,18 @@ function CreateGameInner() {
     refreshTemplateSlots()
     toast.success(`Saved as "${name}"`)
   }
-  const handleDeleteTemplate = (slot: number) => {
+  const handleDeleteTemplate = async (slot: number) => {
+    const name = templateSlots?.[slot]?.name
+    const ok = await confirm({
+      title: name ? `Delete "${name}"?` : 'Delete this template?',
+      message: "This can't be undone.",
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
     deleteTemplate(settings.game_type, slot)
     refreshTemplateSlots()
+    toast.info(name ? `Deleted "${name}"` : 'Template deleted')
   }
 
   const participantOpts = {

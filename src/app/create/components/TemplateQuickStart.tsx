@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { formatTemplateSavedAt, summarizeTemplate, type GameTemplate, type TemplateSlots } from '@/lib/game-templates'
 
 interface TemplateQuickStartProps {
@@ -19,7 +19,20 @@ interface TemplateQuickStartProps {
  */
 export function TemplateQuickStart({ slots, onUse, onPrefill, onOverride, onDelete }: TemplateQuickStartProps) {
   const [menuSlot, setMenuSlot] = useState<number | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
   const filled = slots.map((tpl, i) => ({ tpl, i })).filter((s): s is { tpl: GameTemplate; i: number } => !!s.tpl)
+
+  // Close the ⋯ menu on an outside click — otherwise it stays open (and can sit over the
+  // Use & create / Prefill buttons below it) until the same button or a menu item is clicked.
+  useEffect(() => {
+    if (menuSlot === null) return
+    const onPointerDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuSlot(null)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    return () => document.removeEventListener('mousedown', onPointerDown)
+  }, [menuSlot])
+
   if (filled.length === 0) return null
 
   return (
@@ -35,7 +48,7 @@ export function TemplateQuickStart({ slots, onUse, onPrefill, onOverride, onDele
                   {summarizeTemplate(tpl.values)} · saved {formatTemplateSavedAt(tpl.savedAt)}
                 </p>
               </div>
-              <div className="relative shrink-0">
+              <div className="relative shrink-0" ref={menuSlot === i ? menuRef : undefined}>
                 <button
                   type="button"
                   aria-label={`More options for ${tpl.name}`}
