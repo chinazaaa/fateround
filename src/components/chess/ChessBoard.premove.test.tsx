@@ -3,10 +3,19 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { Chess } from 'chess.js'
 import { ChessGamePanel } from './ChessBoard'
+import { ToastProvider } from '@/components/ui/Toast'
 import type { ChessSession, Player } from '@/types'
 
 // The panel plays a turn cue via the Audio API, which jsdom doesn't implement.
 vi.mock('@/lib/sounds', () => ({ playRoundStartSound: vi.fn() }))
+
+function renderPanel(ui: React.ReactElement) {
+  const { rerender, ...rest } = render(<ToastProvider>{ui}</ToastProvider>)
+  return {
+    ...rest,
+    rerender: (next: React.ReactElement) => rerender(<ToastProvider>{next}</ToastProvider>),
+  }
+}
 
 const START_FEN = new Chess().fen()
 const AFTER_E4_FEN = (() => {
@@ -61,7 +70,7 @@ const blackProps = (onMove: (from: string, to: string, promotion?: string) => vo
 describe('ChessGamePanel premove', () => {
   it('queues a move off-turn and auto-plays it when the turn arrives', () => {
     const onMove = vi.fn()
-    const { rerender } = render(<ChessGamePanel {...blackProps(onMove)} />)
+    const { rerender } = renderPanel(<ChessGamePanel {...blackProps(onMove)} />)
 
     fireEvent.click(square('e7'))
     fireEvent.click(square('e5'))
@@ -86,7 +95,7 @@ describe('ChessGamePanel premove', () => {
     // failed and the parent rolled the board back: isMyTurn returns to true but the
     // row is the very one we queued against — same updated_at, no opponent move.
     const rolledBack = makeSession({ fen: AFTER_E4_FEN, current_turn: 'b', updated_at: '2024-01-01T00:00:00.000Z' })
-    const { rerender } = render(<ChessGamePanel {...blackProps(onMove)} session={rolledBack} />)
+    const { rerender } = renderPanel(<ChessGamePanel {...blackProps(onMove)} session={rolledBack} />)
 
     fireEvent.click(square('e7'))
     fireEvent.click(square('e5'))
@@ -102,7 +111,7 @@ describe('ChessGamePanel premove', () => {
   it('fires a queued premove once a genuinely newer row arrives', () => {
     const onMove = vi.fn()
     const queued = makeSession({ updated_at: '2024-01-01T00:00:00.000Z' })
-    const { rerender } = render(<ChessGamePanel {...blackProps(onMove)} session={queued} />)
+    const { rerender } = renderPanel(<ChessGamePanel {...blackProps(onMove)} session={queued} />)
 
     fireEvent.click(square('e7'))
     fireEvent.click(square('e5'))
@@ -126,7 +135,7 @@ describe('ChessGamePanel premove', () => {
 
   it('silently drops a premove that is illegal in the position it fires on', () => {
     const onMove = vi.fn()
-    const { rerender } = render(<ChessGamePanel {...blackProps(onMove)} />)
+    const { rerender } = renderPanel(<ChessGamePanel {...blackProps(onMove)} />)
 
     // Bf8–b4 is a valid premove shape (sliders ignore blockers), but the e7
     // pawn still blocks the diagonal when the turn actually arrives.
@@ -147,7 +156,7 @@ describe('ChessGamePanel premove', () => {
 
   it('cancels a queued premove when the board is tapped', () => {
     const onMove = vi.fn()
-    render(<ChessGamePanel {...blackProps(onMove)} />)
+    renderPanel(<ChessGamePanel {...blackProps(onMove)} />)
 
     fireEvent.click(square('g8'))
     fireEvent.click(square('f6'))
@@ -155,14 +164,14 @@ describe('ChessGamePanel premove', () => {
 
     fireEvent.click(square('a1'))
     expect(screen.queryByText(/premove .* queued/)).not.toBeInTheDocument()
-    expect(screen.getByText(/tap a piece to queue a premove/)).toBeInTheDocument()
+    expect(screen.getAllByText(/tap a piece to queue a premove/).length).toBeGreaterThan(0)
     expect(onMove).not.toHaveBeenCalled()
   })
 
   it('does not offer premoves to viewers or when the game is over', () => {
     const onMove = vi.fn()
     // Viewer: no onMove handler at all.
-    const { rerender } = render(
+    const { rerender } = renderPanel(
       <ChessGamePanel session={makeSession()} players={players} myPlayerId={null} isMyTurn={false} />
     )
     expect(square('e7')).toBeDisabled()
