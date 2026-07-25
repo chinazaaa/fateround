@@ -76,21 +76,21 @@ export function assignMafiaRoles(
   pushIfRoom('medium', toggles.medium_enabled)
 
   // Round 1: one Solo, one Special
-  pushIfRoom('jester', toggles.jester_enabled)
+  pushIfRoom('arsonist', toggles.arsonist_enabled)
   pushIfRoom('cupid', toggles.cupid_enabled)
 
-  // Round 2: more village roles
+  // Round 2: more village + mafia specialist
   pushIfRoom('vigilante', toggles.vigilante_enabled)
+  pushIfRoom('framer', toggles.framer_enabled)
+
+  // Round 3: another Solo, another Special, more village
+  pushIfRoom('serial_killer', toggles.serial_killer_enabled)
+  pushIfRoom('cursed_villager', toggles.cursed_villager_enabled)
   pushIfRoom('mayor', toggles.mayor_enabled)
   pushIfRoom('tracker', toggles.tracker_enabled)
 
-  // Round 3: another Mafia specialist, another Solo, another Special
-  pushIfRoom('framer', toggles.framer_enabled)
-  pushIfRoom('serial_killer', toggles.serial_killer_enabled)
-  pushIfRoom('cursed_villager', toggles.cursed_villager_enabled)
-
   // Round 4: remaining Solo
-  pushIfRoom('arsonist', toggles.arsonist_enabled)
+  pushIfRoom('jester', toggles.jester_enabled)
 
   while (roles.length < playerCount) {
     roles.push('villager')
