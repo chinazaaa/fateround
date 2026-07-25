@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -17,11 +17,13 @@ import { CustomContentPanel } from '@/components/create/CustomContentPanel'
 import { CustomSlotBuilderPanel } from '@/components/create/CustomSlotBuilderPanel'
 import { PlayerModePanel } from '@/components/create/PlayerModePanel'
 import { WhoSaidThisCreatePanel } from '@/components/create/WhoSaidThisCreatePanel'
+import { TemplateQuickStart, SaveTemplateButton } from '@/components/create/TemplatesSection'
 import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
 import { FormField } from '@/components/ui/FormField'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
+import { useToast } from '@/components/ui/Toast'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { useGamePlayerLimits } from '@/hooks/useGamePlayerLimits'
@@ -30,6 +32,7 @@ import {
   buildCreatePayload,
   createInitialState,
   needsParticipantStep,
+  templatableGame,
   validateCreateState,
   validateSetupStep,
   wizardStepsForGame,
@@ -38,6 +41,7 @@ import {
 } from '@/lib/create-settings'
 import { createGame } from '@/lib/game-api'
 import { WEB_BASE_URL } from '@/lib/config'
+import { getTemplates, saveTemplate, deleteTemplate, type GameTemplate, type TemplateSlots } from '@/lib/game-templates'
 import { NATIVE_CREATABLE_GAMES } from '@/lib/native-create'
 import { setHostToken } from '@/lib/secure-session'
 
@@ -49,6 +53,7 @@ const STEP_LABELS: Record<CreateWizardStep, string> = {
 export function CreateWizardShell() {
   const router = useRouter()
   const styles = useThemedStyles(makeStyles)
+  const toast = useToast()
   const { limits } = useGamePlayerLimits()
   const [state, setState] = useState<CreateWizardState>(() =>
     createInitialState(NATIVE_CREATABLE_GAMES[0] ?? 'trivia', limits)
@@ -56,6 +61,15 @@ export function CreateWizardShell() {
   const [step, setStep] = useState<CreateWizardStep>('setup')
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Save-as-template quick start (see lib/game-templates.ts, PR #681 web parity). Slots are
+  // re-fetched whenever the game type changes — each game type has its own independent A/B slots.
+  const [templateSlots, setTemplateSlots] = useState<TemplateSlots | null>(null)
+  const [saveModalOpen, setSaveModalOpen] = useState(false)
+  const [saveModalPresetSlot, setSaveModalPresetSlot] = useState<number | null>(null)
+  // Set by a template's "Use & create": applies the template's values, then this effect fires
+  // once those commit so createGame's closure sees the applied state rather than what was on
+  // screen before.
+  const [pendingAutoCreate, setPendingAutoCreate] = useState(false)
 
   const steps = useMemo(() => wizardStepsForGame(state), [state])
   const stepIndex = step === 'people' ? 1 : 0
@@ -87,17 +101,82 @@ export function CreateWizardShell() {
     setError(null)
   }
 
-  const onPrimary = async () => {
-    if (step === 'setup' && showPeopleStep) {
-      const setupError = validateSetupStep(state)
-      if (setupError) {
-        setError(setupError)
-        return
-      }
-      setStep('people')
-      return
+  // Hydrate saved templates whenever the game type changes — each game type has its own
+  // independent set of slots (see lib/game-templates.ts).
+  useEffect(() => {
+    let cancelled = false
+    void getTemplates(state.gameType).then((slots) => {
+      if (!cancelled) setTemplateSlots(slots)
+    })
+    return () => {
+      cancelled = true
     }
+  }, [state.gameType])
 
+  const refreshTemplateSlots = () => {
+    void getTemplates(state.gameType).then(setTemplateSlots)
+  }
+
+  const applyTemplateValues = (tpl: GameTemplate) => {
+    setState((prev) => ({
+      ...prev,
+      theme: tpl.values.theme,
+      isPublic: tpl.values.isPublic,
+      maxPlayers: tpl.values.maxPlayers,
+      lateJoinPolicy: tpl.values.lateJoinPolicy,
+      room: { ...prev.room, ...tpl.values.room },
+      party: { ...prev.party, ...tpl.values.party },
+      landmine: { ...prev.landmine, ...tpl.values.landmine },
+    }))
+  }
+
+  const handlePrefillTemplate = (tpl: GameTemplate) => {
+    applyTemplateValues(tpl)
+    toast.show(`Prefilled from "${tpl.name}" — review below, then Create when ready`)
+  }
+
+  // "Use & create" skips straight to creating a game (confirmed first, see
+  // TemplateQuickStart's own confirm dialog) — applies the template, then waits for that state
+  // update to commit (see pendingAutoCreate effect below) before firing the normal create flow.
+  const runUseTemplate = (tpl: GameTemplate) => {
+    if (!state.title.trim()) setState((prev) => ({ ...prev, title: tpl.name }))
+    applyTemplateValues(tpl)
+    setPendingAutoCreate(true)
+  }
+
+  const openSaveTemplateModal = (presetSlot: number | null = null) => {
+    setSaveModalPresetSlot(presetSlot)
+    setSaveModalOpen(true)
+  }
+
+  const confirmSaveTemplate = (slot: number, name: string) => {
+    void saveTemplate(state.gameType, slot, {
+      name,
+      savedAt: Date.now(),
+      values: {
+        theme: state.theme,
+        isPublic: state.isPublic,
+        maxPlayers: state.maxPlayers,
+        lateJoinPolicy: state.lateJoinPolicy,
+        room: state.room,
+        party: state.party,
+        landmine: state.landmine,
+      },
+    }).then(() => {
+      refreshTemplateSlots()
+      toast.success(`Saved as "${name}"`)
+    })
+  }
+
+  const handleDeleteTemplate = (slot: number) => {
+    const name = templateSlots?.[slot]?.name
+    void deleteTemplate(state.gameType, slot).then(() => {
+      refreshTemplateSlots()
+      toast.show(name ? `Deleted "${name}"` : 'Template deleted')
+    })
+  }
+
+  const runCreateGame = async () => {
     const validationError = validateCreateState(state)
     if (validationError) {
       setError(validationError)
@@ -117,6 +196,29 @@ export function CreateWizardShell() {
       setCreating(false)
     }
   }
+
+  const onPrimary = async () => {
+    if (step === 'setup' && showPeopleStep) {
+      const setupError = validateSetupStep(state)
+      if (setupError) {
+        setError(setupError)
+        return
+      }
+      setStep('people')
+      return
+    }
+
+    await runCreateGame()
+  }
+
+  // Fires once a template's applied values have committed to state (see pendingAutoCreate
+  // above), then runs the normal create flow.
+  useEffect(() => {
+    if (!pendingAutoCreate) return
+    setPendingAutoCreate(false)
+    void runCreateGame()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAutoCreate])
 
   const primaryLabel = step === 'setup' && showPeopleStep ? 'Next: People' : creating ? 'Creating…' : 'Create & host'
 
@@ -186,6 +288,16 @@ export function CreateWizardShell() {
                 onChange={onGameTypeChange}
               />
             </View>
+
+            {templatableGame(state.gameType) && templateSlots ? (
+              <TemplateQuickStart
+                slots={templateSlots}
+                onUse={runUseTemplate}
+                onPrefill={handlePrefillTemplate}
+                onOverride={(slot) => openSaveTemplateModal(slot)}
+                onDelete={handleDeleteTemplate}
+              />
+            ) : null}
 
             <UniversalLobbyFields state={state} limits={limits} onChange={patchState} />
 
@@ -282,6 +394,19 @@ export function CreateWizardShell() {
               people={state.people}
               onChange={(peoplePatch) => patchState({ people: { ...state.people, ...peoplePatch } })}
             />
+
+            {templatableGame(state.gameType) && templateSlots ? (
+              <SaveTemplateButton
+                slots={templateSlots}
+                presetSlot={saveModalPresetSlot}
+                open={saveModalOpen}
+                onOpenChange={(open) => {
+                  setSaveModalOpen(open)
+                  if (!open) setSaveModalPresetSlot(null)
+                }}
+                onConfirm={confirmSaveTemplate}
+              />
+            ) : null}
           </>
         ) : (
           <ParticipantListEditor
