@@ -20,6 +20,7 @@ import { TIC_TAC_TOE_DEFAULT_MAX_PLAYERS, TIC_TAC_TOE_MAX_PLAYERS, TIC_TAC_TOE_M
 import { WORD_HUNT_DEFAULT_MAX_PLAYERS, WORD_HUNT_MAX_PLAYERS, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
 import { CHESS_DEFAULT_MAX_PLAYERS, CHESS_MAX_PLAYERS, CHESS_MIN_PLAYERS } from '@/lib/chess'
 import { CHECKERS_DEFAULT_MAX_PLAYERS, CHECKERS_MAX_PLAYERS, CHECKERS_MIN_PLAYERS } from '@/lib/checkers'
+import { DRAUGHTS10_DEFAULT_MAX_PLAYERS, DRAUGHTS10_MAX_PLAYERS, DRAUGHTS10_MIN_PLAYERS } from '@/lib/draughts10'
 import { AYO_DEFAULT_MAX_PLAYERS, AYO_MAX_PLAYERS, AYO_MIN_PLAYERS } from '@/lib/ayo'
 import { SCRABBLE_MAX_PLAYERS, SCRABBLE_MIN_PLAYERS } from '@/lib/scrabble'
 import { SUDOKU_MAX_PLAYERS, SUDOKU_MIN_PLAYERS } from '@/lib/sudoku'
@@ -71,6 +72,8 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'word_hunt',
   'chess',
   'checkers',
+  'checkers_international',
+  'checkers_nigeria',
   'scrabble',
   'describe_it',
   'snake_and_ladder',
@@ -201,6 +204,16 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     max: CHECKERS_MAX_PLAYERS,
     default: CHECKERS_DEFAULT_MAX_PLAYERS,
   },
+  checkers_international: {
+    min: DRAUGHTS10_MIN_PLAYERS,
+    max: DRAUGHTS10_MAX_PLAYERS,
+    default: DRAUGHTS10_DEFAULT_MAX_PLAYERS,
+  },
+  checkers_nigeria: {
+    min: DRAUGHTS10_MIN_PLAYERS,
+    max: DRAUGHTS10_MAX_PLAYERS,
+    default: DRAUGHTS10_DEFAULT_MAX_PLAYERS,
+  },
   ayo: {
     min: AYO_MIN_PLAYERS,
     max: AYO_MAX_PLAYERS,
@@ -291,6 +304,8 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
     word_hunt: { ...GAME_LIMIT_CODE_DEFAULTS.word_hunt },
     chess: { ...GAME_LIMIT_CODE_DEFAULTS.chess },
     checkers: { ...GAME_LIMIT_CODE_DEFAULTS.checkers },
+    checkers_international: { ...GAME_LIMIT_CODE_DEFAULTS.checkers_international },
+    checkers_nigeria: { ...GAME_LIMIT_CODE_DEFAULTS.checkers_nigeria },
     ayo: { ...GAME_LIMIT_CODE_DEFAULTS.ayo },
     scrabble: { ...GAME_LIMIT_CODE_DEFAULTS.scrabble },
     describe_it: { ...GAME_LIMIT_CODE_DEFAULTS.describe_it },

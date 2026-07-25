@@ -15,6 +15,11 @@ type Props = {
 
 type Filter = GameCategory | 'all'
 
+/** Alt names people search for that aren't in a game's label/blurb — e.g. "draughts" for Checkers. */
+const SEARCH_ALIASES: Partial<Record<GameType, string[]>> = {
+  checkers: ['draughts'],
+}
+
 export function GameTypePicker({ options, value, onChange }: Props) {
   const theme = useTheme()
   const styles = useThemedStyles(makeStyles)
@@ -34,7 +39,11 @@ export function GameTypePicker({ options, value, onChange }: Props) {
       // Searching ignores the active chip so a match is never hidden.
       return options.filter((t) => {
         const meta = gameTypeMeta(t)
-        return gameLabel(t).toLowerCase().includes(trimmed) || meta.blurb.toLowerCase().includes(trimmed)
+        return (
+          gameLabel(t).toLowerCase().includes(trimmed) ||
+          meta.blurb.toLowerCase().includes(trimmed) ||
+          (SEARCH_ALIASES[t] ?? []).some((alias) => alias.includes(trimmed))
+        )
       })
     }
     if (filter === 'all') return options

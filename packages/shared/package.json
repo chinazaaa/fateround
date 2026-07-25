@@ -68,6 +68,8 @@
     "./participant-mode": "./src/participant-mode.ts",
     "./round-timing": "./src/round-timing.ts",
     "./bingo": "./src/bingo.ts",
-    "./vote-stats": "./src/vote-stats.ts"
+    "./vote-stats": "./src/vote-stats.ts",
+    "./draughts10": "./src/draughts10.ts",
+    "./batch-10-games": "./src/batch-10-games.ts"
   }
 }

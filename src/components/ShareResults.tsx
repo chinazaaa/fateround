@@ -22,6 +22,7 @@ import {
   isTicTacToeGame,
   isChessGame,
   isCheckersGame,
+  isDraughts10Game,
   isAyoGame,
   isMahjongGame,
   isICallOnGame,
@@ -241,7 +242,13 @@ function buildShareText({
   }
 
   // Tic-Tac-Toe, Chess and Checkers share the same winner / draw / ended-early result signal.
-  if (isTicTacToeGame(gameType) || isChessGame(gameType) || isCheckersGame(gameType) || isAyoGame(gameType)) {
+  if (
+    isTicTacToeGame(gameType) ||
+    isChessGame(gameType) ||
+    isCheckersGame(gameType) ||
+    isDraughts10Game(gameType) ||
+    isAyoGame(gameType)
+  ) {
     if (ticTacToeIsDraw) {
       return [...gameHeader, '🤝', '', "It's a draw!", '', `Play at ${appDomain()}`].join('\n')
     }

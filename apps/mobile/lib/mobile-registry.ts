@@ -5,6 +5,8 @@ export const GAME_LABELS: Partial<Record<GameType, string>> = {
   ayo: 'Ayo',
   bingo: 'Bingo',
   checkers: 'Checkers',
+  checkers_international: 'Checkers: International',
+  checkers_nigeria: 'Checkers: Nigeria',
   chess: 'Chess',
   scrabble: 'Scrabble',
   tic_tac_toe: 'Tic Tac Toe',
