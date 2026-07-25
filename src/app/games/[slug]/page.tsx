@@ -270,6 +270,23 @@ export default async function GameLandingRoute({ params }: Props) {
               ))}
             </section>
 
+            {content.relatedBlogPosts && content.relatedBlogPosts.length > 0 && (
+              <section>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {content.relatedBlogPosts.map((post) => (
+                    <Link
+                      key={post.slug}
+                      href={`/blog/${post.slug}`}
+                      className="fr-chip !text-[13px] no-underline"
+                      style={{ color: 'var(--accent)' }}
+                    >
+                      {post.label}
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            )}
+
             {/* Features */}
             <section>
               <h2 className="sec-title-fr">Why play on Fate Round</h2>

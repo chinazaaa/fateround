@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Suspense } from 'react'
 import type { Metadata } from 'next'
 import { GAME_TYPE_DISPLAY_ORDER, gameTypeConfig } from '@/lib/game-types'
 import { GAME_LANDING_CONTENT, gameLandingSlug } from '@/lib/game-landing'
@@ -63,7 +64,9 @@ export default function GamesIndexPage() {
             </Link>
           </div>
 
-          <GamesGrid games={games} />
+          <Suspense fallback={null}>
+            <GamesGrid games={games} />
+          </Suspense>
         </main>
 
         <section className="mk-seo">

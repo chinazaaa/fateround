@@ -9,6 +9,12 @@ export type GameLandingFaq = {
   answer: string
 }
 
+export type GameLandingRelatedPost = {
+  /** Slug of a published post at /blog/[slug]. */
+  slug: string
+  label: string
+}
+
 export type GameLandingContent = {
   gameType: GameType
   slug: string
@@ -25,6 +31,8 @@ export type GameLandingContent = {
   rulesNote?: string
   perfectFor: string[]
   extraFaqs?: GameLandingFaq[]
+  /** Optional deep-dive blog posts linked from this game's landing page (rules section). */
+  relatedBlogPosts?: GameLandingRelatedPost[]
 }
 
 export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
@@ -1416,6 +1424,11 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Both. The dice are luck, but which dice you hold, which category you fill, and when you chase the upper-section bonus are all skill — which is why a good player beats a lucky one over a full card. Fate Round handles the scoring so you can focus on the decisions.',
       },
     ],
+    relatedBlogPosts: [
+      { slug: 'what-is-a-full-house-in-yahtzee', label: 'Full house explained →' },
+      { slug: 'how-many-dice-in-yahtzee', label: 'How many dice in Yahtzee →' },
+      { slug: 'yahtzee-scoring-guide', label: 'Full scoring guide, every category →' },
+    ],
   }),
 
   whot: landing('whot', {
@@ -1564,6 +1577,10 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'A Whot deck uses five shapes instead of the suits you see in a standard playing-card deck: circle, triangle, cross, square, and star. Each shape has cards numbered 1 through 14, plus the special WHOT cards numbered 20 that act as wilds. You match by shape or number on your turn.',
       },
+    ],
+    relatedBlogPosts: [
+      { slug: 'whot-rules-explained', label: 'Whot rules explained →' },
+      { slug: 'is-whot-like-uno', label: 'Whot vs Uno: what’s actually different →' },
     ],
   }),
   crazy_eights: landing('crazy_eights', {
