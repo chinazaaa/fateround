@@ -1054,6 +1054,7 @@ export type BoardLobbyPatch = {
   mafia_anonymous_votes?: boolean
   monopoly_double_go_salary?: boolean
   monopoly_forced_auctions?: boolean
+  monopoly_auction_timer_seconds?: number
   monopoly_no_rent_in_jail?: boolean
   operative_timer_seconds?: number
   quick_draw_variant?: 'lie' | 'guess'

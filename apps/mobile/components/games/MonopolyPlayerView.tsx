@@ -59,7 +59,14 @@ import {
 } from '@/components/games/monopoly/MonopolyManagePanel'
 import { MonopolyPlayerList } from '@/components/games/monopoly/MonopolyPlayerList'
 import { MonopolyTradeModal } from '@/components/games/monopoly/MonopolyTradeModal'
-import { getMonopolyBuildActionCount, normalizePendingTrade } from '@/components/games/monopoly/manage-logic'
+import {
+  getMonopolyBuildActionCount,
+  normalizePendingTrade,
+  parseBuildings,
+  parseMortgaged,
+  parsePropertyOwners,
+} from '@/components/games/monopoly/manage-logic'
+import { MonopolyPropertyModal } from '@/components/games/monopoly/MonopolyPropertyModal'
 import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { getSupabase } from '@/lib/supabase'
 import { MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT } from '@/lib/supabase-selects'
@@ -117,6 +124,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const [acting, setActing] = useState(false)
   const [bidAmount, setBidAmount] = useState('')
   const [selectedToken, setSelectedToken] = useState<MonopolyTokenId | null>(null)
+  // Tap-to-inspect — the space whose title deed is showing in the property modal.
+  const [inspectedSpace, setInspectedSpace] = useState<number | null>(null)
   const [joinError, setJoinError] = useState<string | null>(null)
   const [joiningToken, setJoiningToken] = useState(false)
   const [editingToken, setEditingToken] = useState(false)
@@ -974,6 +983,28 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           myPlayerId={bootstrap.myPlayerId}
           themeId={themeId}
           center={isViewer ? spectatorCenter : boardCenter}
+          onSpacePress={setInspectedSpace}
+        />
+
+        <MonopolyPropertyModal
+          spaceIndex={inspectedSpace}
+          onClose={() => setInspectedSpace(null)}
+          owners={parsePropertyOwners(board.property_owners)}
+          buildings={parseBuildings(board.property_buildings)}
+          mortgaged={parseMortgaged(board.mortgaged_properties)}
+          ownerId={
+            inspectedSpace !== null
+              ? (parsePropertyOwners(board.property_owners)[String(inspectedSpace)] ?? null)
+              : null
+          }
+          ownerName={
+            inspectedSpace !== null
+              ? (bootstrap.players.find(
+                  (p) => p.id === parsePropertyOwners(board.property_owners)[String(inspectedSpace)]
+                )?.name ?? null)
+              : null
+          }
+          themeId={themeId}
         />
 
         {board.last_card_event && activeEventKind === 'card' ? (
