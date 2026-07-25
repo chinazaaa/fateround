@@ -22,6 +22,7 @@ export const GAME_LABELS: Partial<Record<GameType, string>> = {
   ludo: 'Ludo',
   crazy_eights: 'Crazy Eights',
   whot: 'Whot',
+  uno: 'Uno',
   two_truths: 'Two Truths & a Lie',
   describe_it: 'Describe It',
   quiplash: 'Quiplash',
