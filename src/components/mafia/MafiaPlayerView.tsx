@@ -123,11 +123,13 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
         return 'join'
       }
       if (gameData.status === 'waiting') return 'waiting'
-      if (gameData.status === 'active' && stateData != null && stateData.phase !== 'game_over') return 'active'
-      if (gameData.status === 'finished' || stateData?.phase === 'game_over') return 'finished'
+      const effective = stateData ?? mafiaState
+      if (gameData.status === 'active' && effective != null && effective.phase !== 'game_over') return 'active'
+      if (gameData.status === 'finished' || effective?.phase === 'game_over') return 'finished'
+      if (gameData.status === 'active') return 'active'
       return 'waiting'
     },
-    []
+    [mafiaState]
   )
 
   const {
