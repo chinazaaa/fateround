@@ -8,15 +8,19 @@
 --
 -- array_append inside a single UPDATE statement is atomic under Postgres row-level locking —
 -- concurrent callers serialize automatically, no application-level retry loop needed.
+--
+-- skip_requested_player_ids is uuid[] (see 20260801150000) — compare/append p_player_id as
+-- uuid directly, no ::text cast (ANY() over a uuid[] yields uuid, so a text cast produces
+-- "operator does not exist: text = uuid").
 CREATE OR REPLACE FUNCTION mafia_append_skip_request(p_game_id text, p_phase text, p_player_id uuid)
-RETURNS text[]
+RETURNS uuid[]
 LANGUAGE sql
 AS $$
   UPDATE mafia_sessions
-  SET skip_requested_player_ids = array_append(skip_requested_player_ids, p_player_id::text)
+  SET skip_requested_player_ids = array_append(skip_requested_player_ids, p_player_id)
   WHERE game_id = p_game_id
     AND phase = p_phase
-    AND NOT (p_player_id::text = ANY(skip_requested_player_ids))
+    AND NOT (p_player_id = ANY(skip_requested_player_ids))
   RETURNING skip_requested_player_ids;
 $$;
 

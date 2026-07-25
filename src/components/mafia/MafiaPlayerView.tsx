@@ -544,6 +544,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'active' && mafiaState) {
     const {
+      gameTitle,
       phase,
       dayNumber,
       phaseDeadline,
@@ -623,7 +624,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           <div className="flex items-center gap-3">
             <span className="text-xl">🐺</span>
             <div>
-              <h1 className="font-bold text-base text-[var(--primary)] leading-tight">Mafia</h1>
+              <h1 className="font-bold text-base text-[var(--primary)] leading-tight">{gameTitle || 'Mafia'}</h1>
               <p className="text-[10px] text-[var(--muted)] uppercase tracking-widest font-semibold">
                 {showRoleReveal ? 'Role Reveal' : `Day ${dayNumber} · ${PHASE_LABEL[phase] ?? phase}`}
               </p>

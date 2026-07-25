@@ -522,9 +522,12 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     </div>
   )
 
-  // Play mode: the host holds a real seat, so they get the same interactive view as any
-  // other player — MafiaPlayerView reads its own session from localStorage (set by
-  // useHostSeat's hostJoinGame), so no extra prop-threading is needed here.
+  // Both play and watch modes render the same MafiaPlayerView — it reads its own session
+  // from localStorage, which useHostSeat sets for EITHER a real player seat ("Host + play")
+  // or a visible spectator row ("Host only"), so a host-only host gets the normal spectator
+  // experience (viewer banner, read-only chat, no purple debug dashboard) matching what any
+  // other spectator sees, instead of a bespoke "God View". The full God View below is only a
+  // fallback for the rare moment hostPlayerId hasn't been seated yet.
   const playPrimary = hostPlayerId ? <MafiaPlayerView gameCode={gameCode} /> : null
 
   const hostFinishedPanel = (
@@ -685,12 +688,16 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
       primaryKind={hostPlays ? 'play' : 'watch'}
       showTabs={!isFinished}
       gameStarted={!isWaiting}
-      header={<HostGameHeader game={gameObj} />}
+      // MafiaPlayerView (playPrimary) renders its own compact header + "you're spectating"
+      // banner, so HostGameLayout's copies would just duplicate them — only add ours for the
+      // God View fallback (the rare moment before the host's seat/spectator row exists).
+      header={playPrimary ? undefined : <HostGameHeader game={gameObj} />}
+      suppressViewerBanner={!!playPrimary}
       game={gameObj}
       players={playersList}
       hostPlayerId={hostPlayerId}
       onHostRejoined={() => void load()}
-      primary={hostPlays ? playPrimary : watchPrimary}
+      primary={playPrimary ?? watchPrimary}
       manage={hostFinishedPanel}
       finished={hostFinishedPanel}
       noManageTab

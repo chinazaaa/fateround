@@ -36,6 +36,7 @@ import {
   isWouldYouRather,
   isQuiplashGame,
   isQuickDrawGame,
+  isMafiaGame,
   parseGameType,
 } from '@/lib/game-types'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -99,6 +100,7 @@ export function gameSupportsViewerSetting(gameType: GameType): boolean {
  */
 export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
   return (
+    !isMafiaGame(gameType) &&
     !isMonopolyGame(gameType) &&
     !isYahtzeeGame(gameType) &&
     !isWhotGame(gameType) &&
