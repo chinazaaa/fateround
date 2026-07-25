@@ -181,7 +181,8 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [{ table: 'games', column: 'id' }, 'rounds', 'participants', 'votes', 'confessions'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   const gameType = bootstrap.game ? parseGameType(bootstrap.game.game_type) : null

@@ -119,7 +119,8 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [{ table: 'games', column: 'id' }, 'mahjong_sessions', 'mahjong_player_state'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   useEffect(() => {

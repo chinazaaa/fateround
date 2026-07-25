@@ -144,7 +144,8 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [{ table: 'games', column: 'id' }, 'rounds', 'word_search_found'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   // Tick once a second while playing so the live time column stays fresh.

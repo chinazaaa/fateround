@@ -164,7 +164,8 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [{ table: 'games', column: 'id' }, 'rounds', 'npat_answers', 'npat_marks'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   // Phase deadlines (letter_pick/writing/marking/reveal → next round → finished)

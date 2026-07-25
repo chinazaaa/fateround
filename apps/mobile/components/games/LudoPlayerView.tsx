@@ -107,7 +107,8 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [{ table: 'games', column: 'id' }, 'ludo_sessions', 'ludo_player_state'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   const turnPlayerId = session ? currentPlayerId(session) : null

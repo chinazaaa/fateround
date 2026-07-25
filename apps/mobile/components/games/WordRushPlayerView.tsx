@@ -139,7 +139,8 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [{ table: 'games', column: 'id' }, 'word_rush_sessions', 'word_rush_players', 'word_rush_answers'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   const mode = clampWordRushMode(bootstrap.game?.word_rush_mode)

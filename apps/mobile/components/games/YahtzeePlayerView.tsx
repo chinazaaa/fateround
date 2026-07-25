@@ -93,7 +93,8 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     [{ table: 'games', column: 'id' }, 'yahtzee_sessions', 'yahtzee_player_scores'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   const turnPlayerId = session ? currentPlayerId(session) : null

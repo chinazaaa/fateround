@@ -3,6 +3,11 @@ import { uniqueTopic } from '@/lib/realtime'
 import type { Game, Player } from '@fateround/shared'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 
+// Supabase postgres_changes occasionally drops a players INSERT/UPDATE event, and the
+// lobby (join / ready-up / play-again ring) has no other traffic to mask a drop the way
+// active play does. Reconcile on a short poll while waiting, on top of realtime.
+const LOBBY_POLL_INTERVAL_MS = 8000
+
 export function useHostGame(gameCode: string) {
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
@@ -40,6 +45,12 @@ export function useHostGame(gameCode: string) {
       void supabase.removeChannel(channel)
     }
   }, [gameCode, reload])
+
+  useEffect(() => {
+    if (game?.status !== 'waiting') return
+    const id = setInterval(() => void reload(), LOBBY_POLL_INTERVAL_MS)
+    return () => clearInterval(id)
+  }, [game?.status, reload])
 
   return { game, players, loading, reload }
 }

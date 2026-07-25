@@ -129,7 +129,8 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     gameCode,
     ['players', { table: 'games', column: 'id' }, 'bingo_called_numbers', 'bingo_cards', 'bingo_claims'],
     () => bootstrap.load(),
-    !!bootstrap.game
+    !!bootstrap.game,
+    bootstrap.game?.status
   )
 
   const calledSet = useMemo(() => new Set(calledNumbers.map((n) => n.number)), [calledNumbers])
