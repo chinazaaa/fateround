@@ -182,8 +182,13 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         }),
       })
       const data = await res.json()
-      if (!res.ok) toastError(data.error ?? 'Action failed')
-      else {
+      if (!res.ok) {
+        // A rejected action usually means our local phase/timer is stale (e.g. the phase
+        // already advanced server-side just before this tap) — resync immediately instead of
+        // leaving the player stuck looking at a screen that no longer matches reality.
+        toastError(data.error ?? 'Action failed')
+        await load()
+      } else {
         toastSuccess('Night action submitted')
         await load()
       }
@@ -204,8 +209,10 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         body: JSON.stringify({ resumeToken: myResumeToken, targetPlayerId: targetId }),
       })
       const data = await res.json()
-      if (!res.ok) toastError(data.error ?? 'Vote failed')
-      else {
+      if (!res.ok) {
+        toastError(data.error ?? 'Vote failed')
+        await load()
+      } else {
         toastSuccess(targetId ? 'Vote submitted' : 'Vote cleared/skipped')
         await load()
       }
