@@ -315,7 +315,20 @@ export interface Game {
   operative_timer_seconds?: number | null
   mafia_doctor_enabled?: boolean
   mafia_detective_enabled?: boolean
+  mafia_bodyguard_enabled?: boolean
+  mafia_mayor_enabled?: boolean
+  mafia_vigilante_enabled?: boolean
+  mafia_tracker_enabled?: boolean
+  mafia_alpha_wolf_enabled?: boolean
+  mafia_wolf_cub_enabled?: boolean
+  mafia_framer_enabled?: boolean
+  mafia_jester_enabled?: boolean
+  mafia_serial_killer_enabled?: boolean
+  mafia_arsonist_enabled?: boolean
+  mafia_cupid_enabled?: boolean
+  mafia_cursed_villager_enabled?: boolean
   mafia_anonymous_votes?: boolean
+  mafia_count?: number | null
   monopoly_double_go_salary?: boolean
   monopoly_forced_auctions?: boolean
   monopoly_auction_timer_seconds?: number | null
@@ -1836,11 +1849,45 @@ export interface BingoClaim {
 }
 
 // --- MAFIA TYPES ---
-export type MafiaRole = 'villager' | 'mafia' | 'doctor' | 'detective'
-export type MafiaTeam = 'village' | 'mafia'
+export type MafiaRole =
+  | 'villager'
+  | 'doctor'
+  | 'detective'
+  | 'bodyguard'
+  | 'mayor'
+  | 'vigilante'
+  | 'tracker'
+  | 'mafia'
+  | 'alpha_wolf'
+  | 'wolf_cub'
+  | 'framer'
+  | 'jester'
+  | 'serial_killer'
+  | 'arsonist'
+  | 'cupid'
+  | 'cursed_villager'
+export type MafiaTeam = 'village' | 'mafia' | 'jester' | 'serial_killer' | 'arsonist'
+export type MafiaDeathCause = 'mafia_kill' | 'village_vote' | 'serial_kill' | 'arson' | 'vigilante_kill'
 export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'day' | 'elimination' | 'game_over'
 
-export interface MafiaSession {
+export interface MafiaRoleEnabledFlags {
+  doctor_enabled: boolean
+  detective_enabled: boolean
+  bodyguard_enabled: boolean
+  mayor_enabled: boolean
+  vigilante_enabled: boolean
+  tracker_enabled: boolean
+  alpha_wolf_enabled: boolean
+  wolf_cub_enabled: boolean
+  framer_enabled: boolean
+  jester_enabled: boolean
+  serial_killer_enabled: boolean
+  arsonist_enabled: boolean
+  cupid_enabled: boolean
+  cursed_villager_enabled: boolean
+}
+
+export interface MafiaSession extends MafiaRoleEnabledFlags {
   id: string
   game_id: string
   phase: MafiaPhase
@@ -1851,11 +1898,17 @@ export interface MafiaSession {
   detect_target_player_id: string | null
   night_kill_player_id: string | null
   vote_result_player_id: string | null
-  doctor_enabled: boolean
-  detective_enabled: boolean
+  serial_kill_player_id: string | null
+  arson_ignite: boolean
+  bodyguard_target_player_id: string | null
+  bodyguard_sacrifice_player_id: string | null
+  tracker_visited_player_id: string | null
+  framed_player_id: string | null
+  wolf_cub_revenge_pending: boolean
+  cupid_lover_ids: [string, string] | null
   mafia_count: number
   anonymous_votes: boolean
-  winning_team: MafiaTeam | null
+  winning_team: MafiaTeam | 'lovers' | null
   created_at: string
   updated_at: string
 }
@@ -1867,9 +1920,13 @@ export interface MafiaPlayerState {
   role: MafiaRole
   is_alive: boolean
   death_day: number | null
-  death_cause: 'mafia_kill' | 'village_vote' | null
+  death_cause: MafiaDeathCause | null
   night_action_target_player_id: string | null
   day_vote_target_player_id: string | null
+  doused_by_arsonist: boolean
+  vigilante_shots_used: number
+  is_lover: boolean
+  lover_partner_player_id: string | null
   created_at: string
   updated_at: string
 }
@@ -1879,7 +1936,7 @@ export interface MafiaPublicPlayer {
   name: string
   isAlive: boolean
   deathDay: number | null
-  deathCause: 'mafia_kill' | 'village_vote' | null
+  deathCause: MafiaDeathCause | null
   role?: MafiaRole // Only revealed on death or game over
 }
 
@@ -1898,6 +1955,14 @@ export interface MafiaMyState {
   nightActionSubmitted: boolean
   dayVoteSubmitted: boolean
   detectiveResult: { targetName: string; alignment: MafiaTeam } | null
-  mafiaTeammates: string[] // Only for mafia players
+  mafiaTeammates: string[] // Only for mafia team members (mafia/alpha_wolf/wolf_cub/framer)
   mafiaChatMessages?: MafiaChatMessage[]
+  trackerResult?: { targetName: string; visitedName: string | null } | null
+  bodyguardLastOutcome?: 'saved' | 'sacrificed' | 'no_attack' | null
+  vigilanteShotsRemaining?: number
+  framerLastTargetName?: string | null
+  cupidLinkedNames?: [string, string] | null
+  isLover?: boolean
+  loverPartnerName?: string | null
+  enabledRoles?: MafiaRole[]
 }

@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { markGameFinished } from '@/lib/game-finish'
-import { checkMafiaWinCondition, resolveMafiaNight, resolveMafiaDayVote } from '@/lib/mafia'
+import {
+  checkMafiaWinCondition,
+  checkJesterWin,
+  checkLoversWin,
+  resolveMafiaNight,
+  resolveMafiaDayVote,
+} from '@/lib/mafia'
 import type { MafiaPlayerState, MafiaSession, MafiaPhase } from '@/types'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
@@ -88,43 +94,66 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   updateFields.phase_deadline = new Date(Date.now() + durationSeconds * 1000).toISOString()
 
+  const applyLoversOverlay = (winTeam: NonNullable<MafiaSession['winning_team']>) => {
+    updateFields.winning_team = checkLoversWin(playerStates) ? 'lovers' : winTeam
+  }
+
   // 3. Resolve current phase transitions
   if (currentPhase === 'night' && targetPhase === 'day_report') {
-    // Resolve Night Actions
-    const { killedPlayerId, doctorTarget, detectiveTarget, mafiaTarget } = resolveMafiaNight(session, playerStates)
+    const resolution = resolveMafiaNight(session, playerStates)
+    const {
+      mafiaTarget,
+      doctorTarget,
+      detectiveTarget,
+      bodyguardTarget,
+      bodyguardSacrificePlayerId,
+      trackerVisited,
+      framedPlayerId,
+      serialKillerTarget,
+      arsonistIgnited,
+      cursedConvertedPlayerId,
+      wolfCubDiedThisNight,
+      deaths,
+    } = resolution
 
     updateFields.mafia_target_player_id = mafiaTarget
     updateFields.doctor_target_player_id = doctorTarget
     updateFields.detect_target_player_id = detectiveTarget
-    updateFields.night_kill_player_id = killedPlayerId
+    updateFields.bodyguard_target_player_id = bodyguardTarget
+    updateFields.bodyguard_sacrifice_player_id = bodyguardSacrificePlayerId
+    updateFields.tracker_visited_player_id = trackerVisited
+    updateFields.framed_player_id = framedPlayerId
+    updateFields.serial_kill_player_id = serialKillerTarget
+    updateFields.arson_ignite = arsonistIgnited
+    updateFields.night_kill_player_id = deaths[0]?.playerId ?? null
+    updateFields.wolf_cub_revenge_pending = wolfCubDiedThisNight
 
-    if (killedPlayerId) {
-      // Set killed player is_alive = false in mafia_player_states
+    if (cursedConvertedPlayerId) {
       await admin
         .from('mafia_player_states')
-        .update({
-          is_alive: false,
-          death_day: session.day_number,
-          death_cause: 'mafia_kill',
-        })
+        .update({ role: 'mafia' })
         .eq('game_id', gameId)
-        .eq('player_id', killedPlayerId)
+        .eq('player_id', cursedConvertedPlayerId)
+      const pIndex = playerStates.findIndex((p) => p.player_id === cursedConvertedPlayerId)
+      if (pIndex !== -1) playerStates[pIndex].role = 'mafia'
+    }
 
-      // Set is_eliminated = true in players table
-      await admin.from('players').update({ is_eliminated: true }).eq('game_id', gameId).eq('id', killedPlayerId)
-
-      // Update local state for win condition check
-      const pIndex = playerStates.findIndex((p) => p.player_id === killedPlayerId)
-      if (pIndex !== -1) {
-        playerStates[pIndex].is_alive = false
-      }
+    for (const death of deaths) {
+      await admin
+        .from('mafia_player_states')
+        .update({ is_alive: false, death_day: session.day_number, death_cause: death.cause })
+        .eq('game_id', gameId)
+        .eq('player_id', death.playerId)
+      await admin.from('players').update({ is_eliminated: true }).eq('game_id', gameId).eq('id', death.playerId)
+      const pIndex = playerStates.findIndex((p) => p.player_id === death.playerId)
+      if (pIndex !== -1) playerStates[pIndex].is_alive = false
     }
 
     // Check win condition
     const winTeam = checkMafiaWinCondition(playerStates)
     if (winTeam) {
       updateFields.phase = 'game_over'
-      updateFields.winning_team = winTeam
+      applyLoversOverlay(winTeam)
       updateFields.phase_deadline = null
       await markGameFinished(admin, gameId)
     }
@@ -155,17 +184,47 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       }
     }
 
-    // Check win condition
-    const winTeam = checkMafiaWinCondition(playerStates)
-    if (winTeam) {
+    // Jester wins outright if they were just lynched, ahead of the normal team win check
+    if (checkJesterWin(votedPlayerId, playerStates)) {
       updateFields.phase = 'game_over'
-      updateFields.winning_team = winTeam
+      updateFields.winning_team = 'jester'
       updateFields.phase_deadline = null
       await markGameFinished(admin, gameId)
+    } else {
+      const winTeam = checkMafiaWinCondition(playerStates)
+      if (winTeam) {
+        updateFields.phase = 'game_over'
+        applyLoversOverlay(winTeam)
+        updateFields.phase_deadline = null
+        await markGameFinished(admin, gameId)
+      }
     }
   } else if (targetPhase === 'night' && currentPhase !== 'role_reveal') {
     // Moving to next day cycle night
     updateFields.day_number = session.day_number + 1
+    // A vigilante who fired this past night has used their one shot, permanently.
+    const firedVigilante = playerStates.find(
+      (p) => p.role === 'vigilante' && p.is_alive && p.night_action_target_player_id && p.vigilante_shots_used < 1
+    )
+    if (firedVigilante) {
+      await admin
+        .from('mafia_player_states')
+        .update({ vigilante_shots_used: firedVigilante.vigilante_shots_used + 1 })
+        .eq('id', firedVigilante.id)
+    }
+    // Arsonist's douse target (from the night just resolved) becomes permanently doused.
+    const arsonist = playerStates.find((p) => p.role === 'arsonist' && p.is_alive)
+    if (
+      arsonist &&
+      arsonist.night_action_target_player_id &&
+      arsonist.night_action_target_player_id !== arsonist.player_id
+    ) {
+      await admin
+        .from('mafia_player_states')
+        .update({ doused_by_arsonist: true })
+        .eq('game_id', gameId)
+        .eq('player_id', arsonist.night_action_target_player_id)
+    }
     // Clear all targets and votes in player states
     await admin
       .from('mafia_player_states')

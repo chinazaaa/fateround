@@ -2,19 +2,25 @@
 
 import { MafiaSecretChat } from './MafiaChat'
 import type { MafiaMyState, MafiaChatMessage } from '@/types'
+import { MAFIA_ROLE_INFO, mafiaRoleEmoji, MAFIA_TEAM_ROLES } from './mafia-role-info'
 
-const ROLE_EMOJI: Record<string, string> = {
-  mafia: '🔪',
-  doctor: '🏥',
-  detective: '🔍',
-  villager: '🏘️',
+const TEAM_TEXT: Record<string, string> = {
+  village: 'text-emerald-400',
+  mafia: 'text-red-400',
+  solo: 'text-amber-400',
+  special: 'text-pink-400',
 }
-
-const ROLE_DESC: Record<string, string> = {
-  mafia: 'Eliminate villagers at night. Blend in and avoid getting voted out.',
-  doctor: 'Protect one player each night from the Mafia.',
-  detective: 'Investigate one player each night to learn their alignment.',
-  villager: 'Debate during the day to find and vote out the Mafia.',
+const TEAM_BADGE: Record<string, string> = {
+  village: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+  mafia: 'bg-red-500/10 text-red-400 border-red-500/20',
+  solo: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+  special: 'bg-pink-500/10 text-pink-400 border-pink-500/20',
+}
+const TEAM_LABEL: Record<string, string> = {
+  village: 'Village',
+  mafia: 'Mafia',
+  solo: 'Solo',
+  special: 'Special',
 }
 
 interface MafiaIdentityPanelProps {
@@ -33,37 +39,39 @@ export function MafiaIdentityPanel({
   onSendMafiaMessage,
 }: MafiaIdentityPanelProps) {
   const myRole = myState?.role
-  const myTeam = myState?.team
+  const info = myRole ? MAFIA_ROLE_INFO[myRole] : null
+  const team = info?.team ?? 'village'
+  const isWolfTeam = !!myRole && MAFIA_TEAM_ROLES.includes(myRole)
 
   return (
     <div className="md:col-span-1 space-y-4">
       <div className="glass-card border border-[var(--border)] rounded-2xl p-5 flex flex-col items-center text-center space-y-3">
         <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">Your Identity</p>
 
-        {myState ? (
+        {myState && info ? (
           <>
-            <div className="text-5xl">{ROLE_EMOJI[myRole ?? 'villager']}</div>
-            <div
-              className={`text-xl font-extrabold tracking-widest ${
-                myTeam === 'mafia' ? 'text-red-400' : 'text-emerald-400'
-              }`}
-            >
-              {(myRole ?? 'villager').toUpperCase()}
+            <div className="text-5xl">{mafiaRoleEmoji(myRole ?? 'villager')}</div>
+            <div className={`text-xl font-extrabold tracking-widest ${TEAM_TEXT[team]}`}>{info.name.toUpperCase()}</div>
+            <div className={`text-xs px-3 py-1 rounded-full font-semibold border ${TEAM_BADGE[team]}`}>
+              Team {TEAM_LABEL[team]}
             </div>
-            <div
-              className={`text-xs px-3 py-1 rounded-full font-semibold border ${
-                myTeam === 'mafia'
-                  ? 'bg-red-500/10 text-red-400 border-red-500/20'
-                  : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-              }`}
-            >
-              Team {myTeam === 'mafia' ? 'Mafia 🔪' : 'Village 🏘️'}
-            </div>
-            <p className="text-xs text-[var(--muted)] leading-relaxed">{ROLE_DESC[myRole ?? 'villager']}</p>
+            <p className="text-xs text-[var(--muted)] leading-relaxed">{info.description}</p>
+
+            {myState.isLover && (
+              <div className="w-full text-left bg-pink-500/5 border border-pink-500/20 rounded-xl p-3">
+                <p className="text-[10px] font-bold text-pink-400 uppercase tracking-wider mb-1">💘 In Love</p>
+                <p className="text-sm text-[var(--foreground)]">
+                  You are linked with <strong>{myState.loverPartnerName ?? 'someone'}</strong>. You win together if you
+                  both survive.
+                </p>
+              </div>
+            )}
 
             {myState.mafiaTeammates.length > 0 && (
               <div className="w-full text-left bg-red-500/5 border border-red-500/20 rounded-xl p-3">
-                <p className="text-[10px] font-bold text-red-400 uppercase tracking-wider mb-1">Mafia Allies</p>
+                <p className="text-[10px] font-bold text-red-400 uppercase tracking-wider mb-1">
+                  {isWolfTeam ? 'Wolf Pack' : 'Mafia Allies'}
+                </p>
                 <p className="text-sm text-[var(--foreground)]">{myState.mafiaTeammates.join(', ')}</p>
               </div>
             )}
@@ -85,6 +93,55 @@ export function MafiaIdentityPanel({
                   >
                     {myState.detectiveResult.alignment === 'mafia' ? 'MAFIA 🔪' : 'INNOCENT 🏘️'}
                   </span>
+                </p>
+              </div>
+            )}
+
+            {myState.trackerResult && (
+              <div className="w-full text-left bg-[var(--surface-inset-bg)] border border-[var(--border)] rounded-xl p-3">
+                <p className="text-[10px] font-bold text-[var(--primary)] uppercase tracking-wider mb-1">
+                  Tracking Result
+                </p>
+                <p className="text-sm text-[var(--foreground)]">
+                  <strong>{myState.trackerResult.targetName}</strong>{' '}
+                  {myState.trackerResult.visitedName
+                    ? `visited ${myState.trackerResult.visitedName} last night.`
+                    : 'visited no one last night.'}
+                </p>
+              </div>
+            )}
+
+            {myRole === 'bodyguard' && myState.bodyguardLastOutcome && myState.bodyguardLastOutcome !== 'no_attack' && (
+              <div className="w-full text-left bg-[var(--surface-inset-bg)] border border-[var(--border)] rounded-xl p-3">
+                <p className="text-sm text-[var(--foreground)]">
+                  {myState.bodyguardLastOutcome === 'sacrificed'
+                    ? 'You died protecting your target last night.'
+                    : 'Your target was attacked and you saved them last night.'}
+                </p>
+              </div>
+            )}
+
+            {myRole === 'vigilante' && (
+              <div className="w-full text-left bg-[var(--surface-inset-bg)] border border-[var(--border)] rounded-xl p-3">
+                <p className="text-sm text-[var(--foreground)]">
+                  Shots remaining: <strong>{myState.vigilanteShotsRemaining ?? 1}</strong>
+                </p>
+              </div>
+            )}
+
+            {myRole === 'framer' && myState.framerLastTargetName && (
+              <div className="w-full text-left bg-[var(--surface-inset-bg)] border border-[var(--border)] rounded-xl p-3">
+                <p className="text-sm text-[var(--foreground)]">
+                  You framed <strong>{myState.framerLastTargetName}</strong> last night.
+                </p>
+              </div>
+            )}
+
+            {myRole === 'cupid' && myState.cupidLinkedNames && (
+              <div className="w-full text-left bg-pink-500/5 border border-pink-500/20 rounded-xl p-3">
+                <p className="text-[10px] font-bold text-pink-400 uppercase tracking-wider mb-1">💘 Lovers Linked</p>
+                <p className="text-sm text-[var(--foreground)]">
+                  {myState.cupidLinkedNames[0]} &amp; {myState.cupidLinkedNames[1]}
                 </p>
               </div>
             )}
@@ -110,7 +167,7 @@ export function MafiaIdentityPanel({
         </div>
       </div>
 
-      {myState?.role === 'mafia' && amIAlive && (
+      {isWolfTeam && amIAlive && (
         <MafiaSecretChat messages={mafiaChatMessages} onSendMessage={onSendMafiaMessage} myPlayerId={myPlayerId} />
       )}
     </div>

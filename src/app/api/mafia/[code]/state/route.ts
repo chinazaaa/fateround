@@ -4,13 +4,56 @@ import { assertPlayer } from '@/lib/game-admin'
 import type {
   MafiaPlayerState,
   MafiaSession,
-  MafiaTeam,
+  MafiaRole,
   MafiaPublicPlayer,
   MafiaMyState,
   MafiaPhase,
   MafiaChatMessage,
 } from '@/types'
-import { checkMafiaWinCondition } from '@/lib/mafia'
+import { mafiaRoleTeam } from '@/lib/mafia'
+
+const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer']
+
+const ROLE_ENABLED_KEYS = [
+  'doctor_enabled',
+  'detective_enabled',
+  'bodyguard_enabled',
+  'mayor_enabled',
+  'vigilante_enabled',
+  'tracker_enabled',
+  'alpha_wolf_enabled',
+  'wolf_cub_enabled',
+  'framer_enabled',
+  'jester_enabled',
+  'serial_killer_enabled',
+  'arsonist_enabled',
+  'cupid_enabled',
+  'cursed_villager_enabled',
+] as const
+
+function enabledRolesFrom(session: Pick<MafiaSession, (typeof ROLE_ENABLED_KEYS)[number]>): MafiaRole[] {
+  const roles: MafiaRole[] = ['villager', 'mafia']
+  const map: Record<(typeof ROLE_ENABLED_KEYS)[number], MafiaRole> = {
+    doctor_enabled: 'doctor',
+    detective_enabled: 'detective',
+    bodyguard_enabled: 'bodyguard',
+    mayor_enabled: 'mayor',
+    vigilante_enabled: 'vigilante',
+    tracker_enabled: 'tracker',
+    alpha_wolf_enabled: 'alpha_wolf',
+    wolf_cub_enabled: 'wolf_cub',
+    framer_enabled: 'framer',
+    jester_enabled: 'jester',
+    serial_killer_enabled: 'serial_killer',
+    arsonist_enabled: 'arsonist',
+    cupid_enabled: 'cupid',
+    cursed_villager_enabled: 'cursed_villager',
+  }
+  for (const key of ROLE_ENABLED_KEYS) {
+    if (session[key]) roles.push(map[key])
+  }
+  return roles
+}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -62,6 +105,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         lastNightMafiaHadTarget: false,
         lastVoteResultPlayerId: null,
         voteTallies: {},
+        enabledRoles: ['villager', 'mafia', 'doctor', 'detective'],
         myState: null,
       })
     }
@@ -73,12 +117,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   // Determine auth player
   let myPlayerState: MafiaPlayerState | undefined = undefined
-  let isAuthorizedPlayer = false
   if (resumeToken) {
     const auth = await assertPlayer(admin, gameId, resumeToken)
     if (auth.player) {
       myPlayerState = playerStates.find((p) => p.player_id === auth.player.id)
-      isAuthorizedPlayer = !!myPlayerState
     }
   }
 
@@ -102,31 +144,69 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   let myState: MafiaMyState | null = null
   if (myPlayerState) {
     const role = myPlayerState.role
-    const team: MafiaTeam = role === 'mafia' ? 'mafia' : 'village'
+    const team = mafiaRoleTeam(role)
 
-    // Mafia teammates names
+    // Mafia teammates names (mafia/alpha_wolf/wolf_cub/framer all share the wolf-team view)
     let mafiaTeammates: string[] = []
-    if (role === 'mafia') {
-      const mafiaIds = playerStates.filter((p) => p.role === 'mafia').map((p) => p.player_id)
+    if (MAFIA_TEAM_ROLES.includes(role)) {
+      const mafiaIds = playerStates.filter((p) => MAFIA_TEAM_ROLES.includes(p.role)).map((p) => p.player_id)
       mafiaTeammates = playersData?.filter((p) => mafiaIds.includes(p.id)).map((p) => p.name) ?? []
     }
 
-    // Detective result — available during night so detective sees result while choosing next target
+    // Detective result — honors Framer's frame (reads as 'mafia' if framed that night)
     let detectiveResult: MafiaMyState['detectiveResult'] = null
     if (role === 'detective' && session.detect_target_player_id) {
       const targetState = playerStates.find((p) => p.player_id === session.detect_target_player_id)
       const targetPlayer = playersData?.find((p) => p.id === session.detect_target_player_id)
       if (targetState && targetPlayer) {
+        const framed = session.framed_player_id === session.detect_target_player_id
         detectiveResult = {
           targetName: targetPlayer.name,
-          alignment: targetState.role === 'mafia' ? 'mafia' : 'village',
+          alignment: framed ? 'mafia' : mafiaRoleTeam(targetState.role),
         }
       }
     }
 
-    // Mafia secret chat — persistent across all phases for alive Mafia members
+    let trackerResult: MafiaMyState['trackerResult'] = null
+    if (role === 'tracker' && myPlayerState.night_action_target_player_id) {
+      const targetPlayer = playersData?.find((p) => p.id === myPlayerState!.night_action_target_player_id)
+      const visitedPlayer = playersData?.find((p) => p.id === session.tracker_visited_player_id)
+      if (targetPlayer) {
+        trackerResult = { targetName: targetPlayer.name, visitedName: visitedPlayer?.name ?? null }
+      }
+    }
+
+    let bodyguardLastOutcome: MafiaMyState['bodyguardLastOutcome'] = null
+    if (role === 'bodyguard') {
+      if (session.bodyguard_sacrifice_player_id === myPlayerState.player_id) bodyguardLastOutcome = 'sacrificed'
+      else if (session.bodyguard_target_player_id) bodyguardLastOutcome = 'saved'
+      else bodyguardLastOutcome = 'no_attack'
+    }
+
+    const vigilanteShotsRemaining =
+      role === 'vigilante' ? Math.max(0, 1 - myPlayerState.vigilante_shots_used) : undefined
+
+    let framerLastTargetName: MafiaMyState['framerLastTargetName'] = undefined
+    if (role === 'framer' && session.framed_player_id) {
+      framerLastTargetName = playersData?.find((p) => p.id === session.framed_player_id)?.name ?? null
+    }
+
+    let cupidLinkedNames: MafiaMyState['cupidLinkedNames'] = undefined
+    if (role === 'cupid' && session.cupid_lover_ids) {
+      const [aId, bId] = session.cupid_lover_ids
+      const aName = playersData?.find((p) => p.id === aId)?.name ?? 'Unknown'
+      const bName = playersData?.find((p) => p.id === bId)?.name ?? 'Unknown'
+      cupidLinkedNames = [aName, bName]
+    }
+
+    const isLover = myPlayerState.is_lover
+    const loverPartnerName = isLover
+      ? (playersData?.find((p) => p.id === myPlayerState!.lover_partner_player_id)?.name ?? null)
+      : null
+
+    // Mafia secret chat — persistent across all phases for alive wolf-team members
     let mafiaChatMessages: MafiaMyState['mafiaChatMessages'] = undefined
-    if (role === 'mafia' && myPlayerState.is_alive) {
+    if (MAFIA_TEAM_ROLES.includes(role) && myPlayerState.is_alive) {
       const { data: messages } = await admin
         .from('mafia_chat_messages')
         .select('*')
@@ -154,6 +234,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       detectiveResult,
       mafiaTeammates,
       mafiaChatMessages,
+      trackerResult,
+      bodyguardLastOutcome,
+      vigilanteShotsRemaining,
+      framerLastTargetName,
+      cupidLinkedNames,
+      isLover,
+      loverPartnerName,
+      enabledRoles: enabledRolesFrom(session),
     }
   }
 
@@ -182,8 +270,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   // Ghost chat — only for eliminated players
   let ghostChatMessages: MafiaChatMessage[] | undefined = undefined
-  const myStateForGhost = myPlayerState
-  if (myStateForGhost && !myStateForGhost.is_alive) {
+  if (myPlayerState && !myPlayerState.is_alive) {
     const { data: ghostMessages } = await admin
       .from('mafia_chat_messages')
       .select('*')
@@ -204,7 +291,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   // Calculate vote tallies if public votes
-  // Let's count day votes for display
   const voteTallies: Record<string, number> = {}
   playerStates.forEach((ps) => {
     if (ps.day_vote_target_player_id) {
@@ -230,6 +316,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     voteTallies: session.anonymous_votes && session.phase === 'day' ? {} : voteTallies,
     dayChatMessages,
     ghostChatMessages,
+    enabledRoles: enabledRolesFrom(session),
 
     // Private state
     myState,

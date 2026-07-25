@@ -1,6 +1,21 @@
 'use client'
 
-import type { MafiaPhase, MafiaPublicPlayer, MafiaMyState } from '@/types'
+import { useState } from 'react'
+import type { MafiaPhase, MafiaPublicPlayer, MafiaMyState, MafiaRole } from '@/types'
+import { MafiaRoleRevealScreen } from './MafiaRoleRevealScreen'
+import { NO_NIGHT_ACTION_ROLES, MAFIA_TEAM_ROLES } from './mafia-role-info'
+
+const NIGHT_ACTION_PROMPT: Partial<Record<MafiaRole, string>> = {
+  mafia: '🔪 Choose a player to eliminate tonight.',
+  alpha_wolf: '🐺 Choose a player for the pack to eliminate tonight (your vote counts double).',
+  framer: '🎭 Choose a player to frame — the Detective will read them as Mafia tonight.',
+  doctor: '🏥 Choose a player to protect from any attack tonight.',
+  detective: '🔍 Choose a player to investigate their alignment.',
+  bodyguard: '🛡️ Choose a player to protect. If they are attacked, you die in their place.',
+  vigilante: '🔫 Choose a player to kill. You only get one shot for the whole game.',
+  tracker: '👣 Choose a player to track — learn who they visit tonight.',
+  serial_killer: '🔪 Choose a player to kill tonight.',
+}
 
 interface MafiaPhaseCardProps {
   phase: MafiaPhase
@@ -9,13 +24,12 @@ interface MafiaPhaseCardProps {
   myPlayerId: string | null
   myState: MafiaMyState | null
   voteTallies: Record<string, number>
-  killedPlayer: MafiaPublicPlayer | undefined
   votedPlayer: MafiaPublicPlayer | undefined
   lastNightMafiaHadTarget: boolean
   amIAlive: boolean
   amISpectator: boolean
   acting: boolean
-  onNightAction: (targetId: string) => void
+  onNightAction: (targetId: string, secondTargetId?: string) => void
   onDayVote: (targetId: string | null) => void
 }
 
@@ -26,7 +40,6 @@ export function MafiaPhaseCard({
   myPlayerId,
   myState,
   voteTallies,
-  killedPlayer,
   votedPlayer,
   lastNightMafiaHadTarget,
   amIAlive,
@@ -36,23 +49,17 @@ export function MafiaPhaseCard({
   onDayVote,
 }: MafiaPhaseCardProps) {
   const myRole = myState?.role
+  const [cupidFirstPick, setCupidFirstPick] = useState<string | null>(null)
+
+  // Deaths from the night that just ended are visible directly on the public roster —
+  // any player whose deathDay matches the current day number and wasn't a day-vote lynch.
+  const newlyDeadTonight = publicPlayers.filter(
+    (p) => !p.isAlive && p.deathDay === dayNumber && p.deathCause !== 'village_vote'
+  )
 
   return (
     <div className="glass-card border border-[var(--border)] rounded-2xl p-5">
-      {phase === 'role_reveal' && (
-        <div className="text-center py-8 space-y-4">
-          <div className="text-5xl animate-bounce">👁️🕵️🐺</div>
-          <h3 className="text-xl font-black text-[var(--foreground)]">Roles have been assigned</h3>
-          <p className="text-sm text-[var(--muted)]">
-            Look at your identity card.
-            <br />
-            Do <strong>not</strong> show your screen to anyone!
-          </p>
-          <div className="inline-flex items-center gap-2 text-xs text-[var(--muted)] bg-[var(--surface-inset-bg)] px-4 py-2 rounded-full border border-[var(--border)]">
-            <span className="animate-pulse">⏳</span> Night begins shortly...
-          </div>
-        </div>
-      )}
+      {phase === 'role_reveal' && <MafiaRoleRevealScreen myState={myState} />}
 
       {phase === 'night' && (
         <div className="space-y-4">
@@ -67,18 +74,102 @@ export function MafiaPhaseCard({
               <p className="text-3xl">👻</p>
               <p className="text-sm text-[var(--muted)]">You are eliminated. Watch the night unfold...</p>
             </div>
-          ) : myRole === 'villager' ? (
+          ) : myRole && NO_NIGHT_ACTION_ROLES.includes(myRole) ? (
             <div className="text-center py-8 space-y-3">
               <div className="text-5xl animate-pulse">💤</div>
-              <p className="text-[var(--muted)] text-sm">The village sleeps. Wait for sunrise...</p>
+              <p className="text-[var(--muted)] text-sm">You have no night action. Wait for sunrise...</p>
             </div>
-          ) : (
+          ) : myRole === 'cupid' ? (
+            <div className="space-y-3">
+              {myState?.cupidLinkedNames ? (
+                <div className="flex items-center gap-2 text-sm text-pink-400 bg-pink-500/10 border border-pink-500/20 rounded-xl px-4 py-3">
+                  <span>💘</span>
+                  <span className="font-semibold">
+                    You linked {myState.cupidLinkedNames[0]} &amp; {myState.cupidLinkedNames[1]} as Lovers.
+                  </span>
+                </div>
+              ) : dayNumber !== 1 ? (
+                <p className="text-sm text-[var(--muted)] py-4 text-center">
+                  Cupid can only link Lovers on night one — nothing to do tonight.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-[var(--muted)]">
+                    💘 Choose two players (in order) to link as Lovers.{' '}
+                    {cupidFirstPick
+                      ? `First pick: ${publicPlayers.find((p) => p.id === cupidFirstPick)?.name ?? '?'} — now choose the second.`
+                      : 'Choose the first player.'}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {publicPlayers
+                      .filter((p) => p.isAlive && p.id !== cupidFirstPick)
+                      .map((p) => (
+                        <button
+                          key={p.id}
+                          disabled={acting}
+                          onClick={() => {
+                            if (!cupidFirstPick) setCupidFirstPick(p.id)
+                            else {
+                              onNightAction(cupidFirstPick, p.id)
+                              setCupidFirstPick(null)
+                            }
+                          }}
+                          className={`px-4 py-3 border rounded-xl text-left text-sm font-medium transition-all ${
+                            p.id === cupidFirstPick
+                              ? 'bg-pink-500/10 border-pink-500/40'
+                              : 'bg-[var(--surface-inset-bg)] border-[var(--border)] hover:border-[var(--primary)]'
+                          }`}
+                        >
+                          {p.name}
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : myRole === 'arsonist' ? (
             <div className="space-y-3">
               <p className="text-sm text-[var(--muted)]">
-                {myRole === 'mafia' && '🔪 Choose a villager to eliminate tonight.'}
-                {myRole === 'doctor' && '🏥 Choose a player to protect from the Mafia tonight.'}
-                {myRole === 'detective' && '🔍 Choose a player to investigate their alignment.'}
+                🔥 Douse a player in fuel, or ignite everyone doused so far.
               </p>
+              {myState?.nightActionSubmitted ? (
+                <div className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3">
+                  <span>✓</span>
+                  <span className="font-semibold">Action submitted. Waiting for others...</span>
+                </div>
+              ) : (
+                <>
+                  <button
+                    disabled={acting || !myPlayerId}
+                    onClick={() => myPlayerId && onNightAction(myPlayerId)}
+                    className="w-full py-2 text-sm font-bold text-orange-400 border border-orange-500/30 hover:bg-orange-500/10 rounded-xl transition"
+                  >
+                    🔥 Ignite (kill everyone doused so far)
+                  </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    {publicPlayers
+                      .filter((p) => p.isAlive && p.id !== myPlayerId)
+                      .map((p) => (
+                        <button
+                          key={p.id}
+                          disabled={acting}
+                          onClick={() => onNightAction(p.id)}
+                          className="px-4 py-3 bg-[var(--surface-inset-bg)] border border-[var(--border)] hover:border-[var(--primary)] hover:bg-[var(--card)] rounded-xl text-left text-sm font-medium transition-all"
+                        >
+                          {p.name}
+                        </button>
+                      ))}
+                  </div>
+                </>
+              )}
+            </div>
+          ) : myRole === 'vigilante' && (myState?.vigilanteShotsRemaining ?? 0) < 1 ? (
+            <p className="text-sm text-[var(--muted)] py-4 text-center">
+              You've used your one shot already. Nothing to do tonight.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-[var(--muted)]">{myRole ? NIGHT_ACTION_PROMPT[myRole] : ''}</p>
               {myState?.nightActionSubmitted ? (
                 <div className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3">
                   <span>✓</span>
@@ -112,25 +203,23 @@ export function MafiaPhaseCard({
         <div className="text-center py-8 space-y-4">
           <div className="text-4xl">🌅</div>
           <h3 className="text-2xl font-black text-[var(--foreground)]">Sunrise</h3>
-          {killedPlayer ? (
+          {newlyDeadTonight.length > 0 ? (
             <div className="space-y-2">
-              <p className="text-sm text-[var(--muted)]">Last night, the Mafia eliminated:</p>
-              <p className="text-3xl font-black text-red-400">{killedPlayer.name}</p>
-              {killedPlayer.role && (
-                <p className="text-sm text-[var(--muted)]">
-                  They were a{' '}
-                  <span className={`font-bold ${killedPlayer.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}>
-                    {killedPlayer.role.toUpperCase()}
-                  </span>
+              <p className="text-sm text-[var(--muted)]">
+                Last night, {newlyDeadTonight.length > 1 ? 'these players died' : 'this player died'}:
+              </p>
+              {newlyDeadTonight.map((p) => (
+                <p key={p.id} className="text-3xl font-black text-red-400">
+                  {p.name}
                 </p>
-              )}
+              ))}
             </div>
           ) : (
             <div className="space-y-2">
               <p
                 className={`text-lg font-bold ${lastNightMafiaHadTarget ? 'text-emerald-400' : 'text-[var(--muted)]'}`}
               >
-                {lastNightMafiaHadTarget ? '🏥 The Doctor saved the village!' : '😴 The Mafia chose no target.'}
+                {lastNightMafiaHadTarget ? '🏥 Someone was saved!' : '😴 No one was attacked.'}
               </p>
               <p className="text-sm text-[var(--muted)]">Nobody died last night.</p>
             </div>
@@ -144,7 +233,9 @@ export function MafiaPhaseCard({
             <span className="text-xl">☀️</span>
             <div>
               <h3 className="text-lg font-black text-[var(--foreground)]">Day {dayNumber} — Discuss &amp; Vote</h3>
-              <p className="text-xs text-[var(--muted)]">Debate and vote out who you think is Mafia</p>
+              <p className="text-xs text-[var(--muted)]">
+                Debate and vote out a suspect — a strict majority is needed to lynch.
+              </p>
             </div>
           </div>
 
@@ -161,7 +252,7 @@ export function MafiaPhaseCard({
                 <div className="flex items-center justify-between text-sm bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3">
                   <span className="flex items-center gap-2 text-emerald-400 font-semibold">
                     <span>✓</span>
-                    <span>Vote cast</span>
+                    <span>Vote cast{myRole === 'mayor' ? ' (counts double)' : ''}</span>
                   </span>
                   <button
                     disabled={acting}
@@ -230,8 +321,16 @@ export function MafiaPhaseCard({
               {votedPlayer.role && (
                 <p className="text-sm text-[var(--muted)]">
                   They were a{' '}
-                  <span className={`font-bold ${votedPlayer.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}>
-                    {votedPlayer.role.toUpperCase()}
+                  <span
+                    className={`font-bold ${
+                      MAFIA_TEAM_ROLES.includes(votedPlayer.role)
+                        ? 'text-red-400'
+                        : votedPlayer.role === 'jester'
+                          ? 'text-amber-400'
+                          : 'text-emerald-400'
+                    }`}
+                  >
+                    {votedPlayer.role.toUpperCase().replace(/_/g, ' ')}
                   </span>
                 </p>
               )}

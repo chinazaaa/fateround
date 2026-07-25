@@ -24,6 +24,24 @@ import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+import { MAFIA_TEAM_ROLES, NO_NIGHT_ACTION_ROLES } from '@/components/mafia/mafia-role-info'
+
+const WINNING_TEAM_LABEL: Record<string, string> = {
+  mafia: 'MAFIA 🔪',
+  village: 'VILLAGE 🏘️',
+  jester: 'JESTER 🃏',
+  serial_killer: 'SERIAL KILLER 🔪',
+  arsonist: 'ARSONIST 🔥',
+  lovers: 'LOVERS 💘',
+}
+const WINNING_TEAM_COLOR: Record<string, string> = {
+  mafia: 'text-red-500',
+  village: 'text-emerald-400',
+  jester: 'text-amber-400',
+  serial_killer: 'text-amber-400',
+  arsonist: 'text-orange-400',
+  lovers: 'text-pink-400',
+}
 
 interface HostPlayer {
   id: string
@@ -50,7 +68,7 @@ interface MafiaHostStateResponse {
   replayPending: boolean
   theme?: ThemeId
   isPublic?: boolean
-  winningTeam: MafiaTeam | null
+  winningTeam: (MafiaTeam | 'lovers') | null
   players: HostPlayer[]
   lastNightKillPlayerId: string | null
   lastVoteResultPlayerId: string | null
@@ -459,14 +477,14 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
                   <div>
                     <span className="font-bold text-slate-200">{p.name}</span>
                     <span
-                      className={`block text-xs uppercase font-extrabold ${p.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}
+                      className={`block text-xs uppercase font-extrabold ${MAFIA_TEAM_ROLES.includes(p.role) ? 'text-red-400' : 'text-emerald-400'}`}
                     >
-                      {p.role}
+                      {p.role.replace(/_/g, ' ')}
                     </span>
                   </div>
                 </div>
                 <div className="flex flex-col sm:items-end mt-2 sm:mt-0 text-xs space-y-1">
-                  {phase === 'night' && p.role !== 'villager' && (
+                  {phase === 'night' && !NO_NIGHT_ACTION_ROLES.includes(p.role) && (
                     <span className="text-slate-400">
                       Night target:{' '}
                       <strong className="text-purple-400">
@@ -506,11 +524,13 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
                     <span className="text-lg">💀</span>
                     <div>
                       <span className="font-bold line-through text-slate-400">{p.name}</span>
-                      <span className="block text-xs font-semibold text-red-500/80 uppercase">{p.role}</span>
+                      <span className="block text-xs font-semibold text-red-500/80 uppercase">
+                        {p.role.replace(/_/g, ' ')}
+                      </span>
                     </div>
                   </div>
                   <span className="text-xs text-red-400 px-2 py-0.5 bg-red-950/20 border border-red-900/30 rounded">
-                    Day {p.deathDay} — {p.deathCause === 'mafia_kill' ? 'Killed' : 'Voted out'}
+                    Day {p.deathDay} — {p.deathCause === 'village_vote' ? 'Voted out' : 'Killed'}
                   </span>
                 </div>
               ))}
@@ -528,10 +548,8 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
       {mafiaState?.winningTeam ? (
         <div className="space-y-2">
           <p className="text-muted text-sm uppercase tracking-widest font-bold">Winning Team</p>
-          <div
-            className={`text-3xl font-black ${mafiaState.winningTeam === 'mafia' ? 'text-red-500' : 'text-emerald-400'}`}
-          >
-            {mafiaState.winningTeam === 'mafia' ? 'MAFIA 🔪' : 'VILLAGE 🏘️'}
+          <div className={`text-3xl font-black ${WINNING_TEAM_COLOR[mafiaState.winningTeam] ?? 'text-emerald-400'}`}>
+            {WINNING_TEAM_LABEL[mafiaState.winningTeam] ?? mafiaState.winningTeam.toUpperCase()}
           </div>
         </div>
       ) : (
@@ -550,9 +568,9 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
             >
               <span className="font-semibold text-muted">{p.name}</span>
               <span
-                className={`font-mono text-xs uppercase ${p.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}
+                className={`font-mono text-xs uppercase ${MAFIA_TEAM_ROLES.includes(p.role) ? 'text-red-400' : 'text-emerald-400'}`}
               >
-                {p.role}
+                {p.role.replace(/_/g, ' ')}
               </span>
             </div>
           ))}

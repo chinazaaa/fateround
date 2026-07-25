@@ -1,6 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import type { MafiaPlayerState, MafiaSession } from '@/types'
+import type { MafiaPlayerState, MafiaSession, MafiaRole } from '@/types'
+
+const ROLE_ENABLED_KEYS = [
+  'doctor_enabled',
+  'detective_enabled',
+  'bodyguard_enabled',
+  'mayor_enabled',
+  'vigilante_enabled',
+  'tracker_enabled',
+  'alpha_wolf_enabled',
+  'wolf_cub_enabled',
+  'framer_enabled',
+  'jester_enabled',
+  'serial_killer_enabled',
+  'arsonist_enabled',
+  'cupid_enabled',
+  'cursed_villager_enabled',
+] as const
+
+function enabledRolesFrom(session: Pick<MafiaSession, (typeof ROLE_ENABLED_KEYS)[number]>): MafiaRole[] {
+  const roles: MafiaRole[] = ['villager', 'mafia']
+  const map: Record<(typeof ROLE_ENABLED_KEYS)[number], MafiaRole> = {
+    doctor_enabled: 'doctor',
+    detective_enabled: 'detective',
+    bodyguard_enabled: 'bodyguard',
+    mayor_enabled: 'mayor',
+    vigilante_enabled: 'vigilante',
+    tracker_enabled: 'tracker',
+    alpha_wolf_enabled: 'alpha_wolf',
+    wolf_cub_enabled: 'wolf_cub',
+    framer_enabled: 'framer',
+    jester_enabled: 'jester',
+    serial_killer_enabled: 'serial_killer',
+    arsonist_enabled: 'arsonist',
+    cupid_enabled: 'cupid',
+    cursed_villager_enabled: 'cursed_villager',
+  }
+  for (const key of ROLE_ENABLED_KEYS) {
+    if (session[key]) roles.push(map[key])
+  }
+  return roles
+}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -76,6 +117,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         mafiaTargetPlayerId: null,
         doctorTargetPlayerId: null,
         detectTargetPlayerId: null,
+        enabledRoles: ['villager', 'mafia', 'doctor', 'detective'],
       })
     }
     return NextResponse.json({ error: 'Game session not initialized' }, { status: 404 })
@@ -121,5 +163,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mafiaTargetPlayerId: session.mafia_target_player_id,
     doctorTargetPlayerId: session.doctor_target_player_id,
     detectTargetPlayerId: session.detect_target_player_id,
+    enabledRoles: enabledRolesFrom(session),
   })
 }

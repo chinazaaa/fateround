@@ -1,6 +1,7 @@
 'use client'
 
 import type { MafiaPhase, MafiaPublicPlayer } from '@/types'
+import { MAFIA_TEAM_ROLES } from './mafia-role-info'
 
 interface MafiaPlayersGridProps {
   players: MafiaPublicPlayer[]
@@ -37,10 +38,14 @@ export function MafiaPlayersGrid({ players, phase, voteTallies }: MafiaPlayersGr
               {!p.isAlive && p.role && (
                 <span
                   className={`text-[10px] font-bold uppercase mt-0.5 ${
-                    p.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'
+                    MAFIA_TEAM_ROLES.includes(p.role)
+                      ? 'text-red-400'
+                      : p.role === 'jester'
+                        ? 'text-amber-400'
+                        : 'text-emerald-400'
                   }`}
                 >
-                  {p.role}
+                  {p.role.replace(/_/g, ' ')}
                 </span>
               )}
               {p.isAlive && phase === 'day' && voteCount > 0 && (

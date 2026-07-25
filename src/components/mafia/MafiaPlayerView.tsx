@@ -33,8 +33,27 @@ import { MafiaGhostChat } from './MafiaChat'
 import { MafiaIdentityPanel } from './MafiaIdentityPanel'
 import { MafiaPhaseCard } from './MafiaPhaseCard'
 import { MafiaPlayersGrid } from './MafiaPlayersGrid'
+import { MafiaRolesDrawer } from './MafiaRolesDrawer'
+import { MAFIA_TEAM_ROLES } from './mafia-role-info'
 import type { MafiaStateResponse } from './mafia-types'
 import type { Game } from '@/types'
+
+const WINNING_TEAM_LABEL: Record<string, string> = {
+  mafia: 'MAFIA 🔪',
+  village: 'VILLAGE 🏘️',
+  jester: 'JESTER 🃏',
+  serial_killer: 'SERIAL KILLER 🔪',
+  arsonist: 'ARSONIST 🔥',
+  lovers: 'LOVERS 💘',
+}
+const WINNING_TEAM_COLOR: Record<string, string> = {
+  mafia: 'text-red-500',
+  village: 'text-emerald-400',
+  jester: 'text-amber-400',
+  serial_killer: 'text-amber-400',
+  arsonist: 'text-orange-400',
+  lovers: 'text-pink-400',
+}
 
 type Screen =
   | 'loading'
@@ -140,14 +159,18 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
   // ── Actions ──────────────────────────────────────────────────────────────────
 
-  const submitNightAction = async (targetId: string) => {
+  const submitNightAction = async (targetId: string, secondTargetId?: string) => {
     if (!myResumeToken) return
     setActing(true)
     try {
       const res = await fetch(`/api/mafia/${gameCode}/night-action`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resumeToken: myResumeToken, targetPlayerId: targetId }),
+        body: JSON.stringify({
+          resumeToken: myResumeToken,
+          targetPlayerId: targetId,
+          ...(secondTargetId ? { secondTargetPlayerId: secondTargetId } : {}),
+        }),
       })
       const data = await res.json()
       if (!res.ok) toastError(data.error ?? 'Action failed')
@@ -410,18 +433,17 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       phaseDeadline,
       players: publicPlayers,
       myState,
-      lastNightKillPlayerId,
       lastNightMafiaHadTarget,
       lastVoteResultPlayerId,
       dayChatMessages,
       ghostChatMessages,
       voteTallies,
+      enabledRoles,
     } = mafiaState
 
     const me = publicPlayers.find((p) => p.id === myPlayerId)
     const amISpectator = !!myPlayerId && me == null
     const amIAlive = me != null && me.isAlive !== false
-    const killedPlayer = publicPlayers.find((p) => p.id === lastNightKillPlayerId)
     const votedPlayer = publicPlayers.find((p) => p.id === lastVoteResultPlayerId)
 
     return (
@@ -439,6 +461,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <MafiaRolesDrawer enabledRoles={enabledRoles ?? []} />
             <GameRulesLink gameType="mafia" />
           </div>
         </header>
@@ -462,7 +485,6 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               myPlayerId={myPlayerId}
               myState={myState}
               voteTallies={voteTallies}
-              killedPlayer={killedPlayer}
               votedPlayer={votedPlayer}
               lastNightMafiaHadTarget={lastNightMafiaHadTarget}
               amIAlive={amIAlive}
@@ -506,12 +528,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         {mafiaState?.winningTeam ? (
           <div className="space-y-2">
             <p className="text-[var(--muted)] text-sm uppercase tracking-widest font-bold">Winning Team</p>
-            <div
-              className={`text-3xl font-black ${
-                mafiaState.winningTeam === 'mafia' ? 'text-red-500' : 'text-emerald-400'
-              }`}
-            >
-              {mafiaState.winningTeam === 'mafia' ? 'MAFIA 🔪' : 'VILLAGE 🏘️'}
+            <div className={`text-3xl font-black ${WINNING_TEAM_COLOR[mafiaState.winningTeam] ?? 'text-emerald-400'}`}>
+              {WINNING_TEAM_LABEL[mafiaState.winningTeam] ?? mafiaState.winningTeam.toUpperCase()}
             </div>
           </div>
         ) : (
@@ -530,9 +548,15 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               >
                 <span className="font-semibold text-[var(--muted)]">{p.name}</span>
                 <span
-                  className={`font-mono text-xs uppercase ${p.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}
+                  className={`font-mono text-xs uppercase ${
+                    p.role && MAFIA_TEAM_ROLES.includes(p.role)
+                      ? 'text-red-400'
+                      : p.role === 'jester'
+                        ? 'text-amber-400'
+                        : 'text-emerald-400'
+                  }`}
                 >
-                  {p.role}
+                  {p.role?.replace(/_/g, ' ')}
                 </span>
               </div>
             ))}
