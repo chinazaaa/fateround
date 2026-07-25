@@ -182,6 +182,53 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ success: true })
   }
 
+  // Little Girl: no target — this is a self-target toggle for "open your eyes tonight".
+  // Not submitting at all (or not resubmitting) means she stays asleep and safe.
+  if (role === 'little_girl') {
+    if (targetPlayerId !== playerId) {
+      return NextResponse.json({ error: 'Little Girl can only choose to open her eyes' }, { status: 400 })
+    }
+    const { error: updateError } = await admin
+      .from('mafia_player_states')
+      .update({ night_action_target_player_id: playerId })
+      .eq('id', myState.id)
+    if (updateError) return NextResponse.json({ error: 'Failed to submit night action' }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  // Trapper: self-target activates all currently-set traps; any other (alive, untrapped)
+  // target adds a new trap, up to TRAPPER_MAX_TRAPS accumulated across nights.
+  if (role === 'trapper') {
+    if (targetPlayerId === playerId) {
+      const { error: updateError } = await admin
+        .from('mafia_player_states')
+        .update({ night_action_target_player_id: playerId })
+        .eq('id', myState.id)
+      if (updateError) return NextResponse.json({ error: 'Failed to submit night action' }, { status: 500 })
+      return NextResponse.json({ success: true })
+    }
+    const targetState = playerStates.find((p) => p.player_id === targetPlayerId)
+    if (!targetState || !targetState.is_alive) {
+      return NextResponse.json({ error: 'Target player not found' }, { status: 404 })
+    }
+    const existingTraps = myState.trapper_trap_player_ids ?? []
+    if (existingTraps.includes(targetPlayerId)) {
+      return NextResponse.json({ error: 'You already have a trap on that player' }, { status: 400 })
+    }
+    if (existingTraps.length >= TRAPPER_MAX_TRAPS) {
+      return NextResponse.json({ error: `You can only have ${TRAPPER_MAX_TRAPS} traps set at once` }, { status: 400 })
+    }
+    const { error: updateError } = await admin
+      .from('mafia_player_states')
+      .update({
+        trapper_trap_player_ids: [...existingTraps, targetPlayerId],
+        night_action_target_player_id: targetPlayerId,
+      })
+      .eq('id', myState.id)
+    if (updateError) return NextResponse.json({ error: 'Failed to submit night action' }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
   // Medium targets a DEAD player for revive (opposite of the usual alive check).
   if (role === 'medium') {
     if (myState.medium_revive_used) {

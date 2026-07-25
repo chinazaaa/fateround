@@ -1277,7 +1277,14 @@ export type MafiaRole =
   | 'little_girl'
   | 'trapper'
 export type MafiaTeam = 'village' | 'mafia' | 'jester' | 'serial_killer' | 'arsonist'
-export type MafiaDeathCause = 'mafia_kill' | 'village_vote' | 'serial_kill' | 'arson' | 'vigilante_kill' | 'witch_kill'
+export type MafiaDeathCause =
+  | 'mafia_kill'
+  | 'village_vote'
+  | 'serial_kill'
+  | 'arson'
+  | 'vigilante_kill'
+  | 'witch_kill'
+  | 'trap_kill'
 export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'day' | 'voting' | 'elimination' | 'game_over'
 
 export interface MafiaPublicPlayer {

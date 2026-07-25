@@ -227,21 +227,21 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     name: 'Witch',
     team: 'village',
     description:
-      'You have two potions, each usable once per game: a Heal Potion (save a player from any kill that night, including yourself) and a Kill Potion (kill any player outright at night). Use either, both, or neither each night.',
+      'You have two potions: a Protect Potion (only consumed if it actually saves your target from a kill — free to reuse otherwise) and a Kill Potion (kill any player outright, once per game, not usable on night 1).',
   },
   little_girl: {
     role: 'little_girl',
     name: 'Little Girl',
     team: 'village',
     description:
-      "Each night, you secretly see who the Mafia targeted — but there's a chance they notice you spying and kill you instead.",
+      'Each night, you can choose to open your eyes. 75% you see nothing, 20% you identify a Mafia member, 5% they notice you and you die.',
   },
   trapper: {
     role: 'trapper',
     name: 'Trapper',
     team: 'village',
     description:
-      "Each night, set a trap on one player's house. If the Mafia targets that house, the kill is blocked and you learn which Mafia members set it off.",
+      "Each night, either set a trap on a player's house (up to 3 at once) or activate all your traps. Trapped players can't be killed while active — a Mafia kill on one instead kills the Mafia's weakest member, other attackers are simply blocked.",
   },
 }
 

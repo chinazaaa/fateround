@@ -73,15 +73,15 @@ const ADVANCED_ROLE_LABELS: Record<(typeof ADVANCED_ROLE_FIELDS)[number], { labe
   },
   mafia_witch_enabled: {
     label: 'Witch',
-    description: 'One heal potion + one kill potion, each usable once per game',
+    description: 'Protect potion (free unless it saves someone) + kill potion (once, not night 1)',
   },
   mafia_little_girl_enabled: {
     label: 'Little Girl',
-    description: "Secretly sees the Mafia's night target, risks being caught",
+    description: 'Opens her eyes to spy: 75% nothing, 20% IDs a Mafia, 5% she dies',
   },
   mafia_trapper_enabled: {
     label: 'Trapper',
-    description: "Sets a nightly trap that blocks the Mafia's kill and reveals who set it off",
+    description: 'Sets up to 3 traps, then activates them to block a Mafia kill and take out their weakest member',
   },
 }
 

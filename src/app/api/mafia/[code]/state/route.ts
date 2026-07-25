@@ -269,6 +269,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     const witchHealRemaining = role === 'witch' ? (myPlayerState.witch_heal_used ? 0 : 1) : undefined
     const witchKillRemaining = role === 'witch' ? (myPlayerState.witch_kill_used ? 0 : 1) : undefined
 
+    let trapperTrappedNames: MafiaMyState['trapperTrappedNames'] = undefined
+    if (role === 'trapper') {
+      const trappedIds = myPlayerState.trapper_trap_player_ids ?? []
+      trapperTrappedNames = trappedIds.map((id) => {
+        const p = playersData?.find((pd) => pd.id === id)
+        return p ? seatLabel(p.id, p.name) : 'Unknown'
+      })
+    }
+
     let mediumGhostChat: MafiaMyState['mediumGhostChat'] = undefined
     if (role === 'medium' && myPlayerState.is_alive && session.phase === 'night') {
       const { data: ghostMessages } = await admin
@@ -354,6 +363,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       priestHolyWaterRemaining,
       witchHealRemaining,
       witchKillRemaining,
+      trapperTrappedNames,
       mediumGhostChat,
       framerLastTargetName,
       cupidLinkedNames,

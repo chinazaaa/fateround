@@ -731,6 +731,15 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             gridSelectedIds = []
           }
           // No mode selected yet — handled by the Witch Actions panel below
+        } else if (myRole === 'little_girl') {
+          // Self-only "open eyes" toggle — handled by the Little Girl panel below, not the grid
+        } else if (myRole === 'trapper') {
+          // Tapping a tile sets a new trap; "activate all traps" is a self-target button below
+          gridOnSelect = (id) => {
+            setNightSelection(id)
+            void submitNightAction(id)
+          }
+          gridSelectedIds = nightSelection ? [nightSelection] : []
         } else if (myRole !== 'medium' && myRole !== 'arsonist') {
           gridOnSelect = (id) => {
             setNightSelection(id)
@@ -903,7 +912,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                     💚 Heal Potion
                   </button>
                 )}
-                {(myState?.witchKillRemaining ?? 0) > 0 && (
+                {(myState?.witchKillRemaining ?? 0) > 0 && dayNumber > 1 && (
                   <button
                     type="button"
                     disabled={acting}
@@ -913,11 +922,53 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                     ☠️ Kill Potion
                   </button>
                 )}
+                {(myState?.witchKillRemaining ?? 0) > 0 && dayNumber === 1 && (
+                  <p className="text-xs text-[var(--muted)] flex-1 self-center">☠️ Kill potion unlocks night 2.</p>
+                )}
                 {(myState?.witchHealRemaining ?? 0) <= 0 && (myState?.witchKillRemaining ?? 0) <= 0 && (
                   <p className="text-xs text-[var(--muted)]">Both potions used.</p>
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {phase === 'night' && myRole === 'little_girl' && amIAlive && !amISpectator && (
+          <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-3">
+            <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">🎀 Little Girl</h3>
+            {myState?.nightActionSubmitted ? (
+              <p className="text-sm text-[var(--foreground)]">
+                Your eyes are open tonight — 75% you see nothing, 20% you spot a Mafia member, 5% they catch you.
+              </p>
+            ) : (
+              <button
+                type="button"
+                disabled={acting}
+                onClick={() => myPlayerId && void submitNightAction(myPlayerId)}
+                className="w-full px-3 py-2 rounded-xl bg-pink-600 text-white text-sm font-bold disabled:opacity-40"
+              >
+                👀 Open your eyes
+              </button>
+            )}
+          </div>
+        )}
+
+        {phase === 'night' && myRole === 'trapper' && amIAlive && !amISpectator && (
+          <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-3">
+            <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">🪤 Trapper</h3>
+            <p className="text-sm text-[var(--foreground)]">
+              Traps set: {myState?.trapperTrappedNames?.length ?? 0}/3
+              {(myState?.trapperTrappedNames?.length ?? 0) > 0 && ` — ${myState?.trapperTrappedNames?.join(', ')}`}
+            </p>
+            <p className="text-xs text-[var(--muted)]">Tap a player to set a trap on their house.</p>
+            <button
+              type="button"
+              disabled={acting || (myState?.trapperTrappedNames?.length ?? 0) === 0}
+              onClick={() => myPlayerId && void submitNightAction(myPlayerId)}
+              className="w-full px-3 py-2 rounded-xl bg-amber-700 text-white text-sm font-bold disabled:opacity-40"
+            >
+              💥 Activate all traps
+            </button>
           </div>
         )}
 
