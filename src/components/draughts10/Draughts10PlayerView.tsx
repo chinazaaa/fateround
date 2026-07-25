@@ -224,6 +224,32 @@ export function Draughts10PlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
+  const huffPiece = async (square: string) => {
+    if (!myPlayerId || !session) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
+    setActing(true)
+    try {
+      const res = await fetch(`${apiBase}/huff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, square }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toastError(data.error ?? 'Huff failed')
+      } else {
+        await load()
+      }
+    } catch {
+      toastError('Huff failed')
+    } finally {
+      setActing(false)
+    }
+  }
+
   const resign = async () => {
     if (!myPlayerId) return
     if (!myResumeToken) {
@@ -458,6 +484,7 @@ export function Draughts10PlayerView({ gameCode }: { gameCode: string }) {
           timeControlSeconds={game?.timer_seconds ?? 0}
           onMove={isMyTurn && !isViewer ? movePiece : undefined}
           onResign={!isViewer ? resign : undefined}
+          onHuff={isMyTurn && !isViewer ? huffPiece : undefined}
           acting={acting}
         />
       )}
