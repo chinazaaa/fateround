@@ -27,7 +27,7 @@ import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
-import { MAFIA_TEAM_ROLES, NO_NIGHT_ACTION_ROLES } from '@/components/mafia/mafia-role-info'
+import { MAFIA_ROLE_INFO, MAFIA_TEAM_ROLES, NO_NIGHT_ACTION_ROLES } from '@/components/mafia/mafia-role-info'
 import { MafiaPlayerView } from '@/components/mafia/MafiaPlayerView'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 
@@ -468,7 +468,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
                     <span
                       className={`block text-xs uppercase font-extrabold ${MAFIA_TEAM_ROLES.includes(p.role) ? 'text-red-400' : 'text-emerald-400'}`}
                     >
-                      {p.role.replace(/_/g, ' ')}
+                      {MAFIA_ROLE_INFO[p.role]?.name ?? p.role}
                     </span>
                   </div>
                 </div>
@@ -516,7 +516,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
                         #{p.seatNumber} {p.name}
                       </span>
                       <span className="block text-xs font-semibold text-red-500/80 uppercase">
-                        {p.role.replace(/_/g, ' ')}
+                        {MAFIA_ROLE_INFO[p.role]?.name ?? p.role}
                       </span>
                     </div>
                   </div>
@@ -573,7 +573,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
                 <span
                   className={`font-mono text-xs uppercase ${MAFIA_TEAM_ROLES.includes(p.role) ? 'text-red-400' : 'text-emerald-400'}`}
                 >
-                  {p.role.replace(/_/g, ' ')}
+                  {MAFIA_ROLE_INFO[p.role]?.name ?? p.role}
                 </span>
               </div>
             ))}
