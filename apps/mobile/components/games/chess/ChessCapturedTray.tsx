@@ -65,7 +65,16 @@ export function KingGlyph({ color, size = 16 }: { color: ChessColor; size?: numb
   )
 }
 
-/** One combined captured-material line for both sides (e.g. "ADA ♟ · KOJO ♙♙"), sitting
+/** Collapse repeated captures into type+count (e.g. 6 pawns -> one pawn glyph + "×6") so a
+ *  long capture streak never grows past 5 icons (one per piece type) and can't force a wrap
+ *  mid-name. Order follows {@link CAPTURABLE_TYPES} (queen down to pawn). */
+function groupPieces(pieces: ChessPieceType[]): { type: ChessPieceType; count: number }[] {
+  const counts = new Map<ChessPieceType, number>()
+  for (const type of pieces) counts.set(type, (counts.get(type) ?? 0) + 1)
+  return CAPTURABLE_TYPES.filter((type) => counts.has(type)).map((type) => ({ type, count: counts.get(type)! }))
+}
+
+/** One combined captured-material line for both sides (e.g. "ADA ♟ · KOJO ♙×6"), sitting
  *  below the player cards. Each entry that has no captures yet is skipped. */
 export function ChessCapturedSummary({
   entries,
@@ -85,8 +94,11 @@ export function ChessCapturedSummary({
           <Text style={styles.summaryName} numberOfLines={1}>
             {e.name.toUpperCase()}
           </Text>
-          {e.pieces.map((type, j) => (
-            <ChessPieceGlyph key={`${type}-${j}`} set={set} color={e.glyphColor} type={type} size={14} />
+          {groupPieces(e.pieces).map(({ type, count }) => (
+            <View key={type} style={styles.summaryPiece}>
+              <ChessPieceGlyph set={set} color={e.glyphColor} type={type} size={14} />
+              {count > 1 ? <Text style={styles.summaryCount}>×{count}</Text> : null}
+            </View>
           ))}
         </View>
       ))}
@@ -142,9 +154,11 @@ const makeStyles = (theme: Theme) =>
       gap: 4,
       paddingHorizontal: 2,
     },
-    summaryItem: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+    summaryItem: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 2 },
     summaryDot: { color: theme.textFaint, fontSize: 12, marginRight: 2 },
     summaryName: { color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.3, marginRight: 1 },
+    summaryPiece: { flexDirection: 'row', alignItems: 'center' },
+    summaryCount: { color: theme.textFaint, fontSize: 10, fontWeight: '700', marginLeft: 1 },
     card: {
       flex: 1,
       flexDirection: 'row',

@@ -131,7 +131,16 @@ function KingGlyph({ color }: { color: ChessColor }) {
   )
 }
 
-/** One combined captured-material line for both sides (e.g. "ADA ♟ · KOJO ♙♙"), sitting below
+/** Collapse repeated captures into type+count (e.g. 6 pawns -> one pawn glyph + "×6") so a
+ *  long capture streak never grows past 5 icons (one per piece type) and can't force a wrap
+ *  mid-name. Order follows {@link CAPTURABLE_TYPES} (queen down to pawn). */
+function groupPieces(pieces: string[]): { type: string; count: number }[] {
+  const counts = new Map<string, number>()
+  for (const type of pieces) counts.set(type, (counts.get(type) ?? 0) + 1)
+  return CAPTURABLE_TYPES.filter((type) => counts.has(type)).map((type) => ({ type, count: counts.get(type)! }))
+}
+
+/** One combined captured-material line for both sides (e.g. "ADA ♟ · KOJO ♙×6"), sitting below
  *  the player cards. Each entry that has no captures yet is skipped. */
 function ChessCapturedSummary({
   entries,
@@ -145,17 +154,19 @@ function ChessCapturedSummary({
   return (
     <div className="flex items-center justify-center flex-wrap gap-1 px-1">
       {shown.map((e, i) => (
-        <div key={e.name + i} className="flex items-center gap-0.5">
+        <div key={e.name + i} className="flex items-center flex-wrap gap-0.5">
           {i > 0 ? <span className="text-faint text-xs mr-1">·</span> : null}
           <span className="text-muted text-[11px] font-bold tracking-wide mr-0.5">{e.name.toUpperCase()}</span>
-          {e.pieces.map((type, j) => (
-            <ChessPieceGlyph
-              key={`${type}-${j}`}
-              set={set}
-              color={e.glyphColor}
-              type={type as ChessPieceType}
-              className="h-3.5 w-3.5 sm:h-4 sm:w-4"
-            />
+          {groupPieces(e.pieces).map(({ type, count }) => (
+            <span key={type} className="flex items-center">
+              <ChessPieceGlyph
+                set={set}
+                color={e.glyphColor}
+                type={type as ChessPieceType}
+                className="h-3.5 w-3.5 sm:h-4 sm:w-4"
+              />
+              {count > 1 ? <span className="text-faint text-[10px] font-bold ml-px">×{count}</span> : null}
+            </span>
           ))}
         </div>
       ))}
