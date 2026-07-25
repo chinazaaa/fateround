@@ -8,6 +8,9 @@ interface MafiaPlayersGridProps {
   myPlayerId: string | null
   phase: MafiaPhase
   voteTallies: Record<string, number>
+  /** voterId -> targetId, when votes are public — shown as a "→ #N" sign on the voter's own
+   *  tile (Wolvesville shows who cast each vote, not just a tally on the target). */
+  voteChoices?: Record<string, string>
   /** When set, alive non-self tiles become tap targets for the current night action or vote —
    *  the primary way to act, matching Wolvesville (tap the player's photo, not a separate list). */
   onSelect?: (id: string) => void
@@ -27,9 +30,11 @@ export function MafiaPlayersGrid({
   myPlayerId,
   phase,
   voteTallies,
+  voteChoices = {},
   onSelect,
   selectedIds = [],
 }: MafiaPlayersGridProps) {
+  const seatNumberById = new Map(players.map((p) => [p.id, p.seatNumber]))
   return (
     <div className="glass-card border border-[var(--border)] rounded-2xl p-5">
       <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)] mb-3">
@@ -39,6 +44,7 @@ export function MafiaPlayersGrid({
         {players.map((p) => {
           const isMe = p.id === myPlayerId
           const voteCount = voteTallies?.[p.id] ?? 0
+          const votingForSeat = phase === 'voting' && p.isAlive ? seatNumberById.get(voteChoices[p.id]) : undefined
           const isSelected = selectedIds.includes(p.id)
           const clickable = !!onSelect && p.isAlive && !isMe
           const roleTeamColor = p.role
@@ -78,6 +84,11 @@ export function MafiaPlayersGrid({
                 </span>
               )}
               <span className="text-3xl leading-none">{p.isAlive ? '🧑' : '🪦'}</span>
+              {votingForSeat != null && (
+                <span className="text-[10px] font-black bg-amber-500 text-black rounded-full px-1.5 py-0.5 leading-none">
+                  → #{votingForSeat}
+                </span>
+              )}
               <span
                 className={`text-xs font-bold truncate w-full leading-tight ${
                   p.isAlive ? 'text-[var(--foreground)]' : 'line-through text-[var(--muted)]'

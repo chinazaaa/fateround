@@ -220,7 +220,6 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     setCupidFirstPick(null)
     setNightSelection(null)
     setVoteSelection(null)
-     
   }, [phaseKey])
 
   const triggerAutoAdvance = useCallback(async () => {
@@ -454,6 +453,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       dayChatMessages,
       ghostChatMessages,
       voteTallies,
+      voteChoices,
+      votesRequired,
       enabledRoles,
     } = mafiaState
 
@@ -553,6 +554,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               }}
               onSkipVote={() => void submitDayVote(null)}
               newlyDeadTonight={newlyDeadTonight}
+              votesRequired={votesRequired}
             />
 
             <MafiaPlayersGrid
@@ -560,6 +562,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               myPlayerId={myPlayerId}
               phase={phase}
               voteTallies={voteTallies}
+              voteChoices={voteChoices}
               onSelect={gridOnSelect}
               selectedIds={gridSelectedIds}
             />

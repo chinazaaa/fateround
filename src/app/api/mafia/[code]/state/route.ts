@@ -296,13 +296,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
   }
 
-  // Calculate vote tallies if public votes
+  // Calculate vote tallies + per-voter choices (who voted for whom), if votes are public
   const voteTallies: Record<string, number> = {}
+  const voteChoices: Record<string, string> = {}
   playerStates.forEach((ps) => {
     if (ps.day_vote_target_player_id) {
       voteTallies[ps.day_vote_target_player_id] = (voteTallies[ps.day_vote_target_player_id] || 0) + 1
+      voteChoices[ps.player_id] = ps.day_vote_target_player_id
     }
   })
+  const aliveCount = playerStates.filter((ps) => ps.is_alive).length
+  const votesRequired = Math.floor(aliveCount / 2) + 1
 
   return NextResponse.json({
     // Public state
@@ -320,6 +324,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     lastNightMafiaHadTarget: session.mafia_target_player_id != null,
     lastVoteResultPlayerId: session.vote_result_player_id,
     voteTallies: session.anonymous_votes && session.phase === 'voting' ? {} : voteTallies,
+    voteChoices: session.anonymous_votes && session.phase === 'voting' ? {} : voteChoices,
+    votesRequired,
     dayChatMessages,
     ghostChatMessages,
     enabledRoles: enabledRolesFrom(session),

@@ -29,6 +29,7 @@ interface MafiaPhaseCardProps {
   onIgnite: () => void
   onSkipVote: () => void
   newlyDeadTonight: MafiaPublicPlayer[]
+  votesRequired?: number
 }
 
 /**
@@ -49,6 +50,7 @@ export function MafiaPhaseCard({
   onIgnite,
   onSkipVote,
   newlyDeadTonight,
+  votesRequired,
 }: MafiaPhaseCardProps) {
   const myRole = myState?.role
 
@@ -177,7 +179,11 @@ export function MafiaPhaseCard({
             <span className="text-xl">🗳️</span>
             <div>
               <h3 className="text-lg font-black text-[var(--foreground)]">Day {dayNumber} — Vote</h3>
-              <p className="text-xs text-[var(--muted)]">A strict majority of alive players is needed to lynch.</p>
+              <p className="text-xs text-[var(--muted)]">
+                {votesRequired
+                  ? `Get ready to vote! (${votesRequired} vote${votesRequired === 1 ? '' : 's'} required)`
+                  : 'A strict majority of alive players is needed to lynch.'}
+              </p>
             </div>
           </div>
 
