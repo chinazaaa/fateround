@@ -504,7 +504,7 @@ export async function initializeMafiaGame(
     .single()
 
   if (gameError || !gameData) {
-    console.error('[mafia] failed to load game settings', gameError)
+    console.error('[mafia] failed to load game settings', { gameId, gameError })
     return { error: 'Failed to load game settings' }
   }
 
