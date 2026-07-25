@@ -314,6 +314,7 @@ export const boardGameLobbySettingsSchema = z.object({
   gameId: gameCodeString(),
   hostToken: hostTokenString(),
   is_public: z.boolean().optional(),
+  checkers_nigeria_street_rules: z.boolean().optional(),
   // Player-facing content label ("Maths", "Bible trivia"). Empty string clears it.
   content_label: z.string().max(40).optional(),
   max_players: z.coerce.number().int().min(1).max(100).optional(),
