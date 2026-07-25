@@ -9,11 +9,17 @@ export function UnoCardFace({
   compact,
   big,
   playable,
+  sel,
+  dim,
 }: {
   card: UnoCard
   compact?: boolean
   big?: boolean
   playable?: boolean
+  /** Multi-Play: this card is part of the set the player is building — highlighted. */
+  sel?: boolean
+  /** Multi-Play / Jump-In: this card can't join the current selection — faded. */
+  dim?: boolean
 }) {
   const isWild = card.color === 'wild'
   const bg = isWild ? WILD_BG : UNO_COLOR_HEX[card.color as keyof typeof UNO_COLOR_HEX]
@@ -26,6 +32,8 @@ export function UnoCardFace({
         compact && styles.cardCompact,
         big && styles.cardBig,
         playable && styles.cardPlayable,
+        sel && styles.cardSelected,
+        dim && styles.cardDim,
         { backgroundColor: bg },
       ]}
     >
@@ -62,6 +70,8 @@ const styles = StyleSheet.create({
   cardCompact: { width: 48, height: 68 },
   cardBig: { width: 66, height: 94, borderRadius: 10, padding: 8 },
   cardPlayable: { borderColor: '#fcd34d', borderWidth: 2 },
+  cardSelected: { borderColor: '#22d3ee', borderWidth: 3 },
+  cardDim: { opacity: 0.4 },
   oval: {
     alignItems: 'center',
     justifyContent: 'center',

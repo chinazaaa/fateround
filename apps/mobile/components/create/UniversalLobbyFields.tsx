@@ -45,17 +45,26 @@ export function UniversalLobbyFields({ state, limits, onChange }: Props) {
       </SurfaceCard>
 
       {supportsMaxPlayersSetting(state.gameType) ? (
-        <SurfaceCard>
-          <View style={styles.field}>
-            <Text style={styles.label}>Max players</Text>
-            <MaxPlayersPicker
-              gameType={state.gameType}
-              value={state.maxPlayers}
-              limits={limits}
-              onChange={(maxPlayers) => onChange({ maxPlayers })}
-            />
-          </View>
-        </SurfaceCard>
+        state.gameType === 'uno' && state.room.unoTeamMode ? (
+          <SurfaceCard>
+            <View style={styles.field}>
+              <Text style={styles.label}>Max players</Text>
+              <Text style={styles.hint}>4 players (2 teams of 2) — set by Team-Up mode.</Text>
+            </View>
+          </SurfaceCard>
+        ) : (
+          <SurfaceCard>
+            <View style={styles.field}>
+              <Text style={styles.label}>Max players</Text>
+              <MaxPlayersPicker
+                gameType={state.gameType}
+                value={state.maxPlayers}
+                limits={limits}
+                onChange={(maxPlayers) => onChange({ maxPlayers })}
+              />
+            </View>
+          </SurfaceCard>
+        )
       ) : null}
 
       {gameSupportsViewerSetting(state.gameType) && gameAllowsLatePlayerJoin(state.gameType) ? (
@@ -82,5 +91,9 @@ const makeStyles = (theme: Theme) =>
       color: theme.text,
       fontSize: 16,
       fontWeight: '800',
+    },
+    hint: {
+      color: theme.textMuted,
+      fontSize: 13,
     },
   })

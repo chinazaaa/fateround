@@ -7,10 +7,9 @@ import type { Game, UnoCard, UnoCardColor, UnoColor, UnoPlayerHand, UnoSession }
  * web API routes over HTTP (see apps/mobile/lib/game-api.ts postUno*). Only the pure
  * display/validation logic needed to render the board and pre-validate a tap is duplicated here.
  *
- * PHASE 1 SCOPE: only the classic ruleset + stacking + Wild Draw Four challenge + UNO-call
- * penalty + the 0/7 rule toggle are wired into mobile UI. Multi-Play, Team-Up (2v2) and Jump-In
- * are NOT ported here — see the note above `UnoRules` for exactly which fields are inert on
- * mobile today.
+ * PHASE 2: Multi-Play, Team-Up (2v2), Jump-In, and Team-Up quick-chat are now wired into
+ * mobile UI (see apps/mobile/components/games/UnoPlayerView.tsx and
+ * apps/mobile/hooks/useUnoQuickChat.ts).
  */
 
 export const UNO_MIN_PLAYERS = 2
@@ -55,11 +54,11 @@ export type UnoRules = {
   zeroSeven: boolean
   /** Allow stacking Draw Two on Draw Two / Draw Four on Draw Four. Core. */
   stacking: boolean
-  /** Multi-Play grouping rule — Phase 2, NOT wired on mobile. Kept for type/column parity only. */
+  /** Multi-Play grouping rule. */
   multiPlay: UnoMultiPlayMode
-  /** 2v2 Team-Up mode — Phase 2, NOT wired on mobile. Kept for type/column parity only. */
+  /** 2v2 Team-Up mode. */
   teamMode: boolean
-  /** Jump-In — Phase 2, NOT wired on mobile. Kept for type/column parity only. */
+  /** Jump-In. */
   jumpIn: boolean
 }
 
@@ -156,6 +155,46 @@ export function unoHandSum(cards: UnoCard[]): number {
   return cards.reduce((sum, card) => sum + cardPoints(card), 0)
 }
 
+// ── Team-Up (2v2) ────────────────────────────────────────────────────────────────
+/**
+ * Team-Up teams are derived from seating parity: turn_order alternates A–B–A–B, so seats at
+ * even indices are team 0 and odd indices are team 1. Returns the team (0/1) for a player, or
+ * null if they're not seated.
+ */
+export function unoTeamIndex(turnOrder: string[], playerId: string): 0 | 1 | null {
+  const i = (turnOrder ?? []).indexOf(playerId)
+  if (i < 0) return null
+  return (i % 2) as 0 | 1
+}
+
+/** The player id of `playerId`'s teammate (same parity, other seat), or null. */
+export function unoTeammateId(turnOrder: string[], playerId: string): string | null {
+  const order = turnOrder ?? []
+  const i = order.indexOf(playerId)
+  if (i < 0) return null
+  return order.find((id, j) => j !== i && j % 2 === i % 2) ?? null
+}
+
+/** Ids of players who left mid-round — kept in turn_order (parity) but skipped by play + placement. */
+export function unoLeftPlayerIds(session: Pick<UnoSession, 'left_player_ids'>): string[] {
+  return (session.left_player_ids as string[] | undefined) ?? []
+}
+
+/**
+ * Did `playerId` win this round? True for the winner, and — in Team-Up — also for
+ * the winner's teammate (both partners share the win).
+ */
+export function unoPlayerSharesWin(
+  turnOrder: string[],
+  winnerId: string | null | undefined,
+  playerId: string | null | undefined,
+  teamMode: boolean
+): boolean {
+  if (!winnerId || !playerId) return false
+  if (winnerId === playerId) return true
+  return teamMode && unoTeammateId(turnOrder ?? [], winnerId) === playerId
+}
+
 export function currentPlayerId(session: UnoSession): string | null {
   const order = session.turn_order ?? []
   if (order.length === 0) return null
@@ -234,6 +273,57 @@ export function hasPlayableCard(hand: UnoCard[], session: UnoSession): boolean {
   return hand.some((c) => canPlayCard(c, session))
 }
 
+/**
+ * Jump-In eligibility: `card` is an EXACT match for the settled top card — same colour AND same
+ * number (for number cards) or same symbol (Skip/Reverse/Draw Two). Wild and Wild Draw Four are
+ * never eligible (no fixed colour/number to match).
+ */
+export function isJumpInMatch(card: UnoCard, top: UnoCard | null): boolean {
+  if (!top) return false
+  if (isWildCard(card) || isWildCard(top)) return false
+  if (card.color !== top.color) return false
+  if (card.kind === 'number' && top.kind === 'number') return card.value === top.value
+  return card.kind !== 'number' && card.kind === top.kind
+}
+
+// ── Multi-Play ──────────────────────────────────────────────────────────────────
+/** A card that can be part of a Multi-Play set (wilds are colourless — must be played alone). */
+export function isMultiPlayableCard(card: UnoCard): boolean {
+  return !isWildCard(card)
+}
+
+/** Do these cards form a legal Multi-Play group under the mode? Order-independent. */
+export function multiSetGroupingOk(cards: UnoCard[], mode: UnoMultiPlayMode): boolean {
+  if (mode === 'off' || cards.length < 2) return false
+  if (cards.some((c) => isWildCard(c))) return false
+  const first = cards[0]!
+  const allSameColor = cards.every((c) => c.color === first.color)
+  const allSameValue = cards.every((c) => c.kind === 'number' && c.value === first.value)
+  if (mode === 'same_color') return allSameColor
+  if (mode === 'same_number') return allSameValue
+  return allSameColor || allSameValue // same_color_or_number
+}
+
+/**
+ * Validate a Multi-Play. `cards` are IN PLAY ORDER — the FIRST must legally match the top of
+ * the discard, and every card must satisfy the grouping rule. Returns an error string or null.
+ */
+export function validateMultiSet(cards: UnoCard[], session: UnoSession, mode: UnoMultiPlayMode): string | null {
+  if (mode === 'off') return 'Multi-Play is off'
+  if ((session.draw_penalty ?? 0) > 0) return 'Resolve the draw penalty first'
+  if (cards.length < 2) return 'Select at least two cards'
+  if (cards.some((c) => isWildCard(c))) return 'Wild cards must be played on their own'
+  if (!multiSetGroupingOk(cards, mode)) {
+    return mode === 'same_color'
+      ? 'All cards must be the same colour'
+      : mode === 'same_number'
+        ? 'All cards must be the same number'
+        : 'All cards must share a colour or a number'
+  }
+  if (!canPlayCard(cards[0]!, session)) return 'The first card must match the top card'
+  return null
+}
+
 export function unoHandCount(hands: UnoPlayerHand[], playerId: string): number {
   return ((hands.find((h) => h.player_id === playerId)?.cards as UnoCard[]) ?? []).length
 }
@@ -273,9 +363,8 @@ type UnoRankableHand = { player_id: string; cards: UnoCard[] }
 /**
  * Final placement order (1st → last). Players who emptied their hand rank FIRST, in the
  * exact order they finished (`finishOrder`); everyone still holding cards follows, ordered
- * by lowest hand total then fewest cards. Mirrors web's unoPlacementOrder — the Team-Up
- * branch is kept for type/behaviour parity but is unreachable on mobile (teamMode never
- * true from mobile-created games in Phase 1).
+ * by lowest hand total then fewest cards. Mirrors web's unoPlacementOrder, including the
+ * Team-Up branch (teams win/lose together).
  */
 export function unoPlacementOrder(
   hands: UnoRankableHand[],
