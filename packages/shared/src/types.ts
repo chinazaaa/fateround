@@ -135,6 +135,8 @@ export interface Game {
   landmine_elim_seconds?: number | null
   landmine_review?: boolean | null
   landmine_review_seconds?: number | null
+  /** Nigerian Draughts — opt-in "Street Rules" (huffing): decline a capture, risk the piece. */
+  checkers_nigeria_street_rules?: boolean | null
   question_source?: string | null
   /** Who Said This: 'player' (players submit) or 'deck' (host Platform/Library/CSV deck). */
   wst_quote_source?: string | null
@@ -237,6 +239,11 @@ export interface Draughts10Session {
   must_continue_remaining: number | null
   /** Nigeria-only opt-in "street rules" (huffing) room setting. */
   huffing_enabled: boolean
+  /**
+   * Squares of the mover's own pieces that had a capture available but went unplayed
+   * (Street Rules only) — the opponent may "huff" one of these instead of moving.
+   */
+  huffable_squares: string[]
   red_time_ms: number | null
   black_time_ms: number | null
   turn_started_at: string | null

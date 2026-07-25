@@ -19,6 +19,9 @@ type Props = {
   isMyTurn: boolean
   mustContinue: string | null
   mustContinueRemaining: number | null
+  allowSkip: boolean
+  /** Street Rules only: opponent pieces I may huff instead of moving this turn. */
+  huffableSquares: string[]
   selected: string | null
   lastMoveFrom: string | null
   lastMoveTo: string | null
@@ -38,6 +41,8 @@ export function Draughts10Board({
   isMyTurn,
   mustContinue,
   mustContinueRemaining,
+  allowSkip,
+  huffableSquares,
   selected,
   lastMoveFrom,
   lastMoveTo,
@@ -61,9 +66,16 @@ export function Draughts10Board({
   const legalTargets = useMemo(() => {
     if (!selected || !myColor || !isMyTurn) return new Set<string>()
     return new Set(
-      legalStepsFromSquare(board, myColor, selected, mustContinue, mustContinueRemaining).map((step) => step.to)
+      legalStepsFromSquare(board, myColor, selected, mustContinue, mustContinueRemaining, allowSkip).map(
+        (step) => step.to
+      )
     )
-  }, [board, myColor, isMyTurn, selected, mustContinue, mustContinueRemaining])
+  }, [board, myColor, isMyTurn, selected, mustContinue, mustContinueRemaining, allowSkip])
+
+  const huffable = useMemo(() => {
+    if (!isMyTurn || mustContinue) return new Set<string>()
+    return new Set(huffableSquares)
+  }, [isMyTurn, mustContinue, huffableSquares])
 
   // Captured counts: a side's tally is the 20 opposing pieces no longer on the board.
   const counts = useMemo(() => {
@@ -106,6 +118,7 @@ export function Draughts10Board({
               const isTarget = legalTargets.has(sq)
               const hasPiece = piece !== '.'
               const isLast = sq === lastMoveFrom || sq === lastMoveTo
+              const isHuffable = huffable.has(sq)
               return (
                 <Pressable
                   key={col}
@@ -116,6 +129,7 @@ export function Draughts10Board({
                     isSelected && styles.selectedSquare,
                     isTarget && styles.targetSquare,
                     isLast && styles.lastMoveSquare,
+                    isHuffable && styles.huffableSquare,
                   ]}
                   disabled={!dark || acting || !isMyTurn}
                   onPress={() => onSquarePress(row, col)}
@@ -192,6 +206,7 @@ const styles = StyleSheet.create({
   selectedSquare: { borderWidth: 2, borderColor: '#f43f5e' },
   targetSquare: { backgroundColor: '#a67c52' },
   lastMoveSquare: { backgroundColor: '#c4a574' },
+  huffableSquare: { borderWidth: 2, borderColor: '#f43f5e' },
   disc: {
     width: '72%',
     height: '72%',

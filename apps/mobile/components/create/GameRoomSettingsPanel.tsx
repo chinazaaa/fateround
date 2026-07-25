@@ -126,14 +126,26 @@ export function GameRoomSettingsPanel({ gameType, room, onChange }: Props) {
           </>
         ) : null}
 
-        {gameType === 'checkers' ? (
-          <TimerPicker
-            label="Time per player"
-            value={room.timerSeconds}
-            options={turnTimerOptionsFor('checkers')}
-            format={formatChessClockLabel}
-            onChange={(timerSeconds) => onChange({ timerSeconds })}
-          />
+        {gameType === 'checkers' || gameType === 'checkers_international' || gameType === 'checkers_nigeria' ? (
+          <>
+            <TimerPicker
+              label="Time per player"
+              value={room.timerSeconds}
+              options={turnTimerOptionsFor('checkers')}
+              format={formatChessClockLabel}
+              onChange={(timerSeconds) => onChange({ timerSeconds })}
+            />
+            {gameType === 'checkers_nigeria' ? (
+              <View style={styles.toggles}>
+                <SettingToggle
+                  label="Street Rules"
+                  description="Capturing stays optional — decline one and your opponent may huff (remove) the piece instead of moving"
+                  value={room.checkersNigeriaStreetRules}
+                  onChange={(checkersNigeriaStreetRules) => onChange({ checkersNigeriaStreetRules })}
+                />
+              </View>
+            ) : null}
+          </>
         ) : null}
 
         {gameType === 'ayo' ? (

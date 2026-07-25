@@ -31,6 +31,7 @@ import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import {
   postCheckersInternationalMove,
   postCheckersInternationalResign,
+  postCheckersNigeriaHuff,
   postCheckersNigeriaMove,
   postCheckersNigeriaResign,
 } from '@/lib/game-api'
@@ -186,27 +187,42 @@ export function Draughts10PlayerView({ gameCode }: { gameCode: string }) {
     })()
   }
 
+  const allowSkip = activeSession?.huffing_enabled === true
+  const huffableSquares = isMyTurn && !activeSession?.must_continue_from ? (activeSession?.huffable_squares ?? []) : []
+
   const onSquarePress = async (row: number, col: number) => {
     if (!bootstrap.myResumeToken || !activeSession || !isMyTurn || !myColor) return
     const sq = `${row}${col}`
     const mustContinue = activeSession.must_continue_from
     const mustRemaining = activeSession.must_continue_remaining
+
+    if (!selected && huffableSquares.includes(sq)) {
+      setActing(true)
+      try {
+        await postCheckersNigeriaHuff(bootstrap.code, bootstrap.myResumeToken, sq)
+        await bootstrap.load()
+      } finally {
+        setActing(false)
+      }
+      return
+    }
+
     const legalTargets = new Set(
       selected
-        ? legalStepsFromSquare(activeSession.board, myColor, selected, mustContinue, mustRemaining).map(
+        ? legalStepsFromSquare(activeSession.board, myColor, selected, mustContinue, mustRemaining, allowSkip).map(
             (step) => step.to
           )
         : []
     )
 
     if (!selected) {
-      const steps = legalStepsFromSquare(activeSession.board, myColor, sq, mustContinue, mustRemaining)
+      const steps = legalStepsFromSquare(activeSession.board, myColor, sq, mustContinue, mustRemaining, allowSkip)
       if (steps.length > 0) setSelected(sq)
       return
     }
 
     if (sq !== selected && !legalTargets.has(sq)) {
-      const steps = legalStepsFromSquare(activeSession.board, myColor, sq, mustContinue, mustRemaining)
+      const steps = legalStepsFromSquare(activeSession.board, myColor, sq, mustContinue, mustRemaining, allowSkip)
       if (steps.length > 0) setSelected(sq)
       return
     }
@@ -371,6 +387,8 @@ export function Draughts10PlayerView({ gameCode }: { gameCode: string }) {
           isMyTurn={isMyTurn && !isViewer}
           mustContinue={activeSession.must_continue_from}
           mustContinueRemaining={activeSession.must_continue_remaining}
+          allowSkip={allowSkip}
+          huffableSquares={huffableSquares}
           selected={selected}
           lastMoveFrom={activeSession.last_move_from}
           lastMoveTo={activeSession.last_move_to}
@@ -390,6 +408,12 @@ export function Draughts10PlayerView({ gameCode }: { gameCode: string }) {
                 ? ' · you must keep jumping with the same piece'
                 : ` · tap a ${word}, then its destination`
               : ' · waiting for your opponent'}
+          </Text>
+        ) : null}
+
+        {isMyTurn && huffableSquares.length > 0 ? (
+          <Text style={styles.huffHint}>
+            Your opponent passed up a capture — tap a glowing {word} to huff it, or move as usual.
           </Text>
         ) : null}
 
@@ -463,6 +487,7 @@ const makeStyles = (theme: Theme) =>
     matchupSideRight: { textAlign: 'right' },
     matchupVs: { color: theme.textFaint, fontSize: 12, fontWeight: '600' },
     identityHint: { color: theme.textMuted, fontSize: 12, textAlign: 'center', marginTop: 10 },
+    huffHint: { color: '#fca5a5', fontSize: 12, fontWeight: '700', textAlign: 'center', marginTop: 6 },
     identityStrong: { color: theme.text, fontWeight: '800' },
     resignBtn: {
       alignSelf: 'center',

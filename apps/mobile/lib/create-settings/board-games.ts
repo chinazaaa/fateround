@@ -50,6 +50,8 @@ export type GameRoomSettings = {
   scrabbleClockMode: ScrabbleClockMode
   scrabbleClockSeconds: number
   mahjongRuleset: MahjongRuleset
+  /** Nigerian Draughts only — opt-in "Street Rules" (huffing) house rule. Off by default. */
+  checkersNigeriaStreetRules: boolean
 }
 
 export function defaultGameRoomSettings(gameType: GameType): GameRoomSettings {
@@ -76,6 +78,7 @@ export function defaultGameRoomSettings(gameType: GameType): GameRoomSettings {
     scrabbleClockMode: 'standard',
     scrabbleClockSeconds: 600,
     mahjongRuleset: DEFAULT_MAHJONG_RULESET,
+    checkersNigeriaStreetRules: false,
   }
 }
 
@@ -139,6 +142,9 @@ export function gameRoomSettingsPayload(gameType: GameType, room: GameRoomSettin
 
   if (gameType === 'checkers' || gameType === 'checkers_international' || gameType === 'checkers_nigeria') {
     payload.timer_seconds = room.timerSeconds
+    if (gameType === 'checkers_nigeria') {
+      payload.checkers_nigeria_street_rules = room.checkersNigeriaStreetRules
+    }
     return payload
   }
 
