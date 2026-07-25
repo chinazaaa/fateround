@@ -59,21 +59,7 @@ type GameMeta = {
   landmine_mine_count?: number | null
   landmine_originality_bonus?: boolean | null
   landmine_mine_source?: string | null
-  mafia_doctor_enabled?: boolean | null
-  mafia_detective_enabled?: boolean | null
-  mafia_aura_seer_enabled?: boolean | null
-  mafia_bodyguard_enabled?: boolean | null
-  mafia_mayor_enabled?: boolean | null
-  mafia_vigilante_enabled?: boolean | null
-  mafia_tracker_enabled?: boolean | null
-  mafia_alpha_wolf_enabled?: boolean | null
-  mafia_wolf_cub_enabled?: boolean | null
-  mafia_framer_enabled?: boolean | null
-  mafia_jester_enabled?: boolean | null
-  mafia_serial_killer_enabled?: boolean | null
-  mafia_arsonist_enabled?: boolean | null
-  mafia_cupid_enabled?: boolean | null
-  mafia_cursed_villager_enabled?: boolean | null
+  mafia_advanced_mode?: boolean | null
   mafia_anonymous_votes?: boolean | null
   mafia_day_seconds?: number | null
   mafia_voting_seconds?: number | null
@@ -289,22 +275,7 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
     if (game.landmine_originality_bonus) items.push('✨ Originality bonus')
     if (game.landmine_mine_source === 'manual') items.push('🕵️ Manual setter')
   } else if (gt === 'mafia') {
-    const advancedRoleFields = [
-      game.mafia_bodyguard_enabled,
-      game.mafia_mayor_enabled,
-      game.mafia_vigilante_enabled,
-      game.mafia_tracker_enabled,
-      game.mafia_alpha_wolf_enabled,
-      game.mafia_wolf_cub_enabled,
-      game.mafia_framer_enabled,
-      game.mafia_jester_enabled,
-      game.mafia_serial_killer_enabled,
-      game.mafia_arsonist_enabled,
-      game.mafia_cupid_enabled,
-      game.mafia_cursed_villager_enabled,
-    ]
-    const isCustomized = advancedRoleFields.some((v) => v === false)
-    items.push(isCustomized ? '🎭 Custom roles' : '🎭 Classic (16 roles)')
+    items.push(game.mafia_advanced_mode === true ? '🎭 Advanced roles' : '🎭 Classic roles')
     if (typeof game.timer_seconds === 'number' && game.timer_seconds > 0) {
       items.push(`🌙 ${formatDuration(game.timer_seconds)} night`)
     }

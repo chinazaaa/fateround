@@ -97,6 +97,10 @@ export const SITE_FAQ_GROUPS: SiteFaqGroup[] = [
         answer:
           'Either their built-in questions reference adult themes, or the game asks players to make suggestive judgements about real people. They are labelled everywhere they appear and show a content warning before the first round, so nobody walks into one by accident.',
       },
+      {
+        question: `Is ${SITE_NAME} affiliated with Yahtzee, Monopoly, UNO, Whot, or other game brands?`,
+        answer: `No. ${SITE_NAME} is an independent platform. Some of our games are digital versions inspired by well-known party, board, or card games — including Yahtzee®, Monopoly®, Scrabble®, UNO®, and Whot® — but we are not affiliated with, endorsed by, or sponsored by the owners of those games. All trademarks are the property of their respective owners and are used only to describe the game being played.`,
+      },
     ],
   },
   {
