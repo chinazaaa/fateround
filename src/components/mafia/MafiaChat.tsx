@@ -237,7 +237,7 @@ export function MafiaDayChat({
         <button
           type="submit"
           disabled={sending || !text.trim() || disabled}
-          className="px-3 py-2 btn-primary text-sm font-semibold rounded-lg transition disabled:opacity-50"
+          className="px-3 py-2 btn-primary btn-fit text-sm font-semibold rounded-lg transition disabled:opacity-50"
         >
           Send
         </button>
