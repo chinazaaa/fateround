@@ -399,6 +399,21 @@ export function postUnoSwap(gameId: string, resumeToken: string, targetId: strin
   return postJson<{ success: boolean }>('/api/uno/swap', { gameId, resumeToken, targetId })
 }
 
+// Multi-Play: lay several matching cards in one turn, `cardIds` in play order (last stays on top).
+export function postUnoPlayMulti(gameId: string, resumeToken: string, cardIds: string[], callUno = false) {
+  return postJson<{ success: boolean }>('/api/uno/play-multi', { gameId, resumeToken, cardIds, callUno })
+}
+
+// Jump-In: play an exact-match card out of turn.
+export function postUnoJumpIn(gameId: string, resumeToken: string, cardId: string, callUno = false) {
+  return postJson<{ success: boolean }>('/api/uno/jump-in', { gameId, resumeToken, cardId, callUno })
+}
+
+// Team-Up: after a teammate leaves mid-round, continue solo or forfeit.
+export function postUnoTeamLeaveDecision(gameId: string, resumeToken: string, decision: 'continue' | 'forfeit') {
+  return postJson<{ success: boolean }>('/api/uno/team-leave', { gameId, resumeToken, decision })
+}
+
 export function postTtlStatements(
   gameId: string,
   resumeToken: string,
@@ -1114,6 +1129,9 @@ export type BoardLobbyPatch = {
   uno_wd4_challenge_penalty?: number
   uno_zero_seven?: boolean
   uno_stacking?: boolean
+  uno_jump_in?: boolean
+  uno_multi_play_mode?: string
+  uno_team_mode?: boolean
   ludo_variant?: 'modern' | 'traditional'
   ayo_variant?: 'traditional' | 'oware'
   checkers_nigeria_street_rules?: boolean
