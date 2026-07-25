@@ -19,6 +19,7 @@ import { TicTacToeHostView } from '@/components/tic-tac-toe/TicTacToeHostView'
 import { PingPongHostView } from '@/components/ping-pong/PingPongHostView'
 import { ChessHostView } from '@/components/chess/ChessHostView'
 import { CheckersHostView } from '@/components/checkers/CheckersHostView'
+import { Draughts10HostView } from '@/components/draughts10/Draughts10HostView'
 import { AyoHostView } from '@/components/ayo/AyoHostView'
 import { ScrabbleHostView } from '@/components/scrabble/ScrabbleHostView'
 import { DescribeItHostView } from '@/components/describe-it/DescribeItHostView'
@@ -64,6 +65,8 @@ export const HOST_VIEW_REGISTRY: Partial<Record<GameType, GameHostView>> = {
   ping_pong: PingPongHostView,
   chess: ChessHostView,
   checkers: CheckersHostView,
+  checkers_international: Draughts10HostView,
+  checkers_nigeria: Draughts10HostView,
   ayo: AyoHostView,
   scrabble: ScrabbleHostView,
   describe_it: DescribeItHostView,

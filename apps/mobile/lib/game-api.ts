@@ -81,6 +81,30 @@ export function postCheckersExpireTurn(gameId: string) {
   return postJson<{ success: boolean }>('/api/checkers/expire-turn', { gameId })
 }
 
+export function postCheckersInternationalMove(gameId: string, resumeToken: string, from: string, to: string) {
+  return postJson<{ success: boolean }>('/api/checkers-international/move', { gameId, resumeToken, from, to })
+}
+
+export function postCheckersInternationalResign(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/checkers-international/resign', { gameId, resumeToken })
+}
+
+export function postCheckersInternationalExpireTurn(gameId: string) {
+  return postJson<{ success: boolean }>('/api/checkers-international/expire-turn', { gameId })
+}
+
+export function postCheckersNigeriaMove(gameId: string, resumeToken: string, from: string, to: string) {
+  return postJson<{ success: boolean }>('/api/checkers-nigeria/move', { gameId, resumeToken, from, to })
+}
+
+export function postCheckersNigeriaResign(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/checkers-nigeria/resign', { gameId, resumeToken })
+}
+
+export function postCheckersNigeriaExpireTurn(gameId: string) {
+  return postJson<{ success: boolean }>('/api/checkers-nigeria/expire-turn', { gameId })
+}
+
 export function postAyoMove(gameId: string, resumeToken: string, pitIndex: number) {
   return postJson<{ success: boolean }>('/api/ayo/move', { gameId, resumeToken, pitIndex })
 }

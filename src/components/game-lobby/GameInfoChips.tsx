@@ -70,7 +70,14 @@ type GameMeta = {
 }
 
 /** Game types with a fixed 2-player format — a "players" pill would be pure noise. */
-const FIXED_TWO_PLAYER = new Set(['chess', 'checkers', 'tic_tac_toe', 'ping_pong'])
+const FIXED_TWO_PLAYER = new Set([
+  'chess',
+  'checkers',
+  'checkers_international',
+  'checkers_nigeria',
+  'tic_tac_toe',
+  'ping_pong',
+])
 
 /** Game types that already show their own (correctly defaulted/clamped) player-count chip
  *  via `GameLobbySummary` — skip the generic pill here to avoid a duplicate. */

@@ -395,6 +395,8 @@ export const GAME_LANDING_OG_BY_SLUG: Record<string, string> = {
   mafia: '/og/mafia.png',
   mahjong: '/og/mahjong.png',
   checkers: '/og/checkers.png',
+  'checkers-international': '/og/checkers-international.png',
+  'checkers-nigeria': '/og/checkers-nigeria.png',
   ayo: '/og/ayo.png',
   'word-rush': '/og/word-rush.png',
   'matching-pairs': '/og/matching-pairs.png',

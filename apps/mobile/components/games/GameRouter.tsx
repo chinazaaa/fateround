@@ -8,6 +8,7 @@ import { BATCH_6_GAMES } from '@fateround/shared/batch-6-games'
 import { BATCH_7_GAMES } from '@fateround/shared/batch-7-games'
 import { BATCH_8_GAMES } from '@fateround/shared/batch-8-games'
 import { BATCH_9_GAMES } from '@fateround/shared/batch-9-games'
+import { BATCH_10_GAMES } from '@fateround/shared/batch-10-games'
 import { BATCH_2_POLL_GAMES } from '@fateround/shared/poll-games'
 import { useTheme } from '@/constants/theme-context'
 import { PlayerPreJoinGate } from '@/components/lifecycle/PlayerPreJoinGate'
@@ -78,6 +79,12 @@ const BATCH_9_VIEWS = {
   landmine: lazyView(() => import('@/components/games/LandminePlayerView'), 'LandminePlayerView'),
 } as const satisfies Partial<Record<GameType, PlayerView>>
 
+const DRAUGHTS10_VIEW = lazyView(() => import('@/components/games/Draughts10PlayerView'), 'Draughts10PlayerView')
+const BATCH_10_VIEWS = {
+  checkers_international: DRAUGHTS10_VIEW,
+  checkers_nigeria: DRAUGHTS10_VIEW,
+} as const satisfies Partial<Record<GameType, PlayerView>>
+
 const MOBILE_PLAYER_VIEWS: Partial<Record<GameType, PlayerView>> = {
   ayo: lazyView(() => import('@/components/games/AyoPlayerView'), 'AyoPlayerView'),
   tic_tac_toe: lazyView(() => import('@/components/games/TicTacToePlayerView'), 'TicTacToePlayerView'),
@@ -92,6 +99,7 @@ const MOBILE_PLAYER_VIEWS: Partial<Record<GameType, PlayerView>> = {
   ...BATCH_7_VIEWS,
   ...BATCH_8_VIEWS,
   ...BATCH_9_VIEWS,
+  ...BATCH_10_VIEWS,
 }
 
 export function hasMobilePlayerView(gameType: GameType): boolean {
@@ -127,7 +135,16 @@ export const BATCH_1_GAMES: GameType[] = ['ayo', 'tic_tac_toe', 'checkers', 'bin
 
 export const BATCH_2_GAMES: GameType[] = BATCH_2_POLL_GAMES
 
-export { BATCH_3_GAMES, BATCH_4_GAMES, BATCH_5_GAMES, BATCH_6_GAMES, BATCH_7_GAMES, BATCH_8_GAMES, BATCH_9_GAMES }
+export {
+  BATCH_3_GAMES,
+  BATCH_4_GAMES,
+  BATCH_5_GAMES,
+  BATCH_6_GAMES,
+  BATCH_7_GAMES,
+  BATCH_8_GAMES,
+  BATCH_9_GAMES,
+  BATCH_10_GAMES,
+}
 
 export const MOBILE_SUPPORTED_GAMES: GameType[] = [
   ...BATCH_1_GAMES,
@@ -139,4 +156,5 @@ export const MOBILE_SUPPORTED_GAMES: GameType[] = [
   ...BATCH_7_GAMES,
   ...BATCH_8_GAMES,
   ...BATCH_9_GAMES,
+  ...BATCH_10_GAMES,
 ]

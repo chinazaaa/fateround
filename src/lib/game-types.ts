@@ -1497,7 +1497,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   },
   checkers: {
     id: 'checkers',
-    label: 'Checkers',
+    label: 'Checkers: American',
     tagline: 'Classic draughts — capture all pieces to win',
     headerEmoji: '⛀⛂',
     card: {
@@ -1517,6 +1517,92 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
         activeClass: 'bg-red-500/20 text-red-100 border-red-400',
         borderClass: 'border-red-500/50 bg-red-500/10',
         textColor: '#fca5a5',
+      },
+      marry: {
+        emoji: '⚫',
+        label: 'Black',
+        color: '#475569',
+        leaderboardLabel: 'Black wins',
+        activeClass: 'bg-slate-700/30 text-slate-100 border-slate-500',
+        borderClass: 'border-slate-600/50 bg-slate-700/20',
+        textColor: '#cbd5e1',
+      },
+      kill: {
+        emoji: '🏆',
+        label: 'Winner',
+        color: '#fbbf24',
+        leaderboardLabel: 'Winner',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
+  checkers_international: {
+    id: 'checkers_international',
+    label: 'Checkers: International',
+    tagline: 'Flying kings on a 10×10 board — majority capture is mandatory',
+    headerEmoji: '⛀⛂',
+    card: {
+      accent: '#dc2626',
+      accentSoft: 'rgba(220, 38, 38, 0.15)',
+      emoji: '⛀',
+      players: '2 players',
+      vibe: 'Flying kings',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '⚪',
+        label: 'White',
+        color: '#e5e7eb',
+        leaderboardLabel: 'White wins',
+        activeClass: 'bg-slate-200/20 text-slate-100 border-slate-300',
+        borderClass: 'border-slate-300/50 bg-slate-200/10',
+        textColor: '#e5e7eb',
+      },
+      marry: {
+        emoji: '⚫',
+        label: 'Black',
+        color: '#475569',
+        leaderboardLabel: 'Black wins',
+        activeClass: 'bg-slate-700/30 text-slate-100 border-slate-500',
+        borderClass: 'border-slate-600/50 bg-slate-700/20',
+        textColor: '#cbd5e1',
+      },
+      kill: {
+        emoji: '🏆',
+        label: 'Winner',
+        color: '#fbbf24',
+        leaderboardLabel: 'Winner',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
+  checkers_nigeria: {
+    id: 'checkers_nigeria',
+    label: 'Checkers: Nigeria',
+    tagline: 'Naija draughts — seed your way to a flying-king finish',
+    headerEmoji: '⛀⛂',
+    card: {
+      accent: '#16a34a',
+      accentSoft: 'rgba(22, 163, 74, 0.15)',
+      emoji: '⛀',
+      players: '2 players',
+      vibe: 'Seeds & kings',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🟢',
+        label: 'Green',
+        color: '#22c55e',
+        leaderboardLabel: 'Green wins',
+        activeClass: 'bg-green-500/20 text-green-100 border-green-400',
+        borderClass: 'border-green-500/50 bg-green-500/10',
+        textColor: '#86efac',
       },
       marry: {
         emoji: '⚫',
@@ -2017,6 +2103,8 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'snake_and_ladder',
   'crazy_eights',
   'checkers',
+  'checkers_international',
+  'checkers_nigeria',
   'mafia',
   'matching_pairs',
   'quiplash',
@@ -2045,6 +2133,8 @@ const PINNED_GAME_TYPES: GameType[] = [
   'sudoku',
   'chess',
   'checkers',
+  'checkers_international',
+  'checkers_nigeria',
   'scrabble',
   'word_hunt',
   'describe_it',
@@ -2118,6 +2208,8 @@ const GAME_CATEGORY_BY_TYPE: Partial<Record<GameType, GameCategory>> = {
   tic_tac_toe: 'board',
   chess: 'board',
   checkers: 'board',
+  checkers_international: 'board',
+  checkers_nigeria: 'board',
   scrabble: 'board',
   ayo: 'board',
   ping_pong: 'board',
@@ -2172,6 +2264,20 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'crazy_eights' || raw === 'crazy-eights') return 'crazy_eights'
   if (raw === 'uno') return 'uno'
   if (raw === 'checkers' || raw === 'draughts') return 'checkers'
+  if (
+    raw === 'checkers_international' ||
+    raw === 'checkers-international' ||
+    raw === 'international-draughts' ||
+    raw === 'polish-draughts'
+  )
+    return 'checkers_international'
+  if (
+    raw === 'checkers_nigeria' ||
+    raw === 'checkers-nigeria' ||
+    raw === 'nigerian-draughts' ||
+    raw === 'naija-draughts'
+  )
+    return 'checkers_nigeria'
   if (raw === 'mafia' || raw === 'werewolf') return 'mafia'
   if (raw === 'matching_pairs') return 'matching_pairs'
   if (raw === 'quiplash') return 'quiplash'
@@ -2274,7 +2380,11 @@ export function gameHowItWorks(
     case 'chess':
       return 'Two players join with their name. The host can play too. One player is White, the other Black — White moves first. Move pieces by the standard rules; checkmate your opponent to win. Optional chess clock — each player gets their own time bank that only ticks on their turn, and the first to run out loses.'
     case 'checkers':
-      return 'Two players join with their name. The host can play too. American 8×8 checkers on dark squares only — 12 pieces each. Black moves first. Men move diagonally forward one square; jump an adjacent opponent to capture — captures are forced, and you must keep jumping with the same piece while more jumps are available. Crown a king on the far row (moves one square any direction). Win by capturing all enemy pieces or blocking every legal move. Draws: threefold repetition or the 40-move rule. Optional per-player clock.'
+      return 'Two players join with their name. The host can play too. American 8×8 checkers on dark squares only — 12 pieces each. Black moves first. American rules: men move diagonally forward one square; jump an adjacent opponent to capture — captures are forced, and you must keep jumping with the same piece while more jumps are available. Crown a king on the far row (moves one square any direction). Win by capturing all enemy pieces or blocking every legal move. Draws: threefold repetition or the 40-move rule. Optional per-player clock.'
+    case 'checkers_international':
+      return 'Two players join with their name. The host can play too. International (flying kings) draughts on a 10×10 board, dark squares only — 20 pieces each. Men capture in any direction (forward or backward) by jumping an adjacent opponent. Captures are mandatory, and when more than one capture sequence is available you must play the sequence that takes the MOST pieces (majority capture rule). Kings fly along open diagonals like a bishop and can capture from a distance; crowning happens only at the end of a capture sequence, not mid-jump. Win by capturing all enemy pieces or blocking every legal move. Draw: 25 moves without a capture or a men-only move. Optional per-player clock.'
+    case 'checkers_nigeria':
+      return 'Two players join with their name. The host can play too. Nigerian draughts (Naija checkers) — the same 10×10 flying-kings engine as International, played with local "seed" terminology and a mirrored board orientation. Each side starts with 20 seeds; captures are mandatory and must take the maximum number of seeds when a choice exists. Seeds capture in any direction; kings fly the full diagonal and crown only once their capture sequence ends. Hosts can optionally switch on Street Rules for a house-rules variant. Win by capturing all enemy seeds or blocking every legal move. Draw: 25 moves without a capture or a seed-only move. Optional per-player clock.'
     case 'ayo':
       return 'Two players join with their name. The host can play too. Choose Traditional Ayo (complete fours on your houses to win them; on opponent houses, last seed wins for you, earlier seeds win for them) or Oware rules (2/3 capture with linkage, seed scoring). Winner is Ọta; three straight round wins makes an Ọta champion. Optional per-player clock.'
     case 'mafia':
@@ -2556,6 +2666,8 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   snake_and_ladder: true,
   crazy_eights: true,
   checkers: true,
+  checkers_international: true,
+  checkers_nigeria: true,
   matching_pairs: true,
   quiplash: true,
   quick_draw: true,
@@ -2604,6 +2716,8 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   snake_and_ladder: false,
   crazy_eights: false,
   checkers: false,
+  checkers_international: false,
+  checkers_nigeria: false,
   matching_pairs: false,
   quiplash: false,
   quick_draw: false,
@@ -2725,6 +2839,19 @@ export function isChessGame(gameType: GameType | string | undefined): boolean {
 
 export function isCheckersGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'checkers'
+}
+
+export function isCheckersInternationalGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'checkers_international'
+}
+
+export function isCheckersNigeriaGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'checkers_nigeria'
+}
+
+/** Either 10×10 flying-kings draughts variant (International or Nigeria) — shared draughts10 engine. */
+export function isDraughts10Game(gameType: GameType | string | undefined): boolean {
+  return isCheckersInternationalGame(gameType) || isCheckersNigeriaGame(gameType)
 }
 
 export function isAyoGame(gameType: GameType | string | undefined): boolean {

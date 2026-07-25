@@ -2,12 +2,7 @@ import type { GameType } from '@fateround/shared'
 import { useMemo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { gameLabel } from '@/lib/mobile-registry'
-import {
-  GAME_CATEGORIES,
-  gameTypeCategory,
-  gameTypeMeta,
-  type GameCategory,
-} from '@/lib/game-type-meta'
+import { GAME_CATEGORIES, gameTypeCategory, gameTypeMeta, type GameCategory } from '@/lib/game-type-meta'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
@@ -18,6 +13,11 @@ type Props = {
 }
 
 type Filter = GameCategory | 'all'
+
+/** Alt names people search for that aren't in a game's label/blurb — e.g. "draughts" for Checkers. */
+const SEARCH_ALIASES: Partial<Record<GameType, string[]>> = {
+  checkers: ['draughts'],
+}
 
 export function GameTypePicker({ options, value, onChange }: Props) {
   const theme = useTheme()
@@ -40,7 +40,8 @@ export function GameTypePicker({ options, value, onChange }: Props) {
         const meta = gameTypeMeta(t)
         return (
           gameLabel(t).toLowerCase().includes(trimmed) ||
-          meta.blurb.toLowerCase().includes(trimmed)
+          meta.blurb.toLowerCase().includes(trimmed) ||
+          (SEARCH_ALIASES[t] ?? []).some((alias) => alias.includes(trimmed))
         )
       })
     }
@@ -63,19 +64,10 @@ export function GameTypePicker({ options, value, onChange }: Props) {
       />
 
       {!trimmed ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipRow}
-        >
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
           <FilterChip label="All" active={filter === 'all'} onPress={() => setFilter('all')} />
           {chips.map((c) => (
-            <FilterChip
-              key={c.key}
-              label={c.label}
-              active={filter === c.key}
-              onPress={() => setFilter(c.key)}
-            />
+            <FilterChip key={c.key} label={c.label} active={filter === c.key} onPress={() => setFilter(c.key)} />
           ))}
         </ScrollView>
       ) : null}
@@ -109,15 +101,7 @@ export function GameTypePicker({ options, value, onChange }: Props) {
   )
 }
 
-function FilterChip({
-  label,
-  active,
-  onPress,
-}: {
-  label: string
-  active: boolean
-  onPress: () => void
-}) {
+function FilterChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   const styles = useThemedStyles(makeStyles)
   return (
     <Pressable style={[styles.chip, active && styles.chipActive]} onPress={onPress}>
@@ -128,73 +112,73 @@ function FilterChip({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  wrap: { gap: theme.space.sm },
-  search: {
-    backgroundColor: theme.bgElevated,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingHorizontal: theme.space.md,
-    paddingVertical: 12,
-    color: theme.text,
-    fontSize: 15,
-  },
-  chipRow: {
-    gap: theme.space.xs,
-    paddingVertical: 2,
-    paddingRight: theme.space.md,
-  },
-  chip: {
-    paddingHorizontal: theme.space.md,
-    paddingVertical: 8,
-    borderRadius: theme.radius.pill,
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.bgElevated,
-  },
-  chipActive: {
-    borderColor: theme.primary,
-    backgroundColor: theme.primarySoft,
-  },
-  chipText: { color: theme.textMuted, fontSize: 13, fontWeight: '700' },
-  chipTextActive: { color: theme.primaryMuted },
-  empty: {
-    color: theme.textMuted,
-    fontSize: 14,
-    paddingVertical: theme.space.md,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.space.sm,
-  },
-  tile: {
-    width: '48%',
-    flexGrow: 1,
-    minWidth: '46%',
-    backgroundColor: theme.bgElevated,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: theme.space.md,
-    gap: 4,
-    minHeight: 108,
-  },
-  tileSelected: {
-    borderColor: theme.primary,
-    backgroundColor: theme.primarySoft,
-  },
-  emoji: { fontSize: 26, marginBottom: 2 },
-  name: {
-    color: theme.text,
-    fontSize: 15,
-    fontWeight: '700',
-    lineHeight: 20,
-  },
-  nameSelected: { color: theme.primaryMuted },
-  blurb: {
-    color: theme.textFaint,
-    fontSize: 12,
-    lineHeight: 16,
-  },
-})
+    wrap: { gap: theme.space.sm },
+    search: {
+      backgroundColor: theme.bgElevated,
+      borderRadius: theme.radius.md,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingHorizontal: theme.space.md,
+      paddingVertical: 12,
+      color: theme.text,
+      fontSize: 15,
+    },
+    chipRow: {
+      gap: theme.space.xs,
+      paddingVertical: 2,
+      paddingRight: theme.space.md,
+    },
+    chip: {
+      paddingHorizontal: theme.space.md,
+      paddingVertical: 8,
+      borderRadius: theme.radius.pill,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.bgElevated,
+    },
+    chipActive: {
+      borderColor: theme.primary,
+      backgroundColor: theme.primarySoft,
+    },
+    chipText: { color: theme.textMuted, fontSize: 13, fontWeight: '700' },
+    chipTextActive: { color: theme.primaryMuted },
+    empty: {
+      color: theme.textMuted,
+      fontSize: 14,
+      paddingVertical: theme.space.md,
+    },
+    grid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: theme.space.sm,
+    },
+    tile: {
+      width: '48%',
+      flexGrow: 1,
+      minWidth: '46%',
+      backgroundColor: theme.bgElevated,
+      borderRadius: theme.radius.md,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: theme.space.md,
+      gap: 4,
+      minHeight: 108,
+    },
+    tileSelected: {
+      borderColor: theme.primary,
+      backgroundColor: theme.primarySoft,
+    },
+    emoji: { fontSize: 26, marginBottom: 2 },
+    name: {
+      color: theme.text,
+      fontSize: 15,
+      fontWeight: '700',
+      lineHeight: 20,
+    },
+    nameSelected: { color: theme.primaryMuted },
+    blurb: {
+      color: theme.textFaint,
+      fontSize: 12,
+      lineHeight: 16,
+    },
+  })

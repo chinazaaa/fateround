@@ -15,6 +15,7 @@ import {
 import { initializeTicTacToeGame, TIC_TAC_TOE_MIN_PLAYERS } from '@/lib/tic-tac-toe'
 import { initializeChessGame, CHESS_MIN_PLAYERS } from '@/lib/chess'
 import { initializeCheckersGame, CHECKERS_MIN_PLAYERS } from '@/lib/checkers'
+import { initializeDraughts10Game, DRAUGHTS10_MIN_PLAYERS } from '@/lib/draughts10'
 import { initializeAyoGame, AYO_MIN_PLAYERS } from '@/lib/ayo'
 import { initializeScrabbleGame, SCRABBLE_MIN_PLAYERS, SCRABBLE_MAX_PLAYERS } from '@/lib/scrabble'
 import { initializeMafiaGame, MAFIA_MIN_PLAYERS, MAFIA_MAX_PLAYERS } from '@/lib/mafia'
@@ -100,6 +101,20 @@ export const GAME_START_SPECS: Partial<Record<GameType, StartSpec>> = {
     minPlayers: CHECKERS_MIN_PLAYERS,
     exact: true,
     initialize: (admin, code, ids) => initializeCheckersGame(admin, code, ids),
+  },
+  checkers_international: {
+    minPlayers: DRAUGHTS10_MIN_PLAYERS,
+    exact: true,
+    // TODO: wire Street Rules room toggle (huffing) — hardcoded false; not applicable
+    // to International variant anyway (huffing only applies to Nigeria).
+    initialize: (admin, code, ids) => initializeDraughts10Game(admin, code, ids, 'international'),
+  },
+  checkers_nigeria: {
+    minPlayers: DRAUGHTS10_MIN_PLAYERS,
+    exact: true,
+    // TODO: wire Street Rules room toggle (huffing) from create-game form; hardcoded
+    // false until a real room-setting exists to thread through.
+    initialize: (admin, code, ids) => initializeDraughts10Game(admin, code, ids, 'nigeria', false),
   },
   ayo: {
     minPlayers: AYO_MIN_PLAYERS,
