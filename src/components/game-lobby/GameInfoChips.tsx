@@ -79,6 +79,15 @@ const FIXED_TWO_PLAYER = new Set([
   'ping_pong',
 ])
 
+/** These duel games clock `timer_seconds` themselves (a per-player or per-turn clock set via
+ *  HostDuelLobbyPanel) rather than `game_duration_seconds` — shown here instead of the generic
+ *  session-length chip below, which would otherwise misreport them as "No time limit". */
+const DUEL_CLOCK_LABEL: Record<string, string> = {
+  chess: 'Time per player',
+  checkers: 'Time per player',
+  tic_tac_toe: 'Turn timer',
+}
+
 /** Game types that already show their own (correctly defaulted/clamped) player-count chip
  *  via `GameLobbySummary` — skip the generic pill here to avoid a duplicate. */
 const SKIP_MAX_PLAYERS_PILL = new Set(['anonymous_messages'])
@@ -172,9 +181,11 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
     items.push(`👥 Up to ${game.max_players} players`)
   }
 
-  // Session-length cap (currently used by Monopoly-style games). Shown even when unlimited —
-  // that's exactly what a time-pressed player needs to know before joining.
-  if (typeof game.game_duration_seconds === 'number') {
+  if (DUEL_CLOCK_LABEL[gt]) {
+    items.push(`⏱ ${DUEL_CLOCK_LABEL[gt]} · ${formatDuration(game.timer_seconds ?? 0)}`)
+  } else if (typeof game.game_duration_seconds === 'number') {
+    // Session-length cap (currently used by Monopoly-style games). Shown even when unlimited —
+    // that's exactly what a time-pressed player needs to know before joining.
     items.push(`⏳ ${formatDuration(game.game_duration_seconds)}`)
   }
 

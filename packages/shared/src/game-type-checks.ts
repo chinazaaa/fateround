@@ -48,6 +48,10 @@ export function isCrazyEightsGame(gameType: GameType | string | undefined): bool
   return eq(gameType, 'crazy_eights')
 }
 
+export function isUnoGame(gameType: GameType | string | undefined): boolean {
+  return eq(gameType, 'uno')
+}
+
 export function isLudoGame(gameType: GameType | string | undefined): boolean {
   return eq(gameType, 'ludo')
 }

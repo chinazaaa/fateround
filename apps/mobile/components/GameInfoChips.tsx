@@ -26,6 +26,15 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
+/** These duel games clock `timer_seconds` themselves (a per-player or per-turn clock) rather
+ *  than `game_duration_seconds` — labeled here instead of the generic session-length fallback
+ *  below, which would otherwise misreport them as "No time limit". */
+const DUEL_CLOCK_LABEL: Record<string, string> = {
+  chess: 'Time per player',
+  checkers: 'Time per player',
+  tic_tac_toe: 'Turn timer',
+}
+
 /**
  * Player-facing summary chips for a game's settings (theme / difficulty / time) so people
  * know what they're joining. Custom/library content packs hide the theme (there isn't one).
@@ -55,8 +64,19 @@ export function gameInfoItems(game: Game | null | undefined): string[] {
     if (game.word_scramble_difficulty) items.push(capitalize(String(game.word_scramble_difficulty)))
   }
 
-  const duration = game.game_duration_seconds ?? game.timer_seconds
-  if (typeof duration === 'number') items.push(formatDuration(duration))
+  const duelLabel = game.game_type ? DUEL_CLOCK_LABEL[game.game_type] : undefined
+  if (duelLabel) {
+    items.push(`${duelLabel} · ${formatDuration(game.timer_seconds ?? 0)}`)
+  } else {
+    const duration = game.game_duration_seconds ?? game.timer_seconds
+    if (typeof duration === 'number') items.push(formatDuration(duration))
+  }
+
+  // Scrabble's chess-clock mode is a separate per-player clock on top of the game's overall
+  // session length above — surfaced only when the host actually turned it on.
+  if (game.game_type === 'scrabble' && game.scrabble_clock_mode === 'chess' && game.scrabble_clock_seconds) {
+    items.push(`Chess clock · ${formatDuration(game.scrabble_clock_seconds)}`)
+  }
 
   return items
 }

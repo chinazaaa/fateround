@@ -16,6 +16,7 @@ import {
   turnTimerOptionsFor,
 } from '@fateround/shared/create-board-games'
 import { WHOT_GAME_DURATION_OPTIONS } from '@fateround/shared/whot'
+import { UNO_GAME_DURATION_OPTIONS } from '@fateround/shared/uno'
 import { MAHJONG_RULESET_LABELS, MAHJONG_RULESETS } from '@fateround/shared/mahjong-rulesets'
 import {
   SCRABBLE_DICTIONARY_OPTIONS,
@@ -259,6 +260,55 @@ export function GameRoomSettingsPanel({ gameType, room, onChange }: Props) {
                 description="Defend a Pick 2 with your own 2"
                 value={room.crazy8Pick2Stacking}
                 onChange={(crazy8Pick2Stacking) => onChange({ crazy8Pick2Stacking })}
+              />
+            </View>
+          </>
+        ) : null}
+
+        {gameType === 'uno' ? (
+          <>
+            <TimerPicker
+              label="Turn timer"
+              value={room.timerSeconds}
+              options={turnTimerOptionsFor('uno')}
+              format={formatBoardGameTurnTimer}
+              onChange={(timerSeconds) => onChange({ timerSeconds })}
+            />
+            <View style={styles.field}>
+              <Text style={styles.label}>Game length</Text>
+              <SegmentedControl
+                value={String(room.gameDurationSeconds)}
+                options={UNO_GAME_DURATION_OPTIONS.map((seconds) => ({
+                  value: String(seconds),
+                  label: formatSessionDuration(seconds),
+                }))}
+                onChange={(value) => onChange({ gameDurationSeconds: Number(value) })}
+              />
+            </View>
+            <View style={styles.toggles}>
+              <SettingToggle
+                label="Wild +4 challenge"
+                description="Let the next player challenge a Wild Draw Four"
+                value={room.unoWd4Challenge}
+                onChange={(unoWd4Challenge) => onChange({ unoWd4Challenge })}
+              />
+              <SettingToggle
+                label="Draw stacking"
+                description="Stack a Draw Two on a Draw Two, or a Wild +4 on a Wild +4"
+                value={room.unoStacking}
+                onChange={(unoStacking) => onChange({ unoStacking })}
+              />
+              <SettingToggle
+                label="0/7 rule"
+                description="Playing a 0 passes every hand · playing a 7 swaps hands with a player"
+                value={room.unoZeroSeven}
+                onChange={(unoZeroSeven) => onChange({ unoZeroSeven })}
+              />
+              <SettingToggle
+                label="Double penalty"
+                description="Missed UNO calls draw 4 cards instead of 2"
+                value={room.unoUnoPenalty === 4}
+                onChange={(on) => onChange({ unoUnoPenalty: on ? 4 : 2 })}
               />
             </View>
           </>
