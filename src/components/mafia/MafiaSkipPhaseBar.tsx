@@ -13,10 +13,9 @@ interface MafiaSkipPhaseBarProps {
  * Lets the town vote to skip ahead out of Discussion or Voting early instead of always
  * waiting out the full timer — separate from the per-voter "abstain" skip on the roster grid
  * during Voting, which only clears that player's own vote. This one needs the same majority
- * as a lynch vote (floor(alive/2)+1). During Voting specifically, reaching that majority means
- * the town doesn't want to vote at all this round — it resolves straight to "nobody
- * eliminated" (see runMafiaAdvance's forceNoLynch), not a tally of whatever partial votes
- * happen to exist.
+ * as a lynch vote (floor(alive/2)+1). During Voting, reaching that majority just ends the
+ * phase early — it resolves on whatever's actually been voted so far (a majority already
+ * agreeing on one target still eliminates them), it doesn't discard cast votes.
  */
 export function MafiaSkipPhaseBar({
   phase,

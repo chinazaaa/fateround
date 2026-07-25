@@ -25,14 +25,7 @@ const KILLER_LABEL: Record<string, string> = {
  */
 export async function runMafiaAdvance(
   gameId: string,
-  opts?: {
-    nextPhase?: MafiaPhase
-    /** Set when a majority used Skip Voting to explicitly choose not to lynch anyone this
-     *  round — resolves straight to "nobody eliminated" instead of tallying whatever votes
-     *  happen to have been cast, since skipping voting means the town doesn't want to vote
-     *  at all this round, not "cut the vote short and count what's there". */
-    forceNoLynch?: boolean
-  }
+  opts?: { nextPhase?: MafiaPhase }
 ): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
   const admin = getSupabaseAdmin()
 
@@ -202,10 +195,10 @@ export async function runMafiaAdvance(
       await markGameFinished(admin, gameId)
     }
   } else if (currentPhase === 'voting' && targetPhase === 'elimination') {
-    // Resolve Voting — unless the town explicitly skipped voting (majority skip request),
-    // in which case nobody is eliminated regardless of whatever partial votes exist; skipping
-    // voting means "we don't want to vote at all this round", not "cut it short and tally".
-    const votedPlayerId = opts?.forceNoLynch ? null : resolveMafiaDayVote(playerStates)
+    // Resolve Voting on whatever's been cast so far — this runs identically whether Voting
+    // ended by timeout or by a majority Skip Voting request; skipping just ends the phase
+    // early, it doesn't override or discard the votes actually cast.
+    const votedPlayerId = resolveMafiaDayVote(playerStates)
     updateFields.vote_result_player_id = votedPlayerId
 
     if (votedPlayerId) {
@@ -232,8 +225,6 @@ export async function runMafiaAdvance(
       systemMessages.push(
         `⚖️ The Village killed ${playerLabel(votedPlayerId)}${votedState ? ` ${roleLabel(votedState.role)}` : ''}`
       )
-    } else if (opts?.forceNoLynch) {
-      systemMessages.push('🤝 The town voted to skip — nobody was eliminated this round.')
     } else {
       systemMessages.push('🤝 No majority reached — nobody was eliminated.')
     }

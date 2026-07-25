@@ -82,9 +82,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const skipRequired = Math.floor(aliveCount / 2) + 1
 
   if (nextSkipIds.length >= skipRequired) {
-    // Skipping Voting means the town doesn't want to vote at all this round — resolve
-    // straight to "nobody eliminated" rather than tallying whatever partial votes exist.
-    const result = await runMafiaAdvance(gameId, { forceNoLynch: session.phase === 'voting' })
+    // Resolves on whatever's been voted so far — a majority actually voting for the same
+    // target still eliminates them even though skip ended Voting early.
+    const result = await runMafiaAdvance(gameId)
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status })
     }
