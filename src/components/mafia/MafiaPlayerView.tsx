@@ -35,7 +35,7 @@ import { MafiaRoleRevealScreen } from './MafiaRoleRevealScreen'
 import { MafiaPlayersGrid } from './MafiaPlayersGrid'
 import { MafiaRolesDrawer } from './MafiaRolesDrawer'
 import { MafiaSkipPhaseBar } from './MafiaSkipPhaseBar'
-import { MAFIA_TEAM_ROLES, NO_NIGHT_ACTION_ROLES } from './mafia-role-info'
+import { MAFIA_ROLE_INFO, MAFIA_TEAM_ROLES, NO_NIGHT_ACTION_ROLES, mafiaRoleEmoji } from './mafia-role-info'
 import type { MafiaStateResponse } from './mafia-types'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
@@ -650,6 +650,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
           myRole={myRole}
           mafiaTeammateIds={myState?.mafiaTeammateIds}
           mafiaTeammateRoles={myState?.mafiaTeammateRoles}
+          mafiaTeammateNightTargets={myState?.mafiaTeammateNightTargets}
           phase={phase}
           voteTallies={voteTallies}
           voteChoices={voteChoices}
@@ -727,7 +728,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
     )
 
     return (
-      <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col">
+      <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col overflow-x-hidden">
         {amISpectator && <ViewerModeBanner />}
 
         <header className="px-4 py-3 border-b border-[var(--border)] bg-[var(--card)] flex justify-between items-center">
@@ -893,7 +894,7 @@ function MafiaFinishedScreen({
                           : 'text-emerald-400'
                     }`}
                   >
-                    {p.role ? p.role.replace(/_/g, ' ') : '—'}
+                    {p.role ? `${mafiaRoleEmoji(p.role)} ${MAFIA_ROLE_INFO[p.role]?.name ?? p.role}` : '—'}
                   </span>
                 </div>
               ))}

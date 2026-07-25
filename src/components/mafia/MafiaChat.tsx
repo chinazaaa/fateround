@@ -87,7 +87,7 @@ export function ChatMessages({ messages, myPlayerId, players, className = 'h-40'
   const myMentionPattern = mySeatNumber != null ? new RegExp(`(?<!\\d)${mySeatNumber}(?!\\d)`) : null
 
   return (
-    <div ref={containerRef} className={`${className} overflow-y-auto space-y-1 p-1`}>
+    <div ref={containerRef} className={`${className} overflow-y-auto overflow-x-hidden space-y-1 p-1 break-words`}>
       {messages.length === 0 ? (
         <p className="text-xs text-[var(--muted)] italic text-center py-6">No messages yet.</p>
       ) : (
