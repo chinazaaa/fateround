@@ -241,6 +241,10 @@ export function summarizeTemplate(values: Record<string, unknown>): string {
       distinguishing.push(value ? 'Host + play' : 'Host only')
       continue
     }
+    if (key === 'mafia_advanced_mode') {
+      distinguishing.push(value ? 'Advanced roles' : 'Classic roles')
+      continue
+    }
     if (key === 'host_name') {
       if (typeof value === 'string' && value.trim()) distinguishing.push(`Hosting as: ${value.trim()}`)
       continue
