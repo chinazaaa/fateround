@@ -69,18 +69,28 @@ export function assignMafiaRoles(
     if (enabled && roles.length < playerCount) roles.push(role)
   }
 
+  // Core village roles (appear every game when enabled)
   pushIfRoom('doctor', toggles.doctor_enabled)
   pushIfRoom('detective', toggles.detective_enabled)
   pushIfRoom('bodyguard', toggles.bodyguard_enabled)
-  pushIfRoom('mayor', toggles.mayor_enabled)
-  pushIfRoom('vigilante', toggles.vigilante_enabled)
-  pushIfRoom('tracker', toggles.tracker_enabled)
-  pushIfRoom('framer', toggles.framer_enabled)
+  pushIfRoom('medium', toggles.medium_enabled)
+
+  // Round 1: one Solo, one Special
   pushIfRoom('jester', toggles.jester_enabled)
-  pushIfRoom('serial_killer', toggles.serial_killer_enabled)
-  pushIfRoom('arsonist', toggles.arsonist_enabled)
   pushIfRoom('cupid', toggles.cupid_enabled)
+
+  // Round 2: more village roles
+  pushIfRoom('vigilante', toggles.vigilante_enabled)
+  pushIfRoom('mayor', toggles.mayor_enabled)
+  pushIfRoom('tracker', toggles.tracker_enabled)
+
+  // Round 3: another Mafia specialist, another Solo, another Special
+  pushIfRoom('framer', toggles.framer_enabled)
+  pushIfRoom('serial_killer', toggles.serial_killer_enabled)
   pushIfRoom('cursed_villager', toggles.cursed_villager_enabled)
+
+  // Round 4: remaining Solo
+  pushIfRoom('arsonist', toggles.arsonist_enabled)
 
   while (roles.length < playerCount) {
     roles.push('villager')
@@ -186,12 +196,13 @@ export interface MafiaNightResolution {
   trackerTarget: string | null
   trackerVisited: string | null
   framedPlayerId: string | null
-  vigilanteTarget: string | null
   serialKillerTarget: string | null
   arsonistDouseTarget: string | null
   arsonistIgnited: boolean
+  mediumRevivePlayerId: string | null
   deaths: MafiaNightDeath[]
   bodyguardSacrificePlayerId: string | null
+  bodyguardHitsTaken: number
   cursedConvertedPlayerId: string | null
   wolfCubDiedThisNight: boolean
 }
@@ -205,11 +216,11 @@ export function resolveMafiaNight(
     | 'doctor_enabled'
     | 'detective_enabled'
     | 'bodyguard_enabled'
-    | 'vigilante_enabled'
     | 'tracker_enabled'
     | 'framer_enabled'
     | 'serial_killer_enabled'
     | 'arsonist_enabled'
+    | 'medium_enabled'
     | 'wolf_cub_revenge_pending'
   >,
   playerStates: MafiaPlayerState[]
@@ -258,10 +269,10 @@ export function resolveMafiaNight(
   const framerPlayer = session.framer_enabled ? aliveOfRole('framer') : undefined
   const framedPlayerId = framerPlayer?.night_action_target_player_id ?? null
 
-  const vigilantePlayer = session.vigilante_enabled ? aliveOfRole('vigilante') : undefined
-  const vigilanteTarget =
-    vigilantePlayer && vigilantePlayer.vigilante_shots_used < 1
-      ? (vigilantePlayer.night_action_target_player_id ?? null)
+  const mediumPlayer = session.medium_enabled ? aliveOfRole('medium') : undefined
+  const mediumRevivePlayerId =
+    mediumPlayer && !mediumPlayer.medium_revive_used && mediumPlayer.night_action_target_player_id
+      ? mediumPlayer.night_action_target_player_id
       : null
 
   const serialKillerPlayer = session.serial_killer_enabled ? aliveOfRole('serial_killer') : undefined
@@ -281,7 +292,18 @@ export function resolveMafiaNight(
     deaths.push({ playerId, cause })
   }
   let bodyguardSacrificePlayerId: string | null = null
+  let bodyguardHitsTaken = bodyguardPlayer?.bodyguard_hits_taken ?? 0
   let cursedConvertedPlayerId: string | null = null
+
+  const bodyguardAbsorb = (cause: MafiaNightDeath['cause']) => {
+    if (!bodyguardPlayer) return false
+    bodyguardHitsTaken++
+    if (bodyguardHitsTaken >= 2) {
+      bodyguardSacrificePlayerId = bodyguardPlayer.player_id
+      addDeath(bodyguardPlayer.player_id, cause)
+    }
+    return true
+  }
 
   const applyAttack = (targetId: string | null, cause: 'mafia_kill' | 'serial_kill' | 'vigilante_kill') => {
     if (!targetId) return
@@ -293,9 +315,9 @@ export function resolveMafiaNight(
         return
       }
     }
-    if (bodyguardTarget === targetId && bodyguardPlayer) {
-      bodyguardSacrificePlayerId = bodyguardPlayer.player_id
-      addDeath(bodyguardPlayer.player_id, cause)
+    // Bodyguard auto-protects self + protects chosen target
+    if (bodyguardPlayer && (bodyguardTarget === targetId || targetId === bodyguardPlayer.player_id)) {
+      bodyguardAbsorb(cause)
       return
     }
     addDeath(targetId, cause)
@@ -304,7 +326,6 @@ export function resolveMafiaNight(
   applyAttack(mafiaTarget, 'mafia_kill')
   applyAttack(bonusMafiaTarget, 'mafia_kill')
   applyAttack(serialKillerTarget, 'serial_kill')
-  applyAttack(vigilanteTarget, 'vigilante_kill')
 
   // Ignite kills everyone doused so far, bypassing doctor/bodyguard (fire, not an attack roll).
   if (arsonistIgnited) {
@@ -323,12 +344,13 @@ export function resolveMafiaNight(
     trackerTarget,
     trackerVisited,
     framedPlayerId,
-    vigilanteTarget,
     serialKillerTarget,
     arsonistDouseTarget,
     arsonistIgnited,
+    mediumRevivePlayerId,
     deaths,
     bodyguardSacrificePlayerId,
+    bodyguardHitsTaken,
     cursedConvertedPlayerId,
     wolfCubDiedThisNight,
   }
@@ -361,7 +383,7 @@ export async function initializeMafiaGame(
   const { data: gameData, error: gameError } = await admin
     .from('games')
     .select(
-      'mafia_doctor_enabled, mafia_detective_enabled, mafia_bodyguard_enabled, mafia_mayor_enabled, mafia_vigilante_enabled, mafia_tracker_enabled, mafia_alpha_wolf_enabled, mafia_wolf_cub_enabled, mafia_framer_enabled, mafia_jester_enabled, mafia_serial_killer_enabled, mafia_arsonist_enabled, mafia_cupid_enabled, mafia_cursed_villager_enabled, mafia_count, mafia_anonymous_votes'
+      'mafia_doctor_enabled, mafia_detective_enabled, mafia_bodyguard_enabled, mafia_mayor_enabled, mafia_vigilante_enabled, mafia_tracker_enabled, mafia_alpha_wolf_enabled, mafia_wolf_cub_enabled, mafia_framer_enabled, mafia_jester_enabled, mafia_serial_killer_enabled, mafia_arsonist_enabled, mafia_cupid_enabled, mafia_cursed_villager_enabled, mafia_medium_enabled, mafia_count, mafia_anonymous_votes'
     )
     .eq('id', gameId)
     .single()
@@ -385,6 +407,7 @@ export async function initializeMafiaGame(
     arsonist_enabled: gameData.mafia_arsonist_enabled !== false,
     cupid_enabled: gameData.mafia_cupid_enabled !== false,
     cursed_villager_enabled: gameData.mafia_cursed_villager_enabled !== false,
+    medium_enabled: gameData.mafia_medium_enabled !== false,
   }
   const anonymousVotes = gameData.mafia_anonymous_votes === true
   const resolvedMafiaCount =

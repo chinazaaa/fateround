@@ -88,6 +88,8 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
   const [mafiaState, setMafiaState] = useState<MafiaStateResponse | null>(null)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
+  const [vigilanteMode, setVigilanteMode] = useState<'shoot' | 'reveal' | null>(null)
+  const [vigilanteRevealResult, setVigilanteRevealResult] = useState<{ targetName: string; role: string } | null>(null)
 
   // A late joiner's client can load state well after the game's shared role_reveal phase has
   // already ended (it's a one-time, whole-game window) — without this they'd be dropped
@@ -300,6 +302,33 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
       await load()
     } catch {
       toastError('Failed to skip')
+    }
+  }
+
+  const submitVigilanteAction = async (targetId: string, action: 'shoot' | 'reveal') => {
+    if (!myResumeToken) return
+    setActing(true)
+    try {
+      const res = await fetch(`/api/mafia/${gameCode}/vigilante-action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumeToken: myResumeToken, targetPlayerId: targetId, action }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toastError(data.error ?? 'Action failed')
+      } else if (action === 'reveal' && data.revealedRole) {
+        setVigilanteRevealResult({ targetName: data.revealedName, role: data.revealedRole })
+        toastSuccess('Role revealed')
+      } else {
+        toastSuccess('Target shot')
+      }
+      setVigilanteMode(null)
+      await load()
+    } catch {
+      toastError('Action failed')
+    } finally {
+      setActing(false)
     }
   }
 
@@ -604,6 +633,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
     let gridOnSelect: ((id: string) => void) | undefined
     let gridSelectedIds: string[] = []
     let cupidPicking = false
+    let gridAllowDeadSelect = false
     if (amIAlive && !amISpectator) {
       if (phase === 'night' && myRole && !NO_NIGHT_ACTION_ROLES.includes(myRole)) {
         if (myRole === 'cupid') {
@@ -619,9 +649,14 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             }
             gridSelectedIds = cupidFirstPick ? [cupidFirstPick] : []
           }
-        } else if (myRole === 'vigilante' && (myState?.vigilanteShotsRemaining ?? 0) < 1) {
-          // No shots remaining — no tap action available.
-        } else {
+        } else if (myRole === 'medium' && (myState?.mediumReviveRemaining ?? 0) > 0) {
+          gridAllowDeadSelect = true
+          gridOnSelect = (id) => {
+            setNightSelection(id)
+            void submitNightAction(id)
+          }
+          gridSelectedIds = nightSelection ? [nightSelection] : []
+        } else if (myRole !== 'medium') {
           gridOnSelect = (id) => {
             setNightSelection(id)
             void submitNightAction(id)
@@ -634,6 +669,12 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
           void submitDayVote(id)
         }
         gridSelectedIds = voteSelection ? [voteSelection] : []
+      }
+      if ((phase === 'day' || phase === 'voting') && myRole === 'vigilante' && vigilanteMode) {
+        gridOnSelect = (id) => {
+          void submitVigilanteAction(id, vigilanteMode)
+        }
+        gridSelectedIds = []
       }
     }
     const cupidFirstPickName = cupidFirstPick
@@ -661,7 +702,66 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
           onSelect={gridOnSelect}
           selectedIds={gridSelectedIds}
           allowSelfSelect={cupidPicking}
+          allowDeadSelect={gridAllowDeadSelect}
         />
+
+        {(phase === 'day' || phase === 'voting') && myRole === 'vigilante' && amIAlive && !amISpectator && (
+          <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-3">
+            <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">
+              🔫 Vigilante Actions
+            </h3>
+            {vigilanteMode ? (
+              <div className="space-y-2">
+                <p className="text-sm text-[var(--foreground)]">
+                  Tap a player to {vigilanteMode === 'shoot' ? 'shoot' : 'reveal their role'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setVigilanteMode(null)}
+                  className="text-xs text-[var(--muted)] underline"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                {(myState?.vigilanteShotsRemaining ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    disabled={acting}
+                    onClick={() => setVigilanteMode('shoot')}
+                    className="flex-1 px-3 py-2 rounded-xl bg-red-600 text-white text-sm font-bold disabled:opacity-40"
+                  >
+                    🔫 Shoot
+                  </button>
+                )}
+                {(myState?.vigilanteRevealRemaining ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    disabled={acting}
+                    onClick={() => setVigilanteMode('reveal')}
+                    className="flex-1 px-3 py-2 rounded-xl bg-purple-600 text-white text-sm font-bold disabled:opacity-40"
+                  >
+                    🔍 Reveal
+                  </button>
+                )}
+                {(myState?.vigilanteShotsRemaining ?? 0) <= 0 && (myState?.vigilanteRevealRemaining ?? 0) <= 0 && (
+                  <p className="text-xs text-[var(--muted)]">Both actions used.</p>
+                )}
+              </div>
+            )}
+            {(myState?.vigilanteRevealResult || vigilanteRevealResult) && (
+              <p className="text-sm font-semibold text-purple-400">
+                🔍 {(myState?.vigilanteRevealResult ?? vigilanteRevealResult)?.targetName} is{' '}
+                <span className="uppercase">
+                  {MAFIA_ROLE_INFO[
+                    (myState?.vigilanteRevealResult ?? vigilanteRevealResult)?.role as keyof typeof MAFIA_ROLE_INFO
+                  ]?.name ?? (myState?.vigilanteRevealResult ?? vigilanteRevealResult)?.role}
+                </span>
+              </p>
+            )}
+          </div>
+        )}
 
         {(phase === 'day' || phase === 'voting') && amIAlive && !amISpectator && (
           <MafiaSkipPhaseBar
@@ -703,6 +803,20 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                 onSendMessage={sendMafiaMessage}
                 myPlayerId={myPlayerId}
               />
+            )}
+            {myRole === 'medium' && amIAlive && (myState?.mediumGhostChat?.length ?? 0) > 0 && (
+              <div className="glass-card border border-purple-500/30 rounded-2xl p-4">
+                <h3 className="text-[10px] font-bold tracking-widest uppercase text-purple-400 mb-2">
+                  🔮 Voices from beyond
+                </h3>
+                <div className="space-y-1 max-h-40 overflow-y-auto">
+                  {myState!.mediumGhostChat!.map((m) => (
+                    <p key={m.id} className="text-xs text-purple-300/80">
+                      <span className="font-bold text-purple-400">{m.sender_name}:</span> {m.message}
+                    </p>
+                  ))}
+                </div>
+              </div>
             )}
             <MafiaDayChat
               messages={dayChatMessages ?? []}

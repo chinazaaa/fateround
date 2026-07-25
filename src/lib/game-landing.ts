@@ -2894,9 +2894,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     highlights: ['5–16 players', 'Secret roles', 'Voice chat supported'],
     features: [
       {
-        title: '16 unique roles',
+        title: '17 unique roles',
         description:
-          'Choose from 16 roles across Village, Mafia, Solo, and Special teams — from the classic Doctor to the devious Framer.',
+          'Choose from 17 roles across Village, Mafia, Solo, and Special teams — from the classic Doctor to the mystical Medium.',
         emoji: '🔍',
       },
       {
@@ -2927,7 +2927,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'What are the roles in the game?',
         answer:
-          'There are 16 roles across four teams. Village: Villager, Doctor, Detective, Bodyguard, Mayor, Vigilante, Tracker. Mafia: Mafia, Alpha Mafia, Junior Mafia, Framer. Solo: Jester, Serial Killer, Arsonist. Special: Cupid, Cursed Villager. The host picks which roles to include.',
+          'There are 17 roles across four teams. Village: Villager, Doctor, Detective, Bodyguard, Mayor, Vigilante, Tracker, Medium. Mafia: Mafia, Alpha Mafia, Junior Mafia, Framer. Solo: Jester, Serial Killer, Arsonist. Special: Cupid, Cursed Villager. The host picks which roles to include.',
       },
       {
         question: 'Can the Doctor protect themselves?',

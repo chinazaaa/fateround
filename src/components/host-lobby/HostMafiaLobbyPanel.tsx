@@ -31,12 +31,13 @@ const ADVANCED_ROLE_FIELDS = [
   'mafia_arsonist_enabled',
   'mafia_cupid_enabled',
   'mafia_cursed_villager_enabled',
+  'mafia_medium_enabled',
 ] as const satisfies readonly (keyof Game)[]
 
 const ADVANCED_ROLE_LABELS: Record<(typeof ADVANCED_ROLE_FIELDS)[number], { label: string; description: string }> = {
   mafia_bodyguard_enabled: { label: 'Bodyguard', description: 'Protects one player; dies in their place if attacked' },
   mafia_mayor_enabled: { label: 'Mayor', description: 'Day vote counts double' },
-  mafia_vigilante_enabled: { label: 'Vigilante', description: 'One kill for the whole game' },
+  mafia_vigilante_enabled: { label: 'Vigilante', description: 'Day shoot or reveal (each once)' },
   mafia_tracker_enabled: { label: 'Tracker', description: 'Learns who their target visited' },
   mafia_alpha_wolf_enabled: {
     label: 'Alpha Mafia',
@@ -54,6 +55,10 @@ const ADVANCED_ROLE_LABELS: Record<(typeof ADVANCED_ROLE_FIELDS)[number], { labe
   mafia_cursed_villager_enabled: {
     label: 'Cursed Villager',
     description: 'Converts to Mafia instead of dying if targeted',
+  },
+  mafia_medium_enabled: {
+    label: 'Medium',
+    description: 'Reads ghost chat at night, one-time revive',
   },
 }
 
@@ -260,8 +265,8 @@ export function HostMafiaLobbyPanel({ gameCode, hostToken, game, playerCount, on
           </div>
           <p className="text-xs text-muted">
             {showCustomize || isCustomized
-              ? 'Pick exactly which of the 16 roles are in play.'
-              : 'The full 16-role roster — Villager, Mafia, Doctor, Detective, plus 12 more mixed in when there are enough player slots.'}
+              ? 'Pick exactly which of the 17 roles are in play.'
+              : 'The full 17-role roster — Villager, Mafia, Doctor, Detective, plus 13 more mixed in when there are enough player slots.'}
           </p>
           {(showCustomize || isCustomized) && (
             <div className="space-y-2 pt-1">

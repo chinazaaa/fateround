@@ -36,6 +36,8 @@ export function mafiaRoleEmoji(role: string): string {
       return '💘'
     case 'cursed_villager':
       return '☠️'
+    case 'medium':
+      return '🔮'
     default:
       return '🏘️'
   }
@@ -74,7 +76,8 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'bodyguard',
     name: 'Bodyguard',
     team: 'village',
-    description: 'Each night, protect one player. If that player is attacked, you die in their place instead.',
+    description:
+      'Choose one player to protect every night. That player cannot be killed that night — instead you are attacked. You survive the first attack, but die on the second. You automatically protect yourself every night too.',
   },
   mayor: {
     role: 'mayor',
@@ -86,7 +89,8 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'vigilante',
     name: 'Vigilante',
     team: 'village',
-    description: 'You may kill one player at night — but only once per game, so choose carefully.',
+    description:
+      'During the day, shoot or reveal another player (each once, not on the same day). Only you see the revealed role; if they are not a villager, your role is revealed to them.',
   },
   tracker: {
     role: 'tracker',
@@ -152,7 +156,14 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     description:
       'Starts on the Village team, but if the Mafia targets you, you convert to Mafia and survive instead of dying.',
   },
+  medium: {
+    role: 'medium',
+    name: 'Medium',
+    team: 'village',
+    description:
+      'Can read ghost chat at night to hear the dead. Once per game, choose a dead player at night to revive them.',
+  },
 }
 
 export const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer']
-export const NO_NIGHT_ACTION_ROLES: MafiaRole[] = ['villager', 'mayor', 'jester', 'cursed_villager']
+export const NO_NIGHT_ACTION_ROLES: MafiaRole[] = ['villager', 'mayor', 'vigilante', 'jester', 'cursed_villager']

@@ -25,6 +25,7 @@ const ALL_ENABLED: MafiaRoleToggles = {
   arsonist_enabled: true,
   cupid_enabled: true,
   cursed_villager_enabled: true,
+  medium_enabled: true,
 }
 const NONE_ENABLED: MafiaRoleToggles = Object.fromEntries(
   Object.keys(ALL_ENABLED).map((k) => [k, false])
@@ -47,6 +48,9 @@ function makeState(overrides: Partial<MafiaPlayerState>): MafiaPlayerState {
     day_vote_target_player_id: null,
     doused_by_arsonist: false,
     vigilante_shots_used: 0,
+    vigilante_reveal_used: false,
+    medium_revive_used: false,
+    bodyguard_hits_taken: 0,
     is_lover: false,
     lover_partner_player_id: null,
     seat_number: 0,
@@ -61,21 +65,21 @@ const NIGHT_SESSION_BASE: Pick<
   | 'doctor_enabled'
   | 'detective_enabled'
   | 'bodyguard_enabled'
-  | 'vigilante_enabled'
   | 'tracker_enabled'
   | 'framer_enabled'
   | 'serial_killer_enabled'
   | 'arsonist_enabled'
+  | 'medium_enabled'
   | 'wolf_cub_revenge_pending'
 > = {
   doctor_enabled: true,
   detective_enabled: true,
   bodyguard_enabled: true,
-  vigilante_enabled: true,
   tracker_enabled: true,
   framer_enabled: true,
   serial_killer_enabled: true,
   arsonist_enabled: true,
+  medium_enabled: true,
   wolf_cub_revenge_pending: false,
 }
 

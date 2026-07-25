@@ -327,6 +327,7 @@ export interface Game {
   mafia_arsonist_enabled?: boolean
   mafia_cupid_enabled?: boolean
   mafia_cursed_villager_enabled?: boolean
+  mafia_medium_enabled?: boolean
   mafia_anonymous_votes?: boolean
   mafia_count?: number | null
   mafia_day_seconds?: number
@@ -1868,6 +1869,7 @@ export type MafiaRole =
   | 'arsonist'
   | 'cupid'
   | 'cursed_villager'
+  | 'medium'
 export type MafiaTeam = 'village' | 'mafia' | 'jester' | 'serial_killer' | 'arsonist'
 export type MafiaDeathCause = 'mafia_kill' | 'village_vote' | 'serial_kill' | 'arson' | 'vigilante_kill'
 export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'day' | 'voting' | 'elimination' | 'game_over'
@@ -1887,6 +1889,7 @@ export interface MafiaRoleEnabledFlags {
   arsonist_enabled: boolean
   cupid_enabled: boolean
   cursed_villager_enabled: boolean
+  medium_enabled: boolean
 }
 
 export interface MafiaSession extends MafiaRoleEnabledFlags {
@@ -1908,6 +1911,9 @@ export interface MafiaSession extends MafiaRoleEnabledFlags {
   framed_player_id: string | null
   wolf_cub_revenge_pending: boolean
   cupid_lover_ids: [string, string] | null
+  medium_revive_player_id: string | null
+  vigilante_day_kill_player_id: string | null
+  vigilante_reveal_player_id: string | null
   /** Alive players who've asked to skip ahead out of the current Discussion/Voting phase
    *  early — reset to [] whenever a new 'day' or 'voting' phase starts. Reaching the same
    *  majority threshold as a lynch vote (floor(alive/2)+1) advances the phase immediately. */
@@ -1933,6 +1939,9 @@ export interface MafiaPlayerState {
   day_vote_target_player_id: string | null
   doused_by_arsonist: boolean
   vigilante_shots_used: number
+  vigilante_reveal_used: boolean
+  medium_revive_used: boolean
+  bodyguard_hits_taken: number
   is_lover: boolean
   lover_partner_player_id: string | null
   seat_number: number
@@ -1975,9 +1984,14 @@ export interface MafiaMyState {
   mafiaChatMessages?: MafiaChatMessage[]
   mafiaTeammateNightTargets?: Record<string, string | null>
   trackerResult?: { targetName: string; visitedName: string | null } | null
-  bodyguardLastOutcome?: 'saved' | 'sacrificed' | 'no_attack' | null
+  bodyguardLastOutcome?: 'saved' | 'absorbed' | 'sacrificed' | 'no_attack' | null
   doctorLastOutcome?: 'saved' | 'no_attack' | null
   vigilanteShotsRemaining?: number
+  vigilanteRevealRemaining?: number
+  /** The role the Vigilante revealed this day (only they see it). */
+  vigilanteRevealResult?: { targetName: string; role: MafiaRole } | null
+  mediumReviveRemaining?: number
+  mediumGhostChat?: MafiaChatMessage[]
   framerLastTargetName?: string | null
   cupidLinkedNames?: [string, string] | null
   isLover?: boolean

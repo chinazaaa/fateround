@@ -158,11 +158,13 @@ export async function runMafiaAdvance(
       detectiveTarget,
       bodyguardTarget,
       bodyguardSacrificePlayerId,
+      bodyguardHitsTaken,
       trackerTarget,
       trackerVisited,
       framedPlayerId,
       serialKillerTarget,
       arsonistIgnited,
+      mediumRevivePlayerId,
       cursedConvertedPlayerId,
       wolfCubDiedThisNight,
       deaths,
@@ -179,6 +181,7 @@ export async function runMafiaAdvance(
     updateFields.arson_ignite = arsonistIgnited
     updateFields.night_kill_player_id = deaths[0]?.playerId ?? null
     updateFields.wolf_cub_revenge_pending = wolfCubDiedThisNight
+    updateFields.medium_revive_player_id = mediumRevivePlayerId
 
     if (cursedConvertedPlayerId) {
       pendingEffects.push(() =>
@@ -190,6 +193,23 @@ export async function runMafiaAdvance(
       )
       const pIndex = playerStates.findIndex((p) => p.player_id === cursedConvertedPlayerId)
       if (pIndex !== -1) playerStates[pIndex].role = 'mafia'
+    }
+
+    // Persist bodyguard hits (survives first attack, dies on second)
+    if (bodyguardHitsTaken > 0) {
+      const bgState = playerStates.find((p) => p.role === 'bodyguard')
+      if (bgState) {
+        pendingEffects.push(() =>
+          admin
+            .from('mafia_player_states')
+            .update({ bodyguard_hits_taken: bodyguardHitsTaken })
+            .eq('game_id', gameId)
+            .eq('player_id', bgState.player_id)
+        )
+        if (!bodyguardSacrificePlayerId) {
+          systemMessages.push(`🛡️ ${playerLabel(bgState.player_id)} (Bodyguard) absorbed an attack but survived!`)
+        }
+      }
     }
 
     for (const death of deaths) {
@@ -214,6 +234,31 @@ export async function runMafiaAdvance(
     }
     if (deaths.length === 0) {
       systemMessages.push(mafiaTarget ? '🏥 Someone was saved!' : '😴 No one was attacked last night.')
+    }
+
+    if (mediumRevivePlayerId) {
+      const revivedState = playerStates.find((p) => p.player_id === mediumRevivePlayerId)
+      if (revivedState && !revivedState.is_alive) {
+        pendingEffects.push(() =>
+          admin
+            .from('mafia_player_states')
+            .update({ is_alive: true, death_day: null, death_cause: null })
+            .eq('game_id', gameId)
+            .eq('player_id', mediumRevivePlayerId)
+        )
+        pendingEffects.push(() =>
+          admin.from('players').update({ is_eliminated: false }).eq('game_id', gameId).eq('id', mediumRevivePlayerId)
+        )
+        const medium = playerStates.find((p) => p.role === 'medium' && p.is_alive)
+        if (medium) {
+          pendingEffects.push(() =>
+            admin.from('mafia_player_states').update({ medium_revive_used: true }).eq('id', medium.id)
+          )
+        }
+        const pIndex = playerStates.findIndex((p) => p.player_id === mediumRevivePlayerId)
+        if (pIndex !== -1) playerStates[pIndex].is_alive = true
+        systemMessages.push(`🔮 The Medium has revived ${playerLabel(mediumRevivePlayerId)}!`)
+      }
     }
 
     // Private result messages — persisted in the day chat feed with target_player_id so
@@ -382,18 +427,9 @@ export async function runMafiaAdvance(
     updateFields.arson_ignite = false
     updateFields.night_kill_player_id = null
     updateFields.day_number = session.day_number + 1
-    // A vigilante who fired this past night has used their one shot, permanently.
-    const firedVigilante = playerStates.find(
-      (p) => p.role === 'vigilante' && p.is_alive && p.night_action_target_player_id && p.vigilante_shots_used < 1
-    )
-    if (firedVigilante) {
-      pendingEffects.push(() =>
-        admin
-          .from('mafia_player_states')
-          .update({ vigilante_shots_used: firedVigilante.vigilante_shots_used + 1 })
-          .eq('id', firedVigilante.id)
-      )
-    }
+    updateFields.medium_revive_player_id = null
+    updateFields.vigilante_day_kill_player_id = null
+    updateFields.vigilante_reveal_player_id = null
     // Arsonist's douse target (from the night just resolved) becomes permanently doused.
     const arsonist = playerStates.find((p) => p.role === 'arsonist' && p.is_alive)
     if (
