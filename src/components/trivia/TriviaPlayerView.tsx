@@ -283,6 +283,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
             myPlayerId={myPlayerId}
             myPlayerName={myPlayerName}
             gameType="trivia"
+            game={game}
             spectating={isViewer}
             onRenamed={() => void load()}
             onLeft={handlePlayerLeft}

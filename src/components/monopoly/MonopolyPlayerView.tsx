@@ -464,6 +464,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               <span className="leading-none">{cfg.headerEmoji}</span>
               <span>{cfg.label}</span>
             </p>
+            {game ? <GameInfoChips game={game} className="pt-2" /> : null}
           </div>
           {!isSpectator && myPlayerId && (
             <MonopolyChangeTokenControl

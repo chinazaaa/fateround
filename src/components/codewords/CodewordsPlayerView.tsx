@@ -577,6 +577,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
           myPlayerId={myPlayerId!}
           myPlayerName={myPlayerName}
           gameType="codewords"
+          game={game}
           spectating={isViewer || isSpectator}
           onRenamed={(name) => setMyPlayerName(name)}
           onLeft={leaveGame}
@@ -672,6 +673,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     return (
       <GameJoinLobbyShell gameCode={gameCode}>
         <div className="space-y-3">
+          {game ? <GameInfoChips game={game} align="left" /> : null}
           <CodewordsWaitingPanel
             playerName={myPlayerName}
             myRole={myRole}
