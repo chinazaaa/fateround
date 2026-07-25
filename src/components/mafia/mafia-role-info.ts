@@ -40,6 +40,12 @@ export function mafiaRoleEmoji(role: string): string {
       return '🔮'
     case 'priest':
       return '⛪'
+    case 'witch':
+      return '🧙'
+    case 'little_girl':
+      return '🎀'
+    case 'trapper':
+      return '🪤'
     default:
       return '🏘️'
   }
@@ -172,6 +178,27 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     description:
       'Once during the day, throw holy water on another player. If they are Mafia, they die. If not, you die and their innocence is announced.',
   },
+  witch: {
+    role: 'witch',
+    name: 'Witch',
+    team: 'village',
+    description:
+      'You have two potions, each usable once per game: a Heal Potion (save a player from any kill that night, including yourself) and a Kill Potion (kill any player outright at night). Use either, both, or neither each night.',
+  },
+  little_girl: {
+    role: 'little_girl',
+    name: 'Little Girl',
+    team: 'village',
+    description:
+      "Each night, you secretly see who the Mafia targeted — but there's a chance they notice you spying and kill you instead.",
+  },
+  trapper: {
+    role: 'trapper',
+    name: 'Trapper',
+    team: 'village',
+    description:
+      "Each night, set a trap on one player's house. If the Mafia targets that house, the kill is blocked and you learn which Mafia members set it off.",
+  },
 }
 
 export const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer']
@@ -182,4 +209,5 @@ export const NO_NIGHT_ACTION_ROLES: MafiaRole[] = [
   'jester',
   'cursed_villager',
   'priest',
+  'little_girl',
 ]

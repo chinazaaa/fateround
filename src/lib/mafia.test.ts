@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   assignMafiaRoles,
   resolveMafiaNight,
@@ -27,6 +27,9 @@ const ALL_ENABLED: MafiaRoleToggles = {
   cursed_villager_enabled: true,
   medium_enabled: true,
   priest_enabled: true,
+  witch_enabled: true,
+  little_girl_enabled: true,
+  trapper_enabled: true,
 }
 const NONE_ENABLED: MafiaRoleToggles = Object.fromEntries(
   Object.keys(ALL_ENABLED).map((k) => [k, false])
@@ -54,6 +57,8 @@ function makeState(overrides: Partial<MafiaPlayerState>): MafiaPlayerState {
     medium_revive_used: false,
     bodyguard_hits_taken: 0,
     priest_holy_water_used: false,
+    witch_heal_used: false,
+    witch_kill_used: false,
     is_lover: false,
     lover_partner_player_id: null,
     seat_number: 0,
@@ -73,6 +78,9 @@ const NIGHT_SESSION_BASE: Pick<
   | 'serial_killer_enabled'
   | 'arsonist_enabled'
   | 'medium_enabled'
+  | 'witch_enabled'
+  | 'little_girl_enabled'
+  | 'trapper_enabled'
   | 'wolf_cub_revenge_pending'
 > = {
   doctor_enabled: true,
@@ -83,12 +91,15 @@ const NIGHT_SESSION_BASE: Pick<
   serial_killer_enabled: true,
   arsonist_enabled: true,
   medium_enabled: true,
+  witch_enabled: true,
+  little_girl_enabled: true,
+  trapper_enabled: true,
   wolf_cub_revenge_pending: false,
 }
 
 describe('assignMafiaRoles', () => {
-  it('fills all 18 roles when everything is enabled and slots allow', () => {
-    const playerIds = ids(18)
+  it('fills all 21 roles when everything is enabled and slots allow', () => {
+    const playerIds = ids(21)
     const assignments = assignMafiaRoles(playerIds, ALL_ENABLED, 4)
     const roles = new Set(Object.values(assignments))
     // mafiaCount=4 with alpha_wolf+wolf_cub each converting one base mafia slot leaves 2 plain 'mafia'
@@ -110,11 +121,14 @@ describe('assignMafiaRoles', () => {
       'cupid',
       'cursed_villager',
       'priest',
+      'witch',
+      'little_girl',
+      'trapper',
     ]
     for (const role of optionalRoles) {
       expect(roles.has(role)).toBe(true)
     }
-    expect(Object.keys(assignments)).toHaveLength(18)
+    expect(Object.keys(assignments)).toHaveLength(21)
   })
 
   it('does not assign alpha_wolf or wolf_cub when mafiaCount < 2', () => {
@@ -180,6 +194,52 @@ describe('resolveMafiaNight', () => {
     const result = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, cursed])
     expect(result.cursedConvertedPlayerId).toBe('cv')
     expect(result.deaths).toHaveLength(0)
+  })
+
+  it('witch heal potion blocks the mafia kill and kill potion is unblockable', () => {
+    const mafia = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'v1' })
+    const witch = makeState({
+      id: 'w',
+      player_id: 'w',
+      role: 'witch',
+      night_action_target_player_id: 'v2',
+      night_action_target_player_id_2: 'v1',
+    })
+    const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+    const v2 = makeState({ id: 'v2', player_id: 'v2', role: 'villager' })
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, witch, v1, v2])
+    const ids = result.deaths.map((d) => d.playerId).sort()
+    expect(ids).toEqual(['v2'])
+    expect(result.deaths.find((d) => d.playerId === 'v2')?.cause).toBe('witch_kill')
+  })
+
+  it('trapper blocks the mafia kill when trap matches the target and reveals the culprit', () => {
+    const mafia = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'v1' })
+    const trapper = makeState({ id: 't', player_id: 't', role: 'trapper', night_action_target_player_id: 'v1' })
+    const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, trapper, v1])
+    expect(result.deaths).toHaveLength(0)
+    expect(result.trapTriggered).toBe(true)
+    expect(result.trapCaughtPlayerIds).toEqual(['m1'])
+  })
+
+  it('little girl peeks the mafia target and is caught only on the unlucky roll', () => {
+    const mafia = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'v1' })
+    const littleGirl = makeState({ id: 'lg', player_id: 'lg', role: 'little_girl' })
+    const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+
+    const safeRoll = vi.spyOn(Math, 'random').mockReturnValue(0.99)
+    const safeResult = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, littleGirl, v1])
+    expect(safeResult.littleGirlPeekTarget).toBe('v1')
+    expect(safeResult.littleGirlCaught).toBe(false)
+    expect(safeResult.deaths.map((d) => d.playerId)).not.toContain('lg')
+    safeRoll.mockRestore()
+
+    const caughtRoll = vi.spyOn(Math, 'random').mockReturnValue(0.01)
+    const caughtResult = resolveMafiaNight(NIGHT_SESSION_BASE, [mafia, littleGirl, v1])
+    expect(caughtResult.littleGirlCaught).toBe(true)
+    expect(caughtResult.deaths.map((d) => d.playerId)).toContain('lg')
+    caughtRoll.mockRestore()
   })
 
   it('sets wolfCubDiedThisNight when the wolf cub is killed', () => {

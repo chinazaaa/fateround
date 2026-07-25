@@ -3,7 +3,15 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import type { MafiaPlayerState, MafiaSession } from '@/types'
 
-const NO_NIGHT_ACTION_ROLES = new Set(['villager', 'mayor', 'jester', 'cursed_villager', 'vigilante', 'priest'])
+const NO_NIGHT_ACTION_ROLES = new Set([
+  'villager',
+  'mayor',
+  'jester',
+  'cursed_villager',
+  'vigilante',
+  'priest',
+  'little_girl',
+])
 const ROLE_ENABLED_FIELD: Partial<Record<string, keyof MafiaSession>> = {
   doctor: 'doctor_enabled',
   detective: 'detective_enabled',
@@ -16,24 +24,39 @@ const ROLE_ENABLED_FIELD: Partial<Record<string, keyof MafiaSession>> = {
   arsonist: 'arsonist_enabled',
   cupid: 'cupid_enabled',
   medium: 'medium_enabled',
+  witch: 'witch_enabled',
+  trapper: 'trapper_enabled',
 }
 // Roles that may never target themselves (self-target is either meaningless or reserved
 // for a different action, e.g. Arsonist self-target signals "ignite" instead of "douse").
-const NO_SELF_TARGET_ROLES = new Set(['doctor', 'bodyguard', 'vigilante', 'tracker', 'framer', 'serial_killer'])
+const NO_SELF_TARGET_ROLES = new Set([
+  'doctor',
+  'bodyguard',
+  'vigilante',
+  'tracker',
+  'framer',
+  'serial_killer',
+  'trapper',
+])
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
   const gameId = code.toUpperCase()
   const admin = getSupabaseAdmin()
 
-  let body: { resumeToken?: unknown; targetPlayerId?: unknown; secondTargetPlayerId?: unknown }
+  let body: {
+    resumeToken?: unknown
+    targetPlayerId?: unknown
+    secondTargetPlayerId?: unknown
+    potionType?: unknown
+  }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
   }
 
-  const { resumeToken, targetPlayerId, secondTargetPlayerId } = body
+  const { resumeToken, targetPlayerId, secondTargetPlayerId, potionType } = body
   if (typeof resumeToken !== 'string' || typeof targetPlayerId !== 'string') {
     return NextResponse.json({ error: 'Invalid parameters' }, { status: 400 })
   }
@@ -125,6 +148,46 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         .update({ is_lover: true, lover_partner_player_id: targetPlayerId })
         .eq('id', second.id),
     ])
+    return NextResponse.json({ success: true })
+  }
+
+  // Witch: two independent single-use potions, submitted as separate calls (potionType
+  // distinguishes which one this submission is for). Heal goes on the "2" target column
+  // (shares the doctor's protection check), kill goes on the primary target column.
+  if (role === 'witch') {
+    if (potionType !== 'heal' && potionType !== 'kill') {
+      return NextResponse.json({ error: 'Witch must choose a potion type' }, { status: 400 })
+    }
+    if (potionType === 'kill') {
+      if (myState.witch_kill_used) {
+        return NextResponse.json({ error: 'Kill potion already used' }, { status: 400 })
+      }
+      if (targetPlayerId === playerId) {
+        return NextResponse.json({ error: 'You cannot use the kill potion on yourself' }, { status: 400 })
+      }
+      const targetState = playerStates.find((p) => p.player_id === targetPlayerId)
+      if (!targetState || !targetState.is_alive) {
+        return NextResponse.json({ error: 'Target player not found' }, { status: 404 })
+      }
+      const { error: updateError } = await admin
+        .from('mafia_player_states')
+        .update({ night_action_target_player_id: targetPlayerId })
+        .eq('id', myState.id)
+      if (updateError) return NextResponse.json({ error: 'Failed to submit night action' }, { status: 500 })
+      return NextResponse.json({ success: true })
+    }
+    if (myState.witch_heal_used) {
+      return NextResponse.json({ error: 'Heal potion already used' }, { status: 400 })
+    }
+    const targetState = playerStates.find((p) => p.player_id === targetPlayerId)
+    if (!targetState || !targetState.is_alive) {
+      return NextResponse.json({ error: 'Target player not found' }, { status: 404 })
+    }
+    const { error: updateError } = await admin
+      .from('mafia_player_states')
+      .update({ night_action_target_player_id_2: targetPlayerId })
+      .eq('id', myState.id)
+    if (updateError) return NextResponse.json({ error: 'Failed to submit night action' }, { status: 500 })
     return NextResponse.json({ success: true })
   }
 

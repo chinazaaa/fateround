@@ -33,6 +33,9 @@ const ADVANCED_ROLE_FIELDS = [
   'mafia_cursed_villager_enabled',
   'mafia_medium_enabled',
   'mafia_priest_enabled',
+  'mafia_witch_enabled',
+  'mafia_little_girl_enabled',
+  'mafia_trapper_enabled',
 ] as const satisfies readonly (keyof Game)[]
 
 const ADVANCED_ROLE_LABELS: Record<(typeof ADVANCED_ROLE_FIELDS)[number], { label: string; description: string }> = {
@@ -67,6 +70,18 @@ const ADVANCED_ROLE_LABELS: Record<(typeof ADVANCED_ROLE_FIELDS)[number], { labe
   mafia_priest_enabled: {
     label: 'Priest',
     description: 'Once per day, throw holy water — kills Mafia, or self-destructs',
+  },
+  mafia_witch_enabled: {
+    label: 'Witch',
+    description: 'One heal potion + one kill potion, each usable once per game',
+  },
+  mafia_little_girl_enabled: {
+    label: 'Little Girl',
+    description: "Secretly sees the Mafia's night target, risks being caught",
+  },
+  mafia_trapper_enabled: {
+    label: 'Trapper',
+    description: "Sets a nightly trap that blocks the Mafia's kill and reveals who set it off",
   },
 }
 
@@ -273,7 +288,7 @@ export function HostMafiaLobbyPanel({ gameCode, hostToken, game, playerCount, on
           </div>
           <p className="text-xs text-muted">
             {showCustomize || isCustomized
-              ? 'Pick exactly which of the 18 roles are in play.'
+              ? 'Pick exactly which of the 21 roles are in play.'
               : 'The full 17-role roster — Villager, Mafia, Doctor, Detective, plus 13 more mixed in when there are enough player slots.'}
           </p>
           {(showCustomize || isCustomized) && (

@@ -91,6 +91,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
   const [vigilanteMode, setVigilanteMode] = useState<'shoot' | 'reveal' | null>(null)
   const [vigilanteRevealResult, setVigilanteRevealResult] = useState<{ targetName: string; role: string } | null>(null)
   const [priestMode, setPriestMode] = useState(false)
+  const [witchMode, setWitchMode] = useState<'heal' | 'kill' | null>(null)
 
   // A late joiner's client can load state well after the game's shared role_reveal phase has
   // already ended (it's a one-time, whole-game window) — without this they'd be dropped
@@ -330,6 +331,31 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
       toastError('Action failed')
     } finally {
       setActing(false)
+    }
+  }
+
+  const submitWitchAction = async (targetId: string, potionType: 'heal' | 'kill') => {
+    if (!myResumeToken) return
+    setActing(true)
+    try {
+      const res = await fetch(`/api/mafia/${gameCode}/night-action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumeToken: myResumeToken, targetPlayerId: targetId, potionType }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toastError(data.error ?? 'Action failed')
+        await load()
+      } else {
+        toastSuccess(potionType === 'heal' ? 'Heal potion used' : 'Kill potion used')
+        await load()
+      }
+    } catch {
+      toastError('Action failed')
+    } finally {
+      setActing(false)
+      setWitchMode(null)
     }
   }
 
@@ -697,6 +723,14 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
           gridSelectedIds = arsonistFirstPick ? [arsonistFirstPick] : []
         } else if (myRole === 'arsonist' && arsonistMode === 'ignite') {
           // Ignite is a one-click self-target — handled in the panel below, not via grid
+        } else if (myRole === 'witch') {
+          if (witchMode) {
+            gridOnSelect = (id) => {
+              void submitWitchAction(id, witchMode)
+            }
+            gridSelectedIds = []
+          }
+          // No mode selected yet — handled by the Witch Actions panel below
         } else if (myRole !== 'medium' && myRole !== 'arsonist') {
           gridOnSelect = (id) => {
             setNightSelection(id)
@@ -837,6 +871,52 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
               </div>
             ) : (
               <p className="text-xs text-[var(--muted)]">Holy water already used.</p>
+            )}
+          </div>
+        )}
+
+        {phase === 'night' && myRole === 'witch' && amIAlive && !amISpectator && (
+          <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-3">
+            <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">🧪 Witch Potions</h3>
+            {witchMode ? (
+              <div className="space-y-2">
+                <p className="text-sm text-[var(--foreground)]">
+                  Tap a player to {witchMode === 'heal' ? 'heal' : 'kill'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setWitchMode(null)}
+                  className="text-xs text-[var(--muted)] underline"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                {(myState?.witchHealRemaining ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    disabled={acting}
+                    onClick={() => setWitchMode('heal')}
+                    className="flex-1 px-3 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold disabled:opacity-40"
+                  >
+                    💚 Heal Potion
+                  </button>
+                )}
+                {(myState?.witchKillRemaining ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    disabled={acting}
+                    onClick={() => setWitchMode('kill')}
+                    className="flex-1 px-3 py-2 rounded-xl bg-purple-700 text-white text-sm font-bold disabled:opacity-40"
+                  >
+                    ☠️ Kill Potion
+                  </button>
+                )}
+                {(myState?.witchHealRemaining ?? 0) <= 0 && (myState?.witchKillRemaining ?? 0) <= 0 && (
+                  <p className="text-xs text-[var(--muted)]">Both potions used.</p>
+                )}
+              </div>
             )}
           </div>
         )}

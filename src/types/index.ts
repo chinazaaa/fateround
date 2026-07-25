@@ -329,6 +329,9 @@ export interface Game {
   mafia_cursed_villager_enabled?: boolean
   mafia_medium_enabled?: boolean
   mafia_priest_enabled?: boolean
+  mafia_witch_enabled?: boolean
+  mafia_little_girl_enabled?: boolean
+  mafia_trapper_enabled?: boolean
   mafia_anonymous_votes?: boolean
   mafia_count?: number | null
   mafia_day_seconds?: number
@@ -1872,8 +1875,11 @@ export type MafiaRole =
   | 'cursed_villager'
   | 'medium'
   | 'priest'
+  | 'witch'
+  | 'little_girl'
+  | 'trapper'
 export type MafiaTeam = 'village' | 'mafia' | 'jester' | 'serial_killer' | 'arsonist'
-export type MafiaDeathCause = 'mafia_kill' | 'village_vote' | 'serial_kill' | 'arson' | 'vigilante_kill'
+export type MafiaDeathCause = 'mafia_kill' | 'village_vote' | 'serial_kill' | 'arson' | 'vigilante_kill' | 'witch_kill'
 export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'day' | 'voting' | 'elimination' | 'game_over'
 
 export interface MafiaRoleEnabledFlags {
@@ -1893,6 +1899,9 @@ export interface MafiaRoleEnabledFlags {
   cursed_villager_enabled: boolean
   medium_enabled: boolean
   priest_enabled: boolean
+  witch_enabled: boolean
+  little_girl_enabled: boolean
+  trapper_enabled: boolean
 }
 
 export interface MafiaSession extends MafiaRoleEnabledFlags {
@@ -1947,6 +1956,8 @@ export interface MafiaPlayerState {
   medium_revive_used: boolean
   bodyguard_hits_taken: number
   priest_holy_water_used: boolean
+  witch_heal_used: boolean
+  witch_kill_used: boolean
   is_lover: boolean
   lover_partner_player_id: string | null
   seat_number: number
@@ -1998,6 +2009,8 @@ export interface MafiaMyState {
   mediumReviveRemaining?: number
   mediumGhostChat?: MafiaChatMessage[]
   priestHolyWaterRemaining?: number
+  witchHealRemaining?: number
+  witchKillRemaining?: number
   framerLastTargetName?: string | null
   cupidLinkedNames?: [string, string] | null
   isLover?: boolean

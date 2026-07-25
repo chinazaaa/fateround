@@ -75,6 +75,9 @@ export function assignMafiaRoles(
   pushIfRoom('bodyguard', toggles.bodyguard_enabled)
   pushIfRoom('medium', toggles.medium_enabled)
   pushIfRoom('priest', toggles.priest_enabled)
+  pushIfRoom('witch', toggles.witch_enabled)
+  pushIfRoom('little_girl', toggles.little_girl_enabled)
+  pushIfRoom('trapper', toggles.trapper_enabled)
 
   // Round 1: one Solo, one Special
   pushIfRoom('arsonist', toggles.arsonist_enabled)
@@ -186,7 +189,7 @@ function resolveMajorityVote(votes: string[], aliveCount: number): string | null
 
 export interface MafiaNightDeath {
   playerId: string
-  cause: 'mafia_kill' | 'serial_kill' | 'vigilante_kill' | 'arson'
+  cause: 'mafia_kill' | 'serial_kill' | 'vigilante_kill' | 'arson' | 'witch_kill'
 }
 
 export interface MafiaNightResolution {
@@ -207,6 +210,13 @@ export interface MafiaNightResolution {
   bodyguardHitsTaken: number
   cursedConvertedPlayerId: string | null
   wolfCubDiedThisNight: boolean
+  witchHealTarget: string | null
+  witchKillTarget: string | null
+  littleGirlPeekTarget: string | null
+  littleGirlCaught: boolean
+  trapperTarget: string | null
+  trapTriggered: boolean
+  trapCaughtPlayerIds: string[]
 }
 
 /**
@@ -223,6 +233,9 @@ export function resolveMafiaNight(
     | 'serial_killer_enabled'
     | 'arsonist_enabled'
     | 'medium_enabled'
+    | 'witch_enabled'
+    | 'little_girl_enabled'
+    | 'trapper_enabled'
     | 'wolf_cub_revenge_pending'
   >,
   playerStates: MafiaPlayerState[]
@@ -288,6 +301,33 @@ export function resolveMafiaNight(
   const arsonistDouseTarget2 =
     arsonistPlayer && !arsonistIgnited ? (arsonistPlayer.night_action_target_player_id_2 ?? null) : null
 
+  // Witch: heal potion protects like the Doctor (once per game), kill potion is an
+  // unblockable poison (once per game) resolved directly below.
+  const witchPlayer = session.witch_enabled ? aliveOfRole('witch') : undefined
+  const witchHealTarget =
+    witchPlayer && !witchPlayer.witch_heal_used ? (witchPlayer.night_action_target_player_id_2 ?? null) : null
+  const witchKillTarget =
+    witchPlayer && !witchPlayer.witch_kill_used ? (witchPlayer.night_action_target_player_id ?? null) : null
+
+  // Little Girl: passively peeks at the Mafia's target each night, with a chance of being
+  // noticed and killed for it.
+  const LITTLE_GIRL_CATCH_CHANCE = 0.2
+  const littleGirlPlayer = session.little_girl_enabled ? aliveOfRole('little_girl') : undefined
+  const littleGirlPeekTarget = littleGirlPlayer ? mafiaTarget : null
+  const littleGirlCaught = !!littleGirlPlayer && !!mafiaTarget && Math.random() < LITTLE_GIRL_CATCH_CHANCE
+
+  // Trapper: reusable nightly trap. If the Mafia's kill target matches the trapped house, the
+  // kill is blocked and the Mafia members who voted for that target are revealed to the Trapper.
+  const trapperPlayer = session.trapper_enabled ? aliveOfRole('trapper') : undefined
+  const trapperTarget = trapperPlayer?.night_action_target_player_id ?? null
+  const trapTriggered = !!trapperTarget && !!mafiaTarget && trapperTarget === mafiaTarget
+  const trapCaughtPlayerIds = trapTriggered
+    ? playerStates
+        .filter((p) => p.is_alive && p.night_action_target_player_id === mafiaTarget)
+        .filter((p) => p.role === 'mafia' || p.role === 'wolf_cub' || p.role === 'alpha_wolf')
+        .map((p) => p.player_id)
+    : []
+
   const deaths: MafiaNightDeath[] = []
   const deadIds = new Set<string>()
   const addDeath = (playerId: string, cause: MafiaNightDeath['cause']) => {
@@ -312,6 +352,8 @@ export function resolveMafiaNight(
   const applyAttack = (targetId: string | null, cause: 'mafia_kill' | 'serial_kill' | 'vigilante_kill') => {
     if (!targetId) return
     if (doctorTarget === targetId) return
+    if (witchHealTarget === targetId) return
+    if (cause === 'mafia_kill' && trapTriggered && targetId === mafiaTarget) return
     if (cause === 'mafia_kill') {
       const targetState = playerStates.find((p) => p.player_id === targetId)
       if (targetState?.role === 'arsonist') return
@@ -331,6 +373,16 @@ export function resolveMafiaNight(
   applyAttack(mafiaTarget, 'mafia_kill')
   applyAttack(bonusMafiaTarget, 'mafia_kill')
   applyAttack(serialKillerTarget, 'serial_kill')
+
+  // Witch kill potion is an unblockable poison — resolved directly, bypassing doctor/bodyguard.
+  if (witchKillTarget) {
+    addDeath(witchKillTarget, 'witch_kill')
+  }
+
+  // Little Girl caught spying — killed directly, independent of doctor/bodyguard protection.
+  if (littleGirlCaught && littleGirlPlayer) {
+    addDeath(littleGirlPlayer.player_id, 'mafia_kill')
+  }
 
   // Ignite kills everyone doused so far, bypassing doctor/bodyguard (fire, not an attack roll).
   if (arsonistIgnited) {
@@ -359,6 +411,13 @@ export function resolveMafiaNight(
     bodyguardHitsTaken,
     cursedConvertedPlayerId,
     wolfCubDiedThisNight,
+    witchHealTarget,
+    witchKillTarget,
+    littleGirlPeekTarget,
+    littleGirlCaught,
+    trapperTarget,
+    trapTriggered,
+    trapCaughtPlayerIds,
   }
 }
 
@@ -389,7 +448,7 @@ export async function initializeMafiaGame(
   const { data: gameData, error: gameError } = await admin
     .from('games')
     .select(
-      'mafia_doctor_enabled, mafia_detective_enabled, mafia_bodyguard_enabled, mafia_mayor_enabled, mafia_vigilante_enabled, mafia_tracker_enabled, mafia_alpha_wolf_enabled, mafia_wolf_cub_enabled, mafia_framer_enabled, mafia_jester_enabled, mafia_serial_killer_enabled, mafia_arsonist_enabled, mafia_cupid_enabled, mafia_cursed_villager_enabled, mafia_medium_enabled, mafia_priest_enabled, mafia_count, mafia_anonymous_votes'
+      'mafia_doctor_enabled, mafia_detective_enabled, mafia_bodyguard_enabled, mafia_mayor_enabled, mafia_vigilante_enabled, mafia_tracker_enabled, mafia_alpha_wolf_enabled, mafia_wolf_cub_enabled, mafia_framer_enabled, mafia_jester_enabled, mafia_serial_killer_enabled, mafia_arsonist_enabled, mafia_cupid_enabled, mafia_cursed_villager_enabled, mafia_medium_enabled, mafia_priest_enabled, mafia_witch_enabled, mafia_little_girl_enabled, mafia_trapper_enabled, mafia_count, mafia_anonymous_votes'
     )
     .eq('id', gameId)
     .single()
@@ -415,6 +474,9 @@ export async function initializeMafiaGame(
     cursed_villager_enabled: gameData.mafia_cursed_villager_enabled !== false,
     medium_enabled: gameData.mafia_medium_enabled !== false,
     priest_enabled: gameData.mafia_priest_enabled !== false,
+    witch_enabled: gameData.mafia_witch_enabled !== false,
+    little_girl_enabled: gameData.mafia_little_girl_enabled !== false,
+    trapper_enabled: gameData.mafia_trapper_enabled !== false,
   }
   const anonymousVotes = gameData.mafia_anonymous_votes === true
   const resolvedMafiaCount =

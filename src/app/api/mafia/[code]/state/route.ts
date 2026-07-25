@@ -31,6 +31,9 @@ const ROLE_ENABLED_KEYS = [
   'cursed_villager_enabled',
   'medium_enabled',
   'priest_enabled',
+  'witch_enabled',
+  'little_girl_enabled',
+  'trapper_enabled',
 ] as const
 
 function enabledRolesFrom(session: Pick<MafiaSession, (typeof ROLE_ENABLED_KEYS)[number]>): MafiaRole[] {
@@ -52,6 +55,9 @@ function enabledRolesFrom(session: Pick<MafiaSession, (typeof ROLE_ENABLED_KEYS)
     cursed_villager_enabled: 'cursed_villager',
     medium_enabled: 'medium',
     priest_enabled: 'priest',
+    witch_enabled: 'witch',
+    little_girl_enabled: 'little_girl',
+    trapper_enabled: 'trapper',
   }
   for (const key of ROLE_ENABLED_KEYS) {
     if (session[key]) roles.push(map[key])
@@ -260,6 +266,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     const mediumReviveRemaining = role === 'medium' ? (myPlayerState.medium_revive_used ? 0 : 1) : undefined
     const priestHolyWaterRemaining = role === 'priest' ? (myPlayerState.priest_holy_water_used ? 0 : 1) : undefined
+    const witchHealRemaining = role === 'witch' ? (myPlayerState.witch_heal_used ? 0 : 1) : undefined
+    const witchKillRemaining = role === 'witch' ? (myPlayerState.witch_kill_used ? 0 : 1) : undefined
 
     let mediumGhostChat: MafiaMyState['mediumGhostChat'] = undefined
     if (role === 'medium' && myPlayerState.is_alive && session.phase === 'night') {
@@ -344,6 +352,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       vigilanteRevealResult,
       mediumReviveRemaining,
       priestHolyWaterRemaining,
+      witchHealRemaining,
+      witchKillRemaining,
       mediumGhostChat,
       framerLastTargetName,
       cupidLinkedNames,

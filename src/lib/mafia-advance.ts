@@ -16,6 +16,7 @@ const KILLER_LABEL: Record<string, string> = {
   serial_kill: 'The Serial Killer',
   arson: 'The Arsonist',
   vigilante_kill: 'The Vigilante',
+  witch_kill: 'The Witch',
 }
 
 /**
@@ -168,6 +169,13 @@ export async function runMafiaAdvance(
       cursedConvertedPlayerId,
       wolfCubDiedThisNight,
       deaths,
+      witchHealTarget,
+      witchKillTarget,
+      littleGirlPeekTarget,
+      littleGirlCaught,
+      trapperTarget,
+      trapTriggered,
+      trapCaughtPlayerIds,
     } = resolution
 
     updateFields.mafia_target_player_id = mafiaTarget
@@ -354,6 +362,71 @@ export async function runMafiaAdvance(
         target_player_id: framer.player_id,
         message: `🎭 Night ${session.day_number}: You framed ${playerLabel(framer.night_action_target_player_id)}`,
       })
+    }
+
+    // Witch heal potion
+    if (witchHealTarget) {
+      const witch = playerStates.find((p) => p.role === 'witch' && p.is_alive)
+      if (witch) {
+        pendingEffects.push(() =>
+          admin.from('mafia_player_states').update({ witch_heal_used: true }).eq('id', witch.id)
+        )
+        const healedAttacked = witchHealTarget === mafiaTarget || witchHealTarget === serialKillerTarget
+        privateMessages.push({
+          target_player_id: witch.player_id,
+          message: healedAttacked
+            ? `🧪 Night ${session.day_number}: Your heal potion saved your target!`
+            : `🧪 Night ${session.day_number}: Your heal potion wasn't needed — your target wasn't attacked.`,
+        })
+        if (healedAttacked && witchHealTarget !== witch.player_id) {
+          privateMessages.push({
+            target_player_id: witchHealTarget,
+            message: `🧪 Night ${session.day_number}: You were saved last night!`,
+          })
+        }
+      }
+    }
+
+    // Witch kill potion
+    if (witchKillTarget) {
+      const witch = playerStates.find((p) => p.role === 'witch' && p.is_alive)
+      if (witch) {
+        pendingEffects.push(() =>
+          admin.from('mafia_player_states').update({ witch_kill_used: true }).eq('id', witch.id)
+        )
+        privateMessages.push({
+          target_player_id: witch.player_id,
+          message: `🧪 Night ${session.day_number}: Your kill potion struck ${playerLabel(witchKillTarget)}.`,
+        })
+      }
+    }
+
+    // Little Girl — passive peek, with a chance of being caught
+    if (littleGirlPeekTarget) {
+      const littleGirl = playerStates.find((p) => p.role === 'little_girl')
+      if (littleGirl) {
+        privateMessages.push({
+          target_player_id: littleGirl.player_id,
+          message: littleGirlCaught
+            ? `🎀 Night ${session.day_number}: You were caught spying on the Mafia... and paid the price.`
+            : `🎀 Night ${session.day_number}: You spied on the Mafia — they targeted ${playerLabel(littleGirlPeekTarget)}.`,
+        })
+      }
+    }
+
+    // Trapper
+    if (trapperTarget) {
+      const trapper = playerStates.find((p) => p.role === 'trapper' && p.is_alive)
+      if (trapper) {
+        privateMessages.push({
+          target_player_id: trapper.player_id,
+          message: trapTriggered
+            ? `🪤 Night ${session.day_number}: Your trap caught the Mafia targeting ${playerLabel(trapperTarget)}! Culprit(s): ${
+                trapCaughtPlayerIds.map((id) => playerLabel(id)).join(', ') || 'unknown'
+              }.`
+            : `🪤 Night ${session.day_number}: Your trap on ${playerLabel(trapperTarget)} wasn't triggered.`,
+        })
+      }
     }
 
     if (privateMessages.length > 0) {
