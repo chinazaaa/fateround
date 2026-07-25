@@ -177,16 +177,14 @@ export function MafiaPlayersGrid({
                 </span>
               )}
               <span className="text-3xl leading-none">{p.isAlive ? '🧑' : '🪦'}</span>
-              {votingForSeat == null && (
-                <span
-                  className={`text-xs font-bold truncate w-full leading-tight ${
-                    p.isAlive ? 'text-[var(--foreground)]' : 'line-through text-[var(--muted)]'
-                  }`}
-                >
-                  {p.name}
-                  {isMe && <span className="font-normal text-[var(--primary)]"> (you)</span>}
-                </span>
-              )}
+              <span
+                className={`text-xs font-bold truncate w-full leading-tight ${
+                  p.isAlive ? 'text-[var(--foreground)]' : 'line-through text-[var(--muted)]'
+                }`}
+              >
+                {p.name}
+                {isMe && <span className="font-normal text-[var(--primary)]"> (you)</span>}
+              </span>
               {isMe && myRole ? (
                 <span
                   className={`text-[9px] font-bold uppercase leading-none ${TEAM_TEXT[MAFIA_ROLE_INFO[myRole].team]}`}

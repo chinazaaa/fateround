@@ -244,7 +244,21 @@ export async function runMafiaAdvance(
       )
     }
     if (deaths.length === 0) {
-      systemMessages.push(mafiaTarget ? '🏥 Someone was saved!' : '😴 No one was attacked last night.')
+      if (!mafiaTarget) {
+        systemMessages.push('😴 No one was attacked last night.')
+      } else if (doctorTarget === mafiaTarget) {
+        systemMessages.push('🏥 The Doctor saved someone!')
+      } else if (witchHealActuallySaved && witchHealTarget === mafiaTarget) {
+        systemMessages.push('🧪 The Witch saved someone!')
+      } else if (trapperBlockedPlayerIds.includes(mafiaTarget)) {
+        systemMessages.push("🪤 A trap foiled the Mafia's attack!")
+      } else if (cursedConvertedPlayerId === mafiaTarget) {
+        systemMessages.push("☠️ The Mafia's target turned out to be one of their own...")
+      } else if (bodyguardHitsTaken === 0) {
+        // No known protection blocked it (e.g. the target was immune, like the Arsonist) and
+        // the Bodyguard case is already announced above via "🛡️ Someone was protected!".
+        systemMessages.push('😴 No one died last night.')
+      }
     }
 
     if (mediumRevivePlayerId) {

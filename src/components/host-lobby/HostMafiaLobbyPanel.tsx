@@ -36,7 +36,6 @@ const ADVANCED_ROLE_FIELDS = [
   'mafia_witch_enabled',
   'mafia_little_girl_enabled',
   'mafia_trapper_enabled',
-  'mafia_detective_enabled',
 ] as const satisfies readonly (keyof Game)[]
 
 const ADVANCED_ROLE_LABELS: Record<(typeof ADVANCED_ROLE_FIELDS)[number], { label: string; description: string }> = {
@@ -86,10 +85,6 @@ const ADVANCED_ROLE_LABELS: Record<(typeof ADVANCED_ROLE_FIELDS)[number], { labe
   mafia_trapper_enabled: {
     label: 'Trapper',
     description: 'Sets up to 3 traps, then activates them to block a Mafia kill and take out their weakest member',
-  },
-  mafia_detective_enabled: {
-    label: 'Detective',
-    description: 'Each night, checks two players to see if they are on the same team',
   },
 }
 

@@ -69,9 +69,11 @@ export function assignMafiaRoles(
     if (enabled && roles.length < playerCount) roles.push(role)
   }
 
-  // Core village roles (appear every game when enabled)
+  // Core village roles (appear every game when enabled) — Aura Seer and Detective are not
+  // exposed as host toggles at all (like Doctor), so they're always in the pool given room.
   pushIfRoom('doctor', toggles.doctor_enabled)
   pushIfRoom('aura_seer', toggles.aura_seer_enabled)
+  pushIfRoom('detective', toggles.detective_enabled)
   pushIfRoom('bodyguard', toggles.bodyguard_enabled)
   pushIfRoom('medium', toggles.medium_enabled)
   pushIfRoom('priest', toggles.priest_enabled)
@@ -86,7 +88,6 @@ export function assignMafiaRoles(
   // Round 2: more village + mafia specialist
   pushIfRoom('vigilante', toggles.vigilante_enabled)
   pushIfRoom('framer', toggles.framer_enabled)
-  pushIfRoom('detective', toggles.detective_enabled)
 
   // Round 3: another Solo, another Special, more village
   pushIfRoom('serial_killer', toggles.serial_killer_enabled)
