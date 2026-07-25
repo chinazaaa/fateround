@@ -1,7 +1,7 @@
 'use client'
 
 import { MafiaSecretChat } from './MafiaChat'
-import type { MafiaMyState, MafiaChatMessage } from '@/types'
+import type { MafiaMyState, MafiaChatMessage, MafiaPhase } from '@/types'
 import { MAFIA_TEAM_ROLES } from './mafia-role-info'
 
 interface MafiaIdentityPanelProps {
@@ -9,6 +9,7 @@ interface MafiaIdentityPanelProps {
   myPlayerId: string | null
   mySeatNumber: number | null
   amIAlive: boolean
+  phase: MafiaPhase
   mafiaChatMessages: MafiaChatMessage[]
   onSendMafiaMessage: (msg: string) => Promise<void>
 }
@@ -23,11 +24,15 @@ export function MafiaIdentityPanel({
   myState,
   myPlayerId,
   amIAlive,
+  phase,
   mafiaChatMessages,
   onSendMafiaMessage,
 }: MafiaIdentityPanelProps) {
   const myRole = myState?.role
   const isWolfTeam = !!myRole && MAFIA_TEAM_ROLES.includes(myRole)
+  // The wolf-team secret chat is night-only — during the day it's just noise, and coordination
+  // for the next kill only matters once night starts again.
+  const showSecretChat = isWolfTeam && amIAlive && phase === 'night'
 
   const hasDynamicInfo =
     !!myState &&
@@ -36,11 +41,12 @@ export function MafiaIdentityPanel({
       !!myState.detectiveResult ||
       !!myState.trackerResult ||
       (myRole === 'bodyguard' && !!myState.bodyguardLastOutcome && myState.bodyguardLastOutcome !== 'no_attack') ||
+      (myRole === 'doctor' && !!myState.doctorLastOutcome && myState.doctorLastOutcome !== 'no_attack') ||
       myRole === 'vigilante' ||
       (myRole === 'framer' && !!myState.framerLastTargetName) ||
       (myRole === 'cupid' && !!myState.cupidLinkedNames))
 
-  if (!hasDynamicInfo && !(isWolfTeam && amIAlive)) return null
+  if (!hasDynamicInfo && !showSecretChat) return null
 
   return (
     <div className="space-y-3">
@@ -102,6 +108,12 @@ export function MafiaIdentityPanel({
         </div>
       )}
 
+      {myRole === 'doctor' && myState?.doctorLastOutcome && myState.doctorLastOutcome !== 'no_attack' && (
+        <div className="glass-card border border-[var(--border)] rounded-2xl p-3 text-left">
+          <p className="text-sm text-[var(--foreground)]">Your target was attacked and you saved them last night.</p>
+        </div>
+      )}
+
       {myRole === 'vigilante' && (
         <div className="glass-card border border-[var(--border)] rounded-2xl p-3 text-left">
           <p className="text-sm text-[var(--foreground)]">
@@ -127,7 +139,7 @@ export function MafiaIdentityPanel({
         </div>
       )}
 
-      {isWolfTeam && amIAlive && (
+      {showSecretChat && (
         <MafiaSecretChat messages={mafiaChatMessages} onSendMessage={onSendMafiaMessage} myPlayerId={myPlayerId} />
       )}
     </div>

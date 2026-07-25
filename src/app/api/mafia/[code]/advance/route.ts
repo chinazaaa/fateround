@@ -207,7 +207,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       }
     }
   } else if (targetPhase === 'night' && currentPhase !== 'role_reveal') {
-    // Moving to next day cycle night
+    // Moving to next day cycle night. Reset every per-night resolution column back to null —
+    // these previously only got set once (on the night → day_report transition) and were
+    // never cleared, so a private "you saved them" / "you framed X" message from night 1
+    // would keep showing on every subsequent day for the rest of the game.
+    updateFields.mafia_target_player_id = null
+    updateFields.doctor_target_player_id = null
+    updateFields.detect_target_player_id = null
+    updateFields.bodyguard_target_player_id = null
+    updateFields.bodyguard_sacrifice_player_id = null
+    updateFields.tracker_visited_player_id = null
+    updateFields.framed_player_id = null
+    updateFields.serial_kill_player_id = null
+    updateFields.arson_ignite = false
+    updateFields.night_kill_player_id = null
     updateFields.day_number = session.day_number + 1
     // A vigilante who fired this past night has used their one shot, permanently.
     const firedVigilante = playerStates.find(

@@ -189,6 +189,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       else bodyguardLastOutcome = 'no_attack'
     }
 
+    let doctorLastOutcome: MafiaMyState['doctorLastOutcome'] = null
+    if (role === 'doctor' && session.doctor_target_player_id) {
+      const wasAttacked =
+        session.doctor_target_player_id === session.mafia_target_player_id ||
+        session.doctor_target_player_id === session.serial_kill_player_id
+      doctorLastOutcome = wasAttacked ? 'saved' : 'no_attack'
+    }
+
     const vigilanteShotsRemaining =
       role === 'vigilante' ? Math.max(0, 1 - myPlayerState.vigilante_shots_used) : undefined
 
@@ -242,6 +250,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       mafiaChatMessages,
       trackerResult,
       bodyguardLastOutcome,
+      doctorLastOutcome,
       vigilanteShotsRemaining,
       framerLastTargetName,
       cupidLinkedNames,

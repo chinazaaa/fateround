@@ -1965,6 +1965,7 @@ export interface MafiaMyState {
   mafiaChatMessages?: MafiaChatMessage[]
   trackerResult?: { targetName: string; visitedName: string | null } | null
   bodyguardLastOutcome?: 'saved' | 'sacrificed' | 'no_attack' | null
+  doctorLastOutcome?: 'saved' | 'no_attack' | null
   vigilanteShotsRemaining?: number
   framerLastTargetName?: string | null
   cupidLinkedNames?: [string, string] | null

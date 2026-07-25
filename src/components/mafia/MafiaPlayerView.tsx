@@ -645,6 +645,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               myPlayerId={myPlayerId}
               mySeatNumber={me?.seatNumber ?? null}
               amIAlive={amIAlive}
+              phase={phase}
               mafiaChatMessages={myState?.mafiaChatMessages ?? []}
               onSendMafiaMessage={sendMafiaMessage}
             />

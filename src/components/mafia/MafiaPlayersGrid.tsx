@@ -95,7 +95,7 @@ export function MafiaPlayersGrid({
               type="button"
               disabled={!clickable}
               onClick={clickable ? () => onSelect?.(p.id) : undefined}
-              className={`relative flex flex-col items-center justify-center gap-1 aspect-square rounded-2xl border-2 p-2 text-center transition ${
+              className={`relative flex flex-col items-center justify-center gap-1 aspect-square rounded-2xl border-2 p-2 text-center transition overflow-hidden ${
                 !p.isAlive
                   ? 'bg-[var(--surface-inset-bg)] border-[var(--border)] opacity-70'
                   : isSelected
@@ -119,26 +119,16 @@ export function MafiaPlayersGrid({
                 </span>
               )}
               <span className="text-3xl leading-none">{p.isAlive ? '🧑' : '🪦'}</span>
-              {votingForSeat != null ? (
-                <span className="text-[10px] font-black bg-amber-500 text-black rounded-full px-1.5 py-0.5 leading-none">
-                  → #{votingForSeat}
+              {votingForSeat == null && (
+                <span
+                  className={`text-xs font-bold truncate w-full leading-tight ${
+                    p.isAlive ? 'text-[var(--foreground)]' : 'line-through text-[var(--muted)]'
+                  }`}
+                >
+                  {p.name}
+                  {isMe && <span className="font-normal text-[var(--primary)]"> (you)</span>}
                 </span>
-              ) : (
-                anonymousVotes &&
-                hasVoted && (
-                  <span className="text-[10px] font-black bg-amber-500 text-black rounded-full px-1.5 py-0.5 leading-none">
-                    ?
-                  </span>
-                )
               )}
-              <span
-                className={`text-xs font-bold truncate w-full leading-tight ${
-                  p.isAlive ? 'text-[var(--foreground)]' : 'line-through text-[var(--muted)]'
-                }`}
-              >
-                {p.name}
-                {isMe && <span className="font-normal text-[var(--primary)]"> (you)</span>}
-              </span>
               {isMe && myRole ? (
                 <span
                   className={`text-[9px] font-bold uppercase leading-none ${TEAM_TEXT[MAFIA_ROLE_INFO[myRole].team]}`}
@@ -152,6 +142,13 @@ export function MafiaPlayersGrid({
                     {mafiaRoleEmoji(p.role)} {p.role.replace(/_/g, ' ')}
                   </span>
                 )
+              )}
+              {(votingForSeat != null || (anonymousVotes && hasVoted)) && (
+                <span className="absolute bottom-0 inset-x-0 h-[38%] flex items-center justify-center rounded-b-2xl bg-gradient-to-b from-amber-800 to-amber-900 border-t-2 border-amber-950/40">
+                  <span className="text-lg font-black text-white drop-shadow leading-none">
+                    {votingForSeat != null ? votingForSeat : '?'}
+                  </span>
+                </span>
               )}
             </button>
           )
