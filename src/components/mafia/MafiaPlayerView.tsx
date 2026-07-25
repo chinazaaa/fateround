@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -151,6 +151,14 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(game?.theme)
 
+  // The timeout that clears forceRoleReveal is intentionally NOT returned as this effect's
+  // cleanup — if the game's real phase changes again while the 5s overlay is showing (e.g.
+  // the player was backgrounded and the server ticked several phases forward in the
+  // meantime), this effect re-runs, and a cleanup-cancelled timeout with no replacement
+  // (blocked by the localStorage guard below) would leave forceRoleReveal stuck true
+  // forever — hiding an otherwise perfectly-progressing game behind a frozen role card
+  // until a manual refresh. A ref-held timeout only ever gets cleared on unmount.
+  const forceRoleRevealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (screen !== 'active' || !myPlayerId || !mafiaState?.myState?.role) return
     const key = `mafia:${gameCode}:roleSeen:${myPlayerId}`
@@ -163,9 +171,14 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     if (localStorage.getItem(key)) return
     localStorage.setItem(key, '1')
     setForceRoleReveal(true)
-    const t = setTimeout(() => setForceRoleReveal(false), 5000)
-    return () => clearTimeout(t)
+    forceRoleRevealTimeoutRef.current = setTimeout(() => setForceRoleReveal(false), 5000)
   }, [screen, myPlayerId, gameCode, mafiaState?.myState?.role, mafiaState?.phase])
+
+  useEffect(() => {
+    return () => {
+      if (forceRoleRevealTimeoutRef.current) clearTimeout(forceRoleRevealTimeoutRef.current)
+    }
+  }, [])
 
   const connected = useGameTableSync(
     gameCode,
