@@ -58,18 +58,18 @@ export function MafiaRolesDrawer({ rolesInGame, myRole, roleCounts }: MafiaRoles
       {open && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
-          <div className="relative w-[85%] max-w-sm h-full bg-[var(--background)] border-l border-[var(--border)] shadow-2xl flex flex-col">
-            <div className="sticky top-0 z-10 flex items-center justify-between p-5 pb-3 bg-[var(--background)] border-b border-[var(--border)]">
-              <h2 className="text-lg font-black text-[var(--foreground)]">Roles in this game</h2>
+          <div className="relative w-[80%] max-w-sm bg-[var(--background)] border-l border-[var(--border)] shadow-2xl flex flex-col max-h-dvh h-dvh overflow-hidden">
+            <div className="shrink-0 flex items-center justify-between px-4 py-3 bg-[var(--background)] border-b border-[var(--border)]">
+              <h2 className="text-base font-black text-[var(--foreground)]">Roles in this game</h2>
               <button
                 onClick={() => setOpen(false)}
-                className="text-[var(--muted)] hover:text-[var(--foreground)] text-2xl leading-none p-1"
+                className="flex items-center justify-center w-8 h-8 rounded-full bg-[var(--surface-inset-bg)] text-[var(--foreground)] text-lg font-bold"
                 aria-label="Close"
               >
                 ✕
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-5 pt-3 space-y-3">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-2.5 pb-[env(safe-area-inset-bottom,16px)]">
               {sortedRoles.map((role) => {
                 const info = MAFIA_ROLE_INFO[role]
                 if (!info) return null
