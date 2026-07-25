@@ -156,6 +156,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     let mafiaTeammates: string[] = []
     let mafiaTeammateIds: string[] = []
     let mafiaTeammateRoles: MafiaMyState['mafiaTeammateRoles'] = {}
+    let mafiaTeammateNightTargets: Record<string, string | null> | undefined = undefined
     if (MAFIA_TEAM_ROLES.includes(role)) {
       const teammates = playerStates.filter(
         (p) => MAFIA_TEAM_ROLES.includes(p.role) && p.player_id !== myPlayerState.player_id
@@ -163,6 +164,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       mafiaTeammateIds = teammates.map((p) => p.player_id)
       mafiaTeammates = playersData?.filter((p) => mafiaTeammateIds.includes(p.id)).map((p) => p.name) ?? []
       mafiaTeammateRoles = Object.fromEntries(teammates.map((p) => [p.player_id, p.role]))
+
+      if (session.phase === 'night') {
+        mafiaTeammateNightTargets = Object.fromEntries(
+          teammates.map((p) => [p.player_id, p.night_action_target_player_id ?? null])
+        )
+      }
     }
 
     // Seat-numbered display name ("#5 Naza") — used for every player mentioned in a private
@@ -284,6 +291,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       mafiaTeammates,
       mafiaTeammateIds,
       mafiaTeammateRoles,
+      mafiaTeammateNightTargets,
       mafiaChatMessages,
       trackerResult,
       bodyguardLastOutcome,
@@ -358,7 +366,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const voteChoices: Record<string, string> = {}
   const votedPlayerIds: string[] = []
   playerStates.forEach((ps) => {
-    if (ps.day_vote_target_player_id) {
+    if (ps.is_alive && ps.day_vote_target_player_id) {
       // The Mayor's vote counts double toward the lynch majority (see resolveMafiaDayVote) —
       // weight the displayed tally the same way so it agrees with the actual resolved outcome.
       const weight = ps.role === 'mayor' ? 2 : 1

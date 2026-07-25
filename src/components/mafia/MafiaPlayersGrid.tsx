@@ -14,6 +14,7 @@ interface MafiaPlayersGridProps {
    *  list, matching Wolvesville's shared crew marker on the roster instead of a name panel. */
   mafiaTeammateIds?: string[]
   mafiaTeammateRoles?: Record<string, MafiaRole>
+  mafiaTeammateNightTargets?: Record<string, string | null>
   phase: MafiaPhase
   voteTallies: Record<string, number>
   /** voterId -> targetId, when votes are public — shown as a "→ #N" sign on the voter's own
@@ -70,6 +71,7 @@ export function MafiaPlayersGrid({
   myRole,
   mafiaTeammateIds = [],
   mafiaTeammateRoles = {},
+  mafiaTeammateNightTargets,
   phase,
   voteTallies,
   voteChoices = {},
@@ -110,6 +112,9 @@ export function MafiaPlayersGrid({
           const clickable = !!onSelect && p.isAlive && (!isMe || allowSelfSelect)
           const isTeammate = !isMe && mafiaTeammateIds.includes(p.id)
           const teammateRole = isTeammate ? mafiaTeammateRoles[p.id] : undefined
+          const teammateNightTarget =
+            isTeammate && phase === 'night' && mafiaTeammateNightTargets ? mafiaTeammateNightTargets[p.id] : undefined
+          const teammateTargetSeat = teammateNightTarget ? seatNumberById.get(teammateNightTarget) : undefined
           const revealedRole = p.role ?? teammateRole
           const roleTeamColor = revealedRole
             ? MAFIA_TEAM_ROLES.includes(revealedRole)
@@ -177,6 +182,13 @@ export function MafiaPlayersGrid({
                     {mafiaRoleEmoji(revealedRole)} {revealedRole.replace(/_/g, ' ')}
                   </span>
                 )
+              )}
+              {teammateTargetSeat != null && (
+                <span className="absolute bottom-0 inset-x-0 h-[22%] flex items-center justify-center rounded-b-2xl bg-gradient-to-b from-red-800 to-red-900 border-t-2 border-red-950/40">
+                  <span className="text-sm font-black text-white drop-shadow leading-none">
+                    🎯 {teammateTargetSeat}
+                  </span>
+                </span>
               )}
               {(votingForSeat != null || (anonymousVotes && hasVoted)) && (
                 <span className="absolute bottom-0 inset-x-0 h-[22%] flex items-center justify-center rounded-b-2xl bg-gradient-to-b from-amber-800 to-amber-900 border-t-2 border-amber-950/40">
