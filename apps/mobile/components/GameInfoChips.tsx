@@ -72,6 +72,12 @@ export function gameInfoItems(game: Game | null | undefined): string[] {
     if (typeof duration === 'number') items.push(formatDuration(duration))
   }
 
+  // Scrabble's chess-clock mode is a separate per-player clock on top of the game's overall
+  // session length above — surfaced only when the host actually turned it on.
+  if (game.game_type === 'scrabble' && game.scrabble_clock_mode === 'chess' && game.scrabble_clock_seconds) {
+    items.push(`Chess clock · ${formatDuration(game.scrabble_clock_seconds)}`)
+  }
+
   return items
 }
 
