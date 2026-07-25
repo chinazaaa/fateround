@@ -1066,8 +1066,7 @@ function CreateGameInner() {
     !isHotSeat(t) &&
     !isPeoplePollGame(t) &&
     !isAnonymousMessagesGame(t) &&
-    !isSecretMessageGame(t) &&
-    !isMafiaGame(t)
+    !isSecretMessageGame(t)
   const TEMPLATE_FIELDS: Record<
     string,
     { get: () => unknown; set: (v: unknown) => void; appliesTo: (t: GameType) => boolean }
@@ -1790,17 +1789,10 @@ function CreateGameInner() {
   const [hostWillPlay, setHostWillPlay] = useState(true)
   // Games whose host panel supports the "Host only / Host + play" seat toggle.
   // Excludes the poll family (routed through PollHostView, own join flow) and the
-  // host-only games (message boards, mafia). For these, the host's create-screen
-  // name + role are carried into the lobby via host-play intent.
+  // host-only message-board games. For these, the host's create-screen name + role are
+  // carried into the lobby via host-play intent.
   const hostPlaySupported =
-    !isBinaryLobby &&
-    !isMlt &&
-    !isPan &&
-    !isHotSeatGame &&
-    !isPeoplePoll &&
-    !isAnonymousRoom &&
-    !isSecretMessage &&
-    !isMafia
+    !isBinaryLobby && !isMlt && !isPan && !isHotSeatGame && !isPeoplePoll && !isAnonymousRoom && !isSecretMessage
   const isBingo = isBingoGame(settings.game_type)
   const isCodewords = isCodewordsGame(settings.game_type)
   // Content games (CSV upload / library packs) can carry a player-facing "category" label

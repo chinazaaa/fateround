@@ -88,19 +88,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   if (!mafiaSession || !mafiaPlayerStates) {
     if (game.status === 'waiting') {
-      const hostPlayers = (playersData ?? [])
-        .filter((p) => p.spectator !== true)
-        .map((p, index) => ({
-          id: p.id,
-          seatNumber: index + 1,
-          name: p.name ?? 'Unknown',
-          isAlive: true,
-          role: 'villager' as const,
-          deathDay: null,
-          deathCause: null,
-          nightActionTargetPlayerId: null,
-          dayVoteTargetPlayerId: null,
-        }))
+      const hostPlayers = (playersData ?? []).map((p, index) => ({
+        id: p.id,
+        seatNumber: index + 1,
+        name: p.name ?? 'Unknown',
+        isAlive: true,
+        role: 'villager' as const,
+        deathDay: null,
+        deathCause: null,
+        nightActionTargetPlayerId: null,
+        dayVoteTargetPlayerId: null,
+        spectator: p.spectator === true,
+      }))
       return NextResponse.json({
         gameTitle: game.title,
         status: 'waiting',
@@ -146,20 +145,38 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const session = mafiaSession as MafiaSession
   const playerStates = mafiaPlayerStates as MafiaPlayerState[]
 
-  // Combine player info with their mafia states
-  const playersMap = new Map(playersData?.map((p) => [p.id, p]) ?? [])
-  const hostPlayers = playerStates.map((ps) => {
-    const p = playersMap.get(ps.player_id)
+  // Combine player info with their mafia states. Every seated player has a mafia_player_state
+  // row (assigned at game start), but a host who joined "Host only" mid-game is a spectator
+  // row with no game role at all — included here as a placeholder entry (not in the play, but
+  // still needs to show up in the roster/manage list and the host-seat mode reconciliation).
+  const stateByPlayerId = new Map(playerStates.map((ps) => [ps.player_id, ps]))
+  const hostPlayers = (playersData ?? []).map((p) => {
+    const ps = stateByPlayerId.get(p.id)
+    if (ps) {
+      return {
+        id: p.id,
+        seatNumber: ps.seat_number,
+        name: p.name ?? 'Unknown',
+        isAlive: ps.is_alive,
+        role: ps.role,
+        deathDay: ps.death_day,
+        deathCause: ps.death_cause,
+        nightActionTargetPlayerId: ps.night_action_target_player_id,
+        dayVoteTargetPlayerId: ps.day_vote_target_player_id,
+        spectator: p.spectator === true,
+      }
+    }
     return {
-      id: ps.player_id,
-      seatNumber: ps.seat_number,
-      name: p?.name ?? 'Unknown',
-      isAlive: ps.is_alive,
-      role: ps.role,
-      deathDay: ps.death_day,
-      deathCause: ps.death_cause,
-      nightActionTargetPlayerId: ps.night_action_target_player_id,
-      dayVoteTargetPlayerId: ps.day_vote_target_player_id,
+      id: p.id,
+      seatNumber: 0,
+      name: p.name ?? 'Unknown',
+      isAlive: true,
+      role: 'villager' as const,
+      deathDay: null,
+      deathCause: null,
+      nightActionTargetPlayerId: null,
+      dayVoteTargetPlayerId: null,
+      spectator: true,
     }
   })
 

@@ -7,6 +7,7 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, usePolling } from '@/hooks/usePolling'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
+import { useHostSeat } from '@/hooks/useHostSeat'
 import type { MafiaPhase, MafiaTeam, MafiaRole, Game, GameStatus, Player, ThemeId } from '@/types'
 import { MAFIA_MIN_PLAYERS } from '@/lib/mafia'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
@@ -15,6 +16,7 @@ import { HostGameLayout, type HostTab } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
+import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { HostMafiaLobbyPanel } from '@/components/host-lobby/HostMafiaLobbyPanel'
 import { TransferHostControl } from '@/components/TransferHostControl'
@@ -25,6 +27,7 @@ import { ExitIcon } from '@/components/host/host-icons'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { MAFIA_TEAM_ROLES, NO_NIGHT_ACTION_ROLES } from '@/components/mafia/mafia-role-info'
+import { MafiaPlayerView } from '@/components/mafia/MafiaPlayerView'
 
 const WINNING_TEAM_LABEL: Record<string, string> = {
   mafia: 'MAFIA 🔪',
@@ -53,6 +56,7 @@ interface HostPlayer {
   deathCause: string | null
   nightActionTargetPlayerId: string | null
   dayVoteTargetPlayerId: string | null
+  spectator: boolean
 }
 
 interface MafiaHostStateResponse {
@@ -106,8 +110,6 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     }
   }, [gameCode, hostToken])
 
-  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, () => void load())
-
   useEffect(() => {
     load()
   }, [load])
@@ -135,6 +137,51 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
       runImmediately: false,
     }
   )
+
+  const gameStatus = (mafiaState?.status as GameStatus) ?? undefined
+
+  const gameObjForSeat = mafiaState
+    ? ({
+        id: gameCode,
+        title: mafiaState.gameTitle || 'Mafia',
+        status: mafiaState.status,
+        game_type: 'mafia',
+        host_token: hostToken,
+        max_players: mafiaState.maxPlayers ?? 10,
+      } as unknown as Game)
+    : null
+
+  const playersForSeat = (mafiaState?.players ?? []).map((p) => ({
+    id: p.id,
+    spectator: p.spectator,
+  }))
+
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    leaveGameRemovePlayer,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus,
+    players: playersForSeat,
+    onReload: load,
+    toast: { success: toastSuccess, error: toastError },
+  })
+
+  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, (playerId) => {
+    onHostSeatRemoved(playerId)
+    void load()
+  })
 
   useEffect(() => {
     if (mafiaState?.status === 'active') {
@@ -195,6 +242,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
       }
       toastSuccess('Mafia game started!')
       await load()
+      if (hostMode === 'player' && hostPlayerId) setTab('play')
     } catch {
       toastError('Failed to start game')
     } finally {
@@ -248,22 +296,18 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     }
   }
 
-  if (!mafiaState) {
+  if (!mafiaState || !gameObjForSeat) {
     return <HostLobbySkeleton />
   }
 
-  const gameStatus = (mafiaState.status as GameStatus) ?? 'waiting'
   const isWaiting = gameStatus === 'waiting'
   const isFinished = gameStatus === 'finished' || mafiaState.phase === 'game_over'
-  const canStart = mafiaState.players.length >= MAFIA_MIN_PLAYERS
+  const canStart = mafiaState.players.filter((p) => !p.spectator).length >= MAFIA_MIN_PLAYERS
+  const hostPlays = hostMode === 'player' && !!hostPlayerId
 
   const gameObj = {
-    id: gameCode,
-    title: mafiaState.gameTitle || 'Mafia',
+    ...gameObjForSeat,
     status: isFinished ? 'finished' : gameStatus,
-    game_type: 'mafia',
-    host_token: hostToken,
-    max_players: mafiaState.maxPlayers ?? 10,
     timer_seconds: mafiaState.timerSeconds ?? 60,
     mafia_doctor_enabled: mafiaState.doctorEnabled ?? true,
     mafia_detective_enabled: mafiaState.detectiveEnabled ?? true,
@@ -274,15 +318,15 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     created_at: new Date().toISOString(),
   } as unknown as Game
 
-  const playersList = mafiaState.players.map((p) => ({
+  const playersList = mafiaState.players.map((p, index) => ({
     id: p.id,
     game_id: gameCode,
     name: p.name,
     gender: 'both' as const,
     identity_gender: null,
     participant_id: null,
-    joined_at: new Date().toISOString(),
-    spectator: false,
+    joined_at: new Date(Date.now() - (mafiaState.players.length - index) * 1000).toISOString(),
+    spectator: p.spectator,
     is_eliminated: !p.isAlive,
   })) as unknown as Player[]
 
@@ -290,78 +334,23 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     <HostManageSection
       game={gameObj}
       players={playersList}
-      highlightPlayerId={null}
+      highlightPlayerId={hostPlayerId}
       removingPlayerId={removingPlayerId}
       onRemovePlayer={removePlayer}
       gameType="mafia"
       settings={
-        isWaiting ? (
-          mafiaState.replayPending ? (
-            <div className="surface-inset rounded-xl p-6 border border-[var(--border)]">
-              <ReplayReadyRing
-                players={playersList}
-                meId={null}
-                isHost
-                minPlayers={MAFIA_MIN_PLAYERS}
-                capacityGame={gameObj}
-                onToggleReady={() => {}}
-                onStart={() => void startGame()}
-                starting={starting}
-                gameCode={gameCode}
-                hostToken={hostToken}
-              />
-            </div>
-          ) : (
-            <HostMafiaLobbyPanel
-              gameCode={gameCode}
-              hostToken={hostToken}
-              game={gameObj}
-              playerCount={playersList.length}
-              onGameUpdate={() => void load()}
-            />
-          )
-        ) : undefined
-      }
-      top={
-        isWaiting ? (
-          mafiaState.replayPending ? undefined : (
-            <p className="surface-inset rounded-xl px-4 py-3 text-sm text-muted">
-              You&apos;re hosting this Mafia game as the Narrator. Share the invite link with players, then start the
-              game below once at least {MAFIA_MIN_PLAYERS} players have joined.
-            </p>
-          )
+        isWaiting && !mafiaState.replayPending ? (
+          <HostMafiaLobbyPanel
+            gameCode={gameCode}
+            hostToken={hostToken}
+            game={gameObj}
+            playerCount={playersList.filter((p) => !p.spectator).length}
+            onGameUpdate={() => void load()}
+          />
         ) : undefined
       }
       footer={
-        isWaiting ? (
-          mafiaState.replayPending ? (
-            <div className="pt-4 border-t border-[var(--border)] text-center">
-              <button
-                onClick={() => void confirmReturnToLobby()}
-                className="btn-secondary py-2 px-4 text-xs font-semibold rounded-lg"
-              >
-                Return to lobby setup instead
-              </button>
-            </div>
-          ) : (
-            <HostLobbyWaitingFooter
-              gameCode={gameCode}
-              hostToken={hostToken}
-              game={gameObj}
-              onStart={() => void startGame()}
-              onEnded={() => void load()}
-              canStart={canStart}
-              starting={starting}
-              startLabel="Start Mafia Game"
-              startDisabledHint={
-                canStart
-                  ? null
-                  : `Need at least ${MAFIA_MIN_PLAYERS} players to start (${mafiaState.players.length}/${MAFIA_MIN_PLAYERS})`
-              }
-              className="space-y-3"
-            />
-          )
-        ) : !isFinished ? (
+        !isWaiting && !isFinished ? (
           <HostEndGameButton
             gameCode={gameCode}
             hostToken={hostToken}
@@ -380,13 +369,15 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const { phase, dayNumber, phaseDeadline, players, doctorTargetPlayerId, detectTargetPlayerId, mafiaTargetPlayerId } =
     mafiaState
 
-  const activePlayers = players.filter((p) => p.isAlive)
+  const activePlayers = players.filter((p) => p.isAlive && !p.spectator)
   const deadPlayers = players.filter((p) => !p.isAlive)
 
   // Find names helper
   const playerName = (id: string | null) => players.find((p) => p.id === id)?.name ?? 'None'
 
-  const primary = (
+  // Watch mode: read-only God View — full visibility into every role/target, since a
+  // narrating host isn't a player at risk of leaking anything to themselves.
+  const watchPrimary = (
     <div className="max-w-6xl w-full mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Left Col: Control Room */}
       <div className="lg:col-span-1 space-y-6">
@@ -529,6 +520,11 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     </div>
   )
 
+  // Play mode: the host holds a real seat, so they get the same interactive view as any
+  // other player — MafiaPlayerView reads its own session from localStorage (set by
+  // useHostSeat's hostJoinGame), so no extra prop-threading is needed here.
+  const playPrimary = hostPlayerId ? <MafiaPlayerView gameCode={gameCode} /> : null
+
   const hostFinishedPanel = (
     <div className="max-w-2xl w-full mx-auto glass-card border border-[var(--border)] rounded-2xl p-8 shadow-2xl space-y-6 text-center">
       <h1 className="text-4xl font-extrabold text-[var(--primary)] animate-pulse">GAME OVER</h1>
@@ -549,21 +545,23 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
           Roles Reveal
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {players.map((p) => (
-            <div
-              key={p.id}
-              className="flex justify-between items-center text-sm p-3 rounded bg-[var(--surface-inset-bg)] border border-[var(--border)]"
-            >
-              <span className="font-semibold text-muted">
-                #{p.seatNumber} {p.name}
-              </span>
-              <span
-                className={`font-mono text-xs uppercase ${MAFIA_TEAM_ROLES.includes(p.role) ? 'text-red-400' : 'text-emerald-400'}`}
+          {players
+            .filter((p) => !p.spectator)
+            .map((p) => (
+              <div
+                key={p.id}
+                className="flex justify-between items-center text-sm p-3 rounded bg-[var(--surface-inset-bg)] border border-[var(--border)]"
               >
-                {p.role.replace(/_/g, ' ')}
-              </span>
-            </div>
-          ))}
+                <span className="font-semibold text-muted">
+                  #{p.seatNumber} {p.name}
+                </span>
+                <span
+                  className={`font-mono text-xs uppercase ${MAFIA_TEAM_ROLES.includes(p.role) ? 'text-red-400' : 'text-emerald-400'}`}
+                >
+                  {p.role.replace(/_/g, ' ')}
+                </span>
+              </div>
+            ))}
         </div>
       </div>
 
@@ -584,8 +582,40 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     </div>
   )
 
-  // Fresh lobby (not the play-again ready-up flow, which keeps the tabbed ReplayReadyRing).
-  const waitingLobby = isWaiting && !mafiaState.replayPending
+  // Replay ready-up: a full-screen ring (matching every other board game), not nested inside
+  // Manage settings — the host appears in it too (meId={hostPlayerId}) instead of being
+  // invisible to their own ready-up flow.
+  if (isWaiting && mafiaState.replayPending) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="max-w-lg w-full space-y-4">
+          <ReplayReadyRing
+            players={playersList}
+            meId={hostPlayerId}
+            isHost
+            minPlayers={MAFIA_MIN_PLAYERS}
+            capacityGame={gameObj}
+            onToggleReady={() => {}}
+            onStart={() => void startGame()}
+            starting={starting}
+            gameCode={gameCode}
+            hostToken={hostToken}
+          />
+          <div className="text-center">
+            <button
+              onClick={() => void confirmReturnToLobby()}
+              className="btn-secondary py-2 px-4 text-xs font-semibold rounded-lg"
+            >
+              Return to lobby setup instead
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Fresh lobby.
+  const waitingLobby = isWaiting
   if (waitingLobby) {
     return (
       <HostLobby
@@ -596,12 +626,23 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
         titleMeta={<GameInfoChips game={gameObj} className="mt-2" />}
         players={playersList}
         maxPlayers={lobbyMaxPlayersFromGameClient('mafia', gameObj) ?? gameObj.max_players}
+        resumeToken={hostResumeToken}
         playCard={
-          <p className="surface-inset rounded-xl px-4 py-3 text-sm text-muted">
-            You&apos;re the Narrator for this Mafia game — share the invite link with players, then start the game below
-            once at least {`${MAFIA_MIN_PLAYERS} players`} have joined. (The Narrator runs the game and doesn&apos;t
-            play.)
-          </p>
+          <HostModeSelector
+            mode={hostMode}
+            onChange={changeHostMode}
+            joinedPlayerId={hostPlayerId}
+            joinedPlayerName={hostPlayerName}
+            joinName={hostJoinName}
+            onJoinNameChange={setHostJoinName}
+            onJoin={() => void hostJoinGame()}
+            joining={hostJoining}
+            onEditName={renameHost}
+            spectatorLabel="Host only"
+            spectatorHint="Narrate — no role, no seat"
+            playerLabel="Host + play"
+            playerHint="Get a role and play along"
+          />
         }
         settingsChildren={
           <>
@@ -609,7 +650,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
               gameCode={gameCode}
               hostToken={hostToken}
               game={gameObj}
-              playerCount={playersList.length}
+              playerCount={playersList.filter((p) => !p.spectator).length}
               onGameUpdate={() => void load()}
             />
             <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
@@ -621,11 +662,12 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
         startDisabledHint={
           canStart
             ? null
-            : `Need at least ${MAFIA_MIN_PLAYERS} players to start (${mafiaState.players.length}/${MAFIA_MIN_PLAYERS})`
+            : `Need at least ${MAFIA_MIN_PLAYERS} players to start (${playersList.filter((p) => !p.spectator).length}/${MAFIA_MIN_PLAYERS})`
         }
         startLabel="Start Mafia game"
         onRemovePlayer={removePlayer}
         removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
         onEnded={() => void load()}
       />
     )
@@ -638,11 +680,15 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
       status={gameObj.status}
       tab={tab}
       onTabChange={setTab}
-      primaryKind="watch"
+      primaryKind={hostPlays ? 'play' : 'watch'}
       showTabs={!isFinished}
       gameStarted={!isWaiting}
       header={<HostGameHeader game={gameObj} />}
-      primary={primary}
+      game={gameObj}
+      players={playersList}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={() => void load()}
+      primary={hostPlays ? playPrimary : watchPrimary}
       manage={manage}
       finished={hostFinishedPanel}
     />
