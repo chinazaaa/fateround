@@ -15,6 +15,7 @@ import { parseMultiPlayMode, type UnoMultiPlayMode } from '@fateround/shared/uno
 import { DEFAULT_MAHJONG_RULESET, DEFAULT_MAHJONG_RULE_OPTIONS } from '@fateround/shared/mahjong-rulesets'
 import type { ScrabbleDictionaryId } from '@fateround/shared/scrabble-dictionary-meta'
 import { SCRABBLE_DEFAULT_DICTIONARY, parseScrabbleDictionaryId } from '@fateround/shared/scrabble-dictionary-meta'
+import { PING_PONG_DEFAULT_POINTS, PING_PONG_DEFAULT_GAME_DURATION, clampPingPongPoints } from '@fateround/shared/ping-pong'
 
 export const BATCH_19_BOARD_GAMES: GameType[] = [
   'ludo',
@@ -32,6 +33,7 @@ export const BATCH_19_BOARD_GAMES: GameType[] = [
   'scrabble',
   'mahjong',
   'monopoly',
+  'ping_pong',
 ]
 
 export type GameRoomSettings = {
@@ -61,6 +63,7 @@ export type GameRoomSettings = {
   mahjongRuleset: MahjongRuleset
   /** Nigerian Draughts only — opt-in "Street Rules" (huffing) house rule. Off by default. */
   checkersNigeriaStreetRules: boolean
+  pingPongPointsToWin: number
 }
 
 export function defaultGameRoomSettings(gameType: GameType): GameRoomSettings {
@@ -95,6 +98,7 @@ export function defaultGameRoomSettings(gameType: GameType): GameRoomSettings {
     scrabbleClockSeconds: 600,
     mahjongRuleset: DEFAULT_MAHJONG_RULESET,
     checkersNigeriaStreetRules: false,
+    pingPongPointsToWin: PING_PONG_DEFAULT_POINTS,
   }
 }
 
@@ -228,6 +232,12 @@ export function gameRoomSettingsPayload(gameType: GameType, room: GameRoomSettin
 
   if (gameType === 'snake_and_ladder' || gameType === 'yahtzee' || gameType === 'tic_tac_toe') {
     payload.timer_seconds = room.timerSeconds
+    return payload
+  }
+
+  if (gameType === 'ping_pong') {
+    payload.ping_pong_points_to_win = clampPingPongPoints(room.pingPongPointsToWin)
+    payload.game_duration_seconds = Math.max(0, room.gameDurationSeconds)
     return payload
   }
 

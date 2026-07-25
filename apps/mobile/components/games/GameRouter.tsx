@@ -86,6 +86,10 @@ const BATCH_10_VIEWS = {
   checkers_nigeria: DRAUGHTS10_VIEW,
 } as const satisfies Partial<Record<GameType, PlayerView>>
 
+const BATCH_11_VIEWS = {
+  ping_pong: lazyView(() => import('@/components/games/PingPongPlayerView'), 'PingPongPlayerView'),
+} as const satisfies Partial<Record<GameType, PlayerView>>
+
 const MOBILE_PLAYER_VIEWS: Partial<Record<GameType, PlayerView>> = {
   ayo: lazyView(() => import('@/components/games/AyoPlayerView'), 'AyoPlayerView'),
   tic_tac_toe: lazyView(() => import('@/components/games/TicTacToePlayerView'), 'TicTacToePlayerView'),
@@ -101,6 +105,7 @@ const MOBILE_PLAYER_VIEWS: Partial<Record<GameType, PlayerView>> = {
   ...BATCH_8_VIEWS,
   ...BATCH_9_VIEWS,
   ...BATCH_10_VIEWS,
+  ...BATCH_11_VIEWS,
 }
 
 export function hasMobilePlayerView(gameType: GameType): boolean {
@@ -134,6 +139,8 @@ export function GameRouter({ gameCode, gameType }: { gameCode: string; gameType:
 
 export const BATCH_1_GAMES: GameType[] = ['ayo', 'tic_tac_toe', 'checkers', 'bingo', 'trivia']
 
+export const BATCH_11_GAMES: GameType[] = ['ping_pong']
+
 export const BATCH_2_GAMES: GameType[] = BATCH_2_POLL_GAMES
 
 export {
@@ -158,4 +165,5 @@ export const MOBILE_SUPPORTED_GAMES: GameType[] = [
   ...BATCH_8_GAMES,
   ...BATCH_9_GAMES,
   ...BATCH_10_GAMES,
+  ...BATCH_11_GAMES,
 ]
