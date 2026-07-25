@@ -6,6 +6,7 @@ import {
   checkMafiaWinCondition,
   checkJesterWin,
   checkLoversWin,
+  auraSeerAlignment,
   type MafiaRoleToggles,
 } from '@/lib/mafia'
 import type { MafiaPlayerState, MafiaSession, MafiaRole } from '@/types'
@@ -347,6 +348,38 @@ describe('checkJesterWin', () => {
     expect(checkJesterWin('j', [jester, villager])).toBe(true)
     expect(checkJesterWin('v', [jester, villager])).toBe(false)
     expect(checkJesterWin(null, [jester, villager])).toBe(false)
+  })
+})
+
+describe('auraSeerAlignment', () => {
+  it('reads Mafia team as evil', () => {
+    expect(auraSeerAlignment('mafia', false)).toBe('evil')
+    expect(auraSeerAlignment('alpha_wolf', false)).toBe('evil')
+    expect(auraSeerAlignment('wolf_cub', false)).toBe('evil')
+    expect(auraSeerAlignment('framer', false)).toBe('evil')
+  })
+
+  it('reads solo killers/voters and kill-or-revive village roles as unknown', () => {
+    expect(auraSeerAlignment('serial_killer', false)).toBe('unknown')
+    expect(auraSeerAlignment('arsonist', false)).toBe('unknown')
+    expect(auraSeerAlignment('jester', false)).toBe('unknown')
+    expect(auraSeerAlignment('vigilante', false)).toBe('unknown')
+    expect(auraSeerAlignment('medium', false)).toBe('unknown')
+    expect(auraSeerAlignment('witch', false)).toBe('unknown')
+    expect(auraSeerAlignment('trapper', false)).toBe('unknown')
+  })
+
+  it('reads everyone else as good, including the Priest despite killing Mafia', () => {
+    expect(auraSeerAlignment('villager', false)).toBe('good')
+    expect(auraSeerAlignment('doctor', false)).toBe('good')
+    expect(auraSeerAlignment('priest', false)).toBe('good')
+    expect(auraSeerAlignment('bodyguard', false)).toBe('good')
+    expect(auraSeerAlignment('detective', false)).toBe('good')
+  })
+
+  it('a framed target always reads evil regardless of their real role', () => {
+    expect(auraSeerAlignment('villager', true)).toBe('evil')
+    expect(auraSeerAlignment('serial_killer', true)).toBe('evil')
   })
 })
 

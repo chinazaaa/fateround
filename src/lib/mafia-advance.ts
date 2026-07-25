@@ -7,6 +7,7 @@ import {
   resolveMafiaNight,
   resolveMafiaDayVote,
   mafiaRoleTeam,
+  auraSeerAlignment,
 } from '@/lib/mafia'
 import { MAFIA_ROLE_INFO, mafiaRoleEmoji } from '@/components/mafia/mafia-role-info'
 import type { MafiaPlayerState, MafiaSession, MafiaPhase } from '@/types'
@@ -291,22 +292,17 @@ export async function runMafiaAdvance(
     // what they investigated/tracked on each night.
     const privateMessages: Array<{ target_player_id: string; message: string }> = []
 
-    // Aura Seer
+    // Aura Seer — Good/Evil/Unknown, not a plain Village/Mafia binary
     if (auraSeerTarget) {
       const auraSeer = playerStates.find((p) => p.role === 'aura_seer' && p.is_alive)
-      if (auraSeer) {
+      const targetState = playerStates.find((p) => p.player_id === auraSeerTarget)
+      if (auraSeer && targetState) {
         const framed = framedPlayerId === auraSeerTarget
-        const targetState = playerStates.find((p) => p.player_id === auraSeerTarget)
-        const alignment = targetState
-          ? framed
-            ? 'MAFIA 🔪'
-            : mafiaRoleTeam(targetState.role) === 'mafia'
-              ? 'MAFIA 🔪'
-              : 'INNOCENT 🏘️'
-          : 'UNKNOWN'
+        const alignment = auraSeerAlignment(targetState.role, framed)
+        const alignmentLabel = alignment === 'evil' ? 'EVIL 🔪' : alignment === 'unknown' ? 'UNKNOWN ❓' : 'GOOD 🏘️'
         privateMessages.push({
           target_player_id: auraSeer.player_id,
-          message: `🔍 Night ${session.day_number}: ${playerLabel(auraSeerTarget)} is ${alignment}`,
+          message: `🔍 Night ${session.day_number}: ${playerLabel(auraSeerTarget)} is ${alignmentLabel}`,
         })
       }
     }

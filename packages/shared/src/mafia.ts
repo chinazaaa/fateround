@@ -134,7 +134,8 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'aura_seer',
     name: 'Aura Seer',
     team: 'village',
-    description: "Each night, investigate one player to learn whether they're Village or Mafia-aligned.",
+    description:
+      'Each night, investigate one player to learn their alignment: Good, Evil, or Unknown (Solo roles and kill/revive-capable Village roles).',
   },
   bodyguard: {
     role: 'bodyguard',

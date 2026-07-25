@@ -20,6 +20,31 @@ export function mafiaRoleTeam(role: MafiaRole): MafiaTeam {
   return 'village'
 }
 
+export type AuraSeerAlignment = 'good' | 'evil' | 'unknown'
+
+// Roles the Aura Seer reads as "Unknown" rather than Good — Solo killers/voters and any
+// Village-aligned role that can itself kill or revive, per Wolvesville's actual rule (which
+// carves out the Priest as an explicit exception, staying Good despite killing Mafia).
+const AURA_SEER_UNKNOWN_ROLES: MafiaRole[] = [
+  'serial_killer',
+  'arsonist',
+  'jester',
+  'vigilante',
+  'medium',
+  'witch',
+  'trapper',
+]
+
+/**
+ * Aura Seer's actual reveal — Good/Evil/Unknown, not a plain Village/Mafia binary. A framed
+ * target always reads Evil, matching the Framer's effect on the old binary check.
+ */
+export function auraSeerAlignment(role: MafiaRole, framed: boolean): AuraSeerAlignment {
+  if (framed || MAFIA_TEAM_ROLES.includes(role)) return 'evil'
+  if (AURA_SEER_UNKNOWN_ROLES.includes(role)) return 'unknown'
+  return 'good'
+}
+
 /**
  * Shuffle helper
  */

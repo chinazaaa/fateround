@@ -1565,7 +1565,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         'The Mafia secretly vote on a player to eliminate.',
         'The Doctor chooses a player to save from elimination (cannot self-heal).',
-        'The Aura Seer investigates one player to learn their alignment (beware the Framer!).',
+        'The Aura Seer investigates one player to learn their alignment — Good, Evil, or Unknown (Solo roles and kill/revive-capable Village roles read Unknown). Beware the Framer!',
         'The Detective checks two players to learn whether they are on the same team.',
         'The Bodyguard protects a player — that player cannot be killed, but the Bodyguard is attacked instead (survives the first attack, dies on the second).',
         'The Tracker sees who their target visited that night.',

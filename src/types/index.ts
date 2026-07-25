@@ -2004,7 +2004,7 @@ export interface MafiaMyState {
   team: MafiaTeam
   nightActionSubmitted: boolean
   dayVoteSubmitted: boolean
-  auraSeerResult: { targetName: string; alignment: MafiaTeam } | null
+  auraSeerResult: { targetName: string; alignment: 'good' | 'evil' | 'unknown' } | null
   detectiveTeamCheckResult?: { targetAName: string; targetBName: string; sameTeam: boolean } | null
   mafiaTeammates: string[] // Only for mafia team members (mafia/alpha_wolf/wolf_cub/framer)
   /** Same set as mafiaTeammates but by player id — lets the roster grid mark each teammate's

@@ -10,7 +10,7 @@ import type {
   MafiaPhase,
   MafiaChatMessage,
 } from '@/types'
-import { mafiaRoleTeam } from '@/lib/mafia'
+import { mafiaRoleTeam, auraSeerAlignment } from '@/lib/mafia'
 
 const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer']
 
@@ -194,7 +194,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       return seat != null ? `#${seat} ${name}` : name
     }
 
-    // Aura Seer result — honors Framer's frame (reads as 'mafia' if framed that night)
+    // Aura Seer result — Good/Evil/Unknown, honors Framer's frame (always reads Evil if framed)
     let auraSeerResult: MafiaMyState['auraSeerResult'] = null
     if (role === 'aura_seer' && session.aura_seer_target_player_id) {
       const targetState = playerStates.find((p) => p.player_id === session.aura_seer_target_player_id)
@@ -203,7 +203,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         const framed = session.framed_player_id === session.aura_seer_target_player_id
         auraSeerResult = {
           targetName: seatLabel(targetPlayer.id, targetPlayer.name),
-          alignment: framed ? 'mafia' : mafiaRoleTeam(targetState.role),
+          alignment: auraSeerAlignment(targetState.role, framed),
         }
       }
     }

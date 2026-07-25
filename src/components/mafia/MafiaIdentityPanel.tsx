@@ -50,10 +50,18 @@ export function MafiaIdentityPanel({ myState }: MafiaIdentityPanelProps) {
             {' is '}
             <span
               className={
-                myState.auraSeerResult.alignment === 'mafia' ? 'text-red-400 font-bold' : 'text-emerald-400 font-bold'
+                myState.auraSeerResult.alignment === 'evil'
+                  ? 'text-red-400 font-bold'
+                  : myState.auraSeerResult.alignment === 'unknown'
+                    ? 'text-amber-400 font-bold'
+                    : 'text-emerald-400 font-bold'
               }
             >
-              {myState.auraSeerResult.alignment === 'mafia' ? 'MAFIA 🔪' : 'INNOCENT 🏘️'}
+              {myState.auraSeerResult.alignment === 'evil'
+                ? 'EVIL 🔪'
+                : myState.auraSeerResult.alignment === 'unknown'
+                  ? 'UNKNOWN ❓'
+                  : 'GOOD 🏘️'}
             </span>
           </p>
         </div>
