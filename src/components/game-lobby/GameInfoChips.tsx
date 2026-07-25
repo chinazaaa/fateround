@@ -105,6 +105,25 @@ const ROUNDS_TIMER_TYPES = new Set([
   'i_call_on',
 ])
 
+/** Game types where `anonymous` actually changes gameplay (poll-family — hides who said what).
+ *  The DB column defaults `true` for every game row regardless of type, so it must be gated
+ *  here or every non-poll game would show a meaningless "Anonymous" pill. */
+const ANONYMOUS_CAPABLE_TYPES = new Set([
+  'smash_marry_kill',
+  'red_flag_green_flag',
+  'smash_or_pass',
+  'would_you_rather',
+  'never_have_i_ever',
+  'pick_a_number',
+  'this_or_that',
+  'most_likely_to',
+  'who_said_this',
+  'hot_seat',
+  'custom',
+  'parent_approval',
+  'two_truths',
+])
+
 function formatDuration(seconds: number): string {
   if (seconds <= 0) return 'No time limit'
   const m = Math.floor(seconds / 60)
@@ -161,7 +180,7 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
     }
   }
 
-  if (game.anonymous) items.push('🕶️ Anonymous')
+  if (game.anonymous && ANONYMOUS_CAPABLE_TYPES.has(gt)) items.push('🕶️ Anonymous')
 
   if (game.theme && game.theme !== 'default') {
     items.push(`🎨 ${THEME_MAP[game.theme as keyof typeof THEME_MAP]?.label ?? humanize(game.theme)} theme`)
