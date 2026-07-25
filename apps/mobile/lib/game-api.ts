@@ -81,6 +81,30 @@ export function postCheckersExpireTurn(gameId: string) {
   return postJson<{ success: boolean }>('/api/checkers/expire-turn', { gameId })
 }
 
+export function postCheckersInternationalMove(gameId: string, resumeToken: string, from: string, to: string) {
+  return postJson<{ success: boolean }>('/api/checkers-international/move', { gameId, resumeToken, from, to })
+}
+
+export function postCheckersInternationalResign(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/checkers-international/resign', { gameId, resumeToken })
+}
+
+export function postCheckersInternationalExpireTurn(gameId: string) {
+  return postJson<{ success: boolean }>('/api/checkers-international/expire-turn', { gameId })
+}
+
+export function postCheckersNigeriaMove(gameId: string, resumeToken: string, from: string, to: string) {
+  return postJson<{ success: boolean }>('/api/checkers-nigeria/move', { gameId, resumeToken, from, to })
+}
+
+export function postCheckersNigeriaResign(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/checkers-nigeria/resign', { gameId, resumeToken })
+}
+
+export function postCheckersNigeriaExpireTurn(gameId: string) {
+  return postJson<{ success: boolean }>('/api/checkers-nigeria/expire-turn', { gameId })
+}
+
 export function postAyoMove(gameId: string, resumeToken: string, pitIndex: number) {
   return postJson<{ success: boolean }>('/api/ayo/move', { gameId, resumeToken, pitIndex })
 }
@@ -1054,6 +1078,7 @@ export type BoardLobbyPatch = {
   mafia_anonymous_votes?: boolean
   monopoly_double_go_salary?: boolean
   monopoly_forced_auctions?: boolean
+  monopoly_auction_timer_seconds?: number
   monopoly_no_rent_in_jail?: boolean
   operative_timer_seconds?: number
   quick_draw_variant?: 'lie' | 'guess'

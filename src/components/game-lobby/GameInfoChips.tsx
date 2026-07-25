@@ -70,7 +70,14 @@ type GameMeta = {
 }
 
 /** Game types with a fixed 2-player format — a "players" pill would be pure noise. */
-const FIXED_TWO_PLAYER = new Set(['chess', 'checkers', 'tic_tac_toe', 'ping_pong'])
+const FIXED_TWO_PLAYER = new Set([
+  'chess',
+  'checkers',
+  'checkers_international',
+  'checkers_nigeria',
+  'tic_tac_toe',
+  'ping_pong',
+])
 
 /** These duel games clock `timer_seconds` themselves (a per-player or per-turn clock set via
  *  HostDuelLobbyPanel) rather than `game_duration_seconds` — shown here instead of the generic

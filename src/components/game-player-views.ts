@@ -21,6 +21,7 @@ import { TicTacToePlayerView } from '@/components/tic-tac-toe/TicTacToePlayerVie
 import { PingPongPlayerView } from '@/components/ping-pong/PingPongPlayerView'
 import { ChessPlayerView } from '@/components/chess/ChessPlayerView'
 import { CheckersPlayerView } from '@/components/checkers/CheckersPlayerView'
+import { Draughts10PlayerView } from '@/components/draughts10/Draughts10PlayerView'
 import { AyoPlayerView } from '@/components/ayo/AyoPlayerView'
 import { ScrabblePlayerView } from '@/components/scrabble/ScrabblePlayerView'
 import { DescribeItPlayerView } from '@/components/describe-it/DescribeItPlayerView'
@@ -64,6 +65,8 @@ export const PLAYER_VIEW_REGISTRY: Partial<Record<GameType, GamePlayerView>> = {
   ping_pong: PingPongPlayerView,
   chess: ChessPlayerView,
   checkers: CheckersPlayerView,
+  checkers_international: Draughts10PlayerView,
+  checkers_nigeria: Draughts10PlayerView,
   ayo: AyoPlayerView,
   scrabble: ScrabblePlayerView,
   describe_it: DescribeItPlayerView,

@@ -128,6 +128,9 @@ export const CHESS_SESSION_SELECT =
 export const CHECKERS_SESSION_SELECT =
   'id,game_id,player_red_id,player_black_id,board,current_turn,move_count,position_counts,must_continue_from,red_time_ms,black_time_ms,turn_started_at,last_move_from,last_move_to,status,result_reason,winner_player_id,is_draw,status_message,turn_deadline_at,created_at,updated_at'
 
+export const DRAUGHTS10_SESSION_SELECT =
+  'id,game_id,variant,player_red_id,player_black_id,board,current_turn,move_count,position_counts,must_continue_from,must_continue_remaining,huffing_enabled,red_time_ms,black_time_ms,turn_started_at,last_move_from,last_move_to,status,result_reason,winner_player_id,is_draw,status_message,turn_deadline_at,created_at,updated_at'
+
 export const AYO_SESSION_SELECT =
   'id,game_id,player_a_id,player_b_id,pits,captured_a,captured_b,houses_a,houses_b,match_round,a_row_size,b_row_size,current_turn,a_win_streak,b_win_streak,a_time_ms,b_time_ms,turn_started_at,last_pit,status,result_reason,winner_player_id,is_draw,status_message,turn_deadline_at,created_at,updated_at'
 

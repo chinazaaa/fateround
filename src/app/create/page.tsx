@@ -72,6 +72,8 @@ import {
   isPingPongGame,
   isChessGame,
   isCheckersGame,
+  isDraughts10Game,
+  isCheckersNigeriaGame,
   isAyoGame,
   isScrabbleGame,
   isDescribeItGame,
@@ -925,6 +927,7 @@ function CreateGameInner() {
   const isPingPong = isPingPongGame(settings.game_type)
   const isChess = isChessGame(settings.game_type)
   const isCheckers = isCheckersGame(settings.game_type)
+  const isDraughts10 = isDraughts10Game(settings.game_type)
   const isAyo = isAyoGame(settings.game_type)
   const isScrabble = isScrabbleGame(settings.game_type)
   const isDescribeIt = isDescribeItGame(settings.game_type)
@@ -3988,6 +3991,32 @@ function CreateGameInner() {
                   Classic checkers — Black moves first, jumps are forced, and reaching the far row crowns a king.
                   Capture all your opponent’s pieces to win. Each player gets their own clock that only ticks on their
                   turn.
+                </p>
+              </SettingsGroup>
+            ) : isDraughts10 ? (
+              <SettingsGroup
+                title={
+                  isCheckersNigeriaGame(settings.game_type) ? 'Nigerian Draughts room' : 'International Draughts room'
+                }
+              >
+                <p className="text-faint text-sm">Exactly 2 players — the host can join as one of them.</p>
+                <Field label="Time per player">
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    <option value={0}>No timer</option>
+                    <option value={180}>3 minutes each</option>
+                    <option value={300}>5 minutes each</option>
+                    <option value={600}>10 minutes each</option>
+                  </select>
+                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType={settings.game_type} />
+                <p className="text-faint text-sm leading-relaxed">
+                  {isCheckersNigeriaGame(settings.game_type)
+                    ? 'Nigerian Draughts — 10×10 board, 20 seeds each, flying kings, and mandatory majority capture (you must take the biggest jump available). Reaching the far row caps a seed into a king.'
+                    : 'International Draughts — 10×10 board, 20 pieces each, flying kings, and mandatory majority capture (you must take the biggest jump available). Reaching the far row crowns a king.'}
                 </p>
               </SettingsGroup>
             ) : isMahjong ? (

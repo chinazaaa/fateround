@@ -22,6 +22,8 @@ export const BATCH_19_BOARD_GAMES: GameType[] = [
   'tic_tac_toe',
   'chess',
   'checkers',
+  'checkers_international',
+  'checkers_nigeria',
   'ayo',
   'whot',
   'crazy_eights',
@@ -102,7 +104,8 @@ export function boardGameTimerKey(
   if (gameType === 'yahtzee') return 'yahtzee'
   if (gameType === 'tic_tac_toe') return 'tic_tac_toe'
   if (gameType === 'chess') return 'chess'
-  if (gameType === 'checkers') return 'checkers'
+  if (gameType === 'checkers' || gameType === 'checkers_international' || gameType === 'checkers_nigeria')
+    return 'checkers'
   if (gameType === 'ayo') return 'ayo'
   if (gameType === 'whot') return 'whot'
   if (gameType === 'crazy_eights') return 'crazy_eights'
@@ -134,7 +137,7 @@ export function gameRoomSettingsPayload(gameType: GameType, room: GameRoomSettin
     return payload
   }
 
-  if (gameType === 'checkers') {
+  if (gameType === 'checkers' || gameType === 'checkers_international' || gameType === 'checkers_nigeria') {
     payload.timer_seconds = room.timerSeconds
     return payload
   }

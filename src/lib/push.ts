@@ -8,6 +8,7 @@ import {
   isLudoGame,
   isTicTacToeGame,
   isCheckersGame,
+  isDraughts10Game,
   isAyoGame,
   isChessGame,
   isWhotGame,
@@ -21,6 +22,7 @@ import {
 import { currentPlayerId as ludoCurrentPlayerId } from '@/lib/ludo'
 import { currentTurnPlayerId as ticTacToeCurrentTurnPlayerId } from '@/lib/tic-tac-toe'
 import { currentTurnPlayerId as checkersCurrentTurnPlayerId } from '@/lib/checkers'
+import { currentTurnPlayerId as draughts10CurrentTurnPlayerId } from '@/lib/draughts10'
 import { currentTurnPlayerId as ayoCurrentTurnPlayerId } from '@/lib/ayo'
 import { currentTurnPlayerId as chessCurrentTurnPlayerId } from '@/lib/chess'
 import { currentPlayerId as whotCurrentPlayerId } from '@/lib/whot'
@@ -194,6 +196,12 @@ export async function resolveCurrentTurnPlayerId(gameCode: string): Promise<stri
     const { data: session } = await admin.from('ayo_sessions').select('*').eq('game_id', code).maybeSingle()
     if (!session || session.status === 'finished') return null
     return ayoCurrentTurnPlayerId(session)
+  }
+
+  if (isDraughts10Game(gameType)) {
+    const { data: session } = await admin.from('checkers10_sessions').select('*').eq('game_id', code).maybeSingle()
+    if (!session || session.status === 'finished') return null
+    return draughts10CurrentTurnPlayerId(session)
   }
 
   if (isChessGame(gameType)) {

@@ -9,6 +9,8 @@ const META: Partial<Record<GameType, GameMeta>> = {
   ayo: { emoji: '🌍', blurb: 'Classic sowing game', category: 'board' },
   bingo: { emoji: '🎱', blurb: 'Mark your card', category: 'puzzle' },
   checkers: { emoji: '⬛', blurb: 'Jump and crown', category: 'board' },
+  checkers_international: { emoji: '⛀', blurb: 'Flying kings, 10×10', category: 'board' },
+  checkers_nigeria: { emoji: '⛀', blurb: 'Naija draughts, flying kings', category: 'board' },
   chess: { emoji: '♟️', blurb: 'Strategy on the board', category: 'board' },
   codewords: { emoji: '🕵️', blurb: 'Spymaster clues', category: 'trivia' },
   crazy_eights: { emoji: '🃏', blurb: 'Shed your hand', category: 'cards' },

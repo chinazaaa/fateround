@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import type { MonopolyPlayerState, Player } from '@fateround/shared'
 import { MONOPOLY_COLOR_HEX, boardEdgeForSpace } from '@fateround/shared/monopoly-board-layout'
 import { spaceAt } from '@fateround/shared/monopoly-board'
@@ -99,6 +99,7 @@ export function MonopolyBoardView({
   myPlayerId,
   themeId,
   center,
+  onSpacePress,
 }: {
   states: MonopolyPlayerState[]
   players: Player[]
@@ -108,6 +109,8 @@ export function MonopolyBoardView({
   themeId?: string | null
   /** Content rendered inside the board's empty center (turn UI: cash, dice, actions). */
   center?: ReactNode
+  /** Tap-to-inspect — opens the property details modal for the tapped space. */
+  onSpacePress?: (spaceIndex: number) => void
 }) {
   const { width: winW } = useWindowDimensions()
   // Size to the real available width (the board sits inside nested container
@@ -152,8 +155,11 @@ export function MonopolyBoardView({
     const tileH = isCorner ? cornerSize : vertical ? cornerSize : edgeMain
 
     return (
-      <View
+      <Pressable
         key={spaceIndex}
+        onPress={onSpacePress ? () => onSpacePress(spaceIndex) : undefined}
+        accessibilityRole={onSpacePress ? 'button' : undefined}
+        accessibilityLabel={space.name}
         style={[
           styles.tile,
           { width: tileW, height: tileH },
@@ -217,12 +223,7 @@ export function MonopolyBoardView({
         )}
 
         {ownerId ? (
-          <View
-            style={[
-              styles.ownerDot,
-              { backgroundColor: TOKEN_COLORS[ownerOrder % TOKEN_COLORS.length] },
-            ]}
-          />
+          <View style={[styles.ownerDot, { backgroundColor: TOKEN_COLORS[ownerOrder % TOKEN_COLORS.length] }]} />
         ) : null}
 
         {tokens.length > 0 ? (
@@ -244,7 +245,7 @@ export function MonopolyBoardView({
             })}
           </View>
         ) : null}
-      </View>
+      </Pressable>
     )
   }
 
@@ -264,41 +265,43 @@ export function MonopolyBoardView({
       >
         <View style={[styles.edgeRow, { height: cornerSize }]}>{TOP_INDICES.map(renderTile)}</View>
 
-      <View style={[styles.midRow, { height: centerSize }]}>
-        <View style={{ width: cornerSize, height: centerSize }}>{LEFT_INDICES.map(renderTile)}</View>
-        <View style={[styles.centerCell, { width: centerSize, height: centerSize, backgroundColor: palette.centerBg }]}>
-          {center ?? (
-            <View style={styles.defaultCenter}>
-              <Text style={styles.defaultCenterTitle}>{getBoardTitle(themeId)}</Text>
-              <Text style={styles.defaultCenterSubtitle}>{getEditionSubtitle(themeId)}</Text>
-            </View>
-          )}
+        <View style={[styles.midRow, { height: centerSize }]}>
+          <View style={{ width: cornerSize, height: centerSize }}>{LEFT_INDICES.map(renderTile)}</View>
+          <View
+            style={[styles.centerCell, { width: centerSize, height: centerSize, backgroundColor: palette.centerBg }]}
+          >
+            {center ?? (
+              <View style={styles.defaultCenter}>
+                <Text style={styles.defaultCenterTitle}>{getBoardTitle(themeId)}</Text>
+                <Text style={styles.defaultCenterSubtitle}>{getEditionSubtitle(themeId)}</Text>
+              </View>
+            )}
+          </View>
+          <View style={{ width: cornerSize, height: centerSize }}>{RIGHT_INDICES.map(renderTile)}</View>
         </View>
-        <View style={{ width: cornerSize, height: centerSize }}>{RIGHT_INDICES.map(renderTile)}</View>
-      </View>
 
-      <View style={[styles.edgeRow, { height: cornerSize }]}>{BOTTOM_INDICES.map(renderTile)}</View>
+        <View style={[styles.edgeRow, { height: cornerSize }]}>{BOTTOM_INDICES.map(renderTile)}</View>
 
-      {palette.decoration === 'arctic' ? (
-        <View pointerEvents="none" style={styles.snowLayer}>
-          {SNOWFLAKES.map((flake, i) => (
-            <Text
-              key={i}
-              style={[
-                styles.snowflake,
-                {
-                  top: flake.top as `${number}%`,
-                  left: flake.left as `${number}%`,
-                  fontSize: flake.size,
-                  opacity: flake.opacity,
-                },
-              ]}
-            >
-              ❄️
-            </Text>
-          ))}
-        </View>
-      ) : null}
+        {palette.decoration === 'arctic' ? (
+          <View pointerEvents="none" style={styles.snowLayer}>
+            {SNOWFLAKES.map((flake, i) => (
+              <Text
+                key={i}
+                style={[
+                  styles.snowflake,
+                  {
+                    top: flake.top as `${number}%`,
+                    left: flake.left as `${number}%`,
+                    fontSize: flake.size,
+                    opacity: flake.opacity,
+                  },
+                ]}
+              >
+                ❄️
+              </Text>
+            ))}
+          </View>
+        ) : null}
       </View>
     </View>
   )
