@@ -2890,13 +2890,13 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     heroSubtitle: 'Trust no one — discuss, vote, and uncover the secret killers in your group.',
     bodyParagraph:
-      'Mafia on FateRound is a real-time multiplayer social deduction game. Players are secretly assigned roles: Villagers, Mafia, Doctor, or Detective. During the Night, the Mafia votes to eliminate a player, the Doctor protects a player, and the Detective investigates players alignments. During the Day, the village discusses and votes on who they suspect is Mafia. The village wins if they eliminate all Mafia; the Mafia wins if they reach parity with the village.',
+      'Mafia on FateRound is a real-time multiplayer social deduction game with 16 unique roles across Village, Mafia, Solo, and Special teams. During the Night, the Mafia votes to eliminate a player while power roles like the Doctor, Detective, Bodyguard, Tracker, and Vigilante act in secret. Solo killers pursue their own agendas. During the Day, the village discusses and votes on who they suspect. The village wins by eliminating the Mafia; the Mafia wins by reaching parity — and Solo roles like the Jester, Serial Killer, and Arsonist have their own win conditions.',
     highlights: ['5–16 players', 'Secret roles', 'Voice chat supported'],
     features: [
       {
-        title: 'Secret roles',
+        title: '16 unique roles',
         description:
-          'Assigned automatically and privately. Only you know if you are a Villager, Mafia, Doctor, or Detective.',
+          'Choose from 16 roles across Village, Mafia, Solo, and Special teams — from the classic Doctor to the devious Framer.',
         emoji: '🔍',
       },
       {
@@ -2927,12 +2927,17 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'What are the roles in the game?',
         answer:
-          'The default roles are Villagers (find the Mafia), Mafia (eliminate the Villagers), Doctor (protects one player from being killed each night), and Detective (investigates one player each night to see if they are Mafia).',
+          'There are 16 roles across four teams. Village: Villager, Doctor, Detective, Bodyguard, Mayor, Vigilante, Tracker. Mafia: Mafia, Alpha Mafia, Junior Mafia, Framer. Solo: Jester, Serial Killer, Arsonist. Special: Cupid, Cursed Villager. The host picks which roles to include.',
       },
       {
         question: 'Can the Doctor protect themselves?',
         answer:
           'No, to keep the game balanced, the Doctor cannot select themselves for protection. They must choose another player.',
+      },
+      {
+        question: 'What does the Framer do?',
+        answer:
+          "The Framer is a Mafia-aligned role that can frame one player each night, making them appear as Mafia to the Detective's investigation.",
       },
     ],
   }),

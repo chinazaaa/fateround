@@ -189,7 +189,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
 
     let trackerResult: MafiaMyState['trackerResult'] = null
-    if (role === 'tracker' && myPlayerState.night_action_target_player_id) {
+    // Only reveal the tracker result after night resolves (day_report onward) — during the
+    // night itself tracker_visited_player_id isn't set yet, so showing the card would
+    // misleadingly say "visited no one" before the night has even ended.
+    if (role === 'tracker' && session.phase !== 'night' && myPlayerState.night_action_target_player_id) {
       const targetPlayer = playersData?.find((p) => p.id === myPlayerState!.night_action_target_player_id)
       const visitedPlayer = playersData?.find((p) => p.id === session.tracker_visited_player_id)
       if (targetPlayer) {
@@ -299,13 +302,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   let dayChatMessages: MafiaChatMessage[] = []
   const dayPhases: MafiaPhase[] = ['night', 'day_report', 'day', 'voting', 'elimination', 'game_over']
   if (dayPhases.includes(session.phase)) {
+    // Fetch public day messages (target_player_id is null) and private ones addressed
+    // to this player — investigation/tracking results persisted as private system lines.
     const { data: messages } = await admin
       .from('mafia_chat_messages')
       .select('*')
       .eq('game_id', gameId)
       .eq('scope', 'day')
+      .or(
+        myPlayerState
+          ? `target_player_id.is.null,target_player_id.eq.${myPlayerState.player_id}`
+          : 'target_player_id.is.null'
+      )
       .order('created_at', { ascending: true })
-      .limit(100)
+      .limit(200)
     if (messages) {
       dayChatMessages = messages.map((m) => ({
         id: m.id,

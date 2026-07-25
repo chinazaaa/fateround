@@ -38,6 +38,11 @@ import { MafiaSkipPhaseBar } from './MafiaSkipPhaseBar'
 import { MAFIA_TEAM_ROLES, NO_NIGHT_ACTION_ROLES } from './mafia-role-info'
 import type { MafiaStateResponse } from './mafia-types'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
+import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
+import { ShareActionButtons } from '@/components/ShareActionButtons'
+import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
+import { captureElementAsImage } from '@/lib/capture-element-image'
+import { shareImageBlob, downloadBlobAsFile, shareFilenameStem } from '@/lib/share-image'
 import type { Game } from '@/types'
 
 const WINNING_TEAM_LABEL: Record<string, string> = {
@@ -301,6 +306,11 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
   // server-side, so players can change their pick anytime before the phase ends by tapping
   // a different tile. Cupid's two-step pick and the current highlighted selection reset
   // whenever the phase or day number changes.
+  // Mobile tab state — Wolvesville-style bottom tabs instead of one long scroll.
+  const [mobileTab, setMobileTab] = useState<'players' | 'chat'>('players')
+  const [chatUnread, setChatUnread] = useState(false)
+  const lastSeenChatCountRef = useRef(0)
+
   const [cupidFirstPick, setCupidFirstPick] = useState<string | null>(null)
   const [nightSelection, setNightSelection] = useState<string | null>(null)
   const [voteSelection, setVoteSelection] = useState<string | null>(null)
@@ -310,6 +320,17 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
     setNightSelection(null)
     setVoteSelection(null)
   }, [phaseKey])
+
+  // Track unread chat messages when the player is on the Players tab (mobile only).
+  const chatMsgCount = mafiaState?.dayChatMessages?.length ?? 0
+  useEffect(() => {
+    if (mobileTab === 'chat') {
+      lastSeenChatCountRef.current = chatMsgCount
+      setChatUnread(false)
+    } else if (chatMsgCount > lastSeenChatCountRef.current) {
+      setChatUnread(true)
+    }
+  }, [chatMsgCount, mobileTab])
 
   const triggerAutoAdvance = useCallback(async () => {
     try {
@@ -617,11 +638,96 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
       ? (publicPlayers.find((p) => p.id === cupidFirstPick)?.name ?? null)
       : null
 
+    const isWolfTeam = !!myRole && MAFIA_TEAM_ROLES.includes(myRole)
+    const showSecretChat = isWolfTeam && amIAlive && phase === 'night'
+    const canSendDay = phase === 'day' || phase === 'voting'
+
+    const playersContent = (
+      <>
+        <MafiaPlayersGrid
+          players={publicPlayers}
+          myPlayerId={myPlayerId}
+          myRole={myRole}
+          mafiaTeammateIds={myState?.mafiaTeammateIds}
+          mafiaTeammateRoles={myState?.mafiaTeammateRoles}
+          phase={phase}
+          voteTallies={voteTallies}
+          voteChoices={voteChoices}
+          votedPlayerIds={votedPlayerIds}
+          anonymousVotes={anonymousVotes}
+          onSelect={gridOnSelect}
+          selectedIds={gridSelectedIds}
+          allowSelfSelect={cupidPicking}
+        />
+
+        {(phase === 'day' || phase === 'voting') && amIAlive && !amISpectator && (
+          <MafiaSkipPhaseBar
+            phase={phase}
+            skipRequestCount={skipRequestCount ?? 0}
+            skipRequiredCount={skipRequiredCount ?? 1}
+            hasRequestedSkip={!!hasRequestedSkip}
+            disabled={acting}
+            onSkip={() => void submitSkipPhase()}
+          />
+        )}
+
+        {(phase === 'night' || (phase === 'voting' && amIAlive && !amISpectator)) && (
+          <MafiaPhaseCard
+            phase={phase}
+            dayNumber={dayNumber}
+            myState={myState}
+            amIAlive={amIAlive}
+            amISpectator={amISpectator}
+            acting={acting}
+            cupidFirstPickName={cupidFirstPickName}
+            onIgnite={() => {
+              if (myPlayerId) void submitNightAction(myPlayerId)
+            }}
+          />
+        )}
+
+        <MafiaIdentityPanel myState={myState} />
+      </>
+    )
+
+    const chatContent = (
+      <div className="space-y-4">
+        {phase === 'night' ? (
+          <>
+            {showSecretChat && (
+              <MafiaSecretChat
+                messages={myState?.mafiaChatMessages ?? []}
+                onSendMessage={sendMafiaMessage}
+                myPlayerId={myPlayerId}
+              />
+            )}
+            <MafiaDayChat
+              messages={dayChatMessages ?? []}
+              ghostMessages={!amIAlive ? (ghostChatMessages ?? []) : undefined}
+              onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
+              myPlayerId={myPlayerId}
+              players={publicPlayers}
+              readOnly
+              readOnlyLabel="night"
+            />
+          </>
+        ) : (
+          <MafiaDayChat
+            messages={dayChatMessages ?? []}
+            ghostMessages={!amIAlive ? (ghostChatMessages ?? []) : undefined}
+            onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
+            myPlayerId={myPlayerId}
+            players={publicPlayers}
+            readOnly={!canSendDay}
+            readOnlyLabel={PHASE_LABEL[phase]?.toLowerCase()}
+            disabled={amISpectator}
+          />
+        )}
+      </div>
+    )
+
     return (
       <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col">
-        {/* Only show the generic viewer banner to true spectators (joined as viewer) — an
-            eliminated player was actually playing and just gets the ghost chat below, not a
-            "you're spectating, join when the lobby opens" message that doesn't apply to them. */}
         {amISpectator && <ViewerModeBanner />}
 
         <header className="px-4 py-3 border-b border-[var(--border)] bg-[var(--card)] flex justify-between items-center">
@@ -647,110 +753,47 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
         />
 
         {showRoleReveal ? (
-          // Role reveal is its own moment — just the role card and its description, no
-          // player roster or chat competing for attention while everyone reads who they are.
-          <main className="flex-1 max-w-md w-full mx-auto p-4 md:p-6">
+          <main className="flex-1 max-w-md w-full mx-auto p-4 md:p-6 overflow-y-auto">
             <MafiaRoleRevealScreen myState={myState} />
           </main>
         ) : (
-          <main className="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6 flex flex-col md:grid md:grid-cols-3 gap-4 md:gap-6 md:items-start">
-            <div className="md:col-span-2 space-y-4">
-              <MafiaPlayersGrid
-                players={publicPlayers}
-                myPlayerId={myPlayerId}
-                myRole={myRole}
-                mafiaTeammateIds={myState?.mafiaTeammateIds}
-                mafiaTeammateRoles={myState?.mafiaTeammateRoles}
-                phase={phase}
-                voteTallies={voteTallies}
-                voteChoices={voteChoices}
-                votedPlayerIds={votedPlayerIds}
-                anonymousVotes={anonymousVotes}
-                onSelect={gridOnSelect}
-                selectedIds={gridSelectedIds}
-                allowSelfSelect={cupidPicking}
-              />
+          <>
+            {/* Desktop: side-by-side grid (unchanged) */}
+            <main className="hidden md:grid flex-1 max-w-6xl w-full mx-auto p-6 md:grid-cols-3 gap-6 md:items-start">
+              <div className="md:col-span-2 space-y-4">{playersContent}</div>
+              <div className="md:col-span-1 space-y-4">{chatContent}</div>
+            </main>
 
-              {(phase === 'day' || phase === 'voting') && amIAlive && !amISpectator && (
-                <MafiaSkipPhaseBar
-                  phase={phase}
-                  skipRequestCount={skipRequestCount ?? 0}
-                  skipRequiredCount={skipRequiredCount ?? 1}
-                  hasRequestedSkip={!!hasRequestedSkip}
-                  disabled={acting}
-                  onSkip={() => void submitSkipPhase()}
-                />
-              )}
-
-              {(phase === 'night' || (phase === 'voting' && amIAlive && !amISpectator)) && (
-                <MafiaPhaseCard
-                  phase={phase}
-                  dayNumber={dayNumber}
-                  myState={myState}
-                  amIAlive={amIAlive}
-                  amISpectator={amISpectator}
-                  acting={acting}
-                  cupidFirstPickName={cupidFirstPickName}
-                  onIgnite={() => {
-                    if (myPlayerId) void submitNightAction(myPlayerId)
-                  }}
-                />
-              )}
-
-              <MafiaIdentityPanel myState={myState} />
+            {/* Mobile: tabbed content switcher below the timer */}
+            <div className="md:hidden">
+              <nav className="flex border-b border-[var(--border)] bg-[var(--card)]">
+                <button
+                  onClick={() => setMobileTab('players')}
+                  className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition ${
+                    mobileTab === 'players'
+                      ? 'text-[var(--primary)] border-b-2 border-[var(--primary)]'
+                      : 'text-[var(--muted)]'
+                  }`}
+                >
+                  Players
+                </button>
+                <button
+                  onClick={() => setMobileTab('chat')}
+                  className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition relative ${
+                    mobileTab === 'chat'
+                      ? 'text-[var(--primary)] border-b-2 border-[var(--primary)]'
+                      : 'text-[var(--muted)]'
+                  }`}
+                >
+                  Chat
+                  {chatUnread && mobileTab !== 'chat' && (
+                    <span className="absolute top-1.5 right-[calc(50%-16px)] w-2 h-2 rounded-full bg-red-500" />
+                  )}
+                </button>
+              </nav>
+              <div className="p-4 space-y-4">{mobileTab === 'players' ? playersContent : chatContent}</div>
             </div>
-
-            {/* Right column mirrors Town Discussion's slot: the Mafia secret chat lives here on
-              desktop during the night (rather than stacked in the left column), and Town
-              Discussion takes the same slot once night ends — same position, matching
-              Wolvesville's chat placement regardless of which chat is currently active. */}
-            {(() => {
-              const isWolfTeam = !!myRole && MAFIA_TEAM_ROLES.includes(myRole)
-              const showSecretChat = isWolfTeam && amIAlive && phase === 'night'
-              if (phase === 'night') {
-                // Town Discussion stays visible at night (its history isn't hidden away) but
-                // read-only — nobody can post until day, matching "no talking at night".
-                // Wolf-team members additionally get their private secret chat above it.
-                return (
-                  <div className="md:col-span-1 space-y-4">
-                    {showSecretChat && (
-                      <MafiaSecretChat
-                        messages={myState?.mafiaChatMessages ?? []}
-                        onSendMessage={sendMafiaMessage}
-                        myPlayerId={myPlayerId}
-                      />
-                    )}
-                    <MafiaDayChat
-                      messages={dayChatMessages ?? []}
-                      ghostMessages={!amIAlive ? (ghostChatMessages ?? []) : undefined}
-                      onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
-                      myPlayerId={myPlayerId}
-                      players={publicPlayers}
-                      readOnly
-                      readOnlyLabel="night"
-                    />
-                  </div>
-                )
-              }
-              // Sending is allowed during Discussion and Voting — Sunrise and Elimination
-              // are brief announcement beats, read-only viewing of the same feed.
-              const canSend = phase === 'day' || phase === 'voting'
-              return (
-                <div className="md:col-span-1">
-                  <MafiaDayChat
-                    messages={dayChatMessages ?? []}
-                    ghostMessages={!amIAlive ? (ghostChatMessages ?? []) : undefined}
-                    onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
-                    myPlayerId={myPlayerId}
-                    players={publicPlayers}
-                    readOnly={!canSend}
-                    readOnlyLabel={PHASE_LABEL[phase]?.toLowerCase()}
-                    disabled={amISpectator}
-                  />
-                </div>
-              )
-            })()}
-          </main>
+          </>
         )}
       </div>
     )
@@ -760,52 +803,124 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
 
   const winningTeam = mafiaState?.winningTeam ?? null
 
+  return <MafiaFinishedScreen game={game!} mafiaState={mafiaState} winningTeam={winningTeam} myPlayerId={myPlayerId} />
+}
+
+function MafiaFinishedScreen({
+  game,
+  mafiaState,
+  winningTeam,
+  myPlayerId,
+}: {
+  game: Game
+  mafiaState: MafiaStateResponse | null
+  winningTeam: string | null
+  myPlayerId: string | null
+}) {
+  const router = useRouter()
+  const { error: toastError, success: toastSuccess } = useToast()
+  const captureRef = useRef<HTMLDivElement>(null)
+  const [sharing, setSharing] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+
+  const doCapture = async () => {
+    if (!captureRef.current) return null
+    return captureElementAsImage(captureRef.current)
+  }
+
+  const handleShare = async () => {
+    setSharing(true)
+    try {
+      const blob = await doCapture()
+      if (!blob) return
+      const filename = `${shareFilenameStem(game.title ?? 'mafia')}.png`
+      const result = await shareImageBlob(blob, filename)
+      if (result === 'shared') toastSuccess('Shared!')
+      else if (result === 'copied') toastSuccess('Image copied to clipboard')
+      else toastSuccess('Image downloaded')
+    } catch {
+      toastError('Failed to share')
+    } finally {
+      setSharing(false)
+    }
+  }
+
+  const handleDownload = async () => {
+    setDownloading(true)
+    try {
+      const blob = await doCapture()
+      if (!blob) return
+      downloadBlobAsFile(blob, `${shareFilenameStem(game.title ?? 'mafia')}.png`)
+    } catch {
+      toastError('Failed to download')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] p-4 md:p-6">
       <div className="mx-auto w-full max-w-2xl space-y-5">
-        <div className="glass-card border border-[var(--border)] rounded-2xl p-6">
-          <FinishedWinnerHero
-            game={game!}
-            emoji={winningTeam ? (WINNING_TEAM_EMOJI[winningTeam] ?? '🏆') : '🏁'}
-            headline={winningTeam ? (WINNING_TEAM_LABEL[winningTeam] ?? 'Game over!') : 'Game over — no winner'}
-            subtitle="Mafia"
-          />
-        </div>
+        <div ref={captureRef} className="space-y-4">
+          <ShareResultsCaptureHeader game={game} />
+          <div className="glass-card border border-[var(--border)] rounded-2xl p-6">
+            <FinishedWinnerHero
+              game={game}
+              emoji={winningTeam ? (WINNING_TEAM_EMOJI[winningTeam] ?? '🏆') : '🏁'}
+              headline={winningTeam ? (WINNING_TEAM_LABEL[winningTeam] ?? 'Game over!') : 'Game over — no winner'}
+              subtitle="Mafia"
+            />
+          </div>
 
-        <div className="glass-card border border-[var(--border)] rounded-2xl p-5">
-          <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)] mb-3">Roles reveal</h3>
-          <div className="space-y-2">
-            {mafiaState?.players.map((p) => (
-              <div
-                key={p.id}
-                className="flex justify-between items-center text-sm p-2 rounded-lg bg-[var(--surface-inset-bg)] border border-[var(--border)]"
-              >
-                <span className="font-semibold text-[var(--foreground)]">
-                  #{p.seatNumber} {p.name}
-                  {p.id === myPlayerId && <span className="text-[var(--primary)] font-normal"> (you)</span>}
-                </span>
-                <span
-                  className={`font-bold text-xs uppercase ${
-                    p.role && MAFIA_TEAM_ROLES.includes(p.role)
-                      ? 'text-red-400'
-                      : p.role === 'jester'
-                        ? 'text-amber-400'
-                        : 'text-emerald-400'
-                  }`}
+          <div className="glass-card border border-[var(--border)] rounded-2xl p-5">
+            <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)] mb-3">Roles reveal</h3>
+            <div className="space-y-2">
+              {mafiaState?.players.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex justify-between items-center text-sm p-2 rounded-lg bg-[var(--surface-inset-bg)] border border-[var(--border)]"
                 >
-                  {p.role ? p.role.replace(/_/g, ' ') : '—'}
-                </span>
-              </div>
-            ))}
+                  <span className="font-semibold text-[var(--foreground)]">
+                    #{p.seatNumber} {p.name}
+                    {p.id === myPlayerId && <span className="text-[var(--primary)] font-normal"> (you)</span>}
+                  </span>
+                  <span
+                    className={`font-bold text-xs uppercase ${
+                      p.role && MAFIA_TEAM_ROLES.includes(p.role)
+                        ? 'text-red-400'
+                        : p.role === 'jester'
+                          ? 'text-amber-400'
+                          : 'text-emerald-400'
+                    }`}
+                  >
+                    {p.role ? p.role.replace(/_/g, ' ') : '—'}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        <button
-          onClick={() => router.push('/')}
-          className="w-full py-3 btn-secondary font-semibold rounded-xl transition"
-        >
-          Exit to Home
-        </button>
+        <div className="space-y-3">
+          <ShareActionButtons
+            shareLabel="Share results"
+            onShare={handleShare}
+            onDownload={handleDownload}
+            sharing={sharing}
+            downloading={downloading}
+            primary
+          />
+
+          <CreateNewGameButton className="btn-secondary w-full py-3 text-sm sm:text-base" />
+
+          <button
+            type="button"
+            onClick={() => router.push('/')}
+            className="w-full py-2 text-sm font-medium text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+          >
+            Back home
+          </button>
+        </div>
       </div>
     </div>
   )

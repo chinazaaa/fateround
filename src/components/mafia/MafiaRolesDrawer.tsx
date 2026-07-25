@@ -58,18 +58,18 @@ export function MafiaRolesDrawer({ rolesInGame, myRole, roleCounts }: MafiaRoles
       {open && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
-          <div className="relative w-full max-w-sm h-full bg-[var(--background)] border-l border-[var(--border)] shadow-2xl overflow-y-auto p-5 space-y-4">
-            <div className="flex items-center justify-between">
+          <div className="relative w-[85%] max-w-sm h-full bg-[var(--background)] border-l border-[var(--border)] shadow-2xl flex flex-col">
+            <div className="sticky top-0 z-10 flex items-center justify-between p-5 pb-3 bg-[var(--background)] border-b border-[var(--border)]">
               <h2 className="text-lg font-black text-[var(--foreground)]">Roles in this game</h2>
               <button
                 onClick={() => setOpen(false)}
-                className="text-[var(--muted)] hover:text-[var(--foreground)] text-xl leading-none"
+                className="text-[var(--muted)] hover:text-[var(--foreground)] text-2xl leading-none p-1"
                 aria-label="Close"
               >
                 ✕
               </button>
             </div>
-            <div className="space-y-3">
+            <div className="flex-1 overflow-y-auto p-5 pt-3 space-y-3">
               {sortedRoles.map((role) => {
                 const info = MAFIA_ROLE_INFO[role]
                 if (!info) return null

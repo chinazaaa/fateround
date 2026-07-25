@@ -1545,15 +1545,19 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Objective',
       points: [
-        'Villagers: Identify and eliminate all Mafia members to win.',
-        'Mafia: Eliminate Villagers until you match them in number to win.',
+        'Village team: Identify and eliminate all Mafia members (and any Solo killers) to win.',
+        'Mafia team: Eliminate Villagers until you match or outnumber them.',
+        'Solo roles (Jester, Serial Killer, Arsonist): Each has their own unique win condition.',
       ],
     },
     {
       title: 'Setup',
       points: [
-        '5 to 16 players join the lobby. Each player is secretly assigned a role (Villager, Mafia, Doctor, Detective).',
-        'Doctor and Detective are optional power roles that the host can toggle.',
+        '5 to 16 players join the lobby. Each player is secretly assigned a role.',
+        'The host picks which roles are in the game — from 16 available roles across Village, Mafia, Solo, and Special teams.',
+        'Village roles include Villager, Doctor, Detective, Bodyguard, Mayor, Vigilante, and Tracker.',
+        'Mafia roles include Mafia, Alpha Mafia, Junior Mafia, and Framer.',
+        'Solo roles (Jester, Serial Killer, Arsonist) and Special roles (Cupid, Cursed Villager) add extra twists.',
       ],
     },
     {
@@ -1561,16 +1565,22 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         'The Mafia secretly vote on a player to eliminate.',
         'The Doctor chooses a player to save from elimination (cannot self-heal).',
-        'The Detective investigates one player to discover their alignment.',
-        'Villagers sleep during this phase.',
+        'The Detective investigates one player to learn their alignment (beware the Framer!).',
+        'The Bodyguard protects a player — if that player is attacked, the Bodyguard dies instead.',
+        'The Tracker sees who their target visited that night.',
+        'The Vigilante may kill one player (once per game).',
+        'Solo killers (Serial Killer, Arsonist) act independently.',
+        'Villagers, Mayor, and Jester sleep during this phase.',
       ],
     },
     {
       title: 'Day Phase',
       points: [
         'A sunrise report announces who died last night (or if nobody died).',
-        'The town discusses and debates who they suspect is Mafia.',
+        'Investigation results from the previous night are delivered privately to each investigative role.',
+        "The town discusses and debates who they suspect. The Mayor's vote counts double.",
         'Players vote to eliminate one suspect. Plurality wins; ties result in no elimination.',
+        'If the Jester is voted out, the Jester wins!',
       ],
     },
   ],
