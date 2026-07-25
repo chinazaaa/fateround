@@ -57,7 +57,7 @@ export function ShareGameModal({
         codeLabel: 'Game code',
         copyLabel: 'Copy invite link',
         copySuccess: 'Invite link copied',
-        shareText: 'Join my game on Fate Round:',
+        shareText: 'Join my game on FateRound:',
         shareLabel: 'Share invite',
         scanLabel: 'Scan to join',
       },
@@ -72,7 +72,7 @@ export function ShareGameModal({
         codeLabel: 'Player code',
         copyLabel: 'Copy host+play link',
         copySuccess: 'Host+play link copied',
-        shareText: 'My Fate Round host + play link:',
+        shareText: 'My FateRound host + play link:',
         shareLabel: 'Share link',
         scanLabel: 'Scan to open your seat',
       })
@@ -86,7 +86,7 @@ export function ShareGameModal({
         codeLabel: 'Game code',
         copyLabel: 'Copy host link',
         copySuccess: 'Host link copied',
-        shareText: 'My Fate Round host link:',
+        shareText: 'My FateRound host link:',
         shareLabel: 'Share link',
         scanLabel: 'Scan to open host panel',
       })
@@ -103,7 +103,7 @@ export function ShareGameModal({
         codeLabel: 'Player code',
         copyLabel: 'Copy player link',
         copySuccess: 'Player link copied',
-        shareText: 'My Fate Round player link:',
+        shareText: 'My FateRound player link:',
         shareLabel: 'Share link',
         scanLabel: 'Scan to open your seat',
       })

@@ -11,12 +11,12 @@ import { SiteFooter } from '@/components/SiteFooter'
 export const metadata: Metadata = {
   title: 'All Party Games',
   description:
-    'Browse free online party games on Fate Round — Smash Marry Kill, Would You Rather, Most Likely To, Red Flag Green Flag, and more.',
+    'Browse free online party games on FateRound — Smash Marry Kill, Would You Rather, Most Likely To, Red Flag Green Flag, and more.',
   alternates: { canonical: '/games' },
   openGraph: {
     title: `All Party Games | ${SITE_NAME}`,
     description:
-      'Browse free online party games on Fate Round — Smash Marry Kill, Would You Rather, Most Likely To, Red Flag Green Flag, and more.',
+      'Browse free online party games on FateRound — Smash Marry Kill, Would You Rather, Most Likely To, Red Flag Green Flag, and more.',
     url: '/games',
     images: [OG_IMAGE],
   },

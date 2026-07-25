@@ -108,7 +108,7 @@ Legend: ✅ included · ⛔ not available · 🔸 limited / capped
 | **Host identity** |
 | 19 | Vanity room / tournament codes | ⛔ | ✅ (Phase 2) |
 | 20 | Pro badge on profile & in lobby | ⛔ | ✅ |
-| 21 | Remove "Made with Fate Round" footer | ⛔ | ✅ (Phase 2) |
+| 21 | Remove "Made with FateRound" footer | ⛔ | ✅ (Phase 2) |
 | **Tournament host powers** |
 | 22 | Run tournaments (basic) | ✅ | ✅ |
 | 23 | Custom placement-points array | ⛔ | ✅ |

@@ -73,7 +73,7 @@ export function PlayerResumeCard({ gameCode, resumeToken: resumeTokenProp, compa
   const onShare = async () => {
     try {
       await Share.share({
-        message: `Continue my Fate Round game — code ${gameCode.toUpperCase()}\nPlayer code: ${resumeToken}\n${url}`,
+        message: `Continue my FateRound game — code ${gameCode.toUpperCase()}\nPlayer code: ${resumeToken}\n${url}`,
       })
     } catch {
       // dismissed
@@ -102,51 +102,51 @@ export function PlayerResumeCard({ gameCode, resumeToken: resumeTokenProp, compa
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  compactRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  compact: { color: theme.textFaint, fontSize: 12 },
-  revealSmall: { color: theme.textFaint, fontSize: 11, fontWeight: '600' },
-  revealHint: { color: theme.textFaint, fontSize: 12, textAlign: 'center' },
-  code: { color: theme.textSecondary, fontWeight: '700', letterSpacing: 2 },
-  collapsed: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: theme.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: 14,
-  },
-  collapsedEmoji: { fontSize: 22 },
-  collapsedText: { flex: 1 },
-  collapsedTitle: { color: theme.text, fontSize: 14, fontWeight: '600' },
-  collapsedSub: { color: theme.textFaint, fontSize: 12, marginTop: 2 },
-  chevron: { color: theme.textFaint, fontSize: 22 },
-  card: {
-    backgroundColor: theme.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: 16,
-    gap: 8,
-  },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cardTitle: { color: theme.text, fontSize: 14, fontWeight: '700' },
-  close: { color: theme.textMuted, fontSize: 13 },
-  cardHint: { color: theme.textFaint, fontSize: 12 },
-  codeLarge: {
-    color: theme.text,
-    fontSize: 24,
-    fontWeight: '800',
-    letterSpacing: 4,
-    textAlign: 'center',
-    paddingVertical: 8,
-  },
-  shareBtn: {
-    backgroundColor: theme.border,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  shareText: { color: theme.text, fontWeight: '600' },
-})
+    compactRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+    compact: { color: theme.textFaint, fontSize: 12 },
+    revealSmall: { color: theme.textFaint, fontSize: 11, fontWeight: '600' },
+    revealHint: { color: theme.textFaint, fontSize: 12, textAlign: 'center' },
+    code: { color: theme.textSecondary, fontWeight: '700', letterSpacing: 2 },
+    collapsed: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: theme.surface,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 14,
+    },
+    collapsedEmoji: { fontSize: 22 },
+    collapsedText: { flex: 1 },
+    collapsedTitle: { color: theme.text, fontSize: 14, fontWeight: '600' },
+    collapsedSub: { color: theme.textFaint, fontSize: 12, marginTop: 2 },
+    chevron: { color: theme.textFaint, fontSize: 22 },
+    card: {
+      backgroundColor: theme.surface,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 16,
+      gap: 8,
+    },
+    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    cardTitle: { color: theme.text, fontSize: 14, fontWeight: '700' },
+    close: { color: theme.textMuted, fontSize: 13 },
+    cardHint: { color: theme.textFaint, fontSize: 12 },
+    codeLarge: {
+      color: theme.text,
+      fontSize: 24,
+      fontWeight: '800',
+      letterSpacing: 4,
+      textAlign: 'center',
+      paddingVertical: 8,
+    },
+    shareBtn: {
+      backgroundColor: theme.border,
+      borderRadius: 10,
+      paddingVertical: 12,
+      alignItems: 'center',
+    },
+    shareText: { color: theme.text, fontWeight: '600' },
+  })

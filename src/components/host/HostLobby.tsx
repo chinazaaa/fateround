@@ -136,7 +136,7 @@ export function HostLobby({
           lobby body scrolls. The right side keeps clear of the app's global fixed theme
           toggle (top-right, z-50) — the lobby's single light/dark control. */}
       <header className="shrink-0 flex items-center justify-between gap-3 bg-[var(--background)] px-4 py-3 sm:px-6">
-        <Link href="/" aria-label="Fate Round home" className="min-w-0 shrink">
+        <Link href="/" aria-label="FateRound home" className="min-w-0 shrink">
           <FateRoundLogo className="h-8 w-auto max-w-[7.5rem] sm:max-w-[9rem]" />
         </Link>
         <button

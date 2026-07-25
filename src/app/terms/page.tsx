@@ -27,7 +27,7 @@ export default function TermsPage() {
         </p>
       }
     >
-      <Section title="Who can use Fate Round">
+      <Section title="Who can use FateRound">
         <p>
           You must be at least 13 years old to use the Service. Some games are intended for adults only and are labelled{' '}
           <strong>18+</strong> in the games directory and on their game pages — you must be 18 or older to play those.

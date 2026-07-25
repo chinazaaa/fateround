@@ -151,7 +151,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       'The classic party game, upgraded. Three faces land each round — your group assigns smash, marry, and kill. Results get messy.',
     bodyParagraph:
-      'Smash Marry Kill (also called Kiss Marry Kill) puts three names in front of your group every round — celebrities, friends from a custom list, or names players add live. Unlike shouting answers across the room, Fate Round collects everyone’s votes privately and reveals who got smashed, married, and killed together. Upload a celebrity list, enable gender-based rounds, or let joiners fill the poll on the fly.',
+      'Smash Marry Kill (also called Kiss Marry Kill) puts three names in front of your group every round — celebrities, friends from a custom list, or names players add live. Unlike shouting answers across the room, FateRound collects everyone’s votes privately and reveals who got smashed, married, and killed together. Upload a celebrity list, enable gender-based rounds, or let joiners fill the poll on the fly.',
     highlights: ['3 picks per round', 'Gender-based or names-only', 'Import a list or join & play'],
     features: [
       {
@@ -183,7 +183,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'What’s the difference between Smash Marry Kill and Smash or Pass?',
         answer:
-          'Smash Marry Kill gives you three names each round and you must assign smash, marry, and kill to each one. Smash or Pass is simpler — two names per round and you only decide smash or pass on each person individually. Both are free on Fate Round.',
+          'Smash Marry Kill gives you three names each round and you must assign smash, marry, and kill to each one. Smash or Pass is simpler — two names per round and you only decide smash or pass on each person individually. Both are free on FateRound.',
       },
       {
         question: 'How do you play Smash Marry Kill?',
@@ -221,7 +221,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       'Two names, two judgments. Each round your group decides who’s a green flag and who’s a red flag — separately, honestly, and out loud.',
     bodyParagraph:
-      'Red Flag Green Flag works like the viral dating debate format, but online with your whole group voting at once. Upload celebrities, crushes, or friends from a custom list — each round shows two names and everyone rates them green flag or red flag independently. Unlike arguing in a group chat, Fate Round tallies every vote and reveals who got flagged together.',
+      'Red Flag Green Flag works like the viral dating debate format, but online with your whole group voting at once. Upload celebrities, crushes, or friends from a custom list — each round shows two names and everyone rates them green flag or red flag independently. Unlike arguing in a group chat, FateRound tallies every vote and reveals who got flagged together.',
     highlights: ['Two names per round', 'Rate each person individually', 'Spicy group debates'],
     features: [
       {
@@ -243,7 +243,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How is Red Flag Green Flag different from Smash or Pass?',
         answer:
-          'Red Flag Green Flag rates two people separately on a green-or-red scale — both names get judged each round. Smash or Pass is a simple smash-or-pass binary on each person. Both are free on Fate Round.',
+          'Red Flag Green Flag rates two people separately on a green-or-red scale — both names get judged each round. Smash or Pass is a simple smash-or-pass binary on each person. Both are free on FateRound.',
       },
       {
         question: 'How do you play Red Flag Green Flag?',
@@ -271,7 +271,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       'Fast, bold, and brutally simple. Two names show up — your group smashes or passes on each one. No overthinking required.',
     bodyParagraph:
-      'Smash or Pass is the quickest party game on Fate Round — two names per round, smash or pass on each, done. Import a celebrity list, add friends from your group, or let players join the poll live. Unlike playing verbally where loudest voice wins, everyone votes privately and results reveal together with a live smash leaderboard.',
+      'Smash or Pass is the quickest party game on FateRound — two names per round, smash or pass on each, done. Import a celebrity list, add friends from your group, or let players join the poll live. Unlike playing verbally where loudest voice wins, everyone votes privately and results reveal together with a live smash leaderboard.',
     highlights: ['Quick binary votes', 'Two names per round', 'Perfect for rapid rounds'],
     features: [
       { title: 'Smash or pass', description: 'Clean A/B energy on every name — no third option needed.', emoji: '🔥' },
@@ -379,7 +379,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       'Impossible choices, anonymous votes. Every round pits two options against each other — see where your group actually stands.',
     bodyParagraph:
-      'Would You Rather on Fate Round handles the classic “pick A or B” format with anonymous voting and instant reveals. Use hundreds of built-in prompts or upload your own questions — perfect for icebreakers, road trips, or Zoom calls. Unlike playing out loud where people follow the crowd, anonymous votes show where your group actually stands before the arguments start.',
+      'Would You Rather on FateRound handles the classic “pick A or B” format with anonymous voting and instant reveals. Use hundreds of built-in prompts or upload your own questions — perfect for icebreakers, road trips, or Zoom calls. Unlike playing out loud where people follow the crowd, anonymous votes show where your group actually stands before the arguments start.',
     highlights: ['Anonymous voting', 'Platform or custom questions', '2+ players, zero setup'],
     features: [
       {
@@ -405,7 +405,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Can I add my own Would You Rather questions?',
         answer:
-          'Yes. Fate Round includes a built-in question pool, and you can upload your own prompts when creating a room. Pick round count, set a timer, and share the link — no participant list required.',
+          'Yes. FateRound includes a built-in question pool, and you can upload your own prompts when creating a room. Pick round count, set a timer, and share the link — no participant list required.',
       },
       {
         question: 'How do you play Would You Rather?',
@@ -440,7 +440,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       "Classic confession game, online. Each prompt asks who's done it — anonymous votes reveal how spicy the group really is.",
     bodyParagraph:
-      "Never Have I Ever on Fate Round reads each prompt aloud on every screen while players tap I have or I haven't anonymously. Use built-in prompts or upload your own — perfect for parties, pregames, or friend groups who want honest confessions without the awkward eye contact. Unlike playing in a circle where people hesitate, anonymous votes get real answers.",
+      "Never Have I Ever on FateRound reads each prompt aloud on every screen while players tap I have or I haven't anonymously. Use built-in prompts or upload your own — perfect for parties, pregames, or friend groups who want honest confessions without the awkward eye contact. Unlike playing in a circle where people hesitate, anonymous votes get real answers.",
     highlights: ['Anonymous voting', 'Platform or custom prompts', '2+ players, zero setup'],
     features: [
       {
@@ -466,7 +466,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Can I add my own Never Have I Ever prompts?',
         answer:
-          'Yes. Fate Round includes a built-in prompt pool, and you can upload your own statements when creating a room. The "Never have I ever" prefix is added automatically — just upload the action (e.g. "been skydiving").',
+          'Yes. FateRound includes a built-in prompt pool, and you can upload your own statements when creating a room. The "Never have I ever" prefix is added automatically — just upload the action (e.g. "been skydiving").',
       },
       {
         question: 'How do you play Never Have I Ever online?',
@@ -499,7 +499,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       "Pick a number between 1 and X — you won't know the question until after you choose. Then answer whatever gets revealed.",
     bodyParagraph:
-      'Pick a Number is a classic party game: one person chooses a number from a hidden list, and that number maps to a question they have to answer out loud. Fate Round runs it online — upload your own numbered questions or use our built-in pool, rotate who picks each round, and reveal the question on every screen the moment they lock in their number.',
+      'Pick a Number is a classic party game: one person chooses a number from a hidden list, and that number maps to a question they have to answer out loud. FateRound runs it online — upload your own numbered questions or use our built-in pool, rotate who picks each round, and reveal the question on every screen the moment they lock in their number.',
     highlights: ['Hidden numbered list', 'Platform or custom questions', '2+ players, zero setup'],
     features: [
       {
@@ -557,7 +557,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       'Your prompts, your vibe. Upload “Coffee or Tea?” style questions — everyone picks A or B and you see where the group lands.',
     bodyParagraph:
-      'This or That is Would You Rather with your own personality — upload “Coffee or Tea?”, “Dogs or Cats?”, or inside-joke prompts from a CSV. Everyone votes anonymously and you see the split instantly. Unlike verbal rounds where one person picks first and influences everyone else, Fate Round collects private votes before revealing results.',
+      'This or That is Would You Rather with your own personality — upload “Coffee or Tea?”, “Dogs or Cats?”, or inside-joke prompts from a CSV. Everyone votes anonymously and you see the split instantly. Unlike verbal rounds where one person picks first and influences everyone else, FateRound collects private votes before revealing results.',
     highlights: ['Upload your own CSV', 'Anonymous voting', '2+ players, zero setup'],
     features: [
       {
@@ -586,7 +586,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'What’s the difference between This or That and Would You Rather?',
         answer:
-          'Would You Rather uses Fate Round’s built-in impossible-choice prompts. This or That lets you upload your own “X or Y?” questions — ideal for themed nights, team meetings, or inside jokes. Both use anonymous A/B voting.',
+          'Would You Rather uses FateRound’s built-in impossible-choice prompts. This or That lets you upload your own “X or Y?” questions — ideal for themed nights, team meetings, or inside jokes. Both use anonymous A/B voting.',
       },
       {
         question: 'How do you play This or That?',
@@ -621,7 +621,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       '“Most likely to…” prompts meet your actual friend group. Anonymous votes, savage reveals, zero mercy.',
     bodyParagraph:
-      'Most Likely To on Fate Round lets your group vote on who fits each prompt — “most likely to ghost the group chat”, “most likely to become famous”, and more. Use your actual friend group as the roster or import names, with anonymous votes so nobody knows who picked whom until reveal. It beats playing verbally because shy friends vote honestly and the roast hits harder.',
+      'Most Likely To on FateRound lets your group vote on who fits each prompt — “most likely to ghost the group chat”, “most likely to become famous”, and more. Use your actual friend group as the roster or import names, with anonymous votes so nobody knows who picked whom until reveal. It beats playing verbally because shy friends vote honestly and the roast hits harder.',
     highlights: ['Anonymous votes', 'Friend group or imported list', 'Custom prompts supported'],
     features: [
       { title: 'Call out friends', description: 'Each prompt asks who fits best — the group decides.', emoji: '🎯' },
@@ -643,7 +643,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Can I use custom Most Likely To prompts?',
         answer:
-          'Yes. Fate Round includes built-in prompts and supports custom questions when you create a game. Vote on your friend group directly or import a name list — results reveal anonymously round by round.',
+          'Yes. FateRound includes built-in prompts and supports custom questions when you create a game. Vote on your friend group directly or import a name list — results reveal anonymously round by round.',
       },
       {
         question: 'How do you play Most Likely To?',
@@ -676,7 +676,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       'Your group writes the content. Quotes hit the pool, everyone guesses the author — and friendships get tested.',
     bodyParagraph:
-      'Who Said This turns your group’s own messages into the game. Players submit quotes in the lobby — inside jokes, unhinged texts, or anime lines — then everyone guesses who wrote each one. Unlike reading quotes aloud and having one person guess, Fate Round scores every player and tracks who knows the group best.',
+      'Who Said This turns your group’s own messages into the game. Players submit quotes in the lobby — inside jokes, unhinged texts, or anime lines — then everyone guesses who wrote each one. Unlike reading quotes aloud and having one person guess, FateRound scores every player and tracks who knows the group best.',
     highlights: ['Player-submitted quotes', 'Anime quote mode', 'Lobby quote pool'],
     features: [
       {
@@ -768,7 +768,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
   custom: landing('custom', {
     seoTitle: 'Custom Voting Party Game — Build Your Own Categories',
     seoDescription:
-      'Create a custom online voting game with your own categories — Date, Friendzone, or anything you want. Free on Fate Round.',
+      'Create a custom online voting game with your own categories — Date, Friendzone, or anything you want. Free on FateRound.',
     keywords: [
       'custom party game',
       'make your own voting game',
@@ -814,7 +814,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How does the custom game work?',
         answer:
-          'You invent the categories. Name your slots — Date, Friendzone, CEO, whatever fits your group — give each an emoji and colour, then run the poll. Each round your group assigns one person to each slot and the reveal shows where everyone landed. It’s Fate Round’s voting engine with your own rules.',
+          'You invent the categories. Name your slots — Date, Friendzone, CEO, whatever fits your group — give each an emoji and colour, then run the poll. Each round your group assigns one person to each slot and the reveal shows where everyone landed. It’s FateRound’s voting engine with your own rules.',
       },
     ],
   }),
@@ -966,7 +966,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       'Classic 75-ball bingo for parties and game nights. Everyone gets their own card on their phone — you call the numbers, they mark and shout BINGO.',
     bodyParagraph:
-      'Online Bingo on Fate Round brings 75-ball bingo to your group without printing cards. Every player gets a unique 5×5 card on their phone with a free center square — you call numbers B1 through O75, they tap to mark, and the first completed line wins. Perfect for family nights, office parties, or classrooms where everyone already has a phone.',
+      'Online Bingo on FateRound brings 75-ball bingo to your group without printing cards. Every player gets a unique 5×5 card on their phone with a free center square — you call numbers B1 through O75, they tap to mark, and the first completed line wins. Perfect for family nights, office parties, or classrooms where everyone already has a phone.',
     highlights: ['Unique cards', 'Host calls numbers', 'First line wins'],
     features: [
       {
@@ -1066,7 +1066,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How is Codewords different from Codenames?',
         answer:
-          'Codewords follows the same word-association spy game format — two teams, spymaster clues, and a 5×5 word grid — playable free in your browser on Fate Round with no board or app required.',
+          'Codewords follows the same word-association spy game format — two teams, spymaster clues, and a 5×5 word grid — playable free in your browser on FateRound with no board or app required.',
       },
       {
         question: 'How do you play Codewords?',
@@ -1105,7 +1105,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       'Speed-based trivia for groups. Pick Tech or General Knowledge, or upload your own questions. Fastest correct answers score the most.',
     bodyParagraph:
-      'Trivia on Fate Round is built for fast-finger competition — multiple-choice questions, a live timer, and speed bonuses for the first correct answer. Use Tech or General Knowledge categories or upload your own CSV of questions. Unlike shouting answers in a pub quiz, every player taps their choice and the leaderboard updates automatically.',
+      'Trivia on FateRound is built for fast-finger competition — multiple-choice questions, a live timer, and speed bonuses for the first correct answer. Use Tech or General Knowledge categories or upload your own CSV of questions. Unlike shouting answers in a pub quiz, every player taps their choice and the leaderboard updates automatically.',
     highlights: ['Tech & general categories', 'Speed scoring', 'Live leaderboard'],
     features: [
       {
@@ -1154,7 +1154,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Can I run a trivia tournament online?',
         answer:
-          'Yes. Fate Round can run a trivia tournament as a round-robin league or a knockout — great for a class, club, or team competition. Create one from the Tournaments page and share the join code — free, no app, no sign-up.',
+          'Yes. FateRound can run a trivia tournament as a round-robin league or a knockout — great for a class, club, or team competition. Create one from the Tournaments page and share the join code — free, no app, no sign-up.',
       },
     ],
   }),
@@ -1178,7 +1178,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       'Classic icebreaker, online. Write two truths and a lie, then take turns in the hot seat while everyone guesses the fib.',
     bodyParagraph:
-      'Two Truths and a Lie on Fate Round handles the classic icebreaker end to end — everyone submits two truths and one lie in the lobby, then takes turns in the hot seat while the group guesses the fib. Statements shuffle each round and points track who spots lies best. Better than playing in person because scoring is automatic and shy players participate through their phone.',
+      'Two Truths and a Lie on FateRound handles the classic icebreaker end to end — everyone submits two truths and one lie in the lobby, then takes turns in the hot seat while the group guesses the fib. Statements shuffle each round and points track who spots lies best. Better than playing in person because scoring is automatic and shy players participate through their phone.',
     highlights: ['Lobby statement prep', 'One round per player', 'Lie spotting scores'],
     features: [
       {
@@ -1240,7 +1240,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       'Classic Monopoly on your phones. Join a room, roll the dice, buy properties, and be the last player standing.',
     bodyParagraph:
-      'Monopoly on Fate Round features customizable themed editions — including classic London streets and Naija Edition — with full Chance and Community Chest decks, property auctions, houses, hotels, mortgages, and player trading. Join 2–6 players and play turn-by-turn in real time.',
+      'Monopoly on FateRound features customizable themed editions — including classic London streets and Naija Edition — with full Chance and Community Chest decks, property auctions, houses, hotels, mortgages, and player trading. Join 2–6 players and play turn-by-turn in real time.',
     highlights: ['Full 40-space board', '2–6 players', 'Real-time turns'],
     features: [
       {
@@ -1335,7 +1335,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     heroSubtitle: 'The classic dice puzzle — score straights, full houses, and Yahtzees together.',
     bodyParagraph:
-      'Yahtzee on Fate Round brings roll-and-hold dice scoring to your group online — often mistyped as Yatzee, Yahtzy, Yachtzee, Yathzee, or Tahtzee, it’s the same classic five-dice game. Roll five dice up to three times per turn, hold the ones you want, and fill your scorecard category by category — three of a kind, full house, small and large straights, chance, and the coveted Yahtzee (five of a kind). Play solo or with up to six friends — no physical scorecard or dice cup needed.',
+      'Yahtzee on FateRound brings roll-and-hold dice scoring to your group online — often mistyped as Yatzee, Yahtzy, Yachtzee, Yathzee, or Tahtzee, it’s the same classic five-dice game. Roll five dice up to three times per turn, hold the ones you want, and fill your scorecard category by category — three of a kind, full house, small and large straights, chance, and the coveted Yahtzee (five of a kind). Play solo or with up to six friends — no physical scorecard or dice cup needed.',
     highlights: ['5 dice', '1–6 players', 'Turn-based scoring'],
     features: [
       {
@@ -1361,7 +1361,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How many dice do you play Yahtzee with?',
         answer:
-          'Yahtzee is played with five dice. On Fate Round you roll all five on screen — no physical dice or cup needed — and hold the ones you want between rolls.',
+          'Yahtzee is played with five dice. On FateRound you roll all five on screen — no physical dice or cup needed — and hold the ones you want between rolls.',
       },
       {
         question: 'How many rolls do you get per turn in Yahtzee?',
@@ -1386,12 +1386,12 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Is it spelled Yahtzee or Yatzee?',
         answer:
-          'The correct spelling is Yahtzee, but it’s commonly mistyped as Yatzee, Yahtzy, Yatzy, Yachtzee, Yathzee, or Tahtzee. However you spell it, it’s the same five-dice scoring game — and you can play it free on Fate Round.',
+          'The correct spelling is Yahtzee, but it’s commonly mistyped as Yatzee, Yahtzy, Yatzy, Yachtzee, Yathzee, or Tahtzee. However you spell it, it’s the same five-dice scoring game — and you can play it free on FateRound.',
       },
       {
         question: 'What are all the categories on a Yahtzee scorecard?',
         answer:
-          'A Yahtzee scorecard has 13 categories in two sections. The upper section is Ones, Twos, Threes, Fours, Fives, and Sixes — each scores the sum of dice showing that number. The lower section is Three of a Kind, Four of a Kind, Full House (25), Small Straight (30), Large Straight (40), Yahtzee (50), and Chance. You fill exactly one category per turn, and Fate Round tracks the whole card for every player automatically.',
+          'A Yahtzee scorecard has 13 categories in two sections. The upper section is Ones, Twos, Threes, Fours, Fives, and Sixes — each scores the sum of dice showing that number. The lower section is Three of a Kind, Four of a Kind, Full House (25), Small Straight (30), Large Straight (40), Yahtzee (50), and Chance. You fill exactly one category per turn, and FateRound tracks the whole card for every player automatically.',
       },
       {
         question: 'What is the difference between a small straight and a large straight in Yahtzee?',
@@ -1401,7 +1401,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'What is the Yahtzee bonus?',
         answer:
-          'There are two bonuses. The upper-section bonus adds 35 points if your Ones-through-Sixes total reaches 63 or more. The Yahtzee bonus rewards extra Yahtzees: once you have already scored 50 in the Yahtzee box, every additional five-of-a-kind you roll is worth a 100-point bonus. Fate Round applies both automatically.',
+          'There are two bonuses. The upper-section bonus adds 35 points if your Ones-through-Sixes total reaches 63 or more. The Yahtzee bonus rewards extra Yahtzees: once you have already scored 50 in the Yahtzee box, every additional five-of-a-kind you roll is worth a 100-point bonus. FateRound applies both automatically.',
       },
       {
         question: 'Is there any strategy to Yahtzee?',
@@ -1411,17 +1411,17 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Can you play Yahtzee solo?',
         answer:
-          'Yes. Fate Round lets you start a Yahtzee room on your own and play through the full scorecard to chase a high score — no other players required. Add friends any time by sharing the room code.',
+          'Yes. FateRound lets you start a Yahtzee room on your own and play through the full scorecard to chase a high score — no other players required. Add friends any time by sharing the room code.',
       },
       {
         question: 'Where can I find a Yahtzee scorecard?',
         answer:
-          'You don’t need one — Fate Round keeps a full digital scorecard for every player automatically, tracking all 13 categories, both bonuses, and the running total. No printing, no maths, no smudged pencil columns.',
+          'You don’t need one — FateRound keeps a full digital scorecard for every player automatically, tracking all 13 categories, both bonuses, and the running total. No printing, no maths, no smudged pencil columns.',
       },
       {
         question: 'Is Yahtzee luck or skill?',
         answer:
-          'Both. The dice are luck, but which dice you hold, which category you fill, and when you chase the upper-section bonus are all skill — which is why a good player beats a lucky one over a full card. Fate Round handles the scoring so you can focus on the decisions.',
+          'Both. The dice are luck, but which dice you hold, which category you fill, and when you chase the upper-section bonus are all skill — which is why a good player beats a lucky one over a full card. FateRound handles the scoring so you can focus on the decisions.',
       },
     ],
     relatedBlogPosts: [
@@ -1468,7 +1468,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     heroSubtitle: 'The Nigerian card classic — match, stack, and call WHOT on your crew.',
     bodyParagraph:
-      "Whot on Fate Round runs on the Nigerian house rules everyone actually plays by — match the top card by shape or number, drop WHOT to call the next shape, and keep those Pick 2 and Pick 3 stacks separate. The special cards are where it gets loud: Hold On buys you another go, Suspension skips the next player, General Market makes everyone draw, and the WHOT card (20) bends the whole game to your will. No shuffling, no lost cards, no arguments about the rules — deal a room, share the code, and play from any phone, laptop, or tablet. It works on any device with a browser, so it's perfect for playing with friends abroad or catching up with diaspora crew across time zones. Play Whot online free — no app, no download, no sign-up. First to empty their hand wins. Two to six players, free forever.",
+      "Whot on FateRound runs on the Nigerian house rules everyone actually plays by — match the top card by shape or number, drop WHOT to call the next shape, and keep those Pick 2 and Pick 3 stacks separate. The special cards are where it gets loud: Hold On buys you another go, Suspension skips the next player, General Market makes everyone draw, and the WHOT card (20) bends the whole game to your will. No shuffling, no lost cards, no arguments about the rules — deal a room, share the code, and play from any phone, laptop, or tablet. It works on any device with a browser, so it's perfect for playing with friends abroad or catching up with diaspora crew across time zones. Play Whot online free — no app, no download, no sign-up. First to empty their hand wins. Two to six players, free forever.",
     highlights: ['54-card deck', '2–6 players', 'Naija house rules'],
     features: [
       {
@@ -1525,7 +1525,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'What is General Market in Whot?',
         answer:
-          'General Market is the 14 card. Play it and every other player draws one card from the market while you go again — a fast way to punish the whole table at once. On Fate Round the draws happen automatically the moment you play it.',
+          'General Market is the 14 card. Play it and every other player draws one card from the market while you go again — a fast way to punish the whole table at once. On FateRound the draws happen automatically the moment you play it.',
       },
       {
         question: 'What does the Hold On card do in Whot?',
@@ -1545,7 +1545,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How many cards are in a Whot deck?',
         answer:
-          'A Whot deck has 54 cards across five shapes — circle, triangle, cross, square, and star — plus the special WHOT cards numbered 20. Fate Round handles the full deck and the market (draw pile) for you.',
+          'A Whot deck has 54 cards across five shapes — circle, triangle, cross, square, and star — plus the special WHOT cards numbered 20. FateRound handles the full deck and the market (draw pile) for you.',
       },
       {
         question: 'How is Whot scored if the game is blocked or timed?',
@@ -1555,22 +1555,22 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Is Whot like Uno?',
         answer:
-          'They’re cousins. Both are shape/number-matching shedding games where you race to empty your hand, and Whot’s Pick 2, Pick 3, and WHOT card rhyme with Uno’s Draw 2, Draw 4, and Wild. Whot came first — invented in England in 1935 and popularized in Britain through the 1950s — uses shapes instead of colors, and adds Hold On and General Market. If you like Uno, Whot feels instantly familiar — and Fate Round has both.',
+          'They’re cousins. Both are shape/number-matching shedding games where you race to empty your hand, and Whot’s Pick 2, Pick 3, and WHOT card rhyme with Uno’s Draw 2, Draw 4, and Wild. Whot came first — invented in England in 1935 and popularized in Britain through the 1950s — uses shapes instead of colors, and adds Hold On and General Market. If you like Uno, Whot feels instantly familiar — and FateRound has both.',
       },
       {
         question: 'Can I run a Whot tournament online?',
         answer:
-          'Yes. Fate Round can run a Whot tournament as a head-to-head bracket, and there’s a class-based championship format for schools. Create one from the Tournaments page and share the join code — free, no app, no sign-up.',
+          'Yes. FateRound can run a Whot tournament as a head-to-head bracket, and there’s a class-based championship format for schools. Create one from the Tournaments page and share the join code — free, no app, no sign-up.',
       },
       {
         question: 'Where can I play Whot online?',
         answer:
-          'Fate Round is the easiest way to play Whot online free. Open fateround.com in any browser, create a room, and share the code with friends — no app to install, no account to create, no download required. It works on phones, laptops, and tablets.',
+          'FateRound is the easiest way to play Whot online free. Open fateround.com in any browser, create a room, and share the code with friends — no app to install, no account to create, no download required. It works on phones, laptops, and tablets.',
       },
       {
         question: 'Can you play Whot with 2 players?',
         answer:
-          'Yes. Whot on Fate Round supports 2 to 6 players. In a 2-player game each player is dealt 6 cards instead of 5, and cards like Suspension (8) hit even harder because they hand the turn straight back to you.',
+          'Yes. Whot on FateRound supports 2 to 6 players. In a 2-player game each player is dealt 6 cards instead of 5, and cards like Suspension (8) hit even harder because they hand the turn straight back to you.',
       },
       {
         question: 'What are the shapes in Whot?',
@@ -1604,7 +1604,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     heroSubtitle: 'The worldwide card classic — match, go wild on 8s, and empty your hand first.',
     bodyParagraph:
-      'Crazy Eights on Fate Round plays by the popular action-card rules: match the top of the discard by rank or suit, play an 8 anytime to name the next suit, and use 2 (Pick Two), Jack and Ace (Skip), and Queen (Reverse) to control the table. Add Jokers for extra wildcards that make the next player draw five. First to get rid of all their cards wins.',
+      'Crazy Eights on FateRound plays by the popular action-card rules: match the top of the discard by rank or suit, play an 8 anytime to name the next suit, and use 2 (Pick Two), Jack and Ace (Skip), and Queen (Reverse) to control the table. Add Jokers for extra wildcards that make the next player draw five. First to get rid of all their cards wins.',
     highlights: ['Standard 52-card deck', '2–6 players', '8s are wild'],
     features: [
       {
@@ -1650,7 +1650,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Is Crazy Eights like Uno?',
         answer:
-          'Very much — Uno is a branded descendant of Crazy Eights. Both are match-by-rank-or-suit shedding games where you race to empty your hand, and Crazy Eights’ wild 8s and action cards mirror Uno’s Wilds and Draw/Skip/Reverse cards. If you like Uno, you already know how to play. Fate Round has both.',
+          'Very much — Uno is a branded descendant of Crazy Eights. Both are match-by-rank-or-suit shedding games where you race to empty your hand, and Crazy Eights’ wild 8s and action cards mirror Uno’s Wilds and Draw/Skip/Reverse cards. If you like Uno, you already know how to play. FateRound has both.',
       },
     ],
   }),
@@ -1674,7 +1674,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     heroSubtitle: 'The party card classic — match colours and numbers, go wild, and empty your hand first.',
     bodyParagraph:
-      'UNO on Fate Round plays by the rules everyone knows: match the top card by colour, number, or symbol, and use Skip, Reverse, and Draw Two cards to control the table. Wild cards let you name the next colour, and a Wild Draw Four forces the next player to draw four — unless they challenge it. Call "UNO" the moment you have one card left, or draw a penalty. First to shed every card wins.',
+      'UNO on FateRound plays by the rules everyone knows: match the top card by colour, number, or symbol, and use Skip, Reverse, and Draw Two cards to control the table. Wild cards let you name the next colour, and a Wild Draw Four forces the next player to draw four — unless they challenge it. Call "UNO" the moment you have one card left, or draw a penalty. First to shed every card wins.',
     highlights: ['108-card deck', '2–10 players', 'Wild + Draw Four challenge'],
     features: [
       {
@@ -1720,7 +1720,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Is UNO like Crazy Eights?',
         answer:
-          'Yes — UNO is a branded descendant of Crazy Eights. Both are match-by-colour-or-number shedding games where you race to empty your hand. Fate Round has both.',
+          'Yes — UNO is a branded descendant of Crazy Eights. Both are match-by-colour-or-number shedding games where you race to empty your hand. FateRound has both.',
       },
     ],
   }),
@@ -1748,7 +1748,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     heroSubtitle: 'The classic board game — roll two dice, race, capture, and be first to get all four pieces home.',
     bodyParagraph:
-      'Ludo on Fate Round follows classic rules: roll two dice and use each die separately — a 6 brings pieces onto the board, doubles (e.g. 6+6) let you play both sixes then roll again, send opponents back to their yard on capture, and form blockades with pairs. First player to finish all four pieces wins.',
+      'Ludo on FateRound follows classic rules: roll two dice and use each die separately — a 6 brings pieces onto the board, doubles (e.g. 6+6) let you play both sixes then roll again, send opponents back to their yard on capture, and form blockades with pairs. First player to finish all four pieces wins.',
     highlights: ['2–4 players', 'Classic rules', 'Real-time board'],
     features: [
       {
@@ -1802,7 +1802,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'What are safe squares in Ludo?',
         answer:
-          'Safe squares — the starred cells and each colour’s start square — protect your piece from capture: an opponent landing there can’t send you home. Fate Round marks the safe squares on the board and enforces them automatically.',
+          'Safe squares — the starred cells and each colour’s start square — protect your piece from capture: an opponent landing there can’t send you home. FateRound marks the safe squares on the board and enforces them automatically.',
       },
     ],
   }),
@@ -1815,7 +1815,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       'A live 4-player Mahjong table — draw, discard, call melds, and complete a winning hand before the wall runs out.',
     bodyParagraph:
-      'Mahjong on Fate Round is built for four players in one shared room. New players can start with Simple Mahjong, then move into Hong Kong, Riichi, or MCR rules when the table is ready. Each player gets a concealed hand, takes turns drawing from the wall and discarding, and can call Chow, Pung, Kong, or Mahjong from eligible discards.',
+      'Mahjong on FateRound is built for four players in one shared room. New players can start with Simple Mahjong, then move into Hong Kong, Riichi, or MCR rules when the table is ready. Each player gets a concealed hand, takes turns drawing from the wall and discarding, and can call Chow, Pung, Kong, or Mahjong from eligible discards.',
     highlights: ['Simple learner mode', 'Chow, Pung, Kong calls', 'Live turn timer'],
     features: [
       {
@@ -2072,7 +2072,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     heroSubtitle: 'Ultimate Tic-Tac-Toe — nine boards in one, win three boards in a row to win it all.',
     bodyParagraph:
-      'Ultimate Tic-Tac-Toe on Fate Round takes the classic game deeper: the board is nine small 3x3 boards arranged in one big 3x3 grid. Two players join a room, one is X and the other O, and the cell you play decides which board your opponent must play in next. Win a small board by lining up three of your marks inside it, and win the whole game by claiming three small boards in a row — across, down, or diagonally.',
+      'Ultimate Tic-Tac-Toe on FateRound takes the classic game deeper: the board is nine small 3x3 boards arranged in one big 3x3 grid. Two players join a room, one is X and the other O, and the cell you play decides which board your opponent must play in next. Win a small board by lining up three of your marks inside it, and win the whole game by claiming three small boards in a row — across, down, or diagonally.',
     highlights: ['2 players', 'Nine boards in one', 'Real-time board'],
     features: [
       {
@@ -2207,7 +2207,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     heroSubtitle: 'Classic chess, head-to-head — outsmart your friend and checkmate to win.',
     bodyParagraph:
-      'Chess on Fate Round is a clean two-player game of full standard chess. One player joins a room as White, the other as Black, and White moves first. Every move is validated by the rules — legal moves only, with castling, en passant, and pawn promotion all handled. Check, checkmate, stalemate, and draws are detected automatically. Add an optional chess clock — each player gets their own time bank (3, 5, or 10 minutes) that only ticks on their turn, just like online chess, and the first to flag loses.',
+      'Chess on FateRound is a clean two-player game of full standard chess. One player joins a room as White, the other as Black, and White moves first. Every move is validated by the rules — legal moves only, with castling, en passant, and pawn promotion all handled. Check, checkmate, stalemate, and draws are detected automatically. Add an optional chess clock — each player gets their own time bank (3, 5, or 10 minutes) that only ticks on their turn, just like online chess, and the first to flag loses.',
     highlights: ['2 players', 'Full rules', 'Real-time board'],
     features: [
       {
@@ -2252,22 +2252,22 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How do you play chess?',
         answer:
-          'Each player commands 16 pieces. Pawns move forward one square (two on their first move) and capture diagonally; rooks move in straight lines; bishops diagonally; the queen any direction; the king one square; and knights in an L-shape, jumping over pieces. White moves first, then players alternate. The goal is checkmate — trapping the opposing king so it can’t escape capture. Fate Round only allows legal moves, so you can’t make an illegal one by mistake.',
+          'Each player commands 16 pieces. Pawns move forward one square (two on their first move) and capture diagonally; rooks move in straight lines; bishops diagonally; the queen any direction; the king one square; and knights in an L-shape, jumping over pieces. White moves first, then players alternate. The goal is checkmate — trapping the opposing king so it can’t escape capture. FateRound only allows legal moves, so you can’t make an illegal one by mistake.',
       },
       {
         question: 'What is castling?',
         answer:
-          'Castling is a special move that tucks your king to safety and activates a rook. If neither the king nor the chosen rook has moved, no pieces sit between them, and the king isn’t in or moving through check, the king shifts two squares toward the rook and the rook hops to the other side. Fate Round handles both kingside and queenside castling automatically.',
+          'Castling is a special move that tucks your king to safety and activates a rook. If neither the king nor the chosen rook has moved, no pieces sit between them, and the king isn’t in or moving through check, the king shifts two squares toward the rook and the rook hops to the other side. FateRound handles both kingside and queenside castling automatically.',
       },
       {
         question: 'What is en passant?',
         answer:
-          'En passant (“in passing”) lets a pawn capture an enemy pawn that just advanced two squares, as if it had only moved one. You must take it on the very next move or the chance is gone. Fate Round detects and offers en passant for you.',
+          'En passant (“in passing”) lets a pawn capture an enemy pawn that just advanced two squares, as if it had only moved one. You must take it on the very next move or the chance is gone. FateRound detects and offers en passant for you.',
       },
       {
         question: 'What is the difference between checkmate and stalemate?',
         answer:
-          'Checkmate ends the game: the king is in check and has no legal move to escape — the attacker wins. Stalemate is a draw: the player to move is not in check but has no legal move at all. Fate Round detects checkmate, stalemate, insufficient material, and draws automatically.',
+          'Checkmate ends the game: the king is in check and has no legal move to escape — the attacker wins. Stalemate is a draw: the player to move is not in check but has no legal move at all. FateRound detects checkmate, stalemate, insufficient material, and draws automatically.',
       },
       {
         question: 'Can we play timed or blitz chess?',
@@ -2277,7 +2277,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Can I run a chess tournament online?',
         answer:
-          'Yes. Fate Round can run a chess tournament as a head-to-head knockout bracket — create one from the Tournaments page, share the join code, and players battle through the rounds until there’s a champion. Free, no app, no sign-up.',
+          'Yes. FateRound can run a chess tournament as a head-to-head knockout bracket — create one from the Tournaments page, share the join code, and players battle through the rounds until there’s a champion. Free, no app, no sign-up.',
       },
     ],
   }),
@@ -2302,7 +2302,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     heroSubtitle: 'Classic checkers, head-to-head — jump your friend’s pieces and crown your kings.',
     bodyParagraph:
-      'Checkers on Fate Round is standard American (8×8) draughts — the same rules most people play in the US. Two players, 12 pieces each on the dark squares only, Black moves first. Men slide one square diagonally forward; jump an adjacent opponent to capture it — and if any jump is available you must take it, chaining multiple jumps in a single turn. Reach the far row to crown a king that moves and captures one square in any direction. Capture all of your opponent’s pieces, or leave them with no legal move, to win. Draws are detected automatically (threefold repetition or the 40-move rule). Add an optional clock — each player gets their own time bank (3, 5, or 10 minutes) that only ticks on their turn.',
+      'Checkers on FateRound is standard American (8×8) draughts — the same rules most people play in the US. Two players, 12 pieces each on the dark squares only, Black moves first. Men slide one square diagonally forward; jump an adjacent opponent to capture it — and if any jump is available you must take it, chaining multiple jumps in a single turn. Reach the far row to crown a king that moves and captures one square in any direction. Capture all of your opponent’s pieces, or leave them with no legal move, to win. Draws are detected automatically (threefold repetition or the 40-move rule). Add an optional clock — each player gets their own time bank (3, 5, or 10 minutes) that only ticks on their turn.',
     highlights: ['2 players', 'Forced jumps', 'Real-time board'],
     features: [
       {
@@ -2369,7 +2369,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How do you get a king in checkers?',
         answer:
-          'Move one of your pieces all the way to the opponent’s back row. It’s crowned a king and can then move and capture one square diagonally in any direction. Fate Round crowns kings automatically — crowning ends a multi-jump chain.',
+          'Move one of your pieces all the way to the opponent’s back row. It’s crowned a king and can then move and capture one square diagonally in any direction. FateRound crowns kings automatically — crowning ends a multi-jump chain.',
       },
     ],
   }),
@@ -2399,7 +2399,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     heroSubtitle: 'Sow seeds, capture 2s and 3s, and crown Ọta — the Yoruba classic, head-to-head.',
     bodyParagraph:
-      "Ayo on Fate Round follows traditional Ayo Olopon rules for two players online. Twelve houses, four seeds each, sow anti-clockwise around the board — skipping the house you picked up. When your last seed lands in an opponent's house with 2 or 3 seeds, you capture those seeds and any linked opponent houses ahead with 2 or 3. If their row is empty, you must sow into it when possible. When your opponent cannot move, you sweep every seed left on the board. Most captured seeds wins. The winner is Ọta; the loser is Ọpẹ. Three straight wins makes an Ọta champion.",
+      "Ayo on FateRound follows traditional Ayo Olopon rules for two players online. Twelve houses, four seeds each, sow anti-clockwise around the board — skipping the house you picked up. When your last seed lands in an opponent's house with 2 or 3 seeds, you capture those seeds and any linked opponent houses ahead with 2 or 3. If their row is empty, you must sow into it when possible. When your opponent cannot move, you sweep every seed left on the board. Most captured seeds wins. The winner is Ọta; the loser is Ọpẹ. Three straight wins makes an Ọta champion.",
     highlights: ['2 players', 'Classic capture', 'Ọta & Ọpẹ'],
     features: [
       {
@@ -2455,7 +2455,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Can I play Ayo online with friends?',
         answer:
-          'Yes — create a room on Fate Round, share the link, and a friend joins from their phone or laptop. Two players play head-to-head in real time with traditional rules. Free, no sign-up, no download.',
+          'Yes — create a room on FateRound, share the link, and a friend joins from their phone or laptop. Two players play head-to-head in real time with traditional rules. Free, no sign-up, no download.',
       },
     ],
   }),
@@ -2481,7 +2481,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       'Split into teams, describe the word without saying it, and guess as many as you can before time runs out.',
     bodyParagraph:
-      'Text Charades on Fate Round is a fast, team-based word race — like Password or Catch Phrase, online. Players join with their name and split into 2–4 teams. Each round one team is on the clock: a describer sees a secret word and types clues (without using the word), while teammates race to type the answer. Every correct guess scores a point and reveals the next word. After all the rounds, the team with the most words wins.',
+      'Text Charades on FateRound is a fast, team-based word race — like Password or Catch Phrase, online. Players join with their name and split into 2–4 teams. Each round one team is on the clock: a describer sees a secret word and types clues (without using the word), while teammates race to type the answer. Every correct guess scores a point and reveals the next word. After all the rounds, the team with the most words wins.',
     highlights: ['4–20 players', '2–4 teams', 'Race the clock'],
     features: [
       {
@@ -2590,7 +2590,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     heroSubtitle: 'The classic crossword tile game — build words, hit the premium squares, outscore your friends.',
     bodyParagraph:
-      'Scrabble on Fate Round is the classic word game for 2–4 players on a full standard 15×15 board. Draw seven tiles, take turns building interlocking words outward from the center star, and rack up points — letters are worth their standard values, and double/triple letter and word squares multiply your score. Every word you form is checked against a real dictionary, so only valid plays count. Use a blank tile as any letter, swap tiles you do not want, or pass. When the bag is empty and someone uses their last tile, the game ends and the highest score wins.',
+      'Scrabble on FateRound is the classic word game for 2–4 players on a full standard 15×15 board. Draw seven tiles, take turns building interlocking words outward from the center star, and rack up points — letters are worth their standard values, and double/triple letter and word squares multiply your score. Every word you form is checked against a real dictionary, so only valid plays count. Use a blank tile as any letter, swap tiles you do not want, or pass. When the bag is empty and someone uses their last tile, the game ends and the highest score wins.',
     highlights: ['2–4 players', 'Real dictionary', 'Premium squares'],
     features: [
       {
@@ -2638,12 +2638,12 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How does scoring work?',
         answer:
-          'Each letter has a point value, and premium squares multiply a letter or the whole word. Playing all seven tiles in one turn earns a 50-point “bingo” bonus. Fate Round tallies every play automatically, so there’s no maths or arguing over the pad.',
+          'Each letter has a point value, and premium squares multiply a letter or the whole word. Playing all seven tiles in one turn earns a 50-point “bingo” bonus. FateRound tallies every play automatically, so there’s no maths or arguing over the pad.',
       },
       {
         question: 'Can I run a Scrabble tournament online?',
         answer:
-          'Yes. Fate Round can run a Scrabble tournament as a head-to-head bracket, with your chosen dictionary and clock. Create one from the Tournaments page and share the join code — free, no app, no sign-up.',
+          'Yes. FateRound can run a Scrabble tournament as a head-to-head bracket, with your chosen dictionary and clock. Create one from the Tournaments page and share the join code — free, no app, no sign-up.',
       },
     ],
   }),
@@ -2667,7 +2667,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     heroSubtitle: 'The timeless race to 100 — roll the die, ride the ladders, slip down the snakes.',
     bodyParagraph:
-      'Snakes and Ladders on Fate Round follows classic rules: take turns rolling a single die and moving along the 1–100 board. Land on the bottom of a ladder to climb up; land on a snake’s head to slide down to its tail. Roll a 6 to take another turn. You must land on square 100 exactly to win — overshoot and your token stays put.',
+      'Snakes and Ladders on FateRound follows classic rules: take turns rolling a single die and moving along the 1–100 board. Land on the bottom of a ladder to climb up; land on a snake’s head to slide down to its tail. Roll a 6 to take another turn. You must land on square 100 exactly to win — overshoot and your token stays put.',
     highlights: ['2–6 players', 'Classic rules', 'Real-time board'],
     features: [
       {
@@ -2726,7 +2726,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     heroSubtitle: 'Trust no one — discuss, vote, and uncover the secret killers in your group.',
     bodyParagraph:
-      'Mafia on Fate Round is a real-time multiplayer social deduction game. Players are secretly assigned roles: Villagers, Mafia, Doctor, or Detective. During the Night, the Mafia votes to eliminate a player, the Doctor protects a player, and the Detective investigates players alignments. During the Day, the village discusses and votes on who they suspect is Mafia. The village wins if they eliminate all Mafia; the Mafia wins if they reach parity with the village.',
+      'Mafia on FateRound is a real-time multiplayer social deduction game. Players are secretly assigned roles: Villagers, Mafia, Doctor, or Detective. During the Night, the Mafia votes to eliminate a player, the Doctor protects a player, and the Detective investigates players alignments. During the Day, the village discusses and votes on who they suspect is Mafia. The village wins if they eliminate all Mafia; the Mafia wins if they reach parity with the village.',
     highlights: ['5–16 players', 'Secret roles', 'Voice chat supported'],
     features: [
       {
@@ -3080,7 +3080,7 @@ export function getGameBodyParagraph(content: GameLandingContent): string {
   if (content.bodyParagraph) return content.bodyParagraph
 
   const cfg = gameTypeConfig(content.gameType)
-  return `${cfg.label} on Fate Round runs entirely in the browser — no app download or account required. ${content.heroSubtitle} Create a game, share a short code with your group, and play together from any phone or computer in real time.`
+  return `${cfg.label} on FateRound runs entirely in the browser — no app download or account required. ${content.heroSubtitle} Create a game, share a short code with your group, and play together from any phone or computer in real time.`
 }
 
 export function getGameFaqs(content: GameLandingContent): GameLandingFaq[] {
@@ -3090,15 +3090,15 @@ export function getGameFaqs(content: GameLandingContent): GameLandingFaq[] {
   return [
     {
       question: `How many players do you need for ${label}?`,
-      answer: `${label} works with ${cfg.card.players.toLowerCase()}. Create a game on Fate Round, share the link or code, and everyone joins from their browser — no sign-up required.`,
+      answer: `${label} works with ${cfg.card.players.toLowerCase()}. Create a game on FateRound, share the link or code, and everyone joins from their browser — no sign-up required.`,
     },
     {
       question: `Is ${label} free to play online?`,
-      answer: `Yes. ${label} on Fate Round is completely free — no download, no payment, and no account needed. Create a game and start playing in under a minute.`,
+      answer: `Yes. ${label} on FateRound is completely free — no download, no payment, and no account needed. Create a game and start playing in under a minute.`,
     },
     {
       question: `Can I play ${label} on my phone?`,
-      answer: `Yes. Fate Round runs in any mobile browser. Share the room link in your group chat and everyone can play ${label} from their phone or desktop.`,
+      answer: `Yes. FateRound runs in any mobile browser. Share the room link in your group chat and everyone can play ${label} from their phone or desktop.`,
     },
     ...(content.extraFaqs ?? []),
   ]

@@ -289,7 +289,7 @@ export default async function GameLandingRoute({ params }: Props) {
 
             {/* Features */}
             <section>
-              <h2 className="sec-title-fr">Why play on Fate Round</h2>
+              <h2 className="sec-title-fr">Why play on FateRound</h2>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {content.features.map((f) => (
                   <div

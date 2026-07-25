@@ -801,7 +801,7 @@ yet — that's expected; the catalog defines what we build. Reused role-award ke
 | 🥉 Bronze | Midnight Gamer | Play a game between midnight and 4 AM. | 🎮 Player | `event platform.midnight_gamer` (H) |
 | 🥈 Silver | Perfect Week | Play at least one game on every day of a calendar week. | 🎮 Player | `event platform.perfect_week` (H) |
 | 🥉 Bronze | Bittersweet | Win one game and lose another in the same session. | 🎮 Player | `event platform.win_and_lose` (H) |
-| 🏆 Platinum | Fate Round Legend | Earn every other Platform trophy. | 🎮 Player | `platinum platform` |
+| 🏆 Platinum | FateRound Legend | Earn every other Platform trophy. | 🎮 Player | `platinum platform` |
 
 ## Host trophies (running the room well)
 

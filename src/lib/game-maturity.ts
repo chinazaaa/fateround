@@ -5,7 +5,7 @@ import type { GameType } from '@/types'
  * bank includes sexual or drinking references, or because the format asks players to make
  * suggestive judgements about real people (each other, most of the time).
  *
- * Fate Round also markets itself for classrooms and school championships, so these need to
+ * FateRound also markets itself for classrooms and school championships, so these need to
  * be visibly separated from the family-friendly catalogue rather than sitting in the same
  * flat grid. Keep this list in sync with `apps/mobile` — the mobile app keeps its own copy
  * (see the "web/shared parallel copies" convention).

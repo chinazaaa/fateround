@@ -48,11 +48,11 @@ This is the single biggest prerequisite. There is nothing to attach a subscripti
 - **Mobile does not sell anything — decided.** The mobile app is play-only; **all checkout happens on the web.** This sidesteps Apple/Google IAP entirely (no StoreKit/Play Billing, no 15–30% cut). What mobile still needs:
   - sign-in so a user's web-purchased plan is recognized on mobile (shared account + entitlements),
   - read-only entitlement checks (unlock the paid features the user already bought on web),
-  - **no purchase/upgrade UI in-app.** Per Apple/Google rules, don't even link out to the web paywall from inside the app; at most show "manage your plan on the website" with no tappable purchase link. Keep upsell prompts to "this is a Fate Round+ feature," not a buy button.
+  - **no purchase/upgrade UI in-app.** Per Apple/Google rules, don't even link out to the web paywall from inside the app; at most show "manage your plan on the website" with no tappable purchase link. Keep upsell prompts to "this is a FateRound+ feature," not a buy button.
 
 ### 0.3 Entitlements layer (the thing every feature checks)
 - One **`entitlements` / plan-resolution service**: given a `user_id`, return their effective plan + feature flags, resolving:
-  - direct personal sub (Fate Round+),
+  - direct personal sub (FateRound+),
   - club-derived perks (member of an active Club Pro club),
   - the **50%-off club-member discount** eligibility,
   - org/school seat membership,
@@ -62,7 +62,7 @@ This is the single biggest prerequisite. There is nothing to attach a subscripti
 
 ---
 
-## Phase 1 — Fate Round+ (Individual) perks
+## Phase 1 — FateRound+ (Individual) perks
 
 Most of these features already exist; the work is **adding the gate + the upsell UI**, not building the feature. Each needs Phase 0 done.
 
@@ -88,7 +88,7 @@ Nothing here exists. `rooms` is ephemeral and token-based; clubs are persistent,
 - **Data model:** `clubs` (owner_id, name, branding: badge/colors/banner), `club_members` (role: owner/admin/member, joined_at). RLS on `auth.uid()`.
 - **Membership limits by plan:** free = join 1 club; + = up to 3 clubs, larger sizes; Club Pro = up to 50 members. Enforce via entitlements.
 - **Club Pro subscription** billed to the owner/admin ($7.99/mo/club) — a **club-scoped** subscription, not user-scoped (new shape in the billing model).
-- **The anti-loophole rule (called out as critical in the pricing doc):** the flat club fee must **NOT** grant all members Fate Round+. Only the paying admin gets + bundled. Members get club-level perks (branding, club tournaments, club leaderboard, trophy-case visibility) only.
+- **The anti-loophole rule (called out as critical in the pricing doc):** the flat club fee must **NOT** grant all members FateRound+. Only the paying admin gets + bundled. Members get club-level perks (branding, club tournaments, club leaderboard, trophy-case visibility) only.
 - **The 50%-off member discount** — the fiddliest billing logic in the whole model:
   - any member of an *active* Club Pro club can buy personal + at $1.49/mo,
   - discount **reverts to $2.99 at next renewal if they leave** the club (needs a membership-change → Stripe subscription-update hook),
@@ -143,7 +143,7 @@ Highest-value segments, but they need an **organization/seat** layer on top of i
 
 1. **Accounts + Auth + `profiles`** (0.1) — unblocks literally everything.
 2. **Billing + entitlements** (0.2, 0.3) — Stripe, subscriptions, plan-resolution service. Web checkout only; mobile reads entitlements.
-3. **Fate Round+ gates** (Phase 1) — cheapest wins; mostly gating features that already exist (player caps, custom-deck quota, premium packs). Ship the first paid tier.
+3. **FateRound+ gates** (Phase 1) — cheapest wins; mostly gating features that already exist (player caps, custom-deck quota, premium packs). Ship the first paid tier.
 4. **Trophies + Daily challenges** (Phase 3) — the retention hooks that make + actually worth renewing.
 5. **Clubs + Club Pro** (Phase 2) — net-new product + the tricky discount/anti-loophole billing logic.
 6. **Schools + Corporate orgs** (Phase 4) — org/seat layer, content policy, verification, sales-led billing.

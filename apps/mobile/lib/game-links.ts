@@ -55,7 +55,7 @@ export function buildShareLinks(opts: {
       description: 'Send this to friends so they can join the game.',
       url: invite,
       copyLabel: 'Copy invite link',
-      shareMessage: `Join my game on Fate Round — code ${code}`,
+      shareMessage: `Join my game on FateRound — code ${code}`,
     },
   ]
 
@@ -66,7 +66,7 @@ export function buildShareLinks(opts: {
       description: 'Manage the game and play as yourself on another device.',
       url: hostPlayerUrl(gameCode, host, resume),
       copyLabel: 'Copy host + play link',
-      shareMessage: `Host + play my Fate Round game — code ${code}`,
+      shareMessage: `Host + play my FateRound game — code ${code}`,
     })
   } else if (host) {
     links.push({
@@ -75,7 +75,7 @@ export function buildShareLinks(opts: {
       description: 'Reopen your host controls on another device.',
       url: hostGameUrl(gameCode, host),
       copyLabel: 'Copy host link',
-      shareMessage: `Host my Fate Round game — code ${code}`,
+      shareMessage: `Host my FateRound game — code ${code}`,
     })
   } else if (resume) {
     links.push({
@@ -84,7 +84,7 @@ export function buildShareLinks(opts: {
       description: 'Pick up where you left off on your phone or another device.',
       url: playerResumeUrl(gameCode, resume),
       copyLabel: 'Copy continue link',
-      shareMessage: `Continue my Fate Round game — code ${code}`,
+      shareMessage: `Continue my FateRound game — code ${code}`,
     })
   }
 

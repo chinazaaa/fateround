@@ -1,4 +1,4 @@
-# Fate Round — Mobile (Expo)
+# FateRound — Mobile (Expo)
 
 React Native app alongside the web client. Same backend, token-based join — no account required to play.
 
