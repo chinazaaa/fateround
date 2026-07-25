@@ -55,10 +55,14 @@ export function useWhotNotifications({
     }
 
     // The draw pile auto-reshuffles the discards when it empties; if even that leaves nothing,
-    // the turn silently passes with no hand-count change — call both out so no one wonders why
-    // a Pick 2/Pick 3 penalty (or a plain draw) didn't add any cards.
+    // a plain draw or Pick 2/Pick 3 penalty silently passes the turn with no hand-count change —
+    // call both out so no one wonders why nothing happened. General Market (card 14) gets its own
+    // marker: it keeps the current player's turn even when dealing ran out, so it must never be
+    // reported as "turn passes".
     if (statusMessage && statusMessage !== prevStatusMessage && game.status === 'active') {
-      if (statusMessage.includes('deck reshuffled')) {
+      if (statusMessage.includes('not everyone could be dealt in')) {
+        info('🚫 Not enough cards for a full General Market')
+      } else if (statusMessage.includes('deck reshuffled')) {
         info('🔄 Draw pile empty — discards shuffled back in')
       } else if (statusMessage.includes('draw pile empty')) {
         info('🚫 No cards left to draw — turn passes')
