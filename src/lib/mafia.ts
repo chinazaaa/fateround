@@ -220,7 +220,7 @@ export function resolveMafiaNight(
   const mafiaVotes: string[] = []
   playerStates.forEach((p) => {
     if (!p.is_alive || !p.night_action_target_player_id) return
-    if (p.role === 'mafia') mafiaVotes.push(p.night_action_target_player_id)
+    if (p.role === 'mafia' || p.role === 'wolf_cub') mafiaVotes.push(p.night_action_target_player_id)
     if (p.role === 'alpha_wolf') {
       mafiaVotes.push(p.night_action_target_player_id)
       mafiaVotes.push(p.night_action_target_player_id)

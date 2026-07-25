@@ -110,7 +110,8 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'wolf_cub',
     name: 'Junior Mafia',
     team: 'mafia',
-    description: 'If you are killed, the Mafia gets a bonus kill the following night in revenge.',
+    description:
+      'Vote with your team on a player to kill each night. If you are killed, the Mafia gets a bonus kill the following night in revenge.',
   },
   framer: {
     role: 'framer',
@@ -154,4 +155,4 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
 }
 
 export const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer']
-export const NO_NIGHT_ACTION_ROLES: MafiaRole[] = ['villager', 'mayor', 'wolf_cub', 'jester', 'cursed_villager']
+export const NO_NIGHT_ACTION_ROLES: MafiaRole[] = ['villager', 'mayor', 'jester', 'cursed_villager']
