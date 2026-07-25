@@ -30,6 +30,7 @@ const ROLE_ENABLED_KEYS = [
   'cupid_enabled',
   'cursed_villager_enabled',
   'medium_enabled',
+  'priest_enabled',
 ] as const
 
 function enabledRolesFrom(session: Pick<MafiaSession, (typeof ROLE_ENABLED_KEYS)[number]>): MafiaRole[] {
@@ -50,6 +51,7 @@ function enabledRolesFrom(session: Pick<MafiaSession, (typeof ROLE_ENABLED_KEYS)
     cupid_enabled: 'cupid',
     cursed_villager_enabled: 'cursed_villager',
     medium_enabled: 'medium',
+    priest_enabled: 'priest',
   }
   for (const key of ROLE_ENABLED_KEYS) {
     if (session[key]) roles.push(map[key])
@@ -257,6 +259,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
 
     const mediumReviveRemaining = role === 'medium' ? (myPlayerState.medium_revive_used ? 0 : 1) : undefined
+    const priestHolyWaterRemaining = role === 'priest' ? (myPlayerState.priest_holy_water_used ? 0 : 1) : undefined
 
     let mediumGhostChat: MafiaMyState['mediumGhostChat'] = undefined
     if (role === 'medium' && myPlayerState.is_alive && session.phase === 'night') {
@@ -340,6 +343,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       vigilanteRevealRemaining,
       vigilanteRevealResult,
       mediumReviveRemaining,
+      priestHolyWaterRemaining,
       mediumGhostChat,
       framerLastTargetName,
       cupidLinkedNames,

@@ -38,6 +38,8 @@ export function mafiaRoleEmoji(role: string): string {
       return '☠️'
     case 'medium':
       return '🔮'
+    case 'priest':
+      return '⛪'
     default:
       return '🏘️'
   }
@@ -163,7 +165,21 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     description:
       'Can read ghost chat at night to hear the dead. Once per game, choose a dead player at night to revive them.',
   },
+  priest: {
+    role: 'priest',
+    name: 'Priest',
+    team: 'village',
+    description:
+      'Once during the day, throw holy water on another player. If they are Mafia, they die. If not, you die and their innocence is announced.',
+  },
 }
 
 export const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer']
-export const NO_NIGHT_ACTION_ROLES: MafiaRole[] = ['villager', 'mayor', 'vigilante', 'jester', 'cursed_villager']
+export const NO_NIGHT_ACTION_ROLES: MafiaRole[] = [
+  'villager',
+  'mayor',
+  'vigilante',
+  'jester',
+  'cursed_villager',
+  'priest',
+]

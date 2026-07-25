@@ -26,6 +26,7 @@ const ALL_ENABLED: MafiaRoleToggles = {
   cupid_enabled: true,
   cursed_villager_enabled: true,
   medium_enabled: true,
+  priest_enabled: true,
 }
 const NONE_ENABLED: MafiaRoleToggles = Object.fromEntries(
   Object.keys(ALL_ENABLED).map((k) => [k, false])
@@ -52,6 +53,7 @@ function makeState(overrides: Partial<MafiaPlayerState>): MafiaPlayerState {
     vigilante_reveal_used: false,
     medium_revive_used: false,
     bodyguard_hits_taken: 0,
+    priest_holy_water_used: false,
     is_lover: false,
     lover_partner_player_id: null,
     seat_number: 0,
@@ -85,8 +87,8 @@ const NIGHT_SESSION_BASE: Pick<
 }
 
 describe('assignMafiaRoles', () => {
-  it('fills all 17 roles when everything is enabled and slots allow', () => {
-    const playerIds = ids(17)
+  it('fills all 18 roles when everything is enabled and slots allow', () => {
+    const playerIds = ids(18)
     const assignments = assignMafiaRoles(playerIds, ALL_ENABLED, 4)
     const roles = new Set(Object.values(assignments))
     // mafiaCount=4 with alpha_wolf+wolf_cub each converting one base mafia slot leaves 2 plain 'mafia'
@@ -107,11 +109,12 @@ describe('assignMafiaRoles', () => {
       'arsonist',
       'cupid',
       'cursed_villager',
+      'priest',
     ]
     for (const role of optionalRoles) {
       expect(roles.has(role)).toBe(true)
     }
-    expect(Object.keys(assignments)).toHaveLength(17)
+    expect(Object.keys(assignments)).toHaveLength(18)
   })
 
   it('does not assign alpha_wolf or wolf_cub when mafiaCount < 2', () => {

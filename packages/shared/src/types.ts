@@ -1271,6 +1271,8 @@ export type MafiaRole =
   | 'arsonist'
   | 'cupid'
   | 'cursed_villager'
+  | 'medium'
+  | 'priest'
 export type MafiaTeam = 'village' | 'mafia' | 'jester' | 'serial_killer' | 'arsonist'
 export type MafiaDeathCause = 'mafia_kill' | 'village_vote' | 'serial_kill' | 'arson' | 'vigilante_kill'
 export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'day' | 'voting' | 'elimination' | 'game_over'

@@ -74,6 +74,7 @@ export function assignMafiaRoles(
   pushIfRoom('detective', toggles.detective_enabled)
   pushIfRoom('bodyguard', toggles.bodyguard_enabled)
   pushIfRoom('medium', toggles.medium_enabled)
+  pushIfRoom('priest', toggles.priest_enabled)
 
   // Round 1: one Solo, one Special
   pushIfRoom('arsonist', toggles.arsonist_enabled)
@@ -388,7 +389,7 @@ export async function initializeMafiaGame(
   const { data: gameData, error: gameError } = await admin
     .from('games')
     .select(
-      'mafia_doctor_enabled, mafia_detective_enabled, mafia_bodyguard_enabled, mafia_mayor_enabled, mafia_vigilante_enabled, mafia_tracker_enabled, mafia_alpha_wolf_enabled, mafia_wolf_cub_enabled, mafia_framer_enabled, mafia_jester_enabled, mafia_serial_killer_enabled, mafia_arsonist_enabled, mafia_cupid_enabled, mafia_cursed_villager_enabled, mafia_medium_enabled, mafia_count, mafia_anonymous_votes'
+      'mafia_doctor_enabled, mafia_detective_enabled, mafia_bodyguard_enabled, mafia_mayor_enabled, mafia_vigilante_enabled, mafia_tracker_enabled, mafia_alpha_wolf_enabled, mafia_wolf_cub_enabled, mafia_framer_enabled, mafia_jester_enabled, mafia_serial_killer_enabled, mafia_arsonist_enabled, mafia_cupid_enabled, mafia_cursed_villager_enabled, mafia_medium_enabled, mafia_priest_enabled, mafia_count, mafia_anonymous_votes'
     )
     .eq('id', gameId)
     .single()
@@ -413,6 +414,7 @@ export async function initializeMafiaGame(
     cupid_enabled: gameData.mafia_cupid_enabled !== false,
     cursed_villager_enabled: gameData.mafia_cursed_villager_enabled !== false,
     medium_enabled: gameData.mafia_medium_enabled !== false,
+    priest_enabled: gameData.mafia_priest_enabled !== false,
   }
   const anonymousVotes = gameData.mafia_anonymous_votes === true
   const resolvedMafiaCount =

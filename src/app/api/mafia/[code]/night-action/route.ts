@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import type { MafiaPlayerState, MafiaSession } from '@/types'
 
-const NO_NIGHT_ACTION_ROLES = new Set(['villager', 'mayor', 'jester', 'cursed_villager', 'vigilante'])
+const NO_NIGHT_ACTION_ROLES = new Set(['villager', 'mayor', 'jester', 'cursed_villager', 'vigilante', 'priest'])
 const ROLE_ENABLED_FIELD: Partial<Record<string, keyof MafiaSession>> = {
   doctor: 'doctor_enabled',
   detective: 'detective_enabled',
