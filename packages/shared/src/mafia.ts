@@ -95,6 +95,10 @@ export function mafiaRoleEmoji(role: string): string {
       return '🎀'
     case 'trapper':
       return '🪤'
+    case 'seer':
+      return '👁️'
+    case 'mafia_seer':
+      return '👁️‍🗨️'
     default:
       return '🏘️'
   }
@@ -252,6 +256,19 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     team: 'village',
     description:
       "Each night, either set a trap on a player's house (up to 3 at once) or activate all your traps. Trapped players can't be killed while active — a Mafia kill on one instead kills the Mafia's weakest member, other attackers are simply blocked.",
+  },
+  seer: {
+    role: 'seer',
+    name: 'Seer',
+    team: 'village',
+    description: 'Each night, select a player to uncover their exact role.',
+  },
+  mafia_seer: {
+    role: 'mafia_seer',
+    name: 'Mafia Seer',
+    team: 'mafia',
+    description:
+      'Each night, select a player to uncover their exact role, and share what you learn with your fellow Mafia. You cannot vote to kill unless you resign your ability (self-target at night), permanently becoming a Regular Mafia.',
   },
 }
 

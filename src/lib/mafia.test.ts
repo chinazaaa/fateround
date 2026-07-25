@@ -187,6 +187,36 @@ describe('assignMafiaRoles', () => {
   })
 })
 
+describe('resolveMafiaNight — Seer / Mafia Seer', () => {
+  it('reveals the Seer and Mafia Seer targets', () => {
+    const seer = makeState({ id: 's', player_id: 's', role: 'seer', night_action_target_player_id: 'v1' })
+    const mafiaSeer = makeState({
+      id: 'ms',
+      player_id: 'ms',
+      role: 'mafia_seer',
+      night_action_target_player_id: 'v2',
+    })
+    const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+    const v2 = makeState({ id: 'v2', player_id: 'v2', role: 'doctor' })
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [seer, mafiaSeer, v1, v2])
+    expect(result.seerTarget).toBe('v1')
+    expect(result.mafiaSeerTarget).toBe('v2')
+  })
+
+  it('Mafia Seer does not count toward the Mafia kill vote unless resigned', () => {
+    const mafiaSeer = makeState({
+      id: 'ms',
+      player_id: 'ms',
+      role: 'mafia_seer',
+      night_action_target_player_id: 'v1', // this is a seer pick, not a kill vote
+    })
+    const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [mafiaSeer, v1])
+    expect(result.mafiaTarget).toBeNull()
+    expect(result.deaths).toEqual([])
+  })
+})
+
 describe('resolveMafiaNight', () => {
   it('bodyguard absorbs first hit when protecting the mafia kill target', () => {
     const bodyguard = makeState({ id: 'bg', player_id: 'bg', role: 'bodyguard', night_action_target_player_id: 'v1' })

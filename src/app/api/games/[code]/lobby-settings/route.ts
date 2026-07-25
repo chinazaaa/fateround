@@ -157,6 +157,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mafia_witch_enabled,
     mafia_little_girl_enabled,
     mafia_trapper_enabled,
+    mafia_seer_enabled,
+    mafia_mafia_seer_enabled,
     mafia_bodyguard_enabled,
     mafia_mayor_enabled,
     mafia_vigilante_enabled,
@@ -228,6 +230,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mafia_witch_enabled === undefined &&
     mafia_little_girl_enabled === undefined &&
     mafia_trapper_enabled === undefined &&
+    mafia_seer_enabled === undefined &&
+    mafia_mafia_seer_enabled === undefined &&
     mafia_bodyguard_enabled === undefined &&
     mafia_mayor_enabled === undefined &&
     mafia_vigilante_enabled === undefined &&
@@ -630,6 +634,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (mafia_witch_enabled !== undefined) gameUpdate.mafia_witch_enabled = mafia_witch_enabled
     if (mafia_little_girl_enabled !== undefined) gameUpdate.mafia_little_girl_enabled = mafia_little_girl_enabled
     if (mafia_trapper_enabled !== undefined) gameUpdate.mafia_trapper_enabled = mafia_trapper_enabled
+    if (mafia_seer_enabled !== undefined) gameUpdate.mafia_seer_enabled = mafia_seer_enabled
+    if (mafia_mafia_seer_enabled !== undefined) gameUpdate.mafia_mafia_seer_enabled = mafia_mafia_seer_enabled
     if (mafia_bodyguard_enabled !== undefined) gameUpdate.mafia_bodyguard_enabled = mafia_bodyguard_enabled
     if (mafia_mayor_enabled !== undefined) gameUpdate.mafia_mayor_enabled = mafia_mayor_enabled
     if (mafia_vigilante_enabled !== undefined) gameUpdate.mafia_vigilante_enabled = mafia_vigilante_enabled
@@ -656,6 +662,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mafia_witch_enabled !== undefined ||
     mafia_little_girl_enabled !== undefined ||
     mafia_trapper_enabled !== undefined ||
+    mafia_seer_enabled !== undefined ||
+    mafia_mafia_seer_enabled !== undefined ||
     mafia_bodyguard_enabled !== undefined ||
     mafia_mayor_enabled !== undefined ||
     mafia_vigilante_enabled !== undefined ||
