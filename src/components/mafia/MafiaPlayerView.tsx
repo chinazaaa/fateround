@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -34,7 +34,7 @@ import { MafiaIdentityPanel } from './MafiaIdentityPanel'
 import { MafiaPhaseCard } from './MafiaPhaseCard'
 import { MafiaPlayersGrid } from './MafiaPlayersGrid'
 import { MafiaRolesDrawer } from './MafiaRolesDrawer'
-import { MAFIA_TEAM_ROLES } from './mafia-role-info'
+import { MAFIA_TEAM_ROLES, NO_NIGHT_ACTION_ROLES } from './mafia-role-info'
 import type { MafiaStateResponse } from './mafia-types'
 import type { Game } from '@/types'
 
@@ -206,6 +206,22 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       setActing(false)
     }
   }
+
+  // Tap-to-act selection state — tapping a tile in MafiaPlayersGrid is the primary way to
+  // act/vote (no separate button list); a fresh submission overwrites the previous one
+  // server-side, so players can change their pick anytime before the phase ends by tapping
+  // a different tile. Cupid's two-step pick and the current highlighted selection reset
+  // whenever the phase or day number changes.
+  const [cupidFirstPick, setCupidFirstPick] = useState<string | null>(null)
+  const [nightSelection, setNightSelection] = useState<string | null>(null)
+  const [voteSelection, setVoteSelection] = useState<string | null>(null)
+  const phaseKey = `${mafiaState?.phase ?? ''}:${mafiaState?.dayNumber ?? 0}`
+  useEffect(() => {
+    setCupidFirstPick(null)
+    setNightSelection(null)
+    setVoteSelection(null)
+     
+  }, [phaseKey])
 
   const triggerAutoAdvance = useCallback(async () => {
     try {
@@ -445,6 +461,49 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     const amISpectator = !!myPlayerId && me == null
     const amIAlive = me != null && me.isAlive !== false
     const votedPlayer = publicPlayers.find((p) => p.id === lastVoteResultPlayerId)
+    const myRole = myState?.role
+    const newlyDeadTonight = publicPlayers.filter(
+      (p) => !p.isAlive && p.deathDay === dayNumber && p.deathCause !== 'village_vote'
+    )
+
+    // Tap-a-tile action routing: which roster taps do what, depending on phase/role. Cupid's
+    // two-step pick and the current highlighted selection are tracked in local state above.
+    let gridOnSelect: ((id: string) => void) | undefined
+    let gridSelectedIds: string[] = []
+    if (amIAlive && !amISpectator) {
+      if (phase === 'night' && myRole && !NO_NIGHT_ACTION_ROLES.includes(myRole)) {
+        if (myRole === 'cupid') {
+          if (!myState?.cupidLinkedNames && dayNumber === 1) {
+            gridOnSelect = (id) => {
+              if (!cupidFirstPick) {
+                setCupidFirstPick(id)
+              } else {
+                void submitNightAction(cupidFirstPick, id)
+                setCupidFirstPick(null)
+              }
+            }
+            gridSelectedIds = cupidFirstPick ? [cupidFirstPick] : []
+          }
+        } else if (myRole === 'vigilante' && (myState?.vigilanteShotsRemaining ?? 0) < 1) {
+          // No shots remaining — no tap action available.
+        } else {
+          gridOnSelect = (id) => {
+            setNightSelection(id)
+            void submitNightAction(id)
+          }
+          gridSelectedIds = nightSelection ? [nightSelection] : []
+        }
+      } else if (phase === 'voting') {
+        gridOnSelect = (id) => {
+          setVoteSelection(id)
+          void submitDayVote(id)
+        }
+        gridSelectedIds = voteSelection ? [voteSelection] : []
+      }
+    }
+    const cupidFirstPickName = cupidFirstPick
+      ? (publicPlayers.find((p) => p.id === cupidFirstPick)?.name ?? null)
+      : null
 
     return (
       <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col">
@@ -482,20 +541,28 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
             <MafiaPhaseCard
               phase={phase}
               dayNumber={dayNumber}
-              publicPlayers={publicPlayers}
-              myPlayerId={myPlayerId}
               myState={myState}
-              voteTallies={voteTallies}
               votedPlayer={votedPlayer}
               lastNightMafiaHadTarget={lastNightMafiaHadTarget}
               amIAlive={amIAlive}
               amISpectator={amISpectator}
               acting={acting}
-              onNightAction={submitNightAction}
-              onDayVote={submitDayVote}
+              cupidFirstPickName={cupidFirstPickName}
+              onIgnite={() => {
+                if (myPlayerId) void submitNightAction(myPlayerId)
+              }}
+              onSkipVote={() => void submitDayVote(null)}
+              newlyDeadTonight={newlyDeadTonight}
             />
 
-            <MafiaPlayersGrid players={publicPlayers} myPlayerId={myPlayerId} phase={phase} voteTallies={voteTallies} />
+            <MafiaPlayersGrid
+              players={publicPlayers}
+              myPlayerId={myPlayerId}
+              phase={phase}
+              voteTallies={voteTallies}
+              onSelect={gridOnSelect}
+              selectedIds={gridSelectedIds}
+            />
 
             {phase !== 'night' && phase !== 'role_reveal' && (
               <MafiaDayChat
