@@ -129,6 +129,9 @@ export interface Game {
   codewords_randomize_teams?: boolean | null
   mafia_doctor_enabled?: boolean | null
   mafia_detective_enabled?: boolean | null
+  mafia_aura_seer_enabled?: boolean | null
+  mafia_seer_enabled?: boolean | null
+  mafia_mafia_seer_enabled?: boolean | null
   mafia_anonymous_votes?: boolean | null
   monopoly_double_go_salary?: boolean | null
   monopoly_forced_auctions?: boolean | null
@@ -1273,8 +1276,21 @@ export type MafiaRole =
   | 'cursed_villager'
   | 'medium'
   | 'priest'
+  | 'witch'
+  | 'little_girl'
+  | 'trapper'
+  | 'aura_seer'
+  | 'seer'
+  | 'mafia_seer'
 export type MafiaTeam = 'village' | 'mafia' | 'jester' | 'serial_killer' | 'arsonist'
-export type MafiaDeathCause = 'mafia_kill' | 'village_vote' | 'serial_kill' | 'arson' | 'vigilante_kill'
+export type MafiaDeathCause =
+  | 'mafia_kill'
+  | 'village_vote'
+  | 'serial_kill'
+  | 'arson'
+  | 'vigilante_kill'
+  | 'witch_kill'
+  | 'trap_kill'
 export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'day' | 'voting' | 'elimination' | 'game_over'
 
 export interface MafiaPublicPlayer {
@@ -1300,7 +1316,10 @@ export interface MafiaMyState {
   team: MafiaTeam
   nightActionSubmitted: boolean
   dayVoteSubmitted: boolean
-  detectiveResult: { targetName: string; alignment: MafiaTeam } | null
+  auraSeerResult: { targetName: string; alignment: 'good' | 'evil' | 'unknown' } | null
+  detectiveTeamCheckResult?: { targetAName: string; targetBName: string; sameTeam: boolean } | null
+  seerResult?: { targetName: string; role: MafiaRole } | null
+  mafiaSeerResult?: { targetName: string; role: MafiaRole } | null
   mafiaTeammates: string[]
   mafiaChatMessages?: MafiaChatMessage[]
   trackerResult?: { targetName: string; visitedName: string | null } | null
@@ -1310,6 +1329,7 @@ export interface MafiaMyState {
   cupidLinkedNames?: [string, string] | null
   isLover?: boolean
   loverPartnerName?: string | null
+  loverIds?: string[]
   enabledRoles?: MafiaRole[]
 }
 

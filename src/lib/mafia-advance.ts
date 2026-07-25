@@ -7,8 +7,9 @@ import {
   resolveMafiaNight,
   resolveMafiaDayVote,
   mafiaRoleTeam,
+  auraSeerAlignment,
 } from '@/lib/mafia'
-import { MAFIA_ROLE_INFO } from '@/components/mafia/mafia-role-info'
+import { MAFIA_ROLE_INFO, mafiaRoleEmoji } from '@/components/mafia/mafia-role-info'
 import type { MafiaPlayerState, MafiaSession, MafiaPhase } from '@/types'
 
 const KILLER_LABEL: Record<string, string> = {
@@ -16,6 +17,8 @@ const KILLER_LABEL: Record<string, string> = {
   serial_kill: 'The Serial Killer',
   arson: 'The Arsonist',
   vigilante_kill: 'The Vigilante',
+  witch_kill: 'The Witch',
+  trap_kill: 'A Trapper trap',
 }
 
 /**
@@ -155,7 +158,7 @@ export async function runMafiaAdvance(
     const {
       mafiaTarget,
       doctorTarget,
-      detectiveTarget,
+      auraSeerTarget,
       bodyguardTarget,
       bodyguardSacrificePlayerId,
       bodyguardHitsTaken,
@@ -168,11 +171,24 @@ export async function runMafiaAdvance(
       cursedConvertedPlayerId,
       wolfCubDiedThisNight,
       deaths,
+      witchHealTarget,
+      witchKillTarget,
+      witchHealActuallySaved,
+      littleGirlOpenedEyes,
+      littleGirlOutcome,
+      littleGirlDetectedMafiaId,
+      trapperActivated,
+      trapperBlockedPlayerIds,
+      trapperKilledMafiaId,
+      seerTarget,
+      mafiaSeerTarget,
     } = resolution
 
     updateFields.mafia_target_player_id = mafiaTarget
     updateFields.doctor_target_player_id = doctorTarget
-    updateFields.detect_target_player_id = detectiveTarget
+    updateFields.aura_seer_target_player_id = auraSeerTarget
+    updateFields.seer_target_player_id = seerTarget
+    updateFields.mafia_seer_target_player_id = mafiaSeerTarget
     updateFields.bodyguard_target_player_id = bodyguardTarget
     updateFields.bodyguard_sacrifice_player_id = bodyguardSacrificePlayerId
     updateFields.tracker_visited_player_id = trackerVisited
@@ -233,7 +249,21 @@ export async function runMafiaAdvance(
       )
     }
     if (deaths.length === 0) {
-      systemMessages.push(mafiaTarget ? '🏥 Someone was saved!' : '😴 No one was attacked last night.')
+      if (!mafiaTarget) {
+        systemMessages.push('😴 No one was attacked last night.')
+      } else if (doctorTarget === mafiaTarget) {
+        systemMessages.push('🏥 The Doctor saved someone!')
+      } else if (witchHealActuallySaved && witchHealTarget === mafiaTarget) {
+        systemMessages.push('🧪 The Witch saved someone!')
+      } else if (trapperBlockedPlayerIds.includes(mafiaTarget)) {
+        systemMessages.push("🪤 A trap foiled the Mafia's attack!")
+      } else if (cursedConvertedPlayerId === mafiaTarget) {
+        systemMessages.push("☠️ The Mafia's target turned out to be one of their own...")
+      } else if (bodyguardHitsTaken === 0) {
+        // No known protection blocked it (e.g. the target was immune, like the Arsonist) and
+        // the Bodyguard case is already announced above via "🛡️ Someone was protected!".
+        systemMessages.push('😴 No one died last night.')
+      }
     }
 
     if (mediumRevivePlayerId) {
@@ -266,22 +296,62 @@ export async function runMafiaAdvance(
     // what they investigated/tracked on each night.
     const privateMessages: Array<{ target_player_id: string; message: string }> = []
 
-    // Detective
-    if (detectiveTarget) {
-      const detective = playerStates.find((p) => p.role === 'detective' && p.is_alive)
-      if (detective) {
-        const framed = framedPlayerId === detectiveTarget
-        const targetState = playerStates.find((p) => p.player_id === detectiveTarget)
-        const alignment = targetState
-          ? framed
-            ? 'MAFIA 🔪'
-            : mafiaRoleTeam(targetState.role) === 'mafia'
-              ? 'MAFIA 🔪'
-              : 'INNOCENT 🏘️'
-          : 'UNKNOWN'
+    // Aura Seer — Good/Evil/Unknown, not a plain Village/Mafia binary
+    if (auraSeerTarget) {
+      const auraSeer = playerStates.find((p) => p.role === 'aura_seer' && p.is_alive)
+      const targetState = playerStates.find((p) => p.player_id === auraSeerTarget)
+      if (auraSeer && targetState) {
+        const framed = framedPlayerId === auraSeerTarget
+        const alignment = auraSeerAlignment(targetState.role, framed)
+        const alignmentLabel = alignment === 'evil' ? 'EVIL 🔪' : alignment === 'unknown' ? 'UNKNOWN ❓' : 'GOOD 🏘️'
+        privateMessages.push({
+          target_player_id: auraSeer.player_id,
+          message: `🔍 Night ${session.day_number}: ${playerLabel(auraSeerTarget)} is ${alignmentLabel}`,
+        })
+      }
+    }
+
+    // Detective — checks two players for same-team membership (honors the Framer's frame)
+    const detective = playerStates.find((p) => p.role === 'detective' && p.is_alive)
+    if (detective?.night_action_target_player_id && detective.night_action_target_player_id_2) {
+      const targetAId = detective.night_action_target_player_id
+      const targetBId = detective.night_action_target_player_id_2
+      const targetAState = playerStates.find((p) => p.player_id === targetAId)
+      const targetBState = playerStates.find((p) => p.player_id === targetBId)
+      if (targetAState && targetBState) {
+        const teamOf = (playerId: string, state: MafiaPlayerState) =>
+          framedPlayerId === playerId ? 'mafia' : mafiaRoleTeam(state.role)
+        const sameTeam = teamOf(targetAId, targetAState) === teamOf(targetBId, targetBState)
         privateMessages.push({
           target_player_id: detective.player_id,
-          message: `🔍 Night ${session.day_number}: ${playerLabel(detectiveTarget)} is ${alignment}`,
+          message: `🕵️ Night ${session.day_number}: ${playerLabel(targetAId)} and ${playerLabel(targetBId)} are ${
+            sameTeam ? 'on the SAME team!' : 'NOT on the same team.'
+          }`,
+        })
+      }
+    }
+
+    // Seer — reveals the target's exact role (village-aligned, no restrictions)
+    if (seerTarget) {
+      const seer = playerStates.find((p) => p.role === 'seer' && p.is_alive)
+      const targetState = playerStates.find((p) => p.player_id === seerTarget)
+      if (seer && targetState) {
+        privateMessages.push({
+          target_player_id: seer.player_id,
+          message: `👁️ Night ${session.day_number}: ${playerLabel(seerTarget)} is ${roleLabel(targetState.role)}`,
+        })
+      }
+    }
+
+    // Mafia Seer — reveals the target's exact role; shares nothing automatically with the
+    // crew (the role description has them relay it themselves via the secret chat).
+    if (mafiaSeerTarget) {
+      const mafiaSeer = playerStates.find((p) => p.role === 'mafia_seer' && p.is_alive)
+      const targetState = playerStates.find((p) => p.player_id === mafiaSeerTarget)
+      if (mafiaSeer && targetState) {
+        privateMessages.push({
+          target_player_id: mafiaSeer.player_id,
+          message: `👁️‍🗨️ Night ${session.day_number}: ${playerLabel(mafiaSeerTarget)} is ${roleLabel(targetState.role)}`,
         })
       }
     }
@@ -354,6 +424,103 @@ export async function runMafiaAdvance(
         target_player_id: framer.player_id,
         message: `🎭 Night ${session.day_number}: You framed ${playerLabel(framer.night_action_target_player_id)}`,
       })
+    }
+
+    // Witch heal potion — only actually consumed if it saved someone from a real attack; a
+    // whiffed heal (target wasn't attacked) costs nothing and can be reused another night.
+    if (witchHealTarget) {
+      const witch = playerStates.find((p) => p.role === 'witch' && p.is_alive)
+      if (witch) {
+        if (witchHealActuallySaved) {
+          pendingEffects.push(() =>
+            admin.from('mafia_player_states').update({ witch_heal_used: true }).eq('id', witch.id)
+          )
+        }
+        privateMessages.push({
+          target_player_id: witch.player_id,
+          message: witchHealActuallySaved
+            ? `🧪 Night ${session.day_number}: Your heal potion saved your target! (Potion used up.)`
+            : `🧪 Night ${session.day_number}: Your target wasn't attacked — your heal potion is still available.`,
+        })
+        if (witchHealActuallySaved && witchHealTarget !== witch.player_id) {
+          privateMessages.push({
+            target_player_id: witchHealTarget,
+            message: `🧪 Night ${session.day_number}: You were saved last night!`,
+          })
+        }
+      }
+    }
+
+    // Witch kill potion — unblockable poison, once per game (night-1 use blocked at submission)
+    if (witchKillTarget) {
+      const witch = playerStates.find((p) => p.role === 'witch' && p.is_alive)
+      if (witch) {
+        pendingEffects.push(() =>
+          admin.from('mafia_player_states').update({ witch_kill_used: true }).eq('id', witch.id)
+        )
+        privateMessages.push({
+          target_player_id: witch.player_id,
+          message: `🧪 Night ${session.day_number}: Your kill potion struck ${playerLabel(witchKillTarget)}.`,
+        })
+      }
+    }
+
+    // Little Girl — chose to open her eyes: 75% nothing, 20% identifies a Mafia member, 5% caught
+    if (littleGirlOpenedEyes) {
+      const littleGirl = playerStates.find((p) => p.role === 'little_girl')
+      if (littleGirl) {
+        if (littleGirlOutcome === 'caught') {
+          privateMessages.push({
+            target_player_id: littleGirl.player_id,
+            message: `🎀 Night ${session.day_number}: The Mafia caught you! You will die tonight.`,
+          })
+        } else if (littleGirlOutcome === 'detected' && littleGirlDetectedMafiaId) {
+          const detected = playerStates.find((p) => p.player_id === littleGirlDetectedMafiaId)
+          const roleTag = detected
+            ? `${mafiaRoleEmoji(detected.role)} ${MAFIA_ROLE_INFO[detected.role]?.name ?? detected.role}`
+            : ''
+          privateMessages.push({
+            target_player_id: littleGirl.player_id,
+            message: `🎀 Night ${session.day_number}: You found a mafia! ${playerLabel(littleGirlDetectedMafiaId)} ${roleTag}`,
+          })
+        } else {
+          privateMessages.push({
+            target_player_id: littleGirl.player_id,
+            message: `🎀 Night ${session.day_number}: It was too dark. You couldn't see anything tonight.`,
+          })
+        }
+      }
+    }
+
+    // Trapper — either set a new trap (accumulates, up to 3) or activated all set traps this
+    // night (traps are consumed on activation regardless of whether anything triggered them).
+    const trapper = playerStates.find((p) => p.role === 'trapper' && p.is_alive)
+    if (trapper) {
+      if (trapperActivated) {
+        pendingEffects.push(() =>
+          admin.from('mafia_player_states').update({ trapper_trap_player_ids: [] }).eq('id', trapper.id)
+        )
+        if (trapperBlockedPlayerIds.length > 0) {
+          const blockedNames = trapperBlockedPlayerIds.map((id) => playerLabel(id)).join(', ')
+          privateMessages.push({
+            target_player_id: trapper.player_id,
+            message: trapperKilledMafiaId
+              ? `🪤 Night ${session.day_number}: Your traps caught the Mafia attacking ${blockedNames}! ${playerLabel(trapperKilledMafiaId)} died in the blast.`
+              : `🪤 Night ${session.day_number}: Your traps blocked an attack on ${blockedNames} — the attacker survived.`,
+          })
+        } else {
+          privateMessages.push({
+            target_player_id: trapper.player_id,
+            message: `🪤 Night ${session.day_number}: You activated your traps, but nothing triggered them.`,
+          })
+        }
+      } else if (trapper.night_action_target_player_id && trapper.night_action_target_player_id !== trapper.player_id) {
+        const trapCount = trapper.trapper_trap_player_ids?.length ?? 0
+        privateMessages.push({
+          target_player_id: trapper.player_id,
+          message: `🪤 Night ${session.day_number}: You set a trap on ${playerLabel(trapper.night_action_target_player_id)}. (${trapCount}/3 traps set)`,
+        })
+      }
     }
 
     if (privateMessages.length > 0) {
@@ -442,7 +609,9 @@ export async function runMafiaAdvance(
     // would keep showing on every subsequent day for the rest of the game.
     updateFields.mafia_target_player_id = null
     updateFields.doctor_target_player_id = null
-    updateFields.detect_target_player_id = null
+    updateFields.aura_seer_target_player_id = null
+    updateFields.seer_target_player_id = null
+    updateFields.mafia_seer_target_player_id = null
     updateFields.bodyguard_target_player_id = null
     updateFields.bodyguard_sacrifice_player_id = null
     updateFields.tracker_visited_player_id = null

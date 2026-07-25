@@ -6,6 +6,7 @@ import type { MafiaPlayerState, MafiaSession } from '@/types'
 const NO_NIGHT_ACTION_ROLES = new Set(['villager', 'mayor', 'jester', 'cursed_villager', 'vigilante', 'priest'])
 const ROLE_ENABLED_FIELD: Partial<Record<string, keyof MafiaSession>> = {
   doctor: 'doctor_enabled',
+  aura_seer: 'aura_seer_enabled',
   detective: 'detective_enabled',
   bodyguard: 'bodyguard_enabled',
   vigilante: 'vigilante_enabled',
@@ -16,24 +17,47 @@ const ROLE_ENABLED_FIELD: Partial<Record<string, keyof MafiaSession>> = {
   arsonist: 'arsonist_enabled',
   cupid: 'cupid_enabled',
   medium: 'medium_enabled',
+  witch: 'witch_enabled',
+  little_girl: 'little_girl_enabled',
+  trapper: 'trapper_enabled',
+  seer: 'seer_enabled',
+  mafia_seer: 'mafia_seer_enabled',
 }
 // Roles that may never target themselves (self-target is either meaningless or reserved
 // for a different action, e.g. Arsonist self-target signals "ignite" instead of "douse").
-const NO_SELF_TARGET_ROLES = new Set(['doctor', 'bodyguard', 'vigilante', 'tracker', 'framer', 'serial_killer'])
+// Little Girl, Trapper, and Mafia Seer are deliberately absent — self-target is how each of
+// them signals their alternate action (open eyes / activate traps / resign), handled in their
+// own custom branches.
+const NO_SELF_TARGET_ROLES = new Set([
+  'doctor',
+  'aura_seer',
+  'seer',
+  'bodyguard',
+  'vigilante',
+  'tracker',
+  'framer',
+  'serial_killer',
+])
+const TRAPPER_MAX_TRAPS = 3
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
   const gameId = code.toUpperCase()
   const admin = getSupabaseAdmin()
 
-  let body: { resumeToken?: unknown; targetPlayerId?: unknown; secondTargetPlayerId?: unknown }
+  let body: {
+    resumeToken?: unknown
+    targetPlayerId?: unknown
+    secondTargetPlayerId?: unknown
+    potionType?: unknown
+  }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
   }
 
-  const { resumeToken, targetPlayerId, secondTargetPlayerId } = body
+  const { resumeToken, targetPlayerId, secondTargetPlayerId, potionType } = body
   if (typeof resumeToken !== 'string' || typeof targetPlayerId !== 'string') {
     return NextResponse.json({ error: 'Invalid parameters' }, { status: 400 })
   }
@@ -115,6 +139,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (!linked || linked.length === 0) {
       return NextResponse.json({ error: 'Lovers have already been linked' }, { status: 400 })
     }
+    const { data: loverPlayers } = await admin
+      .from('players')
+      .select('id, name')
+      .in('id', [targetPlayerId, secondTargetPlayerId])
+    const firstName =
+      loverPlayers?.find((p) => p.id === targetPlayerId)?.name != null
+        ? `#${first.seat_number} ${loverPlayers.find((p) => p.id === targetPlayerId)!.name}`
+        : 'Someone'
+    const secondName =
+      loverPlayers?.find((p) => p.id === secondTargetPlayerId)?.name != null
+        ? `#${second.seat_number} ${loverPlayers.find((p) => p.id === secondTargetPlayerId)!.name}`
+        : 'Someone'
+
     await Promise.all([
       admin
         .from('mafia_player_states')
@@ -124,7 +161,165 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         .from('mafia_player_states')
         .update({ is_lover: true, lover_partner_player_id: targetPlayerId })
         .eq('id', second.id),
+      admin.from('mafia_chat_messages').insert([
+        {
+          game_id: gameId,
+          sender_player_id: 'system',
+          sender_name: '💘',
+          message: `💘 Cupid has linked you with ${secondName} as Lovers! You win together if you both survive.`,
+          scope: 'day',
+          target_player_id: targetPlayerId,
+        },
+        {
+          game_id: gameId,
+          sender_player_id: 'system',
+          sender_name: '💘',
+          message: `💘 Cupid has linked you with ${firstName} as Lovers! You win together if you both survive.`,
+          scope: 'day',
+          target_player_id: secondTargetPlayerId,
+        },
+        {
+          game_id: gameId,
+          sender_player_id: 'system',
+          sender_name: '💘',
+          message: `💘 You linked ${firstName} and ${secondName} as Lovers.`,
+          scope: 'day',
+          target_player_id: playerId,
+        },
+      ]),
     ])
+    return NextResponse.json({ success: true })
+  }
+
+  // Mafia Seer: self-target resigns the reveal ability, permanently converting to a Regular
+  // Mafia (gaining the kill vote) — resolved immediately, not deferred to phase advance. Any
+  // other target falls through to the generic single-target reveal below, same as Seer.
+  if (role === 'mafia_seer' && targetPlayerId === playerId) {
+    const { error: updateError } = await admin
+      .from('mafia_player_states')
+      .update({ role: 'mafia', night_action_target_player_id: null })
+      .eq('id', myState.id)
+    if (updateError) return NextResponse.json({ error: 'Failed to resign' }, { status: 500 })
+    return NextResponse.json({ success: true, resigned: true })
+  }
+
+  // Witch: two independent single-use potions, submitted as separate calls (potionType
+  // distinguishes which one this submission is for). Heal goes on the "2" target column
+  // (shares the doctor's protection check), kill goes on the primary target column.
+  if (role === 'witch') {
+    if (potionType !== 'heal' && potionType !== 'kill') {
+      return NextResponse.json({ error: 'Witch must choose a potion type' }, { status: 400 })
+    }
+    if (potionType === 'kill') {
+      if (session.day_number === 1) {
+        return NextResponse.json({ error: 'The kill potion cannot be used on night 1' }, { status: 400 })
+      }
+      if (myState.witch_kill_used) {
+        return NextResponse.json({ error: 'Kill potion already used' }, { status: 400 })
+      }
+      if (targetPlayerId === playerId) {
+        return NextResponse.json({ error: 'You cannot use the kill potion on yourself' }, { status: 400 })
+      }
+      const targetState = playerStates.find((p) => p.player_id === targetPlayerId)
+      if (!targetState || !targetState.is_alive) {
+        return NextResponse.json({ error: 'Target player not found' }, { status: 404 })
+      }
+      const { error: updateError } = await admin
+        .from('mafia_player_states')
+        .update({ night_action_target_player_id: targetPlayerId })
+        .eq('id', myState.id)
+      if (updateError) return NextResponse.json({ error: 'Failed to submit night action' }, { status: 500 })
+      return NextResponse.json({ success: true })
+    }
+    if (myState.witch_heal_used) {
+      return NextResponse.json({ error: 'Heal potion already used' }, { status: 400 })
+    }
+    const targetState = playerStates.find((p) => p.player_id === targetPlayerId)
+    if (!targetState || !targetState.is_alive) {
+      return NextResponse.json({ error: 'Target player not found' }, { status: 404 })
+    }
+    const { error: updateError } = await admin
+      .from('mafia_player_states')
+      .update({ night_action_target_player_id_2: targetPlayerId })
+      .eq('id', myState.id)
+    if (updateError) return NextResponse.json({ error: 'Failed to submit night action' }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  // Little Girl: no target — this is a self-target toggle for "open your eyes tonight".
+  // Not submitting at all (or not resubmitting) means she stays asleep and safe.
+  if (role === 'little_girl') {
+    if (targetPlayerId !== playerId) {
+      return NextResponse.json({ error: 'Little Girl can only choose to open her eyes' }, { status: 400 })
+    }
+    const { error: updateError } = await admin
+      .from('mafia_player_states')
+      .update({ night_action_target_player_id: playerId })
+      .eq('id', myState.id)
+    if (updateError) return NextResponse.json({ error: 'Failed to submit night action' }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  // Trapper: self-target activates all currently-set traps; any other (alive, untrapped)
+  // target adds a new trap, up to TRAPPER_MAX_TRAPS accumulated across nights.
+  if (role === 'trapper') {
+    if (targetPlayerId === playerId) {
+      const { error: updateError } = await admin
+        .from('mafia_player_states')
+        .update({ night_action_target_player_id: playerId })
+        .eq('id', myState.id)
+      if (updateError) return NextResponse.json({ error: 'Failed to submit night action' }, { status: 500 })
+      return NextResponse.json({ success: true })
+    }
+    const targetState = playerStates.find((p) => p.player_id === targetPlayerId)
+    if (!targetState || !targetState.is_alive) {
+      return NextResponse.json({ error: 'Target player not found' }, { status: 404 })
+    }
+    const existingTraps = myState.trapper_trap_player_ids ?? []
+    if (existingTraps.includes(targetPlayerId)) {
+      return NextResponse.json({ error: 'You already have a trap on that player' }, { status: 400 })
+    }
+    if (existingTraps.length >= TRAPPER_MAX_TRAPS) {
+      return NextResponse.json({ error: `You can only have ${TRAPPER_MAX_TRAPS} traps set at once` }, { status: 400 })
+    }
+    // Compare-and-swap on the trap list read above — two concurrent submissions both reading
+    // the same existingTraps would otherwise silently drop one accepted trap. Only the request
+    // whose read is still current succeeds; the loser gets a 409 to retry with fresh state.
+    const { data: updated, error: updateError } = await admin
+      .from('mafia_player_states')
+      .update({
+        trapper_trap_player_ids: [...existingTraps, targetPlayerId],
+        night_action_target_player_id: targetPlayerId,
+      })
+      .eq('id', myState.id)
+      .eq('trapper_trap_player_ids', existingTraps)
+      .select('id')
+    if (updateError) return NextResponse.json({ error: 'Failed to submit night action' }, { status: 500 })
+    if (!updated || updated.length === 0) {
+      return NextResponse.json({ error: 'Your traps changed — please try again' }, { status: 409 })
+    }
+    return NextResponse.json({ success: true })
+  }
+
+  // Detective: checks two players each night for same-team membership. Reusable every night
+  // (no "used" flag) — a fresh submission simply overwrites the previous pick.
+  if (role === 'detective') {
+    if (typeof secondTargetPlayerId !== 'string') {
+      return NextResponse.json({ error: 'Detective must choose two players to compare' }, { status: 400 })
+    }
+    if (targetPlayerId === secondTargetPlayerId) {
+      return NextResponse.json({ error: 'Choose two different players' }, { status: 400 })
+    }
+    const t1 = playerStates.find((p) => p.player_id === targetPlayerId)
+    const t2 = playerStates.find((p) => p.player_id === secondTargetPlayerId)
+    if (!t1 || !t2 || !t1.is_alive || !t2.is_alive) {
+      return NextResponse.json({ error: 'Both targets must be alive players' }, { status: 400 })
+    }
+    const { error: updateError } = await admin
+      .from('mafia_player_states')
+      .update({ night_action_target_player_id: targetPlayerId, night_action_target_player_id_2: secondTargetPlayerId })
+      .eq('id', myState.id)
+    if (updateError) return NextResponse.json({ error: 'Failed to submit night action' }, { status: 500 })
     return NextResponse.json({ success: true })
   }
 

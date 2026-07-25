@@ -15,6 +15,9 @@ interface MafiaPlayersGridProps {
   mafiaTeammateIds?: string[]
   mafiaTeammateRoles?: Record<string, MafiaRole>
   mafiaTeammateNightTargets?: Record<string, string | null>
+  /** The two Lovers' ids (from myState.loverIds) — only populated for Cupid and the two
+   *  Lovers themselves, so their tiles get a heart badge visible only to people in the know. */
+  loverIds?: string[]
   phase: MafiaPhase
   voteTallies: Record<string, number>
   /** voterId -> targetId, when votes are public — shown as a "→ #N" sign on the voter's own
@@ -51,7 +54,8 @@ const TEAM_TEXT: Record<string, string> = {
 const NIGHT_ACTION_VERB: Partial<Record<MafiaRole, string>> = {
   doctor: 'the player to protect',
   bodyguard: 'the player to protect',
-  detective: 'the player to reveal the role of',
+  aura_seer: 'the player to reveal the alignment of',
+  detective: 'two players to compare teams',
   tracker: 'the player to watch',
   vigilante: 'the player to kill',
   mafia: 'the player to kill',
@@ -62,6 +66,8 @@ const NIGHT_ACTION_VERB: Partial<Record<MafiaRole, string>> = {
   arsonist: 'two players to douse',
   medium: 'a dead player to revive',
   cupid: 'two players to link as Lovers',
+  seer: 'the player to reveal the exact role of',
+  mafia_seer: 'the player to reveal the exact role of',
 }
 
 /**
@@ -77,6 +83,7 @@ export function MafiaPlayersGrid({
   mafiaTeammateIds = [],
   mafiaTeammateRoles = {},
   mafiaTeammateNightTargets,
+  loverIds = [],
   phase,
   voteTallies,
   voteChoices = {},
@@ -117,6 +124,7 @@ export function MafiaPlayersGrid({
           const isSelected = selectedIds.includes(p.id)
           const clickable = !!onSelect && (allowDeadSelect ? !p.isAlive : p.isAlive) && (!isMe || allowSelfSelect)
           const isTeammate = !isMe && mafiaTeammateIds.includes(p.id)
+          const isKnownLover = loverIds.includes(p.id)
           const teammateRole = isTeammate ? mafiaTeammateRoles[p.id] : undefined
           const teammateNightTarget =
             isTeammate && phase === 'night' && mafiaTeammateNightTargets ? mafiaTeammateNightTargets[p.id] : undefined
@@ -155,6 +163,11 @@ export function MafiaPlayersGrid({
                   {voteCount}
                 </span>
               )}
+              {isKnownLover && !(p.isAlive && phase === 'voting' && voteCount > 0) && (
+                <span className="absolute top-1 right-1 text-xs" aria-hidden title="Lover">
+                  💘
+                </span>
+              )}
               {isSelected && (
                 <span className="absolute bottom-1 right-1 text-xs" aria-hidden>
                   ✅
@@ -166,16 +179,14 @@ export function MafiaPlayersGrid({
                 </span>
               )}
               <span className="text-3xl leading-none">{p.isAlive ? '🧑' : '🪦'}</span>
-              {votingForSeat == null && (
-                <span
-                  className={`text-xs font-bold truncate w-full leading-tight ${
-                    p.isAlive ? 'text-[var(--foreground)]' : 'line-through text-[var(--muted)]'
-                  }`}
-                >
-                  {p.name}
-                  {isMe && <span className="font-normal text-[var(--primary)]"> (you)</span>}
-                </span>
-              )}
+              <span
+                className={`text-xs font-bold truncate w-full leading-tight ${
+                  p.isAlive ? 'text-[var(--foreground)]' : 'line-through text-[var(--muted)]'
+                }`}
+              >
+                {p.name}
+                {isMe && <span className="font-normal text-[var(--primary)]"> (you)</span>}
+              </span>
               {isMe && myRole ? (
                 <span
                   className={`text-[9px] font-bold uppercase leading-none ${TEAM_TEXT[MAFIA_ROLE_INFO[myRole].team]}`}

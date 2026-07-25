@@ -17,6 +17,8 @@ export function mafiaRoleEmoji(role: string): string {
     case 'doctor':
       return '🏥'
     case 'detective':
+      return '🕵️'
+    case 'aura_seer':
       return '🔍'
     case 'bodyguard':
       return '🛡️'
@@ -40,6 +42,16 @@ export function mafiaRoleEmoji(role: string): string {
       return '🔮'
     case 'priest':
       return '⛪'
+    case 'witch':
+      return '🧙'
+    case 'little_girl':
+      return '🎀'
+    case 'trapper':
+      return '🪤'
+    case 'seer':
+      return '👁️'
+    case 'mafia_seer':
+      return '👁️‍🗨️'
     default:
       return '🏘️'
   }
@@ -72,7 +84,14 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'detective',
     name: 'Detective',
     team: 'village',
-    description: "Each night, investigate one player to learn whether they're Village or Mafia-aligned.",
+    description: 'Each night, select two players to uncover whether they are on the same team.',
+  },
+  aura_seer: {
+    role: 'aura_seer',
+    name: 'Aura Seer',
+    team: 'village',
+    description:
+      'Each night, investigate one player to learn their alignment: Good, Evil, or Unknown (Solo roles and kill/revive-capable Village roles).',
   },
   bodyguard: {
     role: 'bodyguard',
@@ -123,7 +142,7 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'framer',
     name: 'Framer',
     team: 'mafia',
-    description: "Each night, frame a player so the Detective's investigation on them reads as Mafia.",
+    description: "Each night, frame a player so the Aura Seer and Detective's investigations on them read as Mafia.",
   },
   jester: {
     role: 'jester',
@@ -172,9 +191,43 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     description:
       'Once during the day, throw holy water on another player. If they are Mafia, they die. If not, you die and their innocence is announced.',
   },
+  witch: {
+    role: 'witch',
+    name: 'Witch',
+    team: 'village',
+    description:
+      'You have two potions: a Protect Potion (only consumed if it actually saves your target from a kill — free to reuse otherwise) and a Kill Potion (kill any player outright, once per game, not usable on night 1).',
+  },
+  little_girl: {
+    role: 'little_girl',
+    name: 'Little Girl',
+    team: 'village',
+    description:
+      'Each night, you can choose to open your eyes. 75% you see nothing, 20% you identify a Mafia member, 5% they notice you and you die.',
+  },
+  trapper: {
+    role: 'trapper',
+    name: 'Trapper',
+    team: 'village',
+    description:
+      "Each night, either set a trap on a player's house (up to 3 at once) or activate all your traps. Trapped players can't be killed while active — a Mafia kill on one instead kills the Mafia's weakest member, other attackers are simply blocked.",
+  },
+  seer: {
+    role: 'seer',
+    name: 'Seer',
+    team: 'village',
+    description: 'Each night, select a player to uncover their exact role.',
+  },
+  mafia_seer: {
+    role: 'mafia_seer',
+    name: 'Mafia Seer',
+    team: 'mafia',
+    description:
+      'Each night, select a player to uncover their exact role, and share what you learn with your fellow Mafia. You cannot vote to kill unless you resign your ability (self-target at night), permanently becoming a Regular Mafia.',
+  },
 }
 
-export const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer']
+export const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer', 'mafia_seer']
 export const NO_NIGHT_ACTION_ROLES: MafiaRole[] = [
   'villager',
   'mayor',

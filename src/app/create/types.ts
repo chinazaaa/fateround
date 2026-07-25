@@ -42,6 +42,7 @@ export interface Settings {
   game_duration_seconds?: number
   mafia_doctor_enabled?: boolean
   mafia_detective_enabled?: boolean
+  mafia_aura_seer_enabled?: boolean
   mafia_bodyguard_enabled?: boolean
   mafia_mayor_enabled?: boolean
   mafia_vigilante_enabled?: boolean
@@ -54,6 +55,7 @@ export interface Settings {
   mafia_arsonist_enabled?: boolean
   mafia_cupid_enabled?: boolean
   mafia_cursed_villager_enabled?: boolean
+  mafia_advanced_mode?: boolean
   mafia_anonymous_votes?: boolean
   mafia_day_seconds?: number
   mafia_voting_seconds?: number

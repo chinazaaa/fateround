@@ -325,51 +325,6 @@ import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { ELIMINATION_COMPATIBLE_TYPES } from '@/types/elimination'
 
-// Mafia's 12 optional roles (on top of Villager/Mafia/Doctor/Detective). Classic uses the
-// full 16-role roster (all of these default ON); Advanced reveals this checklist so a host
-// can hand-pick a smaller/different mix instead of the full set.
-const MAFIA_ADVANCED_ROLE_FIELDS = [
-  'mafia_bodyguard_enabled',
-  'mafia_mayor_enabled',
-  'mafia_vigilante_enabled',
-  'mafia_tracker_enabled',
-  'mafia_alpha_wolf_enabled',
-  'mafia_wolf_cub_enabled',
-  'mafia_framer_enabled',
-  'mafia_jester_enabled',
-  'mafia_serial_killer_enabled',
-  'mafia_arsonist_enabled',
-  'mafia_cupid_enabled',
-  'mafia_cursed_villager_enabled',
-] as const satisfies readonly (keyof Settings)[]
-
-const MAFIA_ADVANCED_ROLE_LABELS: Record<
-  (typeof MAFIA_ADVANCED_ROLE_FIELDS)[number],
-  { label: string; description: string }
-> = {
-  mafia_bodyguard_enabled: { label: 'Bodyguard', description: 'Protects one player; dies in their place if attacked' },
-  mafia_mayor_enabled: { label: 'Mayor', description: 'Day vote counts double' },
-  mafia_vigilante_enabled: { label: 'Vigilante', description: 'One kill for the whole game' },
-  mafia_tracker_enabled: { label: 'Tracker', description: 'Learns who their target visited' },
-  mafia_alpha_wolf_enabled: {
-    label: 'Alpha Mafia',
-    description: 'Kill vote counts double; can chat with the crew by day too',
-  },
-  mafia_wolf_cub_enabled: {
-    label: 'Junior Mafia',
-    description: 'Mafia gets a bonus kill next night if this role dies',
-  },
-  mafia_framer_enabled: { label: 'Framer', description: 'Frames a player so the Detective reads them as Mafia' },
-  mafia_jester_enabled: { label: 'Jester', description: 'Wins alone if lynched' },
-  mafia_serial_killer_enabled: { label: 'Serial Killer', description: 'Kills alone, wins as last one standing' },
-  mafia_arsonist_enabled: { label: 'Arsonist', description: 'Douses/ignites, wins as last one standing' },
-  mafia_cupid_enabled: { label: 'Cupid', description: 'Links two players as Lovers on night one' },
-  mafia_cursed_villager_enabled: {
-    label: 'Cursed Villager',
-    description: 'Converts to Mafia instead of dying if targeted',
-  },
-}
-
 function CreateGameInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -379,7 +334,6 @@ function CreateGameInner() {
   const [showGameTypes, setShowGameTypes] = useState(false)
   const [previewTheme, setPreviewTheme] = useState<(typeof THEMES)[number] | null>(null)
   const [participantTab, setParticipantTab] = useState<ParticipantTab>('upload')
-  const [mafiaShowCustomize, setMafiaShowCustomize] = useState(false)
   const [settings, setSettings] = useState<Settings>({
     title: '',
     content_label: '',
@@ -863,8 +817,7 @@ function CreateGameInner() {
               anonymous: true,
               rounds_count: 1,
               timer_seconds: 60,
-              mafia_doctor_enabled: true,
-              mafia_detective_enabled: true,
+              mafia_advanced_mode: false,
               mafia_anonymous_votes: true,
               mafia_day_seconds: 90,
               mafia_voting_seconds: 45,
@@ -984,9 +937,6 @@ function CreateGameInner() {
   const isDescribeIt = isDescribeItGame(settings.game_type)
   const isWordRush = isWordRushGame(settings.game_type)
   const isMafia = isMafiaGame(settings.game_type)
-  // Customized iff the host has turned at least one of the 14 optional roles off from the
-  // full Classic roster (undefined/true = still on, since that's the DB/server default).
-  const isMafiaCustomized = MAFIA_ADVANCED_ROLE_FIELDS.some((field) => settings[field] === false)
   const isNpat = isICallOnGame(settings.game_type)
   const isLandmine = isLandmineGame(settings.game_type)
   const isSudoku = isSudokuGame(settings.game_type)
@@ -1313,14 +1263,9 @@ function CreateGameInner() {
       set: (v) => setSettings((s) => ({ ...s, max_players: v as number })),
       appliesTo: isMafiaGame,
     },
-    mafia_doctor_enabled: {
-      get: () => settings.mafia_doctor_enabled,
-      set: (v) => setSettings((s) => ({ ...s, mafia_doctor_enabled: v as boolean })),
-      appliesTo: isMafiaGame,
-    },
-    mafia_detective_enabled: {
-      get: () => settings.mafia_detective_enabled,
-      set: (v) => setSettings((s) => ({ ...s, mafia_detective_enabled: v as boolean })),
+    mafia_advanced_mode: {
+      get: () => settings.mafia_advanced_mode,
+      set: (v) => setSettings((s) => ({ ...s, mafia_advanced_mode: v as boolean })),
       appliesTo: isMafiaGame,
     },
     mafia_anonymous_votes: {
@@ -1338,16 +1283,6 @@ function CreateGameInner() {
       set: (v) => setSettings((s) => ({ ...s, mafia_voting_seconds: v as number })),
       appliesTo: isMafiaGame,
     },
-    ...Object.fromEntries(
-      MAFIA_ADVANCED_ROLE_FIELDS.map((field) => [
-        field,
-        {
-          get: () => settings[field],
-          set: (v: unknown) => setSettings((s) => ({ ...s, [field]: v as boolean })),
-          appliesTo: isMafiaGame,
-        },
-      ])
-    ),
     // Matching Pairs
     matching_pairs_max_players: {
       get: () => settings.max_players,
@@ -5758,16 +5693,9 @@ function CreateGameInner() {
                   <div className="flex gap-2 mt-2">
                     <button
                       type="button"
-                      onClick={() => {
-                        setMafiaShowCustomize(false)
-                        setSettings((s) => {
-                          const next = { ...s }
-                          for (const field of MAFIA_ADVANCED_ROLE_FIELDS) delete next[field]
-                          return next
-                        })
-                      }}
+                      onClick={() => setSettings({ ...settings, mafia_advanced_mode: false })}
                       className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
-                        !mafiaShowCustomize && !isMafiaCustomized
+                        settings.mafia_advanced_mode !== true
                           ? 'bg-[var(--primary)] text-white border-[var(--primary)]'
                           : 'border-[var(--border)] text-muted'
                       }`}
@@ -5776,9 +5704,9 @@ function CreateGameInner() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setMafiaShowCustomize(true)}
+                      onClick={() => setSettings({ ...settings, mafia_advanced_mode: true })}
                       className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
-                        mafiaShowCustomize || isMafiaCustomized
+                        settings.mafia_advanced_mode === true
                           ? 'bg-[var(--primary)] text-white border-[var(--primary)]'
                           : 'border-[var(--border)] text-muted'
                       }`}
@@ -5787,26 +5715,14 @@ function CreateGameInner() {
                     </button>
                   </div>
                   <p className="text-faint text-xs mt-1.5">
-                    {mafiaShowCustomize || isMafiaCustomized
-                      ? 'Pick exactly which of the 16 roles are in play.'
-                      : 'The full 16-role roster — Villager, Mafia, Doctor, Detective, plus 12 more mixed in when there are enough player slots.'}
+                    {settings.mafia_advanced_mode === true
+                      ? 'Trapper, Arsonist, and Vigilante replace Bodyguard, Serial Killer, and Priest — Witch and Little Girl join the mix too.'
+                      : 'The classic power roles: Bodyguard, Serial Killer, and Priest.'}
                   </p>
-                  {(mafiaShowCustomize || isMafiaCustomized) && (
-                    <div className="mt-3 space-y-2">
-                      {MAFIA_ADVANCED_ROLE_FIELDS.map((field) => {
-                        const info = MAFIA_ADVANCED_ROLE_LABELS[field]
-                        return (
-                          <Toggle
-                            key={field}
-                            label={info.label}
-                            description={info.description}
-                            value={settings[field] !== false}
-                            onChange={(v) => setSettings({ ...settings, [field]: v })}
-                          />
-                        )
-                      })}
-                    </div>
-                  )}
+                  <p className="text-faint text-xs mt-1.5">
+                    Everything else is automatic — Aura Seer/Seer/Detective rotate (only 2 of the 3 each game), and the
+                    Mafia&apos;s specialist lineup varies too.
+                  </p>
                 </Field>
                 <Field label="Voting Rules">
                   <div className="mt-2">
