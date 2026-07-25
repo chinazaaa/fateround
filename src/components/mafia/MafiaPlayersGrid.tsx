@@ -42,6 +42,22 @@ const TEAM_TEXT: Record<string, string> = {
   special: 'text-pink-400',
 }
 
+// What each role's night tap actually does — "tap to select" alone doesn't say whether
+// you're killing, protecting, or investigating someone.
+const NIGHT_ACTION_VERB: Partial<Record<MafiaRole, string>> = {
+  doctor: 'the player to protect',
+  bodyguard: 'the player to protect',
+  detective: 'the player to reveal the role of',
+  tracker: 'the player to watch',
+  vigilante: 'the player to kill',
+  mafia: 'the player to kill',
+  alpha_wolf: 'the player to kill',
+  framer: 'the player to frame',
+  serial_killer: 'the player to kill',
+  arsonist: 'the player to douse',
+  cupid: 'two players to link as Lovers',
+}
+
 /**
  * Numbered player roster tiles, styled after Wolvesville's grid: seat numbers, a tombstone
  * for eliminated players (with their revealed role), a "(you)" tag + highlighted border on
@@ -64,7 +80,15 @@ export function MafiaPlayersGrid({
   allowSelfSelect = false,
 }: MafiaPlayersGridProps) {
   const seatNumberById = new Map(players.map((p) => [p.id, p.seatNumber]))
-  const headerSuffix = phase === 'voting' ? ' · tap to vote' : onSelect ? ' · tap to select' : ''
+  const amIAlive = players.find((p) => p.id === myPlayerId)?.isAlive !== false
+  let headerSuffix = ''
+  if (phase === 'voting') {
+    // A dead player can't vote — showing "tap to vote" to them is a dead instruction.
+    headerSuffix = amIAlive ? ' · tap to vote' : ''
+  } else if (onSelect && myRole) {
+    const verb = NIGHT_ACTION_VERB[myRole]
+    headerSuffix = verb ? ` · tap to select ${verb}` : ' · tap to select'
+  }
   // Roster size varies 5-16 — a fixed 4-wide grid leaves a nearly-empty last row for small
   // games (e.g. 6 players: 4+2). Pick the tightest square-ish column count instead, so a
   // 6-player game reads as a clean 3x2/3x3 and a 16-player game still fills a full 4x4.

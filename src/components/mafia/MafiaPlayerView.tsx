@@ -523,6 +523,18 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           title="Waiting for host to start"
           rulesLink={<GameRulesLink gameType="mafia" variant="subtle" />}
           isSpectator={me?.spectator === true}
+          onReady={async () => {
+            if (!myResumeToken) throw new Error('Your player session expired — rejoin to continue')
+            const res = await fetch('/api/players/ready', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken }),
+            })
+            const data = await res.json().catch(() => ({}))
+            if (!res.ok) throw new Error(data.error ?? 'Failed to join')
+            await load()
+          }}
+          onReadyError={(message) => toastError(message)}
         />
       </GameJoinLobbyShell>
     )

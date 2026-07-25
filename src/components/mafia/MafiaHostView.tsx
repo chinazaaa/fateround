@@ -8,6 +8,7 @@ import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, usePolling } from '@/hooks/usePolling'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useHostSeat } from '@/hooks/useHostSeat'
+import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import type { MafiaPhase, MafiaTeam, MafiaRole, Game, GameStatus, Player, ThemeId } from '@/types'
 import { MAFIA_MIN_PLAYERS } from '@/lib/mafia'
@@ -186,6 +187,11 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     onHostSeatRemoved(playerId)
     void load()
   })
+
+  // Keeps the host seated as "ready" (not a spectator) when the lobby reopens after
+  // play-again, unless they deliberately chose "Host only" — without this the host shows
+  // as "not ready" in the ready-up ring/lobby even though they intend to play.
+  useHostAutoReady(gameCode, gameStatus, hostPlayerId, playersForSeat, load)
 
   useEffect(() => {
     if (mafiaState?.status === 'active') {
