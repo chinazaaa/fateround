@@ -33,6 +33,7 @@ import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { EditNameInline } from '@/components/ui/EditNameInline'
@@ -257,6 +258,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
             title={game?.title ?? cfg.label}
             gameType="word_rush"
             subtitle={cfg.tagline}
+            meta={game ? <GameInfoChips game={game} /> : null}
           />
         }
       >

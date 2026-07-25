@@ -26,6 +26,7 @@ import { useGameScores, useGameStats, useRosterBase } from '@/components/roster/
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
@@ -378,6 +379,7 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
             title={game?.title ?? cfg.label}
             gameType="snake_and_ladder"
             subtitle={joiningAsViewer ? 'Game in progress — join as a viewer (read-only).' : cfg.tagline}
+            meta={game ? <GameInfoChips game={game} /> : null}
           />
         }
       >

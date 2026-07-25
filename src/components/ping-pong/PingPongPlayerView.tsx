@@ -30,6 +30,7 @@ import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
@@ -251,6 +252,7 @@ export function PingPongPlayerView({ gameCode }: { gameCode: string }) {
             title={game?.title ?? cfg.label}
             gameType="ping_pong"
             subtitle={joiningAsViewer ? 'Game in progress — join as a viewer (read-only).' : cfg.tagline}
+            meta={game ? <GameInfoChips game={game} /> : null}
           />
         }
       >

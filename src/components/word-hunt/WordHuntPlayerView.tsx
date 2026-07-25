@@ -7,6 +7,7 @@ import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -549,6 +550,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
             title={game?.title ?? cfg.label}
             gameType="word_hunt"
             subtitle={cfg.tagline}
+            meta={game ? <GameInfoChips game={game} /> : null}
           />
         }
       >

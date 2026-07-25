@@ -5,13 +5,12 @@ import { useRouter } from 'next/navigation'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { TriviaActiveRound } from '@/components/trivia/TriviaActiveRound'
 import { gameTypeConfig } from '@/lib/game-types'
-import { triviaCategoryFromGame } from '@/lib/trivia'
-import { triviaCategoryLabel } from '@/lib/trivia-questions'
 import { supabase } from '@/lib/supabase'
 import { ROUND_SELECT, TRIVIA_ANSWER_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
@@ -234,14 +233,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
           title={game?.title}
           gameType="trivia"
           contentLabel={game?.content_label}
-          meta={
-            game ? (
-              <>
-                {triviaCategoryLabel(triviaCategoryFromGame(game))} · {game.rounds_count} rounds · {game.timer_seconds}s
-                each
-              </>
-            ) : null
-          }
+          meta={game ? <GameInfoChips game={game} /> : null}
         />
         <NameJoinForm
           value={joinName}

@@ -32,6 +32,7 @@ import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { EditNameInline } from '@/components/ui/EditNameInline'
@@ -405,6 +406,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
                 ? 'Game in progress — join as a viewer and watch live (read-only).'
                 : '1–6 players · roll, hold, score'
             }
+            meta={game ? <GameInfoChips game={game} /> : null}
           />
         }
       >

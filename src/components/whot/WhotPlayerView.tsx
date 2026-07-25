@@ -34,6 +34,7 @@ import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
@@ -373,6 +374,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
                 ? 'Game in progress — join as a viewer (read-only).'
                 : '2–6 players · match shape or number'
             }
+            meta={game ? <GameInfoChips game={game} /> : null}
           />
         }
       >

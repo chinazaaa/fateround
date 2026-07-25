@@ -25,6 +25,7 @@ import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
@@ -449,7 +450,14 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     return (
       <GameJoinLobbyShell
         gameCode={gameCode}
-        header={<GameJoinHeader emoji={cfg.headerEmoji} title={game?.title} gameType="bingo" />}
+        header={
+          <GameJoinHeader
+            emoji={cfg.headerEmoji}
+            title={game?.title}
+            gameType="bingo"
+            meta={game ? <GameInfoChips game={game} /> : null}
+          />
+        }
       >
         <NameJoinForm
           value={joinName}

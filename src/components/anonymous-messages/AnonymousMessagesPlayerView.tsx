@@ -7,6 +7,7 @@ import { AnonymousBanCountdownBar } from '@/components/anonymous-messages/Anonym
 import { AnonymousMessageComposer } from '@/components/anonymous-messages/AnonymousMessageComposer'
 import { AnonymousRoomSessionSummary } from '@/components/anonymous-messages/AnonymousRoomSessionSummary'
 import { GameLobbySummary } from '@/components/GameLobbySummary'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { useAnonymousMessageTrim } from '@/hooks/useAnonymousMessageTrim'
 import { useAnonymousMessages } from '@/hooks/useAnonymousMessages'
@@ -499,6 +500,7 @@ function Header({ game }: { game: Game | null }) {
       <div className="text-4xl">{gameTypeConfig(game.game_type).headerEmoji}</div>
       <h1 className="text-2xl font-black tracking-tight gradient-title">{game.title}</h1>
       <GameTypeBadge gameType={game.game_type} />
+      <GameInfoChips game={game} className="pt-1" />
       <GameLobbySummary game={game} className="pt-1" />
     </div>
   )
