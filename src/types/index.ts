@@ -451,6 +451,8 @@ export interface Game {
   landmine_review?: boolean | null
   /** Landmine — the review-window length in seconds (15/20/30/45/60). */
   landmine_review_seconds?: number | null
+  /** Nigerian Draughts — opt-in "Street Rules" (huffing): decline a capture, risk the piece. */
+  checkers_nigeria_street_rules?: boolean | null
   /** Ping Pong — points required to win the match (3, 5, 7, 11, 15, or 21). */
   ping_pong_points_to_win?: number | null
 }
@@ -1144,6 +1146,11 @@ export interface Draughts10Session {
   must_continue_remaining: number | null
   /** Nigeria-only opt-in "street rules" (huffing) room setting. */
   huffing_enabled: boolean
+  /**
+   * Squares of the mover's own pieces that had a capture available but went unplayed
+   * (Street Rules only) — the opponent may "huff" one of these instead of moving.
+   */
+  huffable_squares: string[]
   /** Remaining clock for each player in milliseconds; null when the game is untimed. */
   red_time_ms: number | null
   black_time_ms: number | null

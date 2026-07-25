@@ -365,6 +365,15 @@ export const draughts10MoveSchema = z.object({
 
 export type Draughts10MoveInput = z.infer<typeof draughts10MoveSchema>
 
+// Nigerian Draughts "Street Rules" — huff a piece instead of moving.
+export const draughts10HuffSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  square: draughts10Square,
+})
+
+export type Draughts10HuffInput = z.infer<typeof draughts10HuffSchema>
+
 // Ayo (pit index 0–11)
 export const ayoMoveSchema = z.object({
   gameId: gameCodeString(),

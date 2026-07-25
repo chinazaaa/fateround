@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   DRAUGHTS10_STARTING_BOARD,
   applyStep,
+  capturablePieceSquaresForTest,
   captureStepsFromForTest,
   hasAnyCapture,
   hasPieces,
@@ -135,5 +136,52 @@ describe('win / draw detection', () => {
     // so there's no simple move and no legal capture either.
     const b = board({ '09': 'b', '18': 'r', '27': 'r' })
     expect(legalMovesForColor(b, 'b')).toHaveLength(0)
+  })
+})
+
+describe('Street Rules — allowSkip relaxes forced capture', () => {
+  // Single-capture piece: 61 jumps black at 52, lands 43.
+  // Double-capture piece: 90 jumps black at 81 (lands 72), then black at 63 (lands 54).
+  const b = board({ '61': 'r', '52': 'b', '90': 'r', '81': 'b', '63': 'b' })
+
+  it('without allowSkip, only the majority-capture sequence is legal (unchanged default behavior)', () => {
+    expect(legalStepsFromSquare(b, 'r', '61', null, null)).toHaveLength(0)
+    expect(legalStepsFromSquare(b, 'r', '61', null, null, false)).toHaveLength(0)
+  })
+
+  it('with allowSkip, a piece that could capture may instead make a simple move', () => {
+    const moves = legalStepsFromSquare(b, 'r', '61', null, null, true)
+    expect(moves.length).toBeGreaterThan(0)
+    expect(moves.every((m) => m.captured === null)).toBe(true)
+  })
+
+  it('with allowSkip, captures remain legal to play — just not mandatory', () => {
+    const moves = legalStepsFromSquare(b, 'r', '90', null, null, true)
+    expect(moves.some((m) => m.captured != null)).toBe(true)
+  })
+
+  it('legalMovesForColor with allowSkip includes simple moves from every piece, not just the majority-capture one', () => {
+    const moves = legalMovesForColor(b, 'r', null, null, true)
+    expect(moves.some((m) => m.from === '61')).toBe(true)
+    expect(moves.some((m) => m.from === '90')).toBe(true)
+  })
+
+  it('mid-chain continuation is unaffected by allowSkip — the chain must still be finished', () => {
+    // Once 90 starts capturing, allowSkip must not let it bail out early.
+    const continued = legalStepsFromSquare(b, 'r', '90', '90', 2, true)
+    expect(continued.every((m) => m.captured != null)).toBe(true)
+  })
+})
+
+describe('Street Rules — huffable pieces', () => {
+  it('identifies every piece of a color that currently has a capture available', () => {
+    const b = board({ '61': 'r', '52': 'b', '90': 'r', '81': 'b', '63': 'b' })
+    const squares = capturablePieceSquaresForTest(b, 'r')
+    expect(new Set(squares)).toEqual(new Set(['61', '90']))
+  })
+
+  it('is empty when the color has no capture available at all', () => {
+    const b = board({ '61': 'r' })
+    expect(capturablePieceSquaresForTest(b, 'r')).toHaveLength(0)
   })
 })
