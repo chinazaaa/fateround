@@ -55,6 +55,9 @@ export const CHECKERS_SESSION_SELECT =
 export const DRAUGHTS10_SESSION_SELECT =
   'id,game_id,variant,player_red_id,player_black_id,board,current_turn,must_continue_from,must_continue_remaining,huffing_enabled,huffable_squares,red_time_ms,black_time_ms,turn_started_at,last_move_from,last_move_to,status,result_reason,winner_player_id,is_draw,status_message'
 
+export const PING_PONG_SESSION_SELECT =
+  'id,game_id,player_x_id,player_o_id,score_x,score_o,points_to_win,status,winner_player_id,status_message,created_at,updated_at'
+
 export const CHESS_SESSION_SELECT =
   'id,game_id,player_white_id,player_black_id,fen,pgn,current_turn,white_time_ms,black_time_ms,turn_started_at,last_move_from,last_move_to,in_check,status,result_reason,winner_player_id,is_draw,status_message,turn_deadline_at,created_at,updated_at'
 
