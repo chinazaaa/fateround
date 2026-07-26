@@ -23,6 +23,16 @@ const TEAM_LABEL: Record<string, string> = {
   solo: 'Solo',
   special: 'Special',
 }
+const AURA_CHIP: Record<string, string> = {
+  good: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+  evil: 'bg-red-500/10 text-red-400 border-red-500/20',
+  unknown: 'bg-violet-500/10 text-violet-400 border-violet-500/20',
+}
+const AURA_LABEL: Record<string, string> = {
+  good: 'Good',
+  evil: 'Evil',
+  unknown: 'Unknown',
+}
 
 interface MafiaRolesDrawerProps {
   rolesInGame: MafiaRole[]
@@ -85,11 +95,18 @@ function RolesOverlay({
                     {isMine && <span className="text-[var(--primary)] font-normal"> (your role)</span>}
                   </p>
                   <p className="text-xs text-[var(--muted)] leading-relaxed">{info.description}</p>
-                  <span
-                    className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full border ${TEAM_CHIP[info.team] ?? ''}`}
-                  >
-                    Team: {TEAM_LABEL[info.team] ?? info.team}
-                  </span>
+                  <div className="flex gap-1.5 flex-wrap">
+                    <span
+                      className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full border ${TEAM_CHIP[info.team] ?? ''}`}
+                    >
+                      Team: {TEAM_LABEL[info.team] ?? info.team}
+                    </span>
+                    <span
+                      className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full border ${AURA_CHIP[info.aura] ?? ''}`}
+                    >
+                      Aura: {AURA_LABEL[info.aura] ?? info.aura}
+                    </span>
+                  </div>
                 </div>
               </div>
             )

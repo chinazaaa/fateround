@@ -1689,6 +1689,39 @@ function MafiaFinishedScreen({
             />
           </div>
 
+          {(() => {
+            const systemMsgs = (mafiaState?.dayChatMessages ?? []).filter((m) => m.sender_player_id === 'system')
+            const lastDayMsg = systemMsgs.findLast((m) => m.message.startsWith('☀️'))
+            const lastNightIdx = lastDayMsg ? systemMsgs.indexOf(lastDayMsg) : -1
+            const finalEvents =
+              lastNightIdx >= 0 ? systemMsgs.slice(lastNightIdx - 10, lastNightIdx) : systemMsgs.slice(-6)
+            const relevant = finalEvents.filter(
+              (m) =>
+                m.message.startsWith('☠️') ||
+                m.message.startsWith('💀') ||
+                m.message.startsWith('🪤') ||
+                m.message.startsWith('🧪') ||
+                m.message.startsWith('😴') ||
+                m.message.startsWith('⚖️') ||
+                m.message.startsWith('🛡️') ||
+                m.message.startsWith('🏥')
+            )
+            return relevant.length > 0 ? (
+              <div className="glass-card border border-[var(--border)] rounded-2xl p-5">
+                <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)] mb-3">
+                  Final events
+                </h3>
+                <div className="space-y-1.5">
+                  {relevant.map((m) => (
+                    <p key={m.id} className="text-sm font-semibold text-center text-pink-400">
+                      {m.message}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            ) : null
+          })()}
+
           <div className="glass-card border border-[var(--border)] rounded-2xl p-5">
             <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)] mb-3">Roles reveal</h3>
             <div className="space-y-2">

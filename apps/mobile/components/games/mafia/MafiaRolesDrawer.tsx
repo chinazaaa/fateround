@@ -19,6 +19,18 @@ const TEAM_LABEL: Record<string, string> = {
   special: 'Special',
 }
 
+const AURA_COLOR: Record<string, string> = {
+  good: '#34d399',
+  evil: '#f87171',
+  unknown: '#a78bfa',
+}
+
+const AURA_LABEL: Record<string, string> = {
+  good: 'Good',
+  evil: 'Evil',
+  unknown: 'Unknown',
+}
+
 interface MafiaRolesDrawerProps {
   rolesInGame: MafiaRole[]
   myRole?: MafiaRole | null
@@ -65,12 +77,27 @@ export function MafiaRolesDrawer({ rolesInGame, myRole, roleCounts }: MafiaRoles
                       {isMine ? <Text style={styles.roleMine}> (your role)</Text> : null}
                     </Text>
                     <Text style={styles.roleDesc}>{info.description}</Text>
-                    <View
-                      style={[styles.teamChip, { borderColor: `${teamColor}44`, backgroundColor: `${teamColor}18` }]}
-                    >
-                      <Text style={[styles.teamChipText, { color: teamColor }]}>
-                        Team: {TEAM_LABEL[info.team] ?? info.team}
-                      </Text>
+                    <View style={styles.chipRow}>
+                      <View
+                        style={[styles.teamChip, { borderColor: `${teamColor}44`, backgroundColor: `${teamColor}18` }]}
+                      >
+                        <Text style={[styles.teamChipText, { color: teamColor }]}>
+                          Team: {TEAM_LABEL[info.team] ?? info.team}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.teamChip,
+                          {
+                            borderColor: `${AURA_COLOR[info.aura] ?? '#a78bfa'}44`,
+                            backgroundColor: `${AURA_COLOR[info.aura] ?? '#a78bfa'}18`,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.teamChipText, { color: AURA_COLOR[info.aura] ?? '#a78bfa' }]}>
+                          Aura: {AURA_LABEL[info.aura] ?? info.aura}
+                        </Text>
+                      </View>
                     </View>
                   </View>
                 </View>
@@ -137,13 +164,13 @@ const makeStyles = (theme: Theme) =>
     roleCount: { color: theme.textMuted, fontWeight: '400' },
     roleMine: { color: theme.primary, fontWeight: '400' },
     roleDesc: { color: theme.textMuted, fontSize: 12, lineHeight: 17 },
+    chipRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 2 },
     teamChip: {
       alignSelf: 'flex-start',
       borderWidth: 1,
       borderRadius: 999,
       paddingHorizontal: 8,
       paddingVertical: 2,
-      marginTop: 2,
     },
     teamChipText: { fontSize: 10, fontWeight: '700' },
     footer: { padding: 16, borderTopWidth: 1, borderTopColor: theme.border },
