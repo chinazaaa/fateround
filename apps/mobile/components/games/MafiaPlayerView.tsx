@@ -529,7 +529,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                   </Pressable>
                   <Pressable
                     style={[styles.actionBtn, witchPotion === 'kill' && styles.actionBtnActive]}
-                    disabled={acting || state.dayNumber === 1}
+                    disabled={acting || state.dayNumber === 1 || myState?.witchKillRemaining === 0}
                     onPress={() => setWitchPotion((p) => (p === 'kill' ? null : 'kill'))}
                   >
                     <Text style={styles.actionBtnText}>☠️ Kill potion</Text>

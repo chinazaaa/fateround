@@ -71,13 +71,14 @@ export type MafiaRoleToggles = MafiaRoleEnabledFlags
  * Computes this round's per-role toggles automatically — replaces the old long checklist of
  * individual host toggles with a single Classic/Advanced switch plus built-in variety:
  *
- * - A fixed set of roles is always in: Doctor, Mayor, Cupid, Cursed Villager, Jester, Medium,
- *   Mafia Seer (no toggle, no rotation).
+ * - A fixed set of roles is always in: Doctor, Mayor, Cupid, Medium, Mafia Seer (no toggle,
+ *   no rotation).
  * - The investigator trio (Aura Seer, Seer, Detective) never all appear together — exactly 2
  *   of the 3 are picked at random each game.
  * - Classic/Advanced swap pairs: Bodyguard↔Trapper, Serial Killer↔Arsonist, Priest↔Vigilante.
  *   Detective, if it wins the investigator slot, becomes Tracker in Advanced mode.
- * - Witch, Little Girl, and Red Lady have no Classic counterpart — only available in Advanced mode.
+ * - Witch, Little Girl, Red Lady, Cursed Villager, and Jester have no Classic counterpart —
+ *   only available in Advanced mode.
  * - Mafia specialists: Alpha Wolf is independently ~70% likely (still needs mafiaCount >= 2 to
  *   actually apply); Wolf Cub and Framer are mutually exclusive, never both in the same game.
  *   In Classic mode, Framer always wins that slot; Advanced mode keeps it an even coin flip.
@@ -94,8 +95,8 @@ export function resolveMafiaRoundToggles(advancedMode: boolean): MafiaRoleToggle
     doctor_enabled: true,
     mayor_enabled: true,
     cupid_enabled: true,
-    cursed_villager_enabled: true,
-    jester_enabled: true,
+    cursed_villager_enabled: advancedMode,
+    jester_enabled: advancedMode,
     medium_enabled: true,
     mafia_seer_enabled: true,
     aura_seer_enabled: hasInvestigator('aura_seer'),
