@@ -1328,46 +1328,33 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             {/* Mobile: single scroll area with grid + inline chat preview. The bottom
                 bar is a flex sibling (not fixed), so no pb-hack needed. Tapping the
                 inline preview opens a bottom-sheet overlay for full chat. */}
-            <div className="md:hidden flex-1 flex flex-col min-h-0 overflow-hidden">
-              {phase === 'night' && amIAlive ? (
-                /* Night: no chat preview — just the player grid filling the space */
-                <div className="flex-1 overflow-y-auto p-4 pb-16 space-y-4">{playersContent}</div>
-              ) : (
-                <>
-                  <div className="overflow-y-auto p-4 space-y-4 max-h-[45dvh] shrink-0">{playersContent}</div>
+            <div className="md:hidden flex-1 overflow-y-auto p-4 pb-16 space-y-4">
+              {playersContent}
 
-                  {/* Day/dead: inline chat preview fills remaining space below grid */}
-                  {!chatOverlayOpen &&
-                    !secondaryChatOverlayOpen &&
-                    (!amIAlive ? (
-                      <button
-                        type="button"
-                        onClick={() => setChatOverlayOpen(true)}
-                        className="flex-1 min-h-0 w-full text-left px-4 pb-14 flex flex-col"
-                      >
-                        <ChatMessages
-                          messages={mergedGhostMessages}
-                          myPlayerId={myPlayerId}
-                          players={publicPlayers}
-                          className="flex-1 min-h-0 overflow-y-auto pointer-events-none"
-                        />
-                      </button>
-                    ) : bottomBarTarget === 'day' ? (
-                      <button
-                        type="button"
-                        onClick={() => setChatOverlayOpen(true)}
-                        className="flex-1 min-h-0 w-full text-left px-4 pb-14 flex flex-col"
-                      >
-                        <ChatMessages
-                          messages={dayChatMessages ?? []}
-                          myPlayerId={myPlayerId}
-                          players={publicPlayers}
-                          className="flex-1 min-h-0 overflow-y-auto pointer-events-none"
-                        />
-                      </button>
-                    ) : null)}
-                </>
-              )}
+              {/* Day/dead: small chat snippet below the grid — tapping opens the full overlay.
+                  Players/actions/identity always take priority; chat just gets a compact preview. */}
+              {!(phase === 'night' && amIAlive) &&
+                !chatOverlayOpen &&
+                !secondaryChatOverlayOpen &&
+                (!amIAlive ? (
+                  <button type="button" onClick={() => setChatOverlayOpen(true)} className="w-full text-left">
+                    <ChatMessages
+                      messages={mergedGhostMessages}
+                      myPlayerId={myPlayerId}
+                      players={publicPlayers}
+                      className="h-28 overflow-y-auto pointer-events-none"
+                    />
+                  </button>
+                ) : bottomBarTarget === 'day' ? (
+                  <button type="button" onClick={() => setChatOverlayOpen(true)} className="w-full text-left">
+                    <ChatMessages
+                      messages={dayChatMessages ?? []}
+                      myPlayerId={myPlayerId}
+                      players={publicPlayers}
+                      className="h-28 overflow-y-auto pointer-events-none"
+                    />
+                  </button>
+                ) : null)}
             </div>
 
             {/* Bottom input bar — fixed to bottom of screen on mobile */}
