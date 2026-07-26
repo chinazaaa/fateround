@@ -290,11 +290,19 @@ export async function runMafiaAdvance(
       )
       const pIndex = playerStates.findIndex((p) => p.player_id === death.playerId)
       if (pIndex !== -1) playerStates[pIndex].is_alive = false
-      systemMessages.push(
-        `☠️ ${KILLER_LABEL[death.cause] ?? 'Someone'} killed ${playerLabel(death.playerId)}${
-          deadState ? ` ${roleLabel(deadState.role)}` : ''
-        }`
-      )
+      if (death.cause === 'red_lady_death') {
+        systemMessages.push(
+          `☠️ ${playerLabel(death.playerId)}${
+            deadState ? ` ${roleLabel(deadState.role)}` : ''
+          } visited a dangerous player and died`
+        )
+      } else {
+        systemMessages.push(
+          `☠️ ${KILLER_LABEL[death.cause] ?? 'Someone'} killed ${playerLabel(death.playerId)}${
+            deadState ? ` ${roleLabel(deadState.role)}` : ''
+          }`
+        )
+      }
     }
     if (wolfCubRevengeTargetId) {
       systemMessages.push(`💀 The Junior Mafia dragged ${playerLabel(wolfCubRevengeTargetId)} down with them!`)
