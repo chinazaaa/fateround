@@ -162,8 +162,14 @@ interface ChatProps {
   players?: MafiaPublicPlayer[]
 }
 
-export function MafiaSecretChat({ messages, onSendMessage, myPlayerId, players }: ChatProps) {
-  const { text, setText, sending, handleSubmit } = useChatInput(onSendMessage)
+export function MafiaSecretChat({
+  messages,
+  onSendMessage,
+  myPlayerId,
+  players,
+  readOnly = false,
+}: ChatProps & { readOnly?: boolean }) {
+  const { text, setText, sending, handleSubmit } = useChatInput(onSendMessage, readOnly)
   return (
     <div className="glass-card border border-red-500/20 rounded-2xl p-4 space-y-2 min-w-0 w-full">
       <p className="text-[10px] font-bold tracking-widest uppercase text-red-400 flex items-center gap-1.5">
@@ -182,10 +188,10 @@ export function MafiaSecretChat({ messages, onSendMessage, myPlayerId, players }
         />
         <button
           type="submit"
-          disabled={sending || !text.trim()}
+          disabled={sending || !text.trim() || readOnly}
           className="px-3 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition"
         >
-          Send
+          {readOnly ? '⏳' : 'Send'}
         </button>
       </form>
     </div>
@@ -231,7 +237,7 @@ export function MafiaDayChat({
     // A fixed (not content-grown) height keeps this box from stretching the page taller as
     // messages pile up — the roster grid above it stays put and only this box scrolls, on
     // both mobile (where the layout stacks) and desktop.
-    <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-2 flex flex-col md:sticky md:top-20 min-w-0 w-full">
+    <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-2 flex flex-col min-w-0 w-full">
       <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)] flex items-center gap-1.5">
         💬 Town Discussion
       </p>

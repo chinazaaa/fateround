@@ -427,6 +427,8 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
   // preview above. Its target (day/ghost/mafia) tracks the same toggle the preview uses.
   const [bottomBarText, setBottomBarText] = useState('')
   const [bottomBarSending, setBottomBarSending] = useState(false)
+  const [secondaryBarText, setSecondaryBarText] = useState('')
+  const [secondaryBarSending, setSecondaryBarSending] = useState(false)
 
   const [cupidFirstPick, setCupidFirstPick] = useState<string | null>(null)
   const [arsonistFirstPick, setArsonistFirstPick] = useState<string | null>(null)
@@ -834,7 +836,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
       : null
 
     const isWolfTeam = !!myRole && MAFIA_TEAM_ROLES.includes(myRole)
-    const showSecretChat = isWolfTeam && amIAlive && phase === 'night'
+    const showSecretChat = isWolfTeam && amIAlive
     const canSendDay = phase === 'day' || phase === 'voting'
     const mafiaTeamAlive = isWolfTeam && amIAlive
     // The Medium can talk with the dead, but only at night, and only once someone
@@ -899,6 +901,21 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
         setBottomBarText('')
       } finally {
         setBottomBarSending(false)
+      }
+    }
+
+    const secondaryCanSend = iconPopupKind === 'mafia' ? phase === 'night' : canSendDay
+    const handleSecondarySubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault()
+      const text = secondaryBarText.trim()
+      if (!text || secondaryBarSending || !secondaryCanSend || !iconPopupKind) return
+      setSecondaryBarSending(true)
+      try {
+        if (iconPopupKind === 'mafia') await sendMafiaMessage(text)
+        else await sendDayMessage(text)
+        setSecondaryBarText('')
+      } finally {
+        setSecondaryBarSending(false)
       }
     }
 
@@ -1220,6 +1237,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             messages={myState?.mafiaChatMessages ?? []}
             onSendMessage={sendMafiaMessage}
             myPlayerId={myPlayerId}
+            readOnly={phase !== 'night'}
           />
         )}
       </>
@@ -1257,7 +1275,10 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             {townChatContent}
           </>
         ) : (
-          townChatContent
+          <>
+            {townChatContent}
+            {mafiaSecretContent}
+          </>
         )}
       </div>
     )
@@ -1299,7 +1320,9 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             {/* Desktop: side-by-side grid (unchanged) */}
             <main className="hidden md:grid flex-1 max-w-6xl w-full mx-auto p-6 md:grid-cols-3 gap-6 md:items-start overflow-y-auto">
               <div className="md:col-span-2 space-y-4">{playersContent}</div>
-              <div className="md:col-span-1 space-y-4">{chatContent}</div>
+              <div className="md:col-span-1 space-y-4 md:sticky md:top-20 md:self-start md:max-h-[calc(100vh-6rem)] md:overflow-y-auto">
+                {chatContent}
+              </div>
             </main>
 
             {/* Mobile: single scroll area with grid + inline chat preview. The bottom
@@ -1396,9 +1419,25 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
 
             {showNightTownPeek && (
               <div className="md:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch h-12 pb-[env(safe-area-inset-bottom)] bg-[var(--card)] border-t border-[var(--border)]">
-                <div className="flex-1 flex items-center px-4 text-sm text-[var(--muted)]">
-                  Nothing to send at night
-                </div>
+                <form onSubmit={handleSecondarySubmit} className="flex-1 flex items-center gap-2 px-4">
+                  <span className="text-lg">💬</span>
+                  <input
+                    type="text"
+                    value={secondaryBarText}
+                    disabled={secondaryBarSending}
+                    onChange={(e) => setSecondaryBarText(e.target.value)}
+                    onFocus={() => setSecondaryChatOverlayOpen(true)}
+                    placeholder="Tap to send a message"
+                    className="flex-1 bg-transparent text-sm focus:outline-none placeholder:text-[var(--muted)] text-[var(--foreground)]"
+                  />
+                  <button
+                    type="submit"
+                    disabled
+                    className="text-sm font-semibold px-2 disabled:opacity-40 text-[var(--primary)]"
+                  >
+                    💤
+                  </button>
+                </form>
                 <button
                   type="button"
                   onClick={() => setSecondaryChatOverlayOpen(true)}
@@ -1532,13 +1571,35 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                     players={iconPopupKind === 'mafia' ? undefined : publicPlayers}
                     className="flex-1 min-h-0 p-3"
                   />
-                  <div className="shrink-0 px-4 py-3 border-t border-[var(--border)]">
-                    <p className="text-xs text-[var(--muted)] italic text-center">
-                      {iconPopupKind === 'mafia' && phase !== 'night'
-                        ? 'Opens for sending again at night.'
-                        : 'Read-only — nothing to send here right now.'}
-                    </p>
-                  </div>
+                  <form
+                    onSubmit={handleSecondarySubmit}
+                    className={`shrink-0 flex items-center gap-2 px-4 py-3 border-t ${
+                      iconPopupKind === 'mafia' ? 'border-red-500/20' : 'border-[var(--border)]'
+                    }`}
+                  >
+                    <input
+                      type="text"
+                      value={secondaryBarText}
+                      disabled={secondaryBarSending}
+                      onChange={(e) => setSecondaryBarText(e.target.value)}
+                      autoFocus={secondaryCanSend}
+                      placeholder={iconPopupKind === 'mafia' ? 'Whisper to allies...' : 'Type a message...'}
+                      className={`flex-1 px-3 py-2 bg-[var(--surface-inset-bg)] border rounded-lg text-sm focus:outline-none ${
+                        iconPopupKind === 'mafia'
+                          ? 'border-red-500/20 focus:border-red-500/50 text-red-200'
+                          : 'border-[var(--border)] focus:border-[var(--primary)] text-[var(--foreground)]'
+                      } placeholder:text-[var(--muted)]`}
+                    />
+                    <button
+                      type="submit"
+                      disabled={secondaryBarSending || !secondaryBarText.trim() || !secondaryCanSend}
+                      className={`px-3 py-2 text-sm font-semibold rounded-lg disabled:opacity-40 ${
+                        iconPopupKind === 'mafia' ? 'bg-red-600 hover:bg-red-700 text-white' : 'btn-primary btn-fit'
+                      }`}
+                    >
+                      {!secondaryCanSend ? (phase === 'night' ? '💤' : '⏳') : 'Send'}
+                    </button>
+                  </form>
                 </div>
               </div>
             )}

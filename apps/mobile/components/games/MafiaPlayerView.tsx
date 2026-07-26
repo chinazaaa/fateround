@@ -413,6 +413,11 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         : '💬 Town Discussion'
   const peekMessages = iconPopupKind === 'mafia' ? (myState?.mafiaChatMessages ?? []) : (state.dayChatMessages ?? [])
   const peekTitle = iconPopupKind === 'mafia' ? '🔪 Mafia Secret Chat' : '💬 Town Discussion'
+  const peekCanSend = iconPopupKind === 'mafia' ? phase === 'night' : canSendDayNow
+  const handlePeekSend = async (msg: string) => {
+    if (iconPopupKind === 'mafia') await sendChat(msg, 'night')
+    else await sendChat(msg, 'day')
+  }
   const handleBottomBarSend = async (msg: string) => {
     if (bottomBarTarget === 'mafia') await sendChat(msg, 'night')
     else if (bottomBarTarget === 'ghost') await sendChat(msg, 'ghost')
@@ -759,8 +764,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         messages={peekMessages}
         players={state.players}
         accent={iconPopupKind === 'mafia' ? 'mafia' : undefined}
-        canType={false}
+        canType={peekCanSend}
         phase={phase}
+        onSend={handlePeekSend}
       />
     </GameShell>
   )
