@@ -48,9 +48,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   // 3. Verify scope-specific authorization
   if (targetScope === 'ghost') {
-    // Ghost chat: only eliminated players
-    if (playerState.is_alive) {
-      return NextResponse.json({ error: 'Only eliminated players can use ghost chat' }, { status: 403 })
+    // Ghost chat: eliminated players any time, plus an alive Medium at night (they can
+    // talk with the dead, but only then — see state/route.ts for the matching read-side
+    // restriction).
+    const isMediumAtNight = playerState.is_alive && playerState.role === 'medium' && session.phase === 'night'
+    if (playerState.is_alive && !isMediumAtNight) {
+      return NextResponse.json(
+        { error: 'Only eliminated players (or the Medium at night) can use ghost chat' },
+        { status: 403 }
+      )
     }
   } else {
     // All other scopes require the player to be alive

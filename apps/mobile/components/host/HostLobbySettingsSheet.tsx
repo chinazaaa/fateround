@@ -342,9 +342,10 @@ export function HostLobbySettingsSheet({
     ayoVariant: game.ayo_variant === 'oware' ? 'oware' : 'traditional',
   }))
   const [mafia, setMafia] = useState<MafiaLobbyState>(() => ({
-    timerSeconds: game.timer_seconds ?? 0,
-    doctorEnabled: game.mafia_doctor_enabled ?? true,
-    detectiveEnabled: game.mafia_detective_enabled ?? true,
+    nightTimerSeconds: game.timer_seconds ?? 60,
+    dayTimerSeconds: game.mafia_day_seconds ?? 90,
+    votingTimerSeconds: game.mafia_voting_seconds ?? 45,
+    advancedMode: game.mafia_advanced_mode === true,
     anonymousVotes: game.mafia_anonymous_votes ?? true,
   }))
   const [quiplash, setQuiplash] = useState<QuiplashLobbyState>(() => ({
@@ -598,10 +599,10 @@ export function HostLobbySettingsSheet({
       if (gameType === 'ayo' && variant.ayoVariant !== game.ayo_variant) board.ayo_variant = variant.ayoVariant
     }
     if (isMafia) {
-      if (mafia.timerSeconds !== game.timer_seconds) board.timer_seconds = mafia.timerSeconds
-      if (mafia.doctorEnabled !== game.mafia_doctor_enabled) board.mafia_doctor_enabled = mafia.doctorEnabled
-      if (mafia.detectiveEnabled !== game.mafia_detective_enabled)
-        board.mafia_detective_enabled = mafia.detectiveEnabled
+      if (mafia.nightTimerSeconds !== game.timer_seconds) board.timer_seconds = mafia.nightTimerSeconds
+      if (mafia.dayTimerSeconds !== game.mafia_day_seconds) board.mafia_day_seconds = mafia.dayTimerSeconds
+      if (mafia.votingTimerSeconds !== game.mafia_voting_seconds) board.mafia_voting_seconds = mafia.votingTimerSeconds
+      if (mafia.advancedMode !== (game.mafia_advanced_mode === true)) board.mafia_advanced_mode = mafia.advancedMode
       if (mafia.anonymousVotes !== game.mafia_anonymous_votes) board.mafia_anonymous_votes = mafia.anonymousVotes
     }
     if (isQuiplash) {

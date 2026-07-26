@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import * as SecureStore from 'expo-secure-store'
 import { normalizeGameCode, type Game, type Player } from '@fateround/shared'
 import {
+  MAFIA_ROLE_INFO,
   type MafiaChatMessage,
+  type MafiaRole,
   type MafiaStateResponse,
   mafiaPhaseLabel,
   mafiaRoleEmoji,
@@ -18,25 +21,54 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { getPlayerSession } from '@/lib/secure-session'
-import { postMafiaAdvance, postMafiaChat, postMafiaNightAction, postMafiaState, postMafiaVote } from '@/lib/game-api'
+import {
+  postMafiaAdvance,
+  postMafiaChat,
+  postMafiaNightAction,
+  postMafiaPriestAction,
+  postMafiaSkipPhase,
+  postMafiaState,
+  postMafiaVigilanteAction,
+  postMafiaVote,
+} from '@/lib/game-api'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
+import { MafiaPlayersGrid } from '@/components/games/mafia/MafiaPlayersGrid'
+import { MafiaRolesDrawer } from '@/components/games/mafia/MafiaRolesDrawer'
+import { MafiaRoleRevealScreen } from '@/components/games/mafia/MafiaRoleRevealScreen'
+import { MafiaSkipPhaseBar } from '@/components/games/mafia/MafiaSkipPhaseBar'
+import { MafiaIdentityPanel } from '@/components/games/mafia/MafiaIdentityPanel'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
 
-const ROLE_DESC: Record<string, string> = {
-  mafia: 'Eliminate villagers at night. Blend in during the day.',
-  doctor: 'Protect one player each night from the Mafia.',
-  detective: 'Investigate one player each night to learn their alignment.',
-  villager: 'Debate during the day to find and vote out the Mafia.',
-}
+// Roles with no night action at all (day-only or passive) — matches NO_NIGHT_ACTION_ROLES
+// in src/app/api/mafia/[code]/night-action/route.ts.
+const NO_NIGHT_ACTION_ROLES: MafiaRole[] = ['villager', 'mayor', 'jester', 'cursed_villager', 'vigilante', 'priest']
+// Every wolf-team role — not just literal 'mafia' — gets the shared secret chat.
+const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer', 'mafia_seer']
+// Two taps required: first tap picks target A, second tap (a different player) submits both.
+const TWO_TARGET_NIGHT_ROLES: MafiaRole[] = ['cupid', 'detective']
 
 export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
   const [mafiaState, setMafiaState] = useState<MafiaStateResponse | null>(null)
   const [acting, setActing] = useState(false)
   const [timerTick, setTimerTick] = useState(0)
+  // First-tap target for two-target night roles (Cupid, Detective) — cleared on submit.
+  const [pendingFirstTargetId, setPendingFirstTargetId] = useState<string | null>(null)
+  // Which Witch potion the next grid tap will use — cleared once submitted.
+  const [witchPotion, setWitchPotion] = useState<'heal' | 'kill' | null>(null)
+  // Priest/Vigilante act during the day but separately from voting — this puts the grid into
+  // "pick a target for this special action" mode instead of "pick a lynch vote" mode.
+  const [dayActionMode, setDayActionMode] = useState<'priest' | 'vigilante_shoot' | 'vigilante_reveal' | null>(null)
+  // A late joiner's client can load state well after the game's shared role_reveal phase has
+  // already ended (it's a one-time, whole-game window) — without this they'd be dropped
+  // straight into an in-progress night/day with no "you are..." moment at all. Give them a
+  // one-time few-second local reveal instead, gated on a per-player SecureStore flag so it
+  // only ever fires once and never re-interrupts a returning player.
+  const [forceRoleReveal, setForceRoleReveal] = useState(false)
+  const forceRoleRevealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: MafiaStateResponse | null; ok: boolean }> => {
@@ -93,6 +125,40 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     ? state.players.find((p) => p.id === state.lastVoteResultPlayerId)
     : undefined
 
+  // The timeout that clears forceRoleReveal is intentionally NOT returned as this effect's
+  // cleanup — if the game's real phase changes again while the few-second overlay is showing
+  // (e.g. the player was backgrounded and the server ticked several phases forward), this
+  // effect re-runs, and a cleanup-cancelled timeout with no replacement (blocked by the
+  // SecureStore guard below) would leave forceRoleReveal stuck true forever. A ref-held
+  // timeout only ever gets cleared on unmount.
+  useEffect(() => {
+    if (bootstrap.screen !== 'active' || !bootstrap.myPlayerId || !myState?.role) return
+    const key = `mafia_role_seen_${gameCode.toUpperCase()}_${bootstrap.myPlayerId}`
+    let cancelled = false
+    void (async () => {
+      if (state?.phase === 'role_reveal') {
+        // Seen naturally via the shared role_reveal phase — mark it so a late refresh doesn't
+        // also trigger the late-join overlay once that phase has passed.
+        await SecureStore.setItemAsync(key, '1')
+        return
+      }
+      const seen = await SecureStore.getItemAsync(key)
+      if (cancelled || seen) return
+      await SecureStore.setItemAsync(key, '1')
+      setForceRoleReveal(true)
+      forceRoleRevealTimeoutRef.current = setTimeout(() => setForceRoleReveal(false), 5000)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [bootstrap.screen, bootstrap.myPlayerId, gameCode, myState?.role, state?.phase])
+
+  useEffect(() => {
+    return () => {
+      if (forceRoleRevealTimeoutRef.current) clearTimeout(forceRoleRevealTimeoutRef.current)
+    }
+  }, [])
+
   useEffect(() => {
     if (!state?.phaseDeadline || state.phase === 'game_over') return
     const id = setInterval(() => setTimerTick((n) => n + 1), 1000)
@@ -118,7 +184,79 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
-  const showDayVotes = state?.phase === 'day' && !(state.anonymousVotes && !myState?.dayVoteSubmitted)
+  useEffect(() => {
+    setPendingFirstTargetId(null)
+    setWitchPotion(null)
+    setDayActionMode(null)
+  }, [state?.phase, state?.dayNumber])
+
+  const showDayVotes = state?.phase === 'voting' && !(state.anonymousVotes && !myState?.dayVoteSubmitted)
+
+  const role = myState?.role ?? null
+  const canAct = amIAlive && !amISpectator && !!bootstrap.myResumeToken
+
+  const handleNightSelect = useCallback(
+    (id: string) => {
+      const token = bootstrap.myResumeToken
+      const myId = bootstrap.myPlayerId
+      if (!token || !role) return
+
+      if (role === 'witch') {
+        if (!witchPotion) return
+        const potionType = witchPotion
+        void act(() => postMafiaNightAction(bootstrap.code, token, id, { potionType })).then(() => setWitchPotion(null))
+        return
+      }
+
+      if (role === 'trapper' || role === 'arsonist' || role === 'mafia_seer') {
+        // Self-target has a distinct meaning for each of these (activate traps / ignite /
+        // resign the reveal ability) and is always a single submission.
+        if (id === myId) {
+          void act(() => postMafiaNightAction(bootstrap.code, token, id))
+          return
+        }
+        if (role === 'trapper') {
+          void act(() => postMafiaNightAction(bootstrap.code, token, id))
+          return
+        }
+        // Arsonist douse is a two-target pick, same flow as Cupid/Detective below.
+      }
+
+      if (TWO_TARGET_NIGHT_ROLES.includes(role) || role === 'arsonist') {
+        if (!pendingFirstTargetId) {
+          setPendingFirstTargetId(id)
+          return
+        }
+        if (pendingFirstTargetId === id) {
+          setPendingFirstTargetId(null)
+          return
+        }
+        const first = pendingFirstTargetId
+        setPendingFirstTargetId(null)
+        void act(() => postMafiaNightAction(bootstrap.code, token, first, { secondTargetPlayerId: id }))
+        return
+      }
+
+      // Medium (dead-target revive) and every other single-target role.
+      void act(() => postMafiaNightAction(bootstrap.code, token, id))
+    },
+    [bootstrap.myResumeToken, bootstrap.myPlayerId, bootstrap.code, role, witchPotion, pendingFirstTargetId]
+  )
+
+  const handleDayActionSelect = useCallback(
+    (id: string) => {
+      const token = bootstrap.myResumeToken
+      if (!token || !dayActionMode) return
+      if (dayActionMode === 'priest') {
+        void act(() => postMafiaPriestAction(bootstrap.code, token, id)).then(() => setDayActionMode(null))
+        return
+      }
+      void act(() =>
+        postMafiaVigilanteAction(bootstrap.code, token, id, dayActionMode === 'vigilante_shoot' ? 'shoot' : 'reveal')
+      ).then(() => setDayActionMode(null))
+    },
+    [bootstrap.myResumeToken, bootstrap.code, dayActionMode]
+  )
 
   const sendChat = useCallback(
     async (msg: string, scope: 'night' | 'day' | 'ghost') => {
@@ -183,9 +321,30 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
   const secondsLeft = secondsUntilMafiaDeadline(state.phaseDeadline)
   const phase = state.phase
+  const showRoleReveal = phase === 'role_reveal' || forceRoleReveal
+  const isMafiaTeamAlive = !!myState?.role && MAFIA_TEAM_ROLES.includes(myState.role) && amIAlive
+  // The Medium can talk with the dead, but only at night, and only once someone actually
+  // is dead — same ghost channel the dead themselves use, not a separate one.
+  const isMediumAtNight =
+    myState?.role === 'medium' && amIAlive && phase === 'night' && state.players.some((p) => !p.isAlive)
+
+  if (showRoleReveal) {
+    return (
+      <GameShell bootstrap={bootstrap} title="Mafia" subtitle="Role reveal">
+        <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
+          <TurnBanner text={`Role reveal${secondsLeft > 0 ? ` · ${secondsLeft}s` : ''}`} isMyTurn={false} />
+          <MafiaRoleRevealScreen myState={myState} />
+        </KeyboardAwareGameScroll>
+      </GameShell>
+    )
+  }
 
   return (
-    <GameShell bootstrap={bootstrap} title="Mafia" subtitle={`Day ${state.dayNumber}`}>
+    <GameShell
+      bootstrap={bootstrap}
+      title="Mafia"
+      subtitle={`${phase === 'night' ? 'Night' : 'Day'} ${state.dayNumber}`}
+    >
       <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
         <TurnBanner
           text={`${mafiaPhaseLabel(phase)}${secondsLeft > 0 ? ` · ${secondsLeft}s` : ''}`}
@@ -195,74 +354,67 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         />
 
         {myState ? (
-          <View style={styles.identityCard}>
-            <Text style={styles.identityEmoji}>{mafiaRoleEmoji(myState.role)}</Text>
-            <Text style={styles.identityRole}>{myState.role.toUpperCase()}</Text>
-            <Text style={styles.identityTeam}>Team {myState.team === 'mafia' ? 'Mafia' : 'Village'}</Text>
-            <Text style={styles.identityDesc}>{ROLE_DESC[myState.role]}</Text>
+          <View style={styles.identityStrip}>
+            <Text style={styles.identityText}>
+              {mafiaRoleEmoji(myState.role)} {MAFIA_ROLE_INFO[myState.role].name} ·{' '}
+              {myState.team === 'mafia' ? 'Team Mafia' : 'Team Village'}
+            </Text>
             {myState.mafiaTeammates.length > 0 ? (
               <Text style={styles.allies}>Allies: {myState.mafiaTeammates.join(', ')}</Text>
             ) : null}
-            {myState.detectiveResult ? (
-              <Text style={styles.investigation}>
-                {myState.detectiveResult.targetName} is{' '}
-                {myState.detectiveResult.alignment === 'mafia' ? 'Mafia' : 'Village'}
-              </Text>
-            ) : null}
-            <View style={[styles.statusPill, amIAlive ? styles.statusAlive : styles.statusDead]}>
-              <Text style={[styles.statusPillText, amIAlive ? styles.statusAliveText : styles.statusDeadText]}>
-                {amIAlive ? '💚 ALIVE' : '💀 ELIMINATED'}
-              </Text>
-            </View>
           </View>
         ) : amISpectator ? (
-          <View style={styles.identityCard}>
-            <Text style={styles.identityEmoji}>👁️</Text>
-            <Text style={styles.identityRole}>SPECTATING</Text>
-            <Text style={styles.identityDesc}>You are watching this game.</Text>
+          <View style={styles.identityStrip}>
+            <Text style={styles.identityText}>👁️ Spectating — you are watching this game.</Text>
           </View>
         ) : null}
 
-        <View style={styles.phaseCard}>
-          {phase === 'role_reveal' ? (
-            <Text style={styles.phaseText}>Check your role above. Do not show your screen!</Text>
-          ) : null}
+        <MafiaIdentityPanel myState={myState} />
 
+        <View style={styles.phaseCard}>
           {phase === 'night' ? (
             <>
               {amISpectator ? (
                 <Text style={styles.phaseText}>Watching — night actions in progress…</Text>
               ) : !amIAlive ? (
                 <Text style={styles.phaseText}>You are eliminated. Watch the night unfold…</Text>
-              ) : myState?.role === 'villager' ? (
+              ) : role && NO_NIGHT_ACTION_ROLES.includes(role) ? (
                 <Text style={styles.phaseText}>The village sleeps…</Text>
+              ) : role === 'little_girl' ? (
+                <Pressable
+                  style={styles.actionBtn}
+                  disabled={acting}
+                  onPress={() =>
+                    act(() => postMafiaNightAction(bootstrap.code, bootstrap.myResumeToken!, bootstrap.myPlayerId!))
+                  }
+                >
+                  <Text style={styles.actionBtnText}>👁️ Open your eyes</Text>
+                </Pressable>
+              ) : role === 'witch' ? (
+                <View style={styles.potionRow}>
+                  <Pressable
+                    style={[styles.actionBtn, witchPotion === 'heal' && styles.actionBtnActive]}
+                    disabled={acting || myState?.witchHealRemaining === 0}
+                    onPress={() => setWitchPotion((p) => (p === 'heal' ? null : 'heal'))}
+                  >
+                    <Text style={styles.actionBtnText}>🧪 Protect potion</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.actionBtn, witchPotion === 'kill' && styles.actionBtnActive]}
+                    disabled={acting || state.dayNumber === 1}
+                    onPress={() => setWitchPotion((p) => (p === 'kill' ? null : 'kill'))}
+                  >
+                    <Text style={styles.actionBtnText}>☠️ Kill potion</Text>
+                  </Pressable>
+                  {witchPotion ? (
+                    <Text style={styles.phaseText}>Tap a player below to use the {witchPotion} potion.</Text>
+                  ) : null}
+                </View>
               ) : myState?.nightActionSubmitted ? (
                 <Text style={styles.phaseOk}>Night action submitted.</Text>
-              ) : (
-                <>
-                  <Text style={styles.phaseText}>
-                    {myState?.role === 'mafia' && 'Choose a villager to eliminate.'}
-                    {myState?.role === 'doctor' && 'Choose a player to protect.'}
-                    {myState?.role === 'detective' && 'Choose a player to investigate.'}
-                  </Text>
-                  <View style={styles.targetGrid}>
-                    {state.players
-                      .filter((p) => p.isAlive && p.id !== bootstrap.myPlayerId)
-                      .map((p) => (
-                        <Pressable
-                          key={p.id}
-                          style={styles.targetBtn}
-                          disabled={acting}
-                          onPress={() =>
-                            act(() => postMafiaNightAction(bootstrap.code, bootstrap.myResumeToken!, p.id))
-                          }
-                        >
-                          <Text style={styles.targetText}>{p.name}</Text>
-                        </Pressable>
-                      ))}
-                  </View>
-                </>
-              )}
+              ) : role ? (
+                <Text style={styles.phaseText}>{MAFIA_ROLE_INFO[role].description}</Text>
+              ) : null}
             </>
           ) : null}
 
@@ -282,15 +434,21 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
             </View>
           ) : null}
 
-          {phase === 'day' ? (
+          {phase === 'day' || phase === 'voting' ? (
             <>
               {amISpectator ? (
-                <Text style={styles.phaseText}>Watching — voting in progress…</Text>
+                <Text style={styles.phaseText}>
+                  {phase === 'day' ? 'Watching — town discussion…' : 'Watching — voting in progress…'}
+                </Text>
               ) : !amIAlive ? (
-                <Text style={styles.phaseText}>You are eliminated — watch the vote.</Text>
+                <Text style={styles.phaseText}>
+                  {phase === 'day'
+                    ? 'You are eliminated — watch the discussion.'
+                    : 'You are eliminated — watch the vote.'}
+                </Text>
               ) : (
                 <>
-                  {myState?.dayVoteSubmitted ? (
+                  {phase === 'voting' && myState?.dayVoteSubmitted ? (
                     <View style={styles.voteCastRow}>
                       <Text style={styles.phaseOk}>✓ Vote cast</Text>
                       <Pressable
@@ -301,46 +459,46 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                       </Pressable>
                     </View>
                   ) : null}
-                  <View style={styles.targetGrid}>
-                    {state.players
-                      .filter((p) => p.isAlive && p.id !== bootstrap.myPlayerId)
-                      .map((p) => {
-                        const votes = showDayVotes ? (state.voteTallies[p.id] ?? 0) : 0
-                        return (
-                          <Pressable
-                            key={p.id}
-                            style={styles.targetBtn}
-                            disabled={acting}
-                            onPress={() => act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, p.id))}
-                          >
-                            <View style={styles.targetHeaderRow}>
-                              <Text style={styles.targetText}>{p.name}</Text>
-                              {votes > 0 ? (
-                                <View style={styles.voteBadge}>
-                                  <Text style={styles.voteBadgeText}>{votes}</Text>
-                                </View>
-                              ) : null}
-                            </View>
-                            {votes > 0 ? (
-                              <View style={styles.pipRow}>
-                                {Array.from({ length: Math.min(votes, 8) }).map((_, i) => (
-                                  <Text key={i} style={styles.pip}>
-                                    ●
-                                  </Text>
-                                ))}
-                              </View>
-                            ) : null}
-                          </Pressable>
-                        )
-                      })}
-                  </View>
-                  <Pressable
-                    style={styles.skipFullBtn}
-                    disabled={acting}
-                    onPress={() => act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, null))}
-                  >
-                    <Text style={styles.skipFullText}>⏭ Skip / No Lynch</Text>
-                  </Pressable>
+                  {role === 'priest' && (myState?.priestHolyWaterRemaining ?? 0) > 0 ? (
+                    <Pressable
+                      style={[styles.actionBtn, dayActionMode === 'priest' && styles.actionBtnActive]}
+                      disabled={acting}
+                      onPress={() => setDayActionMode((m) => (m === 'priest' ? null : 'priest'))}
+                    >
+                      <Text style={styles.actionBtnText}>⛪ Throw holy water</Text>
+                    </Pressable>
+                  ) : null}
+                  {role === 'vigilante' && (myState?.vigilanteShotsRemaining ?? 0) > 0 ? (
+                    <Pressable
+                      style={[styles.actionBtn, dayActionMode === 'vigilante_shoot' && styles.actionBtnActive]}
+                      disabled={acting}
+                      onPress={() => setDayActionMode((m) => (m === 'vigilante_shoot' ? null : 'vigilante_shoot'))}
+                    >
+                      <Text style={styles.actionBtnText}>🔫 Shoot a player</Text>
+                    </Pressable>
+                  ) : null}
+                  {dayActionMode ? <Text style={styles.phaseText}>Tap a player below to confirm.</Text> : null}
+                  {phase === 'voting' ? (
+                    <Pressable
+                      style={styles.skipFullBtn}
+                      disabled={acting}
+                      onPress={() => act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, null))}
+                    >
+                      <Text style={styles.skipFullText}>⏭ Skip / No Lynch</Text>
+                    </Pressable>
+                  ) : null}
+                  {(state.skipRequiredCount ?? 0) > 0 ? (
+                    <View style={styles.skipBarWrap}>
+                      <MafiaSkipPhaseBar
+                        phase={phase}
+                        skipRequestCount={state.skipRequestCount ?? 0}
+                        skipRequiredCount={state.skipRequiredCount ?? 0}
+                        hasRequestedSkip={!!state.hasRequestedSkip}
+                        disabled={acting}
+                        onSkip={() => act(() => postMafiaSkipPhase(bootstrap.code, bootstrap.myResumeToken!))}
+                      />
+                    </View>
+                  ) : null}
                 </>
               )}
             </>
@@ -361,34 +519,70 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           ) : null}
         </View>
 
-        <Text style={styles.sectionTitle}>Players</Text>
-        <View style={styles.playerList}>
-          {state.players.map((p) => {
-            const rosterVotes = phase === 'day' && showDayVotes && p.isAlive ? (state.voteTallies[p.id] ?? 0) : 0
-            return (
-              <Text key={p.id} style={[styles.playerChip, !p.isAlive && styles.playerDead]}>
-                {p.isAlive ? '👤 ' : '💀 '}
-                {p.name}
-                {!p.isAlive && p.role ? ` · ${p.role}` : ''}
-                {rosterVotes > 0 ? ` · ${rosterVotes} vote${rosterVotes !== 1 ? 's' : ''}` : ''}
-              </Text>
-            )
-          })}
-        </View>
+        {(() => {
+          const nightActionable =
+            phase === 'night' &&
+            canAct &&
+            !!role &&
+            role !== 'little_girl' &&
+            !NO_NIGHT_ACTION_ROLES.includes(role) &&
+            (role === 'witch'
+              ? !!witchPotion
+              : role === 'trapper' || role === 'mafia_seer'
+                ? true
+                : !myState?.nightActionSubmitted)
+          const dayVotable = phase === 'voting' && canAct && !dayActionMode
+          const dayActionable = (phase === 'day' || phase === 'voting') && canAct && !!dayActionMode
 
-        {/* Alive Mafia see their secret chat AND the town chat simultaneously (matches web) */}
-        {myState?.role === 'mafia' && amIAlive ? (
+          return (
+            <MafiaPlayersGrid
+              players={state.players}
+              myPlayerId={bootstrap.myPlayerId}
+              myRole={myState?.role}
+              mafiaTeammateIds={myState?.mafiaTeammateIds}
+              mafiaTeammateRoles={myState?.mafiaTeammateRoles}
+              mafiaTeammateNightTargets={myState?.mafiaTeammateNightTargets}
+              mafiaSeerRevealedRoles={myState?.mafiaSeerRevealedRoles}
+              loverIds={myState?.loverIds}
+              phase={phase}
+              voteTallies={state.voteTallies}
+              voteChoices={state.voteChoices}
+              votedPlayerIds={state.votedPlayerIds}
+              anonymousVotes={state.anonymousVotes && !showDayVotes}
+              disabled={acting}
+              selectedIds={pendingFirstTargetId ? [pendingFirstTargetId] : []}
+              allowSelfSelect={
+                nightActionable &&
+                (role === 'trapper' || role === 'arsonist' || role === 'mafia_seer' || role === 'cupid')
+              }
+              allowDeadSelect={nightActionable && role === 'medium'}
+              onSelect={
+                dayActionable
+                  ? handleDayActionSelect
+                  : dayVotable
+                    ? (id) => act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, id))
+                    : nightActionable
+                      ? handleNightSelect
+                      : undefined
+              }
+            />
+          )
+        })()}
+
+        {/* Alive Mafia team (not just literal 'mafia' — includes Alpha Wolf/Wolf Cub/Framer/
+            Mafia Seer) see their secret chat AND the town chat simultaneously (matches web) */}
+        {isMafiaTeamAlive ? (
           <MafiaChatSection
             styles={styles}
             title="Mafia secret chat"
             accent="mafia"
             placeholder="Whisper to allies…"
-            messages={myState.mafiaChatMessages ?? []}
+            messages={myState?.mafiaChatMessages ?? []}
             onSend={(msg) => sendChat(msg, 'night')}
           />
         ) : null}
 
-        {phase !== 'night' && phase !== 'role_reveal' ? (
+        {phase !== 'night' ? (
           <MafiaChatSection
             styles={styles}
             title="Town discussion"
@@ -397,19 +591,37 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
             disabled={!amIAlive || amISpectator}
             onSend={(msg) => sendChat(msg, 'day')}
           />
-        ) : null}
-
-        {!amIAlive && bootstrap.myPlayerId ? (
+        ) : isMafiaTeamAlive ? (
+          // Nothing living can post to town chat at night, but the mafia team can still
+          // peek at the log (matches web's night-time town-chat icon).
           <MafiaChatSection
             styles={styles}
-            title="Ghost chat (only the dead can see this)"
-            placeholder="Chat with fellow ghosts…"
+            title="Town discussion (read-only at night)"
+            placeholder=""
+            messages={state.dayChatMessages ?? []}
+            disabled
+            onSend={() => {}}
+          />
+        ) : null}
+
+        {/* Ghost chat: always available to the dead (day or night); the Medium can join it
+            too, but only at night and only once someone's actually dead to talk to. */}
+        {(!amIAlive || isMediumAtNight) && bootstrap.myPlayerId ? (
+          <MafiaChatSection
+            styles={styles}
+            title={!amIAlive ? 'Ghost chat (only the dead can see this)' : 'Talk with the dead (night only)'}
+            placeholder={!amIAlive ? 'Chat with fellow ghosts…' : 'Talk with the dead…'}
             messages={state.ghostChatMessages ?? []}
             onSend={(msg) => sendChat(msg, 'ghost')}
           />
         ) : null}
 
         <View style={styles.rulesRow}>
+          <MafiaRolesDrawer
+            rolesInGame={state.rolesInGame ?? state.enabledRoles ?? []}
+            myRole={myState?.role}
+            roleCounts={state.roleCounts}
+          />
           <GameRulesLink gameType="mafia" />
         </View>
       </KeyboardAwareGameScroll>
@@ -495,33 +707,20 @@ function MafiaChatSection({
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     content: { paddingBottom: 32, gap: 12 },
-    identityCard: {
+    identityStrip: {
       backgroundColor: theme.surface,
       borderRadius: 12,
-      padding: 16,
-      marginBottom: 12,
-      alignItems: 'center',
+      padding: 12,
       gap: 4,
     },
-    identityEmoji: { fontSize: 36 },
-    identityRole: { color: theme.text, fontSize: 20, fontWeight: '900' },
-    identityTeam: { color: theme.textMuted, fontWeight: '600' },
-    identityDesc: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 4 },
-    allies: { color: '#fca5a5', fontSize: 13, marginTop: 8 },
-    investigation: { color: '#86efac', fontSize: 13, marginTop: 8 },
-    statusPill: {
-      marginTop: 10,
-      paddingHorizontal: 14,
-      paddingVertical: 5,
-      borderRadius: 999,
-      borderWidth: 1,
+    identityText: { color: theme.text, fontWeight: '700', textAlign: 'center' },
+    allies: { color: '#fca5a5', fontSize: 13, textAlign: 'center' },
+    rulesRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 8,
     },
-    statusPillText: { fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
-    statusAlive: { backgroundColor: '#10b98118', borderColor: '#10b98155' },
-    statusDead: { backgroundColor: '#f43f5e18', borderColor: '#f43f5e55' },
-    statusAliveText: { color: '#34d399' },
-    statusDeadText: { color: '#fb7185' },
-    rulesRow: { alignItems: 'flex-end', marginBottom: 8 },
     phaseCard: {
       backgroundColor: theme.surface,
       borderRadius: 12,
@@ -532,28 +731,20 @@ const makeStyles = (theme: Theme) =>
     phaseText: { color: theme.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: 8 },
     phaseOk: { color: '#86efac', fontWeight: '700', textAlign: 'center', marginBottom: 8 },
     centerBlock: { alignItems: 'center', gap: 8 },
-    targetGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
-    targetBtn: {
-      paddingHorizontal: 12,
+    potionRow: { gap: 8 },
+    actionBtn: {
       paddingVertical: 10,
+      paddingHorizontal: 14,
       borderRadius: 8,
-      backgroundColor: theme.border,
-      minWidth: '45%',
-    },
-    skipBtn: { borderWidth: 1, borderColor: theme.border },
-    targetText: { color: theme.text, fontWeight: '700' },
-    targetHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 6 },
-    voteBadge: {
-      backgroundColor: '#f43f5e22',
-      borderColor: '#f43f5e55',
       borderWidth: 1,
-      borderRadius: 999,
-      paddingHorizontal: 8,
-      paddingVertical: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.border,
+      alignItems: 'center',
+      marginBottom: 8,
     },
-    voteBadgeText: { color: '#fb7185', fontSize: 12, fontWeight: '800' },
-    pipRow: { flexDirection: 'row', gap: 2, marginTop: 4, flexWrap: 'wrap' },
-    pip: { color: '#fb7185', fontSize: 10 },
+    actionBtnActive: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+    actionBtnText: { color: theme.text, fontWeight: '700' },
+    skipBarWrap: { marginTop: 10 },
     voteCastRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
     changeVoteLink: { color: theme.textMuted, fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
     skipFullBtn: {
@@ -568,15 +759,6 @@ const makeStyles = (theme: Theme) =>
     skipFullText: { color: theme.textSecondary, fontWeight: '700' },
     sectionTitle: { color: theme.textMuted, fontWeight: '700', marginBottom: 6, marginTop: 4 },
     mafiaChatTitle: { color: '#f87171' },
-    playerList: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
-    playerChip: {
-      color: theme.text,
-      backgroundColor: theme.border,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 999,
-    },
-    playerDead: { opacity: 0.55 },
     chatLog: { maxHeight: 120, backgroundColor: theme.surface, borderRadius: 8, padding: 8, marginBottom: 8 },
     chatLine: { color: theme.textSecondary, fontSize: 13, marginBottom: 4 },
     chatEmpty: { color: theme.textMuted, fontSize: 12, fontStyle: 'italic', textAlign: 'center', paddingVertical: 16 },

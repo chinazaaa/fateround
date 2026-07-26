@@ -28,7 +28,7 @@ import { gameTypeConfig } from '@/lib/game-types'
 import { MAFIA_MIN_PLAYERS } from '@/lib/mafia'
 import { clearPlayerSession, getPlayerSession } from '@/lib/utils'
 import { MafiaPhaseTimer } from './MafiaChat'
-import { MafiaDayChat, MafiaSecretChat } from './MafiaChat'
+import { ChatMessages, MafiaDayChat, MafiaSecretChat } from './MafiaChat'
 import { MafiaIdentityPanel } from './MafiaIdentityPanel'
 import { MafiaPhaseCard } from './MafiaPhaseCard'
 import { MafiaRoleRevealScreen } from './MafiaRoleRevealScreen'
@@ -390,10 +390,19 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
   // server-side, so players can change their pick anytime before the phase ends by tapping
   // a different tile. Cupid's two-step pick and the current highlighted selection reset
   // whenever the phase or day number changes.
-  // Mobile tab state — Wolvesville-style bottom tabs instead of one long scroll.
-  const [mobileTab, setMobileTab] = useState<'players' | 'chat'>('players')
-  const [chatUnread, setChatUnread] = useState(false)
-  const lastSeenChatCountRef = useRef(0)
+  // Mobile chat toggle — Wolvesville-style: mafia's bottom input defaults to their secret
+  // chat at night / town chat by day, and this flips it to the other one (still readable,
+  // just not sendable, outside its own phase).
+  const [secondaryChatOverlayOpen, setSecondaryChatOverlayOpen] = useState(false)
+  // The current bottom-bar target starts collapsed to a small scrollable preview of its
+  // latest messages — tapping it (or focusing the bottom input) pops the full chat log up
+  // above the input, dimming the grid behind it (Wolvesville-style), rather than swapping
+  // content in place. Resets each new phase so it doesn't stay stuck open from before.
+  const [chatOverlayOpen, setChatOverlayOpen] = useState(false)
+  // Persistent bottom input bar — lets players type and send without first expanding the
+  // preview above. Its target (day/ghost/mafia) tracks the same toggle the preview uses.
+  const [bottomBarText, setBottomBarText] = useState('')
+  const [bottomBarSending, setBottomBarSending] = useState(false)
 
   const [cupidFirstPick, setCupidFirstPick] = useState<string | null>(null)
   const [arsonistFirstPick, setArsonistFirstPick] = useState<string | null>(null)
@@ -407,18 +416,10 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
     setDetectiveFirstPick(null)
     setNightSelection(null)
     setVoteSelection(null)
+    setChatOverlayOpen(false)
+    setSecondaryChatOverlayOpen(false)
+    setBottomBarText('')
   }, [phaseKey])
-
-  // Track unread chat messages when the player is on the Players tab (mobile only).
-  const chatMsgCount = mafiaState?.dayChatMessages?.length ?? 0
-  useEffect(() => {
-    if (mobileTab === 'chat') {
-      lastSeenChatCountRef.current = chatMsgCount
-      setChatUnread(false)
-    } else if (chatMsgCount > lastSeenChatCountRef.current) {
-      setChatUnread(true)
-    }
-  }, [chatMsgCount, mobileTab])
 
   const triggerAutoAdvance = useCallback(async () => {
     try {
@@ -793,6 +794,84 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
     const isWolfTeam = !!myRole && MAFIA_TEAM_ROLES.includes(myRole)
     const showSecretChat = isWolfTeam && amIAlive && phase === 'night'
     const canSendDay = phase === 'day' || phase === 'voting'
+    const mafiaTeamAlive = isWolfTeam && amIAlive
+    // The Medium can talk with the dead, but only at night, and only once someone
+    // actually is dead — same ghost channel the dead themselves use, not a separate one.
+    const isMediumAtNight =
+      myRole === 'medium' && amIAlive && phase === 'night' && publicPlayers.some((p) => !p.isAlive)
+    // The bottom input/preview always shows mafia's own secret chat at night and town
+    // chat during the day — the icon beside it doesn't change this at all, it just pops
+    // up a read-only view of the OTHER one on top (mafia can peek at, but not post to,
+    // their secret chat during the day; there's no living-player town chat at night to
+    // peek at, so the icon at night has nothing to open there). Dead players always get
+    // ghost chat; the Medium gets it too but only at night; any other alive non-mafia
+    // villager at night gets nothing to send.
+    const bottomBarTarget: 'mafia' | 'ghost' | 'day' | null = !amIAlive
+      ? 'ghost'
+      : mafiaTeamAlive
+        ? phase === 'night'
+          ? 'mafia'
+          : 'day'
+        : isMediumAtNight
+          ? 'ghost'
+          : phase === 'night'
+            ? null
+            : 'day'
+    // Mafia chat is night-only to send; town chat during the day is always sendable;
+    // ghost chat is always sendable for the dead, night or day — it's their one channel
+    // all game, so it must never fall into either of the other two's phase restrictions.
+    const bottomBarDisabled =
+      amISpectator || (bottomBarTarget === 'day' ? !canSendDay : bottomBarTarget === 'mafia' && phase !== 'night')
+    // An alive non-mafia, non-medium villager at night has no bottomBarTarget (nothing to
+    // send), but should still get an icon to peek at town chat (read-only — it's night,
+    // nobody can post), mirroring the mafia team's icon during the day.
+    const showNightTownPeek = phase === 'night' && amIAlive && !mafiaTeamAlive && !isMediumAtNight && !amISpectator
+    // What the icon beside the input peeks at — always the opposite of the bar's own
+    // target, read-only, in its own popup that doesn't touch the bar/preview at all. For
+    // the villager-at-night case there's no bar to be "opposite" of, so it's just 'day'.
+    const iconPopupKind: 'mafia' | 'day' | null = mafiaTeamAlive
+      ? bottomBarTarget === 'mafia'
+        ? 'day'
+        : 'mafia'
+      : showNightTownPeek
+        ? 'day'
+        : null
+    // Dead players' day-chat + ghost-chat merged into one timeline (same merge MafiaDayChat
+    // does internally) — used for their preview/popup so it isn't a separate always-open
+    // h-[24rem] scrollable box sitting inline in the page (that caused a confusing
+    // scroll-within-a-scroll), just a compact non-scrolling snippet like everyone else's.
+    const mergedGhostMessages = ghostChatMessages?.length
+      ? [...(dayChatMessages ?? []), ...ghostChatMessages].sort(
+          (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)
+        )
+      : (dayChatMessages ?? [])
+    const showMediumGhostChat = myRole === 'medium' && amIAlive && (myState?.mediumGhostChat?.length ?? 0) > 0
+    const mediumGhostBlock = showMediumGhostChat ? (
+      <div className="glass-card border border-purple-500/30 rounded-2xl p-4">
+        <h3 className="text-[10px] font-bold tracking-widest uppercase text-purple-400 mb-2">🔮 Voices from beyond</h3>
+        <div className="space-y-1 max-h-40 overflow-y-auto">
+          {myState!.mediumGhostChat!.map((m) => (
+            <p key={m.id} className="text-xs text-purple-300/80">
+              <span className="font-bold text-purple-400">{m.sender_name}:</span> {m.message}
+            </p>
+          ))}
+        </div>
+      </div>
+    ) : null
+    const handleBottomBarSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault()
+      const text = bottomBarText.trim()
+      if (!text || bottomBarSending || bottomBarDisabled || !bottomBarTarget) return
+      setBottomBarSending(true)
+      try {
+        if (bottomBarTarget === 'mafia') await sendMafiaMessage(text)
+        else if (bottomBarTarget === 'ghost') await sendGhostMessage(text)
+        else await sendDayMessage(text)
+        setBottomBarText('')
+      } finally {
+        setBottomBarSending(false)
+      }
+    }
 
     const playersContent = (
       <>
@@ -803,6 +882,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
           mafiaTeammateIds={myState?.mafiaTeammateIds}
           mafiaTeammateRoles={myState?.mafiaTeammateRoles}
           mafiaTeammateNightTargets={myState?.mafiaTeammateNightTargets}
+          mafiaSeerRevealedRoles={myState?.mafiaSeerRevealedRoles}
           loverIds={myState?.loverIds}
           phase={phase}
           voteTallies={voteTallies}
@@ -1050,52 +1130,69 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
       </>
     )
 
+    // Split out so the mobile bottom bar can show just the mafia secret chat (at night)
+    // or just the town chat (during the day) as its primary overlay, with the other one
+    // tucked behind its own icon — desktop's `chatContent` below still stacks both like
+    // before.
+    const mafiaSecretContent = (
+      <>
+        {showSecretChat && (
+          <MafiaSecretChat
+            messages={myState?.mafiaChatMessages ?? []}
+            onSendMessage={sendMafiaMessage}
+            myPlayerId={myPlayerId}
+          />
+        )}
+        {myRole === 'medium' && amIAlive && (myState?.mediumGhostChat?.length ?? 0) > 0 && (
+          <div className="glass-card border border-purple-500/30 rounded-2xl p-4">
+            <h3 className="text-[10px] font-bold tracking-widest uppercase text-purple-400 mb-2">
+              🔮 Voices from beyond
+            </h3>
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {myState!.mediumGhostChat!.map((m) => (
+                <p key={m.id} className="text-xs text-purple-300/80">
+                  <span className="font-bold text-purple-400">{m.sender_name}:</span> {m.message}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
+      </>
+    )
+
+    const townChatContent =
+      phase === 'night' ? (
+        <MafiaDayChat
+          messages={dayChatMessages ?? []}
+          ghostMessages={!amIAlive ? (ghostChatMessages ?? []) : undefined}
+          onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
+          myPlayerId={myPlayerId}
+          players={publicPlayers}
+          readOnly={amIAlive}
+          readOnlyLabel="night"
+        />
+      ) : (
+        <MafiaDayChat
+          messages={dayChatMessages ?? []}
+          ghostMessages={!amIAlive ? (ghostChatMessages ?? []) : undefined}
+          onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
+          myPlayerId={myPlayerId}
+          players={publicPlayers}
+          readOnly={!canSendDay}
+          readOnlyLabel={PHASE_LABEL[phase]?.toLowerCase()}
+          disabled={amISpectator}
+        />
+      )
+
     const chatContent = (
       <div className="space-y-4">
         {phase === 'night' ? (
           <>
-            {showSecretChat && (
-              <MafiaSecretChat
-                messages={myState?.mafiaChatMessages ?? []}
-                onSendMessage={sendMafiaMessage}
-                myPlayerId={myPlayerId}
-              />
-            )}
-            {myRole === 'medium' && amIAlive && (myState?.mediumGhostChat?.length ?? 0) > 0 && (
-              <div className="glass-card border border-purple-500/30 rounded-2xl p-4">
-                <h3 className="text-[10px] font-bold tracking-widest uppercase text-purple-400 mb-2">
-                  🔮 Voices from beyond
-                </h3>
-                <div className="space-y-1 max-h-40 overflow-y-auto">
-                  {myState!.mediumGhostChat!.map((m) => (
-                    <p key={m.id} className="text-xs text-purple-300/80">
-                      <span className="font-bold text-purple-400">{m.sender_name}:</span> {m.message}
-                    </p>
-                  ))}
-                </div>
-              </div>
-            )}
-            <MafiaDayChat
-              messages={dayChatMessages ?? []}
-              ghostMessages={!amIAlive ? (ghostChatMessages ?? []) : undefined}
-              onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
-              myPlayerId={myPlayerId}
-              players={publicPlayers}
-              readOnly={amIAlive}
-              readOnlyLabel="night"
-            />
+            {mafiaSecretContent}
+            {townChatContent}
           </>
         ) : (
-          <MafiaDayChat
-            messages={dayChatMessages ?? []}
-            ghostMessages={!amIAlive ? (ghostChatMessages ?? []) : undefined}
-            onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
-            myPlayerId={myPlayerId}
-            players={publicPlayers}
-            readOnly={!canSendDay}
-            readOnlyLabel={PHASE_LABEL[phase]?.toLowerCase()}
-            disabled={amISpectator}
-          />
+          townChatContent
         )}
       </div>
     )
@@ -1138,35 +1235,257 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
               <div className="md:col-span-1 space-y-4">{chatContent}</div>
             </main>
 
-            {/* Mobile: tabbed content switcher below the timer */}
-            <div className="md:hidden">
-              <nav className="flex border-b border-[var(--border)] bg-[var(--card)]">
+            {/* Mobile: grid, then chat inline right below it — no fixed positioning, no
+                overlay, just normal document flow. Reuses the exact same MafiaSecretChat/
+                MafiaDayChat components the (working) desktop column already renders, so
+                there's no separate height/z-index-prone chat surface to get wrong. A
+                small toggle switches which one is showing; both keep their own built-in
+                scrollable log + input. */}
+            <div
+              className={`md:hidden flex-1 flex flex-col p-4 space-y-4 overflow-y-auto ${
+                bottomBarTarget ? 'pb-20' : ''
+              }`}
+            >
+              {playersContent}
+
+              {!amIAlive ? (
                 <button
-                  onClick={() => setMobileTab('players')}
-                  className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition ${
-                    mobileTab === 'players'
-                      ? 'text-[var(--primary)] border-b-2 border-[var(--primary)]'
-                      : 'text-[var(--muted)]'
-                  }`}
+                  type="button"
+                  onClick={() => setChatOverlayOpen(true)}
+                  className="w-full text-left glass-card border border-[var(--border)] rounded-2xl p-3 space-y-1"
                 >
-                  Players
+                  <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">
+                    💬 Town Discussion
+                  </p>
+                  <ChatMessages
+                    messages={mergedGhostMessages}
+                    myPlayerId={myPlayerId}
+                    players={publicPlayers}
+                    className="h-24 pointer-events-none"
+                  />
+                  <p className="text-[10px] text-[var(--muted)] text-center">Tap to open full chat</p>
                 </button>
+              ) : bottomBarTarget === 'mafia' ? (
                 <button
-                  onClick={() => setMobileTab('chat')}
-                  className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition relative ${
-                    mobileTab === 'chat'
-                      ? 'text-[var(--primary)] border-b-2 border-[var(--primary)]'
-                      : 'text-[var(--muted)]'
-                  }`}
+                  type="button"
+                  onClick={() => setChatOverlayOpen(true)}
+                  className="w-full text-left glass-card border border-red-500/20 rounded-2xl p-3 space-y-1"
                 >
-                  Chat
-                  {chatUnread && mobileTab !== 'chat' && (
-                    <span className="absolute top-1.5 right-[calc(50%-16px)] w-2 h-2 rounded-full bg-red-500" />
-                  )}
+                  <p className="text-[10px] font-bold tracking-widest uppercase text-red-400">🔪 Mafia Secret Chat</p>
+                  <ChatMessages
+                    messages={myState?.mafiaChatMessages ?? []}
+                    myPlayerId={myPlayerId}
+                    className="h-24 pointer-events-none"
+                  />
+                  <p className="text-[10px] text-[var(--muted)] text-center">Tap to open full chat</p>
                 </button>
-              </nav>
-              <div className="p-4 space-y-4">{mobileTab === 'players' ? playersContent : chatContent}</div>
+              ) : bottomBarTarget === 'day' ? (
+                <button
+                  type="button"
+                  onClick={() => setChatOverlayOpen(true)}
+                  className="w-full text-left glass-card border border-[var(--border)] rounded-2xl p-3 space-y-1"
+                >
+                  <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">
+                    💬 Town Discussion
+                  </p>
+                  <ChatMessages
+                    messages={dayChatMessages ?? []}
+                    myPlayerId={myPlayerId}
+                    players={publicPlayers}
+                    className="h-24 pointer-events-none"
+                  />
+                  <p className="text-[10px] text-[var(--muted)] text-center">Tap to open full chat</p>
+                </button>
+              ) : (
+                mediumGhostBlock
+              )}
             </div>
+
+            {/* Persistent bottom input, Wolvesville-style: tapping/focusing it (or the
+                preview above) pops the full message log up right above it, dimming the
+                grid behind. The input bar below is a fixed `h-12` element that renders
+                IDENTICALLY whether or not the overlay is open — the overlay is a wholly
+                separate fixed sibling stopping at `bottom-12` (matching that height), not
+                a new element inserted as this container's sibling/ancestor. Restructuring
+                the DOM around a focused input (as an earlier version did, sharing one
+                parent whose layout changed on open) blurred it on some mobile browsers,
+                closing the keyboard the instant it opened — this keeps the input's own
+                DOM node completely untouched by the overlay opening or closing. */}
+            {chatOverlayOpen && bottomBarTarget && (
+              <div className="md:hidden fixed inset-x-0 top-0 bottom-12 z-30 flex flex-col justify-end">
+                <button
+                  type="button"
+                  aria-label="Close chat"
+                  onClick={() => setChatOverlayOpen(false)}
+                  className="flex-1 bg-black/50"
+                />
+                <div
+                  className={`bg-[var(--background)] rounded-t-2xl max-h-[70vh] flex flex-col overflow-hidden border-t ${
+                    bottomBarTarget === 'mafia' ? 'border-red-500/30' : 'border-[var(--border)]'
+                  }`}
+                >
+                  <div
+                    className={`flex items-center justify-between px-4 py-3 border-b ${
+                      bottomBarTarget === 'mafia' ? 'border-red-500/20' : 'border-[var(--border)]'
+                    }`}
+                  >
+                    <h2
+                      className={`text-xs font-bold uppercase tracking-widest ${
+                        bottomBarTarget === 'mafia' ? 'text-red-400' : 'text-[var(--muted)]'
+                      }`}
+                    >
+                      {bottomBarTarget === 'mafia' ? '🔪 Mafia Secret Chat' : '💬 Town Discussion'}
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => setChatOverlayOpen(false)}
+                      className="text-[var(--muted)] text-lg leading-none px-1"
+                      aria-label="Close"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <ChatMessages
+                    messages={
+                      bottomBarTarget === 'mafia'
+                        ? (myState?.mafiaChatMessages ?? [])
+                        : bottomBarTarget === 'ghost'
+                          ? mergedGhostMessages
+                          : (dayChatMessages ?? [])
+                    }
+                    myPlayerId={myPlayerId}
+                    players={bottomBarTarget === 'mafia' ? undefined : publicPlayers}
+                    className="flex-1 min-h-0 p-3"
+                  />
+                  {bottomBarTarget === 'mafia' && phase !== 'night' && (
+                    <p className="text-xs text-[var(--muted)] italic text-center py-2">
+                      Opens for sending again at night.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {secondaryChatOverlayOpen && iconPopupKind && (
+              // bottom-0 (not bottom-12) — the input bar is hidden while this is open, so
+              // there's no bar underneath to leave a gap for.
+              <div className="md:hidden fixed inset-0 z-30 flex flex-col justify-end">
+                <button
+                  type="button"
+                  aria-label="Close chat"
+                  onClick={() => setSecondaryChatOverlayOpen(false)}
+                  className="flex-1 bg-black/50"
+                />
+                <div
+                  className={`bg-[var(--background)] rounded-t-2xl max-h-[70vh] flex flex-col overflow-hidden border-t ${
+                    iconPopupKind === 'mafia' ? 'border-red-500/30' : 'border-[var(--border)]'
+                  }`}
+                >
+                  <div
+                    className={`flex items-center justify-between px-4 py-3 border-b ${
+                      iconPopupKind === 'mafia' ? 'border-red-500/20' : 'border-[var(--border)]'
+                    }`}
+                  >
+                    <h2
+                      className={`text-xs font-bold uppercase tracking-widest ${
+                        iconPopupKind === 'mafia' ? 'text-red-400' : 'text-[var(--muted)]'
+                      }`}
+                    >
+                      {iconPopupKind === 'mafia' ? '🔪 Mafia Secret Chat' : '💬 Town Discussion'}
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => setSecondaryChatOverlayOpen(false)}
+                      className="text-[var(--muted)] text-lg leading-none px-1"
+                      aria-label="Close"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <ChatMessages
+                    messages={iconPopupKind === 'mafia' ? (myState?.mafiaChatMessages ?? []) : (dayChatMessages ?? [])}
+                    myPlayerId={myPlayerId}
+                    players={iconPopupKind === 'mafia' ? undefined : publicPlayers}
+                    className="flex-1 min-h-0 p-3"
+                  />
+                  {iconPopupKind === 'mafia' && phase !== 'night' && (
+                    <p className="text-xs text-[var(--muted)] italic text-center py-2">
+                      Opens for sending again at night.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {bottomBarTarget && !secondaryChatOverlayOpen && (
+              <div
+                className={`md:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch h-12 bg-[var(--card)] border-t ${
+                  bottomBarTarget === 'mafia' ? 'border-red-500/30' : 'border-[var(--border)]'
+                }`}
+              >
+                <form onSubmit={handleBottomBarSubmit} className="flex-1 flex items-center gap-2 px-4">
+                  <span className="text-lg">{bottomBarTarget === 'mafia' ? '🔪' : '💬'}</span>
+                  <input
+                    type="text"
+                    value={bottomBarText}
+                    disabled={bottomBarSending}
+                    readOnly={bottomBarDisabled}
+                    onChange={(e) => setBottomBarText(e.target.value)}
+                    onFocus={() => setChatOverlayOpen(true)}
+                    placeholder={
+                      bottomBarDisabled
+                        ? "Tap to view — can't chat right now"
+                        : bottomBarTarget === 'mafia'
+                          ? 'Whisper to allies...'
+                          : 'Tap to send a message'
+                    }
+                    className={`flex-1 bg-transparent text-sm focus:outline-none placeholder:text-[var(--muted)] disabled:opacity-50 ${
+                      bottomBarTarget === 'mafia' ? 'text-red-200' : 'text-[var(--foreground)]'
+                    }`}
+                  />
+                  <button
+                    type="submit"
+                    disabled={bottomBarSending || !bottomBarText.trim() || bottomBarDisabled}
+                    className={`text-sm font-semibold px-2 disabled:opacity-40 ${
+                      bottomBarTarget === 'mafia' ? 'text-red-400' : 'text-[var(--primary)]'
+                    }`}
+                  >
+                    Send
+                  </button>
+                </form>
+                {iconPopupKind && (
+                  <button
+                    type="button"
+                    onClick={() => setSecondaryChatOverlayOpen((v) => !v)}
+                    aria-label={iconPopupKind === 'mafia' ? 'Mafia chat' : 'Town chat'}
+                    className={`px-4 flex items-center justify-center border-l border-[var(--border)] text-lg ${
+                      iconPopupKind === 'mafia' ? 'text-red-400' : 'text-[var(--muted)]'
+                    }`}
+                  >
+                    {iconPopupKind === 'mafia' ? '🔪' : '💬'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* An alive non-mafia villager at night has no bottomBarTarget (nothing to
+                send), but still gets a minimal icon-only bar to peek at read-only town
+                chat — mirroring the mafia team's icon during the day. */}
+            {showNightTownPeek && !secondaryChatOverlayOpen && (
+              <div className="md:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch h-12 bg-[var(--card)] border-t border-[var(--border)]">
+                <div className="flex-1 flex items-center px-4 text-sm text-[var(--muted)]">
+                  Nothing to send at night
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSecondaryChatOverlayOpen(true)}
+                  aria-label="Town chat"
+                  className="px-4 flex items-center justify-center border-l border-[var(--border)] text-lg text-[var(--muted)]"
+                >
+                  💬
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

@@ -160,6 +160,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       deathDay: ps.death_day,
       deathCause: ps.death_cause,
       role: revealRole ? ps.role : undefined,
+      revivedByMedium: ps.revived_by_medium,
     }
   })
 
@@ -174,6 +175,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     let mafiaTeammateIds: string[] = []
     let mafiaTeammateRoles: MafiaMyState['mafiaTeammateRoles'] = {}
     let mafiaTeammateNightTargets: Record<string, string | null> | undefined = undefined
+    // Every role the Mafia Seer has ever revealed, keyed by player id — only ever built
+    // for mafia-team members, never sent to villagers/spectators.
+    let mafiaSeerRevealedRoles: MafiaMyState['mafiaSeerRevealedRoles'] = undefined
     if (MAFIA_TEAM_ROLES.includes(role)) {
       const teammates = playerStates.filter(
         (p) => MAFIA_TEAM_ROLES.includes(p.role) && p.player_id !== myPlayerState.player_id
@@ -187,6 +191,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
           teammates.map((p) => [p.player_id, p.night_action_target_player_id ?? null])
         )
       }
+
+      mafiaSeerRevealedRoles = Object.fromEntries((session.mafia_seer_revealed ?? []).map((r) => [r.playerId, r.role]))
     }
 
     // Seat-numbered display name ("#5 Naza") — used for every player mentioned in a private
@@ -419,6 +425,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       mafiaTeammateIds,
       mafiaTeammateRoles,
       mafiaTeammateNightTargets,
+      mafiaSeerRevealedRoles,
       mafiaChatMessages,
       trackerResult,
       bodyguardLastOutcome,

@@ -71,7 +71,7 @@ export function MafiaPhaseCard({
       <div className="glass-card border border-[var(--border)] rounded-2xl p-5 space-y-3">
         <div className="flex items-center gap-2">
           <span className="text-xl">🌙</span>
-          <h3 className="text-lg font-black text-[var(--foreground)]">Night</h3>
+          <h3 className="text-lg font-black text-[var(--foreground)]">Night {dayNumber}</h3>
         </div>
         {amISpectator ? (
           <p className="text-sm text-[var(--muted)] py-2 text-center">Watching — night actions in progress...</p>

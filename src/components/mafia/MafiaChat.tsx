@@ -17,6 +17,12 @@ export function MafiaPhaseTimer({
   const calc = () => (deadline ? Math.max(0, Math.round((new Date(deadline).getTime() - Date.now()) / 1000)) : null)
   const [timeLeft, setTimeLeft] = useState<number | null>(calc)
   const firedRef = useRef(false)
+  // Read the latest onExpired via a ref rather than as an effect dep — the caller's
+  // callback identity changes on every poll tick, and depending on it directly would
+  // tear down and restart the interval before a full 1000ms elapses, freezing the
+  // displayed countdown.
+  const onExpiredRef = useRef(onExpired)
+  onExpiredRef.current = onExpired
 
   useEffect(() => {
     firedRef.current = false
@@ -25,12 +31,12 @@ export function MafiaPhaseTimer({
       setTimeLeft(rem)
       if (rem !== null && rem <= 0 && !firedRef.current) {
         firedRef.current = true
-        onExpired()
+        onExpiredRef.current()
       }
     }, 1000)
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deadline, onExpired])
+  }, [deadline])
 
   if (timeLeft === null || timeLeft <= 0) return null
   const urgent = timeLeft <= 10

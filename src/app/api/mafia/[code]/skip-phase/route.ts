@@ -84,6 +84,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const aliveCount = playerStates.filter((p) => p.is_alive).length
   const skipRequired = Math.floor(aliveCount / 2) + 1
 
+  // Narrate the skip tally in the town chat feed, matching Wolvesville: "Somebody voted..."
+  // for the first vote, then "All but N voted..." as N more votes are still needed to hit
+  // the majority THRESHOLD (skipRequired) — not how many of all alive players haven't
+  // voted, which is a different (larger) number and reads as inconsistent with the "X/Y"
+  // count shown on the Skip button itself. Read by everyone (scope 'day', no target).
+  const phaseLabel = session.phase === 'day' ? 'discussion' : 'voting'
+  const stillNeeded = skipRequired - nextSkipIds.length
+  await admin.from('mafia_chat_messages').insert({
+    game_id: gameId,
+    sender_player_id: 'system',
+    sender_name: '📢',
+    message:
+      nextSkipIds.length === 1
+        ? `Somebody voted to skip the ${phaseLabel} phase.`
+        : `All but ${stillNeeded} voted to skip the ${phaseLabel} phase.`,
+    scope: 'day',
+  })
+
   if (nextSkipIds.length >= skipRequired) {
     // Resolves on whatever's been voted so far — a majority actually voting for the same
     // target still eliminates them even though skip ended Voting early.
