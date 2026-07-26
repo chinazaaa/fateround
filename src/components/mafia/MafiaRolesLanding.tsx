@@ -15,6 +15,9 @@ const TEAM_BG: Record<string, string> = {
   special: 'color-mix(in srgb, #f472b6 8%, var(--surface))',
 }
 
+const AURA_COLOR: Record<string, string> = { good: '#34d399', evil: '#f87171', unknown: '#a78bfa' }
+const AURA_LABEL: Record<string, string> = { good: 'Good', evil: 'Evil', unknown: 'Unknown' }
+
 export function MafiaRolesLanding() {
   const roles = Object.values(MAFIA_ROLE_INFO)
 
@@ -48,6 +51,16 @@ export function MafiaRolesLanding() {
                       <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
                         {info.description}
                       </p>
+                      <span
+                        className="inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border"
+                        style={{
+                          color: AURA_COLOR[info.aura],
+                          borderColor: `${AURA_COLOR[info.aura]}44`,
+                          backgroundColor: `${AURA_COLOR[info.aura]}18`,
+                        }}
+                      >
+                        Aura: {AURA_LABEL[info.aura]}
+                      </span>
                     </div>
                   </div>
                 ))}
