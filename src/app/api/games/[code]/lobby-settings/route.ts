@@ -670,6 +670,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mafia_trapper_enabled !== undefined ||
     mafia_seer_enabled !== undefined ||
     mafia_mafia_seer_enabled !== undefined ||
+    mafia_red_lady_enabled !== undefined ||
     mafia_bodyguard_enabled !== undefined ||
     mafia_mayor_enabled !== undefined ||
     mafia_vigilante_enabled !== undefined ||

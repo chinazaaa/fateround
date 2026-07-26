@@ -1332,7 +1332,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                 bar is a flex sibling (not fixed), so no pb-hack needed. Tapping the
                 inline preview opens a bottom-sheet overlay for full chat. */}
             <div className="md:hidden flex-1 flex flex-col min-h-0 overflow-hidden">
-              <div className="shrink-0 overflow-y-auto p-4 space-y-4">{playersContent}</div>
+              <div className="overflow-y-auto p-4 space-y-4 max-h-[45dvh]">{playersContent}</div>
 
               {/* Inline chat log — fills all remaining space below the player grid
                   (Wolvesville-style). Tapping opens the bottom-sheet overlay. */}
@@ -1376,8 +1376,21 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                       className="pointer-events-none"
                     />
                   </button>
-                ) : (
+                ) : showMediumGhostChat ? (
                   <div className="flex-1 min-h-0 overflow-y-auto px-4">{mediumGhostBlock}</div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setSecondaryChatOverlayOpen(true)}
+                    className="flex-1 min-h-0 w-full text-left px-4 overflow-y-auto"
+                  >
+                    <ChatMessages
+                      messages={dayChatMessages ?? []}
+                      myPlayerId={myPlayerId}
+                      players={publicPlayers}
+                      className="pointer-events-none"
+                    />
+                  </button>
                 ))}
             </div>
 
@@ -1385,7 +1398,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                 so it docks naturally at the bottom without padding hacks. */}
             {bottomBarTarget && (
               <div
-                className={`md:hidden shrink-0 flex items-stretch h-12 bg-[var(--card)] border-t ${
+                className={`md:hidden shrink-0 flex items-stretch h-12 pb-[env(safe-area-inset-bottom)] bg-[var(--card)] border-t ${
                   bottomBarTarget === 'mafia' ? 'border-red-500/30' : 'border-[var(--border)]'
                 }`}
               >
@@ -1435,7 +1448,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             )}
 
             {showNightTownPeek && (
-              <div className="md:hidden shrink-0 flex items-stretch h-12 bg-[var(--card)] border-t border-[var(--border)]">
+              <div className="md:hidden shrink-0 flex items-stretch h-12 pb-[env(safe-area-inset-bottom)] bg-[var(--card)] border-t border-[var(--border)]">
                 <div className="flex-1 flex items-center px-4 text-sm text-[var(--muted)]">
                   Nothing to send at night
                 </div>
