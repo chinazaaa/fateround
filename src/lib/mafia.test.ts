@@ -60,6 +60,7 @@ function makeState(overrides: Partial<MafiaPlayerState>): MafiaPlayerState {
     vigilante_shots_used: 0,
     vigilante_reveal_used: false,
     medium_revive_used: false,
+    revived_by_medium: false,
     bodyguard_hits_taken: 0,
     priest_holy_water_used: false,
     witch_heal_used: false,

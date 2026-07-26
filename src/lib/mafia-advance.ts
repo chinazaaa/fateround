@@ -125,6 +125,12 @@ export async function runMafiaAdvance(
   // last night." line.
   const mafiaMessages: string[] = []
 
+  // Phase-transition announcements for the mafia's own secret chat (scope 'night') — the
+  // day-chat feed already gets "Day N has started"/"Get ready to vote" system lines, but
+  // scope 'night' previously only ever contained player-sent messages, so the mafia had
+  // no in-feed announcement that a new night had begun.
+  const mafiaNightMessages: string[] = []
+
   // Player-state/players writes that depend on THIS transition actually being the one that
   // wins the phase CAS below — deferred (not awaited yet) so a losing racer (another request
   // already advanced this phase first) never applies them. Previously these ran unconditionally
@@ -260,7 +266,12 @@ export async function runMafiaAdvance(
       pendingEffects.push(() =>
         admin
           .from('mafia_player_states')
-          .update({ is_alive: false, death_day: session.day_number, death_cause: death.cause })
+          .update({
+            is_alive: false,
+            death_day: session.day_number,
+            death_cause: death.cause,
+            revived_by_medium: false,
+          })
           .eq('game_id', gameId)
           .eq('player_id', death.playerId)
       )
@@ -316,7 +327,7 @@ export async function runMafiaAdvance(
         pendingEffects.push(() =>
           admin
             .from('mafia_player_states')
-            .update({ is_alive: true, death_day: null, death_cause: null })
+            .update({ is_alive: true, death_day: null, death_cause: null, revived_by_medium: true })
             .eq('game_id', gameId)
             .eq('player_id', mediumRevivePlayerId)
         )
@@ -382,16 +393,22 @@ export async function runMafiaAdvance(
       }
     }
 
-    // Mafia Seer — reveals the target's exact role; shares nothing automatically with the
-    // crew (the role description has them relay it themselves via the secret chat).
+    // Mafia Seer — reveals the target's exact role, broadcast automatically to the whole
+    // crew's secret chat (not just the seer) and persisted so their tile keeps a role
+    // badge visible to the mafia team from then on — matching Wolvesville, not requiring
+    // the seer to manually relay it themselves.
     if (mafiaSeerTarget) {
       const mafiaSeer = playerStates.find((p) => p.role === 'mafia_seer' && p.is_alive)
       const targetState = playerStates.find((p) => p.player_id === mafiaSeerTarget)
       if (mafiaSeer && targetState) {
-        privateMessages.push({
-          target_player_id: mafiaSeer.player_id,
-          message: `👁️‍🗨️ Night ${session.day_number}: ${playerLabel(mafiaSeerTarget)} is ${roleLabel(targetState.role)}`,
-        })
+        mafiaNightMessages.push(
+          `👁️‍🗨️ Night ${session.day_number}: The Mafia Seer checked ${playerLabel(mafiaSeerTarget)} ${roleLabel(targetState.role)}.`
+        )
+        const revealed = [...(session.mafia_seer_revealed ?? [])]
+        if (!revealed.some((r) => r.playerId === mafiaSeerTarget)) {
+          revealed.push({ playerId: mafiaSeerTarget, role: targetState.role })
+        }
+        updateFields.mafia_seer_revealed = revealed
       }
     }
 
@@ -618,6 +635,7 @@ export async function runMafiaAdvance(
             is_alive: false,
             death_day: session.day_number,
             death_cause: 'village_vote',
+            revived_by_medium: false,
           })
           .eq('game_id', gameId)
           .eq('player_id', votedPlayerId)
@@ -674,6 +692,7 @@ export async function runMafiaAdvance(
     updateFields.medium_revive_player_id = null
     updateFields.vigilante_day_kill_player_id = null
     updateFields.vigilante_reveal_player_id = null
+    mafiaNightMessages.push(`🌙 Night ${session.day_number + 1} has started.`)
     // Arsonist's douse targets (from the night just resolved) become permanently doused.
     const arsonist = playerStates.find((p) => p.role === 'arsonist' && p.is_alive)
     if (arsonist && arsonist.night_action_target_player_id !== arsonist.player_id) {
@@ -712,6 +731,7 @@ export async function runMafiaAdvance(
         })
         .eq('game_id', gameId)
     )
+    mafiaNightMessages.push(`🌙 Night ${session.day_number} has started.`)
   }
 
   if (targetPhase === 'day' && currentPhase === 'day_report') {
@@ -779,6 +799,20 @@ export async function runMafiaAdvance(
         )
       )
     }
+  }
+
+  if (mafiaNightMessages.length > 0) {
+    // scope 'night' is the mafia secret chat feed itself — no target needed, every alive
+    // mafia-team member's fetch picks up all scope='night' rows for the game.
+    await admin.from('mafia_chat_messages').insert(
+      mafiaNightMessages.map((message) => ({
+        game_id: gameId,
+        sender_player_id: 'system',
+        sender_name: '🌙',
+        message,
+        scope: 'night',
+      }))
+    )
   }
 
   return { ok: true }
