@@ -605,6 +605,15 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                       <Text style={styles.actionBtnText}>🔫 Shoot a player</Text>
                     </Pressable>
                   ) : null}
+                  {role === 'vigilante' && (myState?.vigilanteRevealRemaining ?? 0) > 0 ? (
+                    <Pressable
+                      style={[styles.actionBtn, dayActionMode === 'vigilante_reveal' && styles.actionBtnActive]}
+                      disabled={acting}
+                      onPress={() => setDayActionMode((m) => (m === 'vigilante_reveal' ? null : 'vigilante_reveal'))}
+                    >
+                      <Text style={styles.actionBtnText}>🔍 Reveal a player</Text>
+                    </Pressable>
+                  ) : null}
                   {dayActionMode ? <Text style={styles.phaseText}>Tap a player below to confirm.</Text> : null}
                   {phase === 'voting' ? (
                     <Pressable
@@ -646,7 +655,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               ? !!witchPotion
               : role === 'trapper' || role === 'mafia_seer'
                 ? true
-                : !myState?.nightActionSubmitted)
+                : role === 'medium'
+                  ? (myState?.mediumReviveRemaining ?? 0) > 0
+                  : !myState?.nightActionSubmitted)
           const dayVotable = phase === 'voting' && canAct && !dayActionMode
           const dayActionable = (phase === 'day' || phase === 'voting') && canAct && !!dayActionMode
 

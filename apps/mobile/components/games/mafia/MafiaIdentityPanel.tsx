@@ -127,6 +127,21 @@ export function MafiaIdentityPanel({ myState }: { myState: MafiaMyState | null }
         <View style={styles.card}>
           <Text style={styles.body}>
             Shots remaining: <Text style={styles.bold}>{myState?.vigilanteShotsRemaining ?? 1}</Text>
+            {'  ·  '}
+            Reveals remaining: <Text style={styles.bold}>{myState?.vigilanteRevealRemaining ?? 1}</Text>
+          </Text>
+        </View>
+      ) : null}
+
+      {myState?.vigilanteRevealResult ? (
+        <View style={styles.card}>
+          <Text style={styles.label}>🔍 Role Revealed</Text>
+          <Text style={styles.body}>
+            <Text style={styles.bold}>{myState.vigilanteRevealResult.targetName}</Text> is{' '}
+            <Text style={styles.bold}>
+              {mafiaRoleEmoji(myState.vigilanteRevealResult.role)}{' '}
+              {MAFIA_ROLE_INFO[myState.vigilanteRevealResult.role]?.name}
+            </Text>
           </Text>
         </View>
       ) : null}
