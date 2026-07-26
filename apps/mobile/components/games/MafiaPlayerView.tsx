@@ -25,6 +25,7 @@ import {
   postMafiaChat,
   postMafiaNightAction,
   postMafiaPriestAction,
+  postMafiaRevengeTarget,
   postMafiaSkipPhase,
   postMafiaState,
   postMafiaVigilanteAction,
@@ -36,7 +37,6 @@ import { useThemedStyles } from '@/constants/theme-context'
 import { MafiaPlayersGrid } from '@/components/games/mafia/MafiaPlayersGrid'
 import { MafiaRolesDrawer } from '@/components/games/mafia/MafiaRolesDrawer'
 import { MafiaRoleRevealScreen } from '@/components/games/mafia/MafiaRoleRevealScreen'
-import { MafiaSkipPhaseBar } from '@/components/games/mafia/MafiaSkipPhaseBar'
 import { MafiaIdentityPanel } from '@/components/games/mafia/MafiaIdentityPanel'
 import { MafiaChatBar, MafiaChatModal, MafiaChatPreview } from '@/components/games/mafia/MafiaChatDock'
 
@@ -62,6 +62,12 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   // Priest/Vigilante act during the day but separately from voting — this puts the grid into
   // "pick a target for this special action" mode instead of "pick a lynch vote" mode.
   const [dayActionMode, setDayActionMode] = useState<'priest' | 'vigilante_shoot' | 'vigilante_reveal' | null>(null)
+  // Local vote selection — tracks who we voted for so re-tap can unvote
+  const [voteSelection, setVoteSelection] = useState<string | null>(null)
+  // Local night selection — tracks our own night target for grid display
+  const [nightSelection, setNightSelection] = useState<string | null>(null)
+  // Wolf cub revenge target mode
+  const [wolfCubRevengeMode, setWolfCubRevengeMode] = useState(false)
   // Chat popups — the bottom bar/preview open the primary one (mafia secret chat at night /
   // town chat by day / ghost chat for the dead); the icon beside the bar opens the OTHER
   // one, read-only, in a separate popup that never touches the primary bar's own state.
@@ -193,9 +199,18 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     setPendingFirstTargetId(null)
     setWitchPotion(null)
     setDayActionMode(null)
+    setVoteSelection(null)
+    setNightSelection(null)
     setPrimaryChatOpen(false)
     setPeekChatOpen(false)
   }, [state?.phase, state?.dayNumber])
+
+  // Hydrate voteSelection from authoritative state after reload/late-join
+  useEffect(() => {
+    if (voteSelection || !bootstrap.myPlayerId || !state?.voteChoices) return
+    const serverVote = state.voteChoices[bootstrap.myPlayerId]
+    if (serverVote) setVoteSelection(serverVote)
+  }, [voteSelection, bootstrap.myPlayerId, state?.voteChoices])
 
   const showDayVotes = state?.phase === 'voting' && !(state.anonymousVotes && !myState?.dayVoteSubmitted)
 
@@ -245,6 +260,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       }
 
       // Medium (dead-target revive) and every other single-target role.
+      setNightSelection(id)
       void act(() => postMafiaNightAction(bootstrap.code, token, id))
     },
     [bootstrap.myResumeToken, bootstrap.myPlayerId, bootstrap.code, role, witchPotion, pendingFirstTargetId]
@@ -263,6 +279,19 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       ).then(() => setDayActionMode(null))
     },
     [bootstrap.myResumeToken, bootstrap.code, dayActionMode]
+  )
+
+  const submitRevengeTarget = useCallback(
+    async (targetId: string) => {
+      const token = bootstrap.myResumeToken
+      if (!token) return
+      try {
+        await postMafiaRevengeTarget(bootstrap.code, token, targetId)
+        setWolfCubRevengeMode(false)
+        await bootstrap.load()
+      } catch {}
+    },
+    [bootstrap.myResumeToken, bootstrap.code, bootstrap.load]
   )
 
   const sendChat = useCallback(
@@ -384,6 +413,11 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         : '💬 Town Discussion'
   const peekMessages = iconPopupKind === 'mafia' ? (myState?.mafiaChatMessages ?? []) : (state.dayChatMessages ?? [])
   const peekTitle = iconPopupKind === 'mafia' ? '🔪 Mafia Secret Chat' : '💬 Town Discussion'
+  const peekCanSend = iconPopupKind === 'mafia' ? phase === 'night' : canSendDayNow
+  const handlePeekSend = async (msg: string) => {
+    if (iconPopupKind === 'mafia') await sendChat(msg, 'night')
+    else await sendChat(msg, 'day')
+  }
   const handleBottomBarSend = async (msg: string) => {
     if (bottomBarTarget === 'mafia') await sendChat(msg, 'night')
     else if (bottomBarTarget === 'ghost') await sendChat(msg, 'ghost')
@@ -432,6 +466,34 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         ) : null}
 
         <MafiaIdentityPanel myState={myState} />
+
+        {role === 'wolf_cub' && amIAlive && phase !== 'game_over' ? (
+          <View style={styles.revengePanel}>
+            <Text style={styles.revengeTitle}>💀 Revenge Target</Text>
+            {myState?.wolfCubRevengeTargetName ? (
+              <>
+                <Text style={styles.revengeText}>
+                  If you die, <Text style={styles.revengeTarget}>{myState.wolfCubRevengeTargetName}</Text> goes down
+                  with you.
+                </Text>
+                <Pressable style={styles.revengeBtn} onPress={() => setWolfCubRevengeMode(true)}>
+                  <Text style={styles.revengeBtnText}>Change</Text>
+                </Pressable>
+              </>
+            ) : wolfCubRevengeMode ? (
+              <>
+                <Text style={styles.revengeText}>Tap a player to mark as your revenge target</Text>
+                <Pressable style={styles.revengeBtn} onPress={() => setWolfCubRevengeMode(false)}>
+                  <Text style={styles.revengeBtnText}>Cancel</Text>
+                </Pressable>
+              </>
+            ) : (
+              <Pressable style={styles.revengeBtn} onPress={() => setWolfCubRevengeMode(true)}>
+                <Text style={styles.revengeBtnText}>💀 Select revenge target</Text>
+              </Pressable>
+            )}
+          </View>
+        ) : null}
 
         <View style={styles.phaseCard}>
           {phase === 'night' ? (
@@ -549,18 +611,6 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                       <Text style={styles.skipFullText}>⏭ Skip / No Lynch</Text>
                     </Pressable>
                   ) : null}
-                  {(state.skipRequiredCount ?? 0) > 0 ? (
-                    <View style={styles.skipBarWrap}>
-                      <MafiaSkipPhaseBar
-                        phase={phase}
-                        skipRequestCount={state.skipRequestCount ?? 0}
-                        skipRequiredCount={state.skipRequiredCount ?? 0}
-                        hasRequestedSkip={!!state.hasRequestedSkip}
-                        disabled={acting}
-                        onSkip={() => act(() => postMafiaSkipPhase(bootstrap.code, bootstrap.myResumeToken!))}
-                      />
-                    </View>
-                  ) : null}
                 </>
               )}
             </>
@@ -604,6 +654,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               mafiaTeammateIds={myState?.mafiaTeammateIds}
               mafiaTeammateRoles={myState?.mafiaTeammateRoles}
               mafiaTeammateNightTargets={myState?.mafiaTeammateNightTargets}
+              myNightTarget={nightSelection}
               mafiaSeerRevealedRoles={myState?.mafiaSeerRevealedRoles}
               loverIds={myState?.loverIds}
               phase={phase}
@@ -612,31 +663,53 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               votedPlayerIds={state.votedPlayerIds}
               anonymousVotes={state.anonymousVotes && !showDayVotes}
               disabled={acting}
-              selectedIds={pendingFirstTargetId ? [pendingFirstTargetId] : []}
+              selectedIds={pendingFirstTargetId ? [pendingFirstTargetId] : voteSelection ? [voteSelection] : []}
               allowSelfSelect={
                 nightActionable &&
                 (role === 'trapper' || role === 'arsonist' || role === 'mafia_seer' || role === 'cupid')
               }
               allowDeadSelect={nightActionable && role === 'medium'}
+              skipRequestCount={
+                (phase === 'day' || phase === 'voting') && canAct ? (state.skipRequestCount ?? 0) : undefined
+              }
+              skipRequiredCount={
+                (phase === 'day' || phase === 'voting') && canAct ? (state.skipRequiredCount ?? 1) : undefined
+              }
+              hasRequestedSkip={!!state.hasRequestedSkip}
+              skipDisabled={acting}
+              onSkip={
+                (phase === 'day' || phase === 'voting') && canAct
+                  ? () => act(() => postMafiaSkipPhase(bootstrap.code, bootstrap.myResumeToken!))
+                  : undefined
+              }
               onSelect={
-                dayActionable
-                  ? handleDayActionSelect
-                  : dayVotable
-                    ? (id) => act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, id))
-                    : nightActionable
-                      ? handleNightSelect
-                      : undefined
+                wolfCubRevengeMode
+                  ? (id) => {
+                      void submitRevengeTarget(id)
+                    }
+                  : dayActionable
+                    ? handleDayActionSelect
+                    : dayVotable
+                      ? (id) => {
+                          if (voteSelection === id) {
+                            setVoteSelection(null)
+                            void act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, null))
+                          } else {
+                            setVoteSelection(id)
+                            void act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, id))
+                          }
+                        }
+                      : nightActionable
+                        ? handleNightSelect
+                        : undefined
               }
             />
           )
         })()}
 
-        {/* Chat preview — collapsed snippet of whatever the bottom bar is currently showing
-            (mafia secret chat at night for the mafia team, ghost chat for the dead/Medium,
-            town chat otherwise); tapping it opens the full popup, matching web. A villager
-            with nothing to send at night (bottomBarTarget null) gets a small standalone
-            peek button instead, since there's no bar to attach a preview to. */}
-        {bootstrap.myPlayerId && bottomBarTarget ? (
+        {/* Chat preview — hidden during night for alive players (matching web).
+            Day/dead: show inline snippet; tapping opens the full popup. */}
+        {bootstrap.myPlayerId && bottomBarTarget && !(phase === 'night' && amIAlive) ? (
           <MafiaChatPreview
             title={bottomBarTitle}
             messages={bottomBarMessages}
@@ -644,10 +717,6 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
             accent={bottomBarTarget === 'mafia' ? 'mafia' : undefined}
             onPress={() => setPrimaryChatOpen(true)}
           />
-        ) : showNightTownPeek ? (
-          <Pressable style={styles.nightPeekBtn} onPress={() => setPeekChatOpen(true)}>
-            <Text style={styles.nightPeekText}>💬 Nothing to send at night — tap to view town chat</Text>
-          </Pressable>
         ) : null}
 
         <View style={styles.rulesRow}>
@@ -666,8 +735,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         <MafiaChatBar
           icon={bottomBarTarget === 'mafia' ? '🔪' : bottomBarTarget === 'ghost' ? '👻' : '💬'}
           placeholder={bottomBarTarget === 'mafia' ? 'Whisper to allies…' : 'Tap to send a message'}
-          disabledPlaceholder="Tap to view — can't chat right now"
           canType={!bottomBarDisabled}
+          phase={phase}
           accent={bottomBarTarget === 'mafia' ? 'mafia' : undefined}
           onOpen={() => setPrimaryChatOpen(true)}
           onSend={handleBottomBarSend}
@@ -684,7 +753,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         players={state.players}
         accent={bottomBarTarget === 'mafia' ? 'mafia' : undefined}
         canType={!bottomBarDisabled}
-        disabledNote="Tap to view — can't chat right now"
+        phase={phase}
         onSend={handleBottomBarSend}
       />
 
@@ -695,10 +764,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         messages={peekMessages}
         players={state.players}
         accent={iconPopupKind === 'mafia' ? 'mafia' : undefined}
-        canType={false}
-        disabledNote={
-          iconPopupKind === 'mafia' ? 'Opens for sending again at night.' : 'Nothing to send here right now.'
-        }
+        canType={peekCanSend}
+        phase={phase}
+        onSend={handlePeekSend}
       />
     </GameShell>
   )
@@ -744,7 +812,6 @@ const makeStyles = (theme: Theme) =>
     },
     actionBtnActive: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
     actionBtnText: { color: theme.text, fontWeight: '700' },
-    skipBarWrap: { marginTop: 10 },
     voteCastRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
     changeVoteLink: { color: theme.textMuted, fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
     skipFullBtn: {
@@ -757,13 +824,22 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
     },
     skipFullText: { color: theme.textSecondary, fontWeight: '700' },
-    nightPeekBtn: {
-      backgroundColor: theme.surface,
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: 16,
-      padding: 14,
+    revengePanel: {
+      backgroundColor: '#7f1d1d',
+      borderRadius: 12,
+      padding: 12,
+      gap: 6,
       alignItems: 'center',
     },
-    nightPeekText: { color: theme.textMuted, fontSize: 12, fontWeight: '600' },
+    revengeTitle: { color: '#fca5a5', fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
+    revengeText: { color: '#fecaca', fontSize: 13, textAlign: 'center' },
+    revengeTarget: { color: '#f87171', fontWeight: '800' },
+    revengeBtn: {
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+      borderRadius: 8,
+      backgroundColor: '#991b1b',
+      alignItems: 'center',
+    },
+    revengeBtnText: { color: '#fecaca', fontWeight: '700', fontSize: 13 },
   })

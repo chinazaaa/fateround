@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -25,6 +25,7 @@ export function MafiaChatMessageList({
   compact?: boolean
 }) {
   const styles = useThemedStyles(makeStyles)
+  const listRef = useRef<FlatList>(null)
   const seatByPlayerId = new Map((players ?? []).map((p) => [p.id, p.seatNumber]))
 
   if (messages.length === 0) {
@@ -37,6 +38,10 @@ export function MafiaChatMessageList({
       keyExtractor={(m) => m.id}
       nestedScrollEnabled
       inverted={compact}
+      onContentSizeChange={(_w, _h) => {
+        if (!compact) listRef.current?.scrollToEnd({ animated: false })
+      }}
+      ref={listRef as any}
       renderItem={({ item }) => {
         if (item.sender_player_id === 'system') {
           return <Text style={styles.systemLine}>{item.message}</Text>
@@ -57,15 +62,12 @@ export function MafiaChatMessageList({
 }
 
 /**
- * A small non-scrollable snippet of the last few messages — tapping it (or the persistent
- * input bar below) opens the full `MafiaChatModal`. Matches web's collapsed preview instead
- * of a permanently-expanded chat box taking up screen space in the middle of the roster.
+ * Borderless inline snippet of the last few messages — flows naturally below the player
+ * grid (Wolvesville-style), no card wrapper. Tapping it opens the full `MafiaChatModal`.
  */
 export function MafiaChatPreview({
-  title,
   messages,
   players,
-  accent,
   onPress,
 }: {
   title: string
@@ -75,14 +77,12 @@ export function MafiaChatPreview({
   onPress: () => void
 }) {
   const styles = useThemedStyles(makeStyles)
-  const latest = messages.slice(-4)
+  const latest = messages.slice(-6)
   return (
-    <Pressable style={styles.previewCard} onPress={onPress}>
-      <Text style={[styles.previewTitle, accent === 'mafia' && styles.mafiaAccentText]}>{title}</Text>
+    <Pressable style={styles.inlinePreview} onPress={onPress}>
       <View pointerEvents="none">
         <MafiaChatMessageList messages={latest} players={players} />
       </View>
-      <Text style={styles.previewHint}>Tap to open full chat</Text>
     </Pressable>
   )
 }
@@ -100,7 +100,7 @@ export function MafiaChatModal({
   players,
   accent,
   canType,
-  disabledNote,
+  phase,
   onSend,
 }: {
   visible: boolean
@@ -110,7 +110,7 @@ export function MafiaChatModal({
   players?: MafiaPublicPlayer[]
   accent?: 'mafia'
   canType: boolean
-  disabledNote?: string
+  phase?: string
   onSend?: (msg: string) => Promise<void> | void
 }) {
   const styles = useThemedStyles(makeStyles)
@@ -133,36 +133,37 @@ export function MafiaChatModal({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} />
       <KeyboardAvoidingView
-        style={styles.modalWrap}
+        style={styles.sheetWrap}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         pointerEvents="box-none"
       >
-        <View style={[styles.modalPanel, accent === 'mafia' && styles.mafiaAccentBorder]}>
-          <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, accent === 'mafia' && styles.mafiaAccentText]}>{title}</Text>
-            <Pressable onPress={onClose} hitSlop={10}>
-              <Text style={styles.closeText}>✕</Text>
+        <View style={[styles.sheetPanel, accent === 'mafia' && styles.mafiaAccentBorder]}>
+          <View style={[styles.sheetHeader, accent === 'mafia' && styles.mafiaAccentBorder]}>
+            <Text style={[styles.headerTitle, accent === 'mafia' && styles.mafiaAccentText]}>{title}</Text>
+            <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn}>
+              <Text style={styles.closeX}>✕</Text>
             </Pressable>
           </View>
-          <View style={styles.modalLog}>
+          <View style={styles.sheetLog}>
             <MafiaChatMessageList messages={messages} players={players} />
           </View>
-          {canType ? (
-            <View style={styles.inputRow}>
-              <TextInput
-                style={styles.input}
-                value={draft}
-                onChangeText={setDraft}
-                placeholder="Type a message…"
-                placeholderTextColor="#71717a"
-              />
-              <Pressable style={styles.sendBtn} disabled={sending || !draft.trim()} onPress={() => void submit()}>
-                <Text style={styles.sendBtnText}>Send</Text>
-              </Pressable>
-            </View>
-          ) : disabledNote ? (
-            <Text style={styles.disabledNote}>{disabledNote}</Text>
-          ) : null}
+          <View style={[styles.inputRow, accent === 'mafia' && styles.mafiaAccentBorder]}>
+            <TextInput
+              style={styles.input}
+              value={draft}
+              onChangeText={setDraft}
+              placeholder="Type a message…"
+              placeholderTextColor="#71717a"
+              autoFocus={canType}
+            />
+            <Pressable
+              style={styles.sendBtn}
+              disabled={sending || !draft.trim() || !canType}
+              onPress={() => void submit()}
+            >
+              <Text style={styles.sendBtnText}>{canType ? 'Send' : phase === 'night' ? '💤' : '⏳'}</Text>
+            </Pressable>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -179,8 +180,8 @@ export function MafiaChatModal({
 export function MafiaChatBar({
   icon,
   placeholder,
-  disabledPlaceholder,
   canType,
+  phase,
   onOpen,
   onSend,
   peekIcon,
@@ -189,8 +190,8 @@ export function MafiaChatBar({
 }: {
   icon: string
   placeholder: string
-  disabledPlaceholder: string
   canType: boolean
+  phase?: string
   onOpen: () => void
   onSend: (msg: string) => Promise<void> | void
   peekIcon?: string
@@ -216,25 +217,17 @@ export function MafiaChatBar({
   return (
     <View style={[styles.bottomBar, accent === 'mafia' && styles.mafiaAccentBorder]}>
       <Text style={styles.bottomBarIcon}>{icon}</Text>
-      {canType ? (
-        <TextInput
-          style={[styles.bottomBarInput, accent === 'mafia' && styles.mafiaAccentText]}
-          value={draft}
-          onChangeText={setDraft}
-          onFocus={onOpen}
-          placeholder={placeholder}
-          placeholderTextColor="#71717a"
-        />
-      ) : (
-        <Pressable style={styles.bottomBarFakeInput} onPress={onOpen}>
-          <Text style={styles.bottomBarPlaceholder}>{disabledPlaceholder}</Text>
-        </Pressable>
-      )}
-      {canType ? (
-        <Pressable style={styles.sendBtn} disabled={sending || !draft.trim()} onPress={() => void submit()}>
-          <Text style={styles.sendBtnText}>Send</Text>
-        </Pressable>
-      ) : null}
+      <TextInput
+        style={[styles.bottomBarInput, accent === 'mafia' && styles.mafiaAccentText]}
+        value={draft}
+        onChangeText={setDraft}
+        onFocus={onOpen}
+        placeholder={placeholder}
+        placeholderTextColor="#71717a"
+      />
+      <Pressable style={styles.sendBtn} disabled={sending || !draft.trim() || !canType} onPress={() => void submit()}>
+        <Text style={styles.sendBtnText}>{canType ? 'Send' : phase === 'night' ? '💤' : '⏳'}</Text>
+      </Pressable>
       {peekIcon ? (
         <Pressable style={styles.peekBtn} onPress={onPeek} hitSlop={8}>
           <Text style={styles.peekIcon}>{peekIcon}</Text>
@@ -250,42 +243,42 @@ const makeStyles = (theme: Theme) =>
     systemLine: { color: '#f472b6', fontWeight: '700', fontSize: 13, textAlign: 'center', marginVertical: 2 },
     chatLine: { color: theme.textSecondary, fontSize: 13, marginBottom: 4 },
     chatName: { color: theme.text, fontWeight: '700' },
-    previewCard: {
-      backgroundColor: theme.surface,
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: 16,
-      padding: 12,
-      gap: 4,
-    },
-    previewTitle: { color: theme.primary, fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
-    previewHint: { color: theme.textMuted, fontSize: 10, textAlign: 'center', marginTop: 4 },
+    inlinePreview: { paddingHorizontal: 4 },
     mafiaAccentText: { color: '#f87171' },
     mafiaAccentBorder: { borderColor: '#f4374766' },
-    backdrop: { ...StyleSheet.absoluteFill, backgroundColor: '#00000080' },
-    modalWrap: { flex: 1, justifyContent: 'flex-end' },
-    modalPanel: {
+    backdrop: { ...StyleSheet.absoluteFill, backgroundColor: '#00000060' },
+    sheetWrap: { flex: 1, justifyContent: 'flex-end' },
+    sheetPanel: {
       backgroundColor: theme.bg,
       borderTopLeftRadius: 20,
       borderTopRightRadius: 20,
       borderWidth: 1,
       borderColor: theme.border,
       borderBottomWidth: 0,
-      maxHeight: '75%',
+      height: '60%',
       paddingBottom: 20,
     },
-    modalHeader: {
+    sheetHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingVertical: 10,
       borderBottomWidth: 1,
       borderBottomColor: theme.border,
     },
+    closeBtn: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: theme.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    closeX: { color: theme.text, fontSize: 16 },
+    headerTitle: { color: theme.text, fontSize: 14, fontWeight: '700' },
     modalTitle: { color: theme.textMuted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
-    closeText: { color: theme.textMuted, fontSize: 18 },
-    modalLog: { paddingHorizontal: 16, paddingVertical: 10, flexShrink: 1 },
+    sheetLog: { flex: 1, paddingHorizontal: 16, paddingVertical: 10 },
     disabledNote: {
       color: theme.textMuted,
       fontSize: 11,
@@ -326,8 +319,6 @@ const makeStyles = (theme: Theme) =>
     },
     bottomBarIcon: { fontSize: 18 },
     bottomBarInput: { flex: 1, color: theme.text, paddingVertical: 6 },
-    bottomBarFakeInput: { flex: 1, paddingVertical: 6 },
-    bottomBarPlaceholder: { color: '#71717a' },
     peekBtn: {
       paddingHorizontal: 10,
       paddingVertical: 6,

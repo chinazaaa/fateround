@@ -35,6 +35,7 @@ const ALL_ENABLED: MafiaRoleToggles = {
   trapper_enabled: true,
   seer_enabled: true,
   mafia_seer_enabled: true,
+  red_lady_enabled: true,
 }
 const NONE_ENABLED: MafiaRoleToggles = Object.fromEntries(
   Object.keys(ALL_ENABLED).map((k) => [k, false])
@@ -91,6 +92,7 @@ const NIGHT_SESSION_BASE: Pick<
   | 'trapper_enabled'
   | 'seer_enabled'
   | 'mafia_seer_enabled'
+  | 'red_lady_enabled'
 > = {
   doctor_enabled: true,
   aura_seer_enabled: true,
@@ -105,6 +107,7 @@ const NIGHT_SESSION_BASE: Pick<
   trapper_enabled: true,
   seer_enabled: true,
   mafia_seer_enabled: true,
+  red_lady_enabled: true,
 }
 
 describe('resolveMafiaRoundToggles', () => {
@@ -173,8 +176,8 @@ describe('resolveMafiaRoundToggles', () => {
 })
 
 describe('assignMafiaRoles', () => {
-  it('fills all 24 roles when everything is enabled and slots allow', () => {
-    const playerIds = ids(24)
+  it('fills all 25 roles when everything is enabled and slots allow', () => {
+    const playerIds = ids(25)
     const assignments = assignMafiaRoles(playerIds, ALL_ENABLED, 4)
     const roles = new Set(Object.values(assignments))
     // mafiaCount=4 with alpha_wolf+wolf_cub each converting one base mafia slot leaves 2 plain 'mafia'
@@ -202,11 +205,12 @@ describe('assignMafiaRoles', () => {
       'trapper',
       'seer',
       'mafia_seer',
+      'red_lady',
     ]
     for (const role of optionalRoles) {
       expect(roles.has(role)).toBe(true)
     }
-    expect(Object.keys(assignments)).toHaveLength(24)
+    expect(Object.keys(assignments)).toHaveLength(25)
   })
 
   it('does not assign alpha_wolf or wolf_cub when mafiaCount < 2', () => {
@@ -279,6 +283,55 @@ describe('resolveMafiaNight — Seer / Mafia Seer', () => {
     const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
     const result = resolveMafiaNight(NIGHT_SESSION_BASE, [mafiaSeer, v1])
     expect(result.mafiaTarget).toBeNull()
+    expect(result.deaths).toEqual([])
+  })
+})
+
+describe('resolveMafiaNight — Red Lady', () => {
+  it('survives an attack aimed at her while out visiting someone safe', () => {
+    const redLady = makeState({ id: 'rl', player_id: 'rl', role: 'red_lady', night_action_target_player_id: 'v1' })
+    const mafia = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'rl' })
+    const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [redLady, mafia, v1])
+    expect(result.deaths).toEqual([])
+    expect(result.redLadyDied).toBe(false)
+  })
+
+  it('dies if the player she visited was attacked that night', () => {
+    const redLady = makeState({ id: 'rl', player_id: 'rl', role: 'red_lady', night_action_target_player_id: 'v1' })
+    const mafia = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'v1' })
+    const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [redLady, mafia, v1])
+    expect(result.redLadyDied).toBe(true)
+    expect(result.deaths).toEqual(
+      expect.arrayContaining([
+        { playerId: 'v1', cause: 'mafia_kill' },
+        { playerId: 'rl', cause: 'red_lady_death' },
+      ])
+    )
+  })
+
+  it('dies if she visits a Mafia member, even if nobody attacked them', () => {
+    const redLady = makeState({ id: 'rl', player_id: 'rl', role: 'red_lady', night_action_target_player_id: 'm1' })
+    const mafia = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'v1' })
+    const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [redLady, mafia, v1])
+    expect(result.redLadyDied).toBe(true)
+    expect(result.deaths.some((d) => d.playerId === 'rl' && d.cause === 'red_lady_death')).toBe(true)
+  })
+
+  it('dies if she visits a Solo killer (Serial Killer/Arsonist)', () => {
+    const redLady = makeState({ id: 'rl', player_id: 'rl', role: 'red_lady', night_action_target_player_id: 'sk' })
+    const sk = makeState({ id: 'sk', player_id: 'sk', role: 'serial_killer' })
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [redLady, sk])
+    expect(result.redLadyDied).toBe(true)
+  })
+
+  it('does not die if her visit was safe (an uninvolved villager)', () => {
+    const redLady = makeState({ id: 'rl', player_id: 'rl', role: 'red_lady', night_action_target_player_id: 'v1' })
+    const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [redLady, v1])
+    expect(result.redLadyDied).toBe(false)
     expect(result.deaths).toEqual([])
   })
 })
