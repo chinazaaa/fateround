@@ -25,6 +25,7 @@ import {
   postMafiaChat,
   postMafiaNightAction,
   postMafiaPriestAction,
+  postMafiaRevengeTarget,
   postMafiaSkipPhase,
   postMafiaState,
   postMafiaVigilanteAction,
@@ -62,6 +63,12 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   // Priest/Vigilante act during the day but separately from voting — this puts the grid into
   // "pick a target for this special action" mode instead of "pick a lynch vote" mode.
   const [dayActionMode, setDayActionMode] = useState<'priest' | 'vigilante_shoot' | 'vigilante_reveal' | null>(null)
+  // Local vote selection — tracks who we voted for so re-tap can unvote
+  const [voteSelection, setVoteSelection] = useState<string | null>(null)
+  // Local night selection — tracks our own night target for grid display
+  const [nightSelection, setNightSelection] = useState<string | null>(null)
+  // Wolf cub revenge target mode
+  const [wolfCubRevengeMode, setWolfCubRevengeMode] = useState(false)
   // Chat popups — the bottom bar/preview open the primary one (mafia secret chat at night /
   // town chat by day / ghost chat for the dead); the icon beside the bar opens the OTHER
   // one, read-only, in a separate popup that never touches the primary bar's own state.
@@ -193,9 +200,18 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     setPendingFirstTargetId(null)
     setWitchPotion(null)
     setDayActionMode(null)
+    setVoteSelection(null)
+    setNightSelection(null)
     setPrimaryChatOpen(false)
     setPeekChatOpen(false)
   }, [state?.phase, state?.dayNumber])
+
+  // Hydrate voteSelection from authoritative state after reload/late-join
+  useEffect(() => {
+    if (voteSelection || !bootstrap.myPlayerId || !state?.voteChoices) return
+    const serverVote = state.voteChoices[bootstrap.myPlayerId]
+    if (serverVote) setVoteSelection(serverVote)
+  }, [voteSelection, bootstrap.myPlayerId, state?.voteChoices])
 
   const showDayVotes = state?.phase === 'voting' && !(state.anonymousVotes && !myState?.dayVoteSubmitted)
 
@@ -245,6 +261,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       }
 
       // Medium (dead-target revive) and every other single-target role.
+      setNightSelection(id)
       void act(() => postMafiaNightAction(bootstrap.code, token, id))
     },
     [bootstrap.myResumeToken, bootstrap.myPlayerId, bootstrap.code, role, witchPotion, pendingFirstTargetId]
@@ -263,6 +280,19 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       ).then(() => setDayActionMode(null))
     },
     [bootstrap.myResumeToken, bootstrap.code, dayActionMode]
+  )
+
+  const submitRevengeTarget = useCallback(
+    async (targetId: string) => {
+      const token = bootstrap.myResumeToken
+      if (!token) return
+      try {
+        await postMafiaRevengeTarget(bootstrap.code, token, targetId)
+        setWolfCubRevengeMode(false)
+        await bootstrap.load()
+      } catch {}
+    },
+    [bootstrap.myResumeToken, bootstrap.code, bootstrap.load]
   )
 
   const sendChat = useCallback(
@@ -604,6 +634,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               mafiaTeammateIds={myState?.mafiaTeammateIds}
               mafiaTeammateRoles={myState?.mafiaTeammateRoles}
               mafiaTeammateNightTargets={myState?.mafiaTeammateNightTargets}
+              myNightTarget={nightSelection}
               mafiaSeerRevealedRoles={myState?.mafiaSeerRevealedRoles}
               loverIds={myState?.loverIds}
               phase={phase}
@@ -612,20 +643,32 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               votedPlayerIds={state.votedPlayerIds}
               anonymousVotes={state.anonymousVotes && !showDayVotes}
               disabled={acting}
-              selectedIds={pendingFirstTargetId ? [pendingFirstTargetId] : []}
+              selectedIds={pendingFirstTargetId ? [pendingFirstTargetId] : voteSelection ? [voteSelection] : []}
               allowSelfSelect={
                 nightActionable &&
                 (role === 'trapper' || role === 'arsonist' || role === 'mafia_seer' || role === 'cupid')
               }
               allowDeadSelect={nightActionable && role === 'medium'}
               onSelect={
-                dayActionable
-                  ? handleDayActionSelect
-                  : dayVotable
-                    ? (id) => act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, id))
-                    : nightActionable
-                      ? handleNightSelect
-                      : undefined
+                wolfCubRevengeMode
+                  ? (id) => {
+                      void submitRevengeTarget(id)
+                    }
+                  : dayActionable
+                    ? handleDayActionSelect
+                    : dayVotable
+                      ? (id) => {
+                          if (voteSelection === id) {
+                            setVoteSelection(null)
+                            void act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, null))
+                          } else {
+                            setVoteSelection(id)
+                            void act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, id))
+                          }
+                        }
+                      : nightActionable
+                        ? handleNightSelect
+                        : undefined
               }
             />
           )

@@ -791,6 +791,10 @@ export function postMafiaSkipPhase(gameCode: string, resumeToken: string) {
   return postJson<{ success: boolean }>(`/api/mafia/${gameCode}/skip-phase`, { resumeToken })
 }
 
+export function postMafiaRevengeTarget(gameCode: string, resumeToken: string, targetPlayerId: string) {
+  return postJson<{ success: boolean }>(`/api/mafia/${gameCode}/revenge-target`, { resumeToken, targetPlayerId })
+}
+
 export function postMafiaPriestAction(gameCode: string, resumeToken: string, targetPlayerId: string) {
   return postJson<{ success: boolean }>(`/api/mafia/${gameCode}/priest-action`, {
     resumeToken,
