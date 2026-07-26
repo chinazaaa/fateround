@@ -92,6 +92,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
   const [vigilanteRevealResult, setVigilanteRevealResult] = useState<{ targetName: string; role: string } | null>(null)
   const [priestMode, setPriestMode] = useState(false)
   const [witchMode, setWitchMode] = useState<'heal' | 'kill' | null>(null)
+  const [wolfCubRevengeMode, setWolfCubRevengeMode] = useState(false)
 
   // A late joiner's client can load state well after the game's shared role_reveal phase has
   // already ended (it's a one-time, whole-game window) — without this they'd be dropped
@@ -377,6 +378,30 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
         )
       }
       setPriestMode(false)
+      await load()
+    } catch {
+      toastError('Action failed')
+    } finally {
+      setActing(false)
+    }
+  }
+
+  const submitRevengeTarget = async (targetId: string) => {
+    if (!myResumeToken) return
+    setActing(true)
+    try {
+      const res = await fetch(`/api/mafia/${gameCode}/revenge-target`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumeToken: myResumeToken, targetPlayerId: targetId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toastError(data.error ?? 'Action failed')
+      } else {
+        toastSuccess('Revenge target set')
+        setWolfCubRevengeMode(false)
+      }
       await load()
     } catch {
       toastError('Action failed')
@@ -788,6 +813,12 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
         }
         gridSelectedIds = []
       }
+      if (myRole === 'wolf_cub' && wolfCubRevengeMode) {
+        gridOnSelect = (id) => {
+          void submitRevengeTarget(id)
+        }
+        gridSelectedIds = []
+      }
     }
     const cupidFirstPickName = cupidFirstPick
       ? (publicPlayers.find((p) => p.id === cupidFirstPick)?.name ?? null)
@@ -1130,6 +1161,53 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
               arsonistFirstPick ? (publicPlayers.find((p) => p.id === arsonistFirstPick)?.name ?? null) : null
             }
           />
+        )}
+
+        {myRole === 'wolf_cub' && amIAlive && !amISpectator && (
+          <div className="glass-card border border-red-500/20 rounded-2xl p-4 space-y-3">
+            <h3 className="text-[10px] font-bold tracking-widest uppercase text-red-400">💀 Revenge Target</h3>
+            {myState?.wolfCubRevengeTargetName ? (
+              <div className="space-y-2">
+                <p className="text-sm text-[var(--foreground)]">
+                  If you die, <strong className="text-red-400">{myState.wolfCubRevengeTargetName}</strong> goes down
+                  with you.
+                </p>
+                <button
+                  type="button"
+                  disabled={acting}
+                  onClick={() => setWolfCubRevengeMode(true)}
+                  className="text-xs text-[var(--muted)] underline"
+                >
+                  Change target
+                </button>
+              </div>
+            ) : wolfCubRevengeMode ? (
+              <div className="space-y-2">
+                <p className="text-sm text-[var(--foreground)]">Tap a player to mark as your revenge target</p>
+                <button
+                  type="button"
+                  onClick={() => setWolfCubRevengeMode(false)}
+                  className="text-xs text-[var(--muted)] underline"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs text-[var(--muted)]">
+                  Pick someone to die with you if you are killed. If you don&apos;t pick, one will be chosen at random.
+                </p>
+                <button
+                  type="button"
+                  disabled={acting}
+                  onClick={() => setWolfCubRevengeMode(true)}
+                  className="w-full px-3 py-2 rounded-xl bg-red-700 text-white text-sm font-bold disabled:opacity-40"
+                >
+                  💀 Select revenge target
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         <MafiaIdentityPanel myState={myState} />

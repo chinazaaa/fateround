@@ -203,6 +203,7 @@ export async function runMafiaAdvance(
       trapperKilledMafiaId,
       seerTarget,
       mafiaSeerTarget,
+      wolfCubRevengeTargetId,
     } = resolution
 
     updateFields.mafia_target_player_id = mafiaTarget
@@ -217,7 +218,7 @@ export async function runMafiaAdvance(
     updateFields.serial_kill_player_id = serialKillerTarget
     updateFields.arson_ignite = arsonistIgnited
     updateFields.night_kill_player_id = deaths[0]?.playerId ?? null
-    updateFields.wolf_cub_revenge_pending = wolfCubDiedThisNight
+    updateFields.wolf_cub_revenge_pending = false
     updateFields.medium_revive_player_id = mediumRevivePlayerId
 
     if (cursedConvertedPlayerId) {
@@ -285,6 +286,9 @@ export async function runMafiaAdvance(
           deadState ? ` ${roleLabel(deadState.role)}` : ''
         }`
       )
+    }
+    if (wolfCubRevengeTargetId) {
+      systemMessages.push(`💀 The Junior Mafia dragged ${playerLabel(wolfCubRevengeTargetId)} down with them!`)
     }
     if (deaths.length === 0) {
       if (!mafiaTarget) {
@@ -623,11 +627,6 @@ export async function runMafiaAdvance(
 
     if (votedPlayerId) {
       const votedState = playerStates.find((p) => p.player_id === votedPlayerId)
-      // Wolf Cub's revenge triggers on death by any cause, not just a night kill — a lynched
-      // Cub grants the mafia a bonus kill the following night too.
-      if (votedState?.role === 'wolf_cub') {
-        updateFields.wolf_cub_revenge_pending = true
-      }
       pendingEffects.push(() =>
         admin
           .from('mafia_player_states')
@@ -652,6 +651,41 @@ export async function runMafiaAdvance(
       systemMessages.push(
         `⚖️ The Village killed ${playerLabel(votedPlayerId)}${votedState ? ` ${roleLabel(votedState.role)}` : ''}`
       )
+
+      // Junior Mafia revenge on lynch: their pre-selected target (or a random non-mafia
+      // villager) dies with them immediately.
+      if (votedState?.role === 'wolf_cub') {
+        const MAFIA_ROLES = new Set(['mafia', 'alpha_wolf', 'wolf_cub', 'framer', 'mafia_seer'])
+        let revengeId = votedState.wolf_cub_revenge_target_player_id
+        if (revengeId) {
+          const target = playerStates.find((p) => p.player_id === revengeId)
+          if (!target || !target.is_alive) revengeId = null
+        }
+        if (!revengeId) {
+          const valid = playerStates.filter((p) => p.is_alive && !MAFIA_ROLES.has(p.role))
+          if (valid.length > 0) revengeId = valid[Math.floor(Math.random() * valid.length)].player_id
+        }
+        if (revengeId) {
+          pendingEffects.push(() =>
+            admin
+              .from('mafia_player_states')
+              .update({
+                is_alive: false,
+                death_day: session.day_number,
+                death_cause: 'mafia_kill',
+                revived_by_medium: false,
+              })
+              .eq('game_id', gameId)
+              .eq('player_id', revengeId)
+          )
+          pendingEffects.push(() =>
+            admin.from('players').update({ is_eliminated: true }).eq('game_id', gameId).eq('id', revengeId)
+          )
+          const ri = playerStates.findIndex((p) => p.player_id === revengeId)
+          if (ri !== -1) playerStates[ri].is_alive = false
+          systemMessages.push(`💀 The Junior Mafia dragged ${playerLabel(revengeId!)} down with them!`)
+        }
+      }
     } else {
       systemMessages.push('🤝 No majority reached — nobody was eliminated.')
     }

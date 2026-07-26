@@ -334,6 +334,7 @@ export interface MafiaNightResolution {
   bodyguardHitsTaken: number
   cursedConvertedPlayerId: string | null
   wolfCubDiedThisNight: boolean
+  wolfCubRevengeTargetId: string | null
   witchHealTarget: string | null
   witchKillTarget: string | null
   witchHealActuallySaved: boolean
@@ -366,7 +367,6 @@ export function resolveMafiaNight(
     | 'trapper_enabled'
     | 'seer_enabled'
     | 'mafia_seer_enabled'
-    | 'wolf_cub_revenge_pending'
   >,
   playerStates: MafiaPlayerState[]
 ): MafiaNightResolution {
@@ -383,18 +383,6 @@ export function resolveMafiaNight(
     }
   })
   const mafiaTarget = plurality(mafiaVotes)
-
-  // Wolf Cub revenge: if pending (set because a wolf-cub-associated death happened
-  // previously), the mafia team also gets the runner-up target this night.
-  let bonusMafiaTarget: string | null = null
-  if (session.wolf_cub_revenge_pending && mafiaTarget && mafiaVotes.length > 0) {
-    const counts: Record<string, number> = {}
-    mafiaVotes.forEach((v) => (counts[v] = (counts[v] || 0) + 1))
-    const runnerUp = Object.keys(counts)
-      .filter((k) => k !== mafiaTarget)
-      .sort((a, b) => counts[b] - counts[a])[0]
-    bonusMafiaTarget = runnerUp ?? null
-  }
 
   const doctorPlayer = session.doctor_enabled ? aliveOfRole('doctor') : undefined
   const doctorTarget = doctorPlayer?.night_action_target_player_id ?? null
@@ -541,7 +529,6 @@ export function resolveMafiaNight(
   }
 
   applyAttack(mafiaTarget, 'mafia_kill')
-  applyAttack(bonusMafiaTarget, 'mafia_kill')
   applyAttack(serialKillerTarget, 'serial_kill')
 
   if (trapperKilledMafiaId) {
@@ -567,6 +554,33 @@ export function resolveMafiaNight(
     (d) => playerStates.find((p) => p.player_id === d.playerId)?.role === 'wolf_cub'
   )
 
+  // Junior Mafia revenge: if the wolf_cub died this night, their pre-selected revenge
+  // target dies with them. If they never picked one, a random alive non-mafia player is
+  // chosen (excluding anyone already dying this night).
+  let wolfCubRevengeTargetId: string | null = null
+  if (wolfCubDiedThisNight) {
+    const cubState = playerStates.find((p) => p.role === 'wolf_cub')
+    const alreadyDeadIds = new Set(deaths.map((d) => d.playerId))
+    const MAFIA_ROLES = new Set(['mafia', 'alpha_wolf', 'wolf_cub', 'framer', 'mafia_seer'])
+    if (cubState?.wolf_cub_revenge_target_player_id) {
+      const target = playerStates.find((p) => p.player_id === cubState.wolf_cub_revenge_target_player_id)
+      if (target && target.is_alive && !alreadyDeadIds.has(target.player_id)) {
+        wolfCubRevengeTargetId = target.player_id
+      }
+    }
+    if (!wolfCubRevengeTargetId) {
+      const validTargets = playerStates.filter(
+        (p) => p.is_alive && !alreadyDeadIds.has(p.player_id) && !MAFIA_ROLES.has(p.role)
+      )
+      if (validTargets.length > 0) {
+        wolfCubRevengeTargetId = validTargets[Math.floor(Math.random() * validTargets.length)].player_id
+      }
+    }
+    if (wolfCubRevengeTargetId) {
+      addDeath(wolfCubRevengeTargetId, 'mafia_kill')
+    }
+  }
+
   return {
     mafiaTarget,
     doctorTarget,
@@ -585,6 +599,7 @@ export function resolveMafiaNight(
     bodyguardHitsTaken,
     cursedConvertedPlayerId,
     wolfCubDiedThisNight,
+    wolfCubRevengeTargetId,
     witchHealTarget,
     witchKillTarget,
     witchHealActuallySaved,
@@ -787,4 +802,45 @@ export async function clearMafiaSessionData(admin: SupabaseClient, gameId: strin
     console.error('Error clearing mafia session:', err)
     return { error: 'Error clearing mafia session data' }
   }
+}
+
+/**
+ * Resolves the Junior Mafia (wolf_cub) revenge kill when they die mid-game (priest, vigilante,
+ * or any other instant-death cause). Kills their pre-selected revenge target or a random
+ * non-mafia villager. Mutates `playerStates` in place and writes to the DB.
+ *
+ * Returns the revenge target player id (or null if none could be found).
+ */
+export async function resolveWolfCubRevenge(
+  admin: SupabaseClient,
+  gameId: string,
+  playerStates: MafiaPlayerState[],
+  wolfCubState: MafiaPlayerState,
+  dayNumber: number,
+  insertSystemMessage: (msg: string, scope?: string) => Promise<void>,
+  playerLabel: (pid: string) => string
+): Promise<string | null> {
+  const MAFIA_ROLES = new Set(['mafia', 'alpha_wolf', 'wolf_cub', 'framer', 'mafia_seer'])
+  let revengeId = wolfCubState.wolf_cub_revenge_target_player_id
+  if (revengeId) {
+    const target = playerStates.find((p) => p.player_id === revengeId)
+    if (!target || !target.is_alive) revengeId = null
+  }
+  if (!revengeId) {
+    const valid = playerStates.filter((p) => p.is_alive && !MAFIA_ROLES.has(p.role))
+    if (valid.length > 0) revengeId = valid[Math.floor(Math.random() * valid.length)].player_id
+  }
+  if (!revengeId) return null
+
+  await admin
+    .from('mafia_player_states')
+    .update({ is_alive: false, death_day: dayNumber, death_cause: 'mafia_kill', revived_by_medium: false })
+    .eq('game_id', gameId)
+    .eq('player_id', revengeId)
+  await admin.from('players').update({ is_eliminated: true }).eq('game_id', gameId).eq('id', revengeId)
+  const ri = playerStates.findIndex((p) => p.player_id === revengeId)
+  if (ri !== -1) playerStates[ri].is_alive = false
+
+  await insertSystemMessage(`💀 The Junior Mafia dragged ${playerLabel(revengeId)} down with them!`)
+  return revengeId
 }
