@@ -28,6 +28,10 @@ import { gameTypeConfig } from '@/lib/game-types'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { MAFIA_ROLE_INFO, MAFIA_TEAM_ROLES, NO_NIGHT_ACTION_ROLES } from '@/components/mafia/mafia-role-info'
+import { ShareActionButtons } from '@/components/ShareActionButtons'
+import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
+import { captureElementAsImage } from '@/lib/capture-element-image'
+import { shareImageBlob, downloadBlobAsFile, shareFilenameStem } from '@/lib/share-image'
 import { MafiaPlayerView } from '@/components/mafia/MafiaPlayerView'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 
@@ -95,6 +99,9 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const [mafiaState, setMafiaState] = useState<MafiaHostStateResponse | null>(null)
   const [acting, setActing] = useState(false)
   const [starting, setStarting] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const captureRef = useRef<HTMLDivElement>(null)
   // Two `load()` calls can be in flight at once (e.g. two lobby-settings changes fired close
   // together each trigger their own reload) — plain fetches have no ordering guarantee, so a
   // slower/older call's response arriving after a newer one would silently overwrite it with
@@ -354,6 +361,38 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     }
   }
 
+  const handleShare = async () => {
+    if (!captureRef.current) return
+    setSharing(true)
+    try {
+      const blob = await captureElementAsImage(captureRef.current)
+      if (!blob) return
+      const filename = `${shareFilenameStem(gameObj?.title ?? 'mafia')}.png`
+      const result = await shareImageBlob(blob, filename)
+      if (result === 'shared') toastSuccess('Shared!')
+      else if (result === 'copied') toastSuccess('Image copied to clipboard')
+      else toastSuccess('Image downloaded')
+    } catch {
+      toastError('Failed to share')
+    } finally {
+      setSharing(false)
+    }
+  }
+
+  const handleDownload = async () => {
+    if (!captureRef.current) return
+    setDownloading(true)
+    try {
+      const blob = await captureElementAsImage(captureRef.current)
+      if (!blob) return
+      downloadBlobAsFile(blob, `${shareFilenameStem(gameObj?.title ?? 'mafia')}.png`)
+    } catch {
+      toastError('Failed to download')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   if (!mafiaState || !gameObjForSeat) {
     return <HostLobbySkeleton />
   }
@@ -563,57 +602,71 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   const hostFinishedPanel = (
     <div className="max-w-2xl w-full mx-auto glass-card border border-[var(--border)] rounded-2xl p-8 shadow-2xl space-y-6 text-center">
-      <h1 className="text-4xl font-extrabold text-[var(--primary)] animate-pulse">GAME OVER</h1>
+      <div ref={captureRef} className="space-y-6">
+        <h1 className="text-4xl font-extrabold text-[var(--primary)] animate-pulse">GAME OVER</h1>
 
-      {mafiaState?.winningTeam ? (
-        <div className="space-y-2">
-          <p className="text-muted text-sm uppercase tracking-widest font-bold">Winning Team</p>
-          <div className={`text-3xl font-black ${WINNING_TEAM_COLOR[mafiaState.winningTeam] ?? 'text-emerald-400'}`}>
-            {WINNING_TEAM_LABEL[mafiaState.winningTeam] ?? mafiaState.winningTeam.toUpperCase()}
+        {mafiaState?.winningTeam ? (
+          <div className="space-y-2">
+            <p className="text-muted text-sm uppercase tracking-widest font-bold">Winning Team</p>
+            <div className={`text-3xl font-black ${WINNING_TEAM_COLOR[mafiaState.winningTeam] ?? 'text-emerald-400'}`}>
+              {WINNING_TEAM_LABEL[mafiaState.winningTeam] ?? mafiaState.winningTeam.toUpperCase()}
+            </div>
           </div>
-        </div>
-      ) : (
-        <p className="text-muted font-semibold">The game has finished!</p>
-      )}
+        ) : (
+          <p className="text-muted font-semibold">The game has finished!</p>
+        )}
 
-      <div className="border-t border-[var(--border)] pt-6">
-        <h3 className="text-sm font-semibold tracking-widest uppercase text-[var(--primary)] mb-4 font-mono">
-          Roles Reveal
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {players
-            .filter((p) => !p.spectator)
-            .map((p) => (
-              <div
-                key={p.id}
-                className="flex justify-between items-center text-sm p-3 rounded bg-[var(--surface-inset-bg)] border border-[var(--border)]"
-              >
-                <span className="font-semibold text-muted">
-                  #{p.seatNumber} {p.name}
-                </span>
-                <span
-                  className={`font-mono text-xs uppercase ${MAFIA_TEAM_ROLES.includes(p.role) ? 'text-red-400' : 'text-emerald-400'}`}
+        <div className="border-t border-[var(--border)] pt-6">
+          <h3 className="text-sm font-semibold tracking-widest uppercase text-[var(--primary)] mb-4 font-mono">
+            Roles Reveal
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {players
+              .filter((p) => !p.spectator)
+              .map((p) => (
+                <div
+                  key={p.id}
+                  className="flex justify-between items-center text-sm p-3 rounded bg-[var(--surface-inset-bg)] border border-[var(--border)]"
                 >
-                  {MAFIA_ROLE_INFO[p.role]?.name ?? p.role}
-                </span>
-              </div>
-            ))}
+                  <span className="font-semibold text-muted">
+                    #{p.seatNumber} {p.name}
+                  </span>
+                  <span
+                    className={`font-mono text-xs uppercase ${MAFIA_TEAM_ROLES.includes(p.role) ? 'text-red-400' : 'text-emerald-400'}`}
+                  >
+                    {MAFIA_ROLE_INFO[p.role]?.name ?? p.role}
+                  </span>
+                </div>
+              ))}
+          </div>
         </div>
       </div>
 
-      <div className="border-t border-[var(--border)] pt-6 flex flex-col sm:flex-row gap-3 justify-center">
-        <button
-          onClick={() => void playAgain()}
-          className="btn-primary py-3 px-6 text-sm font-semibold rounded-xl transition"
-        >
-          ↻ Play again · same settings
-        </button>
-        <button
-          onClick={() => void confirmReturnToLobby()}
-          className="btn-secondary py-3 px-6 text-sm font-semibold rounded-xl transition"
-        >
-          Return to lobby
-        </button>
+      <div className="border-t border-[var(--border)] pt-6 space-y-3">
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <button
+            onClick={() => void playAgain()}
+            className="btn-primary py-3 px-6 text-sm font-semibold rounded-xl transition"
+          >
+            ↻ Play again · same settings
+          </button>
+          <button
+            onClick={() => void confirmReturnToLobby()}
+            className="btn-secondary py-3 px-6 text-sm font-semibold rounded-xl transition"
+          >
+            Return to lobby
+          </button>
+        </div>
+
+        <ShareActionButtons
+          shareLabel="Share results"
+          onShare={handleShare}
+          onDownload={handleDownload}
+          sharing={sharing}
+          downloading={downloading}
+        />
+
+        <CreateNewGameButton className="btn-secondary w-full py-3 text-sm sm:text-base" />
       </div>
     </div>
   )

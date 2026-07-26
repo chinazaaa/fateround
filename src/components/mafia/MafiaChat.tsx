@@ -184,7 +184,7 @@ export function MafiaSecretChat({
           disabled={sending}
           onChange={(e) => setText(e.target.value)}
           placeholder="Whisper to allies..."
-          className="flex-1 px-3 py-2 bg-[var(--surface-inset-bg)] border border-red-500/20 rounded-lg text-sm focus:outline-none focus:border-red-500/50 text-[var(--foreground)] placeholder:text-[var(--muted)]"
+          className="flex-1 px-3 py-2 bg-[var(--surface-inset-bg)] border border-red-500/20 rounded-lg text-base focus:outline-none focus:border-red-500/50 text-[var(--foreground)] placeholder:text-[var(--muted)]"
         />
         <button
           type="submit"
@@ -249,7 +249,7 @@ export function MafiaDayChat({
           disabled={sending}
           onChange={(e) => setText(e.target.value)}
           placeholder={disabled ? 'You cannot chat right now' : 'Share your thoughts...'}
-          className="flex-1 px-3 py-2 bg-[var(--surface-inset-bg)] border border-[var(--border)] rounded-lg text-sm focus:outline-none focus:border-[var(--primary)] text-[var(--foreground)] placeholder:text-[var(--muted)] disabled:opacity-50"
+          className="flex-1 px-3 py-2 bg-[var(--surface-inset-bg)] border border-[var(--border)] rounded-lg text-base focus:outline-none focus:border-[var(--primary)] text-[var(--foreground)] placeholder:text-[var(--muted)] disabled:opacity-50"
         />
         <button
           type="submit"
