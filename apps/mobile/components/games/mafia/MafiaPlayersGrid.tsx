@@ -32,6 +32,7 @@ const NIGHT_ACTION_VERB: Partial<Record<MafiaRole, string>> = {
   cupid: 'two players to link as Lovers',
   seer: 'the player to reveal the exact role of',
   mafia_seer: 'the player to reveal the exact role of',
+  red_lady: 'the player to visit',
 }
 
 interface MafiaPlayersGridProps {

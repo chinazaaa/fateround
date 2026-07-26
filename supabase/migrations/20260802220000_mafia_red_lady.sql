@@ -13,7 +13,7 @@ ALTER TABLE mafia_player_states ADD CONSTRAINT mafia_player_states_role_check CH
     'medium',
     'priest',
     'witch', 'little_girl', 'trapper',
-    'seer', 'mafia_seer',
+    'aura_seer', 'seer', 'mafia_seer',
     'red_lady'
   )
 );

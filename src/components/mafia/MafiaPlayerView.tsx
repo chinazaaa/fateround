@@ -34,7 +34,6 @@ import { MafiaPhaseCard } from './MafiaPhaseCard'
 import { MafiaRoleRevealScreen } from './MafiaRoleRevealScreen'
 import { MafiaPlayersGrid } from './MafiaPlayersGrid'
 import { MafiaRolesDrawer } from './MafiaRolesDrawer'
-import { MafiaSkipPhaseBar } from './MafiaSkipPhaseBar'
 import { MAFIA_ROLE_INFO, MAFIA_TEAM_ROLES, NO_NIGHT_ACTION_ROLES, mafiaRoleEmoji } from './mafia-role-info'
 import type { MafiaStateResponse } from './mafia-types'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
@@ -937,6 +936,19 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
           selectedIds={gridSelectedIds}
           allowSelfSelect={cupidPicking}
           allowDeadSelect={gridAllowDeadSelect}
+          skipRequestCount={
+            (phase === 'day' || phase === 'voting') && amIAlive && !amISpectator ? (skipRequestCount ?? 0) : undefined
+          }
+          skipRequiredCount={
+            (phase === 'day' || phase === 'voting') && amIAlive && !amISpectator ? (skipRequiredCount ?? 1) : undefined
+          }
+          hasRequestedSkip={!!hasRequestedSkip}
+          skipDisabled={acting}
+          onSkip={
+            (phase === 'day' || phase === 'voting') && amIAlive && !amISpectator
+              ? () => void submitSkipPhase()
+              : undefined
+          }
         />
 
         {(phase === 'day' || phase === 'voting') && myRole === 'vigilante' && amIAlive && !amISpectator && (
@@ -1134,17 +1146,6 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
           </div>
         )}
 
-        {(phase === 'day' || phase === 'voting') && amIAlive && !amISpectator && (
-          <MafiaSkipPhaseBar
-            phase={phase}
-            skipRequestCount={skipRequestCount ?? 0}
-            skipRequiredCount={skipRequiredCount ?? 1}
-            hasRequestedSkip={!!hasRequestedSkip}
-            disabled={acting}
-            onSkip={() => void submitSkipPhase()}
-          />
-        )}
-
         {(phase === 'night' || (phase === 'voting' && amIAlive && !amISpectator)) && (
           <MafiaPhaseCard
             phase={phase}
@@ -1323,7 +1324,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
         ) : (
           <>
             {/* Desktop: side-by-side grid (unchanged) */}
-            <main className="hidden md:grid flex-1 max-w-6xl w-full mx-auto p-6 md:grid-cols-3 gap-6 md:items-start">
+            <main className="hidden md:grid flex-1 max-w-6xl w-full mx-auto p-6 md:grid-cols-3 gap-6 md:items-start overflow-y-auto">
               <div className="md:col-span-2 space-y-4">{playersContent}</div>
               <div className="md:col-span-1 space-y-4">{chatContent}</div>
             </main>
@@ -1332,73 +1333,53 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                 bar is a flex sibling (not fixed), so no pb-hack needed. Tapping the
                 inline preview opens a bottom-sheet overlay for full chat. */}
             <div className="md:hidden flex-1 flex flex-col min-h-0 overflow-hidden">
-              <div className="overflow-y-auto p-4 space-y-4 max-h-[45dvh]">{playersContent}</div>
+              {phase === 'night' && amIAlive ? (
+                /* Night: no chat preview — just the player grid filling the space */
+                <div className="flex-1 overflow-y-auto p-4 pb-16 space-y-4">{playersContent}</div>
+              ) : (
+                <>
+                  <div className="overflow-y-auto p-4 space-y-4 max-h-[45dvh] shrink-0">{playersContent}</div>
 
-              {/* Inline chat log — fills all remaining space below the player grid
-                  (Wolvesville-style). Tapping opens the bottom-sheet overlay. */}
-              {!chatOverlayOpen &&
-                !secondaryChatOverlayOpen &&
-                (!amIAlive ? (
-                  <button
-                    type="button"
-                    onClick={() => setChatOverlayOpen(true)}
-                    className="flex-1 min-h-0 w-full text-left px-4 overflow-y-auto"
-                  >
-                    <ChatMessages
-                      messages={mergedGhostMessages}
-                      myPlayerId={myPlayerId}
-                      players={publicPlayers}
-                      className="pointer-events-none"
-                    />
-                  </button>
-                ) : bottomBarTarget === 'mafia' ? (
-                  <button
-                    type="button"
-                    onClick={() => setChatOverlayOpen(true)}
-                    className="flex-1 min-h-0 w-full text-left px-4 overflow-y-auto"
-                  >
-                    <ChatMessages
-                      messages={myState?.mafiaChatMessages ?? []}
-                      myPlayerId={myPlayerId}
-                      className="pointer-events-none"
-                    />
-                  </button>
-                ) : bottomBarTarget === 'day' ? (
-                  <button
-                    type="button"
-                    onClick={() => setChatOverlayOpen(true)}
-                    className="flex-1 min-h-0 w-full text-left px-4 overflow-y-auto"
-                  >
-                    <ChatMessages
-                      messages={dayChatMessages ?? []}
-                      myPlayerId={myPlayerId}
-                      players={publicPlayers}
-                      className="pointer-events-none"
-                    />
-                  </button>
-                ) : showMediumGhostChat ? (
-                  <div className="flex-1 min-h-0 overflow-y-auto px-4">{mediumGhostBlock}</div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setSecondaryChatOverlayOpen(true)}
-                    className="flex-1 min-h-0 w-full text-left px-4 overflow-y-auto"
-                  >
-                    <ChatMessages
-                      messages={dayChatMessages ?? []}
-                      myPlayerId={myPlayerId}
-                      players={publicPlayers}
-                      className="pointer-events-none"
-                    />
-                  </button>
-                ))}
+                  {/* Day/dead: inline chat preview fills remaining space below grid */}
+                  {!chatOverlayOpen &&
+                    !secondaryChatOverlayOpen &&
+                    (!amIAlive ? (
+                      <button
+                        type="button"
+                        onClick={() => setChatOverlayOpen(true)}
+                        className="flex-1 min-h-0 w-full text-left px-4 pb-14 flex flex-col"
+                      >
+                        <ChatMessages
+                          messages={mergedGhostMessages}
+                          myPlayerId={myPlayerId}
+                          players={publicPlayers}
+                          className="flex-1 min-h-0 overflow-y-auto pointer-events-none"
+                        />
+                      </button>
+                    ) : bottomBarTarget === 'day' ? (
+                      <button
+                        type="button"
+                        onClick={() => setChatOverlayOpen(true)}
+                        className="flex-1 min-h-0 w-full text-left px-4 pb-14 flex flex-col"
+                      >
+                        <ChatMessages
+                          messages={dayChatMessages ?? []}
+                          myPlayerId={myPlayerId}
+                          players={publicPlayers}
+                          className="flex-1 min-h-0 overflow-y-auto pointer-events-none"
+                        />
+                      </button>
+                    ) : showMediumGhostChat ? (
+                      <div className="flex-1 min-h-0 overflow-y-auto px-4">{mediumGhostBlock}</div>
+                    ) : null)}
+                </>
+              )}
             </div>
 
-            {/* Bottom input bar — a flex sibling of the scroll area (not fixed),
-                so it docks naturally at the bottom without padding hacks. */}
+            {/* Bottom input bar — fixed to bottom of screen on mobile */}
             {bottomBarTarget && (
               <div
-                className={`md:hidden shrink-0 flex items-stretch h-12 pb-[env(safe-area-inset-bottom)] bg-[var(--card)] border-t ${
+                className={`md:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch h-12 pb-[env(safe-area-inset-bottom)] bg-[var(--card)] border-t ${
                   bottomBarTarget === 'mafia' ? 'border-red-500/30' : 'border-[var(--border)]'
                 }`}
               >
@@ -1408,16 +1389,9 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                     type="text"
                     value={bottomBarText}
                     disabled={bottomBarSending}
-                    readOnly={bottomBarDisabled}
                     onChange={(e) => setBottomBarText(e.target.value)}
                     onFocus={() => setChatOverlayOpen(true)}
-                    placeholder={
-                      bottomBarDisabled
-                        ? "Tap to view — can't chat right now"
-                        : bottomBarTarget === 'mafia'
-                          ? 'Whisper to allies...'
-                          : 'Tap to send a message'
-                    }
+                    placeholder={bottomBarTarget === 'mafia' ? 'Whisper to allies...' : 'Tap to send a message'}
                     className={`flex-1 bg-transparent text-sm focus:outline-none placeholder:text-[var(--muted)] disabled:opacity-50 ${
                       bottomBarTarget === 'mafia' ? 'text-red-200' : 'text-[var(--foreground)]'
                     }`}
@@ -1429,7 +1403,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                       bottomBarTarget === 'mafia' ? 'text-red-400' : 'text-[var(--primary)]'
                     }`}
                   >
-                    Send
+                    {bottomBarDisabled ? (phase === 'night' ? '💤' : '⏳') : 'Send'}
                   </button>
                 </form>
                 {iconPopupKind && (
@@ -1437,8 +1411,10 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                     type="button"
                     onClick={() => setSecondaryChatOverlayOpen((v) => !v)}
                     aria-label={iconPopupKind === 'mafia' ? 'Mafia chat' : 'Town chat'}
-                    className={`px-4 flex items-center justify-center border-l border-[var(--border)] text-lg ${
-                      iconPopupKind === 'mafia' ? 'text-red-400' : 'text-[var(--muted)]'
+                    className={`px-4 flex items-center justify-center border-l text-lg relative z-20 ${
+                      iconPopupKind === 'mafia'
+                        ? 'border-red-500/30 text-red-400 bg-red-500/10'
+                        : 'border-[var(--border)] text-[var(--foreground)] bg-[var(--surface-inset-bg)]'
                     }`}
                   >
                     {iconPopupKind === 'mafia' ? '🔪' : '💬'}
@@ -1448,7 +1424,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             )}
 
             {showNightTownPeek && (
-              <div className="md:hidden shrink-0 flex items-stretch h-12 pb-[env(safe-area-inset-bottom)] bg-[var(--card)] border-t border-[var(--border)]">
+              <div className="md:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch h-12 pb-[env(safe-area-inset-bottom)] bg-[var(--card)] border-t border-[var(--border)]">
                 <div className="flex-1 flex items-center px-4 text-sm text-[var(--muted)]">
                   Nothing to send at night
                 </div>
@@ -1511,45 +1487,35 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                     players={bottomBarTarget === 'mafia' ? undefined : publicPlayers}
                     className="flex-1 min-h-0 p-3"
                   />
-                  {!bottomBarDisabled ? (
-                    <form
-                      onSubmit={handleBottomBarSubmit}
-                      className={`shrink-0 flex items-center gap-2 px-4 py-3 border-t ${
-                        bottomBarTarget === 'mafia' ? 'border-red-500/20' : 'border-[var(--border)]'
+                  <form
+                    onSubmit={handleBottomBarSubmit}
+                    className={`shrink-0 flex items-center gap-2 px-4 py-3 border-t ${
+                      bottomBarTarget === 'mafia' ? 'border-red-500/20' : 'border-[var(--border)]'
+                    }`}
+                  >
+                    <input
+                      type="text"
+                      value={bottomBarText}
+                      disabled={bottomBarSending}
+                      onChange={(e) => setBottomBarText(e.target.value)}
+                      autoFocus={!bottomBarDisabled}
+                      placeholder={bottomBarTarget === 'mafia' ? 'Whisper to allies...' : 'Type a message...'}
+                      className={`flex-1 px-3 py-2 bg-[var(--surface-inset-bg)] border rounded-lg text-sm focus:outline-none ${
+                        bottomBarTarget === 'mafia'
+                          ? 'border-red-500/20 focus:border-red-500/50 text-red-200'
+                          : 'border-[var(--border)] focus:border-[var(--primary)] text-[var(--foreground)]'
+                      } placeholder:text-[var(--muted)]`}
+                    />
+                    <button
+                      type="submit"
+                      disabled={bottomBarSending || !bottomBarText.trim() || bottomBarDisabled}
+                      className={`px-3 py-2 text-sm font-semibold rounded-lg disabled:opacity-40 ${
+                        bottomBarTarget === 'mafia' ? 'bg-red-600 hover:bg-red-700 text-white' : 'btn-primary btn-fit'
                       }`}
                     >
-                      <input
-                        type="text"
-                        value={bottomBarText}
-                        disabled={bottomBarSending}
-                        onChange={(e) => setBottomBarText(e.target.value)}
-                        autoFocus
-                        placeholder={bottomBarTarget === 'mafia' ? 'Whisper to allies...' : 'Type a message...'}
-                        className={`flex-1 px-3 py-2 bg-[var(--surface-inset-bg)] border rounded-lg text-sm focus:outline-none ${
-                          bottomBarTarget === 'mafia'
-                            ? 'border-red-500/20 focus:border-red-500/50 text-red-200'
-                            : 'border-[var(--border)] focus:border-[var(--primary)] text-[var(--foreground)]'
-                        } placeholder:text-[var(--muted)]`}
-                      />
-                      <button
-                        type="submit"
-                        disabled={bottomBarSending || !bottomBarText.trim()}
-                        className={`px-3 py-2 text-sm font-semibold rounded-lg disabled:opacity-40 ${
-                          bottomBarTarget === 'mafia' ? 'bg-red-600 hover:bg-red-700 text-white' : 'btn-primary btn-fit'
-                        }`}
-                      >
-                        Send
-                      </button>
-                    </form>
-                  ) : (
-                    <div className="shrink-0 px-4 py-3 border-t border-[var(--border)]">
-                      <p className="text-xs text-[var(--muted)] italic text-center">
-                        {bottomBarTarget === 'mafia' && phase !== 'night'
-                          ? 'Opens for sending again at night.'
-                          : "Can't chat right now."}
-                      </p>
-                    </div>
-                  )}
+                      {bottomBarDisabled ? (phase === 'night' ? '💤' : '⏳') : 'Send'}
+                    </button>
+                  </form>
                 </div>
               </div>
             )}
