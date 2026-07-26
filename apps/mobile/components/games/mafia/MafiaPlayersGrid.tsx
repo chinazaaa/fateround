@@ -46,6 +46,10 @@ interface MafiaPlayersGridProps {
   mafiaTeammateIds?: string[]
   mafiaTeammateRoles?: Record<string, MafiaRole>
   mafiaTeammateNightTargets?: Record<string, string | null>
+  /** Every role the Mafia Seer has revealed so far (myState.mafiaSeerRevealedRoles) — only
+   *  ever populated for mafia-team viewers, so a checked player's role/emoji shows on their
+   *  tile just like a teammate's would, without needing the seer to relay it manually. */
+  mafiaSeerRevealedRoles?: Record<string, MafiaRole>
   /** The two Lovers' ids (from myState.loverIds) — only populated for Cupid and the two
    *  Lovers themselves, so their tiles get a heart badge visible only to people in the know. */
   loverIds?: string[]
@@ -87,6 +91,7 @@ export function MafiaPlayersGrid({
   mafiaTeammateIds = [],
   mafiaTeammateRoles = {},
   mafiaTeammateNightTargets,
+  mafiaSeerRevealedRoles = {},
   loverIds = [],
   phase,
   voteTallies,
@@ -136,7 +141,7 @@ export function MafiaPlayersGrid({
           const teammateNightTarget =
             isTeammate && phase === 'night' && mafiaTeammateNightTargets ? mafiaTeammateNightTargets[p.id] : undefined
           const teammateTargetSeat = teammateNightTarget ? seatNumberById.get(teammateNightTarget) : undefined
-          const revealedRole = p.role ?? teammateRole
+          const revealedRole = p.role ?? teammateRole ?? mafiaSeerRevealedRoles[p.id]
           const roleTeamColor = revealedRole
             ? MAFIA_TEAM_ROLES.includes(revealedRole)
               ? TEAM_TEXT.mafia
@@ -181,6 +186,7 @@ export function MafiaPlayersGrid({
                 <Text numberOfLines={1} style={[styles.name, !p.isAlive && styles.nameDead]}>
                   {p.name}
                   {isMe ? <Text style={styles.youTag}> (you)</Text> : null}
+                  {p.revivedByMedium && p.isAlive ? <Text> 🔮</Text> : null}
                 </Text>
                 {isMe && myRole ? (
                   <Text style={[styles.roleLabel, { color: TEAM_TEXT[MAFIA_ROLE_INFO[myRole].team] }]}>

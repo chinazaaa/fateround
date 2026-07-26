@@ -1306,6 +1306,7 @@ export interface MafiaPublicPlayer {
   deathDay: number | null
   deathCause: MafiaDeathCause | null
   role?: MafiaRole // Only revealed on death or game over
+  revivedByMedium?: boolean
 }
 
 export interface MafiaChatMessage {
@@ -1331,6 +1332,10 @@ export interface MafiaMyState {
   /** Each teammate's actual role (Mafia/Alpha Wolf/Wolf Cub/Framer) keyed by player id — the
    *  crew sees exactly what each other plays, not just "they're mafia too". */
   mafiaTeammateRoles: Record<string, MafiaRole>
+  /** Every role the Mafia Seer has revealed so far, keyed by player id — only ever
+   *  populated for mafia-team members (never sent to villagers), so the crew keeps a
+   *  running roster of everyone their seer has checked, not just the latest one. */
+  mafiaSeerRevealedRoles?: Record<string, MafiaRole>
   mafiaChatMessages?: MafiaChatMessage[]
   mafiaTeammateNightTargets?: Record<string, string | null>
   trackerResult?: { targetName: string; visitedName: string | null } | null

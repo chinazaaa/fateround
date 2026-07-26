@@ -45,6 +45,8 @@ type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_foun
 // Roles with no night action at all (day-only or passive) — matches NO_NIGHT_ACTION_ROLES
 // in src/app/api/mafia/[code]/night-action/route.ts.
 const NO_NIGHT_ACTION_ROLES: MafiaRole[] = ['villager', 'mayor', 'jester', 'cursed_villager', 'vigilante', 'priest']
+// Every wolf-team role — not just literal 'mafia' — gets the shared secret chat.
+const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer', 'mafia_seer']
 // Two taps required: first tap picks target A, second tap (a different player) submits both.
 const TWO_TARGET_NIGHT_ROLES: MafiaRole[] = ['cupid', 'detective']
 
@@ -320,6 +322,11 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   const secondsLeft = secondsUntilMafiaDeadline(state.phaseDeadline)
   const phase = state.phase
   const showRoleReveal = phase === 'role_reveal' || forceRoleReveal
+  const isMafiaTeamAlive = !!myState?.role && MAFIA_TEAM_ROLES.includes(myState.role) && amIAlive
+  // The Medium can talk with the dead, but only at night, and only once someone actually
+  // is dead — same ghost channel the dead themselves use, not a separate one.
+  const isMediumAtNight =
+    myState?.role === 'medium' && amIAlive && phase === 'night' && state.players.some((p) => !p.isAlive)
 
   if (showRoleReveal) {
     return (
@@ -333,7 +340,11 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   return (
-    <GameShell bootstrap={bootstrap} title="Mafia" subtitle={`Day ${state.dayNumber}`}>
+    <GameShell
+      bootstrap={bootstrap}
+      title="Mafia"
+      subtitle={`${phase === 'night' ? 'Night' : 'Day'} ${state.dayNumber}`}
+    >
       <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
         <TurnBanner
           text={`${mafiaPhaseLabel(phase)}${secondsLeft > 0 ? ` · ${secondsLeft}s` : ''}`}
@@ -531,6 +542,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               mafiaTeammateIds={myState?.mafiaTeammateIds}
               mafiaTeammateRoles={myState?.mafiaTeammateRoles}
               mafiaTeammateNightTargets={myState?.mafiaTeammateNightTargets}
+              mafiaSeerRevealedRoles={myState?.mafiaSeerRevealedRoles}
               loverIds={myState?.loverIds}
               phase={phase}
               voteTallies={state.voteTallies}
@@ -557,14 +569,15 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           )
         })()}
 
-        {/* Alive Mafia see their secret chat AND the town chat simultaneously (matches web) */}
-        {myState?.role === 'mafia' && amIAlive ? (
+        {/* Alive Mafia team (not just literal 'mafia' — includes Alpha Wolf/Wolf Cub/Framer/
+            Mafia Seer) see their secret chat AND the town chat simultaneously (matches web) */}
+        {isMafiaTeamAlive ? (
           <MafiaChatSection
             styles={styles}
             title="Mafia secret chat"
             accent="mafia"
             placeholder="Whisper to allies…"
-            messages={myState.mafiaChatMessages ?? []}
+            messages={myState?.mafiaChatMessages ?? []}
             onSend={(msg) => sendChat(msg, 'night')}
           />
         ) : null}
@@ -578,13 +591,26 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
             disabled={!amIAlive || amISpectator}
             onSend={(msg) => sendChat(msg, 'day')}
           />
-        ) : null}
-
-        {!amIAlive && bootstrap.myPlayerId ? (
+        ) : isMafiaTeamAlive ? (
+          // Nothing living can post to town chat at night, but the mafia team can still
+          // peek at the log (matches web's night-time town-chat icon).
           <MafiaChatSection
             styles={styles}
-            title="Ghost chat (only the dead can see this)"
-            placeholder="Chat with fellow ghosts…"
+            title="Town discussion (read-only at night)"
+            placeholder=""
+            messages={state.dayChatMessages ?? []}
+            disabled
+            onSend={() => {}}
+          />
+        ) : null}
+
+        {/* Ghost chat: always available to the dead (day or night); the Medium can join it
+            too, but only at night and only once someone's actually dead to talk to. */}
+        {(!amIAlive || isMediumAtNight) && bootstrap.myPlayerId ? (
+          <MafiaChatSection
+            styles={styles}
+            title={!amIAlive ? 'Ghost chat (only the dead can see this)' : 'Talk with the dead (night only)'}
+            placeholder={!amIAlive ? 'Chat with fellow ghosts…' : 'Talk with the dead…'}
             messages={state.ghostChatMessages ?? []}
             onSend={(msg) => sendChat(msg, 'ghost')}
           />
