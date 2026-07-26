@@ -766,8 +766,13 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
         }
       } else if (phase === 'voting') {
         gridOnSelect = (id) => {
-          setVoteSelection(id)
-          void submitDayVote(id)
+          if (voteSelection === id) {
+            setVoteSelection(null)
+            void submitDayVote(null)
+          } else {
+            setVoteSelection(id)
+            void submitDayVote(id)
+          }
         }
         gridSelectedIds = voteSelection ? [voteSelection] : []
       }
@@ -882,6 +887,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
           mafiaTeammateIds={myState?.mafiaTeammateIds}
           mafiaTeammateRoles={myState?.mafiaTeammateRoles}
           mafiaTeammateNightTargets={myState?.mafiaTeammateNightTargets}
+          myNightTarget={nightSelection}
           mafiaSeerRevealedRoles={myState?.mafiaSeerRevealedRoles}
           loverIds={myState?.loverIds}
           phase={phase}
@@ -1198,20 +1204,22 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
     )
 
     return (
-      <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col overflow-x-hidden">
+      <div className="min-h-screen w-full max-w-[100vw] bg-[var(--background)] text-[var(--foreground)] flex flex-col overflow-x-hidden">
         {amISpectator && <ViewerModeBanner />}
 
-        <header className="px-4 py-3 border-b border-[var(--border)] bg-[var(--card)] flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <span className="text-xl">🐺</span>
-            <div>
-              <h1 className="font-bold text-base text-[var(--primary)] leading-tight">{gameTitle || 'Mafia'}</h1>
+        <header className="px-4 py-3 border-b border-[var(--border)] bg-[var(--card)] flex justify-between items-center min-w-0">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <span className="text-xl shrink-0">🐺</span>
+            <div className="min-w-0">
+              <h1 className="font-bold text-base text-[var(--primary)] leading-tight truncate">
+                {gameTitle || 'Mafia'}
+              </h1>
               <p className="text-[10px] text-[var(--muted)] uppercase tracking-widest font-semibold">
                 {showRoleReveal ? 'Role Reveal' : `${PHASE_LABEL[phase] ?? phase} ${dayNumber}`}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <MafiaRolesDrawer rolesInGame={rolesInGame ?? enabledRoles ?? []} myRole={myRole} roleCounts={roleCounts} />
             <GameRulesLink gameType="mafia" />
           </div>
@@ -1242,63 +1250,65 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                 small toggle switches which one is showing; both keep their own built-in
                 scrollable log + input. */}
             <div
-              className={`md:hidden flex-1 flex flex-col p-4 space-y-4 overflow-y-auto ${
+              className={`md:hidden flex-1 flex flex-col p-4 space-y-4 overflow-y-auto overflow-x-hidden w-full min-w-0 ${
                 bottomBarTarget ? 'pb-20' : ''
               }`}
             >
               {playersContent}
 
-              {!amIAlive ? (
-                <button
-                  type="button"
-                  onClick={() => setChatOverlayOpen(true)}
-                  className="w-full text-left glass-card border border-[var(--border)] rounded-2xl p-3 space-y-1"
-                >
-                  <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">
-                    💬 Town Discussion
-                  </p>
-                  <ChatMessages
-                    messages={mergedGhostMessages}
-                    myPlayerId={myPlayerId}
-                    players={publicPlayers}
-                    className="h-24 pointer-events-none"
-                  />
-                  <p className="text-[10px] text-[var(--muted)] text-center">Tap to open full chat</p>
-                </button>
-              ) : bottomBarTarget === 'mafia' ? (
-                <button
-                  type="button"
-                  onClick={() => setChatOverlayOpen(true)}
-                  className="w-full text-left glass-card border border-red-500/20 rounded-2xl p-3 space-y-1"
-                >
-                  <p className="text-[10px] font-bold tracking-widest uppercase text-red-400">🔪 Mafia Secret Chat</p>
-                  <ChatMessages
-                    messages={myState?.mafiaChatMessages ?? []}
-                    myPlayerId={myPlayerId}
-                    className="h-24 pointer-events-none"
-                  />
-                  <p className="text-[10px] text-[var(--muted)] text-center">Tap to open full chat</p>
-                </button>
-              ) : bottomBarTarget === 'day' ? (
-                <button
-                  type="button"
-                  onClick={() => setChatOverlayOpen(true)}
-                  className="w-full text-left glass-card border border-[var(--border)] rounded-2xl p-3 space-y-1"
-                >
-                  <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">
-                    💬 Town Discussion
-                  </p>
-                  <ChatMessages
-                    messages={dayChatMessages ?? []}
-                    myPlayerId={myPlayerId}
-                    players={publicPlayers}
-                    className="h-24 pointer-events-none"
-                  />
-                  <p className="text-[10px] text-[var(--muted)] text-center">Tap to open full chat</p>
-                </button>
-              ) : (
-                mediumGhostBlock
-              )}
+              {!chatOverlayOpen &&
+                !secondaryChatOverlayOpen &&
+                (!amIAlive ? (
+                  <button
+                    type="button"
+                    onClick={() => setChatOverlayOpen(true)}
+                    className="w-full text-left glass-card border border-[var(--border)] rounded-2xl p-3 space-y-1"
+                  >
+                    <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">
+                      💬 Town Discussion
+                    </p>
+                    <ChatMessages
+                      messages={mergedGhostMessages}
+                      myPlayerId={myPlayerId}
+                      players={publicPlayers}
+                      className="h-24 pointer-events-none"
+                    />
+                    <p className="text-[10px] text-[var(--muted)] text-center">Tap to open full chat</p>
+                  </button>
+                ) : bottomBarTarget === 'mafia' ? (
+                  <button
+                    type="button"
+                    onClick={() => setChatOverlayOpen(true)}
+                    className="w-full text-left glass-card border border-red-500/20 rounded-2xl p-3 space-y-1"
+                  >
+                    <p className="text-[10px] font-bold tracking-widest uppercase text-red-400">🔪 Mafia Secret Chat</p>
+                    <ChatMessages
+                      messages={myState?.mafiaChatMessages ?? []}
+                      myPlayerId={myPlayerId}
+                      className="h-24 pointer-events-none"
+                    />
+                    <p className="text-[10px] text-[var(--muted)] text-center">Tap to open full chat</p>
+                  </button>
+                ) : bottomBarTarget === 'day' ? (
+                  <button
+                    type="button"
+                    onClick={() => setChatOverlayOpen(true)}
+                    className="w-full text-left glass-card border border-[var(--border)] rounded-2xl p-3 space-y-1"
+                  >
+                    <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">
+                      💬 Town Discussion
+                    </p>
+                    <ChatMessages
+                      messages={dayChatMessages ?? []}
+                      myPlayerId={myPlayerId}
+                      players={publicPlayers}
+                      className="h-24 pointer-events-none"
+                    />
+                    <p className="text-[10px] text-[var(--muted)] text-center">Tap to open full chat</p>
+                  </button>
+                ) : (
+                  mediumGhostBlock
+                ))}
             </div>
 
             {/* Persistent bottom input, Wolvesville-style: tapping/focusing it (or the
@@ -1339,7 +1349,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                     <button
                       type="button"
                       onClick={() => setChatOverlayOpen(false)}
-                      className="text-[var(--muted)] text-lg leading-none px-1"
+                      className="text-[var(--muted)] text-xl leading-none w-10 h-10 flex items-center justify-center rounded-full hover:bg-[var(--surface-inset-bg)]"
                       aria-label="Close"
                     >
                       ✕
@@ -1396,7 +1406,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                     <button
                       type="button"
                       onClick={() => setSecondaryChatOverlayOpen(false)}
-                      className="text-[var(--muted)] text-lg leading-none px-1"
+                      className="text-[var(--muted)] text-xl leading-none w-10 h-10 flex items-center justify-center rounded-full hover:bg-[var(--surface-inset-bg)]"
                       aria-label="Close"
                     >
                       ✕
