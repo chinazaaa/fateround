@@ -6,47 +6,27 @@ import { MAFIA_ROLE_INFO, MAFIA_TEAM_ROLES, mafiaRoleEmoji } from './mafia-role-
 interface MafiaPlayersGridProps {
   players: MafiaPublicPlayer[]
   myPlayerId: string | null
-  /** The local player's own role — shown directly on their own tile (not just on death),
-   *  so there's no need for a separate "Your Identity" card taking up page space. */
   myRole?: MafiaRole | null
-  /** Fellow mafia-team ids (from myState.mafiaTeammateIds) — their tiles get the shared mafia
-   *  symbol and their real role shown, since the crew can see each other regardless of a text
-   *  list, matching Wolvesville's shared crew marker on the roster instead of a name panel. */
   mafiaTeammateIds?: string[]
   mafiaTeammateRoles?: Record<string, MafiaRole>
   mafiaTeammateNightTargets?: Record<string, string | null>
-  /** The local mafia player's own submitted night target — so their tile shows the same
-   *  🎯 banner teammates' tiles get, and the target tile can tally all mafia picks. */
   myNightTarget?: string | null
-  /** Every role the Mafia Seer has revealed so far (myState.mafiaSeerRevealedRoles) — only
-   *  ever populated for mafia-team viewers, so a checked player's role/emoji shows on
-   *  their tile just like a teammate's would, without needing the seer to relay it. */
   mafiaSeerRevealedRoles?: Record<string, MafiaRole>
-  /** The two Lovers' ids (from myState.loverIds) — only populated for Cupid and the two
-   *  Lovers themselves, so their tiles get a heart badge visible only to people in the know. */
   loverIds?: string[]
   phase: MafiaPhase
   voteTallies: Record<string, number>
-  /** voterId -> targetId, when votes are public — shown as a "→ #N" sign on the voter's own
-   *  tile (Wolvesville shows who cast each vote, not just a tally on the target). */
   voteChoices?: Record<string, string>
-  /** Who has cast a vote, regardless of anonymity — used to show a "?" sign on a voter's tile
-   *  when anonymousVotes is on (Wolvesville still marks that a player voted, just not for whom). */
   votedPlayerIds?: string[]
   anonymousVotes?: boolean
-  /** When set, alive non-self tiles become tap targets for the current night action or vote —
-   *  the primary way to act, matching Wolvesville (tap the player's photo, not a separate list). */
   onSelect?: (id: string) => void
-  /** Currently chosen target(s) — highlighted so the player can see (and change) their pick
-   *  before the phase ends. Cupid's two-step pick can hold up to two ids. */
   selectedIds?: string[]
-  /** Cupid's role text says they can link two players "possibly including yourself" — set
-   *  during Cupid's pick so their own tile becomes tappable too, instead of the usual
-   *  self-target block that applies to every other role. */
   allowSelfSelect?: boolean
-  /** Medium's revive targets dead players — flip the alive requirement so tombstone tiles
-   *  become tappable instead of alive ones. */
   allowDeadSelect?: boolean
+  skipRequestCount?: number
+  skipRequiredCount?: number
+  hasRequestedSkip?: boolean
+  skipDisabled?: boolean
+  onSkip?: () => void
 }
 
 const TEAM_TEXT: Record<string, string> = {
@@ -75,6 +55,7 @@ const NIGHT_ACTION_VERB: Partial<Record<MafiaRole, string>> = {
   cupid: 'two players to link as Lovers',
   seer: 'the player to reveal the exact role of',
   mafia_seer: 'the player to reveal the exact role of',
+  red_lady: 'the player to visit',
 }
 
 /**
@@ -102,6 +83,11 @@ export function MafiaPlayersGrid({
   selectedIds = [],
   allowSelfSelect = false,
   allowDeadSelect = false,
+  skipRequestCount,
+  skipRequiredCount,
+  hasRequestedSkip,
+  skipDisabled,
+  onSkip,
 }: MafiaPlayersGridProps) {
   const seatNumberById = new Map(players.map((p) => [p.id, p.seatNumber]))
   const amIAlive = players.find((p) => p.id === myPlayerId)?.isAlive !== false
@@ -136,6 +122,16 @@ export function MafiaPlayersGrid({
         <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)] truncate">
           Players{headerSuffix}
         </h3>
+        {onSkip && skipRequiredCount != null && (
+          <button
+            type="button"
+            disabled={skipDisabled || hasRequestedSkip}
+            onClick={onSkip}
+            className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[var(--muted)] hover:text-[var(--foreground)] border border-[var(--border)] hover:border-[var(--primary)] rounded-full px-2.5 py-1 transition bg-[var(--surface-inset-bg)] disabled:opacity-60"
+          >
+            ⏭ {hasRequestedSkip ? 'Skipped' : 'Skip'} ({skipRequestCount ?? 0}/{skipRequiredCount})
+          </button>
+        )}
       </div>
       <div className={`grid ${gridColsClass} gap-1.5 sm:gap-2 min-w-0`}>
         {players.map((p) => {

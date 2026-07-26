@@ -1287,6 +1287,7 @@ export type MafiaRole =
   | 'aura_seer'
   | 'seer'
   | 'mafia_seer'
+  | 'red_lady'
 export type MafiaTeam = 'village' | 'mafia' | 'jester' | 'serial_killer' | 'arsonist'
 export type MafiaDeathCause =
   | 'mafia_kill'
@@ -1296,6 +1297,7 @@ export type MafiaDeathCause =
   | 'vigilante_kill'
   | 'witch_kill'
   | 'trap_kill'
+  | 'red_lady_death'
 export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'day' | 'voting' | 'elimination' | 'game_over'
 
 export interface MafiaPublicPlayer {
@@ -1362,6 +1364,7 @@ export interface MafiaMyState {
   /** The two Lovers' player ids — populated only for Cupid and the two Lovers themselves, so
    *  the roster grid can mark their tiles with a heart without exposing it to anyone else. */
   loverIds?: string[]
+  wolfCubRevengeTargetName?: string | null
   enabledRoles?: MafiaRole[]
 }
 

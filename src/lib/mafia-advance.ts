@@ -19,6 +19,7 @@ const KILLER_LABEL: Record<string, string> = {
   vigilante_kill: 'The Vigilante',
   witch_kill: 'The Witch',
   trap_kill: 'A Trapper trap',
+  red_lady_death: 'The night',
 }
 
 /**
@@ -137,6 +138,12 @@ export async function runMafiaAdvance(
   // before the CAS, so a losing racer could still burn a vigilante's one shot, mark an
   // arsonist's douse target, or double-write a death row.
   const pendingEffects: Array<() => PromiseLike<unknown>> = []
+  // Deaths must land BEFORE the session phase update — the phase change fires realtime
+  // subscriptions and clients immediately re-poll. If the death rows haven't been written
+  // yet, a dead player can still pass the is_alive check in the chat/vote routes during
+  // that brief window. These are idempotent (setting is_alive=false twice is harmless),
+  // so they're safe to apply even if a concurrent racer also applies them.
+  const prePhaseEffects: Array<() => PromiseLike<unknown>> = []
 
   // Define timer durations — Night, Day (discussion), and Voting each have their own dial,
   // matching Wolvesville's separate phase timers rather than one duration doubled for day.
@@ -204,6 +211,8 @@ export async function runMafiaAdvance(
       seerTarget,
       mafiaSeerTarget,
       wolfCubRevengeTargetId,
+      redLadyTarget,
+      redLadyDied,
     } = resolution
 
     updateFields.mafia_target_player_id = mafiaTarget
@@ -264,7 +273,7 @@ export async function runMafiaAdvance(
 
     for (const death of deaths) {
       const deadState = playerStates.find((p) => p.player_id === death.playerId)
-      pendingEffects.push(() =>
+      prePhaseEffects.push(() =>
         admin
           .from('mafia_player_states')
           .update({
@@ -276,7 +285,7 @@ export async function runMafiaAdvance(
           .eq('game_id', gameId)
           .eq('player_id', death.playerId)
       )
-      pendingEffects.push(() =>
+      prePhaseEffects.push(() =>
         admin.from('players').update({ is_eliminated: true }).eq('game_id', gameId).eq('id', death.playerId)
       )
       const pIndex = playerStates.findIndex((p) => p.player_id === death.playerId)
@@ -413,6 +422,19 @@ export async function runMafiaAdvance(
           revealed.push({ playerId: mafiaSeerTarget, role: targetState.role })
         }
         updateFields.mafia_seer_revealed = revealed
+      }
+    }
+
+    // Red Lady — the public death message from the loop above already covers what happened
+    // if she died; this private note is only for when she made it back safely (visited
+    // nobody who was attacked, and wasn't Mafia/a Solo killer).
+    if (redLadyTarget && !redLadyDied) {
+      const redLady = playerStates.find((p) => p.role === 'red_lady')
+      if (redLady) {
+        privateMessages.push({
+          target_player_id: redLady.player_id,
+          message: `🌹 Night ${session.day_number}: You visited ${playerLabel(redLadyTarget)} and made it back safely.`,
+        })
       }
     }
 
@@ -627,7 +649,7 @@ export async function runMafiaAdvance(
 
     if (votedPlayerId) {
       const votedState = playerStates.find((p) => p.player_id === votedPlayerId)
-      pendingEffects.push(() =>
+      prePhaseEffects.push(() =>
         admin
           .from('mafia_player_states')
           .update({
@@ -639,7 +661,7 @@ export async function runMafiaAdvance(
           .eq('game_id', gameId)
           .eq('player_id', votedPlayerId)
       )
-      pendingEffects.push(() =>
+      prePhaseEffects.push(() =>
         admin.from('players').update({ is_eliminated: true }).eq('game_id', gameId).eq('id', votedPlayerId)
       )
 
@@ -666,7 +688,7 @@ export async function runMafiaAdvance(
           if (valid.length > 0) revengeId = valid[Math.floor(Math.random() * valid.length)].player_id
         }
         if (revengeId) {
-          pendingEffects.push(() =>
+          prePhaseEffects.push(() =>
             admin
               .from('mafia_player_states')
               .update({
@@ -678,7 +700,7 @@ export async function runMafiaAdvance(
               .eq('game_id', gameId)
               .eq('player_id', revengeId)
           )
-          pendingEffects.push(() =>
+          prePhaseEffects.push(() =>
             admin.from('players').update({ is_eliminated: true }).eq('game_id', gameId).eq('id', revengeId)
           )
           const ri = playerStates.findIndex((p) => p.player_id === revengeId)
@@ -774,6 +796,14 @@ export async function runMafiaAdvance(
     const aliveCount = playerStates.filter((p) => p.is_alive).length
     const votesRequired = Math.floor(aliveCount / 2) + 1
     systemMessages.push(`🗳️ Get ready to vote! (${votesRequired} vote${votesRequired === 1 ? '' : 's'} required)`)
+  }
+
+  // 3b. Flush death writes before the phase CAS — clients get a realtime notification the
+  // instant the session row changes, and immediately re-poll. If the death rows land after
+  // the phase flip, a dead player passes the is_alive gate in the chat/vote routes during
+  // the gap. These writes are idempotent, so a concurrent racer applying them twice is safe.
+  if (prePhaseEffects.length > 0) {
+    await Promise.all(prePhaseEffects.map((run) => run()))
   }
 
   // 4. Save session updates — guard with current phase to prevent double-processing. Only the

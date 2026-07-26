@@ -96,9 +96,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     sender_player_id: 'system',
     sender_name: '📢',
     message:
-      nextSkipIds.length === 1
-        ? `Somebody voted to skip the ${phaseLabel} phase.`
-        : `All but ${stillNeeded} voted to skip the ${phaseLabel} phase.`,
+      stillNeeded === 0
+        ? `Everyone voted to skip the ${phaseLabel} phase.`
+        : nextSkipIds.length === 1
+          ? `Somebody voted to skip the ${phaseLabel} phase.`
+          : `All but ${stillNeeded} voted to skip the ${phaseLabel} phase.`,
     scope: 'day',
   })
 

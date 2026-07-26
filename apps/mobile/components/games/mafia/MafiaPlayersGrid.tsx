@@ -32,50 +32,36 @@ const NIGHT_ACTION_VERB: Partial<Record<MafiaRole, string>> = {
   cupid: 'two players to link as Lovers',
   seer: 'the player to reveal the exact role of',
   mafia_seer: 'the player to reveal the exact role of',
+  red_lady: 'the player to visit',
 }
 
 interface MafiaPlayersGridProps {
   players: MafiaPublicPlayer[]
   myPlayerId: string | null
-  /** The local player's own role — shown directly on their own tile (not just on death),
-   *  so there's no need for a separate "Your Identity" card taking up screen space. */
   myRole?: MafiaRole | null
-  /** Fellow mafia-team ids (from myState.mafiaTeammateIds) — their tiles get the shared mafia
-   *  symbol and their real role shown, since the crew can see each other regardless of a text
-   *  list, matching Wolvesville's shared crew marker on the roster instead of a name panel. */
   mafiaTeammateIds?: string[]
   mafiaTeammateRoles?: Record<string, MafiaRole>
   mafiaTeammateNightTargets?: Record<string, string | null>
-  /** Every role the Mafia Seer has revealed so far (myState.mafiaSeerRevealedRoles) — only
-   *  ever populated for mafia-team viewers, so a checked player's role/emoji shows on their
-   *  tile just like a teammate's would, without needing the seer to relay it manually. */
+  /** The local player's own night target (for kill-voter roles) — shown on their tile like
+   *  teammate targets so the player sees the 🎯 badge on themselves too. */
+  myNightTarget?: string | null
   mafiaSeerRevealedRoles?: Record<string, MafiaRole>
-  /** The two Lovers' ids (from myState.loverIds) — only populated for Cupid and the two
-   *  Lovers themselves, so their tiles get a heart badge visible only to people in the know. */
   loverIds?: string[]
   phase: MafiaPhase
   voteTallies: Record<string, number>
-  /** voterId -> targetId, when votes are public — shown as a "→ #N" sign on the voter's own
-   *  tile (Wolvesville shows who cast each vote, not just a tally on the target). */
   voteChoices?: Record<string, string>
-  /** Who has cast a vote, regardless of anonymity — used to show a "?" sign on a voter's tile
-   *  when anonymousVotes is on (Wolvesville still marks that a player voted, just not for whom). */
   votedPlayerIds?: string[]
   anonymousVotes?: boolean
-  /** When set, alive non-self tiles become tap targets for the current night action or vote —
-   *  the primary way to act, matching Wolvesville (tap the player's photo, not a separate list). */
   onSelect?: (id: string) => void
-  /** Currently chosen target(s) — highlighted so the player can see (and change) their pick
-   *  before the phase ends. Cupid's two-step pick can hold up to two ids. */
   selectedIds?: string[]
-  /** Cupid's role text says they can link two players "possibly including yourself" — set
-   *  during Cupid's pick so their own tile becomes tappable too, instead of the usual
-   *  self-target block that applies to every other role. */
   allowSelfSelect?: boolean
-  /** Medium's revive targets dead players — flip the alive requirement so tombstone tiles
-   *  become tappable instead of alive ones. */
   allowDeadSelect?: boolean
   disabled?: boolean
+  skipRequestCount?: number
+  skipRequiredCount?: number
+  hasRequestedSkip?: boolean
+  skipDisabled?: boolean
+  onSkip?: () => void
 }
 
 /**
@@ -91,6 +77,7 @@ export function MafiaPlayersGrid({
   mafiaTeammateIds = [],
   mafiaTeammateRoles = {},
   mafiaTeammateNightTargets,
+  myNightTarget,
   mafiaSeerRevealedRoles = {},
   loverIds = [],
   phase,
@@ -103,17 +90,36 @@ export function MafiaPlayersGrid({
   allowSelfSelect = false,
   allowDeadSelect = false,
   disabled = false,
+  skipRequestCount,
+  skipRequiredCount,
+  hasRequestedSkip,
+  skipDisabled,
+  onSkip,
 }: MafiaPlayersGridProps) {
   const styles = useThemedStyles(makeStyles)
   const seatNumberById = new Map(players.map((p) => [p.id, p.seatNumber]))
   const amIAlive = players.find((p) => p.id === myPlayerId)?.isAlive !== false
 
+  const myHasVoted = myPlayerId ? votedPlayerIds.includes(myPlayerId) : false
   let headerSuffix = ''
   if (phase === 'voting') {
-    headerSuffix = amIAlive ? ' · tap to vote' : ''
+    headerSuffix = amIAlive ? (myHasVoted ? ' · tap to unvote' : ' · tap to vote') : ''
   } else if (onSelect && myRole) {
     const verb = NIGHT_ACTION_VERB[myRole]
     headerSuffix = verb ? ` · tap to select ${verb}` : ' · tap to select'
+  }
+
+  // Night target tally: how many mafia kill-voters are targeting each player (self + teammates).
+  // Excludes mafia_seer whose night action is a reveal, not a kill.
+  const MAFIA_KILL_VOTERS: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer']
+  const nightTargetTally = new Map<string, number>()
+  if (phase === 'night' && myRole && MAFIA_KILL_VOTERS.includes(myRole)) {
+    if (myNightTarget) nightTargetTally.set(myNightTarget, (nightTargetTally.get(myNightTarget) ?? 0) + 1)
+    if (mafiaTeammateNightTargets) {
+      for (const targetId of Object.values(mafiaTeammateNightTargets)) {
+        if (targetId) nightTargetTally.set(targetId, (nightTargetTally.get(targetId) ?? 0) + 1)
+      }
+    }
   }
 
   // Roster size varies 5-16 — a fixed 4-wide grid leaves a nearly-empty last row for small
@@ -124,7 +130,20 @@ export function MafiaPlayersGrid({
 
   return (
     <View style={styles.card}>
-      <Text style={styles.header}>Players{headerSuffix}</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.header}>Players{headerSuffix}</Text>
+        {onSkip && skipRequiredCount != null ? (
+          <Pressable
+            disabled={skipDisabled || hasRequestedSkip}
+            onPress={onSkip}
+            style={[styles.skipBtn, (skipDisabled || hasRequestedSkip) && styles.skipBtnDisabled]}
+          >
+            <Text style={styles.skipBtnText}>
+              ⏭ {hasRequestedSkip ? 'Skipped' : 'Skip'} ({skipRequestCount ?? 0}/{skipRequiredCount})
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
       <View style={styles.grid}>
         {players.map((p) => {
           const isMe = p.id === myPlayerId
@@ -140,7 +159,13 @@ export function MafiaPlayersGrid({
           const teammateRole = isTeammate ? mafiaTeammateRoles[p.id] : undefined
           const teammateNightTarget =
             isTeammate && phase === 'night' && mafiaTeammateNightTargets ? mafiaTeammateNightTargets[p.id] : undefined
-          const teammateTargetSeat = teammateNightTarget ? seatNumberById.get(teammateNightTarget) : undefined
+          const nightTargetSeat =
+            isMe && myNightTarget
+              ? seatNumberById.get(myNightTarget)
+              : teammateNightTarget
+                ? seatNumberById.get(teammateNightTarget)
+                : undefined
+          const nightTallyCount = nightTargetTally.get(p.id)
           const revealedRole = p.role ?? teammateRole ?? mafiaSeerRevealedRoles[p.id]
           const roleTeamColor = revealedRole
             ? MAFIA_TEAM_ROLES.includes(revealedRole)
@@ -197,9 +222,13 @@ export function MafiaPlayersGrid({
                     {mafiaRoleEmoji(revealedRole)} {MAFIA_ROLE_INFO[revealedRole]?.name ?? revealedRole}
                   </Text>
                 ) : null}
-                {teammateTargetSeat != null ? (
+                {nightTargetSeat != null ? (
                   <View style={styles.targetBand}>
-                    <Text style={styles.targetBandText}>🎯 {teammateTargetSeat}</Text>
+                    <Text style={styles.targetBandText}>🎯 {nightTargetSeat}</Text>
+                  </View>
+                ) : nightTallyCount ? (
+                  <View style={styles.targetBand}>
+                    <Text style={styles.targetBandText}>🎯 {nightTallyCount}</Text>
                   </View>
                 ) : showVoteTargetBand ? (
                   <View style={styles.voteBand}>
@@ -218,12 +247,28 @@ export function MafiaPlayersGrid({
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     card: { backgroundColor: theme.surface, borderRadius: theme.radius.lg, padding: 14, gap: 8 },
+    headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
     header: {
       color: theme.primary,
       fontSize: 10,
       fontWeight: '800',
       textTransform: 'uppercase',
       letterSpacing: 0.8,
+      flexShrink: 1,
+    },
+    skipBtn: {
+      backgroundColor: theme.border,
+      borderRadius: 20,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+    },
+    skipBtnDisabled: { opacity: 0.6 },
+    skipBtnText: {
+      color: theme.textMuted,
+      fontSize: 10,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
     },
     grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3 },
     tile: {

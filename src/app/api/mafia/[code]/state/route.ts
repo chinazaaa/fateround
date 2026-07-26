@@ -37,6 +37,7 @@ const ROLE_ENABLED_KEYS = [
   'trapper_enabled',
   'seer_enabled',
   'mafia_seer_enabled',
+  'red_lady_enabled',
 ] as const
 
 function enabledRolesFrom(session: Pick<MafiaSession, (typeof ROLE_ENABLED_KEYS)[number]>): MafiaRole[] {
@@ -64,6 +65,7 @@ function enabledRolesFrom(session: Pick<MafiaSession, (typeof ROLE_ENABLED_KEYS)
     trapper_enabled: 'trapper',
     seer_enabled: 'seer',
     mafia_seer_enabled: 'mafia_seer',
+    red_lady_enabled: 'red_lady',
   }
   for (const key of ROLE_ENABLED_KEYS) {
     if (session[key]) roles.push(map[key])

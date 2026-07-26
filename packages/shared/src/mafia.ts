@@ -111,6 +111,8 @@ export function mafiaRoleEmoji(role: string): string {
       return '👁️'
     case 'mafia_seer':
       return '👁️‍🗨️'
+    case 'red_lady':
+      return '🌹'
     default:
       return '🏘️'
   }
@@ -193,7 +195,8 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'wolf_cub',
     name: 'Junior Mafia',
     team: 'mafia',
-    description: 'If you are killed, the Mafia gets a bonus kill the following night in revenge.',
+    description:
+      'Votes to kill at night like regular Mafia. Can select one player as a revenge target during any phase — if killed, that player dies with you. If no target is picked, a random villager is chosen.',
   },
   framer: {
     role: 'framer',
@@ -281,6 +284,13 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     team: 'mafia',
     description:
       'Each night, select a player to uncover their exact role, and share what you learn with your fellow Mafia. You cannot vote to kill unless you resign your ability (self-target at night), permanently becoming a Regular Mafia.',
+  },
+  red_lady: {
+    role: 'red_lady',
+    name: 'Red Lady',
+    team: 'village',
+    description:
+      'The Red Lady can visit another player at night. If they are attacked while visiting, they will not be killed. However, if they visit a player that is attacked, or a mafia or a solo killer, they will die. The Red Lady wins with the village.',
   },
 }
 
