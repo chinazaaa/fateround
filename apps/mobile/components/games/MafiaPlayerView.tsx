@@ -57,6 +57,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   const [timerTick, setTimerTick] = useState(0)
   // First-tap target for two-target night roles (Cupid, Detective) — cleared on submit.
   const [pendingFirstTargetId, setPendingFirstTargetId] = useState<string | null>(null)
+  const [pendingSecondTargetId, setPendingSecondTargetId] = useState<string | null>(null)
   // Which Witch potion the next grid tap will use — cleared once submitted.
   const [witchPotion, setWitchPotion] = useState<'heal' | 'kill' | null>(null)
   // Priest/Vigilante act during the day but separately from voting — this puts the grid into
@@ -254,8 +255,11 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           return
         }
         const first = pendingFirstTargetId
-        setPendingFirstTargetId(null)
-        void act(() => postMafiaNightAction(bootstrap.code, token, first, { secondTargetPlayerId: id }))
+        setPendingSecondTargetId(id)
+        void act(() => postMafiaNightAction(bootstrap.code, token, first, { secondTargetPlayerId: id })).finally(() => {
+          setPendingFirstTargetId(null)
+          setPendingSecondTargetId(null)
+        })
         return
       }
 
@@ -663,7 +667,13 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               votedPlayerIds={state.votedPlayerIds}
               anonymousVotes={state.anonymousVotes && !showDayVotes}
               disabled={acting}
-              selectedIds={pendingFirstTargetId ? [pendingFirstTargetId] : voteSelection ? [voteSelection] : []}
+              selectedIds={
+                pendingFirstTargetId
+                  ? ([pendingFirstTargetId, pendingSecondTargetId].filter(Boolean) as string[])
+                  : voteSelection
+                    ? [voteSelection]
+                    : []
+              }
               allowSelfSelect={
                 nightActionable &&
                 (role === 'trapper' || role === 'arsonist' || role === 'mafia_seer' || role === 'cupid')
