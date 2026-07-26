@@ -390,8 +390,10 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
   // server-side, so players can change their pick anytime before the phase ends by tapping
   // a different tile. Cupid's two-step pick and the current highlighted selection reset
   // whenever the phase or day number changes.
-  // Mobile tab state — Wolvesville-style bottom tabs instead of one long scroll.
-  const [mobileTab, setMobileTab] = useState<'players' | 'chat'>('players')
+  // Mobile chat state — Wolvesville-style: the players grid stays on screen full-time,
+  // and chat lives behind a persistent bottom bar that expands into an overlay on tap
+  // (rather than a tab that hides the grid entirely).
+  const [chatOverlayOpen, setChatOverlayOpen] = useState(false)
   const [chatUnread, setChatUnread] = useState(false)
   const lastSeenChatCountRef = useRef(0)
 
@@ -409,16 +411,16 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
     setVoteSelection(null)
   }, [phaseKey])
 
-  // Track unread chat messages when the player is on the Players tab (mobile only).
+  // Track unread chat messages while the overlay is closed (mobile only).
   const chatMsgCount = mafiaState?.dayChatMessages?.length ?? 0
   useEffect(() => {
-    if (mobileTab === 'chat') {
+    if (chatOverlayOpen) {
       lastSeenChatCountRef.current = chatMsgCount
       setChatUnread(false)
     } else if (chatMsgCount > lastSeenChatCountRef.current) {
       setChatUnread(true)
     }
-  }, [chatMsgCount, mobileTab])
+  }, [chatMsgCount, chatOverlayOpen])
 
   const triggerAutoAdvance = useCallback(async () => {
     try {
@@ -1138,34 +1140,46 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
               <div className="md:col-span-1 space-y-4">{chatContent}</div>
             </main>
 
-            {/* Mobile: tabbed content switcher below the timer */}
-            <div className="md:hidden">
-              <nav className="flex border-b border-[var(--border)] bg-[var(--card)]">
-                <button
-                  onClick={() => setMobileTab('players')}
-                  className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition ${
-                    mobileTab === 'players'
-                      ? 'text-[var(--primary)] border-b-2 border-[var(--primary)]'
-                      : 'text-[var(--muted)]'
-                  }`}
-                >
-                  Players
-                </button>
-                <button
-                  onClick={() => setMobileTab('chat')}
-                  className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition relative ${
-                    mobileTab === 'chat'
-                      ? 'text-[var(--primary)] border-b-2 border-[var(--primary)]'
-                      : 'text-[var(--muted)]'
-                  }`}
-                >
-                  Chat
-                  {chatUnread && mobileTab !== 'chat' && (
-                    <span className="absolute top-1.5 right-[calc(50%-16px)] w-2 h-2 rounded-full bg-red-500" />
-                  )}
-                </button>
-              </nav>
-              <div className="p-4 space-y-4">{mobileTab === 'players' ? playersContent : chatContent}</div>
+            {/* Mobile: grid stays on screen full-time; chat lives behind a bottom bar
+                that expands into an overlay on tap (Wolvesville-style), instead of a
+                tab that hides the grid. */}
+            <div className="md:hidden flex-1 flex flex-col">
+              <div className="flex-1 p-4 pb-20 space-y-4">{playersContent}</div>
+
+              <button
+                type="button"
+                onClick={() => setChatOverlayOpen(true)}
+                className="fixed bottom-0 inset-x-0 z-30 flex items-center gap-2 px-4 py-3 bg-[var(--card)] border-t border-[var(--border)] text-left"
+              >
+                <span className="text-lg">💬</span>
+                <span className="flex-1 text-sm text-[var(--muted)]">Send message</span>
+                {chatUnread && <span className="w-2 h-2 rounded-full bg-red-500" />}
+              </button>
+
+              {chatOverlayOpen && (
+                <div className="fixed inset-0 z-40 flex flex-col justify-end">
+                  <button
+                    type="button"
+                    aria-label="Close chat"
+                    onClick={() => setChatOverlayOpen(false)}
+                    className="absolute inset-0 bg-black/50"
+                  />
+                  <div className="relative bg-[var(--background)] rounded-t-2xl max-h-[85vh] flex flex-col overflow-hidden border-t border-[var(--border)]">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
+                      <h2 className="text-xs font-bold uppercase tracking-widest text-[var(--muted)]">Chat</h2>
+                      <button
+                        type="button"
+                        onClick={() => setChatOverlayOpen(false)}
+                        className="text-[var(--muted)] text-lg leading-none px-1"
+                        aria-label="Close"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="p-4 space-y-4 overflow-y-auto">{chatContent}</div>
+                  </div>
+                </div>
+              )}
             </div>
           </>
         )}
