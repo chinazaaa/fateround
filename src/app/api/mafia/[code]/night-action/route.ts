@@ -22,6 +22,7 @@ const ROLE_ENABLED_FIELD: Partial<Record<string, keyof MafiaSession>> = {
   trapper: 'trapper_enabled',
   seer: 'seer_enabled',
   mafia_seer: 'mafia_seer_enabled',
+  red_lady: 'red_lady_enabled',
 }
 // Roles that may never target themselves (self-target is either meaningless or reserved
 // for a different action, e.g. Arsonist self-target signals "ignite" instead of "douse").
@@ -37,6 +38,7 @@ const NO_SELF_TARGET_ROLES = new Set([
   'tracker',
   'framer',
   'serial_killer',
+  'red_lady',
 ])
 const TRAPPER_MAX_TRAPS = 3
 

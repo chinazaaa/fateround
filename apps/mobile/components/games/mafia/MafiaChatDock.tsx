@@ -130,35 +130,41 @@ export function MafiaChatModal({
   }
 
   return (
-    <Modal visible={visible} transparent={false} animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={styles.fullScreenWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <View style={[styles.fullScreenHeader, accent === 'mafia' && styles.mafiaAccentBorder]}>
-          <Pressable onPress={onClose} hitSlop={10} style={styles.backBtn}>
-            <Text style={styles.closeX}>✕</Text>
-          </Pressable>
-          <Text style={[styles.headerTitle, accent === 'mafia' && styles.mafiaAccentText]}>{title}</Text>
-          <View style={styles.backBtn} />
-        </View>
-        <View style={styles.fullScreenLog}>
-          <MafiaChatMessageList messages={messages} players={players} />
-        </View>
-        {canType ? (
-          <View style={[styles.inputRow, accent === 'mafia' && styles.mafiaAccentBorder]}>
-            <TextInput
-              style={styles.input}
-              value={draft}
-              onChangeText={setDraft}
-              placeholder="Type a message…"
-              placeholderTextColor="#71717a"
-              autoFocus
-            />
-            <Pressable style={styles.sendBtn} disabled={sending || !draft.trim()} onPress={() => void submit()}>
-              <Text style={styles.sendBtnText}>Send</Text>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose} />
+      <KeyboardAvoidingView
+        style={styles.sheetWrap}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        pointerEvents="box-none"
+      >
+        <View style={[styles.sheetPanel, accent === 'mafia' && styles.mafiaAccentBorder]}>
+          <View style={[styles.sheetHeader, accent === 'mafia' && styles.mafiaAccentBorder]}>
+            <Text style={[styles.headerTitle, accent === 'mafia' && styles.mafiaAccentText]}>{title}</Text>
+            <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn}>
+              <Text style={styles.closeX}>✕</Text>
             </Pressable>
           </View>
-        ) : disabledNote ? (
-          <Text style={styles.disabledNote}>{disabledNote}</Text>
-        ) : null}
+          <View style={styles.sheetLog}>
+            <MafiaChatMessageList messages={messages} players={players} />
+          </View>
+          {canType ? (
+            <View style={[styles.inputRow, accent === 'mafia' && styles.mafiaAccentBorder]}>
+              <TextInput
+                style={styles.input}
+                value={draft}
+                onChangeText={setDraft}
+                placeholder="Type a message…"
+                placeholderTextColor="#71717a"
+                autoFocus
+              />
+              <Pressable style={styles.sendBtn} disabled={sending || !draft.trim()} onPress={() => void submit()}>
+                <Text style={styles.sendBtnText}>Send</Text>
+              </Pressable>
+            </View>
+          ) : disabledNote ? (
+            <Text style={styles.disabledNote}>{disabledNote}</Text>
+          ) : null}
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   )
@@ -248,21 +254,39 @@ const makeStyles = (theme: Theme) =>
     inlinePreview: { paddingHorizontal: 4 },
     mafiaAccentText: { color: '#f87171' },
     mafiaAccentBorder: { borderColor: '#f4374766' },
-    fullScreenWrap: { flex: 1, backgroundColor: theme.bg },
-    fullScreenHeader: {
+    backdrop: { ...StyleSheet.absoluteFill, backgroundColor: '#00000060' },
+    sheetWrap: { flex: 1, justifyContent: 'flex-end' },
+    sheetPanel: {
+      backgroundColor: theme.bg,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderBottomWidth: 0,
+      height: '60%',
+      paddingBottom: 20,
+    },
+    sheetHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: 8,
-      paddingVertical: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
       borderBottomWidth: 1,
       borderBottomColor: theme.border,
     },
-    backBtn: { width: 40, alignItems: 'center', justifyContent: 'center' },
-    closeX: { color: theme.text, fontSize: 22 },
+    closeBtn: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: theme.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    closeX: { color: theme.text, fontSize: 16 },
     headerTitle: { color: theme.text, fontSize: 14, fontWeight: '700' },
     modalTitle: { color: theme.textMuted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
-    fullScreenLog: { flex: 1, paddingHorizontal: 16, paddingVertical: 10 },
+    sheetLog: { flex: 1, paddingHorizontal: 16, paddingVertical: 10 },
     disabledNote: {
       color: theme.textMuted,
       fontSize: 11,

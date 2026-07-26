@@ -159,6 +159,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mafia_trapper_enabled,
     mafia_seer_enabled,
     mafia_mafia_seer_enabled,
+    mafia_red_lady_enabled,
     mafia_bodyguard_enabled,
     mafia_mayor_enabled,
     mafia_vigilante_enabled,
@@ -233,6 +234,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mafia_trapper_enabled === undefined &&
     mafia_seer_enabled === undefined &&
     mafia_mafia_seer_enabled === undefined &&
+    mafia_red_lady_enabled === undefined &&
     mafia_bodyguard_enabled === undefined &&
     mafia_mayor_enabled === undefined &&
     mafia_vigilante_enabled === undefined &&
@@ -638,6 +640,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (mafia_trapper_enabled !== undefined) gameUpdate.mafia_trapper_enabled = mafia_trapper_enabled
     if (mafia_seer_enabled !== undefined) gameUpdate.mafia_seer_enabled = mafia_seer_enabled
     if (mafia_mafia_seer_enabled !== undefined) gameUpdate.mafia_mafia_seer_enabled = mafia_mafia_seer_enabled
+    if (mafia_red_lady_enabled !== undefined) gameUpdate.mafia_red_lady_enabled = mafia_red_lady_enabled
     if (mafia_bodyguard_enabled !== undefined) gameUpdate.mafia_bodyguard_enabled = mafia_bodyguard_enabled
     if (mafia_mayor_enabled !== undefined) gameUpdate.mafia_mayor_enabled = mafia_mayor_enabled
     if (mafia_vigilante_enabled !== undefined) gameUpdate.mafia_vigilante_enabled = mafia_vigilante_enabled
