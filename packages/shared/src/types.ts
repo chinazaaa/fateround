@@ -133,6 +133,11 @@ export interface Game {
   mafia_seer_enabled?: boolean | null
   mafia_mafia_seer_enabled?: boolean | null
   mafia_anonymous_votes?: boolean | null
+  /** Single Classic/Advanced switch — replaces individually toggling most optional roles.
+   *  See resolveMafiaRoundToggles() in src/lib/mafia.ts for exactly what this changes. */
+  mafia_advanced_mode?: boolean | null
+  mafia_day_seconds?: number | null
+  mafia_voting_seconds?: number | null
   monopoly_double_go_salary?: boolean | null
   monopoly_forced_auctions?: boolean | null
   monopoly_auction_timer_seconds?: number | null

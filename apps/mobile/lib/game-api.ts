@@ -1181,6 +1181,9 @@ export type BoardLobbyPatch = {
   mafia_doctor_enabled?: boolean
   mafia_detective_enabled?: boolean
   mafia_anonymous_votes?: boolean
+  mafia_advanced_mode?: boolean
+  mafia_day_seconds?: number
+  mafia_voting_seconds?: number
   monopoly_double_go_salary?: boolean
   monopoly_forced_auctions?: boolean
   monopoly_auction_timer_seconds?: number

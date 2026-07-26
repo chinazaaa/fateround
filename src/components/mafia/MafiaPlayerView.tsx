@@ -28,7 +28,7 @@ import { gameTypeConfig } from '@/lib/game-types'
 import { MAFIA_MIN_PLAYERS } from '@/lib/mafia'
 import { clearPlayerSession, getPlayerSession } from '@/lib/utils'
 import { MafiaPhaseTimer } from './MafiaChat'
-import { MafiaDayChat, MafiaSecretChat } from './MafiaChat'
+import { ChatMessages, MafiaDayChat, MafiaSecretChat } from './MafiaChat'
 import { MafiaIdentityPanel } from './MafiaIdentityPanel'
 import { MafiaPhaseCard } from './MafiaPhaseCard'
 import { MafiaRoleRevealScreen } from './MafiaRoleRevealScreen'
@@ -396,6 +396,10 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
   const [chatOverlayOpen, setChatOverlayOpen] = useState(false)
   const [chatUnread, setChatUnread] = useState(false)
   const lastSeenChatCountRef = useRef(0)
+  // Secondary overlay reached via the icon beside the main bar: by day it's the mafia
+  // team's secret chat history (read-only — sending is still night-only); by night it's
+  // the town/day chat, mirroring the day-side icon so both chats are always reachable.
+  const [secondaryChatOverlayOpen, setSecondaryChatOverlayOpen] = useState(false)
 
   const [cupidFirstPick, setCupidFirstPick] = useState<string | null>(null)
   const [arsonistFirstPick, setArsonistFirstPick] = useState<string | null>(null)
@@ -795,6 +799,11 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
     const isWolfTeam = !!myRole && MAFIA_TEAM_ROLES.includes(myRole)
     const showSecretChat = isWolfTeam && amIAlive && phase === 'night'
     const canSendDay = phase === 'day' || phase === 'voting'
+    // Mobile bottom-bar context: at night the mafia's secret input takes the primary
+    // spot (matching what showSecretChat renders first in chatContent); everywhere
+    // else the mafia team still gets a quick way to peek at that chat's history.
+    const nightMafiaPrimary = showSecretChat
+    const mafiaTeamAlive = isWolfTeam && amIAlive
 
     const playersContent = (
       <>
@@ -1052,55 +1061,83 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
       </>
     )
 
+    // Split out so the mobile bottom bar can show just the mafia secret chat (at night)
+    // or just the town chat (during the day) as its primary overlay, with the other one
+    // tucked behind its own icon — desktop's `chatContent` below still stacks both like
+    // before.
+    const mafiaSecretContent = (
+      <>
+        {showSecretChat && (
+          <MafiaSecretChat
+            messages={myState?.mafiaChatMessages ?? []}
+            onSendMessage={sendMafiaMessage}
+            myPlayerId={myPlayerId}
+          />
+        )}
+        {myRole === 'medium' && amIAlive && (myState?.mediumGhostChat?.length ?? 0) > 0 && (
+          <div className="glass-card border border-purple-500/30 rounded-2xl p-4">
+            <h3 className="text-[10px] font-bold tracking-widest uppercase text-purple-400 mb-2">
+              🔮 Voices from beyond
+            </h3>
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {myState!.mediumGhostChat!.map((m) => (
+                <p key={m.id} className="text-xs text-purple-300/80">
+                  <span className="font-bold text-purple-400">{m.sender_name}:</span> {m.message}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
+      </>
+    )
+
+    const townChatContent =
+      phase === 'night' ? (
+        <MafiaDayChat
+          messages={dayChatMessages ?? []}
+          ghostMessages={!amIAlive ? (ghostChatMessages ?? []) : undefined}
+          onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
+          myPlayerId={myPlayerId}
+          players={publicPlayers}
+          readOnly={amIAlive}
+          readOnlyLabel="night"
+        />
+      ) : (
+        <MafiaDayChat
+          messages={dayChatMessages ?? []}
+          ghostMessages={!amIAlive ? (ghostChatMessages ?? []) : undefined}
+          onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
+          myPlayerId={myPlayerId}
+          players={publicPlayers}
+          readOnly={!canSendDay}
+          readOnlyLabel={PHASE_LABEL[phase]?.toLowerCase()}
+          disabled={amISpectator}
+        />
+      )
+
     const chatContent = (
       <div className="space-y-4">
         {phase === 'night' ? (
           <>
-            {showSecretChat && (
-              <MafiaSecretChat
-                messages={myState?.mafiaChatMessages ?? []}
-                onSendMessage={sendMafiaMessage}
-                myPlayerId={myPlayerId}
-              />
-            )}
-            {myRole === 'medium' && amIAlive && (myState?.mediumGhostChat?.length ?? 0) > 0 && (
-              <div className="glass-card border border-purple-500/30 rounded-2xl p-4">
-                <h3 className="text-[10px] font-bold tracking-widest uppercase text-purple-400 mb-2">
-                  🔮 Voices from beyond
-                </h3>
-                <div className="space-y-1 max-h-40 overflow-y-auto">
-                  {myState!.mediumGhostChat!.map((m) => (
-                    <p key={m.id} className="text-xs text-purple-300/80">
-                      <span className="font-bold text-purple-400">{m.sender_name}:</span> {m.message}
-                    </p>
-                  ))}
-                </div>
-              </div>
-            )}
-            <MafiaDayChat
-              messages={dayChatMessages ?? []}
-              ghostMessages={!amIAlive ? (ghostChatMessages ?? []) : undefined}
-              onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
-              myPlayerId={myPlayerId}
-              players={publicPlayers}
-              readOnly={amIAlive}
-              readOnlyLabel="night"
-            />
+            {mafiaSecretContent}
+            {townChatContent}
           </>
         ) : (
-          <MafiaDayChat
-            messages={dayChatMessages ?? []}
-            ghostMessages={!amIAlive ? (ghostChatMessages ?? []) : undefined}
-            onSendMessage={amIAlive ? sendDayMessage : sendGhostMessage}
-            myPlayerId={myPlayerId}
-            players={publicPlayers}
-            readOnly={!canSendDay}
-            readOnlyLabel={PHASE_LABEL[phase]?.toLowerCase()}
-            disabled={amISpectator}
-          />
+          townChatContent
         )}
       </div>
     )
+
+    // Whatever's behind the mobile bottom bar right now (mafia secret chat at night,
+    // town chat otherwise) — used to render a live peek strip of the last few messages
+    // above the bar, Wolvesville-style, instead of a bar with no content until tapped.
+    const previewMessages = nightMafiaPrimary
+      ? (myState?.mafiaChatMessages ?? [])
+      : !amIAlive && ghostChatMessages?.length
+        ? [...(dayChatMessages ?? []), ...ghostChatMessages].sort(
+            (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)
+          )
+        : (dayChatMessages ?? [])
 
     return (
       <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col overflow-x-hidden">
@@ -1144,17 +1181,56 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                 that expands into an overlay on tap (Wolvesville-style), instead of a
                 tab that hides the grid. */}
             <div className="md:hidden flex-1 flex flex-col">
-              <div className="flex-1 p-4 pb-20 space-y-4">{playersContent}</div>
+              <div className={`flex-1 p-4 space-y-4 ${previewMessages.length > 0 ? 'pb-40' : 'pb-20'}`}>
+                {playersContent}
+              </div>
 
-              <button
-                type="button"
-                onClick={() => setChatOverlayOpen(true)}
-                className="fixed bottom-0 inset-x-0 z-30 flex items-center gap-2 px-4 py-3 bg-[var(--card)] border-t border-[var(--border)] text-left"
-              >
-                <span className="text-lg">💬</span>
-                <span className="flex-1 text-sm text-[var(--muted)]">Send message</span>
-                {chatUnread && <span className="w-2 h-2 rounded-full bg-red-500" />}
-              </button>
+              {/* At night the mafia's own secret input is the primary bar; during the day
+                  it's the town chat. Either way, the mafia team gets a small icon beside
+                  it linking to the other one — mafia chat icon by day, town chat icon by
+                  night — so both are always one tap away, just with a different default. */}
+              <div className="fixed bottom-0 inset-x-0 z-30 flex flex-col bg-[var(--card)] border-t border-[var(--border)]">
+                {previewMessages.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setChatOverlayOpen(true)}
+                    className="text-left border-b border-[var(--border)]"
+                    aria-label="Open full chat"
+                  >
+                    <ChatMessages
+                      messages={previewMessages.slice(-8)}
+                      myPlayerId={myPlayerId}
+                      players={publicPlayers}
+                      className="h-28 pointer-events-none"
+                    />
+                  </button>
+                )}
+                <div className="flex items-stretch">
+                  <button
+                    type="button"
+                    onClick={() => setChatOverlayOpen(true)}
+                    className="flex-1 flex items-center gap-2 px-4 py-3 text-left"
+                  >
+                    <span className="text-lg">{nightMafiaPrimary ? '🔪' : '💬'}</span>
+                    <span className={`flex-1 text-sm ${nightMafiaPrimary ? 'text-red-400' : 'text-[var(--muted)]'}`}>
+                      {nightMafiaPrimary ? 'Whisper to allies...' : 'Send message'}
+                    </span>
+                    {chatUnread && <span className="w-2 h-2 rounded-full bg-red-500 self-center" />}
+                  </button>
+                  {mafiaTeamAlive && (
+                    <button
+                      type="button"
+                      onClick={() => setSecondaryChatOverlayOpen(true)}
+                      aria-label={nightMafiaPrimary ? 'Town chat' : 'Mafia chat'}
+                      className={`px-4 flex items-center justify-center border-l border-[var(--border)] text-lg ${
+                        nightMafiaPrimary ? 'text-[var(--muted)]' : 'text-red-400'
+                      }`}
+                    >
+                      {nightMafiaPrimary ? '💬' : '🔪'}
+                    </button>
+                  )}
+                </div>
+              </div>
 
               {chatOverlayOpen && (
                 <div className="fixed inset-0 z-40 flex flex-col justify-end">
@@ -1166,7 +1242,9 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                   />
                   <div className="relative bg-[var(--background)] rounded-t-2xl max-h-[85vh] flex flex-col overflow-hidden border-t border-[var(--border)]">
                     <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
-                      <h2 className="text-xs font-bold uppercase tracking-widest text-[var(--muted)]">Chat</h2>
+                      <h2 className="text-xs font-bold uppercase tracking-widest text-[var(--muted)]">
+                        {nightMafiaPrimary ? 'Mafia Chat' : 'Chat'}
+                      </h2>
                       <button
                         type="button"
                         onClick={() => setChatOverlayOpen(false)}
@@ -1176,7 +1254,63 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                         ✕
                       </button>
                     </div>
-                    <div className="p-4 space-y-4 overflow-y-auto">{chatContent}</div>
+                    <div className="p-4 space-y-4 overflow-y-auto">
+                      {nightMafiaPrimary ? mafiaSecretContent : townChatContent}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {secondaryChatOverlayOpen && (
+                <div className="fixed inset-0 z-40 flex flex-col justify-end">
+                  <button
+                    type="button"
+                    aria-label="Close chat"
+                    onClick={() => setSecondaryChatOverlayOpen(false)}
+                    className="absolute inset-0 bg-black/50"
+                  />
+                  <div
+                    className={`relative bg-[var(--background)] rounded-t-2xl max-h-[85vh] flex flex-col overflow-hidden border-t ${
+                      nightMafiaPrimary ? 'border-[var(--border)]' : 'border-red-500/30'
+                    }`}
+                  >
+                    <div
+                      className={`flex items-center justify-between px-4 py-3 border-b ${
+                        nightMafiaPrimary ? 'border-[var(--border)]' : 'border-red-500/20'
+                      }`}
+                    >
+                      <h2
+                        className={`text-xs font-bold uppercase tracking-widest ${
+                          nightMafiaPrimary ? 'text-[var(--muted)]' : 'text-red-400'
+                        }`}
+                      >
+                        {nightMafiaPrimary ? 'Town Chat' : '🔪 Mafia Chat'}
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={() => setSecondaryChatOverlayOpen(false)}
+                        className="text-[var(--muted)] text-lg leading-none px-1"
+                        aria-label="Close"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="p-4 overflow-y-auto space-y-2">
+                      {nightMafiaPrimary ? (
+                        townChatContent
+                      ) : (
+                        <>
+                          <ChatMessages
+                            messages={myState?.mafiaChatMessages ?? []}
+                            myPlayerId={myPlayerId}
+                            className="h-[60vh]"
+                          />
+                          <p className="text-xs text-[var(--muted)] italic text-center">
+                            Opens for sending again at night.
+                          </p>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

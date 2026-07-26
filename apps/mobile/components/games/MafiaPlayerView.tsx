@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import * as SecureStore from 'expo-secure-store'
 import { normalizeGameCode, type Game, type Player } from '@fateround/shared'
 import {
   MAFIA_ROLE_INFO,
@@ -25,6 +26,7 @@ import {
   postMafiaChat,
   postMafiaNightAction,
   postMafiaPriestAction,
+  postMafiaSkipPhase,
   postMafiaState,
   postMafiaVigilanteAction,
   postMafiaVote,
@@ -35,6 +37,8 @@ import { useThemedStyles } from '@/constants/theme-context'
 import { MafiaPlayersGrid } from '@/components/games/mafia/MafiaPlayersGrid'
 import { MafiaRolesDrawer } from '@/components/games/mafia/MafiaRolesDrawer'
 import { MafiaRoleRevealScreen } from '@/components/games/mafia/MafiaRoleRevealScreen'
+import { MafiaSkipPhaseBar } from '@/components/games/mafia/MafiaSkipPhaseBar'
+import { MafiaIdentityPanel } from '@/components/games/mafia/MafiaIdentityPanel'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
 
@@ -56,6 +60,13 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   // Priest/Vigilante act during the day but separately from voting — this puts the grid into
   // "pick a target for this special action" mode instead of "pick a lynch vote" mode.
   const [dayActionMode, setDayActionMode] = useState<'priest' | 'vigilante_shoot' | 'vigilante_reveal' | null>(null)
+  // A late joiner's client can load state well after the game's shared role_reveal phase has
+  // already ended (it's a one-time, whole-game window) — without this they'd be dropped
+  // straight into an in-progress night/day with no "you are..." moment at all. Give them a
+  // one-time few-second local reveal instead, gated on a per-player SecureStore flag so it
+  // only ever fires once and never re-interrupts a returning player.
+  const [forceRoleReveal, setForceRoleReveal] = useState(false)
+  const forceRoleRevealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: MafiaStateResponse | null; ok: boolean }> => {
@@ -112,6 +123,40 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     ? state.players.find((p) => p.id === state.lastVoteResultPlayerId)
     : undefined
 
+  // The timeout that clears forceRoleReveal is intentionally NOT returned as this effect's
+  // cleanup — if the game's real phase changes again while the few-second overlay is showing
+  // (e.g. the player was backgrounded and the server ticked several phases forward), this
+  // effect re-runs, and a cleanup-cancelled timeout with no replacement (blocked by the
+  // SecureStore guard below) would leave forceRoleReveal stuck true forever. A ref-held
+  // timeout only ever gets cleared on unmount.
+  useEffect(() => {
+    if (bootstrap.screen !== 'active' || !bootstrap.myPlayerId || !myState?.role) return
+    const key = `mafia_role_seen_${gameCode.toUpperCase()}_${bootstrap.myPlayerId}`
+    let cancelled = false
+    void (async () => {
+      if (state?.phase === 'role_reveal') {
+        // Seen naturally via the shared role_reveal phase — mark it so a late refresh doesn't
+        // also trigger the late-join overlay once that phase has passed.
+        await SecureStore.setItemAsync(key, '1')
+        return
+      }
+      const seen = await SecureStore.getItemAsync(key)
+      if (cancelled || seen) return
+      await SecureStore.setItemAsync(key, '1')
+      setForceRoleReveal(true)
+      forceRoleRevealTimeoutRef.current = setTimeout(() => setForceRoleReveal(false), 5000)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [bootstrap.screen, bootstrap.myPlayerId, gameCode, myState?.role, state?.phase])
+
+  useEffect(() => {
+    return () => {
+      if (forceRoleRevealTimeoutRef.current) clearTimeout(forceRoleRevealTimeoutRef.current)
+    }
+  }, [])
+
   useEffect(() => {
     if (!state?.phaseDeadline || state.phase === 'game_over') return
     const id = setInterval(() => setTimerTick((n) => n + 1), 1000)
@@ -143,7 +188,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     setDayActionMode(null)
   }, [state?.phase, state?.dayNumber])
 
-  const showDayVotes = state?.phase === 'day' && !(state.anonymousVotes && !myState?.dayVoteSubmitted)
+  const showDayVotes = state?.phase === 'voting' && !(state.anonymousVotes && !myState?.dayVoteSubmitted)
 
   const role = myState?.role ?? null
   const canAct = amIAlive && !amISpectator && !!bootstrap.myResumeToken
@@ -274,8 +319,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
   const secondsLeft = secondsUntilMafiaDeadline(state.phaseDeadline)
   const phase = state.phase
+  const showRoleReveal = phase === 'role_reveal' || forceRoleReveal
 
-  if (phase === 'role_reveal') {
+  if (showRoleReveal) {
     return (
       <GameShell bootstrap={bootstrap} title="Mafia" subtitle="Role reveal">
         <KeyboardAwareGameScroll contentContainerStyle={styles.content}>
@@ -305,17 +351,14 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
             {myState.mafiaTeammates.length > 0 ? (
               <Text style={styles.allies}>Allies: {myState.mafiaTeammates.join(', ')}</Text>
             ) : null}
-            {myState.auraSeerResult ? (
-              <Text style={styles.investigation}>
-                {myState.auraSeerResult.targetName} is {myState.auraSeerResult.alignment}
-              </Text>
-            ) : null}
           </View>
         ) : amISpectator ? (
           <View style={styles.identityStrip}>
             <Text style={styles.identityText}>👁️ Spectating — you are watching this game.</Text>
           </View>
         ) : null}
+
+        <MafiaIdentityPanel myState={myState} />
 
         <View style={styles.phaseCard}>
           {phase === 'night' ? (
@@ -380,15 +423,21 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
             </View>
           ) : null}
 
-          {phase === 'day' ? (
+          {phase === 'day' || phase === 'voting' ? (
             <>
               {amISpectator ? (
-                <Text style={styles.phaseText}>Watching — voting in progress…</Text>
+                <Text style={styles.phaseText}>
+                  {phase === 'day' ? 'Watching — town discussion…' : 'Watching — voting in progress…'}
+                </Text>
               ) : !amIAlive ? (
-                <Text style={styles.phaseText}>You are eliminated — watch the vote.</Text>
+                <Text style={styles.phaseText}>
+                  {phase === 'day'
+                    ? 'You are eliminated — watch the discussion.'
+                    : 'You are eliminated — watch the vote.'}
+                </Text>
               ) : (
                 <>
-                  {myState?.dayVoteSubmitted ? (
+                  {phase === 'voting' && myState?.dayVoteSubmitted ? (
                     <View style={styles.voteCastRow}>
                       <Text style={styles.phaseOk}>✓ Vote cast</Text>
                       <Pressable
@@ -418,13 +467,27 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                     </Pressable>
                   ) : null}
                   {dayActionMode ? <Text style={styles.phaseText}>Tap a player below to confirm.</Text> : null}
-                  <Pressable
-                    style={styles.skipFullBtn}
-                    disabled={acting}
-                    onPress={() => act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, null))}
-                  >
-                    <Text style={styles.skipFullText}>⏭ Skip / No Lynch</Text>
-                  </Pressable>
+                  {phase === 'voting' ? (
+                    <Pressable
+                      style={styles.skipFullBtn}
+                      disabled={acting}
+                      onPress={() => act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, null))}
+                    >
+                      <Text style={styles.skipFullText}>⏭ Skip / No Lynch</Text>
+                    </Pressable>
+                  ) : null}
+                  {(state.skipRequiredCount ?? 0) > 0 ? (
+                    <View style={styles.skipBarWrap}>
+                      <MafiaSkipPhaseBar
+                        phase={phase}
+                        skipRequestCount={state.skipRequestCount ?? 0}
+                        skipRequiredCount={state.skipRequiredCount ?? 0}
+                        hasRequestedSkip={!!state.hasRequestedSkip}
+                        disabled={acting}
+                        onSkip={() => act(() => postMafiaSkipPhase(bootstrap.code, bootstrap.myResumeToken!))}
+                      />
+                    </View>
+                  ) : null}
                 </>
               )}
             </>
@@ -457,8 +520,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               : role === 'trapper' || role === 'mafia_seer'
                 ? true
                 : !myState?.nightActionSubmitted)
-          const dayVotable = phase === 'day' && canAct && !dayActionMode
-          const dayActionable = phase === 'day' && canAct && !!dayActionMode
+          const dayVotable = phase === 'voting' && canAct && !dayActionMode
+          const dayActionable = (phase === 'day' || phase === 'voting') && canAct && !!dayActionMode
 
           return (
             <MafiaPlayersGrid
@@ -626,7 +689,6 @@ const makeStyles = (theme: Theme) =>
     },
     identityText: { color: theme.text, fontWeight: '700', textAlign: 'center' },
     allies: { color: '#fca5a5', fontSize: 13, textAlign: 'center' },
-    investigation: { color: '#86efac', fontSize: 13, textAlign: 'center' },
     rulesRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
@@ -656,6 +718,7 @@ const makeStyles = (theme: Theme) =>
     },
     actionBtnActive: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
     actionBtnText: { color: theme.text, fontWeight: '700' },
+    skipBarWrap: { marginTop: 10 },
     voteCastRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
     changeVoteLink: { color: theme.textMuted, fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
     skipFullBtn: {
