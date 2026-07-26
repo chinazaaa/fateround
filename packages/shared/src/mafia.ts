@@ -122,6 +122,7 @@ export interface MafiaRoleInfo {
   role: MafiaRole
   name: string
   team: 'village' | 'mafia' | 'solo' | 'special'
+  aura: 'good' | 'evil' | 'unknown'
   description: string
 }
 
@@ -134,24 +135,28 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'villager',
     name: 'Villager',
     team: 'village',
+    aura: 'good',
     description: 'No special powers. Use the day discussion and your vote to find the Mafia.',
   },
   doctor: {
     role: 'doctor',
     name: 'Doctor',
     team: 'village',
+    aura: 'good',
     description: 'Each night, choose one player (not yourself) to heal, saving them from any kill that night.',
   },
   detective: {
     role: 'detective',
     name: 'Detective',
     team: 'village',
+    aura: 'good',
     description: 'Each night, select two players to uncover whether they are on the same team.',
   },
   aura_seer: {
     role: 'aura_seer',
     name: 'Aura Seer',
     team: 'village',
+    aura: 'good',
     description:
       'Each night, investigate one player to learn their alignment: Good, Evil, or Unknown (Solo roles and kill/revive-capable Village roles).',
   },
@@ -159,42 +164,49 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'bodyguard',
     name: 'Bodyguard',
     team: 'village',
+    aura: 'good',
     description: 'Each night, protect one player. If that player is attacked, you die in their place instead.',
   },
   mayor: {
     role: 'mayor',
     name: 'Mayor',
     team: 'village',
+    aura: 'good',
     description: 'Your day vote counts as two votes toward the lynch majority.',
   },
   vigilante: {
     role: 'vigilante',
     name: 'Vigilante',
     team: 'village',
+    aura: 'unknown',
     description: 'You may kill one player at night — but only once per game, so choose carefully.',
   },
   tracker: {
     role: 'tracker',
     name: 'Tracker',
     team: 'village',
+    aura: 'good',
     description: 'Each night, learn who your target visited (targeted) that night.',
   },
   mafia: {
     role: 'mafia',
     name: 'Mafia',
     team: 'mafia',
+    aura: 'evil',
     description: 'Each night, vote with your team on a player to kill. Chat privately with your fellow Mafia.',
   },
   alpha_wolf: {
     role: 'alpha_wolf',
     name: 'Alpha Mafia',
     team: 'mafia',
+    aura: 'evil',
     description: 'Leads the Mafia — your kill vote counts twice, and you can chat with your crew during the day too.',
   },
   wolf_cub: {
     role: 'wolf_cub',
     name: 'Junior Mafia',
     team: 'mafia',
+    aura: 'evil',
     description:
       'Votes to kill at night like regular Mafia. Can select one player as a revenge target during any phase — if killed, that player dies with you. If no target is picked, a random villager is chosen.',
   },
@@ -202,24 +214,28 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'framer',
     name: 'Framer',
     team: 'mafia',
+    aura: 'evil',
     description: "Each night, frame a player so the Aura Seer and Detective's investigations on them read as Mafia.",
   },
   jester: {
     role: 'jester',
     name: 'Jester',
     team: 'solo',
+    aura: 'unknown',
     description: 'You win alone if the town votes to lynch you. Otherwise, you lose with no other win condition.',
   },
   serial_killer: {
     role: 'serial_killer',
     name: 'Serial Killer',
     team: 'solo',
+    aura: 'unknown',
     description: 'Each night, kill a player on your own. You win if you are the last one standing.',
   },
   arsonist: {
     role: 'arsonist',
     name: 'Arsonist',
     team: 'solo',
+    aura: 'unknown',
     description:
       'Each night, douse a player in fuel, or ignite everyone doused so far to kill them all at once. You win if you are the last one standing.',
   },
@@ -227,6 +243,7 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'cupid',
     name: 'Cupid',
     team: 'special',
+    aura: 'good',
     description:
       'On night one only, link two players (possibly including yourself) as Lovers. The Lovers win together if both survive to the end.',
   },
@@ -234,6 +251,7 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'cursed_villager',
     name: 'Cursed Villager',
     team: 'special',
+    aura: 'good',
     description:
       'Starts on the Village team, but if the Mafia targets you, you convert to Mafia and survive instead of dying.',
   },
@@ -241,6 +259,7 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'medium',
     name: 'Medium',
     team: 'village',
+    aura: 'unknown',
     description:
       'Can read ghost chat at night to hear the dead. Once per game, choose a dead player at night to revive them.',
   },
@@ -248,6 +267,7 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'priest',
     name: 'Priest',
     team: 'village',
+    aura: 'good',
     description:
       'Once during the day, throw holy water on another player. If they are Mafia, they die. If not, you die and their innocence is announced.',
   },
@@ -255,6 +275,7 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'witch',
     name: 'Witch',
     team: 'village',
+    aura: 'unknown',
     description:
       'You have two potions: a Protect Potion (only consumed if it actually saves your target from a kill — free to reuse otherwise) and a Kill Potion (kill any player outright, once per game, not usable on night 1).',
   },
@@ -262,6 +283,7 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'little_girl',
     name: 'Little Girl',
     team: 'village',
+    aura: 'good',
     description:
       'Each night, you can choose to open your eyes. 75% you see nothing, 20% you identify a Mafia member, 5% they notice you and you die.',
   },
@@ -269,6 +291,7 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'trapper',
     name: 'Trapper',
     team: 'village',
+    aura: 'unknown',
     description:
       "Each night, either set a trap on a player's house (up to 3 at once) or activate all your traps. Trapped players can't be killed while active — a Mafia kill on one instead kills the Mafia's weakest member, other attackers are simply blocked.",
   },
@@ -276,12 +299,14 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'seer',
     name: 'Seer',
     team: 'village',
+    aura: 'good',
     description: 'Each night, select a player to uncover their exact role.',
   },
   mafia_seer: {
     role: 'mafia_seer',
     name: 'Mafia Seer',
     team: 'mafia',
+    aura: 'evil',
     description:
       'Each night, select a player to uncover their exact role, and share what you learn with your fellow Mafia. You cannot vote to kill unless you resign your ability (self-target at night), permanently becoming a Regular Mafia.',
   },
@@ -289,6 +314,7 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'red_lady',
     name: 'Red Lady',
     team: 'village',
+    aura: 'unknown',
     description:
       'The Red Lady can visit another player at night. If they are attacked while visiting, they will not be killed. However, if they visit a player that is attacked, or a mafia or a solo killer, they will die. The Red Lady wins with the village.',
   },

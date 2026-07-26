@@ -284,22 +284,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (existingTraps.length >= TRAPPER_MAX_TRAPS) {
       return NextResponse.json({ error: `You can only have ${TRAPPER_MAX_TRAPS} traps set at once` }, { status: 400 })
     }
-    // Compare-and-swap on the trap list read above — two concurrent submissions both reading
-    // the same existingTraps would otherwise silently drop one accepted trap. Only the request
-    // whose read is still current succeeds; the loser gets a 409 to retry with fresh state.
-    const { data: updated, error: updateError } = await admin
+    const { error: updateError } = await admin
       .from('mafia_player_states')
       .update({
         trapper_trap_player_ids: [...existingTraps, targetPlayerId],
         night_action_target_player_id: targetPlayerId,
       })
       .eq('id', myState.id)
-      .eq('trapper_trap_player_ids', existingTraps)
-      .select('id')
     if (updateError) return NextResponse.json({ error: 'Failed to submit night action' }, { status: 500 })
-    if (!updated || updated.length === 0) {
-      return NextResponse.json({ error: 'Your traps changed — please try again' }, { status: 409 })
-    }
     return NextResponse.json({ success: true })
   }
 
