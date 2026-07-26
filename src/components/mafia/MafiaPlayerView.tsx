@@ -887,19 +887,6 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
           (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)
         )
       : (dayChatMessages ?? [])
-    const showMediumGhostChat = myRole === 'medium' && amIAlive && (myState?.mediumGhostChat?.length ?? 0) > 0
-    const mediumGhostBlock = showMediumGhostChat ? (
-      <div className="glass-card border border-purple-500/30 rounded-2xl p-4">
-        <h3 className="text-[10px] font-bold tracking-widest uppercase text-purple-400 mb-2">🔮 Voices from beyond</h3>
-        <div className="space-y-1 max-h-40 overflow-y-auto">
-          {myState!.mediumGhostChat!.map((m) => (
-            <p key={m.id} className="text-xs text-purple-300/80">
-              <span className="font-bold text-purple-400">{m.sender_name}:</span> {m.message}
-            </p>
-          ))}
-        </div>
-      </div>
-    ) : null
     const handleBottomBarSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault()
       const text = bottomBarText.trim()
@@ -1235,20 +1222,6 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             myPlayerId={myPlayerId}
           />
         )}
-        {myRole === 'medium' && amIAlive && (myState?.mediumGhostChat?.length ?? 0) > 0 && (
-          <div className="glass-card border border-purple-500/30 rounded-2xl p-4">
-            <h3 className="text-[10px] font-bold tracking-widest uppercase text-purple-400 mb-2">
-              🔮 Voices from beyond
-            </h3>
-            <div className="space-y-1 max-h-40 overflow-y-auto">
-              {myState!.mediumGhostChat!.map((m) => (
-                <p key={m.id} className="text-xs text-purple-300/80">
-                  <span className="font-bold text-purple-400">{m.sender_name}:</span> {m.message}
-                </p>
-              ))}
-            </div>
-          </div>
-        )}
       </>
     )
 
@@ -1369,8 +1342,6 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                           className="flex-1 min-h-0 overflow-y-auto pointer-events-none"
                         />
                       </button>
-                    ) : showMediumGhostChat ? (
-                      <div className="flex-1 min-h-0 overflow-y-auto px-4">{mediumGhostBlock}</div>
                     ) : null)}
                 </>
               )}

@@ -234,33 +234,25 @@ export function MafiaDayChat({
     <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-2 flex flex-col md:sticky md:top-20 min-w-0 w-full">
       <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)] flex items-center gap-1.5">
         💬 Town Discussion
-        {readOnly && (
-          <span className="font-normal normal-case text-[var(--muted)]">
-            {' '}
-            · {readOnlyLabel ? `${readOnlyLabel}, ` : ''}read-only
-          </span>
-        )}
       </p>
       <ChatMessages messages={merged} myPlayerId={myPlayerId} players={players} className="h-[24rem]" />
-      {!readOnly && (
-        <form onSubmit={handleSubmit} className="flex gap-2">
-          <input
-            type="text"
-            value={text}
-            disabled={sending || disabled}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={disabled ? 'You cannot chat right now' : 'Share your thoughts...'}
-            className="flex-1 px-3 py-2 bg-[var(--surface-inset-bg)] border border-[var(--border)] rounded-lg text-sm focus:outline-none focus:border-[var(--primary)] text-[var(--foreground)] placeholder:text-[var(--muted)] disabled:opacity-50"
-          />
-          <button
-            type="submit"
-            disabled={sending || !text.trim() || disabled}
-            className="px-3 py-2 btn-primary btn-fit text-sm font-semibold rounded-lg transition disabled:opacity-50"
-          >
-            Send
-          </button>
-        </form>
-      )}
+      <form onSubmit={handleSubmit} className="flex gap-2">
+        <input
+          type="text"
+          value={text}
+          disabled={sending}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={disabled ? 'You cannot chat right now' : 'Share your thoughts...'}
+          className="flex-1 px-3 py-2 bg-[var(--surface-inset-bg)] border border-[var(--border)] rounded-lg text-sm focus:outline-none focus:border-[var(--primary)] text-[var(--foreground)] placeholder:text-[var(--muted)] disabled:opacity-50"
+        />
+        <button
+          type="submit"
+          disabled={sending || !text.trim() || readOnly || disabled}
+          className="px-3 py-2 btn-primary btn-fit text-sm font-semibold rounded-lg transition disabled:opacity-50"
+        >
+          {readOnly ? (readOnlyLabel === 'night' ? '💤' : '⏳') : 'Send'}
+        </button>
+      </form>
     </div>
   )
 }
