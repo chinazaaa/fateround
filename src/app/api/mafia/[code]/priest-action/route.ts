@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
-import { checkMafiaWinCondition, mafiaRoleTeam } from '@/lib/mafia'
+import { checkMafiaWinCondition, mafiaRoleTeam, resolveWolfCubRevenge } from '@/lib/mafia'
 import { markGameFinished } from '@/lib/game-finish'
 import type { MafiaPlayerState, MafiaSession } from '@/types'
 
@@ -102,6 +102,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     const pIndex = playerStates.findIndex((p) => p.player_id === targetPlayerId)
     if (pIndex !== -1) playerStates[pIndex].is_alive = false
+
+    if (targetState.role === 'wolf_cub') {
+      const insertMsg = async (msg: string) => {
+        await admin.from('mafia_chat_messages').insert({
+          game_id: gameId,
+          sender_player_id: 'system',
+          sender_name: '📢',
+          message: msg,
+          scope: 'day',
+        })
+      }
+      await resolveWolfCubRevenge(admin, gameId, playerStates, targetState, session.day_number, insertMsg, playerLabel)
+    }
   } else {
     // Target is NOT mafia → priest dies, target's innocence announced
     await admin

@@ -5648,7 +5648,10 @@ function CreateGameInner() {
                 <Field label="Night timer">
                   <select
                     value={settings.timer_seconds ?? 60}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    onChange={(e) => {
+                      const v = Number(e.target.value)
+                      setSettings((s) => ({ ...s, timer_seconds: v }))
+                    }}
                     className="input-field w-full"
                   >
                     <option value={30}>30 seconds</option>
@@ -5663,7 +5666,10 @@ function CreateGameInner() {
                 <Field label="Day discussion timer">
                   <select
                     value={settings.mafia_day_seconds ?? 90}
-                    onChange={(e) => setSettings({ ...settings, mafia_day_seconds: Number(e.target.value) })}
+                    onChange={(e) => {
+                      const v = Number(e.target.value)
+                      setSettings((s) => ({ ...s, mafia_day_seconds: v }))
+                    }}
                     className="input-field w-full"
                   >
                     <option value={45}>45 seconds</option>
@@ -5678,7 +5684,10 @@ function CreateGameInner() {
                 <Field label="Voting timer">
                   <select
                     value={settings.mafia_voting_seconds ?? 45}
-                    onChange={(e) => setSettings({ ...settings, mafia_voting_seconds: Number(e.target.value) })}
+                    onChange={(e) => {
+                      const v = Number(e.target.value)
+                      setSettings((s) => ({ ...s, mafia_voting_seconds: v }))
+                    }}
                     className="input-field w-full"
                   >
                     <option value={20}>20 seconds</option>
@@ -5693,7 +5702,7 @@ function CreateGameInner() {
                   <div className="flex gap-2 mt-2">
                     <button
                       type="button"
-                      onClick={() => setSettings({ ...settings, mafia_advanced_mode: false })}
+                      onClick={() => setSettings((s) => ({ ...s, mafia_advanced_mode: false }))}
                       className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
                         settings.mafia_advanced_mode !== true
                           ? 'bg-[var(--primary)] text-white border-[var(--primary)]'
@@ -5704,7 +5713,7 @@ function CreateGameInner() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSettings({ ...settings, mafia_advanced_mode: true })}
+                      onClick={() => setSettings((s) => ({ ...s, mafia_advanced_mode: true }))}
                       className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
                         settings.mafia_advanced_mode === true
                           ? 'bg-[var(--primary)] text-white border-[var(--primary)]'
@@ -5730,7 +5739,7 @@ function CreateGameInner() {
                       label="Anonymous Votes"
                       description="Hide who voted for whom during the day phase"
                       value={settings.mafia_anonymous_votes !== false}
-                      onChange={(v) => setSettings({ ...settings, mafia_anonymous_votes: v })}
+                      onChange={(v) => setSettings((s) => ({ ...s, mafia_anonymous_votes: v }))}
                     />
                   </div>
                 </Field>

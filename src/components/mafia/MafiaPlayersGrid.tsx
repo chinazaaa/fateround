@@ -15,6 +15,9 @@ interface MafiaPlayersGridProps {
   mafiaTeammateIds?: string[]
   mafiaTeammateRoles?: Record<string, MafiaRole>
   mafiaTeammateNightTargets?: Record<string, string | null>
+  /** The local mafia player's own submitted night target — so their tile shows the same
+   *  🎯 banner teammates' tiles get, and the target tile can tally all mafia picks. */
+  myNightTarget?: string | null
   /** Every role the Mafia Seer has revealed so far (myState.mafiaSeerRevealedRoles) — only
    *  ever populated for mafia-team viewers, so a checked player's role/emoji shows on
    *  their tile just like a teammate's would, without needing the seer to relay it. */
@@ -87,6 +90,7 @@ export function MafiaPlayersGrid({
   mafiaTeammateIds = [],
   mafiaTeammateRoles = {},
   mafiaTeammateNightTargets,
+  myNightTarget,
   mafiaSeerRevealedRoles = {},
   loverIds = [],
   phase,
@@ -101,10 +105,10 @@ export function MafiaPlayersGrid({
 }: MafiaPlayersGridProps) {
   const seatNumberById = new Map(players.map((p) => [p.id, p.seatNumber]))
   const amIAlive = players.find((p) => p.id === myPlayerId)?.isAlive !== false
+  const myHasVoted = myPlayerId ? votedPlayerIds.includes(myPlayerId) : false
   let headerSuffix = ''
   if (phase === 'voting') {
-    // A dead player can't vote — showing "tap to vote" to them is a dead instruction.
-    headerSuffix = amIAlive ? ' · tap to vote' : ''
+    headerSuffix = amIAlive ? (myHasVoted ? ' · tap to unvote' : ' · tap to vote') : ''
   } else if (onSelect && myRole) {
     const verb = NIGHT_ACTION_VERB[myRole]
     headerSuffix = verb ? ` · tap to select ${verb}` : ' · tap to select'
@@ -112,14 +116,28 @@ export function MafiaPlayersGrid({
   // Roster size varies 5-16 — a fixed 4-wide grid leaves a nearly-empty last row for small
   // games (e.g. 6 players: 4+2). Pick the tightest square-ish column count instead, so a
   // 6-player game reads as a clean 3x2/3x3 and a 16-player game still fills a full 4x4.
+  // Night target tally: how many mafia members are targeting each player (teammates + self).
+  const nightTargetTally = new Map<string, number>()
+  const MAFIA_KILL_VOTERS: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer']
+  if (phase === 'night' && myRole && MAFIA_KILL_VOTERS.includes(myRole)) {
+    if (myNightTarget) nightTargetTally.set(myNightTarget, (nightTargetTally.get(myNightTarget) ?? 0) + 1)
+    if (mafiaTeammateNightTargets) {
+      for (const targetId of Object.values(mafiaTeammateNightTargets)) {
+        if (targetId) nightTargetTally.set(targetId, (nightTargetTally.get(targetId) ?? 0) + 1)
+      }
+    }
+  }
+
   const cols = Math.min(4, Math.max(3, Math.ceil(Math.sqrt(players.length))))
   const gridColsClass = cols === 3 ? 'grid-cols-3' : 'grid-cols-4'
   return (
-    <div className="glass-card border border-[var(--border)] rounded-2xl p-5">
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">Players{headerSuffix}</h3>
+    <div className="glass-card border border-[var(--border)] rounded-2xl p-4 sm:p-5 min-w-0 w-full">
+      <div className="flex items-center justify-between gap-2 mb-3 min-w-0">
+        <h3 className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)] truncate">
+          Players{headerSuffix}
+        </h3>
       </div>
-      <div className={`grid ${gridColsClass} gap-1.5 sm:gap-2`}>
+      <div className={`grid ${gridColsClass} gap-1.5 sm:gap-2 min-w-0`}>
         {players.map((p) => {
           const isMe = p.id === myPlayerId
           const voteCount = voteTallies?.[p.id] ?? 0
@@ -133,7 +151,10 @@ export function MafiaPlayersGrid({
           const teammateRole = isTeammate ? mafiaTeammateRoles[p.id] : undefined
           const teammateNightTarget =
             isTeammate && phase === 'night' && mafiaTeammateNightTargets ? mafiaTeammateNightTargets[p.id] : undefined
-          const teammateTargetSeat = teammateNightTarget ? seatNumberById.get(teammateNightTarget) : undefined
+          const myOwnNightTarget = isMe && phase === 'night' && myNightTarget ? myNightTarget : undefined
+          const nightTargetForTile = teammateNightTarget ?? myOwnNightTarget
+          const nightTargetSeat = nightTargetForTile ? seatNumberById.get(nightTargetForTile) : undefined
+          const nightTally = nightTargetTally.get(p.id) ?? 0
           const revealedRole = p.role ?? teammateRole ?? mafiaSeerRevealedRoles[p.id]
           const roleTeamColor = revealedRole
             ? MAFIA_TEAM_ROLES.includes(revealedRole)
@@ -168,11 +189,13 @@ export function MafiaPlayersGrid({
                   {voteCount}
                 </span>
               )}
-              {isKnownLover && !(p.isAlive && phase === 'voting' && voteCount > 0) && (
-                <span className="absolute top-1 right-1 text-xs" aria-hidden title="Lover">
-                  💘
-                </span>
-              )}
+              {isKnownLover &&
+                !(p.isAlive && phase === 'voting' && voteCount > 0) &&
+                !(p.isAlive && phase === 'night' && nightTally > 0) && (
+                  <span className="absolute top-1 right-1 text-xs" aria-hidden title="Lover">
+                    💘
+                  </span>
+                )}
               {isSelected && (
                 <span className="absolute bottom-1 right-1 text-xs" aria-hidden>
                   ✅
@@ -211,11 +234,14 @@ export function MafiaPlayersGrid({
                   </span>
                 )
               )}
-              {teammateTargetSeat != null && (
+              {nightTargetSeat != null && (
                 <span className="absolute bottom-0 inset-x-0 h-[22%] flex items-center justify-center rounded-b-2xl bg-gradient-to-b from-red-800 to-red-900 border-t-2 border-red-950/40">
-                  <span className="text-sm font-black text-white drop-shadow leading-none">
-                    🎯 {teammateTargetSeat}
-                  </span>
+                  <span className="text-sm font-black text-white drop-shadow leading-none">🎯 {nightTargetSeat}</span>
+                </span>
+              )}
+              {p.isAlive && phase === 'night' && nightTally > 0 && (
+                <span className="absolute top-1 right-1 text-[10px] font-black bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center leading-none">
+                  {nightTally}
                 </span>
               )}
               {(votingForSeat != null || (anonymousVotes && hasVoted)) && (

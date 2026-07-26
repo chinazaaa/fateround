@@ -136,7 +136,7 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     name: 'Junior Mafia',
     team: 'mafia',
     description:
-      'Vote with your team on a player to kill each night. If you are killed, the Mafia gets a bonus kill the following night in revenge.',
+      'Vote with your team on a player to kill each night. Select a revenge target at any time — if you are killed, that player dies with you. If you die without picking, a random villager is chosen. If you flee, your target is spared.',
   },
   framer: {
     role: 'framer',

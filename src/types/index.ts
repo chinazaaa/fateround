@@ -1997,6 +1997,7 @@ export interface MafiaPlayerState {
   witch_heal_used: boolean
   witch_kill_used: boolean
   trapper_trap_player_ids: string[]
+  wolf_cub_revenge_target_player_id: string | null
   is_lover: boolean
   lover_partner_player_id: string | null
   seat_number: number
@@ -2062,6 +2063,7 @@ export interface MafiaMyState {
   /** Mafia Seer's full-role reveal of their last target (before resigning). */
   mafiaSeerResult?: { targetName: string; role: MafiaRole } | null
   framerLastTargetName?: string | null
+  wolfCubRevengeTargetName?: string | null
   cupidLinkedNames?: [string, string] | null
   isLover?: boolean
   loverPartnerName?: string | null

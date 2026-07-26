@@ -93,7 +93,10 @@ export function ChatMessages({ messages, myPlayerId, players, className = 'h-40'
   const myMentionPattern = mySeatNumber != null ? new RegExp(`(?<!\\d)${mySeatNumber}(?!\\d)`) : null
 
   return (
-    <div ref={containerRef} className={`${className} overflow-y-auto overflow-x-hidden space-y-1 p-1 break-words`}>
+    <div
+      ref={containerRef}
+      className={`${className} overflow-y-auto overflow-x-hidden space-y-1 p-1 break-words min-w-0 w-full`}
+    >
       {messages.length === 0 ? (
         <p className="text-xs text-[var(--muted)] italic text-center py-6">No messages yet.</p>
       ) : (
@@ -162,7 +165,7 @@ interface ChatProps {
 export function MafiaSecretChat({ messages, onSendMessage, myPlayerId, players }: ChatProps) {
   const { text, setText, sending, handleSubmit } = useChatInput(onSendMessage)
   return (
-    <div className="glass-card border border-red-500/20 rounded-2xl p-4 space-y-2">
+    <div className="glass-card border border-red-500/20 rounded-2xl p-4 space-y-2 min-w-0 w-full">
       <p className="text-[10px] font-bold tracking-widest uppercase text-red-400 flex items-center gap-1.5">
         <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
         Mafia Secret Chat
@@ -228,7 +231,7 @@ export function MafiaDayChat({
     // A fixed (not content-grown) height keeps this box from stretching the page taller as
     // messages pile up — the roster grid above it stays put and only this box scrolls, on
     // both mobile (where the layout stacks) and desktop.
-    <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-2 flex flex-col md:sticky md:top-20">
+    <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-2 flex flex-col md:sticky md:top-20 min-w-0 w-full">
       <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)] flex items-center gap-1.5">
         💬 Town Discussion
         {readOnly && (

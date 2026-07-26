@@ -365,6 +365,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       framerLastTargetName = framed ? seatLabel(framed.id, framed.name) : null
     }
 
+    let wolfCubRevengeTargetName: MafiaMyState['wolfCubRevengeTargetName'] = undefined
+    if (role === 'wolf_cub' && myPlayerState.wolf_cub_revenge_target_player_id) {
+      const target = playersData?.find((p) => p.id === myPlayerState.wolf_cub_revenge_target_player_id)
+      wolfCubRevengeTargetName = target ? seatLabel(target.id, target.name) : null
+    }
+
     let cupidLinkedNames: MafiaMyState['cupidLinkedNames'] = undefined
     if (role === 'cupid' && session.cupid_lover_ids) {
       const [aId, bId] = session.cupid_lover_ids
@@ -440,6 +446,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       trapperTrappedNames,
       mediumGhostChat,
       framerLastTargetName,
+      wolfCubRevengeTargetName,
       cupidLinkedNames,
       isLover,
       loverPartnerName,

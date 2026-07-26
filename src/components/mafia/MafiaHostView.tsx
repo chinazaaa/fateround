@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState, useEffect, useMemo } from 'react'
+import { useCallback, useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -69,6 +69,9 @@ interface MafiaHostStateResponse {
   phaseDeadline: string | null
   maxPlayers?: number
   timerSeconds?: number
+  daySeconds?: number
+  votingSeconds?: number
+  advancedMode?: boolean
   doctorEnabled: boolean
   detectiveEnabled: boolean
   auraSeerEnabled: boolean
@@ -92,10 +95,16 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const [mafiaState, setMafiaState] = useState<MafiaHostStateResponse | null>(null)
   const [acting, setActing] = useState(false)
   const [starting, setStarting] = useState(false)
+  // Two `load()` calls can be in flight at once (e.g. two lobby-settings changes fired close
+  // together each trigger their own reload) — plain fetches have no ordering guarantee, so a
+  // slower/older call's response arriving after a newer one would silently overwrite it with
+  // stale state. This sequence guard makes only the most recently issued call's response apply.
+  const loadSeqRef = useRef(0)
   const [tab, setTab] = useState<HostTab>('manage')
 
   // Fetch host state
   const load = useCallback(async (): Promise<{ state: MafiaHostStateResponse | null; ok: boolean }> => {
+    const seq = ++loadSeqRef.current
     try {
       const res = await fetch(`/api/mafia/${gameCode}/host-state`, {
         method: 'POST',
@@ -106,7 +115,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
         return { state: null, ok: false }
       }
       const data = await res.json()
-      setMafiaState(data)
+      if (loadSeqRef.current === seq) setMafiaState(data)
       return { state: data, ok: true }
     } catch {
       return { state: null, ok: false }
@@ -358,6 +367,9 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     ...gameObjForSeat,
     status: isFinished ? 'finished' : gameStatus,
     timer_seconds: mafiaState.timerSeconds ?? 60,
+    mafia_day_seconds: mafiaState.daySeconds ?? 90,
+    mafia_voting_seconds: mafiaState.votingSeconds ?? 45,
+    mafia_advanced_mode: mafiaState.advancedMode ?? false,
     mafia_doctor_enabled: mafiaState.doctorEnabled ?? true,
     mafia_detective_enabled: mafiaState.detectiveEnabled ?? true,
     mafia_aura_seer_enabled: mafiaState.auraSeerEnabled ?? true,

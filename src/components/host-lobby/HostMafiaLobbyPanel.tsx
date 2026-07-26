@@ -50,6 +50,27 @@ export function HostMafiaLobbyPanel({ gameCode, hostToken, game, playerCount, on
   const [anonymousVotes, setAnonymousVotes] = useState(false)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Each setting change fires its own independent PATCH request, and each response carries
+  // a full game-row snapshot that gets synced back into local state below. Over a real
+  // network (unlike localhost) two requests fired close together can have their responses
+  // arrive out of order — a slower request's now-stale snapshot landing after a faster one
+  // would silently overwrite whatever the faster one just set. This counter lets a response
+  // detect it's no longer the latest in-flight request and skip applying its snapshot.
+  const patchSeqRef = useRef(0)
+  // The host lobby also polls/realtime-syncs in the background completely independently of
+  // any settings change (see MafiaHostView's usePolling on POLL_INTERVALS.lobby) — that read
+  // can land in the split second before this panel's own patch has committed server-side,
+  // then flow back down through this same `game` prop and get re-applied by the sync effect
+  // below, silently reverting the field the host just changed. patchSeqRef alone doesn't
+  // catch this because the poll's `load()` call is genuinely a separate, later-issued call —
+  // it just happens to read stale data. So each locally-changed field gets a short grace
+  // window during which the sync effect trusts the local value over whatever `game` says,
+  // long enough for the in-flight patch to actually commit and for the next poll to reflect it.
+  const pendingUntilRef = useRef<Partial<Record<'night' | 'day' | 'voting' | 'advanced' | 'anonymous', number>>>({})
+  const GRACE_MS = 4000
+  const markPending = (field: keyof typeof pendingUntilRef.current) => {
+    pendingUntilRef.current[field] = Date.now() + GRACE_MS
+  }
 
   useEffect(() => {
     void fetch('/api/game-limits')
@@ -62,12 +83,14 @@ export function HostMafiaLobbyPanel({ gameCode, hostToken, game, playerCount, on
 
   useEffect(() => {
     if (!limits) return
+    const now = Date.now()
+    const isPending = (field: keyof typeof pendingUntilRef.current) => (pendingUntilRef.current[field] ?? 0) > now
     setMaxPlayers(lobbyMaxPlayersFromGame('mafia', game, limits))
-    setNightTimer(game.timer_seconds ?? 60)
-    setDayTimer(game.mafia_day_seconds ?? 90)
-    setVotingTimer(game.mafia_voting_seconds ?? 45)
-    setAnonymousVotes(game.mafia_anonymous_votes === true)
-    setAdvancedMode(game.mafia_advanced_mode === true)
+    if (!isPending('night')) setNightTimer(game.timer_seconds ?? 60)
+    if (!isPending('day')) setDayTimer(game.mafia_day_seconds ?? 90)
+    if (!isPending('voting')) setVotingTimer(game.mafia_voting_seconds ?? 45)
+    if (!isPending('anonymous')) setAnonymousVotes(game.mafia_anonymous_votes === true)
+    if (!isPending('advanced')) setAdvancedMode(game.mafia_advanced_mode === true)
   }, [game, limits])
 
   useEffect(() => {
@@ -88,6 +111,7 @@ export function HostMafiaLobbyPanel({ gameCode, hostToken, game, playerCount, on
 
   const patchSettings = useCallback(
     async (patch: Record<string, unknown>) => {
+      const seq = ++patchSeqRef.current
       setSaveState('saving')
       try {
         const res = await fetch(`/api/games/${gameCode}/lobby-settings`, {
@@ -97,11 +121,15 @@ export function HostMafiaLobbyPanel({ gameCode, hostToken, game, playerCount, on
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? 'Failed to save settings')
-        if (data.game) onGameUpdate(data.game)
-        markSaved()
+        // Only the most recently issued request may apply its snapshot — an older request
+        // that happens to resolve later would otherwise stomp a newer change with stale data.
+        if (data.game && patchSeqRef.current === seq) onGameUpdate(data.game)
+        if (patchSeqRef.current === seq) markSaved()
       } catch (err) {
-        setSaveState('idle')
-        toastError(err instanceof Error ? err.message : 'Failed to save settings')
+        if (patchSeqRef.current === seq) {
+          setSaveState('idle')
+          toastError(err instanceof Error ? err.message : 'Failed to save settings')
+        }
       }
     },
     [gameCode, hostToken, markSaved, onGameUpdate, toastError]
@@ -117,26 +145,31 @@ export function HostMafiaLobbyPanel({ gameCode, hostToken, game, playerCount, on
   }
 
   const onNightTimerChange = (next: number) => {
+    markPending('night')
     setNightTimer(next)
     void patchSettings({ timer_seconds: next })
   }
 
   const onDayTimerChange = (next: number) => {
+    markPending('day')
     setDayTimer(next)
     void patchSettings({ mafia_day_seconds: next })
   }
 
   const onVotingTimerChange = (next: number) => {
+    markPending('voting')
     setVotingTimer(next)
     void patchSettings({ mafia_voting_seconds: next })
   }
 
   const onAdvancedModeChange = (next: boolean) => {
+    markPending('advanced')
     setAdvancedMode(next)
     void patchSettings({ mafia_advanced_mode: next })
   }
 
   const onAnonymousVotesChange = (next: boolean) => {
+    markPending('anonymous')
     setAnonymousVotes(next)
     void patchSettings({ mafia_anonymous_votes: next })
   }

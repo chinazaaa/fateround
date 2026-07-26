@@ -68,6 +68,7 @@ function makeState(overrides: Partial<MafiaPlayerState>): MafiaPlayerState {
     trapper_trap_player_ids: [],
     is_lover: false,
     lover_partner_player_id: null,
+    wolf_cub_revenge_target_player_id: null,
     seat_number: 0,
     created_at: '',
     updated_at: '',
@@ -90,7 +91,6 @@ const NIGHT_SESSION_BASE: Pick<
   | 'trapper_enabled'
   | 'seer_enabled'
   | 'mafia_seer_enabled'
-  | 'wolf_cub_revenge_pending'
 > = {
   doctor_enabled: true,
   aura_seer_enabled: true,
@@ -105,7 +105,6 @@ const NIGHT_SESSION_BASE: Pick<
   trapper_enabled: true,
   seer_enabled: true,
   mafia_seer_enabled: true,
-  wolf_cub_revenge_pending: false,
 }
 
 describe('resolveMafiaRoundToggles', () => {
@@ -428,15 +427,20 @@ describe('resolveMafiaNight', () => {
     expect(result.wolfCubDiedThisNight).toBe(true)
   })
 
-  it('applies the wolf cub revenge bonus kill to the runner-up vote', () => {
-    const m1 = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'v1' })
-    const m2 = makeState({ id: 'm2', player_id: 'm2', role: 'mafia', night_action_target_player_id: 'v1' })
-    const m3 = makeState({ id: 'm3', player_id: 'm3', role: 'mafia', night_action_target_player_id: 'v2' })
+  it('wolf cub revenge target dies when wolf cub is killed at night', () => {
+    const m1 = makeState({ id: 'm1', player_id: 'm1', role: 'mafia', night_action_target_player_id: 'wc1' })
+    const wc1 = makeState({
+      id: 'wc1',
+      player_id: 'wc1',
+      role: 'wolf_cub',
+      night_action_target_player_id: 'wc1',
+      wolf_cub_revenge_target_player_id: 'v2',
+    })
     const v1 = makeState({ id: 'v1', player_id: 'v1', role: 'villager' })
     const v2 = makeState({ id: 'v2', player_id: 'v2', role: 'villager' })
-    const result = resolveMafiaNight({ ...NIGHT_SESSION_BASE, wolf_cub_revenge_pending: true }, [m1, m2, m3, v1, v2])
-    const ids = result.deaths.map((d) => d.playerId).sort()
-    expect(ids).toEqual(['v1', 'v2'])
+    const result = resolveMafiaNight(NIGHT_SESSION_BASE, [m1, wc1, v1, v2])
+    const deadIds = result.deaths.map((d) => d.playerId).sort()
+    expect(deadIds).toContain('v2')
   })
 })
 

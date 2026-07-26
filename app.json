@@ -7,6 +7,12 @@
     },
     "android": {
       "package": "com.fateround.fateround"
+    },
+    "ios": {
+      "bundleIdentifier": "com.fateround.fateround",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     }
   }
 }
