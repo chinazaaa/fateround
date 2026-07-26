@@ -118,7 +118,8 @@ export function MafiaPlayersGrid({
   // 6-player game reads as a clean 3x2/3x3 and a 16-player game still fills a full 4x4.
   // Night target tally: how many mafia members are targeting each player (teammates + self).
   const nightTargetTally = new Map<string, number>()
-  if (phase === 'night' && myRole && MAFIA_TEAM_ROLES.includes(myRole)) {
+  const MAFIA_KILL_VOTERS: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer']
+  if (phase === 'night' && myRole && MAFIA_KILL_VOTERS.includes(myRole)) {
     if (myNightTarget) nightTargetTally.set(myNightTarget, (nightTargetTally.get(myNightTarget) ?? 0) + 1)
     if (mafiaTeammateNightTargets) {
       for (const targetId of Object.values(mafiaTeammateNightTargets)) {

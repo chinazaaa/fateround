@@ -76,7 +76,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { data: game } = await admin
     .from('games')
     .select(
-      'host_token, status, title, max_players, timer_seconds, mafia_doctor_enabled, mafia_detective_enabled, mafia_aura_seer_enabled, mafia_bodyguard_enabled, mafia_mayor_enabled, mafia_vigilante_enabled, mafia_tracker_enabled, mafia_alpha_wolf_enabled, mafia_wolf_cub_enabled, mafia_framer_enabled, mafia_jester_enabled, mafia_serial_killer_enabled, mafia_arsonist_enabled, mafia_cupid_enabled, mafia_cursed_villager_enabled, mafia_witch_enabled, mafia_little_girl_enabled, mafia_trapper_enabled, mafia_seer_enabled, mafia_mafia_seer_enabled, mafia_anonymous_votes, replay_pending, theme, is_public'
+      'host_token, status, title, max_players, timer_seconds, mafia_day_seconds, mafia_voting_seconds, mafia_advanced_mode, mafia_doctor_enabled, mafia_detective_enabled, mafia_aura_seer_enabled, mafia_bodyguard_enabled, mafia_mayor_enabled, mafia_vigilante_enabled, mafia_tracker_enabled, mafia_alpha_wolf_enabled, mafia_wolf_cub_enabled, mafia_framer_enabled, mafia_jester_enabled, mafia_serial_killer_enabled, mafia_arsonist_enabled, mafia_cupid_enabled, mafia_cursed_villager_enabled, mafia_witch_enabled, mafia_little_girl_enabled, mafia_trapper_enabled, mafia_seer_enabled, mafia_mafia_seer_enabled, mafia_anonymous_votes, replay_pending, theme, is_public'
     )
     .eq('id', gameId)
     .maybeSingle()
@@ -120,6 +120,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         phaseDeadline: null,
         maxPlayers: game.max_players ?? 10,
         timerSeconds: game.timer_seconds ?? 60,
+        daySeconds: game.mafia_day_seconds ?? 90,
+        votingSeconds: game.mafia_voting_seconds ?? 45,
+        advancedMode: game.mafia_advanced_mode === true,
         doctorEnabled: game.mafia_doctor_enabled !== false,
         detectiveEnabled: game.mafia_detective_enabled !== false,
         auraSeerEnabled: game.mafia_aura_seer_enabled !== false,
@@ -207,6 +210,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     phaseDeadline: session.phase_deadline,
     maxPlayers: game.max_players ?? 10,
     timerSeconds: game.timer_seconds ?? 60,
+    daySeconds: game.mafia_day_seconds ?? 90,
+    votingSeconds: game.mafia_voting_seconds ?? 45,
+    advancedMode: game.mafia_advanced_mode === true,
     doctorEnabled: session.doctor_enabled,
     detectiveEnabled: session.detective_enabled,
     auraSeerEnabled: session.aura_seer_enabled,

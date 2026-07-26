@@ -69,6 +69,9 @@ interface MafiaHostStateResponse {
   phaseDeadline: string | null
   maxPlayers?: number
   timerSeconds?: number
+  daySeconds?: number
+  votingSeconds?: number
+  advancedMode?: boolean
   doctorEnabled: boolean
   detectiveEnabled: boolean
   auraSeerEnabled: boolean
@@ -364,6 +367,9 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     ...gameObjForSeat,
     status: isFinished ? 'finished' : gameStatus,
     timer_seconds: mafiaState.timerSeconds ?? 60,
+    mafia_day_seconds: mafiaState.daySeconds ?? 90,
+    mafia_voting_seconds: mafiaState.votingSeconds ?? 45,
+    mafia_advanced_mode: mafiaState.advancedMode ?? false,
     mafia_doctor_enabled: mafiaState.doctorEnabled ?? true,
     mafia_detective_enabled: mafiaState.detectiveEnabled ?? true,
     mafia_aura_seer_enabled: mafiaState.auraSeerEnabled ?? true,

@@ -446,6 +446,13 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
     setBottomBarText('')
   }, [phaseKey])
 
+  // Hydrate voteSelection from authoritative state after reload/late-join
+  useEffect(() => {
+    if (voteSelection || !myPlayerId || !mafiaState?.voteChoices) return
+    const serverVote = mafiaState.voteChoices[myPlayerId]
+    if (serverVote) setVoteSelection(serverVote)
+  }, [voteSelection, myPlayerId, mafiaState?.voteChoices])
+
   const triggerAutoAdvance = useCallback(async () => {
     try {
       await fetch(`/api/mafia/${gameCode}/advance`, {
