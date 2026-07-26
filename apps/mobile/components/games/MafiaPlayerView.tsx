@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import * as SecureStore from 'expo-secure-store'
 import { normalizeGameCode, type Game, type Player } from '@fateround/shared'
 import {
   MAFIA_ROLE_INFO,
-  type MafiaChatMessage,
   type MafiaRole,
   type MafiaStateResponse,
   mafiaPhaseLabel,
@@ -39,6 +38,7 @@ import { MafiaRolesDrawer } from '@/components/games/mafia/MafiaRolesDrawer'
 import { MafiaRoleRevealScreen } from '@/components/games/mafia/MafiaRoleRevealScreen'
 import { MafiaSkipPhaseBar } from '@/components/games/mafia/MafiaSkipPhaseBar'
 import { MafiaIdentityPanel } from '@/components/games/mafia/MafiaIdentityPanel'
+import { MafiaChatBar, MafiaChatModal, MafiaChatPreview } from '@/components/games/mafia/MafiaChatDock'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
 
@@ -62,6 +62,11 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   // Priest/Vigilante act during the day but separately from voting — this puts the grid into
   // "pick a target for this special action" mode instead of "pick a lynch vote" mode.
   const [dayActionMode, setDayActionMode] = useState<'priest' | 'vigilante_shoot' | 'vigilante_reveal' | null>(null)
+  // Chat popups — the bottom bar/preview open the primary one (mafia secret chat at night /
+  // town chat by day / ghost chat for the dead); the icon beside the bar opens the OTHER
+  // one, read-only, in a separate popup that never touches the primary bar's own state.
+  const [primaryChatOpen, setPrimaryChatOpen] = useState(false)
+  const [peekChatOpen, setPeekChatOpen] = useState(false)
   // A late joiner's client can load state well after the game's shared role_reveal phase has
   // already ended (it's a one-time, whole-game window) — without this they'd be dropped
   // straight into an in-progress night/day with no "you are..." moment at all. Give them a
@@ -188,6 +193,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     setPendingFirstTargetId(null)
     setWitchPotion(null)
     setDayActionMode(null)
+    setPrimaryChatOpen(false)
+    setPeekChatOpen(false)
   }, [state?.phase, state?.dayNumber])
 
   const showDayVotes = state?.phase === 'voting' && !(state.anonymousVotes && !myState?.dayVoteSubmitted)
@@ -327,6 +334,61 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   // is dead — same ghost channel the dead themselves use, not a separate one.
   const isMediumAtNight =
     myState?.role === 'medium' && amIAlive && phase === 'night' && state.players.some((p) => !p.isAlive)
+  const canSendDayNow = phase === 'day' || phase === 'voting'
+  // The persistent bottom bar always shows mafia's own secret chat at night and town chat
+  // by day; the icon beside it doesn't change this, it just pops up a read-only view of
+  // the OTHER one on top (mafia can peek at, but not post to, their secret chat during the
+  // day; a villager gets an icon-only peek at town chat during the night since there's
+  // nothing for them to send then).
+  const bottomBarTarget: 'mafia' | 'ghost' | 'day' | null = !amIAlive
+    ? 'ghost'
+    : isMafiaTeamAlive
+      ? phase === 'night'
+        ? 'mafia'
+        : 'day'
+      : isMediumAtNight
+        ? 'ghost'
+        : phase === 'night'
+          ? null
+          : 'day'
+  const bottomBarDisabled =
+    amISpectator || (bottomBarTarget === 'day' ? !canSendDayNow : bottomBarTarget === 'mafia' && phase !== 'night')
+  const showNightTownPeek = phase === 'night' && amIAlive && !isMafiaTeamAlive && !isMediumAtNight && !amISpectator
+  const iconPopupKind: 'mafia' | 'day' | null = isMafiaTeamAlive
+    ? bottomBarTarget === 'mafia'
+      ? 'day'
+      : 'mafia'
+    : showNightTownPeek
+      ? 'day'
+      : null
+  // Dead players' day-chat + ghost-chat merged into one timeline (same merge MafiaDayChat
+  // does on web) — used for the ghost preview/popup so it isn't a fixed h-24rem box always
+  // expanded in the middle of the roster.
+  const mergedGhostMessages =
+    (state.ghostChatMessages?.length ?? 0)
+      ? [...(state.dayChatMessages ?? []), ...(state.ghostChatMessages ?? [])].sort(
+          (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)
+        )
+      : (state.dayChatMessages ?? [])
+  const bottomBarMessages =
+    bottomBarTarget === 'mafia'
+      ? (myState?.mafiaChatMessages ?? [])
+      : bottomBarTarget === 'ghost'
+        ? mergedGhostMessages
+        : (state.dayChatMessages ?? [])
+  const bottomBarTitle =
+    bottomBarTarget === 'mafia'
+      ? '🔪 Mafia Secret Chat'
+      : bottomBarTarget === 'ghost'
+        ? '👻 Ghost Chat'
+        : '💬 Town Discussion'
+  const peekMessages = iconPopupKind === 'mafia' ? (myState?.mafiaChatMessages ?? []) : (state.dayChatMessages ?? [])
+  const peekTitle = iconPopupKind === 'mafia' ? '🔪 Mafia Secret Chat' : '💬 Town Discussion'
+  const handleBottomBarSend = async (msg: string) => {
+    if (bottomBarTarget === 'mafia') await sendChat(msg, 'night')
+    else if (bottomBarTarget === 'ghost') await sendChat(msg, 'ghost')
+    else await sendChat(msg, 'day')
+  }
 
   if (showRoleReveal) {
     return (
@@ -569,51 +631,23 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           )
         })()}
 
-        {/* Alive Mafia team (not just literal 'mafia' — includes Alpha Wolf/Wolf Cub/Framer/
-            Mafia Seer) see their secret chat AND the town chat simultaneously (matches web) */}
-        {isMafiaTeamAlive ? (
-          <MafiaChatSection
-            styles={styles}
-            title="Mafia secret chat"
-            accent="mafia"
-            placeholder="Whisper to allies…"
-            messages={myState?.mafiaChatMessages ?? []}
-            onSend={(msg) => sendChat(msg, 'night')}
+        {/* Chat preview — collapsed snippet of whatever the bottom bar is currently showing
+            (mafia secret chat at night for the mafia team, ghost chat for the dead/Medium,
+            town chat otherwise); tapping it opens the full popup, matching web. A villager
+            with nothing to send at night (bottomBarTarget null) gets a small standalone
+            peek button instead, since there's no bar to attach a preview to. */}
+        {bootstrap.myPlayerId && bottomBarTarget ? (
+          <MafiaChatPreview
+            title={bottomBarTitle}
+            messages={bottomBarMessages}
+            players={state.players}
+            accent={bottomBarTarget === 'mafia' ? 'mafia' : undefined}
+            onPress={() => setPrimaryChatOpen(true)}
           />
-        ) : null}
-
-        {phase !== 'night' ? (
-          <MafiaChatSection
-            styles={styles}
-            title="Town discussion"
-            placeholder="Share your thoughts…"
-            messages={state.dayChatMessages ?? []}
-            disabled={!amIAlive || amISpectator}
-            onSend={(msg) => sendChat(msg, 'day')}
-          />
-        ) : isMafiaTeamAlive ? (
-          // Nothing living can post to town chat at night, but the mafia team can still
-          // peek at the log (matches web's night-time town-chat icon).
-          <MafiaChatSection
-            styles={styles}
-            title="Town discussion (read-only at night)"
-            placeholder=""
-            messages={state.dayChatMessages ?? []}
-            disabled
-            onSend={() => {}}
-          />
-        ) : null}
-
-        {/* Ghost chat: always available to the dead (day or night); the Medium can join it
-            too, but only at night and only once someone's actually dead to talk to. */}
-        {(!amIAlive || isMediumAtNight) && bootstrap.myPlayerId ? (
-          <MafiaChatSection
-            styles={styles}
-            title={!amIAlive ? 'Ghost chat (only the dead can see this)' : 'Talk with the dead (night only)'}
-            placeholder={!amIAlive ? 'Chat with fellow ghosts…' : 'Talk with the dead…'}
-            messages={state.ghostChatMessages ?? []}
-            onSend={(msg) => sendChat(msg, 'ghost')}
-          />
+        ) : showNightTownPeek ? (
+          <Pressable style={styles.nightPeekBtn} onPress={() => setPeekChatOpen(true)}>
+            <Text style={styles.nightPeekText}>💬 Nothing to send at night — tap to view town chat</Text>
+          </Pressable>
         ) : null}
 
         <View style={styles.rulesRow}>
@@ -625,82 +659,48 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           <GameRulesLink gameType="mafia" />
         </View>
       </KeyboardAwareGameScroll>
+
+      {/* Persistent bottom bar — a sibling of the scroll view (not inside it), so it docks
+          to the actual bottom of the screen via normal flex layout, no fixed positioning. */}
+      {bottomBarTarget ? (
+        <MafiaChatBar
+          icon={bottomBarTarget === 'mafia' ? '🔪' : bottomBarTarget === 'ghost' ? '👻' : '💬'}
+          placeholder={bottomBarTarget === 'mafia' ? 'Whisper to allies…' : 'Tap to send a message'}
+          disabledPlaceholder="Tap to view — can't chat right now"
+          canType={!bottomBarDisabled}
+          accent={bottomBarTarget === 'mafia' ? 'mafia' : undefined}
+          onOpen={() => setPrimaryChatOpen(true)}
+          onSend={handleBottomBarSend}
+          peekIcon={iconPopupKind === 'mafia' ? '🔪' : iconPopupKind === 'day' ? '💬' : undefined}
+          onPeek={iconPopupKind ? () => setPeekChatOpen(true) : undefined}
+        />
+      ) : null}
+
+      <MafiaChatModal
+        visible={primaryChatOpen}
+        onClose={() => setPrimaryChatOpen(false)}
+        title={bottomBarTitle}
+        messages={bottomBarMessages}
+        players={state.players}
+        accent={bottomBarTarget === 'mafia' ? 'mafia' : undefined}
+        canType={!bottomBarDisabled}
+        disabledNote="Tap to view — can't chat right now"
+        onSend={handleBottomBarSend}
+      />
+
+      <MafiaChatModal
+        visible={peekChatOpen}
+        onClose={() => setPeekChatOpen(false)}
+        title={peekTitle}
+        messages={peekMessages}
+        players={state.players}
+        accent={iconPopupKind === 'mafia' ? 'mafia' : undefined}
+        canType={false}
+        disabledNote={
+          iconPopupKind === 'mafia' ? 'Opens for sending again at night.' : 'Nothing to send here right now.'
+        }
+      />
     </GameShell>
-  )
-}
-
-function MafiaChatSection({
-  styles,
-  title,
-  messages,
-  placeholder,
-  onSend,
-  disabled = false,
-  accent,
-}: {
-  styles: ReturnType<typeof makeStyles>
-  title: string
-  messages: MafiaChatMessage[]
-  placeholder: string
-  onSend: (msg: string) => Promise<void> | void
-  disabled?: boolean
-  accent?: 'mafia'
-}) {
-  const [draft, setDraft] = useState('')
-  const [sending, setSending] = useState(false)
-
-  const submit = async () => {
-    const msg = draft.trim()
-    if (!msg || sending || disabled) return
-    setSending(true)
-    try {
-      await onSend(msg)
-      setDraft('')
-    } finally {
-      setSending(false)
-    }
-  }
-
-  return (
-    <>
-      <Text style={[styles.sectionTitle, accent === 'mafia' && styles.mafiaChatTitle]}>{title}</Text>
-      {messages.length === 0 ? (
-        <View style={styles.chatLog}>
-          <Text style={styles.chatEmpty}>No messages yet.</Text>
-        </View>
-      ) : (
-        // Virtualized so a long game's chat only renders the visible rows.
-        <FlatList
-          style={styles.chatLog}
-          data={messages}
-          keyExtractor={(m) => m.id}
-          nestedScrollEnabled
-          renderItem={({ item }) => (
-            <Text style={styles.chatLine}>
-              <Text style={styles.chatName}>{item.sender_name}: </Text>
-              {item.message}
-            </Text>
-          )}
-        />
-      )}
-      <View style={styles.chatRow}>
-        <TextInput
-          style={styles.chatInput}
-          value={draft}
-          onChangeText={setDraft}
-          editable={!disabled}
-          placeholder={disabled ? 'You cannot chat right now' : placeholder}
-          placeholderTextColor="#71717a"
-        />
-        <Pressable
-          style={styles.chatSend}
-          disabled={disabled || sending || !draft.trim()}
-          onPress={() => void submit()}
-        >
-          <Text style={styles.chatSendText}>Send</Text>
-        </Pressable>
-      </View>
-    </>
   )
 }
 
@@ -757,27 +757,13 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
     },
     skipFullText: { color: theme.textSecondary, fontWeight: '700' },
-    sectionTitle: { color: theme.textMuted, fontWeight: '700', marginBottom: 6, marginTop: 4 },
-    mafiaChatTitle: { color: '#f87171' },
-    chatLog: { maxHeight: 120, backgroundColor: theme.surface, borderRadius: 8, padding: 8, marginBottom: 8 },
-    chatLine: { color: theme.textSecondary, fontSize: 13, marginBottom: 4 },
-    chatEmpty: { color: theme.textMuted, fontSize: 12, fontStyle: 'italic', textAlign: 'center', paddingVertical: 16 },
-    chatName: { color: theme.text, fontWeight: '700' },
-    chatRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
-    chatInput: {
-      flex: 1,
-      backgroundColor: theme.border,
-      borderRadius: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      color: theme.text,
+    nightPeekBtn: {
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 16,
+      padding: 14,
+      alignItems: 'center',
     },
-    chatSend: {
-      backgroundColor: theme.primary,
-      borderRadius: 8,
-      paddingHorizontal: 16,
-      justifyContent: 'center',
-    },
-    // white on the solid rose send button — intentional
-    chatSendText: { color: '#fff', fontWeight: '800' },
+    nightPeekText: { color: theme.textMuted, fontSize: 12, fontWeight: '600' },
   })
