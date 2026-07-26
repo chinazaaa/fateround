@@ -100,7 +100,7 @@ export function MafiaChatModal({
   players,
   accent,
   canType,
-  disabledNote,
+  phase,
   onSend,
 }: {
   visible: boolean
@@ -110,7 +110,7 @@ export function MafiaChatModal({
   players?: MafiaPublicPlayer[]
   accent?: 'mafia'
   canType: boolean
-  disabledNote?: string
+  phase?: string
   onSend?: (msg: string) => Promise<void> | void
 }) {
   const styles = useThemedStyles(makeStyles)
@@ -147,23 +147,23 @@ export function MafiaChatModal({
           <View style={styles.sheetLog}>
             <MafiaChatMessageList messages={messages} players={players} />
           </View>
-          {canType ? (
-            <View style={[styles.inputRow, accent === 'mafia' && styles.mafiaAccentBorder]}>
-              <TextInput
-                style={styles.input}
-                value={draft}
-                onChangeText={setDraft}
-                placeholder="Type a message…"
-                placeholderTextColor="#71717a"
-                autoFocus
-              />
-              <Pressable style={styles.sendBtn} disabled={sending || !draft.trim()} onPress={() => void submit()}>
-                <Text style={styles.sendBtnText}>Send</Text>
-              </Pressable>
-            </View>
-          ) : disabledNote ? (
-            <Text style={styles.disabledNote}>{disabledNote}</Text>
-          ) : null}
+          <View style={[styles.inputRow, accent === 'mafia' && styles.mafiaAccentBorder]}>
+            <TextInput
+              style={styles.input}
+              value={draft}
+              onChangeText={setDraft}
+              placeholder="Type a message…"
+              placeholderTextColor="#71717a"
+              autoFocus={canType}
+            />
+            <Pressable
+              style={styles.sendBtn}
+              disabled={sending || !draft.trim() || !canType}
+              onPress={() => void submit()}
+            >
+              <Text style={styles.sendBtnText}>{canType ? 'Send' : phase === 'night' ? '💤' : '⏳'}</Text>
+            </Pressable>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -180,8 +180,8 @@ export function MafiaChatModal({
 export function MafiaChatBar({
   icon,
   placeholder,
-  disabledPlaceholder,
   canType,
+  phase,
   onOpen,
   onSend,
   peekIcon,
@@ -190,8 +190,8 @@ export function MafiaChatBar({
 }: {
   icon: string
   placeholder: string
-  disabledPlaceholder: string
   canType: boolean
+  phase?: string
   onOpen: () => void
   onSend: (msg: string) => Promise<void> | void
   peekIcon?: string
@@ -217,25 +217,17 @@ export function MafiaChatBar({
   return (
     <View style={[styles.bottomBar, accent === 'mafia' && styles.mafiaAccentBorder]}>
       <Text style={styles.bottomBarIcon}>{icon}</Text>
-      {canType ? (
-        <TextInput
-          style={[styles.bottomBarInput, accent === 'mafia' && styles.mafiaAccentText]}
-          value={draft}
-          onChangeText={setDraft}
-          onFocus={onOpen}
-          placeholder={placeholder}
-          placeholderTextColor="#71717a"
-        />
-      ) : (
-        <Pressable style={styles.bottomBarFakeInput} onPress={onOpen}>
-          <Text style={styles.bottomBarPlaceholder}>{disabledPlaceholder}</Text>
-        </Pressable>
-      )}
-      {canType ? (
-        <Pressable style={styles.sendBtn} disabled={sending || !draft.trim()} onPress={() => void submit()}>
-          <Text style={styles.sendBtnText}>Send</Text>
-        </Pressable>
-      ) : null}
+      <TextInput
+        style={[styles.bottomBarInput, accent === 'mafia' && styles.mafiaAccentText]}
+        value={draft}
+        onChangeText={setDraft}
+        onFocus={onOpen}
+        placeholder={placeholder}
+        placeholderTextColor="#71717a"
+      />
+      <Pressable style={styles.sendBtn} disabled={sending || !draft.trim() || !canType} onPress={() => void submit()}>
+        <Text style={styles.sendBtnText}>{canType ? 'Send' : phase === 'night' ? '💤' : '⏳'}</Text>
+      </Pressable>
       {peekIcon ? (
         <Pressable style={styles.peekBtn} onPress={onPeek} hitSlop={8}>
           <Text style={styles.peekIcon}>{peekIcon}</Text>
@@ -327,8 +319,6 @@ const makeStyles = (theme: Theme) =>
     },
     bottomBarIcon: { fontSize: 18 },
     bottomBarInput: { flex: 1, color: theme.text, paddingVertical: 6 },
-    bottomBarFakeInput: { flex: 1, paddingVertical: 6 },
-    bottomBarPlaceholder: { color: '#71717a' },
     peekBtn: {
       paddingHorizontal: 10,
       paddingVertical: 6,

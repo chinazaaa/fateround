@@ -37,7 +37,6 @@ import { useThemedStyles } from '@/constants/theme-context'
 import { MafiaPlayersGrid } from '@/components/games/mafia/MafiaPlayersGrid'
 import { MafiaRolesDrawer } from '@/components/games/mafia/MafiaRolesDrawer'
 import { MafiaRoleRevealScreen } from '@/components/games/mafia/MafiaRoleRevealScreen'
-import { MafiaSkipPhaseBar } from '@/components/games/mafia/MafiaSkipPhaseBar'
 import { MafiaIdentityPanel } from '@/components/games/mafia/MafiaIdentityPanel'
 import { MafiaChatBar, MafiaChatModal, MafiaChatPreview } from '@/components/games/mafia/MafiaChatDock'
 
@@ -607,18 +606,6 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                       <Text style={styles.skipFullText}>⏭ Skip / No Lynch</Text>
                     </Pressable>
                   ) : null}
-                  {(state.skipRequiredCount ?? 0) > 0 ? (
-                    <View style={styles.skipBarWrap}>
-                      <MafiaSkipPhaseBar
-                        phase={phase}
-                        skipRequestCount={state.skipRequestCount ?? 0}
-                        skipRequiredCount={state.skipRequiredCount ?? 0}
-                        hasRequestedSkip={!!state.hasRequestedSkip}
-                        disabled={acting}
-                        onSkip={() => act(() => postMafiaSkipPhase(bootstrap.code, bootstrap.myResumeToken!))}
-                      />
-                    </View>
-                  ) : null}
                 </>
               )}
             </>
@@ -677,6 +664,19 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                 (role === 'trapper' || role === 'arsonist' || role === 'mafia_seer' || role === 'cupid')
               }
               allowDeadSelect={nightActionable && role === 'medium'}
+              skipRequestCount={
+                (phase === 'day' || phase === 'voting') && canAct ? (state.skipRequestCount ?? 0) : undefined
+              }
+              skipRequiredCount={
+                (phase === 'day' || phase === 'voting') && canAct ? (state.skipRequiredCount ?? 1) : undefined
+              }
+              hasRequestedSkip={!!state.hasRequestedSkip}
+              skipDisabled={acting}
+              onSkip={
+                (phase === 'day' || phase === 'voting') && canAct
+                  ? () => act(() => postMafiaSkipPhase(bootstrap.code, bootstrap.myResumeToken!))
+                  : undefined
+              }
               onSelect={
                 wolfCubRevengeMode
                   ? (id) => {
@@ -702,12 +702,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           )
         })()}
 
-        {/* Chat preview — collapsed snippet of whatever the bottom bar is currently showing
-            (mafia secret chat at night for the mafia team, ghost chat for the dead/Medium,
-            town chat otherwise); tapping it opens the full popup, matching web. A villager
-            with nothing to send at night (bottomBarTarget null) gets a small standalone
-            peek button instead, since there's no bar to attach a preview to. */}
-        {bootstrap.myPlayerId && bottomBarTarget ? (
+        {/* Chat preview — hidden during night for alive players (matching web).
+            Day/dead: show inline snippet; tapping opens the full popup. */}
+        {bootstrap.myPlayerId && bottomBarTarget && !(phase === 'night' && amIAlive) ? (
           <MafiaChatPreview
             title={bottomBarTitle}
             messages={bottomBarMessages}
@@ -715,10 +712,6 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
             accent={bottomBarTarget === 'mafia' ? 'mafia' : undefined}
             onPress={() => setPrimaryChatOpen(true)}
           />
-        ) : showNightTownPeek ? (
-          <Pressable style={styles.nightPeekBtn} onPress={() => setPeekChatOpen(true)}>
-            <Text style={styles.nightPeekText}>💬 Nothing to send at night — tap to view town chat</Text>
-          </Pressable>
         ) : null}
 
         <View style={styles.rulesRow}>
@@ -737,8 +730,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         <MafiaChatBar
           icon={bottomBarTarget === 'mafia' ? '🔪' : bottomBarTarget === 'ghost' ? '👻' : '💬'}
           placeholder={bottomBarTarget === 'mafia' ? 'Whisper to allies…' : 'Tap to send a message'}
-          disabledPlaceholder="Tap to view — can't chat right now"
           canType={!bottomBarDisabled}
+          phase={phase}
           accent={bottomBarTarget === 'mafia' ? 'mafia' : undefined}
           onOpen={() => setPrimaryChatOpen(true)}
           onSend={handleBottomBarSend}
@@ -755,7 +748,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         players={state.players}
         accent={bottomBarTarget === 'mafia' ? 'mafia' : undefined}
         canType={!bottomBarDisabled}
-        disabledNote="Tap to view — can't chat right now"
+        phase={phase}
         onSend={handleBottomBarSend}
       />
 
@@ -767,9 +760,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         players={state.players}
         accent={iconPopupKind === 'mafia' ? 'mafia' : undefined}
         canType={false}
-        disabledNote={
-          iconPopupKind === 'mafia' ? 'Opens for sending again at night.' : 'Nothing to send here right now.'
-        }
+        phase={phase}
       />
     </GameShell>
   )
@@ -815,7 +806,6 @@ const makeStyles = (theme: Theme) =>
     },
     actionBtnActive: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
     actionBtnText: { color: theme.text, fontWeight: '700' },
-    skipBarWrap: { marginTop: 10 },
     voteCastRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
     changeVoteLink: { color: theme.textMuted, fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
     skipFullBtn: {
@@ -828,15 +818,6 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
     },
     skipFullText: { color: theme.textSecondary, fontWeight: '700' },
-    nightPeekBtn: {
-      backgroundColor: theme.surface,
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: 16,
-      padding: 14,
-      alignItems: 'center',
-    },
-    nightPeekText: { color: theme.textMuted, fontSize: 12, fontWeight: '600' },
     revengePanel: {
       backgroundColor: '#7f1d1d',
       borderRadius: 12,

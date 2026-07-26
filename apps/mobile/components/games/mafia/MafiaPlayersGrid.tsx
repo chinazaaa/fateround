@@ -57,6 +57,11 @@ interface MafiaPlayersGridProps {
   allowSelfSelect?: boolean
   allowDeadSelect?: boolean
   disabled?: boolean
+  skipRequestCount?: number
+  skipRequiredCount?: number
+  hasRequestedSkip?: boolean
+  skipDisabled?: boolean
+  onSkip?: () => void
 }
 
 /**
@@ -85,6 +90,11 @@ export function MafiaPlayersGrid({
   allowSelfSelect = false,
   allowDeadSelect = false,
   disabled = false,
+  skipRequestCount,
+  skipRequiredCount,
+  hasRequestedSkip,
+  skipDisabled,
+  onSkip,
 }: MafiaPlayersGridProps) {
   const styles = useThemedStyles(makeStyles)
   const seatNumberById = new Map(players.map((p) => [p.id, p.seatNumber]))
@@ -120,7 +130,20 @@ export function MafiaPlayersGrid({
 
   return (
     <View style={styles.card}>
-      <Text style={styles.header}>Players{headerSuffix}</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.header}>Players{headerSuffix}</Text>
+        {onSkip && skipRequiredCount != null ? (
+          <Pressable
+            disabled={skipDisabled || hasRequestedSkip}
+            onPress={onSkip}
+            style={[styles.skipBtn, (skipDisabled || hasRequestedSkip) && styles.skipBtnDisabled]}
+          >
+            <Text style={styles.skipBtnText}>
+              ⏭ {hasRequestedSkip ? 'Skipped' : 'Skip'} ({skipRequestCount ?? 0}/{skipRequiredCount})
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
       <View style={styles.grid}>
         {players.map((p) => {
           const isMe = p.id === myPlayerId
@@ -224,12 +247,28 @@ export function MafiaPlayersGrid({
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     card: { backgroundColor: theme.surface, borderRadius: theme.radius.lg, padding: 14, gap: 8 },
+    headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
     header: {
       color: theme.primary,
       fontSize: 10,
       fontWeight: '800',
       textTransform: 'uppercase',
       letterSpacing: 0.8,
+      flexShrink: 1,
+    },
+    skipBtn: {
+      backgroundColor: theme.border,
+      borderRadius: 20,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+    },
+    skipBtnDisabled: { opacity: 0.6 },
+    skipBtnText: {
+      color: theme.textMuted,
+      fontSize: 10,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
     },
     grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3 },
     tile: {
