@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -25,6 +25,7 @@ export function MafiaChatMessageList({
   compact?: boolean
 }) {
   const styles = useThemedStyles(makeStyles)
+  const listRef = useRef<FlatList>(null)
   const seatByPlayerId = new Map((players ?? []).map((p) => [p.id, p.seatNumber]))
 
   if (messages.length === 0) {
@@ -37,6 +38,10 @@ export function MafiaChatMessageList({
       keyExtractor={(m) => m.id}
       nestedScrollEnabled
       inverted={compact}
+      onContentSizeChange={(_w, _h) => {
+        if (!compact) listRef.current?.scrollToEnd({ animated: false })
+      }}
+      ref={listRef as any}
       renderItem={({ item }) => {
         if (item.sender_player_id === 'system') {
           return <Text style={styles.systemLine}>{item.message}</Text>
@@ -57,15 +62,12 @@ export function MafiaChatMessageList({
 }
 
 /**
- * A small non-scrollable snippet of the last few messages — tapping it (or the persistent
- * input bar below) opens the full `MafiaChatModal`. Matches web's collapsed preview instead
- * of a permanently-expanded chat box taking up screen space in the middle of the roster.
+ * Borderless inline snippet of the last few messages — flows naturally below the player
+ * grid (Wolvesville-style), no card wrapper. Tapping it opens the full `MafiaChatModal`.
  */
 export function MafiaChatPreview({
-  title,
   messages,
   players,
-  accent,
   onPress,
 }: {
   title: string
@@ -75,14 +77,12 @@ export function MafiaChatPreview({
   onPress: () => void
 }) {
   const styles = useThemedStyles(makeStyles)
-  const latest = messages.slice(-4)
+  const latest = messages.slice(-6)
   return (
-    <Pressable style={styles.previewCard} onPress={onPress}>
-      <Text style={[styles.previewTitle, accent === 'mafia' && styles.mafiaAccentText]}>{title}</Text>
+    <Pressable style={styles.inlinePreview} onPress={onPress}>
       <View pointerEvents="none">
         <MafiaChatMessageList messages={latest} players={players} />
       </View>
-      <Text style={styles.previewHint}>Tap to open full chat</Text>
     </Pressable>
   )
 }
@@ -130,40 +130,35 @@ export function MafiaChatModal({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <KeyboardAvoidingView
-        style={styles.modalWrap}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        pointerEvents="box-none"
-      >
-        <View style={[styles.modalPanel, accent === 'mafia' && styles.mafiaAccentBorder]}>
-          <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, accent === 'mafia' && styles.mafiaAccentText]}>{title}</Text>
-            <Pressable onPress={onClose} hitSlop={10}>
-              <Text style={styles.closeText}>✕</Text>
+    <Modal visible={visible} transparent={false} animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={styles.fullScreenWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={[styles.fullScreenHeader, accent === 'mafia' && styles.mafiaAccentBorder]}>
+          <Pressable onPress={onClose} hitSlop={10} style={styles.backBtn}>
+            <Text style={styles.closeX}>✕</Text>
+          </Pressable>
+          <Text style={[styles.headerTitle, accent === 'mafia' && styles.mafiaAccentText]}>{title}</Text>
+          <View style={styles.backBtn} />
+        </View>
+        <View style={styles.fullScreenLog}>
+          <MafiaChatMessageList messages={messages} players={players} />
+        </View>
+        {canType ? (
+          <View style={[styles.inputRow, accent === 'mafia' && styles.mafiaAccentBorder]}>
+            <TextInput
+              style={styles.input}
+              value={draft}
+              onChangeText={setDraft}
+              placeholder="Type a message…"
+              placeholderTextColor="#71717a"
+              autoFocus
+            />
+            <Pressable style={styles.sendBtn} disabled={sending || !draft.trim()} onPress={() => void submit()}>
+              <Text style={styles.sendBtnText}>Send</Text>
             </Pressable>
           </View>
-          <View style={styles.modalLog}>
-            <MafiaChatMessageList messages={messages} players={players} />
-          </View>
-          {canType ? (
-            <View style={styles.inputRow}>
-              <TextInput
-                style={styles.input}
-                value={draft}
-                onChangeText={setDraft}
-                placeholder="Type a message…"
-                placeholderTextColor="#71717a"
-              />
-              <Pressable style={styles.sendBtn} disabled={sending || !draft.trim()} onPress={() => void submit()}>
-                <Text style={styles.sendBtnText}>Send</Text>
-              </Pressable>
-            </View>
-          ) : disabledNote ? (
-            <Text style={styles.disabledNote}>{disabledNote}</Text>
-          ) : null}
-        </View>
+        ) : disabledNote ? (
+          <Text style={styles.disabledNote}>{disabledNote}</Text>
+        ) : null}
       </KeyboardAvoidingView>
     </Modal>
   )
@@ -250,42 +245,24 @@ const makeStyles = (theme: Theme) =>
     systemLine: { color: '#f472b6', fontWeight: '700', fontSize: 13, textAlign: 'center', marginVertical: 2 },
     chatLine: { color: theme.textSecondary, fontSize: 13, marginBottom: 4 },
     chatName: { color: theme.text, fontWeight: '700' },
-    previewCard: {
-      backgroundColor: theme.surface,
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: 16,
-      padding: 12,
-      gap: 4,
-    },
-    previewTitle: { color: theme.primary, fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
-    previewHint: { color: theme.textMuted, fontSize: 10, textAlign: 'center', marginTop: 4 },
+    inlinePreview: { paddingHorizontal: 4 },
     mafiaAccentText: { color: '#f87171' },
     mafiaAccentBorder: { borderColor: '#f4374766' },
-    backdrop: { ...StyleSheet.absoluteFill, backgroundColor: '#00000080' },
-    modalWrap: { flex: 1, justifyContent: 'flex-end' },
-    modalPanel: {
-      backgroundColor: theme.bg,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderBottomWidth: 0,
-      maxHeight: '75%',
-      paddingBottom: 20,
-    },
-    modalHeader: {
+    fullScreenWrap: { flex: 1, backgroundColor: theme.bg },
+    fullScreenHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingHorizontal: 8,
+      paddingVertical: 8,
       borderBottomWidth: 1,
       borderBottomColor: theme.border,
     },
+    backBtn: { width: 40, alignItems: 'center', justifyContent: 'center' },
+    closeX: { color: theme.text, fontSize: 22 },
+    headerTitle: { color: theme.text, fontSize: 14, fontWeight: '700' },
     modalTitle: { color: theme.textMuted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
-    closeText: { color: theme.textMuted, fontSize: 18 },
-    modalLog: { paddingHorizontal: 16, paddingVertical: 10, flexShrink: 1 },
+    fullScreenLog: { flex: 1, paddingHorizontal: 16, paddingVertical: 10 },
     disabledNote: {
       color: theme.textMuted,
       fontSize: 11,

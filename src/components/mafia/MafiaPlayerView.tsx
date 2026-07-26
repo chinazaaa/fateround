@@ -1334,55 +1334,35 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             <div className="md:hidden flex-1 flex flex-col min-h-0 overflow-y-auto overflow-x-hidden p-4 space-y-4">
               {playersContent}
 
+              {/* Inline chat preview — borderless, blends directly below the grid
+                  like Wolvesville. Tapping opens full-screen chat overlay. */}
               {!chatOverlayOpen &&
                 !secondaryChatOverlayOpen &&
                 (!amIAlive ? (
-                  <button
-                    type="button"
-                    onClick={() => setChatOverlayOpen(true)}
-                    className="w-full text-left glass-card border border-[var(--border)] rounded-2xl p-3 space-y-1"
-                  >
-                    <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">
-                      💬 Town Discussion
-                    </p>
+                  <button type="button" onClick={() => setChatOverlayOpen(true)} className="w-full text-left px-1">
                     <ChatMessages
                       messages={mergedGhostMessages}
                       myPlayerId={myPlayerId}
                       players={publicPlayers}
-                      className="h-24 pointer-events-none"
+                      className="max-h-40 pointer-events-none"
                     />
-                    <p className="text-[10px] text-[var(--muted)] text-center">Tap to open full chat</p>
                   </button>
                 ) : bottomBarTarget === 'mafia' ? (
-                  <button
-                    type="button"
-                    onClick={() => setChatOverlayOpen(true)}
-                    className="w-full text-left glass-card border border-red-500/20 rounded-2xl p-3 space-y-1"
-                  >
-                    <p className="text-[10px] font-bold tracking-widest uppercase text-red-400">🔪 Mafia Secret Chat</p>
+                  <button type="button" onClick={() => setChatOverlayOpen(true)} className="w-full text-left px-1">
                     <ChatMessages
                       messages={myState?.mafiaChatMessages ?? []}
                       myPlayerId={myPlayerId}
-                      className="h-24 pointer-events-none"
+                      className="max-h-40 pointer-events-none"
                     />
-                    <p className="text-[10px] text-[var(--muted)] text-center">Tap to open full chat</p>
                   </button>
                 ) : bottomBarTarget === 'day' ? (
-                  <button
-                    type="button"
-                    onClick={() => setChatOverlayOpen(true)}
-                    className="w-full text-left glass-card border border-[var(--border)] rounded-2xl p-3 space-y-1"
-                  >
-                    <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)]">
-                      💬 Town Discussion
-                    </p>
+                  <button type="button" onClick={() => setChatOverlayOpen(true)} className="w-full text-left px-1">
                     <ChatMessages
                       messages={dayChatMessages ?? []}
                       myPlayerId={myPlayerId}
                       players={publicPlayers}
-                      className="h-24 pointer-events-none"
+                      className="max-h-40 pointer-events-none"
                     />
-                    <p className="text-[10px] text-[var(--muted)] text-center">Tap to open full chat</p>
                   </button>
                 ) : (
                   mediumGhostBlock
@@ -1458,138 +1438,123 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
               </div>
             )}
 
-            {/* Primary chat overlay — bottom sheet over the entire viewport */}
+            {/* Primary chat overlay — full-screen like Wolvesville: back arrow +
+                channel title header, full message log, input at bottom. */}
             {chatOverlayOpen && bottomBarTarget && (
-              <div className="md:hidden fixed inset-0 z-40 flex flex-col justify-end">
-                <button
-                  type="button"
-                  aria-label="Close chat"
-                  onClick={() => setChatOverlayOpen(false)}
-                  className="flex-1 bg-black/50"
-                />
+              <div className="md:hidden fixed inset-0 z-40 flex flex-col bg-[var(--background)]">
                 <div
-                  className={`bg-[var(--background)] rounded-t-2xl max-h-[70dvh] flex flex-col overflow-hidden border-t ${
-                    bottomBarTarget === 'mafia' ? 'border-red-500/30' : 'border-[var(--border)]'
+                  className={`shrink-0 flex items-center justify-between px-4 py-2 border-b ${
+                    bottomBarTarget === 'mafia' ? 'border-red-500/20' : 'border-[var(--border)]'
                   }`}
                 >
-                  <div
-                    className={`shrink-0 flex items-center justify-between px-4 py-3 border-b ${
+                  <button
+                    type="button"
+                    onClick={() => setChatOverlayOpen(false)}
+                    className="text-[var(--foreground)] text-2xl leading-none w-10 h-10 flex items-center justify-center"
+                    aria-label="Close chat"
+                  >
+                    ✕
+                  </button>
+                  <h2
+                    className={`text-sm font-bold ${
+                      bottomBarTarget === 'mafia' ? 'text-red-400' : 'text-[var(--foreground)]'
+                    }`}
+                  >
+                    {bottomBarTarget === 'mafia' ? 'Mafia Chat' : (PHASE_LABEL[phase] ?? phase)}
+                  </h2>
+                  <div className="w-10" />
+                </div>
+                <ChatMessages
+                  messages={
+                    bottomBarTarget === 'mafia'
+                      ? (myState?.mafiaChatMessages ?? [])
+                      : bottomBarTarget === 'ghost'
+                        ? mergedGhostMessages
+                        : (dayChatMessages ?? [])
+                  }
+                  myPlayerId={myPlayerId}
+                  players={bottomBarTarget === 'mafia' ? undefined : publicPlayers}
+                  className="flex-1 min-h-0 p-3"
+                />
+                {!bottomBarDisabled ? (
+                  <form
+                    onSubmit={handleBottomBarSubmit}
+                    className={`shrink-0 flex items-center gap-2 px-4 py-3 border-t ${
                       bottomBarTarget === 'mafia' ? 'border-red-500/20' : 'border-[var(--border)]'
                     }`}
                   >
-                    <h2
-                      className={`text-xs font-bold uppercase tracking-widest ${
-                        bottomBarTarget === 'mafia' ? 'text-red-400' : 'text-[var(--muted)]'
-                      }`}
-                    >
-                      {bottomBarTarget === 'mafia' ? '🔪 Mafia Secret Chat' : '💬 Town Discussion'}
-                    </h2>
+                    <input
+                      type="text"
+                      value={bottomBarText}
+                      disabled={bottomBarSending}
+                      onChange={(e) => setBottomBarText(e.target.value)}
+                      autoFocus
+                      placeholder={bottomBarTarget === 'mafia' ? 'Whisper to allies...' : 'Type a message...'}
+                      className={`flex-1 px-3 py-2 bg-[var(--surface-inset-bg)] border rounded-lg text-sm focus:outline-none ${
+                        bottomBarTarget === 'mafia'
+                          ? 'border-red-500/20 focus:border-red-500/50 text-red-200'
+                          : 'border-[var(--border)] focus:border-[var(--primary)] text-[var(--foreground)]'
+                      } placeholder:text-[var(--muted)]`}
+                    />
                     <button
-                      type="button"
-                      onClick={() => setChatOverlayOpen(false)}
-                      className="text-[var(--muted)] text-xl leading-none w-10 h-10 flex items-center justify-center rounded-full hover:bg-[var(--surface-inset-bg)]"
-                      aria-label="Close"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  <ChatMessages
-                    messages={
-                      bottomBarTarget === 'mafia'
-                        ? (myState?.mafiaChatMessages ?? [])
-                        : bottomBarTarget === 'ghost'
-                          ? mergedGhostMessages
-                          : (dayChatMessages ?? [])
-                    }
-                    myPlayerId={myPlayerId}
-                    players={bottomBarTarget === 'mafia' ? undefined : publicPlayers}
-                    className="flex-1 min-h-0 p-3"
-                  />
-                  {!bottomBarDisabled && (
-                    <form
-                      onSubmit={handleBottomBarSubmit}
-                      className={`shrink-0 flex items-center gap-2 px-4 py-3 border-t ${
-                        bottomBarTarget === 'mafia' ? 'border-red-500/20' : 'border-[var(--border)]'
+                      type="submit"
+                      disabled={bottomBarSending || !bottomBarText.trim()}
+                      className={`px-3 py-2 text-sm font-semibold rounded-lg disabled:opacity-40 ${
+                        bottomBarTarget === 'mafia' ? 'bg-red-600 hover:bg-red-700 text-white' : 'btn-primary btn-fit'
                       }`}
                     >
-                      <input
-                        type="text"
-                        value={bottomBarText}
-                        disabled={bottomBarSending}
-                        onChange={(e) => setBottomBarText(e.target.value)}
-                        placeholder={bottomBarTarget === 'mafia' ? 'Whisper to allies...' : 'Type a message...'}
-                        className={`flex-1 px-3 py-2 bg-[var(--surface-inset-bg)] border rounded-lg text-sm focus:outline-none ${
-                          bottomBarTarget === 'mafia'
-                            ? 'border-red-500/20 focus:border-red-500/50 text-red-200'
-                            : 'border-[var(--border)] focus:border-[var(--primary)] text-[var(--foreground)]'
-                        } placeholder:text-[var(--muted)]`}
-                      />
-                      <button
-                        type="submit"
-                        disabled={bottomBarSending || !bottomBarText.trim()}
-                        className={`px-3 py-2 text-sm font-semibold rounded-lg disabled:opacity-40 ${
-                          bottomBarTarget === 'mafia' ? 'bg-red-600 hover:bg-red-700 text-white' : 'btn-primary btn-fit'
-                        }`}
-                      >
-                        Send
-                      </button>
-                    </form>
-                  )}
-                  {bottomBarTarget === 'mafia' && phase !== 'night' && (
-                    <p className="text-xs text-[var(--muted)] italic text-center py-2">
-                      Opens for sending again at night.
+                      Send
+                    </button>
+                  </form>
+                ) : (
+                  <div className="shrink-0 px-4 py-3 border-t border-[var(--border)]">
+                    <p className="text-xs text-[var(--muted)] italic text-center">
+                      {bottomBarTarget === 'mafia' && phase !== 'night'
+                        ? 'Opens for sending again at night.'
+                        : "Can't chat right now."}
                     </p>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Secondary chat overlay (peek at the other channel) */}
+            {/* Secondary chat overlay (peek at the other channel) — also full-screen */}
             {secondaryChatOverlayOpen && iconPopupKind && (
-              <div className="md:hidden fixed inset-0 z-40 flex flex-col justify-end">
-                <button
-                  type="button"
-                  aria-label="Close chat"
-                  onClick={() => setSecondaryChatOverlayOpen(false)}
-                  className="flex-1 bg-black/50"
-                />
+              <div className="md:hidden fixed inset-0 z-40 flex flex-col bg-[var(--background)]">
                 <div
-                  className={`bg-[var(--background)] rounded-t-2xl max-h-[70dvh] flex flex-col overflow-hidden border-t ${
-                    iconPopupKind === 'mafia' ? 'border-red-500/30' : 'border-[var(--border)]'
+                  className={`shrink-0 flex items-center justify-between px-4 py-2 border-b ${
+                    iconPopupKind === 'mafia' ? 'border-red-500/20' : 'border-[var(--border)]'
                   }`}
                 >
-                  <div
-                    className={`shrink-0 flex items-center justify-between px-4 py-3 border-b ${
-                      iconPopupKind === 'mafia' ? 'border-red-500/20' : 'border-[var(--border)]'
+                  <button
+                    type="button"
+                    onClick={() => setSecondaryChatOverlayOpen(false)}
+                    className="text-[var(--foreground)] text-2xl leading-none w-10 h-10 flex items-center justify-center"
+                    aria-label="Close chat"
+                  >
+                    ✕
+                  </button>
+                  <h2
+                    className={`text-sm font-bold ${
+                      iconPopupKind === 'mafia' ? 'text-red-400' : 'text-[var(--foreground)]'
                     }`}
                   >
-                    <h2
-                      className={`text-xs font-bold uppercase tracking-widest ${
-                        iconPopupKind === 'mafia' ? 'text-red-400' : 'text-[var(--muted)]'
-                      }`}
-                    >
-                      {iconPopupKind === 'mafia' ? '🔪 Mafia Secret Chat' : '💬 Town Discussion'}
-                    </h2>
-                    <button
-                      type="button"
-                      onClick={() => setSecondaryChatOverlayOpen(false)}
-                      className="text-[var(--muted)] text-xl leading-none w-10 h-10 flex items-center justify-center rounded-full hover:bg-[var(--surface-inset-bg)]"
-                      aria-label="Close"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  <ChatMessages
-                    messages={iconPopupKind === 'mafia' ? (myState?.mafiaChatMessages ?? []) : (dayChatMessages ?? [])}
-                    myPlayerId={myPlayerId}
-                    players={iconPopupKind === 'mafia' ? undefined : publicPlayers}
-                    className="flex-1 min-h-0 p-3"
-                  />
-                  {iconPopupKind === 'mafia' && phase !== 'night' && (
-                    <p className="text-xs text-[var(--muted)] italic text-center py-2">
-                      Opens for sending again at night.
-                    </p>
-                  )}
+                    {iconPopupKind === 'mafia' ? 'Mafia Chat' : (PHASE_LABEL[phase] ?? phase)}
+                  </h2>
+                  <div className="w-10" />
+                </div>
+                <ChatMessages
+                  messages={iconPopupKind === 'mafia' ? (myState?.mafiaChatMessages ?? []) : (dayChatMessages ?? [])}
+                  myPlayerId={myPlayerId}
+                  players={iconPopupKind === 'mafia' ? undefined : publicPlayers}
+                  className="flex-1 min-h-0 p-3"
+                />
+                <div className="shrink-0 px-4 py-3 border-t border-[var(--border)]">
+                  <p className="text-xs text-[var(--muted)] italic text-center">
+                    {iconPopupKind === 'mafia' && phase !== 'night'
+                      ? 'Opens for sending again at night.'
+                      : 'Read-only — nothing to send here right now.'}
+                  </p>
                 </div>
               </div>
             )}

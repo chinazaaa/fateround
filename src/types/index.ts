@@ -339,6 +339,7 @@ export interface Game {
   mafia_seer_enabled?: boolean
   /** Mafia-team Seer toggle — full role reveal, can resign into Regular Mafia. */
   mafia_mafia_seer_enabled?: boolean
+  mafia_red_lady_enabled?: boolean
   mafia_anonymous_votes?: boolean
   /** Single Classic/Advanced switch — replaces individually toggling most optional roles.
    *  See resolveMafiaRoundToggles() in src/lib/mafia.ts for exactly what this changes. */
@@ -1894,6 +1895,7 @@ export type MafiaRole =
   | 'aura_seer'
   | 'seer'
   | 'mafia_seer'
+  | 'red_lady'
 export type MafiaTeam = 'village' | 'mafia' | 'jester' | 'serial_killer' | 'arsonist'
 export type MafiaDeathCause =
   | 'mafia_kill'
@@ -1903,6 +1905,7 @@ export type MafiaDeathCause =
   | 'vigilante_kill'
   | 'witch_kill'
   | 'trap_kill'
+  | 'red_lady_death'
 export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'day' | 'voting' | 'elimination' | 'game_over'
 
 export interface MafiaRoleEnabledFlags {
@@ -1933,6 +1936,9 @@ export interface MafiaRoleEnabledFlags {
   /** Mafia-team Seer — reveals a target's exact role each night; can resign to become a
    *  Regular Mafia (gaining the kill vote, losing the reveal). */
   mafia_seer_enabled: boolean
+  /** Visits a player each night — safe from any attack on herself while out visiting, but
+   *  dies if the player she visited was attacked that night or is Mafia/a Solo killer. */
+  red_lady_enabled: boolean
 }
 
 export interface MafiaSession extends MafiaRoleEnabledFlags {

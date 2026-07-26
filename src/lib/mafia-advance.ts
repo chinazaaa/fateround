@@ -19,6 +19,7 @@ const KILLER_LABEL: Record<string, string> = {
   vigilante_kill: 'The Vigilante',
   witch_kill: 'The Witch',
   trap_kill: 'A Trapper trap',
+  red_lady_death: 'The night',
 }
 
 /**
@@ -210,6 +211,8 @@ export async function runMafiaAdvance(
       seerTarget,
       mafiaSeerTarget,
       wolfCubRevengeTargetId,
+      redLadyTarget,
+      redLadyDied,
     } = resolution
 
     updateFields.mafia_target_player_id = mafiaTarget
@@ -419,6 +422,19 @@ export async function runMafiaAdvance(
           revealed.push({ playerId: mafiaSeerTarget, role: targetState.role })
         }
         updateFields.mafia_seer_revealed = revealed
+      }
+    }
+
+    // Red Lady — the public death message from the loop above already covers what happened
+    // if she died; this private note is only for when she made it back safely (visited
+    // nobody who was attacked, and wasn't Mafia/a Solo killer).
+    if (redLadyTarget && !redLadyDied) {
+      const redLady = playerStates.find((p) => p.role === 'red_lady')
+      if (redLady) {
+        privateMessages.push({
+          target_player_id: redLady.player_id,
+          message: `🌹 Night ${session.day_number}: You visited ${playerLabel(redLadyTarget)} and made it back safely.`,
+        })
       }
     }
 

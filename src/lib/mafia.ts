@@ -33,6 +33,7 @@ const AURA_SEER_UNKNOWN_ROLES: MafiaRole[] = [
   'medium',
   'witch',
   'trapper',
+  'red_lady',
 ]
 
 /**
@@ -76,7 +77,7 @@ export type MafiaRoleToggles = MafiaRoleEnabledFlags
  *   of the 3 are picked at random each game.
  * - Classic/Advanced swap pairs: Bodyguard↔Trapper, Serial Killer↔Arsonist, Priest↔Vigilante.
  *   Detective, if it wins the investigator slot, becomes Tracker in Advanced mode.
- * - Witch and Little Girl have no Classic counterpart — only available in Advanced mode.
+ * - Witch, Little Girl, and Red Lady have no Classic counterpart — only available in Advanced mode.
  * - Mafia specialists: Alpha Wolf is independently ~70% likely (still needs mafiaCount >= 2 to
  *   actually apply); Wolf Cub and Framer are mutually exclusive, never both in the same game.
  *   In Classic mode, Framer always wins that slot; Advanced mode keeps it an even coin flip.
@@ -109,6 +110,7 @@ export function resolveMafiaRoundToggles(advancedMode: boolean): MafiaRoleToggle
     vigilante_enabled: advancedMode,
     witch_enabled: advancedMode,
     little_girl_enabled: advancedMode,
+    red_lady_enabled: advancedMode,
     alpha_wolf_enabled: alphaWolfIn,
     wolf_cub_enabled: wolfCubOrFramer === 'wolf_cub',
     framer_enabled: wolfCubOrFramer === 'framer',
@@ -155,6 +157,7 @@ export function assignMafiaRoles(
   pushIfRoom('witch', toggles.witch_enabled)
   pushIfRoom('little_girl', toggles.little_girl_enabled)
   pushIfRoom('trapper', toggles.trapper_enabled)
+  pushIfRoom('red_lady', toggles.red_lady_enabled)
 
   // Round 1: one Solo, one Special
   pushIfRoom('arsonist', toggles.arsonist_enabled)
@@ -301,7 +304,7 @@ function resolveMajorityVote(votes: string[], aliveCount: number): string | null
 
 export interface MafiaNightDeath {
   playerId: string
-  cause: 'mafia_kill' | 'serial_kill' | 'vigilante_kill' | 'arson' | 'witch_kill' | 'trap_kill'
+  cause: 'mafia_kill' | 'serial_kill' | 'vigilante_kill' | 'arson' | 'witch_kill' | 'trap_kill' | 'red_lady_death'
 }
 
 // Order the Trapper's trap kills the weakest-first: a plain Mafia foot soldier before any
@@ -346,6 +349,10 @@ export interface MafiaNightResolution {
   trapperKilledMafiaId: string | null
   seerTarget: string | null
   mafiaSeerTarget: string | null
+  redLadyTarget: string | null
+  /** True if the Red Lady died this night — either the player she visited was attacked, or
+   *  they turned out to be Mafia/a Solo killer. */
+  redLadyDied: boolean
 }
 
 /**
@@ -367,6 +374,7 @@ export function resolveMafiaNight(
     | 'trapper_enabled'
     | 'seer_enabled'
     | 'mafia_seer_enabled'
+    | 'red_lady_enabled'
   >,
   playerStates: MafiaPlayerState[]
 ): MafiaNightResolution {
@@ -475,6 +483,13 @@ export function resolveMafiaNight(
   const mafiaSeerPlayer = session.mafia_seer_enabled ? aliveOfRole('mafia_seer') : undefined
   const mafiaSeerTarget = mafiaSeerPlayer?.night_action_target_player_id ?? null
 
+  // Red Lady — visits another player each night. While out visiting, she's not home, so any
+  // attack aimed at her that night finds nobody (see applyAttack below). But visiting is a
+  // gamble: if the player she visited was attacked that night, or turns out to be Mafia or a
+  // Solo killer, she dies from what she witnessed — resolved after all attacks below.
+  const redLadyPlayer = session.red_lady_enabled ? aliveOfRole('red_lady') : undefined
+  const redLadyTarget = redLadyPlayer?.night_action_target_player_id ?? null
+
   const deaths: MafiaNightDeath[] = []
   const deadIds = new Set<string>()
   const addDeath = (playerId: string, cause: MafiaNightDeath['cause']) => {
@@ -500,6 +515,8 @@ export function resolveMafiaNight(
 
   const applyAttack = (targetId: string | null, cause: 'mafia_kill' | 'serial_kill' | 'vigilante_kill') => {
     if (!targetId) return
+    // Red Lady isn't home while out visiting someone — an attack aimed at her finds nobody.
+    if (redLadyTarget && redLadyPlayer && targetId === redLadyPlayer.player_id) return
     if (doctorTarget === targetId) return
     if (witchHealTarget === targetId) {
       witchHealActuallySaved = true
@@ -530,6 +547,24 @@ export function resolveMafiaNight(
 
   applyAttack(mafiaTarget, 'mafia_kill')
   applyAttack(serialKillerTarget, 'serial_kill')
+
+  // Red Lady dies from what she witnessed if her visit target was attacked tonight (win or
+  // lose, doctor-saved or not — she still saw the attack happen) or turns out to be Mafia or
+  // a Solo killer (Serial Killer/Arsonist) themselves.
+  let redLadyDied = false
+  if (redLadyPlayer && redLadyTarget) {
+    const visitedState = playerStates.find((p) => p.player_id === redLadyTarget)
+    const visitedWasAttacked = redLadyTarget === mafiaTarget || redLadyTarget === serialKillerTarget
+    const visitedIsDangerous =
+      !!visitedState &&
+      (MAFIA_TEAM_ROLES.includes(visitedState.role) ||
+        visitedState.role === 'serial_killer' ||
+        visitedState.role === 'arsonist')
+    if (visitedWasAttacked || visitedIsDangerous) {
+      addDeath(redLadyPlayer.player_id, 'red_lady_death')
+      redLadyDied = true
+    }
+  }
 
   if (trapperKilledMafiaId) {
     addDeath(trapperKilledMafiaId, 'trap_kill')
@@ -611,6 +646,8 @@ export function resolveMafiaNight(
     trapperKilledMafiaId,
     seerTarget,
     mafiaSeerTarget,
+    redLadyTarget,
+    redLadyDied,
   }
 }
 
