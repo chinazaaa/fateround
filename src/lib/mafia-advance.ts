@@ -9,7 +9,7 @@ import {
   mafiaRoleTeam,
   auraSeerAlignment,
 } from '@/lib/mafia'
-import { MAFIA_ROLE_INFO, mafiaRoleEmoji } from '@/components/mafia/mafia-role-info'
+import { MAFIA_ROLE_INFO, MAFIA_TEAM_ROLES, mafiaRoleEmoji } from '@/components/mafia/mafia-role-info'
 import type { MafiaPlayerState, MafiaSession, MafiaPhase } from '@/types'
 
 const KILLER_LABEL: Record<string, string> = {
@@ -109,6 +109,27 @@ export async function runMafiaAdvance(
   // of a single ephemeral "current phase" banner that gets replaced the moment the phase
   // (often a brief 10s one) moves on.
   const systemMessages: string[] = []
+
+  // Private result messages — persisted in the day chat feed with target_player_id so
+  // only the owning player sees them. Lets players scroll back through history to see
+  // what they investigated/tracked on each night. Declared up here (rather than right
+  // before its first read below) so the bodyguard-protection block can also push into
+  // it instead of broadcasting a redundant public line to the two players who already
+  // get a personalized message about the same event.
+  const privateMessages: Array<{ target_player_id: string; message: string }> = []
+
+  // Mafia-only narration — rendered inline in the same day-chat feed as the public
+  // messages (so it reads as part of the town chat's chronological log), but targeted
+  // at each alive mafia-team member individually so only they see it. Lets the mafia
+  // know *why* a kill failed instead of inferring it from the public "No one died
+  // last night." line.
+  const mafiaMessages: string[] = []
+
+  // Phase-transition announcements for the mafia's own secret chat (scope 'night') — the
+  // day-chat feed already gets "Day N has started"/"Get ready to vote" system lines, but
+  // scope 'night' previously only ever contained player-sent messages, so the mafia had
+  // no in-feed announcement that a new night had begun.
+  const mafiaNightMessages: string[] = []
 
   // Player-state/players writes that depend on THIS transition actually being the one that
   // wins the phase CAS below — deferred (not awaited yet) so a losing racer (another request
@@ -223,7 +244,19 @@ export async function runMafiaAdvance(
             .eq('player_id', bgState.player_id)
         )
         if (!bodyguardSacrificePlayerId && mafiaTarget) {
-          systemMessages.push('🛡️ Someone was protected!')
+          // The bodyguard and the player they protected each already get a personalized
+          // message below (lines ~403-416) — broadcasting the same news to them again as
+          // a public line is just noise. Everyone else still needs to know a protection
+          // happened, so target this at every other alive player instead of the whole feed.
+          const protectedIds = new Set([bgState.player_id, bodyguardTarget].filter(Boolean) as string[])
+          for (const p of playerStates) {
+            if (p.is_alive && !protectedIds.has(p.player_id)) {
+              privateMessages.push({ target_player_id: p.player_id, message: '🛡️ Someone was protected!' })
+            }
+          }
+          mafiaMessages.push(
+            `🔪 Night ${session.day_number}: ${playerLabel(mafiaTarget)} couldn't be killed — they were protected.`
+          )
         }
       }
     }
@@ -233,7 +266,12 @@ export async function runMafiaAdvance(
       pendingEffects.push(() =>
         admin
           .from('mafia_player_states')
-          .update({ is_alive: false, death_day: session.day_number, death_cause: death.cause })
+          .update({
+            is_alive: false,
+            death_day: session.day_number,
+            death_cause: death.cause,
+            revived_by_medium: false,
+          })
           .eq('game_id', gameId)
           .eq('player_id', death.playerId)
       )
@@ -252,11 +290,28 @@ export async function runMafiaAdvance(
       if (!mafiaTarget) {
         systemMessages.push('😴 No one was attacked last night.')
       } else if (doctorTarget === mafiaTarget) {
-        systemMessages.push('🏥 The Doctor saved someone!')
+        // The doctor and the player they saved each already get a personalized message
+        // below ("you saved them!" / "you were saved last night!") — broadcasting the
+        // same news to them again as a public line is just noise, same fix as the
+        // bodyguard case above. Everyone else still needs to know a save happened.
+        const doctor = playerStates.find((p) => p.role === 'doctor' && p.is_alive)
+        const savedIds = new Set([doctor?.player_id, doctorTarget].filter(Boolean) as string[])
+        for (const p of playerStates) {
+          if (p.is_alive && !savedIds.has(p.player_id)) {
+            privateMessages.push({ target_player_id: p.player_id, message: '🏥 The Doctor saved someone!' })
+          }
+        }
+        mafiaMessages.push(
+          `🔪 Night ${session.day_number}: ${playerLabel(mafiaTarget)} couldn't be killed — they were healed.`
+        )
       } else if (witchHealActuallySaved && witchHealTarget === mafiaTarget) {
         systemMessages.push('🧪 The Witch saved someone!')
+        mafiaMessages.push(
+          `🔪 Night ${session.day_number}: ${playerLabel(mafiaTarget)} couldn't be killed — they were healed.`
+        )
       } else if (trapperBlockedPlayerIds.includes(mafiaTarget)) {
         systemMessages.push("🪤 A trap foiled the Mafia's attack!")
+        mafiaMessages.push(`🔪 Night ${session.day_number}: Your attack on ${playerLabel(mafiaTarget)} was trapped!`)
       } else if (cursedConvertedPlayerId === mafiaTarget) {
         systemMessages.push("☠️ The Mafia's target turned out to be one of their own...")
       } else if (bodyguardHitsTaken === 0) {
@@ -272,7 +327,7 @@ export async function runMafiaAdvance(
         pendingEffects.push(() =>
           admin
             .from('mafia_player_states')
-            .update({ is_alive: true, death_day: null, death_cause: null })
+            .update({ is_alive: true, death_day: null, death_cause: null, revived_by_medium: true })
             .eq('game_id', gameId)
             .eq('player_id', mediumRevivePlayerId)
         )
@@ -290,11 +345,6 @@ export async function runMafiaAdvance(
         systemMessages.push(`🔮 The Medium has revived ${playerLabel(mediumRevivePlayerId)}!`)
       }
     }
-
-    // Private result messages — persisted in the day chat feed with target_player_id so
-    // only the owning player sees them. Lets players scroll back through history to see
-    // what they investigated/tracked on each night.
-    const privateMessages: Array<{ target_player_id: string; message: string }> = []
 
     // Aura Seer — Good/Evil/Unknown, not a plain Village/Mafia binary
     if (auraSeerTarget) {
@@ -343,16 +393,22 @@ export async function runMafiaAdvance(
       }
     }
 
-    // Mafia Seer — reveals the target's exact role; shares nothing automatically with the
-    // crew (the role description has them relay it themselves via the secret chat).
+    // Mafia Seer — reveals the target's exact role, broadcast automatically to the whole
+    // crew's secret chat (not just the seer) and persisted so their tile keeps a role
+    // badge visible to the mafia team from then on — matching Wolvesville, not requiring
+    // the seer to manually relay it themselves.
     if (mafiaSeerTarget) {
       const mafiaSeer = playerStates.find((p) => p.role === 'mafia_seer' && p.is_alive)
       const targetState = playerStates.find((p) => p.player_id === mafiaSeerTarget)
       if (mafiaSeer && targetState) {
-        privateMessages.push({
-          target_player_id: mafiaSeer.player_id,
-          message: `👁️‍🗨️ Night ${session.day_number}: ${playerLabel(mafiaSeerTarget)} is ${roleLabel(targetState.role)}`,
-        })
+        mafiaNightMessages.push(
+          `👁️‍🗨️ Night ${session.day_number}: The Mafia Seer checked ${playerLabel(mafiaSeerTarget)} ${roleLabel(targetState.role)}.`
+        )
+        const revealed = [...(session.mafia_seer_revealed ?? [])]
+        if (!revealed.some((r) => r.playerId === mafiaSeerTarget)) {
+          revealed.push({ playerId: mafiaSeerTarget, role: targetState.role })
+        }
+        updateFields.mafia_seer_revealed = revealed
       }
     }
 
@@ -372,14 +428,26 @@ export async function runMafiaAdvance(
     if (doctorTarget) {
       const doctor = playerStates.find((p) => p.role === 'doctor' && p.is_alive)
       if (doctor) {
-        const wasAttacked = doctorTarget === mafiaTarget || doctorTarget === serialKillerTarget
+        // A doctor healing the Bodyguard doesn't directly counter the mafia/SK's actual
+        // target — if the Bodyguard was already wounded from a prior night and takes a
+        // second hit protecting someone else, they die via the sacrifice mechanic, which
+        // never checks the doctor's heal. So "was my target attacked" must also cover that
+        // case, and a target who was attacked can still have died despite the heal.
+        const wasAttacked =
+          doctorTarget === mafiaTarget ||
+          doctorTarget === serialKillerTarget ||
+          doctorTarget === bodyguardSacrificePlayerId
+        const targetDied = deaths.some((d) => d.playerId === doctorTarget)
         privateMessages.push({
           target_player_id: doctor.player_id,
-          message: wasAttacked
-            ? `🏥 Night ${session.day_number}: Your target was attacked — you saved them!`
-            : `🏥 Night ${session.day_number}: Your target was not attacked.`,
+          message:
+            wasAttacked && !targetDied
+              ? `🏥 Night ${session.day_number}: Your target was attacked — you saved them!`
+              : wasAttacked && targetDied
+                ? `🏥 Night ${session.day_number}: Your target was attacked, but you couldn't save them.`
+                : `🏥 Night ${session.day_number}: Your target was not attacked.`,
         })
-        if (wasAttacked) {
+        if (wasAttacked && !targetDied) {
           privateMessages.push({
             target_player_id: doctorTarget,
             message: `🏥 Night ${session.day_number}: You were saved last night!`,
@@ -567,6 +635,7 @@ export async function runMafiaAdvance(
             is_alive: false,
             death_day: session.day_number,
             death_cause: 'village_vote',
+            revived_by_medium: false,
           })
           .eq('game_id', gameId)
           .eq('player_id', votedPlayerId)
@@ -623,6 +692,7 @@ export async function runMafiaAdvance(
     updateFields.medium_revive_player_id = null
     updateFields.vigilante_day_kill_player_id = null
     updateFields.vigilante_reveal_player_id = null
+    mafiaNightMessages.push(`🌙 Night ${session.day_number + 1} has started.`)
     // Arsonist's douse targets (from the night just resolved) become permanently doused.
     const arsonist = playerStates.find((p) => p.role === 'arsonist' && p.is_alive)
     if (arsonist && arsonist.night_action_target_player_id !== arsonist.player_id) {
@@ -661,6 +731,7 @@ export async function runMafiaAdvance(
         })
         .eq('game_id', gameId)
     )
+    mafiaNightMessages.push(`🌙 Night ${session.day_number} has started.`)
   }
 
   if (targetPhase === 'day' && currentPhase === 'day_report') {
@@ -702,6 +773,44 @@ export async function runMafiaAdvance(
         sender_name: '📢',
         message,
         scope: 'day',
+      }))
+    )
+  }
+
+  if (mafiaMessages.length > 0) {
+    // scope 'day' (same feed as the public town chat) but targeted at each alive mafia-
+    // team member individually — it renders inline in the shared day-chat log in the
+    // right chronological spot, but only mafia players' own fetch (target_player_id.eq.
+    // themselves) picks it up; everyone else's feed skips these rows entirely.
+    const aliveMafiaIds = playerStates
+      .filter((p) => p.is_alive && MAFIA_TEAM_ROLES.includes(p.role))
+      .map((p) => p.player_id)
+    if (aliveMafiaIds.length > 0) {
+      await admin.from('mafia_chat_messages').insert(
+        mafiaMessages.flatMap((message) =>
+          aliveMafiaIds.map((target_player_id) => ({
+            game_id: gameId,
+            sender_player_id: 'system',
+            sender_name: '🔪',
+            message,
+            scope: 'day',
+            target_player_id,
+          }))
+        )
+      )
+    }
+  }
+
+  if (mafiaNightMessages.length > 0) {
+    // scope 'night' is the mafia secret chat feed itself — no target needed, every alive
+    // mafia-team member's fetch picks up all scope='night' rows for the game.
+    await admin.from('mafia_chat_messages').insert(
+      mafiaNightMessages.map((message) => ({
+        game_id: gameId,
+        sender_player_id: 'system',
+        sender_name: '🌙',
+        message,
+        scope: 'night',
       }))
     )
   }

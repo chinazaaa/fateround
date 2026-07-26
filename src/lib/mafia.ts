@@ -79,6 +79,7 @@ export type MafiaRoleToggles = MafiaRoleEnabledFlags
  * - Witch and Little Girl have no Classic counterpart — only available in Advanced mode.
  * - Mafia specialists: Alpha Wolf is independently ~70% likely (still needs mafiaCount >= 2 to
  *   actually apply); Wolf Cub and Framer are mutually exclusive, never both in the same game.
+ *   In Classic mode, Framer always wins that slot; Advanced mode keeps it an even coin flip.
  */
 export function resolveMafiaRoundToggles(advancedMode: boolean): MafiaRoleToggles {
   const investigators: MafiaRole[] = ['aura_seer', 'seer', 'detective']
@@ -86,7 +87,7 @@ export function resolveMafiaRoundToggles(advancedMode: boolean): MafiaRoleToggle
   const hasInvestigator = (role: MafiaRole) => role !== excludedInvestigator
 
   const alphaWolfIn = Math.random() < 0.7
-  const wolfCubOrFramer: MafiaRole = Math.random() < 0.5 ? 'wolf_cub' : 'framer'
+  const wolfCubOrFramer: MafiaRole = !advancedMode || Math.random() < 0.5 ? 'framer' : 'wolf_cub'
 
   return {
     doctor_enabled: true,

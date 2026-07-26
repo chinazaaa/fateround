@@ -1946,6 +1946,10 @@ export interface MafiaSession extends MafiaRoleEnabledFlags {
   aura_seer_target_player_id: string | null
   seer_target_player_id: string | null
   mafia_seer_target_player_id: string | null
+  /** Append-only history of every {playerId, role} the Mafia Seer has ever revealed —
+   *  unlike mafia_seer_target_player_id (overwritten each night), this accumulates so the
+   *  crew keeps a persistent role badge on every player the seer has ever checked. */
+  mafia_seer_revealed: Array<{ playerId: string; role: MafiaRole }>
   night_kill_player_id: string | null
   vote_result_player_id: string | null
   serial_kill_player_id: string | null
@@ -1987,6 +1991,7 @@ export interface MafiaPlayerState {
   vigilante_shots_used: number
   vigilante_reveal_used: boolean
   medium_revive_used: boolean
+  revived_by_medium: boolean
   bodyguard_hits_taken: number
   priest_holy_water_used: boolean
   witch_heal_used: boolean
@@ -2007,6 +2012,7 @@ export interface MafiaPublicPlayer {
   deathDay: number | null
   deathCause: MafiaDeathCause | null
   role?: MafiaRole // Only revealed on death or game over
+  revivedByMedium?: boolean
 }
 
 export interface MafiaChatMessage {
@@ -2032,6 +2038,10 @@ export interface MafiaMyState {
   /** Each teammate's actual role (Mafia/Alpha Wolf/Wolf Cub/Framer) keyed by player id — the
    *  crew sees exactly what each other plays, not just "they're mafia too". */
   mafiaTeammateRoles: Record<string, MafiaRole>
+  /** Every role the Mafia Seer has revealed so far, keyed by player id — only ever
+   *  populated for mafia-team members (never sent to villagers), so the crew keeps a
+   *  running roster of everyone their seer has checked, not just the latest one. */
+  mafiaSeerRevealedRoles?: Record<string, MafiaRole>
   mafiaChatMessages?: MafiaChatMessage[]
   mafiaTeammateNightTargets?: Record<string, string | null>
   trackerResult?: { targetName: string; visitedName: string | null } | null

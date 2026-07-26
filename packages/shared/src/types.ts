@@ -133,6 +133,11 @@ export interface Game {
   mafia_seer_enabled?: boolean | null
   mafia_mafia_seer_enabled?: boolean | null
   mafia_anonymous_votes?: boolean | null
+  /** Single Classic/Advanced switch — replaces individually toggling most optional roles.
+   *  See resolveMafiaRoundToggles() in src/lib/mafia.ts for exactly what this changes. */
+  mafia_advanced_mode?: boolean | null
+  mafia_day_seconds?: number | null
+  mafia_voting_seconds?: number | null
   monopoly_double_go_salary?: boolean | null
   monopoly_forced_auctions?: boolean | null
   monopoly_auction_timer_seconds?: number | null
@@ -1295,11 +1300,13 @@ export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'day' | 'votin
 
 export interface MafiaPublicPlayer {
   id: string
+  seatNumber: number
   name: string
   isAlive: boolean
   deathDay: number | null
   deathCause: MafiaDeathCause | null
-  role?: MafiaRole
+  role?: MafiaRole // Only revealed on death or game over
+  revivedByMedium?: boolean
 }
 
 export interface MafiaChatMessage {
@@ -1318,17 +1325,42 @@ export interface MafiaMyState {
   dayVoteSubmitted: boolean
   auraSeerResult: { targetName: string; alignment: 'good' | 'evil' | 'unknown' } | null
   detectiveTeamCheckResult?: { targetAName: string; targetBName: string; sameTeam: boolean } | null
-  seerResult?: { targetName: string; role: MafiaRole } | null
-  mafiaSeerResult?: { targetName: string; role: MafiaRole } | null
-  mafiaTeammates: string[]
+  mafiaTeammates: string[] // Only for mafia team members (mafia/alpha_wolf/wolf_cub/framer)
+  /** Same set as mafiaTeammates but by player id — lets the roster grid mark each teammate's
+   *  tile with the shared mafia symbol and reveal their role, without a separate list panel. */
+  mafiaTeammateIds: string[]
+  /** Each teammate's actual role (Mafia/Alpha Wolf/Wolf Cub/Framer) keyed by player id — the
+   *  crew sees exactly what each other plays, not just "they're mafia too". */
+  mafiaTeammateRoles: Record<string, MafiaRole>
+  /** Every role the Mafia Seer has revealed so far, keyed by player id — only ever
+   *  populated for mafia-team members (never sent to villagers), so the crew keeps a
+   *  running roster of everyone their seer has checked, not just the latest one. */
+  mafiaSeerRevealedRoles?: Record<string, MafiaRole>
   mafiaChatMessages?: MafiaChatMessage[]
+  mafiaTeammateNightTargets?: Record<string, string | null>
   trackerResult?: { targetName: string; visitedName: string | null } | null
-  bodyguardLastOutcome?: 'saved' | 'sacrificed' | 'no_attack' | null
+  bodyguardLastOutcome?: 'saved' | 'absorbed' | 'sacrificed' | 'no_attack' | null
+  doctorLastOutcome?: 'saved' | 'no_attack' | null
   vigilanteShotsRemaining?: number
+  vigilanteRevealRemaining?: number
+  /** The role the Vigilante revealed this day (only they see it). */
+  vigilanteRevealResult?: { targetName: string; role: MafiaRole } | null
+  mediumReviveRemaining?: number
+  mediumGhostChat?: MafiaChatMessage[]
+  priestHolyWaterRemaining?: number
+  witchHealRemaining?: number
+  witchKillRemaining?: number
+  trapperTrappedNames?: string[]
+  /** Village Seer's full-role reveal of their last target. */
+  seerResult?: { targetName: string; role: MafiaRole } | null
+  /** Mafia Seer's full-role reveal of their last target (before resigning). */
+  mafiaSeerResult?: { targetName: string; role: MafiaRole } | null
   framerLastTargetName?: string | null
   cupidLinkedNames?: [string, string] | null
   isLover?: boolean
   loverPartnerName?: string | null
+  /** The two Lovers' player ids — populated only for Cupid and the two Lovers themselves, so
+   *  the roster grid can mark their tiles with a heart without exposing it to anyone else. */
   loverIds?: string[]
   enabledRoles?: MafiaRole[]
 }

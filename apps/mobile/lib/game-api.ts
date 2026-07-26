@@ -756,10 +756,17 @@ export function postMafiaState(gameCode: string, resumeToken?: string | null) {
   })
 }
 
-export function postMafiaNightAction(gameCode: string, resumeToken: string, targetPlayerId: string) {
-  return postJson<{ success: boolean }>(`/api/mafia/${gameCode}/night-action`, {
+export function postMafiaNightAction(
+  gameCode: string,
+  resumeToken: string,
+  targetPlayerId: string,
+  opts?: { secondTargetPlayerId?: string; potionType?: 'heal' | 'kill' }
+) {
+  return postJson<{ success: boolean; resigned?: boolean }>(`/api/mafia/${gameCode}/night-action`, {
     resumeToken,
     targetPlayerId,
+    secondTargetPlayerId: opts?.secondTargetPlayerId,
+    potionType: opts?.potionType,
   })
 }
 
@@ -778,6 +785,30 @@ export function postMafiaChat(
 
 export function postMafiaAdvance(gameCode: string) {
   return postJson<{ success: boolean }>(`/api/mafia/${gameCode}/advance`, { isAuto: true })
+}
+
+export function postMafiaSkipPhase(gameCode: string, resumeToken: string) {
+  return postJson<{ success: boolean }>(`/api/mafia/${gameCode}/skip-phase`, { resumeToken })
+}
+
+export function postMafiaPriestAction(gameCode: string, resumeToken: string, targetPlayerId: string) {
+  return postJson<{ success: boolean }>(`/api/mafia/${gameCode}/priest-action`, {
+    resumeToken,
+    targetPlayerId,
+  })
+}
+
+export function postMafiaVigilanteAction(
+  gameCode: string,
+  resumeToken: string,
+  targetPlayerId: string,
+  action: 'shoot' | 'reveal'
+) {
+  return postJson<{ success: boolean }>(`/api/mafia/${gameCode}/vigilante-action`, {
+    resumeToken,
+    targetPlayerId,
+    action,
+  })
 }
 
 export function postCodewordsRole(
@@ -1150,6 +1181,9 @@ export type BoardLobbyPatch = {
   mafia_doctor_enabled?: boolean
   mafia_detective_enabled?: boolean
   mafia_anonymous_votes?: boolean
+  mafia_advanced_mode?: boolean
+  mafia_day_seconds?: number
+  mafia_voting_seconds?: number
   monopoly_double_go_salary?: boolean
   monopoly_forced_auctions?: boolean
   monopoly_auction_timer_seconds?: number
