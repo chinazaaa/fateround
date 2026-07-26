@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import Script from 'next/script'
 import { Geist, Geist_Mono, Bricolage_Grotesque, Instrument_Sans, JetBrains_Mono } from 'next/font/google'
 import { ThemeProvider } from '@/components/ThemeProvider'
@@ -31,6 +31,11 @@ const brandBody = Instrument_Sans({ variable: '--font-fr-body', subsets: ['latin
 const brandMono = JetBrains_Mono({ variable: '--font-fr-mono', subsets: ['latin'], display: 'swap' })
 
 export const metadata: Metadata = rootMetadata()
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+}
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   // Only load Google Analytics in a production build — never in local dev

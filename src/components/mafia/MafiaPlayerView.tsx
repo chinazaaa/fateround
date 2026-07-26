@@ -433,6 +433,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
   const [cupidFirstPick, setCupidFirstPick] = useState<string | null>(null)
   const [arsonistFirstPick, setArsonistFirstPick] = useState<string | null>(null)
   const [detectiveFirstPick, setDetectiveFirstPick] = useState<string | null>(null)
+  const [detectiveSecondPick, setDetectiveSecondPick] = useState<string | null>(null)
   const [arsonistMode, setArsonistMode] = useState<'douse' | 'ignite' | null>(null)
   const [nightSelection, setNightSelection] = useState<string | null>(null)
   const [voteSelection, setVoteSelection] = useState<string | null>(null)
@@ -444,7 +445,6 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
     setVoteSelection(null)
     setChatOverlayOpen(false)
     setSecondaryChatOverlayOpen(false)
-    setBottomBarText('')
   }, [phaseKey])
 
   // Hydrate voteSelection from authoritative state after reload/late-join
@@ -766,11 +766,14 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
             if (!detectiveFirstPick) {
               setDetectiveFirstPick(id)
             } else {
-              void submitNightAction(detectiveFirstPick, id)
-              setDetectiveFirstPick(null)
+              setDetectiveSecondPick(id)
+              void submitNightAction(detectiveFirstPick, id).finally(() => {
+                setDetectiveFirstPick(null)
+                setDetectiveSecondPick(null)
+              })
             }
           }
-          gridSelectedIds = detectiveFirstPick ? [detectiveFirstPick] : []
+          gridSelectedIds = [detectiveFirstPick, detectiveSecondPick].filter(Boolean) as string[]
         } else if (myRole === 'arsonist' && arsonistMode === 'ignite') {
           // Ignite is a one-click self-target — handled in the panel below, not via grid
         } else if (myRole === 'witch') {
@@ -1291,7 +1294,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <span className="text-xl shrink-0">🐺</span>
             <div className="min-w-0">
-              <h1 className="font-bold text-base text-[var(--primary)] leading-tight truncate">
+              <h1 className="font-bold text-base text-[var(--primary)] leading-tight break-words">
                 {gameTitle || 'Mafia'}
               </h1>
               <p className="text-[10px] text-[var(--muted)] uppercase tracking-widest font-semibold">
@@ -1373,7 +1376,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                     onChange={(e) => setBottomBarText(e.target.value)}
                     onFocus={() => setChatOverlayOpen(true)}
                     placeholder={bottomBarTarget === 'mafia' ? 'Whisper to allies...' : 'Tap to send a message'}
-                    className={`flex-1 bg-transparent text-sm focus:outline-none placeholder:text-[var(--muted)] disabled:opacity-50 ${
+                    className={`flex-1 bg-transparent text-base focus:outline-none placeholder:text-[var(--muted)] disabled:opacity-50 ${
                       bottomBarTarget === 'mafia' ? 'text-red-200' : 'text-[var(--foreground)]'
                     }`}
                   />
@@ -1415,7 +1418,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                     onChange={(e) => setSecondaryBarText(e.target.value)}
                     onFocus={() => setSecondaryChatOverlayOpen(true)}
                     placeholder="Tap to send a message"
-                    className="flex-1 bg-transparent text-sm focus:outline-none placeholder:text-[var(--muted)] text-[var(--foreground)]"
+                    className="flex-1 bg-transparent text-base focus:outline-none placeholder:text-[var(--muted)] text-[var(--foreground)]"
                   />
                   <button
                     type="submit"
@@ -1447,7 +1450,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                   className="flex-1 bg-black/50"
                 />
                 <div
-                  className={`bg-[var(--background)] rounded-t-2xl h-[60dvh] flex flex-col overflow-hidden border-t ${
+                  className={`bg-[var(--background)] rounded-t-2xl h-[60vh] max-h-[60svh] flex flex-col overflow-hidden border-t ${
                     bottomBarTarget === 'mafia' ? 'border-red-500/30' : 'border-[var(--border)]'
                   }`}
                 >
@@ -1497,7 +1500,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                       onChange={(e) => setBottomBarText(e.target.value)}
                       autoFocus={!bottomBarDisabled}
                       placeholder={bottomBarTarget === 'mafia' ? 'Whisper to allies...' : 'Type a message...'}
-                      className={`flex-1 px-3 py-2 bg-[var(--surface-inset-bg)] border rounded-lg text-sm focus:outline-none ${
+                      className={`flex-1 px-3 py-2 bg-[var(--surface-inset-bg)] border rounded-lg text-base focus:outline-none ${
                         bottomBarTarget === 'mafia'
                           ? 'border-red-500/20 focus:border-red-500/50 text-red-200'
                           : 'border-[var(--border)] focus:border-[var(--primary)] text-[var(--foreground)]'
@@ -1527,7 +1530,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                   className="flex-1 bg-black/50"
                 />
                 <div
-                  className={`bg-[var(--background)] rounded-t-2xl h-[60dvh] flex flex-col overflow-hidden border-t ${
+                  className={`bg-[var(--background)] rounded-t-2xl h-[60vh] max-h-[60svh] flex flex-col overflow-hidden border-t ${
                     iconPopupKind === 'mafia' ? 'border-red-500/30' : 'border-[var(--border)]'
                   }`}
                 >
@@ -1571,7 +1574,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
                       onChange={(e) => setSecondaryBarText(e.target.value)}
                       autoFocus={secondaryCanSend}
                       placeholder={iconPopupKind === 'mafia' ? 'Whisper to allies...' : 'Type a message...'}
-                      className={`flex-1 px-3 py-2 bg-[var(--surface-inset-bg)] border rounded-lg text-sm focus:outline-none ${
+                      className={`flex-1 px-3 py-2 bg-[var(--surface-inset-bg)] border rounded-lg text-base focus:outline-none ${
                         iconPopupKind === 'mafia'
                           ? 'border-red-500/20 focus:border-red-500/50 text-red-200'
                           : 'border-[var(--border)] focus:border-[var(--primary)] text-[var(--foreground)]'
@@ -1600,7 +1603,17 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
 
   const winningTeam = mafiaState?.winningTeam ?? null
 
-  return <MafiaFinishedScreen game={game!} mafiaState={mafiaState} winningTeam={winningTeam} myPlayerId={myPlayerId} />
+  return (
+    <MafiaFinishedScreen
+      game={game!}
+      mafiaState={mafiaState}
+      winningTeam={winningTeam}
+      myPlayerId={myPlayerId}
+      gameCode={gameCode}
+      resumeToken={myResumeToken}
+      onReload={() => void load()}
+    />
+  )
 }
 
 function MafiaFinishedScreen({
@@ -1608,14 +1621,21 @@ function MafiaFinishedScreen({
   mafiaState,
   winningTeam,
   myPlayerId,
+  gameCode,
+  resumeToken,
+  onReload,
 }: {
   game: Game
   mafiaState: MafiaStateResponse | null
   winningTeam: string | null
   myPlayerId: string | null
+  gameCode: string
+  resumeToken: string | null
+  onReload: () => void
 }) {
   const router = useRouter()
   const { error: toastError, success: toastSuccess } = useToast()
+  const { confirm } = useConfirm()
   const captureRef = useRef<HTMLDivElement>(null)
   const [sharing, setSharing] = useState(false)
   const [downloading, setDownloading] = useState(false)
