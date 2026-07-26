@@ -463,6 +463,34 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
         <MafiaIdentityPanel myState={myState} />
 
+        {role === 'wolf_cub' && amIAlive && phase !== 'game_over' ? (
+          <View style={styles.revengePanel}>
+            <Text style={styles.revengeTitle}>💀 Revenge Target</Text>
+            {myState?.wolfCubRevengeTargetName ? (
+              <>
+                <Text style={styles.revengeText}>
+                  If you die, <Text style={styles.revengeTarget}>{myState.wolfCubRevengeTargetName}</Text> goes down
+                  with you.
+                </Text>
+                <Pressable style={styles.revengeBtn} onPress={() => setWolfCubRevengeMode(true)}>
+                  <Text style={styles.revengeBtnText}>Change</Text>
+                </Pressable>
+              </>
+            ) : wolfCubRevengeMode ? (
+              <>
+                <Text style={styles.revengeText}>Tap a player to mark as your revenge target</Text>
+                <Pressable style={styles.revengeBtn} onPress={() => setWolfCubRevengeMode(false)}>
+                  <Text style={styles.revengeBtnText}>Cancel</Text>
+                </Pressable>
+              </>
+            ) : (
+              <Pressable style={styles.revengeBtn} onPress={() => setWolfCubRevengeMode(true)}>
+                <Text style={styles.revengeBtnText}>💀 Select revenge target</Text>
+              </Pressable>
+            )}
+          </View>
+        ) : null}
+
         <View style={styles.phaseCard}>
           {phase === 'night' ? (
             <>
@@ -809,4 +837,22 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
     },
     nightPeekText: { color: theme.textMuted, fontSize: 12, fontWeight: '600' },
+    revengePanel: {
+      backgroundColor: '#7f1d1d',
+      borderRadius: 12,
+      padding: 12,
+      gap: 6,
+      alignItems: 'center',
+    },
+    revengeTitle: { color: '#fca5a5', fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
+    revengeText: { color: '#fecaca', fontSize: 13, textAlign: 'center' },
+    revengeTarget: { color: '#f87171', fontWeight: '800' },
+    revengeBtn: {
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+      borderRadius: 8,
+      backgroundColor: '#991b1b',
+      alignItems: 'center',
+    },
+    revengeBtnText: { color: '#fecaca', fontWeight: '700', fontSize: 13 },
   })

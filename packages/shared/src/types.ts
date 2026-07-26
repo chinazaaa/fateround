@@ -1362,6 +1362,7 @@ export interface MafiaMyState {
   /** The two Lovers' player ids — populated only for Cupid and the two Lovers themselves, so
    *  the roster grid can mark their tiles with a heart without exposing it to anyone else. */
   loverIds?: string[]
+  wolfCubRevengeTargetName?: string | null
   enabledRoles?: MafiaRole[]
 }
 

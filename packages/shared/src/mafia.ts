@@ -193,7 +193,8 @@ export const MAFIA_ROLE_INFO: Record<MafiaRole, MafiaRoleInfo> = {
     role: 'wolf_cub',
     name: 'Junior Mafia',
     team: 'mafia',
-    description: 'If you are killed, the Mafia gets a bonus kill the following night in revenge.',
+    description:
+      'Votes to kill at night like regular Mafia. Can select one player as a revenge target during any phase — if killed, that player dies with you. If no target is picked, a random villager is chosen.',
   },
   framer: {
     role: 'framer',
