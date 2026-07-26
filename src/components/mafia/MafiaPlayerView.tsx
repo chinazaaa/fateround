@@ -1294,7 +1294,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <span className="text-xl shrink-0">🐺</span>
             <div className="min-w-0">
-              <h1 className="font-bold text-base text-[var(--primary)] leading-tight truncate">
+              <h1 className="font-bold text-base text-[var(--primary)] leading-tight break-words">
                 {gameTitle || 'Mafia'}
               </h1>
               <p className="text-[10px] text-[var(--muted)] uppercase tracking-widest font-semibold">
