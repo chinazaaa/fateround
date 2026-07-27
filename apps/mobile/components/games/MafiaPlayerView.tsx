@@ -235,9 +235,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         return
       }
 
-      if (role === 'trapper' || role === 'arsonist' || role === 'mafia_seer') {
-        // Self-target has a distinct meaning for each of these (activate traps / ignite /
-        // resign the reveal ability) and is always a single submission.
+      if (role === 'trapper' || role === 'mafia_seer') {
+        // Self-target has a distinct meaning for each of these (activate traps / resign the
+        // reveal ability) and is always a single submission.
         if (id === myId) {
           void act(() => postMafiaNightAction(bootstrap.code, token, id))
           return
@@ -246,7 +246,6 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           void act(() => postMafiaNightAction(bootstrap.code, token, id))
           return
         }
-        // Arsonist douse is a two-target pick, same flow as Cupid/Detective below.
       }
 
       if (TWO_TARGET_NIGHT_ROLES.includes(role) || role === 'arsonist') {
@@ -563,23 +562,17 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                         <Text style={styles.actionBtnText}>🔥 Ignite all</Text>
                       </Pressable>
                     </>
-                  ) : arsonistMode === 'douse' ? (
+                  ) : arsonistMode === 'douse' && !myState?.nightActionSubmitted ? (
                     <>
                       <Text style={styles.phaseText}>🛢️ Tap two players below to douse in gasoline.</Text>
                       <Pressable onPress={() => setArsonistMode(null)}>
                         <Text style={styles.changeVoteLink}>Cancel</Text>
                       </Pressable>
-                      {myState?.nightActionSubmitted ? (
-                        <Text style={styles.phaseOk}>✓ Douse targets submitted.</Text>
-                      ) : null}
                     </>
+                  ) : arsonistMode === 'douse' ? (
+                    <Text style={styles.phaseOk}>✓ Douse targets submitted.</Text>
                   ) : (
-                    <>
-                      <Text style={styles.phaseOk}>🔥 Ignite submitted — all doused players will burn!</Text>
-                      <Pressable onPress={() => setArsonistMode(null)}>
-                        <Text style={styles.changeVoteLink}>Cancel</Text>
-                      </Pressable>
-                    </>
+                    <Text style={styles.phaseOk}>🔥 Ignite submitted — all doused players will burn!</Text>
                   )}
                 </View>
               ) : role === 'trapper' ? (
@@ -718,9 +711,11 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               ? !!witchPotion
               : role === 'trapper' || role === 'mafia_seer'
                 ? true
-                : role === 'medium'
-                  ? (myState?.mediumReviveRemaining ?? 0) > 0
-                  : !myState?.nightActionSubmitted)
+                : role === 'arsonist'
+                  ? arsonistMode === 'douse' && !myState?.nightActionSubmitted
+                  : role === 'medium'
+                    ? (myState?.mediumReviveRemaining ?? 0) > 0
+                    : !myState?.nightActionSubmitted)
           const dayVotable = phase === 'voting' && canAct && !dayActionMode
           const dayActionable = (phase === 'day' || phase === 'voting') && canAct && !!dayActionMode
 
@@ -748,10 +743,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                     ? [voteSelection]
                     : []
               }
-              allowSelfSelect={
-                nightActionable &&
-                (role === 'trapper' || role === 'arsonist' || role === 'mafia_seer' || role === 'cupid')
-              }
+              allowSelfSelect={nightActionable && (role === 'trapper' || role === 'mafia_seer' || role === 'cupid')}
               allowDeadSelect={nightActionable && role === 'medium'}
               skipRequestCount={
                 (phase === 'day' || phase === 'voting') && canAct ? (state.skipRequestCount ?? 0) : undefined
