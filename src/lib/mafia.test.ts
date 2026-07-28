@@ -117,8 +117,6 @@ describe('resolveMafiaRoundToggles', () => {
       expect(toggles.doctor_enabled).toBe(true)
       expect(toggles.mayor_enabled).toBe(true)
       expect(toggles.cupid_enabled).toBe(true)
-      expect(toggles.cursed_villager_enabled).toBe(true)
-      expect(toggles.jester_enabled).toBe(true)
       expect(toggles.medium_enabled).toBe(true)
       expect(toggles.mafia_seer_enabled).toBe(true)
     }
@@ -144,6 +142,9 @@ describe('resolveMafiaRoundToggles', () => {
     expect(classic.vigilante_enabled).toBe(false)
     expect(classic.witch_enabled).toBe(false)
     expect(classic.little_girl_enabled).toBe(false)
+    expect(classic.red_lady_enabled).toBe(false)
+    expect(classic.cursed_villager_enabled).toBe(false)
+    expect(classic.jester_enabled).toBe(false)
 
     const advanced = resolveMafiaRoundToggles(true)
     expect(advanced.bodyguard_enabled).toBe(false)
@@ -154,6 +155,9 @@ describe('resolveMafiaRoundToggles', () => {
     expect(advanced.vigilante_enabled).toBe(true)
     expect(advanced.witch_enabled).toBe(true)
     expect(advanced.little_girl_enabled).toBe(true)
+    expect(advanced.red_lady_enabled).toBe(true)
+    expect(advanced.cursed_villager_enabled).toBe(true)
+    expect(advanced.jester_enabled).toBe(true)
   })
 
   it('Detective becomes Tracker in Advanced mode, never both, and still exactly 2 investigators', () => {
