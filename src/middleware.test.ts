@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { NextRequest } from 'next/server'
 
 // The middleware verifies admin sessions via this helper; stub it so we can drive
@@ -8,7 +11,7 @@ vi.mock('@/lib/admin-session', () => ({
   verifyAdminSessionToken: (token?: string) => verifyAdminSessionToken(token),
 }))
 
-const { middleware } = await import('../middleware')
+const { middleware } = await import('./middleware')
 
 function req(host: string, path = '/', cookie?: string): NextRequest {
   const headers: Record<string, string> = { host }
@@ -18,6 +21,24 @@ function req(host: string, path = '/', cookie?: string): NextRequest {
 
 beforeEach(() => {
   verifyAdminSessionToken.mockReset()
+})
+
+describe('middleware — file placement', () => {
+  // Next.js only picks up middleware that sits beside the app directory. This project keeps
+  // its app at `src/app`, so the file MUST be `src/middleware.ts`; a root-level
+  // `middleware.ts` is silently ignored — no error, no warning, it just never runs.
+  //
+  // That is exactly what happened between 2026-07-20 and 2026-07-29: the file was moved from
+  // `src/middleware.ts` to the repo root, which disabled BOTH the crawler blocking and the
+  // admin auth gate in every deployed environment. The suite below stayed green the whole
+  // time because every test imports the module by path, which Next's resolution never
+  // consults. Hence this test, which asserts placement rather than behaviour.
+  it('lives beside src/app, not at the repo root', () => {
+    const repoRoot = fileURLToPath(new URL('..', import.meta.url))
+    expect(existsSync(join(repoRoot, 'src', 'app'))).toBe(true)
+    expect(existsSync(join(repoRoot, 'src', 'middleware.ts'))).toBe(true)
+    expect(existsSync(join(repoRoot, 'middleware.ts'))).toBe(false)
+  })
 })
 
 describe('middleware — admin auth gate', () => {
