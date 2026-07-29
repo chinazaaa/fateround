@@ -69,6 +69,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   const [nightSelection, setNightSelection] = useState<string | null>(null)
   // Wolf cub revenge target mode
   const [wolfCubRevengeMode, setWolfCubRevengeMode] = useState(false)
+  // Arsonist's choice for tonight — douse (two-target, submitted via the grid tap flow
+  // already wired in handleNightSelect) or ignite (single self-target, submitted here).
+  const [arsonistMode, setArsonistMode] = useState<'douse' | 'ignite' | null>(null)
   // Chat popups — the bottom bar/preview open the primary one (mafia secret chat at night /
   // town chat by day / ghost chat for the dead); the icon beside the bar opens the OTHER
   // one, read-only, in a separate popup that never touches the primary bar's own state.
@@ -202,6 +205,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     setDayActionMode(null)
     setVoteSelection(null)
     setNightSelection(null)
+    setArsonistMode(null)
     setPrimaryChatOpen(false)
     setPeekChatOpen(false)
   }, [state?.phase, state?.dayNumber])
@@ -231,9 +235,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         return
       }
 
-      if (role === 'trapper' || role === 'arsonist' || role === 'mafia_seer') {
-        // Self-target has a distinct meaning for each of these (activate traps / ignite /
-        // resign the reveal ability) and is always a single submission.
+      if (role === 'trapper' || role === 'mafia_seer') {
+        // Self-target has a distinct meaning for each of these (activate traps / resign the
+        // reveal ability) and is always a single submission.
         if (id === myId) {
           void act(() => postMafiaNightAction(bootstrap.code, token, id))
           return
@@ -242,7 +246,6 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           void act(() => postMafiaNightAction(bootstrap.code, token, id))
           return
         }
-        // Arsonist douse is a two-target pick, same flow as Cupid/Detective below.
       }
 
       if (TWO_TARGET_NIGHT_ROLES.includes(role) || role === 'arsonist') {
@@ -529,7 +532,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                   </Pressable>
                   <Pressable
                     style={[styles.actionBtn, witchPotion === 'kill' && styles.actionBtnActive]}
-                    disabled={acting || state.dayNumber === 1}
+                    disabled={acting || state.dayNumber === 1 || myState?.witchKillRemaining === 0}
                     onPress={() => setWitchPotion((p) => (p === 'kill' ? null : 'kill'))}
                   >
                     <Text style={styles.actionBtnText}>☠️ Kill potion</Text>
@@ -537,6 +540,59 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                   {witchPotion ? (
                     <Text style={styles.phaseText}>Tap a player below to use the {witchPotion} potion.</Text>
                   ) : null}
+                </View>
+              ) : role === 'arsonist' ? (
+                <View style={styles.potionRow}>
+                  {!arsonistMode ? (
+                    <>
+                      <Text style={styles.phaseText}>🔥 Choose your action for tonight:</Text>
+                      <Pressable style={styles.actionBtn} disabled={acting} onPress={() => setArsonistMode('douse')}>
+                        <Text style={styles.actionBtnText}>🛢️ Douse (2 players)</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.actionBtn}
+                        disabled={acting}
+                        onPress={() => {
+                          setArsonistMode('ignite')
+                          void act(() =>
+                            postMafiaNightAction(bootstrap.code, bootstrap.myResumeToken!, bootstrap.myPlayerId!)
+                          )
+                        }}
+                      >
+                        <Text style={styles.actionBtnText}>🔥 Ignite all</Text>
+                      </Pressable>
+                    </>
+                  ) : arsonistMode === 'douse' && !myState?.nightActionSubmitted ? (
+                    <>
+                      <Text style={styles.phaseText}>🛢️ Tap two players below to douse in gasoline.</Text>
+                      <Pressable onPress={() => setArsonistMode(null)}>
+                        <Text style={styles.changeVoteLink}>Cancel</Text>
+                      </Pressable>
+                    </>
+                  ) : arsonistMode === 'douse' ? (
+                    <Text style={styles.phaseOk}>✓ Douse targets submitted.</Text>
+                  ) : (
+                    <Text style={styles.phaseOk}>🔥 Ignite submitted — all doused players will burn!</Text>
+                  )}
+                </View>
+              ) : role === 'trapper' ? (
+                <View style={styles.potionRow}>
+                  <Text style={styles.phaseText}>
+                    Traps set: {myState?.trapperTrappedNames?.length ?? 0}/3
+                    {(myState?.trapperTrappedNames?.length ?? 0) > 0
+                      ? ` — ${myState?.trapperTrappedNames?.join(', ')}`
+                      : ''}
+                  </Text>
+                  <Text style={styles.phaseText}>Tap a player to set a trap on their house.</Text>
+                  <Pressable
+                    style={styles.actionBtn}
+                    disabled={acting || (myState?.trapperTrappedNames?.length ?? 0) === 0}
+                    onPress={() =>
+                      act(() => postMafiaNightAction(bootstrap.code, bootstrap.myResumeToken!, bootstrap.myPlayerId!))
+                    }
+                  >
+                    <Text style={styles.actionBtnText}>💥 Activate all traps</Text>
+                  </Pressable>
                 </View>
               ) : myState?.nightActionSubmitted ? (
                 <Text style={styles.phaseOk}>Night action submitted.</Text>
@@ -578,7 +634,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                 <>
                   {phase === 'voting' && myState?.dayVoteSubmitted ? (
                     <View style={styles.voteCastRow}>
-                      <Text style={styles.phaseOk}>✓ Vote cast</Text>
+                      <Text style={styles.phaseOk}>✓ Vote cast{role === 'mayor' ? ' (counts double)' : ''}</Text>
                       <Pressable
                         disabled={acting}
                         onPress={() => act(() => postMafiaVote(bootstrap.code, bootstrap.myResumeToken!, null))}
@@ -603,6 +659,15 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                       onPress={() => setDayActionMode((m) => (m === 'vigilante_shoot' ? null : 'vigilante_shoot'))}
                     >
                       <Text style={styles.actionBtnText}>🔫 Shoot a player</Text>
+                    </Pressable>
+                  ) : null}
+                  {role === 'vigilante' && (myState?.vigilanteRevealRemaining ?? 0) > 0 ? (
+                    <Pressable
+                      style={[styles.actionBtn, dayActionMode === 'vigilante_reveal' && styles.actionBtnActive]}
+                      disabled={acting}
+                      onPress={() => setDayActionMode((m) => (m === 'vigilante_reveal' ? null : 'vigilante_reveal'))}
+                    >
+                      <Text style={styles.actionBtnText}>🔍 Reveal a player</Text>
                     </Pressable>
                   ) : null}
                   {dayActionMode ? <Text style={styles.phaseText}>Tap a player below to confirm.</Text> : null}
@@ -646,7 +711,11 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               ? !!witchPotion
               : role === 'trapper' || role === 'mafia_seer'
                 ? true
-                : !myState?.nightActionSubmitted)
+                : role === 'arsonist'
+                  ? arsonistMode === 'douse' && !myState?.nightActionSubmitted
+                  : role === 'medium'
+                    ? (myState?.mediumReviveRemaining ?? 0) > 0
+                    : !myState?.nightActionSubmitted)
           const dayVotable = phase === 'voting' && canAct && !dayActionMode
           const dayActionable = (phase === 'day' || phase === 'voting') && canAct && !!dayActionMode
 
@@ -674,10 +743,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                     ? [voteSelection]
                     : []
               }
-              allowSelfSelect={
-                nightActionable &&
-                (role === 'trapper' || role === 'arsonist' || role === 'mafia_seer' || role === 'cupid')
-              }
+              allowSelfSelect={nightActionable && (role === 'trapper' || role === 'mafia_seer' || role === 'cupid')}
               allowDeadSelect={nightActionable && role === 'medium'}
               skipRequestCount={
                 (phase === 'day' || phase === 'voting') && canAct ? (state.skipRequestCount ?? 0) : undefined
