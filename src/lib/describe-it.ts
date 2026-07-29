@@ -308,7 +308,11 @@ export async function assignDescribeItLateJoinTeam(
   gameId: string,
   playerId: string
 ): Promise<{ team: number; error?: string }> {
-  const { data: game } = await supabase.from('games').select('describe_it_num_teams').eq('id', gameId).maybeSingle()
+  const { data: game } = await supabase
+    .from('games')
+    .select('describe_it_mode, describe_it_num_teams')
+    .eq('id', gameId)
+    .maybeSingle()
   const numTeams = clampDescribeItTeams(game?.describe_it_num_teams)
   const rows = await loadTeamRows(supabase, gameId)
   const counts = new Array(numTeams + 1).fill(0)
@@ -320,6 +324,29 @@ export async function assignDescribeItLateJoinTeam(
     .from('describe_it_players')
     .upsert({ game_id: gameId, player_id: playerId, team: smallest }, { onConflict: 'game_id,player_id' })
   if (error) return { team: smallest, error: internalErrorMessage('describe-it:assignLateJoinTeam', error) }
+
+  // Individual mode rotates the describer through `describe_it_sessions.roster`, a
+  // snapshot taken at game start. Without appending here, a late joiner is seeded
+  // into describe_it_players (so they can guess) but the rotation never lands on
+  // them — they can never describe. Append them to the end of the roster so future
+  // turns include them; past turns already written to the session are untouched.
+  if (clampDescribeItMode(game?.describe_it_mode) === 'individual') {
+    const { data: session } = await supabase
+      .from('describe_it_sessions')
+      .select('roster')
+      .eq('game_id', gameId)
+      .maybeSingle()
+    const roster: string[] = session?.roster ?? []
+    if (session && !roster.includes(playerId)) {
+      const { error: rosterError } = await supabase
+        .from('describe_it_sessions')
+        .update({ roster: [...roster, playerId] })
+        .eq('game_id', gameId)
+      if (rosterError)
+        return { team: smallest, error: internalErrorMessage('describe-it:assignLateJoinRoster', rosterError) }
+    }
+  }
+
   return { team: smallest }
 }
 
