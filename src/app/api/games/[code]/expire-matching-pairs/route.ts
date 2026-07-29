@@ -22,9 +22,6 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ co
   if (game.status !== 'active') {
     return NextResponse.json({ expired: false, finished: game.status === 'finished' })
   }
-  if (!matchingPairsGameSessionExpired(game.session_started_at, game.timer_seconds)) {
-    return NextResponse.json({ expired: false, finished: false })
-  }
 
   const currentRoundNumber = game.current_round_number ?? 1
   const totalRounds = game.rounds_count ?? 1
@@ -32,7 +29,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ co
   // Load the active round.
   const { data: activeRound } = await supabase
     .from('rounds')
-    .select('id')
+    .select('id, started_at')
     .eq('game_id', gameId)
     .eq('status', 'active')
     .maybeSingle()
@@ -41,6 +38,16 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ co
     return NextResponse.json({ expired: false, finished: false })
   }
   const roundId = activeRound.id
+
+  // The timer is per-round, but `session_started_at` is only ever set once at game
+  // start — checking against it directly would treat every round after the first as
+  // already expired the instant it starts (round 1 already used up the budget). Each
+  // round's own `started_at` is the correct anchor; only round 1 falls back to the
+  // game's session start.
+  const roundAnchor = activeRound.started_at ?? game.session_started_at
+  if (!matchingPairsGameSessionExpired(roundAnchor, game.timer_seconds)) {
+    return NextResponse.json({ expired: false, finished: false })
+  }
 
   // Mark all non-finished players in this round as finished (timeout).
   // Their current pairs_matched / wrong_attempts are preserved as-is, and
