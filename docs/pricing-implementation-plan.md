@@ -103,9 +103,10 @@ Nothing here exists. `rooms` is ephemeral and token-based; clubs are persistent,
     club's cap ([`clubs-spec.md`](./clubs-spec.md) §3, [`account-tiers.md`](./account-tiers.md)) and 50 is what the paid tier raises it to.
   - `+ = up to 3 clubs` referred to clubs *owned*, and is consistent once read that way.
 
-  > ⚠️ The "free = join 1 club" number came from the original pricing draft, so this is a
-  > **monetization change, not just a doc tidy-up** — reverse it here if the pricing intent was
-  > deliberate. Enforce whichever version wins via entitlements.
+  > **Decided 2026-07-31 — settled, don't re-open.** "Free = join 1 club" came from the original
+  > pricing draft, so this was a real monetization change rather than a doc tidy-up; it was
+  > reviewed and confirmed in favour of unlimited joining. The pricing draft's club-count
+  > numbers are superseded. Enforce via entitlements: unlimited *joins*, cap clubs *owned*.
 - **Club Pro subscription** billed to the owner/admin ($7.99/mo/club) — a **club-scoped** subscription, not user-scoped (new shape in the billing model).
 - **The anti-loophole rule (called out as critical in the pricing doc):** the flat club fee must **NOT** grant all members FateRound+. Only the paying admin gets + bundled. Members get club-level perks (branding, club tournaments, club leaderboard, trophy-case visibility) only.
 - **The 50%-off member discount** — the fiddliest billing logic in the whole model:
