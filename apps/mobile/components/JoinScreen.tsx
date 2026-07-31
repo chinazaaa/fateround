@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput } from 'react-native'
 import { normalizeGameCode } from '@fateround/shared'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
 import { resumePlayerByCode } from '@/lib/api'
+import { getRememberedName, rememberName } from '@/lib/identity-local'
 import { setPlayerSession } from '@/lib/secure-session'
 import { notifyPlayerSessionChanged } from '@/lib/session-events'
 import type { Theme } from '@/constants/theme'
@@ -52,6 +53,37 @@ export function JoinScreen({
   const [resuming, setResuming] = useState(false)
   const [resumeError, setResumeError] = useState<string | null>(null)
 
+  // Prefill the name this device used last time so a returning player doesn't retype it
+  // in every game (see `docs/accounts-and-identity-plan.md` §5, Slice 1). This screen is
+  // shared by every game view, so wiring it here covers all of them at once.
+  // Weakest source by design: it never overwrites a name the parent already resolved
+  // (an existing session, a room, a tournament link) — hence the re-check on the latest
+  // value once the async read returns.
+  const joinNameRef = useRef(joinName)
+  joinNameRef.current = joinName
+  const prefilledRef = useRef(false)
+  useEffect(() => {
+    if (prefilledRef.current) return
+    prefilledRef.current = true
+    let cancelled = false
+    void getRememberedName().then((remembered) => {
+      if (cancelled || !remembered || joinNameRef.current.trim()) return
+      onChangeName(remembered)
+    })
+    return () => {
+      cancelled = true
+    }
+    // Mount-only: a prefill that fired later would fight the player's own typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Remember on submit rather than on success — the parent owns the result, and a name
+  // rejected as "already taken" is still this player's name, so it's still worth keeping.
+  const submitJoin = (join: () => void) => {
+    void rememberName(joinName)
+    join()
+  }
+
   const resume = async () => {
     const trimmed = codeInput.trim()
     if (!trimmed) {
@@ -93,7 +125,11 @@ export function JoinScreen({
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <Pressable style={[styles.button, joining && styles.buttonDisabled]} onPress={onJoin} disabled={joining}>
+      <Pressable
+        style={[styles.button, joining && styles.buttonDisabled]}
+        onPress={() => submitJoin(onJoin)}
+        disabled={joining}
+      >
         {/* White spinner on the solid rose button — correct in both schemes. */}
         {joining ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{submitLabel}</Text>}
       </Pressable>
@@ -103,7 +139,7 @@ export function JoinScreen({
           <Text style={styles.watchNote}>This game is full — all seats are taken. You can still watch.</Text>
           <Pressable
             style={[styles.watchButton, joining && styles.buttonDisabled]}
-            onPress={onJoinAsViewer}
+            onPress={() => submitJoin(onJoinAsViewer)}
             disabled={joining}
           >
             <Text style={styles.watchButtonText}>Watch instead</Text>

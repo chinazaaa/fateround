@@ -33,7 +33,7 @@ and clubs fit. It answers: **if the game works without an account, why would any
 | Custom questions in lobby | ✅ | ✅ | ✅ |
 | **Free room themes** (Default + 2–3) | ✅ | ✅ | ✅ |
 | Share results / QR | ✅ | ✅ | ✅ |
-| Earn trophies & streaks (on-device) | 🔸 local | ✅ synced | ✅ synced |
+| Earn trophies & streaks | 🔸 this device only | ✅ synced | ✅ synced |
 | **Persistent profile** (name, avatar, bio) | — | ✅ | ✅ |
 | **Stats, game & tournament history** | — | ✅ | ✅ |
 | **Daily challenge + streaks** 🔥 | — | ✅ | ✅ |
@@ -64,8 +64,14 @@ and clubs fit. It answers: **if the game works without an account, why would any
 **Who:** anyone who taps a room link, joins a tournament, or hosts a one-off game night.
 
 **What they get:** the entire core product — all game modes, tournaments, voice, spectating,
-free themes, custom questions. Trophies and streaks accrue **on-device** via Supabase
-anonymous auth (see [`trophies-and-streaks.md`](./trophies-and-streaks.md)).
+free themes, custom questions. Trophies and streaks accrue against a real **server-side**
+`profiles` row, created by Supabase anonymous auth (see [`trophies-and-streaks.md`](./trophies-and-streaks.md)).
+
+> Earlier drafts described guest progression as "on-device" / "🔸 local". That was misleading:
+> the data lives on the server exactly as it does for an account. What a guest lacks is not
+> storage but **portability** — the anonymous session in local storage is the only key to that
+> profile, so it cannot follow them to another device, and losing it loses the progress. That
+> is precisely what attaching an email fixes.
 
 **What they don't get:** cross-device persistence, owned cosmetics, friends, clubs, Pro.
 

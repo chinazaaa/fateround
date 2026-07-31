@@ -8,6 +8,7 @@ import { ShareGameButton } from '@/components/ShareGameButton'
 import { BackToRoomLink } from '@/components/BackToRoomLink'
 import { RosterButton } from '@/components/roster/RosterButton'
 import { GameChromeSettings } from '@/components/GameChromeSettings'
+import { ProfileChip } from '@/components/profile/ProfileChip'
 import { useHostPlayerSession } from '@/hooks/useHostPlayerSession'
 import { useHostToken } from '@/hooks/useHostToken'
 import { setupAudioUnlock } from '@/lib/sounds'
@@ -40,6 +41,7 @@ export function GameHostChrome() {
             resumeToken={hasHostPlayer ? resumeToken : null}
           />
         ) : null}
+        <ProfileChip tone="app" />
         <GameChromeSettings role="host" gameCode={code} resumeToken={hasHostPlayer ? resumeToken : null} />
       </div>
     </header>

@@ -8,6 +8,7 @@ import { ShareGameButton } from '@/components/ShareGameButton'
 import { BackToRoomLink } from '@/components/BackToRoomLink'
 import { RosterButton } from '@/components/roster/RosterButton'
 import { GameChromeSettings } from '@/components/GameChromeSettings'
+import { ProfileChip } from '@/components/profile/ProfileChip'
 import { useHostPlayerSession } from '@/hooks/useHostPlayerSession'
 import { HostNominationBanner } from '@/components/HostNominationBanner'
 import { setupAudioUnlock } from '@/lib/sounds'
@@ -31,6 +32,10 @@ export function GamePlayerChrome() {
         </div>
         <div className="flex items-center gap-2 pointer-events-auto shrink-0">
           {code ? <ShareGameButton gameCode={code} resumeToken={resumeToken} /> : null}
+          {/* The whole funnel is "open a link → play → leave", and that path never touches the
+              marketing header. Without the chip here a link-joiner is never told they're a guest
+              and is never offered an account. */}
+          <ProfileChip tone="app" />
           <GameChromeSettings role="player" gameCode={code} resumeToken={resumeToken} />
         </div>
       </header>

@@ -8,6 +8,7 @@ import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { currentTournamentPlayerToken } from '@/lib/tournament-player-token'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
+import { useProfileAttribution } from '@/hooks/useProfileAttribution'
 import type { Game, Player } from '@/types'
 
 /**
@@ -268,6 +269,10 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
     },
     [gameCode, joinName, joinExtras, tournamentToken, game?.status, onJoinError, onJoinSuccess, load]
   )
+
+  // Link this player to their profile once the game is over. Best-effort and silent — see
+  // the hook for why attribution lives here rather than on the finish request itself.
+  useProfileAttribution({ gameCode, status: game?.status, resumeToken: myResumeToken })
 
   return {
     screen,

@@ -39,6 +39,15 @@ export const RATE_LIMITS = {
   // A full game joining behind one NAT is ~40 requests; 200/5min covers several
   // concurrent games plus reconnect storms.
   join: { bucket: 'join', max: 200, windowSeconds: 300 },
+  // One call per player per finished game. A 40-player classroom behind one NAT
+  // playing back-to-back rounds is the sizing case, hence the high ceiling.
+  profileAttribute: { bucket: 'profile-attribute', max: 300, windowSeconds: 300 },
+  // Sending an OTP costs a real email, so this is tighter than the gameplay buckets —
+  // but still has to clear a few people signing up from the same room at once.
+  authRequestCode: { bucket: 'auth-request-code', max: 20, windowSeconds: 900 },
+  // Backstop against grinding a 6-digit code. Supabase enforces its own per-token
+  // attempt limit too; this only stops a scripted flood from one IP.
+  authVerifyCode: { bucket: 'auth-verify-code', max: 30, windowSeconds: 900 },
 } as const satisfies Record<string, RateLimitRule>
 
 // Keyed hash so stored keys can't be reversed by offline enumeration. Peppered

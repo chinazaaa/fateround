@@ -4,6 +4,7 @@ import { renderHook, act } from '@testing-library/react'
 
 const h = vi.hoisted(() => ({
   session: null as { playerId: string; playerName: string; playerGender: string; resumeToken: string | null } | null,
+  roomMemberCode: undefined as string | undefined,
 }))
 
 vi.mock('@/lib/supabase', () => {
@@ -28,12 +29,18 @@ vi.mock('@/lib/sounds', () => ({ unlockAudio: vi.fn() }))
 vi.mock('@/lib/analytics', () => ({ trackEvent: vi.fn(), GA_EVENTS: { joinGame: 'join_game' } }))
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => ({ error: vi.fn(), success: vi.fn() }) }))
 vi.mock('@/hooks/useRoomMemberJoin', () => ({
-  useRoomMemberJoin: () => ({ displayName: null, joinExtras: {}, resolving: false }),
+  useRoomMemberJoin: () => ({
+    displayName: null,
+    joinExtras: {},
+    resolving: false,
+    memberCode: h.roomMemberCode,
+  }),
   useRoomMemberAutoJoin: vi.fn(),
   useRoomMemberNamePrefill: vi.fn(),
 }))
 
 import { useJoinFlow } from './useJoinFlow'
+import { getRememberedName, rememberName } from '@/lib/identity-local'
 
 const GAME_CODE = 'ABCD'
 
@@ -47,32 +54,42 @@ const game = {
   participant_mode: 'joiners',
 } as never
 
-function setup() {
+function setup(initialName?: string) {
   const fetchMock = vi.fn(async () => ({
     ok: true,
     json: async () => ({ playerId: 'p-new', playerName: 'Ada', playerGender: 'both', resumeToken: 'TOK-NEW' }),
   }))
   vi.stubGlobal('fetch', fetchMock)
 
-  const rendered = renderHook(() =>
-    useJoinFlow({
-      gameCode: GAME_CODE,
-      game,
-      players: [],
-      participants: [],
-      myPlayerId: null,
-      myPlayerName: null,
-      view: 'join',
-      setView: vi.fn(),
-      setMyPlayerId: vi.fn(),
-      setMyPlayerName: vi.fn(),
-      setMyPlayerGender: vi.fn(),
-      setPlayers: vi.fn(),
-      setParticipants: vi.fn(),
-      applyActiveRound: vi.fn(),
-    } as never)
+  const rendered = renderHook(
+    (props: { initialName?: string }) =>
+      useJoinFlow({
+        gameCode: GAME_CODE,
+        game,
+        players: [],
+        participants: [],
+        myPlayerId: null,
+        myPlayerName: null,
+        view: 'join',
+        setView: vi.fn(),
+        setMyPlayerId: vi.fn(),
+        setMyPlayerName: vi.fn(),
+        setMyPlayerGender: vi.fn(),
+        setPlayers: vi.fn(),
+        setParticipants: vi.fn(),
+        applyActiveRound: vi.fn(),
+        initialName: props.initialName,
+      } as never),
+    { initialProps: { initialName } }
   )
   return { fetchMock, rendered }
+}
+
+/** The prefill effects defer their setState by a tick to avoid setState-in-effect churn. */
+async function flush() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
 }
 
 function joinBody(fetchMock: ReturnType<typeof vi.fn>) {
@@ -82,6 +99,8 @@ function joinBody(fetchMock: ReturnType<typeof vi.fn>) {
 
 beforeEach(() => {
   h.session = null
+  h.roomMemberCode = undefined
+  localStorage.clear()
   vi.clearAllMocks()
 })
 
@@ -112,5 +131,84 @@ describe('useJoinFlow join', () => {
     })
 
     expect(joinBody(fetchMock)).not.toHaveProperty('resumeToken')
+  })
+})
+
+describe('useJoinFlow remembered name', () => {
+  it('prefills the name this device used last time', async () => {
+    rememberName('Ada')
+    const { rendered } = setup()
+    await flush()
+
+    // The whole point of Slice 1: a returning player never retypes their name.
+    expect(rendered.result.current.nameInput).toBe('Ada')
+  })
+
+  it('remembers the name after a successful join', async () => {
+    const { rendered } = setup()
+
+    await act(async () => {
+      await rendered.result.current.joinGame(undefined, 'Grace')
+    })
+
+    expect(getRememberedName()).toBe('Grace')
+  })
+
+  it('stores the name that was sent, not the alias the server returns', async () => {
+    // Anonymous games replace the typed name with a generated alias — remembering
+    // "Ada" (the mocked server response) would rename the player on their next game.
+    const { rendered } = setup()
+
+    await act(async () => {
+      await rendered.result.current.joinGame(undefined, 'Grace')
+    })
+
+    expect(getRememberedName()).not.toBe('Ada')
+  })
+
+  it('does not prefill when a tournament link supplies a name', async () => {
+    rememberName('Ada')
+    const { rendered } = setup('Grace')
+    await flush()
+
+    expect(rendered.result.current.nameInput).toBe('Grace')
+  })
+
+  it('does not prefill when arriving from a room link', async () => {
+    // The room display name resolves asynchronously and must win; a prefill would
+    // occupy the field and block it (useRoomMemberNamePrefill only fills empty fields).
+    rememberName('Ada')
+    h.roomMemberCode = 'MEMBER1'
+    const { rendered } = setup()
+    await flush()
+
+    expect(rendered.result.current.nameInput).toBe('')
+  })
+
+  it('lets a late-resolving tournament name overwrite the prefill', async () => {
+    // `initialName` is resolved client-side and is empty on first render. Without the
+    // provenance flag the prefill would hold the field and the player would auto-join
+    // under their remembered name instead of their tournament name.
+    rememberName('Ada')
+    const { rendered } = setup(undefined)
+    await flush()
+    expect(rendered.result.current.nameInput).toBe('Ada')
+
+    rendered.rerender({ initialName: 'Grace' })
+    await flush()
+
+    expect(rendered.result.current.nameInput).toBe('Grace')
+  })
+
+  it('does not overwrite a name the player typed themselves', async () => {
+    rememberName('Ada')
+    const { rendered } = setup(undefined)
+    await flush()
+
+    act(() => rendered.result.current.setNameInput('Katherine'))
+    rendered.rerender({ initialName: 'Grace' })
+    await flush()
+
+    expect(rendered.result.current.nameInput).toBe('Katherine')
   })
 })
