@@ -9,6 +9,7 @@ import { reconcilePlayerSession } from '@/lib/player-session-reconcile'
 import { subscribePlayerSession } from '@/lib/session-events'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 import { uniqueTopic } from '@/lib/realtime'
+import { useProfileAttribution } from '@/hooks/useProfileAttribution'
 
 export type UseGameViewBootstrapOptions<Screen extends string, GameState> = {
   gameCode: string
@@ -214,6 +215,10 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   useEffect(() => {
     return subscribePlayerSession(code, () => void load())
   }, [code, load])
+
+  // Link this player to their profile once the game is over. Best-effort and silent — see
+  // the hook for why attribution happens here rather than on the finish request itself.
+  useProfileAttribution({ gameCode: code, status: game?.status, resumeToken: myResumeToken })
 
   return {
     code,

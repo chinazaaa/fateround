@@ -37,6 +37,7 @@ import {
 import { useGameChannel } from '@/hooks/useGameChannel'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
+import { useProfileAttribution } from '@/hooks/useProfileAttribution'
 import { useRoundTimer } from '@/hooks/useRoundTimer'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
 import type { AutoSubmitRefs, AutoSubmitResult } from '@/hooks/useAutoSubmit'
@@ -751,6 +752,10 @@ export function useGameSession(deps: GameSessionDeps) {
   })
 
   useTimerTickSound(timeLeft, view === 'round')
+
+  // Link this player to their profile once the game is over. Best-effort and silent — the
+  // resume token is read from the persisted session, which is always set by this point.
+  useProfileAttribution({ gameCode, status: game?.status })
 
   return {
     // Core state
