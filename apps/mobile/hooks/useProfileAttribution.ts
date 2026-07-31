@@ -32,8 +32,6 @@ export function useProfileAttribution({ gameCode, status, resumeToken }: Options
 
   useEffect(() => {
     if (status !== 'finished' || !gameCode) return
-    if (attemptedRef.current === gameCode) return
-    attemptedRef.current = gameCode
 
     let cancelled = false
     void (async () => {
@@ -42,6 +40,16 @@ export function useProfileAttribution({ gameCode, status, resumeToken }: Options
         // No token: this device never held a seat (a spectator, or the host watching). There
         // is no player row to attribute.
         if (!token || cancelled) return
+
+        // Claim the attempt only once a token actually exists. Marking it earlier — as this
+        // did — permanently locks the game out on the very first run, because reading the
+        // token here is async: `useGameViewBootstrap` sets `myResumeToken` in a later render
+        // than `game.status` (they're separated by `await reconcilePlayerSession`), so the
+        // first pass legitimately finds nothing and the retry would then bail at the guard.
+        // Attribution would silently never happen on mobile. The web mirror is synchronous,
+        // which is why it can check the token before the guard.
+        if (attemptedRef.current === gameCode) return
+        attemptedRef.current = gameCode
 
         const profileId = await ensureServerIdentity()
         // Null most likely means the per-IP rate limit, or anonymous sign-in isn't enabled

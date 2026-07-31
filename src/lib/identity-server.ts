@@ -16,6 +16,9 @@
 import type { NextRequest } from 'next/server'
 import { getSupabaseAdmin, hasServiceRoleKey } from '@/lib/supabase-admin'
 
+/** How long we'll wait on Supabase Auth before giving up and treating the caller as a guest. */
+const VERIFY_TIMEOUT_MS = 5000
+
 /** Extract a bearer token from the Authorization header, if there is a well-formed one. */
 function bearerToken(req: NextRequest): string | null {
   const header = req.headers.get('authorization') ?? req.headers.get('Authorization')
@@ -25,24 +28,51 @@ function bearerToken(req: NextRequest): string | null {
   return token ? token : null
 }
 
+export type RequestIdentity = {
+  profileId: string
+  /** False once an email identity is attached. Drives `profiles.is_anonymous`. */
+  isAnonymous: boolean
+}
+
 /**
- * Verify the caller's JWT and return their profile id.
+ * Verify the caller's JWT once and return both their id and whether they're still anonymous.
  *
- * @returns the profile id (== auth.users.id), or null for a guest.
+ * Prefer this over calling {@link getProfileFromRequest} and {@link isPermanentAccount}
+ * together — that would verify the same token twice, doubling the round-trips to Supabase Auth
+ * on a path that runs on every attributed game.
+ *
+ * Bounded by a timeout: this sits in front of gameplay-adjacent routes, and a hanging auth
+ * service must degrade to "guest" rather than holding the request open.
  */
-export async function getProfileFromRequest(req: NextRequest): Promise<string | null> {
+export async function getIdentityFromRequest(req: NextRequest): Promise<RequestIdentity | null> {
   const token = bearerToken(req)
   if (!token) return null
   // Verification needs the service role. Without it we cannot trust the token, and an
   // unverified token must never be honoured — fail closed to "guest".
   if (!hasServiceRoleKey()) return null
   try {
-    const { data, error } = await getSupabaseAdmin().auth.getUser(token)
-    if (error) return null
-    return data.user?.id ?? null
+    const verification = getSupabaseAdmin().auth.getUser(token)
+    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), VERIFY_TIMEOUT_MS))
+    const result = await Promise.race([verification, timeout])
+    if (!result || result.error || !result.data.user) return null
+    return {
+      profileId: result.data.user.id,
+      // Treat an unrecognised user shape as anonymous — the safer answer, since this gates
+      // account-only things like clubs and purchases.
+      isAnonymous: result.data.user.is_anonymous !== false,
+    }
   } catch {
     return null
   }
+}
+
+/**
+ * Verify the caller's JWT and return their profile id.
+ *
+ * @returns the profile id (== auth.users.id), or null for a guest.
+ */
+export async function getProfileFromRequest(req: NextRequest): Promise<string | null> {
+  return (await getIdentityFromRequest(req))?.profileId ?? null
 }
 
 /**
@@ -52,15 +82,6 @@ export async function getProfileFromRequest(req: NextRequest): Promise<string | 
  * owning a purchase. Never for gameplay.
  */
 export async function isPermanentAccount(req: NextRequest): Promise<boolean> {
-  const token = bearerToken(req)
-  if (!token || !hasServiceRoleKey()) return false
-  try {
-    const { data, error } = await getSupabaseAdmin().auth.getUser(token)
-    if (error || !data.user) return false
-    // Supabase marks anonymous users with `is_anonymous` on the user record; treat anything
-    // unrecognised as anonymous so a new/unknown shape fails to the safer answer.
-    return data.user.is_anonymous === false
-  } catch {
-    return false
-  }
+  const identity = await getIdentityFromRequest(req)
+  return identity ? !identity.isAnonymous : false
 }

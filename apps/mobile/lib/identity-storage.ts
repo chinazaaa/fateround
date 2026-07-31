@@ -42,7 +42,14 @@ async function readChunks(key: string): Promise<string | null> {
     if (part === null) break
     parts.push(part)
   }
-  return parts.length ? parts.join('') : null
+  if (!parts.length) return null
+  try {
+    return decodeURIComponent(parts.join(''))
+  } catch {
+    // A partially-written or corrupted set decodes to nothing usable. Report "no session"
+    // rather than handing supabase-js a mangled string it would throw on.
+    return null
+  }
 }
 
 async function clearChunks(key: string): Promise<void> {
@@ -68,12 +75,26 @@ export const secureStoreAdapter = {
   async setItem(key: string, value: string): Promise<void> {
     const base = safeKey(key)
     try {
+      // Percent-encode first, so every stored character is a single ASCII byte. SecureStore's
+      // ceiling is in BYTES, but slicing a JS string counts UTF-16 code units — a display name
+      // with an accent or emoji makes a chunk larger than it looks, and could also be split
+      // mid-surrogate-pair. Encoding sidesteps both.
+      const encoded = encodeURIComponent(value)
+      const total = Math.ceil(encoded.length / CHUNK_SIZE)
+
+      // Refuse rather than truncate. Writing only the first N chunks leaves a prefix that
+      // reads back as corrupt JSON, which is worse than having no session at all: the player
+      // would appear signed in until something tried to parse it.
+      if (total > MAX_CHUNKS) {
+        await clearChunks(key)
+        return
+      }
+
       // Clear first: writing a shorter value over a longer one would otherwise orphan the
-      // trailing chunks of the old session.
+      // trailing chunks of the old session, and those would be concatenated onto the next read.
       await clearChunks(key)
-      for (let i = 0; i * CHUNK_SIZE < value.length; i++) {
-        if (i >= MAX_CHUNKS) break
-        await SecureStore.setItemAsync(chunkKey(base, i), value.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE))
+      for (let i = 0; i < total; i++) {
+        await SecureStore.setItemAsync(chunkKey(base, i), encoded.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE))
       }
     } catch {
       // A session we couldn't persist just means the next cold start is a fresh guest.

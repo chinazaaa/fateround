@@ -13,7 +13,7 @@ vi.mock('@/lib/supabase-admin', () => ({
   getSupabaseAdmin: () => ({ auth: { getUser: h.getUser } }),
 }))
 
-import { getProfileFromRequest, isPermanentAccount } from './identity-server'
+import { getIdentityFromRequest, getProfileFromRequest, isPermanentAccount } from './identity-server'
 
 /** Minimal stand-in — only the header bag is ever touched. */
 function req(headers: Record<string, string> = {}): NextRequest {
@@ -86,5 +86,33 @@ describe('isPermanentAccount', () => {
 
   it('is false for a guest with no token', async () => {
     expect(await isPermanentAccount(req())).toBe(false)
+  })
+})
+
+describe('getIdentityFromRequest', () => {
+  it('reports the anonymous flag alongside the id', async () => {
+    // `/api/profile/anon` writes this straight into `profiles.is_anonymous`. Getting it wrong
+    // leaves a signed-up player reading as a guest forever: the chip keeps saying "Guest" and
+    // every account-gated feature refuses them.
+    h.getUser.mockResolvedValue({ data: { user: { id: 'p-1', is_anonymous: false } }, error: null })
+    expect(await getIdentityFromRequest(req({ Authorization: 'Bearer good.jwt' }))).toEqual({
+      profileId: 'p-1',
+      isAnonymous: false,
+    })
+  })
+
+  it('treats an unknown user shape as anonymous', async () => {
+    h.getUser.mockResolvedValue({ data: { user: { id: 'p-1' } }, error: null })
+    expect(await getIdentityFromRequest(req({ Authorization: 'Bearer good.jwt' }))).toEqual({
+      profileId: 'p-1',
+      isAnonymous: true,
+    })
+  })
+
+  it('verifies the token only once per request', async () => {
+    // getProfileFromRequest and isPermanentAccount both used to call getUser separately,
+    // doubling round-trips to Supabase Auth on a path that runs on every attributed game.
+    await getIdentityFromRequest(req({ Authorization: 'Bearer good.jwt' }))
+    expect(h.getUser).toHaveBeenCalledTimes(1)
   })
 })

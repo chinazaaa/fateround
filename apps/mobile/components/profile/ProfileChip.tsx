@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
@@ -43,7 +43,13 @@ export function ProfileChip() {
         return
       }
       const res = await fetch(apiUrl('/api/profile/me'), { headers })
-      if (!res.ok) return
+      // A revoked or expired session must drop back to "Guest"; keeping the cached profile
+      // would show a signed-in name and streak for progress that's no longer reachable.
+      // Other failures are transient — leave the current state alone.
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) setProfile(null)
+        return
+      }
       const data = await res.json()
       setProfile(data.profile ?? null)
     } catch {
@@ -151,6 +157,23 @@ function SaveToProfileSheet({
   }
 
   const switchUser = async () => {
+    // For a guest this is irreversible: an anonymous identity has no email, so signing out
+    // abandons the profile permanently. Web already confirmed before doing it; mobile did not,
+    // which meant one tap silently destroyed a streak with no warning.
+    const confirmed = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        'Switch account?',
+        signedIn
+          ? 'You can sign back in any time with your email.'
+          : 'This device has no email saved, so this profile and anything on it will be lost for good.',
+        [
+          { text: 'Stay', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Switch', style: 'destructive', onPress: () => resolve(true) },
+        ],
+        { onDismiss: () => resolve(false) }
+      )
+    })
+    if (!confirmed) return
     await signOutIdentity()
     onChanged()
     onClose()
@@ -165,7 +188,7 @@ function SaveToProfileSheet({
             <View style={styles.grabber} />
             <View style={styles.header}>
               <Text style={styles.title}>{signedIn ? 'Your profile' : 'Save your progress'}</Text>
-              <Pressable hitSlop={12} onPress={onClose}>
+              <Pressable hitSlop={12} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close">
                 <Text style={styles.close}>Done</Text>
               </Pressable>
             </View>
@@ -176,7 +199,12 @@ function SaveToProfileSheet({
                   <Text style={styles.hint}>
                     Signed in as {handle || 'you'}. Your streak and trophies follow this account onto any device.
                   </Text>
-                  <Pressable style={styles.secondaryBtn} onPress={() => void switchUser()}>
+                  <Pressable
+                    style={styles.secondaryBtn}
+                    onPress={() => void switchUser()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Not you? Switch account"
+                  >
                     <Text style={styles.secondaryBtnText}>Not you? Switch</Text>
                   </Pressable>
                 </>
@@ -201,6 +229,8 @@ function SaveToProfileSheet({
                     style={[styles.primaryBtn, (busy || !email.trim()) && styles.btnDisabled]}
                     disabled={busy || !email.trim()}
                     onPress={() => void sendCode()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Save to profile"
                   >
                     {busy ? (
                       <ActivityIndicator color="#fff" />
@@ -229,10 +259,17 @@ function SaveToProfileSheet({
                     style={[styles.primaryBtn, (busy || !code.trim()) && styles.btnDisabled]}
                     disabled={busy || !code.trim()}
                     onPress={() => void submitCode()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Confirm code"
                   >
                     {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Confirm</Text>}
                   </Pressable>
-                  <Pressable disabled={busy} onPress={() => setStep('email')}>
+                  <Pressable
+                    disabled={busy}
+                    onPress={() => setStep('email')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Use a different email"
+                  >
                     <Text style={styles.link}>Use a different email</Text>
                   </Pressable>
                 </>

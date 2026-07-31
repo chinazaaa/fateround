@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
-import { getProfileFromRequest } from '@/lib/identity-server'
+import { getIdentityFromRequest } from '@/lib/identity-server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 /**
@@ -17,22 +17,31 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
  */
 export async function POST(req: NextRequest) {
   try {
-    const profileId = await getProfileFromRequest(req)
+    const identity = await getIdentityFromRequest(req)
     // No valid token: not an error worth surfacing, just nothing to do. The caller is a guest
     // and must carry on playing normally.
-    if (!profileId) return NextResponse.json({ profileId: null }, { status: 200 })
+    if (!identity) return NextResponse.json({ profileId: null }, { status: 200 })
 
     const { error } = await getSupabaseAdmin()
       .from('profiles')
-      // `ignoreDuplicates` keeps this a true no-op for an existing profile: a returning player
-      // must never have their handle, streak or trophy counters reset by a plain "ensure" call.
-      .upsert({ id: profileId }, { onConflict: 'id', ignoreDuplicates: true })
+      // Only `id` and `is_anonymous` are written, so an existing row keeps its handle, streak
+      // and trophy counters — a plain "ensure" call must never reset a returning player.
+      //
+      // `is_anonymous` has to be updated on conflict, not ignored. It is the authoritative
+      // source of the row's own truth, and after a Case-A upgrade (updateUser({email}) on the
+      // same auth.uid()) the profile row already exists — so an insert-only upsert would leave
+      // it stuck at its `true` default forever. The chip would keep reading "Guest" for a
+      // signed-in player, and every account-gated feature (clubs, Pro) would refuse them.
+      .upsert(
+        { id: identity.profileId, is_anonymous: identity.isAnonymous },
+        { onConflict: 'id', ignoreDuplicates: false }
+      )
 
     if (error) {
       return NextResponse.json({ error: internalErrorMessage('profile/anon', error) }, { status: 500 })
     }
 
-    return NextResponse.json({ profileId }, { status: 200 })
+    return NextResponse.json({ profileId: identity.profileId }, { status: 200 })
   } catch (err) {
     return NextResponse.json({ error: internalErrorMessage('profile/anon', err) }, { status: 500 })
   }

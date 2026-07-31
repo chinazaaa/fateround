@@ -31,9 +31,16 @@ export type VerifyCodeResult = { ok: boolean; error?: string }
 
 const GENERIC_ERROR = "That didn't work. Check the address and try again."
 
-/** True when the message means "this email already belongs to an account" (→ Case B). */
-function isEmailTaken(message: string): boolean {
-  return /already|registered|exists|taken/i.test(message)
+/**
+ * True when the failure means "this email already belongs to an account" (→ Case B).
+ *
+ * Prefers Supabase's stable error `code` and falls back to matching the message, which is
+ * human-facing text that can change between releases. Getting this wrong is not cosmetic: a
+ * false negative surfaces a dead-end error to a returning user instead of signing them in.
+ */
+function isEmailTaken(error: { message: string; code?: string }): boolean {
+  if (error.code && /email_exists|email_address_taken|user_already_exists/i.test(error.code)) return true
+  return /already|registered|exists|taken/i.test(error.message)
 }
 
 /**
@@ -57,7 +64,7 @@ export async function requestEmailCode(email: string): Promise<RequestCodeResult
       if (!error) return { ok: true, flow: 'upgrade' }
       // Anything other than "already registered" is a real failure worth surfacing; a taken
       // address just means this is Case B, so fall through and sign in instead.
-      if (!isEmailTaken(error.message)) return { ok: false, flow: 'upgrade', error: error.message || GENERIC_ERROR }
+      if (!isEmailTaken(error)) return { ok: false, flow: 'upgrade', error: error.message || GENERIC_ERROR }
     }
 
     const { error } = await supabase.auth.signInWithOtp({ email: address })
