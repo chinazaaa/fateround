@@ -34,6 +34,11 @@ jobs:
             exit 1
           fi
           echo "All migration versions are unique."
+      - name: Security regression gate (no anon-writable policies in new migrations)
+        # Deterministic, no DB/secrets. The deep runtime checks live in
+        # scripts/security-invariants.sql (run against the migrated DB — see the
+        # DB Migrate job notes).
+        run: node scripts/check-migration-security.mjs
 
   lint:
     name: Lint
@@ -155,6 +160,14 @@ jobs:
               ;;
           esac
           supabase link --project-ref "$REF"
+
+          # After migrations apply, assert the security invariants against the live
+          # schema (RLS/grant hardening from the 2026-07 audit). Fails the deploy if a
+          # secret column became anon-readable, a privileged RPC became anon-callable,
+          # or a locked table regained an anon-writable policy.
+          #   To enable: provide a psql-reachable connection and uncomment.
+          # psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f scripts/security-invariants.sql
+
 
           # Fail loudly on any push error. We deliberately do NOT swallow the
           # "duplicate schema_migrations_pkey" failure: the only thing that

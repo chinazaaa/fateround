@@ -4,6 +4,15 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useState } from 'react'
 import { Field, PrimaryBtn } from '@/components/ui/PageShell'
 
+// Only allow same-origin, absolute in-app paths as a post-login destination.
+// Rejects protocol-relative (`//evil.com`) and backslash (`/\evil.com`) values
+// that browsers treat as off-site, closing the open-redirect on `?next=`.
+function safeNext(next: string | null): string {
+  if (!next || !next.startsWith('/')) return '/admin'
+  if (next.startsWith('//') || next.startsWith('/\\')) return '/admin'
+  return next
+}
+
 export default function AdminLoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -24,7 +33,7 @@ export default function AdminLoginForm() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Login failed')
 
-      const next = searchParams.get('next') || '/admin'
+      const next = safeNext(searchParams.get('next'))
       router.push(next)
       router.refresh()
     } catch (err) {

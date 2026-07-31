@@ -5,6 +5,16 @@ import { gameLandingSlug } from '@/lib/game-landing'
 import { appOrigin } from '@/lib/site'
 import type { GameType } from '@/types'
 
+/**
+ * Serialize a JSON-LD object for embedding in a <script type="application/ld+json">.
+ * Escapes `<` to its `<` unicode form so DB/user-supplied text (e.g. a game
+ * label or blog title like `Fun <!--<script`) can never break out of the script
+ * element and inject markup. This is the standard JSON-LD XSS mitigation.
+ */
+function jsonLdStringify(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, '\\u003c')
+}
+
 export const SITE_NAME = 'FateRound'
 
 export const OG_IMAGE = {
@@ -181,7 +191,7 @@ export function webApplicationJsonLd(): string {
   const origin = appOrigin()
   const gameNames = GAME_TYPE_OPTIONS.map((type) => gameTypeConfig(type).label)
 
-  return JSON.stringify({
+  return jsonLdStringify({
     '@context': 'https://schema.org',
     '@type': 'WebApplication',
     name: SITE_NAME,
@@ -203,7 +213,7 @@ export function webApplicationJsonLd(): string {
 export function organizationJsonLd(): string {
   const origin = appOrigin()
 
-  return JSON.stringify({
+  return jsonLdStringify({
     '@context': 'https://schema.org',
     '@type': 'Organization',
     name: SITE_NAME,
@@ -215,7 +225,7 @@ export function organizationJsonLd(): string {
 export function websiteJsonLd(): string {
   const origin = appOrigin()
 
-  return JSON.stringify({
+  return jsonLdStringify({
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     name: SITE_NAME,
@@ -229,7 +239,7 @@ export function gameJsonLd(content: GameLandingContent): string {
   const cfg = gameTypeConfig(content.gameType)
   const url = `${appOrigin()}/games/${content.slug}`
 
-  return JSON.stringify({
+  return jsonLdStringify({
     '@context': 'https://schema.org',
     '@type': 'Game',
     name: cfg.label,
@@ -249,7 +259,7 @@ export function gameJsonLd(content: GameLandingContent): string {
 }
 
 export function faqPageJsonLd(faqs: GameLandingFaq[]): string {
-  return JSON.stringify({
+  return jsonLdStringify({
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
     mainEntity: faqs.map((faq) => ({
@@ -280,7 +290,7 @@ export function blogPostingJsonLd(post: {
       : `${origin}${post.coverImageUrl}`
     : `${origin}${OG_IMAGE.url}`
 
-  return JSON.stringify({
+  return jsonLdStringify({
     '@context': 'https://schema.org',
     '@type': 'BlogPosting',
     headline: post.title,
@@ -298,7 +308,7 @@ export function blogPostingJsonLd(post: {
 export function breadcrumbJsonLd(items: { name: string; path: string }[]): string {
   const origin = appOrigin()
 
-  return JSON.stringify({
+  return jsonLdStringify({
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
     itemListElement: items.map((item, i) => ({
@@ -314,7 +324,7 @@ export function breadcrumbJsonLd(items: { name: string; path: string }[]): strin
 export function gamesItemListJsonLd(): string {
   const origin = appOrigin()
 
-  return JSON.stringify({
+  return jsonLdStringify({
     '@context': 'https://schema.org',
     '@type': 'ItemList',
     name: `${SITE_NAME} party games`,
@@ -344,7 +354,7 @@ export function gameHowToJsonLd(content: GameLandingContent): string {
   const cfg = gameTypeConfig(content.gameType)
   const origin = appOrigin()
 
-  return JSON.stringify({
+  return jsonLdStringify({
     '@context': 'https://schema.org',
     '@type': 'HowTo',
     name: `How to play ${cfg.label} online`,

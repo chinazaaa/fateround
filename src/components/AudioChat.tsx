@@ -9,7 +9,10 @@ import { useToast } from '@/components/ui/Toast'
 /** Proof the caller is allowed in the room, verified server-side before a
  * token is minted. `player`/`member` are authorized by their secret `identity`
  * (a server-generated UUID); `host` proves itself with the game's host token. */
-export type AudioAuth = { kind: 'player' } | { kind: 'member' } | { kind: 'host'; token: string }
+export type AudioAuth =
+  | { kind: 'player'; resumeToken: string }
+  | { kind: 'member'; memberCode: string }
+  | { kind: 'host'; token: string }
 
 interface AudioChatProps {
   roomCode: string

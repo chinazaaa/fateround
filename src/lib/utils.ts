@@ -3,12 +3,42 @@ import { parsePlayerGenderFromDb } from '@/lib/participants'
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
+// Human-facing 6-char room code. MUST stay short/readable — do NOT make this longer.
+// It is NOT a credential (it's shown to every player), so Math.random is acceptable here.
 export function generateGameCode(): string {
   return Array.from({ length: 6 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('')
 }
 
+// URL-safe alphabet (RFC 4648 base64url). 64 chars => 256 % 64 === 0, so no modulo
+// bias, but the rejection loop below stays correct for any alphabet length.
+const RESUME_TOKEN_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
+const RESUME_TOKEN_LENGTH = 24
+
+/**
+ * Cryptographically strong random string over `alphabet`, using the global
+ * Web Crypto `crypto.getRandomValues` (available in Next's edge & node runtimes).
+ * Rejects bytes in the biased tail so every character is uniformly distributed.
+ */
+function randomStringFromAlphabet(length: number, alphabet: string): string {
+  const maxUnbiased = Math.floor(256 / alphabet.length) * alphabet.length
+  const out: string[] = []
+  const buf = new Uint8Array(length)
+  while (out.length < length) {
+    crypto.getRandomValues(buf)
+    for (let i = 0; i < buf.length && out.length < length; i++) {
+      const b = buf[i]
+      if (b >= maxUnbiased) continue // reject to avoid modulo bias
+      out.push(alphabet[b % alphabet.length])
+    }
+  }
+  return out.join('')
+}
+
+// resume_token is (with host_token) one of the only two credentials in the anonymous
+// player model, so it must be unguessable. 24 chars from a 64-symbol alphabet ~= 144 bits.
+// Independent of generateGameCode: the room code stays short, this stays strong.
 export function generateResumeToken(): string {
-  return generateGameCode()
+  return randomStringFromAlphabet(RESUME_TOKEN_LENGTH, RESUME_TOKEN_ALPHABET)
 }
 
 export function normalizeResumeToken(raw: string): string {
@@ -18,8 +48,13 @@ export function normalizeResumeToken(raw: string): string {
     .replace(/[^A-Z0-9]/g, '')
 }
 
+// host_token generator (see games/tournaments/claim-host routes). host_token is the
+// other credential in the anonymous model, so this must be crypto-strong too: 20 random
+// bytes => 40 hex chars (160 bits), same shape as before so stored tokens keep matching.
 export function generateToken(): string {
-  return Array.from({ length: 40 }, () => Math.floor(Math.random() * 16).toString(16)).join('')
+  const bytes = new Uint8Array(20)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 function shuffleInPlace<T>(arr: T[]): T[] {

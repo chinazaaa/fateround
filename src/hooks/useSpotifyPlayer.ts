@@ -78,8 +78,10 @@ export type SpotifyPlayerState = {
  *
  * @param identity  caller's secret id (player UUID / `host-*`) — the token route key
  * @param enabled   gate the whole thing (feature off, or no identity yet)
+ * @param hostToken required for `host-*` identities — proves control of the game to the
+ *                  token route (players authorize by their own identity and need none)
  */
-export function useSpotifyPlayer(identity: string | null, enabled: boolean) {
+export function useSpotifyPlayer(identity: string | null, enabled: boolean, hostToken?: string | null) {
   const [state, setState] = useState<SpotifyPlayerState>({
     deviceId: null,
     isReady: false,
@@ -99,7 +101,7 @@ export function useSpotifyPlayer(identity: string | null, enabled: boolean) {
       const res = await fetch('/api/spotify/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identity }),
+        body: JSON.stringify(hostToken ? { identity, hostToken } : { identity }),
       })
       if (res.status === 404) {
         setState((s) => (s.connected ? { ...s, connected: false } : s))
@@ -113,7 +115,7 @@ export function useSpotifyPlayer(identity: string | null, enabled: boolean) {
     } catch {
       return null
     }
-  }, [identity])
+  }, [identity, hostToken])
 
   useEffect(() => {
     if (!enabled || !identity) return

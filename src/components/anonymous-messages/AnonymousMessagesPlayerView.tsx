@@ -218,6 +218,9 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     const text = messageInput.trim()
     if (!text || !myPlayerId) return
 
+    const resumeToken = getPlayerSession(gameCode)?.resumeToken
+    if (!resumeToken) return
+
     setSending(true)
     try {
       const res = await fetch('/api/anonymous-messages', {
@@ -225,7 +228,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gameId: gameCode,
-          playerId: myPlayerId,
+          resumeToken,
           text,
           ...(replyTo ? { replyToId: replyTo.id } : {}),
         }),
@@ -250,6 +253,8 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
 
   const sendGif = async (mediaUrl: string) => {
     if (!myPlayerId) return
+    const resumeToken = getPlayerSession(gameCode)?.resumeToken
+    if (!resumeToken) return
     setSending(true)
     try {
       const res = await fetch('/api/anonymous-messages', {
@@ -257,7 +262,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gameId: gameCode,
-          playerId: myPlayerId,
+          resumeToken,
           text: '',
           messageType: 'gif',
           mediaUrl,

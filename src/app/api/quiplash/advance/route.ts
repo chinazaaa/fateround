@@ -8,15 +8,15 @@ export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, quiplashAdvanceSchema)
   if (bodyError) return bodyError
 
-  const { gameId, hostToken, force } = body
+  const { gameId, hostToken } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 
-  if (hostToken) {
-    const { data: game } = await supabase.from('games').select('host_token').eq('id', code).maybeSingle()
-    if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-    if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  }
+  // force skips the live phase for everyone, so it must be DERIVED from a verified host
+  // token — never taken from the client. A bad/absent token yields force=false, which
+  // leaves the anonymous, deadline-driven advance path working as intended.
+  const { data: game } = await supabase.from('games').select('host_token').eq('id', code).maybeSingle()
+  const force = !!hostToken && hostToken === game?.host_token
 
   const result = await syncQuiplashGameState(supabase, code, { force })
   return NextResponse.json(result)

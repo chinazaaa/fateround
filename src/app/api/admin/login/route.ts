@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { parseJsonBody } from '@/lib/parse-body'
+import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import {
   adminCookieName,
   adminSessionMaxAgeSeconds,
@@ -14,14 +15,26 @@ import {
 // instead of the previous 500.
 const loginSchema = z.object({ email: z.unknown().optional(), password: z.unknown().optional() })
 
+// Fixed delay applied to every failed attempt to blunt timing analysis and slow
+// serial brute force. Mirrors the manager login endpoint.
+const FAILED_ATTEMPT_DELAY_MS = 600
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 export async function POST(req: NextRequest) {
+  const limited = await enforceRateLimit(req, RATE_LIMITS.adminLogin)
+  if (limited) return limited
+
   const { data: body, error: bodyError } = await parseJsonBody(req, loginSchema)
   if (bodyError) return bodyError
   try {
     const email = typeof body.email === 'string' ? body.email : ''
     const password = typeof body.password === 'string' ? body.password : ''
 
-    if (!verifyAdminCredentials(email, password)) {
+    if (!(await verifyAdminCredentials(email, password))) {
+      await delay(FAILED_ATTEMPT_DELAY_MS)
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
     }
 

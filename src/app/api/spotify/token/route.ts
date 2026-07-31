@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
-import { getFreshAccessToken } from '@/lib/spotify'
+import { getFreshAccessToken, isSpotifyIdentityAuthorized } from '@/lib/spotify'
 
 /**
  * Vend a short-lived Spotify access token to the Web Playback SDK, mirroring how
@@ -11,10 +11,16 @@ import { getFreshAccessToken } from '@/lib/spotify'
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json().catch(() => ({}))) as { identity?: string }
+    const body = (await req.json().catch(() => ({}))) as { identity?: string; hostToken?: string }
     const identity = body.identity?.trim()
     if (!identity) {
       return NextResponse.json({ error: 'identity is required' }, { status: 400 })
+    }
+
+    // A `host-<CODE>` identity is guessable, so proof of the host token is
+    // required before we hand out that host's live Spotify token.
+    if (!(await isSpotifyIdentityAuthorized(identity, body.hostToken))) {
+      return NextResponse.json({ error: 'Not authorized for this identity' }, { status: 403 })
     }
 
     const fresh = await getFreshAccessToken(identity)

@@ -39,6 +39,8 @@ export const RATE_LIMITS = {
   // A full game joining behind one NAT is ~40 requests; 200/5min covers several
   // concurrent games plus reconnect storms.
   join: { bucket: 'join', max: 200, windowSeconds: 300 },
+  // Admin login is a single operator; >10 attempts/5min from an IP is brute force.
+  adminLogin: { bucket: 'admin-login', max: 10, windowSeconds: 300 },
 } as const satisfies Record<string, RateLimitRule>
 
 // Keyed hash so stored keys can't be reversed by offline enumeration. Peppered

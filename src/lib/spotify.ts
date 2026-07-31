@@ -120,6 +120,43 @@ export async function verifyHandshake(token: string | undefined | null): Promise
   }
 }
 
+// ---- Identity authorization ------------------------------------------------
+
+/** The deterministic identity the host uses: `host-<GAME CODE>`. Because it's
+ *  guessable, requests to mint / bind Spotify tokens for it must prove they hold
+ *  the game's secret host token. */
+const HOST_IDENTITY_PREFIX = 'host-'
+
+/**
+ * Guard for acting as a Spotify `identity`. A `host-<CODE>` identity is
+ * deterministic, so we require the caller to present the game's secret
+ * `host_token` (verified via the service role) before we vend or bind that
+ * identity's Spotify tokens — otherwise anyone could steal the host's live
+ * OAuth token. Non-host identities are opaque per-player UUIDs that are
+ * themselves the bearer credential, so they pass through unchanged.
+ *
+ * Returns true when the request is allowed to act as `identity`.
+ */
+export async function isSpotifyIdentityAuthorized(
+  identity: string,
+  hostToken: string | undefined | null
+): Promise<boolean> {
+  if (!identity.startsWith(HOST_IDENTITY_PREFIX)) return true
+
+  const token = hostToken?.trim()
+  if (!token) return false
+
+  const gameCode = identity.slice(HOST_IDENTITY_PREFIX.length).trim().toUpperCase()
+  if (!gameCode) return false
+
+  const { data: game } = await getSupabaseAdmin()
+    .from('games')
+    .select('id, host_token')
+    .eq('id', gameCode)
+    .maybeSingle()
+  return Boolean(game && game.host_token && game.host_token === token)
+}
+
 // ---- Token exchange / refresh ----------------------------------------------
 
 type SpotifyTokenResponse = {

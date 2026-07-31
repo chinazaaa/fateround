@@ -5,6 +5,7 @@ import {
   hostTokenString,
   uuidString,
   stripHtml,
+  optionalUrlOrPath,
   pairFlagEnum,
   wyrChoiceEnum,
 } from './shared'
@@ -54,7 +55,10 @@ export type CreateConfessionInput = z.infer<typeof createConfessionSchema>
 
 export const createAnonymousMessageSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Poster identity is resolved server-side from the secret resume_token (see
+  // assertPlayer), NOT from a client-supplied playerId — a public, forgeable
+  // value that let a muted/banned user post as any other roster member.
+  resumeToken: z.string().min(4),
   text: z
     .string()
     .transform((s) => stripHtml(s.trim()))
@@ -62,7 +66,9 @@ export const createAnonymousMessageSchema = z.object({
     .default(''),
   replyToId: uuidString('replyToId').optional(),
   messageType: z.enum(['text', 'gif']).default('text'),
-  mediaUrl: z.string().url().max(2000).optional().nullable(),
+  // Rendered as <img src>, so restrict to http(s) URLs or root-relative paths —
+  // z.string().url() also allowed data:/blob: and arbitrary off-origin beacons.
+  mediaUrl: optionalUrlOrPath(2000).nullable(),
 })
 
 export type CreateAnonymousMessageInput = z.infer<typeof createAnonymousMessageSchema>

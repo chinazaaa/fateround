@@ -12,6 +12,7 @@ import {
   truncateReplyPreview,
 } from '@/lib/anonymous-messages'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertPlayer } from '@/lib/game-admin'
 import { parseJsonBody } from '@/lib/parse-body'
 
 const supabase = getSupabaseAnon()
@@ -20,7 +21,7 @@ export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, createAnonymousMessageSchema)
   if (bodyError) return bodyError
 
-  const { gameId, playerId, text, replyToId } = body
+  const { gameId, resumeToken, text, replyToId } = body
   const messageType = body.messageType ?? 'text'
   const mediaUrl = body.mediaUrl ?? null
   const gameCode = gameId.toUpperCase()
@@ -48,14 +49,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { data: player } = await supabase
-    .from('players')
-    .select('id, joined_at')
-    .eq('id', playerId)
-    .eq('game_id', gameCode)
-    .maybeSingle()
-
-  if (!player) return NextResponse.json({ error: 'Player not in this game' }, { status: 403 })
+  // Resolve identity from the secret resume_token (service-role read) instead of
+  // trusting a forgeable client-supplied playerId. auth.player.id is authoritative.
+  const auth = await assertPlayer(getSupabaseAdmin(), gameCode, resumeToken)
+  if (auth.error || !auth.player) {
+    return NextResponse.json({ error: auth.error ?? 'Unauthorized' }, { status: auth.status })
+  }
+  const player = auth.player
+  const playerId = player.id
 
   const { data: ban } = await supabase
     .from('anonymous_room_bans')

@@ -27,16 +27,18 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const authorizedRoom = await authorizedRoomName(roomName, identity, auth)
-    if (!authorizedRoom) {
+    const authorized = await authorizedRoomName(roomName, identity, auth)
+    if (!authorized) {
       return NextResponse.json({ error: 'Not authorized to join this voice room' }, { status: 403 })
     }
 
+    // Use the server-derived identity — never the raw client-supplied id — so a
+    // caller can't impersonate another participant in the room.
     const at = new AccessToken(apiKey, apiSecret, {
-      identity,
-      name: name || identity,
+      identity: authorized.identity,
+      name: name || authorized.identity,
     })
-    at.addGrant({ roomJoin: true, room: authorizedRoom, canPublish: true, canSubscribe: true })
+    at.addGrant({ roomJoin: true, room: authorized.room, canPublish: true, canSubscribe: true })
     const token = await at.toJwt()
     return NextResponse.json({ token })
   } catch (err) {

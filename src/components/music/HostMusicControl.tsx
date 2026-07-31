@@ -35,7 +35,7 @@ export function HostMusicControl({ gameCode, hostToken }: { gameCode: string; ho
   const { error: toastError } = useToast()
   const identity = `host-${gameCode}`
   const { session, musicEnabled } = useMusicSession(gameCode)
-  const { connected, product } = useSpotifySync(identity, musicEnabled, session)
+  const { connected, product } = useSpotifySync(identity, musicEnabled, session, hostToken)
 
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -49,9 +49,9 @@ export function HostMusicControl({ gameCode, hostToken }: { gameCode: string; ho
   // Return to the plain host path — NOT with ?token=. The host token is remembered in
   // localStorage (useHostToken) on this device, so it re-authorizes without carrying the
   // secret through Spotify's redirect chain / browser history.
-  const hostHref = `/api/spotify/login?identity=${encodeURIComponent(identity)}&returnTo=${encodeURIComponent(
-    `/host/${gameCode}`
-  )}`
+  const hostHref =
+    `/api/spotify/login?identity=${encodeURIComponent(identity)}&returnTo=${encodeURIComponent(`/host/${gameCode}`)}` +
+    (hostToken ? `&hostToken=${encodeURIComponent(hostToken)}` : '')
 
   // Live progress ticker while playing + panel open.
   useEffect(() => {

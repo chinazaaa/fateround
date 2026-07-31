@@ -23,15 +23,15 @@ export async function POST(req: NextRequest) {
     const wsUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL
     if (!apiKey || !apiSecret || !wsUrl) return NextResponse.json({ count: 0 })
 
-    const authorizedRoom = await authorizedRoomName(roomName, identity, auth)
-    if (!authorizedRoom) return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
+    const authorized = await authorizedRoomName(roomName, identity, auth)
+    if (!authorized) return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
 
     // RoomServiceClient talks to the LiveKit HTTP API (https), derived from the ws URL.
     const host = wsUrl.replace(/^wss:/i, 'https:').replace(/^ws:/i, 'http:')
     const svc = new RoomServiceClient(host, apiKey, apiSecret)
 
     try {
-      const participants = await svc.listParticipants(authorizedRoom)
+      const participants = await svc.listParticipants(authorized.room)
       return NextResponse.json({ count: participants.length })
     } catch {
       // No LiveKit room exists until someone joins → treat as zero participants.

@@ -1,5 +1,18 @@
 'use client'
 
+// SECURITY / defense-in-depth (task 5, deferred): this layout is a client
+// component (it needs usePathname/useRouter/useState/useEffect + localStorage for
+// the collapsible sidebar), so a server-side session check cannot be added here
+// without either breaking that interactivity or splitting the shell into a
+// server wrapper + client body. Access is currently gated in two places already:
+//   1. src/middleware.ts — redirects unauthenticated /admin/* to /admin/login.
+//   2. every src/app/api/admin/* route — assertAdminRequest() re-verifies the
+//      session server-side, so no admin data is served without a valid cookie.
+// FOLLOW-UP: extract a server component wrapper (e.g. an admin/(protected) route
+// group layout) that calls verifyAdminSessionToken(cookies().get('admin_session'))
+// and redirect()s on failure, then render this client shell inside it. Left out
+// of this change set to avoid destabilising the admin UI.
+
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'

@@ -20,8 +20,13 @@ const DRIFT_THRESHOLD_MS = 1_500
  * A no-op until the SDK is ready and the account is Premium — free / unconnected players
  * simply hear nothing, and the game is unaffected.
  */
-export function useSpotifySync(identity: string | null, enabled: boolean, session: MusicSession | null) {
-  const player = useSpotifyPlayer(identity, enabled)
+export function useSpotifySync(
+  identity: string | null,
+  enabled: boolean,
+  session: MusicSession | null,
+  hostToken?: string | null
+) {
+  const player = useSpotifyPlayer(identity, enabled, hostToken)
   const { isReady, product, playUri, pause, seek, getState } = player
 
   // What we last drove the device to, so we can detect track / play-state transitions.

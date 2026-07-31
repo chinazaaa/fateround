@@ -1,10 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
+import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { gameTypeEnum } from '@/lib/validation/shared'
 
 const DEFAULT_PAGE_SIZE = 12
 const MAX_PAGE_SIZE = 100
+
+// Neutralize PostgREST filter-grammar structural characters so a `?q=` value
+// can't break out of the ilike pattern and inject extra .or() conditions.
+// Strips , . ( ) : * plus quotes/backslash, then collapses whitespace.
+function sanitizeSearchTerm(raw: string): string {
+  return raw
+    .replace(/[,.():*"'\\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+const validTags = ['easy', 'intermediate', 'advanced', 'family-friendly', '18+', 'party', 'spicy'] as const
+
+const createPackSchema = z.object({
+  title: z.string().trim().min(1, 'Title is required').max(100, 'Title too long'),
+  game_type: gameTypeEnum,
+  author_name: z.string().trim().min(1, 'Author name is required').max(60, 'Author name too long'),
+  description: z.string().trim().max(500, 'Description too long').optional().nullable(),
+  // Question shapes vary per game type; keep elements loosely typed but bounded,
+  // and cap the array so a single request can't insert an unbounded payload.
+  questions: z
+    .array(z.union([z.string().max(4000), z.record(z.string(), z.unknown())]))
+    .min(1, 'At least one question is required')
+    .max(500, 'Too many questions'),
+  tags: z.array(z.enum(validTags)).max(validTags.length).optional(),
+})
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -18,7 +48,8 @@ export async function GET(req: NextRequest) {
 
   const supabase = getSupabaseAnon()
 
-  const search = searchParams.get('q')?.trim()
+  const rawSearch = searchParams.get('q')?.trim()
+  const search = rawSearch ? sanitizeSearchTerm(rawSearch) : undefined
 
   let query = supabase
     .from('question_packs')
@@ -43,22 +74,13 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json()
+  const limited = await enforceRateLimit(req, RATE_LIMITS.join)
+  if (limited) return limited
+
+  const { data: body, error: bodyError } = await parseJsonBody(req, createPackSchema)
+  if (bodyError) return bodyError
+
   const { title, game_type, author_name, description, questions, tags } = body
-
-  if (!title || !game_type || !author_name || !Array.isArray(questions)) {
-    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
-  }
-
-  if (title.length > 100) return NextResponse.json({ error: 'Title too long' }, { status: 400 })
-  if (author_name.length > 60) return NextResponse.json({ error: 'Author name too long' }, { status: 400 })
-  if (description && description.length > 500)
-    return NextResponse.json({ error: 'Description too long' }, { status: 400 })
-
-  const validTags = ['easy', 'intermediate', 'advanced', 'family-friendly', '18+', 'party', 'spicy']
-  const cleanTags = Array.isArray(tags)
-    ? tags.filter((t: unknown) => typeof t === 'string' && validTags.includes(t))
-    : []
 
   const supabase = getSupabaseAdmin()
 
@@ -72,7 +94,7 @@ export async function POST(req: NextRequest) {
       questions,
       question_count: questions.length,
       status: 'pending',
-      tags: cleanTags,
+      tags: tags ?? [],
     })
     .select('id')
     .single()

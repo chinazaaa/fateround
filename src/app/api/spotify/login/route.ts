@@ -8,6 +8,7 @@ import {
   signHandshake,
   SPOTIFY_OAUTH_COOKIE,
   SPOTIFY_OAUTH_MAX_AGE_SECONDS,
+  isSpotifyIdentityAuthorized,
 } from '@/lib/spotify'
 
 /**
@@ -22,6 +23,14 @@ export async function GET(req: NextRequest) {
     const identity = req.nextUrl.searchParams.get('identity')?.trim()
     if (!identity) {
       return NextResponse.json({ error: 'identity is required' }, { status: 400 })
+    }
+    // Binding a deterministic `host-<CODE>` identity to a Spotify account requires
+    // proof of the host token (passed as a query param since this is a redirect
+    // link). The token is only checked here — it never travels into Spotify's
+    // redirect chain (only verifier/state/identity/returnTo go in the signed cookie).
+    const hostToken = req.nextUrl.searchParams.get('hostToken')?.trim()
+    if (!(await isSpotifyIdentityAuthorized(identity, hostToken))) {
+      return NextResponse.json({ error: 'Not authorized for this identity' }, { status: 403 })
     }
     // Only allow returning to an internal path, never an absolute URL (open-redirect guard).
     // Reject `\` too: `new URL('/\\evil.com', origin)` resolves to an external host because
