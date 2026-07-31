@@ -187,7 +187,7 @@ Full build spec: [`trophies-and-streaks.md`](./trophies-and-streaks.md).
 | Rule | Detail |
 |------|--------|
 | Earned, not bought | Trophies and streak progress come from playing |
-| Guest can earn | On-device via anonymous auth; account saves & syncs |
+| Guest can earn | Server-side via anonymous auth, but bound to this device; attaching an email makes it portable |
 | Feeds revenue indirectly | Trophy unlock → signup prompt → cosmetic shop |
 | Cosmetic tie-in | Profile frames, trophy showcase borders — optional flair |
 | Streak freezes | Base forgiveness **free**; extra freeze = optional ₦300 cosmetic later |

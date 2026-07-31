@@ -113,8 +113,12 @@ Mitigations, in order:
    and size it against the biggest room we support.
 2. **Lazy creation still helps**: creating the row at *finish* rather than at page load removes
    spectators, abandoned lobbies and link-clickers from the count entirely.
-3. **Students never get identities at all** (§6). If classroom play stays pure-guest, the worst
-   case never arises for schools — which is the segment where a NAT'd IP is guaranteed.
+3. **Not yet real: "students never get identities".** §6 argues classroom play *should* stay
+   pure-guest, and that remains the right end state — but **nothing implements it today.**
+   `useProfileAttribution` fires for any player who finishes with a resume token, and nothing
+   distinguishes a student from anyone else. Treat this as future work, not protection you
+   currently have. Until an account-type or org flag exists to suppress identity creation for
+   classroom play, **mitigation 1 is the only one actually defending a 40-student room.**
 4. Supabase recommends invisible CAPTCHA / Turnstile on anonymous sign-in to stop database
    bloat from abuse. Weigh it against the zero-friction promise; prefer 1–3 first, and if it's
    ever needed, put it on the *sign-in* only, never in front of joining a game.
@@ -222,7 +226,14 @@ to Resend; set the OTP email template to emit `{{ .Token }}` (a 6-digit code) ra
 
 ## 4A. Session lifetime — stay signed in indefinitely
 
-**Decision: sessions never expire. Do not enable any session timeout.**
+**Decision: we configure no expiry — don't enable time-box or inactivity timeout.**
+
+That is not the same as "a session can never end". A session still dies if the refresh token is
+revoked (a password/email change, an admin sign-out, a project-wide revocation), if local storage
+is cleared, or if a refresh fails while offline long enough for rotation to lapse. What we're
+choosing is not to *add* an expiry on top of that. Every consumer must still handle "signed out"
+gracefully — which is why `getProfileFromRequest` returns null rather than throwing, and why a
+401 clears the cached profile instead of leaving a stale signed-in chip.
 
 Supabase's defaults already give us this, so it's a matter of *not turning things on*:
 

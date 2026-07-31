@@ -35,9 +35,12 @@ This is the single biggest prerequisite. There is nothing to attach a subscripti
   (This line previously said "email + OAuth: Google/Apple at minimum for mobile", which was the
   only place in the docs asking for OAuth; resolved in favour of OTP-only on 2026-07-31, see
   [`accounts-and-identity-plan.md`](./accounts-and-identity-plan.md) §2.1. Email OTP needs zero native config and behaves
-  identically on web and Expo, and under **App Store rule 4.8** offering Google would oblige us
-  to also offer Sign in with Apple, whereas first-party email obliges nothing. Revisit only if
-  measured signup conversion is bad.)
+  identically on web and Expo. It also keeps us inside **App Store Guideline 4.8 (Login Services)**
+  the easy way: 4.8 only bites once an app uses a *third-party or social* login to set up the
+  primary account, and it explicitly exempts apps that use exclusively their own account system.
+  Our own email OTP is that exemption. Adding Google would trigger 4.8 and oblige us to offer an
+  equivalent privacy-preserving option such as Sign in with Apple. Revisit only if measured
+  signup conversion is bad.)
 - Add a **`profiles` table** keyed on `auth.uid()` (display name, avatar, created_at, plan fields later).
 - **Migrate the anonymous identity model.** Today every gating decision keys off ephemeral per-game/room secret tokens. We need a durable `user_id` that:
   - links a signed-in user to the games/rooms they host and play,
@@ -102,6 +105,18 @@ Nothing here exists. `rooms` is ephemeral and token-based; clubs are persistent,
   - **Roster size: 20 on free, 50 on Club Pro.** These never actually conflicted — 20 is the free
     club's cap ([`clubs-spec.md`](./clubs-spec.md) §3, [`account-tiers.md`](./account-tiers.md)) and 50 is what the paid tier raises it to.
   - `+ = up to 3 clubs` referred to clubs *owned*, and is consistent once read that way.
+
+  **Exact entitlements to enforce** (all scoped to a *permanent account* — clubs are
+  account-gated, not guest-accessible, per [`clubs-spec.md`](./clubs-spec.md) §2):
+
+  | Entitlement | Free account | Fate Round+ | Club Pro (per club) |
+  |---|---|---|---|
+  | Clubs **joined** | unlimited | unlimited | unlimited |
+  | Clubs **owned/created** | 2 | 3 | 3 |
+  | **Roster size** of a club you own | 20 | 20 | 50 |
+
+  Roster size is a property of the *club* (set by its plan), not of the member — a Club Pro club
+  holds 50 members regardless of what tier those members are on.
 
   > **Decided 2026-07-31 — settled, don't re-open.** "Free = join 1 club" came from the original
   > pricing draft, so this was a real monetization change rather than a doc tidy-up; it was
