@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
-import { generateGameCode } from '@/lib/utils'
+import { generateGameCode, generateToken } from '@/lib/utils'
 import { countMembersByRoom, ROOM_PUBLIC_FIELDS } from '@/lib/room-api'
 import { normalizeRoomDescription, normalizeRoomTimezone } from '@/lib/room-timezones'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
@@ -82,7 +82,9 @@ export async function POST(req: NextRequest) {
     roomCode = generateGameCode()
   }
 
-  const creatorToken = generateGameCode() + generateGameCode()
+  // Creator token is a secret credential (proves room ownership), so it must be
+  // crypto-strong — not two Math.random game codes (~60 bits). 160-bit hex.
+  const creatorToken = generateToken()
 
   const { error } = await admin.from('rooms').insert({
     id: roomCode,

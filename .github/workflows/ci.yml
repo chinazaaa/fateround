@@ -34,6 +34,10 @@ jobs:
             exit 1
           fi
           echo "All migration versions are unique."
+      - name: Security regression gate (no anon-writable policies in new migrations)
+        # Static, deterministic, no DB or secrets needed — so it runs on every PR, unlike
+        # the RLS Boundaries job which needs live credentials. From PR #735 (billmal071).
+        run: node scripts/check-migration-security.mjs
 
   lint:
     name: Lint
