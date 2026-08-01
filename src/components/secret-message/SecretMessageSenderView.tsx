@@ -119,13 +119,18 @@ export function SecretMessageSenderView({ gameCode }: { gameCode: string }) {
       }
       if (!playerId) throw new Error('Could not connect')
 
+      // A pre-token session would send an empty secret and get a 403 the sender can't act on.
+      // ensureSender() writes a fresh session, so re-read after it (review on PR #736).
+      const resumeToken = getPlayerSession(gameCode)?.resumeToken
+      if (!resumeToken) throw new Error('Your session expired — reload the page to send.')
+
       const res = await fetch('/api/anonymous-messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gameId: gameCode,
           // The sender's secret, not their public id — the server resolves the author from it.
-          resumeToken: getPlayerSession(gameCode)?.resumeToken ?? '',
+          resumeToken,
           text,
           messageType: 'text',
         }),

@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { useMusicSession } from '@/hooks/useMusicSession'
 import { useSpotifySync } from '@/hooks/useSpotifySync'
 import type { MusicAuth } from '@/lib/music-auth'
+import { startSpotifyConnect } from '@/lib/spotify-connect-client'
 
 /**
  * Player-side "now playing" bar. Shows the host's current track and keeps this player's
@@ -22,14 +23,18 @@ export function NowPlayingBar({ gameCode, resumeToken }: { gameCode: string; res
   const { connected, product, isReady, error, setVolume } = useSpotifySync(auth, musicEnabled, session)
   const [volume, setVolumeState] = useState(0.5)
   const [muted, setMuted] = useState(false)
+  // Surfaced inline: this bar has no toast, and a silent failure would look like a dead button.
+  const [connectError, setConnectError] = useState<string | null>(null)
 
   if (!musicEnabled) return null
 
   const hasTrack = Boolean(session?.track_uri)
   const isPremium = product === 'premium'
-  const loginHref = `/api/spotify/login?role=player&gameCode=${encodeURIComponent(
-    gameCode
-  )}&token=${encodeURIComponent(resumeToken)}&returnTo=${encodeURIComponent(`/game/${gameCode}`)}`
+  const connectSpotify = async () => {
+    if (!auth) return
+    setConnectError(null)
+    setConnectError(await startSpotifyConnect(auth, `/game/${gameCode}`))
+  }
 
   // Nothing to show: connected Premium listener with no track playing yet.
   if (connected && isPremium && !hasTrack) return null
@@ -75,9 +80,12 @@ export function NowPlayingBar({ gameCode, resumeToken }: { gameCode: string; res
         </div>
 
         {!connected ? (
-          <a href={loginHref} className="btn-primary btn-fit whitespace-nowrap text-xs">
-            Connect Spotify
-          </a>
+          <div className="flex flex-col items-end gap-1">
+            <button type="button" onClick={connectSpotify} className="btn-primary btn-fit whitespace-nowrap text-xs">
+              Connect Spotify
+            </button>
+            {connectError && <span className="text-xs text-[var(--danger)]">{connectError}</span>}
+          </div>
         ) : !isPremium ? (
           <span className="whitespace-nowrap text-xs text-muted">Premium required</span>
         ) : (

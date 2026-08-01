@@ -218,6 +218,16 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     const text = messageInput.trim()
     if (!text || !myPlayerId) return
 
+    // A session saved before resume tokens were stored has a playerId but no token. Sending an
+    // empty one just earns a 403 the player can't act on — drop back to the join screen so they
+    // get a fresh, token-bearing session (flagged in review on PR #736).
+    const resumeToken = getPlayerSession(gameCode)?.resumeToken
+    if (!resumeToken) {
+      handlePlayerLeft()
+      toastError('Your session expired — rejoin to send messages.')
+      return
+    }
+
     setSending(true)
     try {
       const res = await fetch('/api/anonymous-messages', {
@@ -225,7 +235,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gameId: gameCode,
-          resumeToken: getPlayerSession(gameCode)?.resumeToken ?? '',
+          resumeToken,
           text,
           ...(replyTo ? { replyToId: replyTo.id } : {}),
         }),
@@ -250,6 +260,12 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
 
   const sendGif = async (mediaUrl: string) => {
     if (!myPlayerId) return
+    const resumeToken = getPlayerSession(gameCode)?.resumeToken
+    if (!resumeToken) {
+      handlePlayerLeft()
+      toastError('Your session expired — rejoin to send messages.')
+      return
+    }
     setSending(true)
     try {
       const res = await fetch('/api/anonymous-messages', {
@@ -257,7 +273,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gameId: gameCode,
-          resumeToken: getPlayerSession(gameCode)?.resumeToken ?? '',
+          resumeToken,
           text: '',
           messageType: 'gif',
           mediaUrl,

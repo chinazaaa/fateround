@@ -61,6 +61,9 @@ export const RATE_LIMITS = {
   // Returns whole-session snapshots, so it's worth a flood backstop alongside the token
   // check added for audit finding M4.
   gameSnapshots: { bucket: 'game-snapshots', max: 300, windowSeconds: 300 },
+  // Guards the Codewords key card: without a cap, a wrong-token caller could grind this
+  // endpoint. Sized for real play — every player re-fetches the board on each board change.
+  codewordsBoard: { bucket: 'codewords-board', max: 600, windowSeconds: 300 },
 } as const satisfies Record<string, RateLimitRule>
 
 // Keyed hash so stored keys can't be reversed by offline enumeration. Peppered

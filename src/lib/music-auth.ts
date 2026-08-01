@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { normalizeResumeToken } from '@/lib/utils'
+import { secretMatches } from '@/lib/secret-compare'
 
 /**
  * Proof the caller owns the Spotify connection they're asking about.
@@ -36,7 +37,7 @@ export async function authorizedMusicIdentity(auth: MusicAuth | undefined | null
     const token = String(auth.hostToken ?? '')
     if (!token) return null
     const { data: game } = await supabase.from('games').select('id, host_token').eq('id', gameId).maybeSingle()
-    if (!game?.host_token || game.host_token !== token) return null
+    if (!game || !(await secretMatches(token, game.host_token))) return null
     return `host-${game.id}`
   }
 

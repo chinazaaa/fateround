@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { normalizeResumeToken } from '@/lib/utils'
+import { secretMatches } from '@/lib/secret-compare'
+import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 
 /**
  * The Codewords board, with the key card attached only for callers entitled to see it.
@@ -23,12 +25,25 @@ import { normalizeResumeToken } from '@/lib/utils'
  *
  * Everyone else gets the same row with `key` omitted, which is exactly what an operative's UI
  * needs to render.
+ *
+ * POST, not GET, even though this only reads: the request carries the caller's host or resume
+ * token, and a query string is the one place a secret must never go — it lands in server and
+ * CDN access logs, browser history, and any Referer header the page later sends. Every other
+ * token-authorized route in this app posts its secret in the body; this now matches (flagged in
+ * review on PR #736).
  */
-export async function GET(req: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const params = req.nextUrl.searchParams
-    const gameCode = params.get('gameCode')?.toUpperCase()
+    const body = (await req.json().catch(() => ({}))) as {
+      gameCode?: string
+      hostToken?: string
+      resumeToken?: string
+    }
+    const gameCode = body.gameCode?.toUpperCase()
     if (!gameCode) return NextResponse.json({ error: 'gameCode is required' }, { status: 400 })
+
+    const limited = await enforceRateLimit(req, RATE_LIMITS.codewordsBoard)
+    if (limited) return limited
 
     const supabase = getSupabaseAdmin()
 
@@ -43,15 +58,14 @@ export async function GET(req: NextRequest) {
     if (game?.status === 'finished') maySeeKey = true
 
     // 2. The host.
-    const hostToken = params.get('hostToken')
-    if (!maySeeKey && hostToken && game?.host_token && game.host_token === hostToken) {
+    if (!maySeeKey && (await secretMatches(body.hostToken, game?.host_token))) {
       maySeeKey = true
     }
 
     // 3. A spymaster, resolved from their secret resume token — never from a client-supplied
     //    playerId, which is public and forgeable (see src/lib/game-admin.ts).
     if (!maySeeKey) {
-      const token = normalizeResumeToken(params.get('resumeToken') ?? '')
+      const token = normalizeResumeToken(body.resumeToken ?? '')
       if (token.length >= 4) {
         const { data: player } = await supabase
           .from('players')

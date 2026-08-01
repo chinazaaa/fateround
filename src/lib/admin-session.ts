@@ -1,3 +1,5 @@
+import { timingSafeEqual } from '@/lib/secret-compare'
+
 const COOKIE_NAME = 'admin_session'
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -24,24 +26,6 @@ function fromBase64Url(value: string): Uint8Array {
   const bytes = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
   return bytes
-}
-
-/**
- * Constant-time string comparison (audit finding M5). `===` on a secret short-circuits at the
- * first differing byte, which leaks its prefix through response timing. Compares the SHA-256
- * digests so inputs of different lengths still take the same path.
- */
-async function timingSafeEqual(a: string, b: string): Promise<boolean> {
-  const enc = new TextEncoder()
-  const [da, db] = await Promise.all([
-    crypto.subtle.digest('SHA-256', enc.encode(a)),
-    crypto.subtle.digest('SHA-256', enc.encode(b)),
-  ])
-  const va = new Uint8Array(da)
-  const vb = new Uint8Array(db)
-  let diff = 0
-  for (let i = 0; i < va.length; i++) diff |= va[i] ^ vb[i]
-  return diff === 0
 }
 
 async function hmacSign(message: string, secret: string): Promise<string> {

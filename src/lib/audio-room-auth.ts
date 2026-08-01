@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { normalizeResumeToken } from '@/lib/utils'
+import { secretMatches } from '@/lib/secret-compare'
 
 /**
  * Proof the caller is allowed in a voice room, verified against trusted server-side state.
@@ -87,12 +88,12 @@ export async function authorizedRoom(roomName: string, auth: AudioAuth | undefin
     if (!auth.token) return null
 
     const { data: room } = await supabase.from('rooms').select('id, creator_token').eq('id', requested).maybeSingle()
-    if (room?.creator_token && room.creator_token === auth.token) {
+    if (room && (await secretMatches(auth.token, room.creator_token))) {
       return { room: room.id, identity: `host-${room.id}` }
     }
 
     const { data: game } = await supabase.from('games').select('id, host_token').eq('id', requested).maybeSingle()
-    if (game?.host_token && game.host_token === auth.token) {
+    if (game && (await secretMatches(auth.token, game.host_token))) {
       return { room: game.id, identity: `host-${game.id}` }
     }
 
@@ -101,8 +102,9 @@ export async function authorizedRoom(roomName: string, auth: AudioAuth | undefin
     if (roomGames && roomGames.length > 0) {
       const gameIds = roomGames.map((rg) => rg.game_id)
       const { data: games } = await supabase.from('games').select('id, host_token').in('id', gameIds)
-      const match = games?.find((g) => g.host_token === auth.token)
-      if (match) return { room: requested, identity: `host-${match.id}` }
+      for (const g of games ?? []) {
+        if (await secretMatches(auth.token, g.host_token)) return { room: requested, identity: `host-${g.id}` }
+      }
     }
   }
 

@@ -29,6 +29,16 @@ declare
   board_cols text;
   role_name text;
 begin
+  -- Skip rather than abort where the table hasn't been created yet (a fresh environment
+  -- applying migrations out of order), matching 20260803140000's guard.
+  if not exists (
+    select 1 from information_schema.tables
+     where table_schema = 'public' and table_name = 'codewords_boards'
+  ) then
+    raise notice 'codewords_boards not present — skipping';
+    return;
+  end if;
+
   select string_agg(quote_ident(column_name), ', ')
     into board_cols
     from information_schema.columns

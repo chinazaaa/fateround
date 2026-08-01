@@ -6,6 +6,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useMusicSession } from '@/hooks/useMusicSession'
 import { useSpotifySync } from '@/hooks/useSpotifySync'
 import type { MusicAuth } from '@/lib/music-auth'
+import { startSpotifyConnect } from '@/lib/spotify-connect-client'
 import { livePositionMs, type MusicSession, type SpotifyTrackInfo } from '@/lib/music'
 
 function fmt(ms: number): string {
@@ -55,9 +56,11 @@ export function HostMusicControl({ gameCode, hostToken }: { gameCode: string; ho
   // Return to the plain host path — NOT with ?token=. The host token is remembered in
   // localStorage (useHostToken) on this device, so it re-authorizes without carrying the
   // secret through Spotify's redirect chain / browser history.
-  const hostHref = `/api/spotify/login?role=host&gameCode=${encodeURIComponent(gameCode)}&token=${encodeURIComponent(
-    hostToken ?? ''
-  )}&returnTo=${encodeURIComponent(`/host/${gameCode}`)}`
+  const connectSpotify = async () => {
+    if (!auth) return
+    const message = await startSpotifyConnect(auth, `/host/${gameCode}`)
+    if (message) toastError(message)
+  }
 
   // Live progress ticker while playing + panel open.
   useEffect(() => {
@@ -195,9 +198,13 @@ export function HostMusicControl({ gameCode, hostToken }: { gameCode: string; ho
               <>
                 {/* Host connection state */}
                 {!connected ? (
-                  <a href={hostHref} className="btn-primary btn-fit block text-center text-xs">
+                  <button
+                    type="button"
+                    onClick={connectSpotify}
+                    className="btn-primary btn-fit block w-full text-center text-xs"
+                  >
                     Connect your Spotify
-                  </a>
+                  </button>
                 ) : !isPremium ? (
                   <p className="text-xs text-muted">
                     You can DJ, but hearing music yourself needs Spotify Premium. Players hear it on their own accounts.

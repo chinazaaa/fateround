@@ -227,8 +227,14 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     setSending(true)
     try {
       // The author is resolved server-side from this secret, not from myPlayerId (public).
+      // A session stored before resume tokens existed has an id but no token — clear it so the
+      // join screen returns and they get a token-bearing one (review on PR #736).
       const session = await getPlayerSession(code)
-      if (!session?.resumeToken) throw new Error('Your session expired — rejoin to send messages')
+      if (!session?.resumeToken) {
+        await clearPlayerSession(code)
+        setMyPlayerId(null)
+        throw new Error('Your session expired — rejoin to send messages')
+      }
       await postAnonymousMessage(code, session.resumeToken, text, replyTo?.id ?? null)
       setMessageInput('')
       setReplyTo(null)
@@ -245,7 +251,11 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     setGifOpen(false)
     try {
       const session = await getPlayerSession(code)
-      if (!session?.resumeToken) throw new Error('Your session expired — rejoin to send messages')
+      if (!session?.resumeToken) {
+        await clearPlayerSession(code)
+        setMyPlayerId(null)
+        throw new Error('Your session expired — rejoin to send messages')
+      }
       await postAnonymousGif(code, session.resumeToken, mediaUrl, replyTo?.id ?? null)
       setReplyTo(null)
       await loadMessages()

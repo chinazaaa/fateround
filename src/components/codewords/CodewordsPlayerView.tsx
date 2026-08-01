@@ -313,7 +313,14 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
       // Realtime payloads no longer carry `key`; keep the one we fetched, and re-fetch through
       // the route when the board row is replaced (new round).
       setBoard((prev) => {
-        if (nextBoard && prev && prev.id !== nextBoard.id) void loadBoard()
+        if (nextBoard && prev && prev.id !== nextBoard.id) {
+          // Only apply the re-fetch if it is still the board we asked for — a slower response
+          // must not overwrite a newer realtime update (review on PR #736).
+          const expectedId = nextBoard.id
+          void fetchCodewordsBoard(gameCode, { resumeToken: myResumeToken }).then((fresh) => {
+            if (fresh?.id === expectedId) setBoard((latest) => (latest?.id === expectedId ? fresh : latest))
+          })
+        }
         return mergeCodewordsBoardUpdate(prev, nextBoard)
       })
     },

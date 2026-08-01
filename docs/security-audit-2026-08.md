@@ -137,7 +137,7 @@ fixed:
 | H1 | Quiplash, Quick Draw (guess), Memory Match and Ping Pong game data is publicly editable | High | Scores and rounds in those four games can be rewritten mid-match by anyone. |
 | H2 | The secret answer key in Codewords is readable by everyone | High | Any player can see which words are theirs and win every game. |
 | H3 | Anyone can upload files into the public `avatars` storage bucket | High | Your domain can be used to host arbitrary files, including abusive or illegal content. |
-| H4 | The site sends no security headers | High | Missing clickjacking, HTTPS-pinning and content-injection protections that browsers rely on. |
+| H4 | The site sends no security headers | High | Missing clickjacking, forced-HTTPS and content-injection protections that browsers rely on. |
 
 ---
 
@@ -377,8 +377,11 @@ session HMAC (`src/lib/manager-session.ts:26`) and the rate-limiter's IP pepper
 buckets.
 
 **Fix:** generate distinct values per environment in `infra/terraform.<env>.tfvars` and SSM.
-Self-hosted LiveKit supports multiple API key/secret pairs — issue one per environment rather
-than sharing. Split `ADMIN_SESSION_SECRET` into `ADMIN_SESSION_SECRET`, `MANAGER_SESSION_SECRET`
+For LiveKit, per-environment key pairs are **not** sufficient: both stacks point at the same
+self-hosted server, which accepts a token signed by any configured key and grants whatever room
+name the token carries — so a dev-minted token still opens the identically-named production
+room. That needs either a separate LiveKit deployment per environment or environment-prefixed
+room names; see the LiveKit note in `docs/environments.md`. Split `ADMIN_SESSION_SECRET` into `ADMIN_SESSION_SECRET`, `MANAGER_SESSION_SECRET`
 and `RATE_LIMIT_PEPPER` so each can be rotated independently.
 
 ### M2 — `/api/klipy` is an open quota drain

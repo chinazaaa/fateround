@@ -15,12 +15,18 @@ export async function fetchCodewordsBoard(
   gameCode: string,
   auth?: { hostToken?: string | null; resumeToken?: string | null }
 ): Promise<CodewordsBoard | null> {
-  const params = new URLSearchParams({ gameCode: gameCode.toUpperCase() })
-  if (auth?.hostToken) params.set('hostToken', auth.hostToken)
-  if (auth?.resumeToken) params.set('resumeToken', auth.resumeToken)
-
   try {
-    const res = await fetch(`/api/codewords/board?${params.toString()}`)
+    // POST so the token travels in the body. A GET query string would put it in access logs,
+    // CDN logs and browser history (flagged in review on PR #736).
+    const res = await fetch('/api/codewords/board', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        gameCode: gameCode.toUpperCase(),
+        hostToken: auth?.hostToken ?? undefined,
+        resumeToken: auth?.resumeToken ?? undefined,
+      }),
+    })
     if (!res.ok) return null
     const data = (await res.json()) as { board?: CodewordsBoard | null }
     return data.board ?? null

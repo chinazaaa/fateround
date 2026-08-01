@@ -151,7 +151,12 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
       // the board row itself changes (new round). See mergeCodewordsBoardUpdate.
       setBoard((prev) => {
         if (nextBoard && prev && prev.id !== nextBoard.id) {
-          void fetchCodewordsBoard(gameCode, { hostToken }).then((fresh) => fresh && setBoard(fresh))
+          // Capture the id this fetch is for: two board changes in quick succession would
+          // otherwise let the slower response overwrite the newer board (review on PR #736).
+          const expectedId = nextBoard.id
+          void fetchCodewordsBoard(gameCode, { hostToken }).then((fresh) => {
+            if (fresh?.id === expectedId) setBoard((latest) => (latest?.id === expectedId ? fresh : latest))
+          })
         }
         return mergeCodewordsBoardUpdate(prev, nextBoard)
       })
