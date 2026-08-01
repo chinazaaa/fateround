@@ -26,7 +26,9 @@ import {
   lobbyReadyForGame,
   mergeCodewordsGuesses,
   teamLabel,
+  mergeCodewordsBoardUpdate,
 } from '@/lib/codewords'
+import { fetchCodewordsBoard } from '@/lib/codewords-board-client'
 import { useCodewordsRealtime } from '@/hooks/useCodewordsRealtime'
 import { useCodewordsNotifications } from '@/hooks/useCodewordsNotifications'
 import { supabase } from '@/lib/supabase'
@@ -97,14 +99,15 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
   }, [])
 
   const load = useCallback(async () => {
-    const [{ data: gameData }, { data: plrs }, { data: roleRows }, { data: boardData }, { data: guessRows }] =
-      await Promise.all([
-        supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-        supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-        supabase.from('codewords_player_roles').select('*').eq('game_id', gameCode),
-        supabase.from('codewords_boards').select('*').eq('game_id', gameCode).maybeSingle(),
-        supabase.from('codewords_guesses').select('*').eq('game_id', gameCode).order('created_at', { ascending: true }),
-      ])
+    // The board comes from /api/codewords/board, not a direct read: `codewords_boards.key` is
+    // no longer anon-selectable (audit finding H2), and the route vends it to the host.
+    const [{ data: gameData }, { data: plrs }, { data: roleRows }, { data: guessRows }, boardData] = await Promise.all([
+      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
+      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+      supabase.from('codewords_player_roles').select('*').eq('game_id', gameCode),
+      supabase.from('codewords_guesses').select('*').eq('game_id', gameCode).order('created_at', { ascending: true }),
+      fetchCodewordsBoard(gameCode, { hostToken }),
+    ])
 
     const reopening = Date.now() < suppressRoundDataUntilRef.current
 
@@ -123,10 +126,10 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
       setBoard(null)
       setGuesses([])
     } else {
-      setBoard(boardData as CodewordsBoard | null)
+      setBoard(boardData)
       setGuesses(mergeCodewordsGuesses([], (guessRows as CodewordsGuess[]) ?? []))
     }
-  }, [applyLobbyReopenState, gameCode])
+  }, [applyLobbyReopenState, gameCode, hostToken])
 
   useEffect(() => {
     load()
@@ -144,7 +147,19 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     onRoles: (updater) => setRoles(updater),
     onBoard: (nextBoard) => {
       if (isReopeningLobby() && nextBoard) return
-      setBoard(nextBoard)
+      // Realtime payloads no longer carry `key` — keep the one we fetched, and re-fetch when
+      // the board row itself changes (new round). See mergeCodewordsBoardUpdate.
+      setBoard((prev) => {
+        if (nextBoard && prev && prev.id !== nextBoard.id) {
+          // Capture the id this fetch is for: two board changes in quick succession would
+          // otherwise let the slower response overwrite the newer board (review on PR #736).
+          const expectedId = nextBoard.id
+          void fetchCodewordsBoard(gameCode, { hostToken }).then((fresh) => {
+            if (fresh?.id === expectedId) setBoard((latest) => (latest?.id === expectedId ? fresh : latest))
+          })
+        }
+        return mergeCodewordsBoardUpdate(prev, nextBoard)
+      })
     },
     onGuesses: (updater) => {
       if (isReopeningLobby()) {

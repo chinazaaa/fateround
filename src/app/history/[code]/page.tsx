@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { fetchCodewordsBoard } from '@/lib/codewords-board-client'
 import { roundGenderLabel } from '@/lib/participants'
 import { isGenderFreeVoting } from '@/lib/gender-based'
 import {
@@ -315,10 +316,13 @@ export default function GameHistoryPage() {
       }
 
       if (isCodewordsGame(gameType)) {
-        const [{ data: plrs }, { data: roleRows }, { data: boardData }, { data: guessRows }] = await Promise.all([
+        // Board via the server route: `codewords_boards.key` is no longer anon-selectable
+        // (audit finding H2). This page only renders finished games, and the route reveals the
+        // key once a game is finished — so the post-game key reveal still works.
+        const [{ data: plrs }, { data: roleRows }, boardData, { data: guessRows }] = await Promise.all([
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
           supabase.from('codewords_player_roles').select('*').eq('game_id', gameCode),
-          supabase.from('codewords_boards').select('*').eq('game_id', gameCode).maybeSingle(),
+          fetchCodewordsBoard(gameCode),
           supabase
             .from('codewords_guesses')
             .select('*')
@@ -333,7 +337,7 @@ export default function GameHistoryPage() {
         setConfessions([])
         setHotSeatSubmissions([])
         resetSpecializedState()
-        setCodewordsBoard((boardData as CodewordsBoard | null) ?? null)
+        setCodewordsBoard(boardData)
         setCodewordsRoles(roleRows ?? [])
         setCodewordsGuesses(mergeCodewordsGuesses([], (guessRows as CodewordsGuess[]) ?? []))
         setLoadState('ready')

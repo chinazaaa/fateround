@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
-import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { tournamentHostActionSchema } from '@/lib/tournament-validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
-
-const supabase = getSupabaseAnon()
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -33,7 +30,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: 'Tournament already finished' }, { status: 400 })
   }
 
-  await supabase
+  await admin
     .from('tournament_games')
     .update({ status: 'finished' })
     .eq('tournament_id', tournamentId)
@@ -60,7 +57,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .neq('status', 'finished')
   }
 
-  const { error } = await supabase.from('tournaments').update({ status: 'finished' }).eq('id', tournamentId)
+  const { error } = await admin.from('tournaments').update({ status: 'finished' }).eq('id', tournamentId)
 
   if (error) {
     return NextResponse.json({ error: internalErrorMessage('tournaments/code/finish', error) }, { status: 500 })

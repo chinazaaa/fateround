@@ -30,11 +30,48 @@ environment you're targeting.
 | Variable | value |
 |---|---|
 | `NEXT_PUBLIC_LIVEKIT_URL` | `wss://livekit.fateround.com` (self-hosted) |
-| `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | **secret** — same self-hosted LiveKit creds for both envs |
 | `admin_email` | `nazaalistic@gmail.com` |
-| `admin_password` / `admin_session_secret` / `klipy_api_key` | **secret** (shared) |
 | `aws_region` | `us-east-1` |
 | `cloudflare_zone_id` | `fff141dbd5d5f15aadf4497bcd46f3fc` |
+
+## ⚠️ Must be split per environment (audit finding M1 — action required)
+
+These were the **same value in dev and prod**, which makes dev a full path into production:
+anyone who compromises the looser environment gets the production admin panel, and a LiveKit
+token minted on dev is valid against production voice rooms on the same instance.
+
+| Secret | Why it must differ | Status |
+|---|---|---|
+| `admin_password` | dev admin password === prod admin password | **rotate per env** |
+| `admin_session_secret` | a session cookie forged on dev validates on prod | **rotate per env** |
+| `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | see the note below — splitting keys alone does **not** isolate the environments | **needs a deployment split** |
+| `klipy_api_key` | shared quota; a dev flood exhausts prod's GIFs | split when convenient |
+
+### LiveKit: separate keys are not separate environments
+
+Both stacks point `NEXT_PUBLIC_LIVEKIT_URL` at the **same** self-hosted LiveKit
+(`wss://livekit.fateround.com`), and rooms are named by game code. A LiveKit server accepts a
+token signed by **any** key pair in its `keys:` map, and the token grants whatever room name it
+carries — so issuing dev its own key pair changes nothing: a dev-minted token for room `ABC123`
+is still valid against the production room `ABC123`. Per-environment keys only help with
+attribution and revocation, not isolation.
+
+Real isolation needs one of:
+
+1. **A separate LiveKit deployment per environment** (own host, own keys) — the clean fix, and
+   what the table above now asks for; or
+2. **Environment-prefixed room names** (`dev:ABC123` / `prod:ABC123`), so a token minted in one
+   environment names a room that cannot exist in the other. Cheaper, but it is enforced by our
+   own `authorizedRoom()` naming rather than by LiveKit, so it has to be applied on every path
+   that mints or joins a room.
+
+Until one of those lands, treat dev and prod voice as a single trust domain.
+
+`ADMIN_SESSION_SECRET` is additionally load-bearing for three unrelated things — the admin
+session HMAC, the community-manager session HMAC (`src/lib/manager-session.ts`) and the
+rate-limiter's IP pepper (`src/lib/rate-limit.ts`). Rotating it therefore signs every manager
+out and resets every rate-limit bucket. Split it into `ADMIN_SESSION_SECRET`,
+`MANAGER_SESSION_SECRET` and `RATE_LIMIT_PEPPER` so each can be rotated independently.
 
 ## Where the secrets live
 

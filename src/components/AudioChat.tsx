@@ -6,22 +6,25 @@ import type { DisconnectReason } from 'livekit-client'
 import { voiceDisconnectMessage } from '@/lib/voice-errors'
 import { useToast } from '@/components/ui/Toast'
 
-/** Proof the caller is allowed in the room, verified server-side before a
- * token is minted. `player`/`member` are authorized by their secret `identity`
- * (a server-generated UUID); `host` proves itself with the game's host token. */
-export type AudioAuth = { kind: 'player' } | { kind: 'member' } | { kind: 'host'; token: string }
+/** Proof the caller is allowed in the room, verified server-side before a token is minted.
+ *
+ * Every variant carries a SECRET the client already holds — the player's resume token, the
+ * room member's code, or the game's host token. It used to carry only the player/member id,
+ * but those are public (the roster has to render), so anyone could mint a token for any room;
+ * see the note in `src/lib/audio-room-auth.ts`. The LiveKit identity is now derived
+ * server-side from whichever row the secret resolves to, so it is no longer a prop. */
+export type AudioAuth =
+  | { kind: 'player'; resumeToken: string }
+  | { kind: 'member'; memberCode: string }
+  | { kind: 'host'; token: string }
 
 interface AudioChatProps {
   roomCode: string
   playerName: string
-  /** Stable, unique LiveKit identity. Defaults to playerName, but pass a
-   * distinct value (e.g. a member/player id) to avoid identity collisions
-   * when display names are not unique. */
-  identity?: string
   auth: AudioAuth
 }
 
-export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatProps) {
+export function AudioChat({ roomCode, playerName, auth }: AudioChatProps) {
   const { error: toastError } = useToast()
   const [token, setToken] = useState<string | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
@@ -117,7 +120,6 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             roomName: resolvedRoomCode.toUpperCase(),
-            identity: identity || playerName,
             auth: authRef.current,
           }),
         })
@@ -140,7 +142,7 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
       active = false
       window.clearInterval(interval)
     }
-  }, [token, resolvedRoomCode, identity, playerName])
+  }, [token, resolvedRoomCode, playerName])
 
   // 2. Join voice chat handler
   const joinAudio = async () => {
@@ -153,7 +155,6 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           roomName: resolvedRoomCode.toUpperCase(),
-          identity: identity || playerName,
           name: playerName,
           auth,
         }),

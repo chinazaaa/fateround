@@ -13,8 +13,6 @@ interface RoomVoiceRailProps {
   /** Game name shown beside the room code in the top bar (e.g. "Smash Marry Kill"). */
   label?: string
   playerName: string
-  /** Stable, unique LiveKit identity (defaults to playerName). */
-  identity?: string
   auth: AudioAuth
   /** You are the host (Host pill + Leave copy). */
   host?: boolean
@@ -65,7 +63,6 @@ export function RoomVoiceRail({
   roomCode,
   label,
   playerName,
-  identity,
   auth,
   host,
   hostBadge,
@@ -132,7 +129,6 @@ export function RoomVoiceRail({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             roomName: resolvedRoomCode.toUpperCase(),
-            identity: identity || playerName,
             auth: authRef.current,
           }),
         })
@@ -148,7 +144,7 @@ export function RoomVoiceRail({
       active = false
       window.clearInterval(interval)
     }
-  }, [token, resolvedRoomCode, identity, playerName])
+  }, [token, resolvedRoomCode, playerName])
 
   const joinAudio = async () => {
     if (!resolvedRoomCode || !playerName) return
@@ -159,7 +155,6 @@ export function RoomVoiceRail({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           roomName: resolvedRoomCode.toUpperCase(),
-          identity: identity || playerName,
           name: playerName,
           auth,
         }),

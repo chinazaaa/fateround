@@ -115,6 +115,9 @@ export default function GamePage() {
   }, [watch, searchParams, gameCode])
   const [playerName, setPlayerName] = useState<string | null>(null)
   const [playerId, setPlayerId] = useState<string | null>(null)
+  // The player's secret resume token — voice authorizes on this, not on the public
+  // playerId (see src/lib/audio-room-auth.ts).
+  const [resumeToken, setResumeToken] = useState<string | null>(null)
   // Game type gates the floating voice pill: games with the design-system header
   // voice (Whot) render their own Join-voice control, so we skip the pill for them.
   const [gameType, setGameType] = useState<string | null>(null)
@@ -125,9 +128,11 @@ export default function GamePage() {
       if (session?.playerName) {
         setPlayerName(session.playerName)
         setPlayerId(session.playerId)
+        setResumeToken(session.resumeToken ?? null)
       } else {
         setPlayerName(null)
         setPlayerId(null)
+        setResumeToken(null)
       }
     }
     checkSession()
@@ -160,11 +165,11 @@ export default function GamePage() {
           (Whot) so they don't get two voice controls. Voice chat is disabled for
           tournament players (unstable across the lobby/match tabs) — but spectators
           watching a tournament game can still hop in. */}
-      {playerName && playerId && (!tournamentId || watch) && !!gameType && !gameHasHeaderVoice(gameType) && (
-        <AudioChat roomCode={gameCode} playerName={playerName} identity={playerId} auth={{ kind: 'player' }} />
+      {playerName && resumeToken && (!tournamentId || watch) && !!gameType && !gameHasHeaderVoice(gameType) && (
+        <AudioChat roomCode={gameCode} playerName={playerName} auth={{ kind: 'player', resumeToken }} />
       )}
       <TournamentBanner gameCode={gameCode} tournamentId={tournamentId} />
-      {/* {playerId && <NowPlayingBar gameCode={gameCode} identity={playerId} />} */}
+      {/* {resumeToken && <NowPlayingBar gameCode={gameCode} resumeToken={resumeToken} />} */}
       {playerId && <IosInstallPushNudge gameCode={gameCode} />}
     </>
   )

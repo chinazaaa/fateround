@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { MusicAuth } from '@/lib/music-auth'
 
 // ---- Minimal Web Playback SDK typings (only what we use) -------------------
 type SpotifyWebPlaybackState = {
@@ -76,10 +77,11 @@ export type SpotifyPlayerState = {
  * "sync" possible: every player runs their own device and we steer them all to the
  * host's track + position.
  *
- * @param identity  caller's secret id (player UUID / `host-*`) — the token route key
+ * @param auth      proof the caller owns this Spotify connection (host token / resume token).
+ *                  The account identity is derived from it server-side — see lib/music-auth.
  * @param enabled   gate the whole thing (feature off, or no identity yet)
  */
-export function useSpotifyPlayer(identity: string | null, enabled: boolean) {
+export function useSpotifyPlayer(auth: MusicAuth | null, enabled: boolean) {
   const [state, setState] = useState<SpotifyPlayerState>({
     deviceId: null,
     isReady: false,
@@ -94,12 +96,12 @@ export function useSpotifyPlayer(identity: string | null, enabled: boolean) {
 
   /** Fetch a fresh access token from our server route (which refreshes server-side). */
   const fetchToken = useCallback(async (): Promise<string | null> => {
-    if (!identity) return null
+    if (!auth) return null
     try {
       const res = await fetch('/api/spotify/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identity }),
+        body: JSON.stringify({ auth }),
       })
       if (res.status === 404) {
         setState((s) => (s.connected ? { ...s, connected: false } : s))
@@ -113,10 +115,10 @@ export function useSpotifyPlayer(identity: string | null, enabled: boolean) {
     } catch {
       return null
     }
-  }, [identity])
+  }, [auth])
 
   useEffect(() => {
-    if (!enabled || !identity) return
+    if (!enabled || !auth) return
     let cancelled = false
     // Removes the first-gesture audio-unlock listeners; set once the player exists.
     let removeGestureUnlock: (() => void) | null = null
@@ -186,7 +188,7 @@ export function useSpotifyPlayer(identity: string | null, enabled: boolean) {
       playerRef.current = null
       deviceIdRef.current = null
     }
-  }, [enabled, identity, fetchToken])
+  }, [enabled, auth, fetchToken])
 
   /** Start (or switch to) a track at a position on THIS device. Uses the Web API because
    *  the SDK can't load a track by URI on its own. */

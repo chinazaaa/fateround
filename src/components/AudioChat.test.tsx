@@ -64,7 +64,7 @@ describe('AudioChat — Leave must not surface as a connect failure', () => {
   }
 
   const joinVoice = async () => {
-    render(<AudioChat roomCode="ABCDEF" playerName="Ada" identity="player-1" auth={{ kind: 'player' }} />)
+    render(<AudioChat roomCode="ABCDEF" playerName="Ada" auth={{ kind: 'player', resumeToken: 'tok-abcd' }} />)
     await click(/join voice/i)
     await waitFor(() => expect(screen.getByTestId('livekit-room')).toBeTruthy())
   }

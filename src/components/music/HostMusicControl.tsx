@@ -1,10 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
 import { useToast } from '@/components/ui/Toast'
 import { useMusicSession } from '@/hooks/useMusicSession'
 import { useSpotifySync } from '@/hooks/useSpotifySync'
+import type { MusicAuth } from '@/lib/music-auth'
+import { startSpotifyConnect } from '@/lib/spotify-connect-client'
 import { livePositionMs, type MusicSession, type SpotifyTrackInfo } from '@/lib/music'
 
 function fmt(ms: number): string {
@@ -33,9 +35,14 @@ function sessionFields(s: MusicSession) {
  */
 export function HostMusicControl({ gameCode, hostToken }: { gameCode: string; hostToken: string | null }) {
   const { error: toastError } = useToast()
-  const identity = `host-${gameCode}`
   const { session, musicEnabled } = useMusicSession(gameCode)
-  const { connected, product } = useSpotifySync(identity, musicEnabled, session)
+  // Proof, not an identifier: the server derives `host-<gameCode>` from this after checking
+  // the token. Memoised so the hook's effects don't re-run on every render.
+  const auth = useMemo<MusicAuth | null>(
+    () => (hostToken ? { kind: 'host', gameCode, hostToken } : null),
+    [gameCode, hostToken]
+  )
+  const { connected, product } = useSpotifySync(auth, musicEnabled, session)
 
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -49,9 +56,10 @@ export function HostMusicControl({ gameCode, hostToken }: { gameCode: string; ho
   // Return to the plain host path — NOT with ?token=. The host token is remembered in
   // localStorage (useHostToken) on this device, so it re-authorizes without carrying the
   // secret through Spotify's redirect chain / browser history.
-  const hostHref = `/api/spotify/login?identity=${encodeURIComponent(identity)}&returnTo=${encodeURIComponent(
-    `/host/${gameCode}`
-  )}`
+  const connectSpotify = async (proof: MusicAuth) => {
+    const message = await startSpotifyConnect(proof, `/host/${gameCode}`)
+    if (message) toastError(message)
+  }
 
   // Live progress ticker while playing + panel open.
   useEffect(() => {
@@ -188,10 +196,18 @@ export function HostMusicControl({ gameCode, hostToken }: { gameCode: string; ho
             {musicEnabled ? (
               <>
                 {/* Host connection state */}
-                {!connected ? (
-                  <a href={hostHref} className="btn-primary btn-fit block text-center text-xs">
+                {!connected && auth ? (
+                  // Only offered while we hold the host token — that token IS the proof the
+                  // connect handshake needs, so an authless button could only fail silently.
+                  <button
+                    type="button"
+                    onClick={() => connectSpotify(auth)}
+                    className="btn-primary btn-fit block w-full text-center text-xs"
+                  >
                     Connect your Spotify
-                  </a>
+                  </button>
+                ) : !connected ? (
+                  <p className="text-xs text-muted">Reopen this panel from your host link to connect Spotify.</p>
                 ) : !isPremium ? (
                   <p className="text-xs text-muted">
                     You can DJ, but hearing music yourself needs Spotify Premium. Players hear it on their own accounts.

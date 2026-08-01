@@ -2,6 +2,22 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+
+/**
+ * PostgREST `.or()` takes a comma-separated filter EXPRESSION, so raw user input spliced into
+ * it is injection: a `q` containing `,` or `)` adds filter terms of the attacker's choosing
+ * (audit finding M3). Strip every character with meaning in that grammar — plus the `%`/`*`
+ * wildcards, so a search can't degrade into a full-table scan. Searching is best-effort text
+ * matching, so dropping punctuation costs nothing real.
+ */
+function sanitizeSearchTerm(raw: string): string {
+  return raw
+    .replace(/[,.()*%\\:"']/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80)
+}
 
 const DEFAULT_PAGE_SIZE = 12
 const MAX_PAGE_SIZE = 100
@@ -18,7 +34,7 @@ export async function GET(req: NextRequest) {
 
   const supabase = getSupabaseAnon()
 
-  const search = searchParams.get('q')?.trim()
+  const search = sanitizeSearchTerm(searchParams.get('q') ?? '')
 
   let query = supabase
     .from('question_packs')
@@ -43,6 +59,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // Unauthenticated public write into the shared library (audit finding M3). Moderation
+  // (`status: 'pending'`) gates what becomes visible; this gates the volume.
+  const limited = await enforceRateLimit(req, RATE_LIMITS.librarySubmit)
+  if (limited) return limited
+
   const body = await req.json()
   const { title, game_type, author_name, description, questions, tags } = body
 

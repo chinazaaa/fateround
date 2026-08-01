@@ -1,20 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getFreshAccessToken } from '@/lib/spotify'
+import { authorizedMusicIdentity, type MusicAuth } from '@/lib/music-auth'
 
 /**
  * Vend a short-lived Spotify access token to the Web Playback SDK, mirroring how
- * /api/audio-token vends LiveKit credentials. The caller presents its secret `identity`
- * (the same UUID / `host-*` id it authed with) — that identity IS the bearer credential,
- * matching the app's anonymous player model. Refresh happens server-side with the client
- * secret; the browser never sees the refresh token.
+ * /api/audio-token vends LiveKit credentials.
+ *
+ * The caller proves ownership with the game's host token or their own resume token; the
+ * `spotify_accounts` identity is derived from whichever row that resolves to, never taken
+ * from the request. It previously accepted a bare `identity`, which is public — see the note
+ * in `src/lib/music-auth.ts`. Refresh happens server-side with the client secret; the browser
+ * never sees the refresh token.
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json().catch(() => ({}))) as { identity?: string }
-    const identity = body.identity?.trim()
+    const body = (await req.json().catch(() => ({}))) as { auth?: MusicAuth }
+
+    const identity = await authorizedMusicIdentity(body.auth)
     if (!identity) {
-      return NextResponse.json({ error: 'identity is required' }, { status: 400 })
+      return NextResponse.json({ error: 'Not authorized for this Spotify connection' }, { status: 403 })
     }
 
     const fresh = await getFreshAccessToken(identity)

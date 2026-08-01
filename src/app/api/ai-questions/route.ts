@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { z } from 'zod'
 import { generateAiQuestions, AI_QUESTION_GAME_TYPES } from '@/lib/ai-questions'
+import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 
 const requestSchema = z.object({
   gameType: z.enum(AI_QUESTION_GAME_TYPES as [string, ...string[]]),
@@ -13,6 +14,11 @@ const requestSchema = z.object({
 })
 
 export async function POST(req: NextRequest) {
+  // The caller supplies their own Claude key, so this costs us nothing — but it is still an
+  // unauthenticated outbound proxy and shouldn't be usable as a free relay (audit finding M7).
+  const limited = await enforceRateLimit(req, RATE_LIMITS.aiQuestions)
+  if (limited) return limited
+
   let body: unknown
   try {
     body = await req.json()

@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { usePolling, POLL_INTERVALS } from '@/hooks/usePolling'
 import { livePositionMs, type MusicSession } from '@/lib/music'
 import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
+import type { MusicAuth } from '@/lib/music-auth'
 
 /** Re-seek when the local device drifts more than this from the host's timeline. */
 const DRIFT_THRESHOLD_MS = 1_500
@@ -20,8 +21,8 @@ const DRIFT_THRESHOLD_MS = 1_500
  * A no-op until the SDK is ready and the account is Premium — free / unconnected players
  * simply hear nothing, and the game is unaffected.
  */
-export function useSpotifySync(identity: string | null, enabled: boolean, session: MusicSession | null) {
-  const player = useSpotifyPlayer(identity, enabled)
+export function useSpotifySync(auth: MusicAuth | null, enabled: boolean, session: MusicSession | null) {
+  const player = useSpotifyPlayer(auth, enabled)
   const { isReady, product, playUri, pause, seek, getState } = player
 
   // What we last drove the device to, so we can detect track / play-state transitions.

@@ -14,9 +14,13 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { appOrigin } from '@/lib/site'
 
+// `user-read-email` was requested but never used — nothing reads `profile.email`, and it made
+// a leaked access token disclose the connected account's email address (audit finding C3).
+// `user-read-private` stays: it backs `profile.product`, which is how we detect Premium (the
+// Web Playback SDK is Premium-only). Keep this list minimal — it is the blast radius of any
+// future token leak.
 export const SPOTIFY_SCOPES = [
   'streaming',
-  'user-read-email',
   'user-read-private',
   'user-modify-playback-state',
   'user-read-playback-state',

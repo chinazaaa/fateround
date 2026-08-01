@@ -1,26 +1,39 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Image from 'next/image'
 import { useMusicSession } from '@/hooks/useMusicSession'
 import { useSpotifySync } from '@/hooks/useSpotifySync'
+import type { MusicAuth } from '@/lib/music-auth'
+import { startSpotifyConnect } from '@/lib/spotify-connect-client'
 
 /**
  * Player-side "now playing" bar. Shows the host's current track and keeps this player's
  * Spotify locked to it (via `useSpotifySync`). Renders only when the host has enabled
  * music. Free / unconnected players see a prompt but the game is never blocked.
  */
-export function NowPlayingBar({ gameCode, identity }: { gameCode: string; identity: string }) {
+export function NowPlayingBar({ gameCode, resumeToken }: { gameCode: string; resumeToken: string }) {
   const { session, musicEnabled } = useMusicSession(gameCode)
-  const { connected, product, isReady, error, setVolume } = useSpotifySync(identity, musicEnabled, session)
+  // The player's resume token is the proof; the server maps it to their player id. Passing a
+  // bare player id here was finding C3 — that value is public.
+  const auth = useMemo<MusicAuth | null>(
+    () => (resumeToken ? { kind: 'player', gameCode, resumeToken } : null),
+    [gameCode, resumeToken]
+  )
+  const { connected, product, isReady, error, setVolume } = useSpotifySync(auth, musicEnabled, session)
   const [volume, setVolumeState] = useState(0.5)
   const [muted, setMuted] = useState(false)
+  // Surfaced inline: this bar has no toast, and a silent failure would look like a dead button.
+  const [connectError, setConnectError] = useState<string | null>(null)
 
   if (!musicEnabled) return null
 
   const hasTrack = Boolean(session?.track_uri)
   const isPremium = product === 'premium'
-  const loginHref = `/api/spotify/login?identity=${encodeURIComponent(identity)}&returnTo=${encodeURIComponent(`/game/${gameCode}`)}`
+  const connectSpotify = async (proof: MusicAuth) => {
+    setConnectError(null)
+    setConnectError(await startSpotifyConnect(proof, `/game/${gameCode}`))
+  }
 
   // Nothing to show: connected Premium listener with no track playing yet.
   if (connected && isPremium && !hasTrack) return null
@@ -66,9 +79,23 @@ export function NowPlayingBar({ gameCode, identity }: { gameCode: string; identi
         </div>
 
         {!connected ? (
-          <a href={loginHref} className="btn-primary btn-fit whitespace-nowrap text-xs">
-            Connect Spotify
-          </a>
+          <div className="flex flex-col items-end gap-1">
+            {auth ? (
+              // Only offered when we hold the player's resume token — that token IS the proof the
+              // connect handshake needs. Without it, an enabled-looking button would do nothing
+              // and a disabled one would say nothing, so explain instead (review on PR #736).
+              <button
+                type="button"
+                onClick={() => connectSpotify(auth)}
+                className="btn-primary btn-fit whitespace-nowrap text-xs"
+              >
+                Connect Spotify
+              </button>
+            ) : (
+              <span className="whitespace-nowrap text-xs text-muted">Rejoin the game to connect Spotify</span>
+            )}
+            {connectError && <span className="text-xs text-[var(--danger)]">{connectError}</span>}
+          </div>
         ) : !isPremium ? (
           <span className="whitespace-nowrap text-xs text-muted">Premium required</span>
         ) : (

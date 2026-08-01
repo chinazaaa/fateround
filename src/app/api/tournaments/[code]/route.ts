@@ -8,13 +8,24 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = getSupabaseAnon()
 
+/**
+ * Every `tournaments` column except `host_token`. Written as one literal (not a joined array)
+ * so supabase-js can still infer the row type from it. Keep in sync with the table.
+ */
+const TOURNAMENT_PUBLIC_SELECT =
+  'id, title, status, placement_points, target_game_count, created_at, elimination_config, max_players, format, game_type, game_config, last_knockout_cut_round'
+
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
   const tournamentId = code.toUpperCase()
 
+  // Explicit column list, NOT `select('*')`. Two reasons: this response is public (any caller
+  // with a tournament code), so `*` shipped `host_token` — the host credential — to every
+  // viewer; and since 20260803120000 anon holds only column-level SELECT on `tournaments`, so
+  // `*` errors outright. Adding a column here is deliberate; adding a secret one is not.
   const { data: tournament, error } = await supabase
     .from('tournaments')
-    .select('*')
+    .select(TOURNAMENT_PUBLIC_SELECT)
     .eq('id', tournamentId)
     .maybeSingle()
 
