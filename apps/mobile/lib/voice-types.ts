@@ -5,7 +5,9 @@
  * see the note in src/lib/audio-room-auth.ts. The LiveKit identity is derived server-side from
  * the row the secret resolves to and is no longer sent by the client. */
 export type AudioAuth =
-  { kind: 'player'; resumeToken: string } | { kind: 'member'; memberCode: string } | { kind: 'host'; token?: string }
+  | { kind: 'player'; resumeToken: string }
+  | { kind: 'member'; memberCode: string }
+  | { kind: 'host'; token?: string }
 
 export type VoiceParticipant = {
   id: string

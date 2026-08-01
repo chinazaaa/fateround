@@ -625,7 +625,9 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     firstTeam,
     onFirstTeamChange: setFirstTeam,
     teamAssignment: (randomizeTeams ? 'randomize' : playersPickTeams ? 'players' : 'host') as
-      'players' | 'host' | 'randomize',
+      | 'players'
+      | 'host'
+      | 'randomize',
     onTeamAssignmentChange: changeTeamAssignment,
     onStartGame: startGame,
     onRandomizeTeams: shuffleTeams,

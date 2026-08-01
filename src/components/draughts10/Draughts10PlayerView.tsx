@@ -42,7 +42,14 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useDraughts10ClockExpiry } from '@/hooks/useDraughts10Clocks'
 
 type Screen =
-  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'active' | 'finished' | 'not_found'
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'active'
+  | 'finished'
+  | 'not_found'
 
 /** Shared by both Draughts10 game types; the API route namespace is derived from the
  * game's own game_type (checkers_international vs checkers_nigeria), same as the

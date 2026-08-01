@@ -51,7 +51,14 @@ import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { DescribeItLoadingScreen } from '@/components/describe-it/DescribeItChrome'
 
 type Screen =
-  'loading' | 'join' | 'game_started_waiting' | 'late_join_choice' | 'game_ended' | 'lobby' | 'playing' | 'not_found'
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'late_join_choice'
+  | 'game_ended'
+  | 'lobby'
+  | 'playing'
+  | 'not_found'
 
 export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
   const [guessMode, setGuessMode] = useState<boolean | null>(null)

@@ -18,7 +18,9 @@ import { normalizeResumeToken } from '@/lib/utils'
  * rather than trusted from the request.
  */
 export type AudioAuth =
-  { kind: 'player'; resumeToken: string } | { kind: 'member'; memberCode: string } | { kind: 'host'; token?: string }
+  | { kind: 'player'; resumeToken: string }
+  | { kind: 'member'; memberCode: string }
+  | { kind: 'host'; token?: string }
 
 export type AudioAuthResult = {
   /** Canonical LiveKit room to grant, resolved server-side. */

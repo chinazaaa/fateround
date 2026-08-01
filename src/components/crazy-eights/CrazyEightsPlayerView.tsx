@@ -54,7 +54,14 @@ const CRAZY8_SESSION_SELECT =
 const CRAZY8_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
 type Screen =
-  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'active' | 'finished' | 'not_found'
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'active'
+  | 'finished'
+  | 'not_found'
 
 export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()

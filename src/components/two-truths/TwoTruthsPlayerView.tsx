@@ -33,7 +33,14 @@ import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 
 type Screen =
-  'loading' | 'join' | 'late_join_choice' | 'game_started_waiting' | 'game_ended' | 'lobby' | 'playing' | 'not_found'
+  | 'loading'
+  | 'join'
+  | 'late_join_choice'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'lobby'
+  | 'playing'
+  | 'not_found'
 
 export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   const { error: toastError, success } = useToast()

@@ -20,7 +20,8 @@ import { normalizeResumeToken } from '@/lib/utils'
  * of the app authorizes on, and the storage identity is DERIVED from the row it resolves to.
  */
 export type MusicAuth =
-  { kind: 'host'; gameCode: string; hostToken: string } | { kind: 'player'; gameCode: string; resumeToken: string }
+  | { kind: 'host'; gameCode: string; hostToken: string }
+  | { kind: 'player'; gameCode: string; resumeToken: string }
 
 /**
  * Resolve the caller to the `spotify_accounts.identity` they are allowed to act on,

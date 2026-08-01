@@ -71,7 +71,14 @@ const PHASE_LABEL: Record<string, string> = {
 }
 
 type Screen =
-  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'active' | 'finished' | 'not_found'
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'active'
+  | 'finished'
+  | 'not_found'
 
 export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: string; embedded?: boolean }) {
   const router = useRouter()

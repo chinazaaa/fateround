@@ -42,7 +42,14 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useTicTacToeTurnTimer } from '@/hooks/useTicTacToeTurnTimer'
 
 type Screen =
-  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'active' | 'finished' | 'not_found'
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'active'
+  | 'finished'
+  | 'not_found'
 
 export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()

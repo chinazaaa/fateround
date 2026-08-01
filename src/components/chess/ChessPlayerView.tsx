@@ -39,7 +39,14 @@ import { useChessClockExpiry } from '@/hooks/useChessClocks'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 
 type Screen =
-  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'active' | 'finished' | 'not_found'
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'active'
+  | 'finished'
+  | 'not_found'
 
 export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()

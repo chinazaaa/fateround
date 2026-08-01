@@ -46,7 +46,14 @@ import { useLudoNotifications, playLudoActionSound, playLudoRollSound } from '@/
 const ROLL_MIN_MS = 700
 
 type Screen =
-  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'active' | 'finished' | 'not_found'
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'active'
+  | 'finished'
+  | 'not_found'
 
 export function LudoPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()

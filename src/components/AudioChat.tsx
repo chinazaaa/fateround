@@ -14,7 +14,9 @@ import { useToast } from '@/components/ui/Toast'
  * see the note in `src/lib/audio-room-auth.ts`. The LiveKit identity is now derived
  * server-side from whichever row the secret resolves to, so it is no longer a prop. */
 export type AudioAuth =
-  { kind: 'player'; resumeToken: string } | { kind: 'member'; memberCode: string } | { kind: 'host'; token: string }
+  | { kind: 'player'; resumeToken: string }
+  | { kind: 'member'; memberCode: string }
+  | { kind: 'host'; token: string }
 
 interface AudioChatProps {
   roomCode: string

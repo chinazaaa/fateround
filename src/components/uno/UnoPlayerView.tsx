@@ -50,7 +50,14 @@ import { useUnoQuickChat } from '@/hooks/useUnoQuickChat'
 import { useGamePlacements, useGameStats } from '@/components/roster/RosterDrawerContext'
 
 type Screen =
-  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'active' | 'finished' | 'not_found'
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'active'
+  | 'finished'
+  | 'not_found'
 
 export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()

@@ -14,7 +14,14 @@ export const UNO_TURN_TIMER_OPTIONS = [0, 10, 15, 30, 60, 90, 120] as const
 export const MAHJONG_TURN_TIMER_OPTIONS = [0, 30, 60, 90, 120] as const
 
 export type BoardGameLobbyType =
-  'monopoly' | 'yahtzee' | 'whot' | 'crazy_eights' | 'uno' | 'ludo' | 'mahjong' | 'snake_and_ladder'
+  | 'monopoly'
+  | 'yahtzee'
+  | 'whot'
+  | 'crazy_eights'
+  | 'uno'
+  | 'ludo'
+  | 'mahjong'
+  | 'snake_and_ladder'
 
 export function boardGameToLobbyLimitType(gameType: BoardGameLobbyType): LobbyLimitGameType {
   return gameType
