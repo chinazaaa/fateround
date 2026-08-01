@@ -39,14 +39,7 @@ import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { QUIPLASH_MIN_PLAYERS } from '@/lib/quiplash'
 
 type Screen =
-  | 'loading'
-  | 'join'
-  | 'game_started_waiting'
-  | 'late_join_choice'
-  | 'game_ended'
-  | 'lobby'
-  | 'playing'
-  | 'not_found'
+  'loading' | 'join' | 'game_started_waiting' | 'late_join_choice' | 'game_ended' | 'lobby' | 'playing' | 'not_found'
 
 export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()

@@ -994,10 +994,10 @@ export function postQuickDrawGuessTeam(gameId: string, resumeToken: string, team
   return postJson<{ success: boolean }>('/api/quick-draw/guess-team', { gameId, resumeToken, team })
 }
 
-export function postAnonymousMessage(gameId: string, playerId: string, text: string, replyToId?: string | null) {
+export function postAnonymousMessage(gameId: string, resumeToken: string, text: string, replyToId?: string | null) {
   return postJson<{ success: boolean }>('/api/anonymous-messages', {
     gameId,
-    playerId,
+    resumeToken,
     text,
     messageType: 'text',
     replyToId: replyToId ?? undefined,
@@ -1005,10 +1005,10 @@ export function postAnonymousMessage(gameId: string, playerId: string, text: str
 }
 
 /** Send a GIF/sticker (message_type 'gif', media_url = the Klipy URL). */
-export function postAnonymousGif(gameId: string, playerId: string, mediaUrl: string, replyToId?: string | null) {
+export function postAnonymousGif(gameId: string, resumeToken: string, mediaUrl: string, replyToId?: string | null) {
   return postJson<{ success: boolean }>('/api/anonymous-messages', {
     gameId,
-    playerId,
+    resumeToken,
     text: '',
     messageType: 'gif',
     mediaUrl,

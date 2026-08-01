@@ -46,14 +46,7 @@ import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Screen =
-  | 'loading'
-  | 'join'
-  | 'game_started_waiting'
-  | 'game_ended'
-  | 'waiting'
-  | 'active'
-  | 'finished'
-  | 'not_found'
+  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'active' | 'finished' | 'not_found'
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥']
 
@@ -226,7 +219,10 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     if (!text || !myPlayerId || sending || !canPost) return
     setSending(true)
     try {
-      await postAnonymousMessage(code, myPlayerId, text, replyTo?.id ?? null)
+      // The author is resolved server-side from this secret, not from myPlayerId (public).
+      const session = await getPlayerSession(code)
+      if (!session?.resumeToken) throw new Error('Your session expired — rejoin to send messages')
+      await postAnonymousMessage(code, session.resumeToken, text, replyTo?.id ?? null)
       setMessageInput('')
       setReplyTo(null)
       await loadMessages()
@@ -241,7 +237,9 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     if (!myPlayerId || !canPost) return
     setGifOpen(false)
     try {
-      await postAnonymousGif(code, myPlayerId, mediaUrl, replyTo?.id ?? null)
+      const session = await getPlayerSession(code)
+      if (!session?.resumeToken) throw new Error('Your session expired — rejoin to send messages')
+      await postAnonymousGif(code, session.resumeToken, mediaUrl, replyTo?.id ?? null)
       setReplyTo(null)
       await loadMessages()
     } catch (err) {

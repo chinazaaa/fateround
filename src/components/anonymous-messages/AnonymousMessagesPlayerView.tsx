@@ -44,14 +44,7 @@ import { markPlayerReady } from '@/lib/player-ready'
 import { allowLateJoin, playerIsViewer, preJoinScreen } from '@/lib/viewers'
 
 type Screen =
-  | 'loading'
-  | 'join'
-  | 'game_started_waiting'
-  | 'game_ended'
-  | 'waiting'
-  | 'active'
-  | 'finished'
-  | 'not_found'
+  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'active' | 'finished' | 'not_found'
 
 export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
@@ -225,7 +218,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gameId: gameCode,
-          playerId: myPlayerId,
+          resumeToken: getPlayerSession(gameCode)?.resumeToken ?? '',
           text,
           ...(replyTo ? { replyToId: replyTo.id } : {}),
         }),
@@ -257,7 +250,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gameId: gameCode,
-          playerId: myPlayerId,
+          resumeToken: getPlayerSession(gameCode)?.resumeToken ?? '',
           text: '',
           messageType: 'gif',
           mediaUrl,

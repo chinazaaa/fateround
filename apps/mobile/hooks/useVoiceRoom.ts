@@ -20,6 +20,8 @@ export function useVoiceRoom({ gameCode, mode, hostToken }: Options) {
   const hostDisplayName = useHostVoiceDisplayName(mode === 'host' ? gameCode : '')
 
   const [playerIdentity, setPlayerIdentity] = useState<string | null>(null)
+  // The player's secret resume token — voice authorizes on this, never on playerIdentity.
+  const [playerResumeToken, setPlayerResumeToken] = useState<string | null>(null)
   const [playerName, setPlayerName] = useState('')
   const [playerReady, setPlayerReady] = useState(false)
 
@@ -51,10 +53,12 @@ export function useVoiceRoom({ gameCode, mode, hostToken }: Options) {
       if (!session?.playerId) {
         setPlayerReady(false)
         setPlayerIdentity(null)
+        setPlayerResumeToken(null)
         setPlayerName('')
         return
       }
       setPlayerIdentity(session.playerId)
+      setPlayerResumeToken(session.resumeToken ?? null)
       setPlayerName(session.playerName)
       setPlayerReady(true)
     }
@@ -67,13 +71,13 @@ export function useVoiceRoom({ gameCode, mode, hostToken }: Options) {
   const auth: AudioAuth | null =
     mode === 'host' && hostToken
       ? { kind: 'host', token: hostToken }
-      : mode === 'player' && playerIdentity
-        ? { kind: 'player' }
+      : mode === 'player' && playerResumeToken
+        ? { kind: 'player', resumeToken: playerResumeToken }
         : null
 
   authRef.current = auth
 
-  const ready = mode === 'host' ? !!hostToken && !!hostIdentity : playerReady && !!playerIdentity
+  const ready = mode === 'host' ? !!hostToken && !!hostIdentity : playerReady && !!playerResumeToken
 
   useEffect(() => {
     let active = true
@@ -97,7 +101,6 @@ export function useVoiceRoom({ gameCode, mode, hostToken }: Options) {
       try {
         const data = await postAudioPresence({
           roomName: resolvedRoomCode,
-          identity,
           auth: authRef.current!,
         })
         if (active) setPresenceCount(typeof data.count === 'number' ? data.count : 0)
@@ -123,7 +126,7 @@ export function useVoiceRoom({ gameCode, mode, hostToken }: Options) {
       const session = await getPlayerSession(gameCode)
       name = session?.playerName?.trim() || 'Host'
     }
-    const data = await postAudioToken({ roomName: resolvedRoomCode, identity, name, auth })
+    const data = await postAudioToken({ roomName: resolvedRoomCode, name, auth })
     return data.token
   }, [auth, displayName, gameCode, identity, mode, resolvedRoomCode])
 

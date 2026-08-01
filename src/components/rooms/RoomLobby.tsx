@@ -800,8 +800,7 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
         <AudioChat
           roomCode={roomCode}
           playerName={identity.displayName}
-          identity={identity.memberId}
-          auth={{ kind: 'member' }}
+          auth={{ kind: 'member', memberCode: identity.memberCode }}
         />
       )}
     </>

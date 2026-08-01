@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { parseJsonBody } from '@/lib/parse-body'
-import { getSupabaseAnon } from '@/lib/supabase-anon'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { generateGameCode, generateToken } from '@/lib/utils'
 import {
   createTournamentSchema,
@@ -11,9 +11,12 @@ import {
 } from '@/lib/tournament-validation'
 import { buildTournamentGameConfig } from '@/lib/tournament-game-config'
 
-const supabase = getSupabaseAnon()
-
 export async function POST(req: NextRequest) {
+  // Service role: `tournaments` is INSERT-locked for anon since 20260803120000, and the row
+  // carries the host_token this route vends back to the creator. Resolved inside the handler
+  // so a missing key surfaces as a request error rather than a module-load crash.
+  const supabase = getSupabaseAdmin()
+
   const { data: body, error: bodyError } = await parseJsonBody(req, createTournamentSchema)
   if (bodyError) return bodyError
 

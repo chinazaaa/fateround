@@ -124,7 +124,8 @@ export function SecretMessageSenderView({ gameCode }: { gameCode: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gameId: gameCode,
-          playerId,
+          // The sender's secret, not their public id — the server resolves the author from it.
+          resumeToken: getPlayerSession(gameCode)?.resumeToken ?? '',
           text,
           messageType: 'text',
         }),

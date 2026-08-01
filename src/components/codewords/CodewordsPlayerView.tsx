@@ -27,7 +27,9 @@ import {
   roleLabel,
   teamLabel,
   waitingTurnMessage,
+  mergeCodewordsBoardUpdate,
 } from '@/lib/codewords'
+import { fetchCodewordsBoard } from '@/lib/codewords-board-client'
 import { CodewordsAchievementPosts } from '@/components/codewords/CodewordsAchievementPosts'
 import { useCodewordsRealtime } from '@/hooks/useCodewordsRealtime'
 import { useCodewordsNotifications } from '@/hooks/useCodewordsNotifications'
@@ -183,15 +185,14 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     setScreen(playerId ? 'finished' : 'game_ended')
   }, [])
 
+  // Via the server route, not a direct read: `codewords_boards.key` is no longer
+  // anon-selectable (audit finding H2). The route returns the real key to this player only if
+  // their resume token resolves to a spymaster; operatives get a masked copy.
   const loadBoard = useCallback(async () => {
-    const { data: boardData } = await supabase
-      .from('codewords_boards')
-      .select('*')
-      .eq('game_id', gameCode)
-      .maybeSingle()
-    if (boardData) setBoard(boardData as CodewordsBoard)
-    return boardData as CodewordsBoard | null
-  }, [gameCode])
+    const boardData = await fetchCodewordsBoard(gameCode, { resumeToken: myResumeToken })
+    if (boardData) setBoard(boardData)
+    return boardData
+  }, [gameCode, myResumeToken])
 
   const loadGuesses = useCallback(async () => {
     const { data } = await supabase
@@ -308,7 +309,14 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
       })
       void refreshMyRole(myPlayerId)
     },
-    onBoard: setBoard,
+    onBoard: (nextBoard) => {
+      // Realtime payloads no longer carry `key`; keep the one we fetched, and re-fetch through
+      // the route when the board row is replaced (new round).
+      setBoard((prev) => {
+        if (nextBoard && prev && prev.id !== nextBoard.id) void loadBoard()
+        return mergeCodewordsBoardUpdate(prev, nextBoard)
+      })
+    },
     onGuesses: (updater) => setGuesses(updater),
     onReload: load,
   })

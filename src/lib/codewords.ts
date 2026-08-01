@@ -129,20 +129,24 @@ export function generateKey(startingTeam: CodewordsTeam): CodewordsCellType[] {
   return key
 }
 
-export function countTeamCells(key: CodewordsCellType[], team: CodewordsTeam): number {
+export function countTeamCells(key: (CodewordsCellType | null)[], team: CodewordsTeam): number {
   return key.filter((cell) => cell === team).length
 }
 
-export function countRevealedTeamCells(key: CodewordsCellType[], revealed: number[], team: CodewordsTeam): number {
+export function countRevealedTeamCells(
+  key: (CodewordsCellType | null)[],
+  revealed: number[],
+  team: CodewordsTeam
+): number {
   return revealed.filter((index) => key[index] === team).length
 }
 
-export function teamWon(key: CodewordsCellType[], revealed: number[], team: CodewordsTeam): boolean {
+export function teamWon(key: (CodewordsCellType | null)[], revealed: number[], team: CodewordsTeam): boolean {
   return countRevealedTeamCells(key, revealed, team) >= countTeamCells(key, team)
 }
 
 /** First team with all words revealed wins — regardless of who revealed the last word. */
-export function winnerFromRevealedBoard(key: CodewordsCellType[], revealed: number[]): CodewordsTeam | null {
+export function winnerFromRevealedBoard(key: (CodewordsCellType | null)[], revealed: number[]): CodewordsTeam | null {
   if (teamWon(key, revealed, 'red')) return 'red'
   if (teamWon(key, revealed, 'blue')) return 'blue'
   return null
@@ -710,4 +714,27 @@ export async function clearCodewordsSessionData(
   const { error } = await supabase.from('codewords_player_roles').delete().eq('game_id', gameId)
   if (error) return { error: internalErrorMessage('codewords', error) }
   return { error: null }
+}
+
+/**
+ * Fold a realtime `codewords_boards` payload into the board we already hold.
+ *
+ * Since 20260803170000, anon realtime payloads exclude the `key` column (the role can't select
+ * it), so applying `p.new` verbatim would wipe the key a spymaster fetched through
+ * /api/codewords/board and blank their grid mid-game. The key never changes for a given board
+ * row, so carrying the known one forward is correct — and when the board row itself is replaced
+ * (a new round), the id differs and the caller re-fetches instead.
+ */
+export function mergeCodewordsBoardUpdate(
+  prev: CodewordsBoard | null,
+  incoming: CodewordsBoard | null
+): CodewordsBoard | null {
+  if (!incoming) return null
+  if (!prev || prev.id !== incoming.id) return incoming
+  const hasKey = Array.isArray(incoming.key) && incoming.key.some((cell) => cell != null)
+  return {
+    ...incoming,
+    key: hasKey ? incoming.key : prev.key,
+    key_totals: incoming.key_totals ?? prev.key_totals,
+  }
 }

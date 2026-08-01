@@ -24,15 +24,10 @@ export async function fetchGameRoomCode(gameCode: string): Promise<string> {
   }
 }
 
-export function postAudioToken(body: {
-  roomName: string
-  identity: string
-  name: string
-  auth: AudioAuth
-}) {
+export function postAudioToken(body: { roomName: string; name: string; auth: AudioAuth }) {
   return postJson<{ token: string }>('/api/audio-token', body)
 }
 
-export function postAudioPresence(body: { roomName: string; identity: string; auth: AudioAuth }) {
+export function postAudioPresence(body: { roomName: string; auth: AudioAuth }) {
   return postJson<{ count: number }>('/api/audio-presence', body)
 }

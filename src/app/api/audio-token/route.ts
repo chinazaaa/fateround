@@ -1,20 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { AccessToken } from 'livekit-server-sdk'
-import { authorizedRoomName, type AudioAuth } from '@/lib/audio-room-auth'
+import { authorizedRoom, type AudioAuth } from '@/lib/audio-room-auth'
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { roomName, identity, name, auth } = body as {
+    const { roomName, name, auth } = body as {
       roomName?: string
-      identity?: string
       name?: string
       auth?: AudioAuth
     }
 
-    if (!roomName || !identity) {
-      return NextResponse.json({ error: 'roomName and identity are required' }, { status: 400 })
+    if (!roomName) {
+      return NextResponse.json({ error: 'roomName is required' }, { status: 400 })
     }
 
     const apiKey = process.env.LIVEKIT_API_KEY
@@ -27,16 +26,19 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const authorizedRoom = await authorizedRoomName(roomName, identity, auth)
-    if (!authorizedRoom) {
+    const authorized = await authorizedRoom(roomName, auth)
+    if (!authorized) {
       return NextResponse.json({ error: 'Not authorized to join this voice room' }, { status: 403 })
     }
 
+    // Identity comes from the authorized row, never from the request body — otherwise a
+    // caller holding their own valid token could still mint one under someone else's
+    // identity and appear in the room as them.
     const at = new AccessToken(apiKey, apiSecret, {
-      identity,
-      name: name || identity,
+      identity: authorized.identity,
+      name: name || authorized.identity,
     })
-    at.addGrant({ roomJoin: true, room: authorizedRoom, canPublish: true, canSubscribe: true })
+    at.addGrant({ roomJoin: true, room: authorized.room, canPublish: true, canSubscribe: true })
     const token = await at.toJwt()
     return NextResponse.json({ token })
   } catch (err) {

@@ -191,7 +191,19 @@ export interface CodewordsBoard {
   id: string
   game_id: string
   words: string[]
-  key: CodewordsCellType[]
+  /**
+   * Word → team assignment. SECRET while the game is live: only the host and the two
+   * spymasters receive the real array from /api/codewords/board. Everyone else gets a MASKED
+   * copy — the true type at revealed indices, `null` at unrevealed ones — which is all an
+   * operative's UI needs (see audit finding H2). Server code always holds the full key.
+   */
+  key: (CodewordsCellType | null)[]
+  /**
+   * How many cells belong to each type. Not secret (the split is fixed by the ruleset and is
+   * already on screen), but it can't be derived from a masked key — so the API sends it
+   * explicitly for the scoreboard.
+   */
+  key_totals?: Partial<Record<CodewordsCellType, number>>
   starting_team: CodewordsTeam
   revealed_indices: number[]
   current_turn: CodewordsTeam
@@ -240,15 +252,7 @@ export interface CodewordsMessage {
   player_name?: string
 }
 export type ThemeId =
-  | 'default'
-  | 'neon'
-  | 'retro'
-  | 'elegant'
-  | 'tropical'
-  | 'pirate'
-  | 'arctic'
-  | 'naija'
-  | 'grass_court'
+  'default' | 'neon' | 'retro' | 'elegant' | 'tropical' | 'pirate' | 'arctic' | 'naija' | 'grass_court'
 export type WyrChoice = 'a' | 'b'
 
 export type ParticipantGender = 'male' | 'female'
@@ -736,12 +740,7 @@ export type UnoColor = 'red' | 'yellow' | 'green' | 'blue'
 export type UnoCardKind = 'number' | 'skip' | 'reverse' | 'draw2' | 'wild' | 'wild_draw4'
 
 export type UnoPhase =
-  | 'playing'
-  | 'choose_color'
-  | 'challenge_window'
-  | 'swap_target'
-  | 'team_leave_decision'
-  | 'finished'
+  'playing' | 'choose_color' | 'challenge_window' | 'swap_target' | 'team_leave_decision' | 'finished'
 
 export interface UnoCard {
   id: string

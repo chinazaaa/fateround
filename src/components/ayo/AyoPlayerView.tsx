@@ -44,14 +44,7 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useAyoClockExpiry } from '@/hooks/useAyoClocks'
 
 type Screen =
-  | 'loading'
-  | 'join'
-  | 'game_started_waiting'
-  | 'game_ended'
-  | 'waiting'
-  | 'active'
-  | 'finished'
-  | 'not_found'
+  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'active' | 'finished' | 'not_found'
 
 export function AyoPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()

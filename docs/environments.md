@@ -30,11 +30,28 @@ environment you're targeting.
 | Variable | value |
 |---|---|
 | `NEXT_PUBLIC_LIVEKIT_URL` | `wss://livekit.fateround.com` (self-hosted) |
-| `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | **secret** — same self-hosted LiveKit creds for both envs |
 | `admin_email` | `nazaalistic@gmail.com` |
-| `admin_password` / `admin_session_secret` / `klipy_api_key` | **secret** (shared) |
 | `aws_region` | `us-east-1` |
 | `cloudflare_zone_id` | `fff141dbd5d5f15aadf4497bcd46f3fc` |
+
+## ⚠️ Must be split per environment (audit finding M1 — action required)
+
+These were the **same value in dev and prod**, which makes dev a full path into production:
+anyone who compromises the looser environment gets the production admin panel, and a LiveKit
+token minted on dev is valid against production voice rooms on the same instance.
+
+| Secret | Why it must differ | Status |
+|---|---|---|
+| `admin_password` | dev admin password === prod admin password | **rotate per env** |
+| `admin_session_secret` | a session cookie forged on dev validates on prod | **rotate per env** |
+| `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | self-hosted LiveKit accepts multiple key pairs — issue one per env | **split** |
+| `klipy_api_key` | shared quota; a dev flood exhausts prod's GIFs | split when convenient |
+
+`ADMIN_SESSION_SECRET` is additionally load-bearing for three unrelated things — the admin
+session HMAC, the community-manager session HMAC (`src/lib/manager-session.ts`) and the
+rate-limiter's IP pepper (`src/lib/rate-limit.ts`). Rotating it therefore signs every manager
+out and resets every rate-limit bucket. Split it into `ADMIN_SESSION_SECRET`,
+`MANAGER_SESSION_SECRET` and `RATE_LIMIT_PEPPER` so each can be rotated independently.
 
 ## Where the secrets live
 

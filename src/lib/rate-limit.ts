@@ -48,6 +48,19 @@ export const RATE_LIMITS = {
   // Backstop against grinding a 6-digit code. Supabase enforces its own per-token
   // attempt limit too; this only stops a scripted flood from one IP.
   authVerifyCode: { bucket: 'auth-verify-code', max: 30, windowSeconds: 900 },
+  // Every GIF search spends third-party Klipy quota, and the endpoint is unauthenticated
+  // (audit finding M2). Typing in the picker is debounced client-side, so a real user makes
+  // a handful of calls per minute — a whole room browsing at once still clears this.
+  klipy: { bucket: 'klipy', max: 300, windowSeconds: 300 },
+  // Public write into the shared question-pack library (audit finding M3). Submitting a pack
+  // is a deliberate, occasional action, so this is deliberately much tighter than gameplay.
+  librarySubmit: { bucket: 'library-submit', max: 20, windowSeconds: 3600 },
+  // Unauthenticated outbound proxy to the Anthropic API (audit finding M7). The caller
+  // supplies their own key so there is no cost to us, but it shouldn't be a free relay.
+  aiQuestions: { bucket: 'ai-questions', max: 60, windowSeconds: 300 },
+  // Returns whole-session snapshots, so it's worth a flood backstop alongside the token
+  // check added for audit finding M4.
+  gameSnapshots: { bucket: 'game-snapshots', max: 300, windowSeconds: 300 },
 } as const satisfies Record<string, RateLimitRule>
 
 // Keyed hash so stored keys can't be reversed by offline enumeration. Peppered

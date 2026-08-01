@@ -26,6 +26,24 @@ function fromBase64Url(value: string): Uint8Array {
   return bytes
 }
 
+/**
+ * Constant-time string comparison (audit finding M5). `===` on a secret short-circuits at the
+ * first differing byte, which leaks its prefix through response timing. Compares the SHA-256
+ * digests so inputs of different lengths still take the same path.
+ */
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder()
+  const [da, db] = await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(a)),
+    crypto.subtle.digest('SHA-256', enc.encode(b)),
+  ])
+  const va = new Uint8Array(da)
+  const vb = new Uint8Array(db)
+  let diff = 0
+  for (let i = 0; i < va.length; i++) diff |= va[i] ^ vb[i]
+  return diff === 0
+}
+
 async function hmacSign(message: string, secret: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     'raw',
@@ -64,7 +82,7 @@ export async function verifyAdminSessionToken(token: string | undefined | null):
 
   try {
     const expected = await hmacSign(encoded, getSecret())
-    if (expected !== signature) return null
+    if (!(await timingSafeEqual(expected, signature))) return null
 
     const payload = JSON.parse(new TextDecoder().decode(fromBase64Url(encoded))) as SessionPayload
     if (!payload.email || typeof payload.exp !== 'number') return null
@@ -79,9 +97,13 @@ export async function verifyAdminSessionToken(token: string | undefined | null):
   }
 }
 
-export function verifyAdminCredentials(email: string, password: string): boolean {
+export async function verifyAdminCredentials(email: string, password: string): Promise<boolean> {
   const allowedEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase()
   const allowedPassword = process.env.ADMIN_PASSWORD
   if (!allowedEmail || !allowedPassword) return false
-  return email.trim().toLowerCase() === allowedEmail && password === allowedPassword
+  // Compare BOTH in constant time, and evaluate both regardless of the first result, so the
+  // response time doesn't reveal whether the email was the one that matched.
+  const emailOk = await timingSafeEqual(email.trim().toLowerCase(), allowedEmail)
+  const passwordOk = await timingSafeEqual(password, allowedPassword)
+  return emailOk && passwordOk
 }

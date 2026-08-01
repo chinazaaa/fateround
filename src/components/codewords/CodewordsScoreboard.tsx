@@ -15,8 +15,11 @@ export function CodewordsScoreboard({
   roles: CodewordsPlayerRole[]
   highlightPlayerId?: string | null
 }) {
-  const redTotal = countTeamCells(board.key, 'red')
-  const blueTotal = countTeamCells(board.key, 'blue')
+  // Operatives hold a MASKED key (null at unrevealed indices), so counting it would under-report
+  // the totals — prefer the explicit counts the API sends. Spymasters/host have the real key and
+  // either path agrees. See audit finding H2.
+  const redTotal = board.key_totals?.red ?? countTeamCells(board.key, 'red')
+  const blueTotal = board.key_totals?.blue ?? countTeamCells(board.key, 'blue')
   const redFound = countRevealedTeamCells(board.key, board.revealed_indices, 'red')
   const blueFound = countRevealedTeamCells(board.key, board.revealed_indices, 'blue')
   const redLeft = redTotal - redFound

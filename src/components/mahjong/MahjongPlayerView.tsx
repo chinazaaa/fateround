@@ -39,14 +39,7 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useMahjongTurnTimer } from '@/hooks/useMahjongTurnTimer'
 
 type Screen =
-  | 'loading'
-  | 'join'
-  | 'game_started_waiting'
-  | 'game_ended'
-  | 'waiting'
-  | 'active'
-  | 'finished'
-  | 'not_found'
+  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'active' | 'finished' | 'not_found'
 
 const MAHJONG_POLL_INTERVAL_MS = 1500
 

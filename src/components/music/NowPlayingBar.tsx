@@ -1,18 +1,25 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Image from 'next/image'
 import { useMusicSession } from '@/hooks/useMusicSession'
 import { useSpotifySync } from '@/hooks/useSpotifySync'
+import type { MusicAuth } from '@/lib/music-auth'
 
 /**
  * Player-side "now playing" bar. Shows the host's current track and keeps this player's
  * Spotify locked to it (via `useSpotifySync`). Renders only when the host has enabled
  * music. Free / unconnected players see a prompt but the game is never blocked.
  */
-export function NowPlayingBar({ gameCode, identity }: { gameCode: string; identity: string }) {
+export function NowPlayingBar({ gameCode, resumeToken }: { gameCode: string; resumeToken: string }) {
   const { session, musicEnabled } = useMusicSession(gameCode)
-  const { connected, product, isReady, error, setVolume } = useSpotifySync(identity, musicEnabled, session)
+  // The player's resume token is the proof; the server maps it to their player id. Passing a
+  // bare player id here was finding C3 — that value is public.
+  const auth = useMemo<MusicAuth | null>(
+    () => (resumeToken ? { kind: 'player', gameCode, resumeToken } : null),
+    [gameCode, resumeToken]
+  )
+  const { connected, product, isReady, error, setVolume } = useSpotifySync(auth, musicEnabled, session)
   const [volume, setVolumeState] = useState(0.5)
   const [muted, setMuted] = useState(false)
 
@@ -20,7 +27,9 @@ export function NowPlayingBar({ gameCode, identity }: { gameCode: string; identi
 
   const hasTrack = Boolean(session?.track_uri)
   const isPremium = product === 'premium'
-  const loginHref = `/api/spotify/login?identity=${encodeURIComponent(identity)}&returnTo=${encodeURIComponent(`/game/${gameCode}`)}`
+  const loginHref = `/api/spotify/login?role=player&gameCode=${encodeURIComponent(
+    gameCode
+  )}&token=${encodeURIComponent(resumeToken)}&returnTo=${encodeURIComponent(`/game/${gameCode}`)}`
 
   // Nothing to show: connected Premium listener with no track playing yet.
   if (connected && isPremium && !hasTrack) return null
