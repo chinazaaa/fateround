@@ -1,71 +1,123 @@
 #!/usr/bin/env bash
+#
+# Supply-chain tripwire. Scans build-time config files and everything shipped
+# under public/ for the fingerprints of the payloads this repo has been hit with
+# before (see MEMORY: "Supply-chain contamination (lobster/thanos)" — a VSCode
+# auto-task plus an obfuscated JS payload dropped into public/). It is
+# deliberately CONSERVATIVE: it only looks at config + public/ assets (not the
+# whole src/ tree) and only flags patterns that never legitimately appear in
+# those files, so it should not false-positive on the real codebase.
+#
+# Exits NON-ZERO on any hit. Checks:
+#   1. The `global['!']` payload marker anywhere in the tracked tree.
+#   2. Suspiciously long lines (>200 chars) in config / public JS — a classic
+#      sign of an inlined/minified obfuscated payload.
+#   3. Obfuscation/exec primitives (eval(, Function(, String.fromCharCode,
+#      createRequire) in config / public JS.
+#   4. postcss.config.mjs integrity — must stay tiny and static (no require,
+#      dynamic import, process.env, child_process or fetch).
+#
+# Usage: scripts/forbidden-pattern-scan.sh [ROOT]
 set -euo pipefail
 
 ROOT="${1:-.}"
 cd "$ROOT"
 
-FORBIDDEN=$'global[\'!\']'
-EXCLUDE=${2:-":(exclude).github/workflows/forbidden-pattern-scan.yml"}
+FAILED=0
 
-matches=$(git grep -lF "$FORBIDDEN" -- . "$EXCLUDE" || true)
-if [[ -n "$matches" ]]; then
-  echo "::error::Blocked literal pattern detected in repository files." >&2
-    echo "Affected file(s):" >&2
-      printf '%s\n' "$matches" >&2
-        echo "" >&2
-          git grep -nF "$FORBIDDEN" -- . "$EXCLUDE" >&2 || true
-            exit 1
-            fi
+# Longest line we tolerate in a hand-written config / small public asset.
+MAX_LINE=200
+# Largest postcss.config.mjs we expect (it should just wire up the tailwind plugin).
+POSTCSS_MAX_BYTES=500
 
-            echo "OK: no files contain the forbidden pattern."
+# ---------------------------------------------------------------------------
+# [1/4] The `global['!']` payload marker.
+# The literal is assembled from fragments so this script does not itself contain
+# the contiguous string it is searching for (otherwise the scan flags itself).
+# ---------------------------------------------------------------------------
+MARKER="global""['!']"
+echo "[1/4] Scanning for the '${MARKER}' payload marker..."
+# Exclude this script and any CI workflow that legitimately references the marker.
+if marker_hits=$(git grep -lF "$MARKER" -- . \
+  ':(exclude)scripts/forbidden-pattern-scan.sh' \
+  ':(exclude).github/workflows/*' 2>/dev/null); then
+  if [[ -n "$marker_hits" ]]; then
+    echo "FAIL [payload-marker] Blocked literal '${MARKER}' found in:" >&2
+    printf '%s\n' "$marker_hits" >&2
+    git grep -nF "$MARKER" -- . \
+      ':(exclude)scripts/forbidden-pattern-scan.sh' \
+      ':(exclude).github/workflows/*' >&2 || true
+    FAILED=1
+  fi
+fi
 
-            # |
-            #           set -e
-            #           ROOT="${{ github.workspace }}"
-            #           FAILED=0
+# ---------------------------------------------------------------------------
+# Build the list of files to scan for checks 2 & 3: root config files plus any
+# JavaScript shipped under public/.
+# ---------------------------------------------------------------------------
+# TWO passes on purpose. `-maxdepth 1` applies to the whole traversal, not to the branch it
+# sits in, so combining these into one expression means the `public/` branch is never reached
+# and public/sw.js — the only JavaScript we actually ship to browsers, and so the highest-value
+# target for an injected payload — is silently skipped (flagged in review on PR #738).
+scan_files=()
+while IFS= read -r f; do
+  [[ -n "$f" ]] && scan_files+=("$f")
+done < <(
+  # Pass 1: root-level config files only.
+  find . -maxdepth 1 -type f \
+    \( -name '*.mjs' -o -name '*.cjs' -o -name 'postcss*' -o -name '*.config.*' \) -print 2>/dev/null
+  # Pass 2: any JavaScript shipped under public/, at any depth.
+  find ./public -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' \) -print 2>/dev/null
+)
 
-            #           echo "[1/3] Checking for suspiciously long lines in config files..."
-            #           while IFS= read -r file; do
-            #             awk -v f="$file" 'length > 200 {
-            #               print "FAIL [long-line] " f ":" NR " (" length " chars)"
-            #               exit 1
-            #             }' "$file" || FAILED=1
-            #           done <<< "$(find "$ROOT" \
-            #             \( -path "*/node_modules" -o -path "*/.git" \) -prune \
-            #             -o \( -name "*.mjs" -o -name "*.cjs" -o -name "postcss*" -o -name "*.config.*" \) \
-            #             -type f -print)"
+# ---------------------------------------------------------------------------
+# [2/4] Long-line detection.
+# ---------------------------------------------------------------------------
+echo "[2/4] Checking for suspiciously long lines (>${MAX_LINE} chars)..."
+for file in "${scan_files[@]}"; do
+  if awk -v max="$MAX_LINE" 'length > max { exit 1 }' "$file"; then :; else
+    line=$(awk -v max="$MAX_LINE" 'length > max { print NR": "length" chars"; exit }' "$file")
+    echo "FAIL [long-line] $file:$line" >&2
+    FAILED=1
+  fi
+done
 
-            #           echo "[2/3] Checking for forbidden patterns in config files..."
-            #           while IFS= read -r file; do
-            #             for pattern in "createRequire" "String\.fromCharCode" "global\[" "_\$_[0-9a-zA-Z]" "eval\s*\(" "Function\s*\("; do
-            #               if grep -qE "$pattern" "$file" 2>/dev/null; then
-            #                 echo "FAIL [forbidden-pattern] $file matches: $pattern"
-            #                 FAILED=1
-            #               fi
-            #             done
-            #           done <<< "$(find "$ROOT" \
-            #             \( -path "*/node_modules" -o -path "*/.git" \) -prune \
-            #             -o \( -name "*.mjs" -o -name "*.cjs" -o -name "postcss*" -o -name "*.config.*" \) \
-            #             -type f -print)"
+# ---------------------------------------------------------------------------
+# [3/4] Obfuscation / exec primitives in config + public JS.
+# ---------------------------------------------------------------------------
+echo "[3/4] Checking for exec/obfuscation primitives..."
+for file in "${scan_files[@]}"; do
+  for pattern in 'eval[[:space:]]*\(' 'Function[[:space:]]*\(' 'String\.fromCharCode' 'createRequire'; do
+    if grep -nE "$pattern" "$file" >/dev/null 2>&1; then
+      echo "FAIL [forbidden-pattern] $file matches: $pattern" >&2
+      grep -nE "$pattern" "$file" >&2 || true
+      FAILED=1
+    fi
+  done
+done
 
-            #           echo "[3/3] Checking postcss.config.mjs integrity..."
-            #           POSTCSS="$ROOT/postcss.config.mjs"
-            #           if [ -f "$POSTCSS" ]; then
-            #             SIZE=$(wc -c < "$POSTCSS")
-            #             if [ "$SIZE" -gt 500 ]; then
-            #               echo "FAIL [file-size] postcss.config.mjs is $SIZE bytes (expected < 500)"
-            #               FAILED=1
-            #             fi
-            #             for token in require import process\.env child_process fetch; do
-            #               if grep -qE "$token" "$POSTCSS" 2>/dev/null; then
-            #                 echo "FAIL [postcss-integrity] postcss.config.mjs contains forbidden token: $token"
-            #                 FAILED=1
-            #               fi
-            #             done
-            #           fi
+# ---------------------------------------------------------------------------
+# [4/4] postcss.config.mjs integrity.
+# ---------------------------------------------------------------------------
+echo "[4/4] Checking postcss.config.mjs integrity..."
+POSTCSS="postcss.config.mjs"
+if [[ -f "$POSTCSS" ]]; then
+  size=$(wc -c < "$POSTCSS")
+  if [[ "$size" -gt "$POSTCSS_MAX_BYTES" ]]; then
+    echo "FAIL [postcss-size] $POSTCSS is $size bytes (expected < $POSTCSS_MAX_BYTES)" >&2
+    FAILED=1
+  fi
+  for token in 'require' 'import[[:space:]]*\(' 'process\.env' 'child_process' 'fetch'; do
+    if grep -nE "$token" "$POSTCSS" >/dev/null 2>&1; then
+      echo "FAIL [postcss-integrity] $POSTCSS contains forbidden token: $token" >&2
+      FAILED=1
+    fi
+  done
+fi
 
-            #           if [ "$FAILED" -eq 1 ]; then
-            #             echo "Scan failed. Review the findings above."
-            #             exit 1
-            #           fi
-            #           echo "All checks passed."
+if [[ "$FAILED" -ne 0 ]]; then
+  echo "Supply-chain scan FAILED — review the findings above." >&2
+  exit 1
+fi
+
+echo "OK: supply-chain scan passed (no forbidden patterns)."

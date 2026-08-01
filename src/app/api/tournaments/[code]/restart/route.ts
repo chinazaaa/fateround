@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parseJsonBody } from '@/lib/parse-body'
-import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { secretMatches } from '@/lib/secret-compare'
 import { tournamentHostActionSchema } from '@/lib/tournament-validation'
-
-const supabase = getSupabaseAnon()
 
 const RESTART_ERRORS: Record<string, { message: string; status: number }> = {
   not_found: { message: 'Tournament not found', status: 404 },
@@ -34,9 +32,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     .eq('id', tournamentId)
     .maybeSingle()
   if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
-  if (tournament.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  if (!(await secretMatches(hostToken, tournament.host_token)))
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
 
-  const { data, error } = await supabase.rpc('restart_tournament', { p_tournament_id: tournamentId })
+  const { data, error } = await getSupabaseAdmin().rpc('restart_tournament', { p_tournament_id: tournamentId })
 
   // Fail closed — a DB error must not read as a successful restart.
   if (error) {
