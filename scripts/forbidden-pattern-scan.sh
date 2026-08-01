@@ -55,15 +55,20 @@ fi
 # Build the list of files to scan for checks 2 & 3: root config files plus any
 # JavaScript shipped under public/.
 # ---------------------------------------------------------------------------
+# TWO passes on purpose. `-maxdepth 1` applies to the whole traversal, not to the branch it
+# sits in, so combining these into one expression means the `public/` branch is never reached
+# and public/sw.js — the only JavaScript we actually ship to browsers, and so the highest-value
+# target for an injected payload — is silently skipped (flagged in review on PR #738).
 scan_files=()
 while IFS= read -r f; do
   [[ -n "$f" ]] && scan_files+=("$f")
-done < <(find . \
-  \( -path './node_modules' -o -path './.git' -o -path './.next' \) -prune -o \
-  \( \
-    \( -maxdepth 1 -type f \( -name '*.mjs' -o -name '*.cjs' -o -name 'postcss*' -o -name '*.config.*' \) \) \
-    -o \( -path './public/*' -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' \) \) \
-  \) -print 2>/dev/null)
+done < <(
+  # Pass 1: root-level config files only.
+  find . -maxdepth 1 -type f \
+    \( -name '*.mjs' -o -name '*.cjs' -o -name 'postcss*' -o -name '*.config.*' \) -print 2>/dev/null
+  # Pass 2: any JavaScript shipped under public/, at any depth.
+  find ./public -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' \) -print 2>/dev/null
+)
 
 # ---------------------------------------------------------------------------
 # [2/4] Long-line detection.

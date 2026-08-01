@@ -28,8 +28,32 @@ const ALLOWLIST = new Set([
 
 // Flags a CREATE POLICY that is FOR ALL (or a write command) reachable by anon/public
 // with an unconditional USING(true)/WITH CHECK(true). SELECT-only policies are ignored.
-const CREATE_POLICY_RE =
-  /create\s+policy\s+"?([a-z0-9_]+)"?\s+on\s+[^\n]*?\bfor\s+(all|insert|update|delete)\b([\s\S]*?)(?=;)/gi
+//
+// The FOR clause is OPTIONAL in Postgres and defaults to ALL — so `create policy x on t
+// using (true)` is fully anon-writable. An earlier version of this pattern required `for
+// <cmd>`, which meant the single most dangerous statement it could encounter was the one
+// shape it silently ignored (flagged in review on PR #738). An absent clause is now read
+// as ALL.
+//
+// Terminator is `;` OR end-of-input, so a final statement without a trailing semicolon
+// can't slip past either.
+// Matches a whole CREATE POLICY statement; the command is parsed out of the captured body
+// rather than baked into this pattern.
+//
+// Two traps this shape avoids, both found in review on PR #738:
+//   * The FOR clause is OPTIONAL in Postgres and defaults to ALL, so `create policy x on t
+//     using (true)` is fully anon-writable — the single most dangerous statement the gate
+//     can meet was the one shape an earlier `\bfor\s+(...)` pattern silently skipped.
+//   * That clause is routinely on a LATER LINE than `on <table>`, so anything that stops at
+//     a newline misreads a real `for select` policy as an implicit ALL and cries wolf.
+// Terminating on `;` OR end-of-input also stops a final unterminated statement slipping by.
+const CREATE_POLICY_RE = /create\s+policy\s+"?([a-z0-9_]+)"?\s+on\s+([\s\S]*?)(?=;|$)/gi
+
+/** The command a policy applies to. An absent FOR clause means ALL (Postgres default). */
+function policyCommand(statementBody) {
+  const m = /\bfor\s+(all|insert|update|delete|select)\b/i.exec(statementBody)
+  return m ? m[1].toLowerCase() : 'all'
+}
 
 function versionOf(filename) {
   const m = filename.match(/^(\d+)_/)
@@ -51,10 +75,17 @@ for (const file of readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql'))
   if (!version || version <= CUTOFF_VERSION) continue
   const sql = readFileSync(join(MIGRATIONS_DIR, file), 'utf8')
   for (const match of sql.matchAll(CREATE_POLICY_RE)) {
-    const [, name, cmd, body] = match
+    const [, name, body] = match
     if (ALLOWLIST.has(name)) continue
+    const cmd = policyCommand(body)
+    // A SELECT-only policy grants no writes; reads staying open is the documented decision in
+    // docs/rls-hardening.md, so those are not violations.
+    if (cmd === 'select') continue
+    const implicit = !/\bfor\s+(all|insert|update|delete|select)\b/i.test(body)
     if (isAnonReachable(body)) {
-      violations.push(`${file}: policy "${name}" is FOR ${cmd.toUpperCase()} and anon/PUBLIC-reachable with USING/CHECK(true)`)
+      violations.push(
+        `${file}: policy "${name}" is FOR ${cmd.toUpperCase()}${implicit ? ' (implicit — no FOR clause)' : ''} and anon/PUBLIC-reachable with USING/CHECK(true)`
+      )
     }
   }
 }

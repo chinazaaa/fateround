@@ -3,6 +3,7 @@ import { syncNpatGameState } from '@/lib/npat-advance'
 import { npatAdvanceSchema } from '@/lib/validation'
 import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { secretMatches } from '@/lib/secret-compare'
 
 // System/timer route: any client may poke it and syncNpatGameState only acts once a
 // phase deadline has genuinely passed — that anonymous, deadline-driven advance stays
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Host token required to force advance' }, { status: 403 })
     }
     const { data: game } = await supabase.from('games').select('host_token').eq('id', code).maybeSingle()
-    if (!game || game.host_token !== body.hostToken) {
+    if (!(await secretMatches(body.hostToken, game?.host_token))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
   }

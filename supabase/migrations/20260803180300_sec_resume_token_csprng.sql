@@ -7,10 +7,16 @@
 -- and shown masked in the UI, so we can raise both the entropy and the length without any
 -- UX cost.
 --
--- New tokens: 16 uppercase hex chars (64 bits) from gen_random_uuid(), which is backed by
--- a cryptographically strong RNG. Uppercase hex is a subset of [A-Z0-9], so it survives
--- normalizeResumeToken() (which uppercases + strips to [A-Z0-9]) unchanged. Existing tokens
--- keep working (comparisons are equality-based); we do NOT rotate them.
+-- New tokens: 16 uppercase hex chars (64 bits) from pgcrypto's gen_random_bytes(8).
+--
+-- NOT the first 16 hex of a gen_random_uuid(): a v4 UUID carries fixed version/variant bits,
+-- and character 13 of the de-hyphenated string is ALWAYS '4' (verified over 500 samples).
+-- That would be 15 random hex chars — 60 bits — plus one constant, which is both weaker than
+-- advertised and a needlessly odd shape for a credential (flagged in review on PR #738).
+--
+-- Uppercase hex is a subset of [A-Z0-9], so it survives normalizeResumeToken() (which
+-- uppercases + strips to [A-Z0-9]) unchanged. Existing tokens keep working (comparisons are
+-- equality-based); we do NOT rotate them.
 
 CREATE OR REPLACE FUNCTION set_player_resume_token()
 RETURNS TRIGGER AS $$
@@ -22,8 +28,16 @@ BEGIN
     RETURN NEW;
   END IF;
   LOOP
-    -- 16 uppercase hex chars (64 bits) from a CSPRNG-backed UUID.
-    candidate := upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 16));
+    -- 16 uppercase hex chars = 8 CSPRNG bytes = 64 bits, no fixed bits.
+    -- Fall back to the UUID form if pgcrypto is somehow unavailable: a weaker token beats a
+    -- trigger that raises and blocks every player from joining.
+    begin
+      candidate := upper(encode(gen_random_bytes(8), 'hex'));
+    exception
+      when undefined_function then
+        candidate := upper(replace(gen_random_uuid()::text, '-', ''));
+        candidate := upper(substr(candidate, 1, 12) || substr(candidate, 17, 4));
+    end;
     IF NOT EXISTS (
       SELECT 1 FROM players p
       WHERE p.game_id = NEW.game_id AND p.resume_token = candidate
