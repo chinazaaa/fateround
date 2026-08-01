@@ -221,6 +221,21 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
 
   const myName = myPlayer?.name ?? ''
 
+  /**
+   * Drop a session that has a player id but no resume token (saved before tokens were stored)
+   * and put the player back on the join screen.
+   *
+   * Clearing the id alone is not enough: `screen` stays 'active', `canPost` flips false, and the
+   * composer vanishes with no join control anywhere — a dead end (review on PR #736). syncScreen
+   * picks the right destination for the game's current status.
+   */
+  const dropStaleSession = async () => {
+    await clearPlayerSession(code)
+    setMyPlayerId(null)
+    if (game) syncScreen(game, null)
+    else setScreen('join')
+  }
+
   const sendMessage = async () => {
     const text = messageInput.trim()
     if (!text || !myPlayerId || sending || !canPost) return
@@ -231,8 +246,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       // join screen returns and they get a token-bearing one (review on PR #736).
       const session = await getPlayerSession(code)
       if (!session?.resumeToken) {
-        await clearPlayerSession(code)
-        setMyPlayerId(null)
+        await dropStaleSession()
         throw new Error('Your session expired — rejoin to send messages')
       }
       await postAnonymousMessage(code, session.resumeToken, text, replyTo?.id ?? null)
@@ -252,8 +266,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     try {
       const session = await getPlayerSession(code)
       if (!session?.resumeToken) {
-        await clearPlayerSession(code)
-        setMyPlayerId(null)
+        await dropStaleSession()
         throw new Error('Your session expired — rejoin to send messages')
       }
       await postAnonymousGif(code, session.resumeToken, mediaUrl, replyTo?.id ?? null)

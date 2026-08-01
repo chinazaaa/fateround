@@ -30,10 +30,9 @@ export function NowPlayingBar({ gameCode, resumeToken }: { gameCode: string; res
 
   const hasTrack = Boolean(session?.track_uri)
   const isPremium = product === 'premium'
-  const connectSpotify = async () => {
-    if (!auth) return
+  const connectSpotify = async (proof: MusicAuth) => {
     setConnectError(null)
-    setConnectError(await startSpotifyConnect(auth, `/game/${gameCode}`))
+    setConnectError(await startSpotifyConnect(proof, `/game/${gameCode}`))
   }
 
   // Nothing to show: connected Premium listener with no track playing yet.
@@ -81,9 +80,20 @@ export function NowPlayingBar({ gameCode, resumeToken }: { gameCode: string; res
 
         {!connected ? (
           <div className="flex flex-col items-end gap-1">
-            <button type="button" onClick={connectSpotify} className="btn-primary btn-fit whitespace-nowrap text-xs">
-              Connect Spotify
-            </button>
+            {auth ? (
+              // Only offered when we hold the player's resume token — that token IS the proof the
+              // connect handshake needs. Without it, an enabled-looking button would do nothing
+              // and a disabled one would say nothing, so explain instead (review on PR #736).
+              <button
+                type="button"
+                onClick={() => connectSpotify(auth)}
+                className="btn-primary btn-fit whitespace-nowrap text-xs"
+              >
+                Connect Spotify
+              </button>
+            ) : (
+              <span className="whitespace-nowrap text-xs text-muted">Rejoin the game to connect Spotify</span>
+            )}
             {connectError && <span className="text-xs text-[var(--danger)]">{connectError}</span>}
           </div>
         ) : !isPremium ? (

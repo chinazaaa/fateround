@@ -56,9 +56,8 @@ export function HostMusicControl({ gameCode, hostToken }: { gameCode: string; ho
   // Return to the plain host path — NOT with ?token=. The host token is remembered in
   // localStorage (useHostToken) on this device, so it re-authorizes without carrying the
   // secret through Spotify's redirect chain / browser history.
-  const connectSpotify = async () => {
-    if (!auth) return
-    const message = await startSpotifyConnect(auth, `/host/${gameCode}`)
+  const connectSpotify = async (proof: MusicAuth) => {
+    const message = await startSpotifyConnect(proof, `/host/${gameCode}`)
     if (message) toastError(message)
   }
 
@@ -197,14 +196,18 @@ export function HostMusicControl({ gameCode, hostToken }: { gameCode: string; ho
             {musicEnabled ? (
               <>
                 {/* Host connection state */}
-                {!connected ? (
+                {!connected && auth ? (
+                  // Only offered while we hold the host token — that token IS the proof the
+                  // connect handshake needs, so an authless button could only fail silently.
                   <button
                     type="button"
-                    onClick={connectSpotify}
+                    onClick={() => connectSpotify(auth)}
                     className="btn-primary btn-fit block w-full text-center text-xs"
                   >
                     Connect your Spotify
                   </button>
+                ) : !connected ? (
+                  <p className="text-xs text-muted">Reopen this panel from your host link to connect Spotify.</p>
                 ) : !isPremium ? (
                   <p className="text-xs text-muted">
                     You can DJ, but hearing music yourself needs Spotify Premium. Players hear it on their own accounts.
