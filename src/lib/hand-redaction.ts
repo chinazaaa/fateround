@@ -22,6 +22,11 @@ import { normalizeResumeToken } from '@/lib/utils'
  * So the count has to survive redaction. `card_count` is public information in every one of
  * these games (you can see how many cards an opponent holds), and it is what the table UI and
  * the out/finished checks actually need.
+ *
+ * STATUS AND REMAINING WORK: docs/rls-hardening.md § "Phase 7 — hand redaction". Whot is the
+ * canary; UNO, Crazy Eights and Bingo still read their hand tables directly from the browser,
+ * and the migration revoking `cards` from anon must come LAST — one migration for all four,
+ * only once every reader is on a route. Adding it earlier breaks live games.
  */
 
 /** A hand row as the client is allowed to see it: own cards in full, others' as a count. */

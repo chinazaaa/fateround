@@ -9,7 +9,9 @@ import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
  *
  * Canary for the hand-redaction pattern — Whot goes first for the same reason Snake & Ladder
  * did in docs/rls-hardening.md: it is the smallest end-to-end proof, and the other three games
- * (UNO, Crazy Eights, Bingo) follow the identical shape once this is playtested.
+ * (UNO, Crazy Eights, Bingo) follow the identical shape once this is playtested. Per-game
+ * status and the remaining checklist live in docs/rls-hardening.md § "Phase 7 — hand
+ * redaction"; copy this file to add a game.
  *
  * POST, not GET: the caller's resume token is a secret and must not land in a query string
  * (access logs, CDN logs, browser history) — same reasoning as /api/codewords/board.
