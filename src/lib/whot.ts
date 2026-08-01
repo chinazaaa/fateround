@@ -59,7 +59,10 @@ export type WhotStanding = {
 
 /** Minimal hand shape `whotPlacementOrder` needs — works for both `WhotPlayerHand`
  *  rows and the trimmed `{ player_id, cards }` rows the room-points query selects. */
-type WhotRankableHand = { player_id: string; cards: WhotCard[] }
+// `cards` is nullable on the client-facing WhotPlayerHand (null == redacted, see types/index.ts),
+// but ranking only ever runs server-side where the real array is in hand. Accept the nullable
+// shape and treat a missing array as empty so callers don't have to pre-map.
+type WhotRankableHand = { player_id: string; cards: WhotCard[] | null }
 
 /**
  * Final placement order (1st → last), the single source of truth for who placed where.

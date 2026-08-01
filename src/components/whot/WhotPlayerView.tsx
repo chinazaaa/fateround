@@ -22,8 +22,9 @@ import {
   WHOT_MIN_PLAYERS,
 } from '@/lib/whot'
 import { supabase } from '@/lib/supabase'
+import { fetchWhotHands } from '@/lib/hands-client'
 import { WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT } from '@/lib/supabase-selects'
-import { clearPlayerSession } from '@/lib/utils'
+import { clearPlayerSession, getPlayerSession } from '@/lib/utils'
 import type { Game, WhotPlayerHand, WhotSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
@@ -69,14 +70,23 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   // Game-specific load: fetch the whot session + player hands (the shared game/players
   // fetch + session resolution lives in useGameViewBootstrap).
   const loadGameState = useCallback(async (): Promise<{ state: WhotSession | null; ok: boolean }> => {
-    const [sessionRes, handsRes] = await Promise.all([
+    // Hands come from /api/whot/hands, not the table: other players' `cards` must never reach
+    // this client (see lib/hand-redaction.ts). Own cards come back in full; everyone else's
+    // arrive as `card_count`.
+    const [sessionRes, handsData] = await Promise.all([
       supabase.from('whot_sessions').select(WHOT_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-      supabase.from('whot_player_hands').select(WHOT_PLAYER_HANDS_SELECT).eq('game_id', gameCode).order('player_order'),
+      // Read the token from the session store rather than the hook value: this callback is
+      // defined before useGameViewBootstrap (which itself takes `load`), so closing over
+      // myResumeToken here would be a cycle.
+      fetchWhotHands(gameCode, { resumeToken: getPlayerSession(gameCode)?.resumeToken }),
     ])
     const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as WhotSession | null) : null
     if (sessionData) setSession(sessionData)
-    if (supabasePollOk(handsRes)) setHands((handsRes.data as WhotPlayerHand[]) ?? [])
-    return { state: sessionData, ok: supabasePollOk(sessionRes, handsRes) }
+    // null = the fetch failed. Leave the previous hands in place rather than clearing them —
+    // an empty hand is meaningful state here ("you are out"), so a transport blip must not
+    // masquerade as one.
+    if (handsData) setHands(handsData)
+    return { state: sessionData, ok: supabasePollOk(sessionRes) && handsData !== null }
   }, [gameCode])
 
   const computeScreen = useCallback((gameData: Game, playerId: string | null): Screen => {
@@ -129,17 +139,36 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     sessionRef.current = next
     return prev != null // first session still reloads (harmless; games event also covers start)
   }, [])
-  const applyHandRow = useCallback((row: Record<string, unknown>): boolean => {
-    const next = row as unknown as WhotPlayerHand
-    setHands((prev) => {
-      const i = prev.findIndex((h) => h.id === next.id)
-      if (i === -1) return [...prev, next].sort((a, b) => a.player_order - b.player_order)
-      const copy = [...prev]
-      copy[i] = next
-      return copy
-    })
-    return true // a hand change never changes the screen — always safe to skip the reload
-  }, [])
+  const applyHandRow = useCallback(
+    (row: Record<string, unknown>): boolean => {
+      const next = row as unknown as WhotPlayerHand
+      // Once `cards` is revoked from anon, realtime payloads carry no cards at all. Applying
+      // one verbatim to OUR OWN row would blank the hand — and because `isOut` is derived from
+      // an empty hand, it would read as "you are out" mid-game. So: never let a payload shrink
+      // our own hand; re-fetch through the authorized route instead.
+      if (myPlayerId && next.player_id === myPlayerId && !Array.isArray(next.cards)) {
+        void fetchWhotHands(gameCode, { resumeToken: getPlayerSession(gameCode)?.resumeToken }).then((hands) => {
+          if (hands) setHands(hands)
+        })
+        return true
+      }
+      setHands((prev) => {
+        const i = prev.findIndex((h) => h.id === next.id)
+        // Carry a known count forward when the payload omits it, so an opponent never
+        // momentarily renders as holding zero cards.
+        const merged: WhotPlayerHand = {
+          ...next,
+          card_count: next.card_count ?? (Array.isArray(next.cards) ? next.cards.length : prev[i]?.card_count),
+        }
+        if (i === -1) return [...prev, merged].sort((a, b) => a.player_order - b.player_order)
+        const copy = [...prev]
+        copy[i] = merged
+        return copy
+      })
+      return true // a hand change never changes the screen — always safe to skip the reload
+    },
+    [gameCode, myPlayerId]
+  )
 
   // Realtime push: patch session + hands locally on plays (see above), reload for games/players.
   const connected = useGameTableSync(
@@ -238,7 +267,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const handCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const h of hands) {
-      counts[h.player_id] = h.cards?.length ?? 0
+      counts[h.player_id] = h.card_count ?? h.cards?.length ?? 0
     }
     return counts
   }, [hands])

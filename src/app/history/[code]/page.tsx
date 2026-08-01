@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { fetchCodewordsBoard } from '@/lib/codewords-board-client'
+import { fetchWhotHands } from '@/lib/hands-client'
 import { roundGenderLabel } from '@/lib/participants'
 import { isGenderFreeVoting } from '@/lib/gender-based'
 import {
@@ -393,14 +394,13 @@ export default function GameHistoryPage() {
       }
 
       if (isWhotGame(gameType)) {
-        const [{ data: plrs }, { data: sessionData }, { data: handRows }] = await Promise.all([
+        // Hands via /api/whot/hands: `cards` is no longer read directly by the browser. This
+        // page only renders finished games, and the route reveals full hands once a game is
+        // finished, so the post-game summary is unchanged.
+        const [{ data: plrs }, { data: sessionData }, handRows] = await Promise.all([
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
           supabase.from('whot_sessions').select(WHOT_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-          supabase
-            .from('whot_player_hands')
-            .select(WHOT_PLAYER_HANDS_SELECT)
-            .eq('game_id', gameCode)
-            .order('player_order'),
+          fetchWhotHands(gameCode, {}),
         ])
         setGame(gameData)
         setPlayers(plrs ?? [])

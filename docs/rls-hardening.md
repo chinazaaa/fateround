@@ -119,6 +119,58 @@ For each game:
 
 ---
 
+## Phase 7 — hand redaction (per-player secret state) — ⏳ IN PROGRESS
+
+Opened by the Aug 2026 audit follow-up. **The read-side threat model above says reads stay
+public; these tables are the documented exception**, because the row IS the secret.
+
+`whot_player_hands`, `uno_player_hands`, `crazy_eights_player_hands` and `bingo_cards` hold one
+row per player and are readable with the publishable anon key. Confirmed live on dev:
+`select player_id, cards from whot_player_hands` returned every hand in every game (54 rows).
+The clients render other players' cards face-down — presentation, not a control.
+
+### Why this is NOT a column revoke
+
+Two things make the naive fix worse than the leak, and both are why this is its own phase:
+
+1. Realtime payloads for these tables are applied **directly** to state (`applyHandRow`), not
+   used as a reload trigger — a payload without `cards` overwrites a good hand with an empty one.
+2. The views derive `myHand = row?.cards ?? []` and then `isOut = !!row && myHand.length === 0`,
+   so a redacted row does not merely blank the hand — **it makes the client believe the player
+   is out of the game**. Mobile's finished screen additionally sums every player's cards for the
+   standings.
+
+So the count must survive redaction. `card_count` is public information in all of these games
+and is what the table UI and the out/finished checks actually consume.
+
+### The pattern (established by the Whot canary)
+
+- `src/lib/hand-redaction.ts` — `redactHands()` returns the viewer's own cards in full and every
+  other hand as `cards: null` plus `card_count`. `null` rather than `[]` deliberately: an empty
+  array is meaningful state, and conflating "hidden" with "empty" is the bug above.
+- `POST /api/<game>/hands` — resolves the viewer from their **resume token** via the service
+  role, never a client-supplied `playerId`. POST so the token stays out of query strings.
+  Reveals full hands once `games.status = 'finished'`, which keeps `/history/[code]` and the
+  mobile finished standings working.
+- Every browser reader switches to the route; realtime handlers must never let a payload shrink
+  the local player's own hand (re-fetch instead) and must carry a known `card_count` forward.
+
+### Per-game status
+
+| Game | Table | Server route | Web readers | Mobile reader | Playtested | Migration |
+|---|---|---|---|---|---|---|
+| Whot | `whot_player_hands` | ✅ `/api/whot/hands` | ✅ player, host, history | ✅ | ❌ **required** | ⏳ blocked |
+| UNO | `uno_player_hands` | ❌ | ❌ | ❌ | ❌ | ⏳ blocked |
+| Crazy Eights | `crazy_eights_player_hands` | ❌ | ❌ | ❌ | ❌ | ⏳ blocked |
+| Bingo | `bingo_cards` | ❌ | ❌ | ❌ | ❌ | ⏳ blocked |
+
+**Per the staging rule below, the migration revoking `cards` from anon comes LAST — one
+migration covering all four, only once every reader for every one of those tables is on a
+route.** Shipping it earlier breaks live games in the two ways described above.
+
+Playtest per game before its row is ticked: deal → several plays → a player goes out → finish,
+on web **and** mobile, watching that nobody is wrongly shown as out and opponent counts track.
+
 ## Progress log
 
 ### Snake & Ladder (canary) — code-complete, ⏳ live verification pending
