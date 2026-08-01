@@ -20,12 +20,33 @@
 -- Default privileges are recorded per granting-role. Objects created by migrations run as
 -- the migration role, so set it for both that role and postgres to cover either path.
 
+-- NOTE: this file is edited in place rather than superseded by a new migration. Its first
+-- version failed on dev with "permission denied to change default privileges (SQLSTATE 42501)"
+-- and therefore was never recorded in schema_migrations in ANY environment — so there is no
+-- applied state to preserve, and leaving the broken version in place would block every future
+-- `supabase db push`.
+--
+-- Cause: `ALTER DEFAULT PRIVILEGES FOR ROLE x` requires the current role to be a MEMBER of x.
+-- The migration connection runs as `postgres`, which on Supabase is not a member of
+-- `supabase_admin`, so that iteration aborted the whole block. `postgres` was always the one
+-- that mattered anyway — default privileges attach to the role that CREATES the object, and
+-- migrations create objects as the role running them.
+
 do $$
 declare
   grantor text;
 begin
-  foreach grantor in array array['postgres', 'supabase_admin'] loop
-    if exists (select 1 from pg_roles where rolname = grantor) then
+  -- One query does existence, membership and de-duplication. Membership is the important
+  -- part: ALTER DEFAULT PRIVILEGES FOR ROLE x demands it, and checking up front keeps a
+  -- non-member into a skipped notice instead of a 42501 that takes down the migration — and
+  -- every migration queued behind it.
+  for grantor in
+    select r.rolname
+      from pg_roles r
+     where r.rolname in ('postgres', 'supabase_admin', current_user)
+       and pg_has_role(current_user, r.oid, 'MEMBER')
+  loop
+    begin
       execute format(
         'alter default privileges for role %I in schema public revoke insert, update, delete on tables from anon, authenticated',
         grantor
@@ -40,7 +61,15 @@ begin
         'alter default privileges for role %I in schema public grant all on tables to service_role',
         grantor
       );
-    end if;
+      raise notice 'default privileges: applied for %', grantor;
+    exception
+      when insufficient_privilege then
+        -- Belt to the pg_has_role braces: a managed platform can refuse even where membership
+        -- looks right. Degrade to a notice — the per-table lockdowns in 20260803120000/140000/
+        -- 170000 are the load-bearing controls; this migration only changes the DEFAULT for
+        -- objects created later.
+        raise notice 'default privileges: insufficient privilege for %, skipped', grantor;
+    end;
   end loop;
 end $$;
 
