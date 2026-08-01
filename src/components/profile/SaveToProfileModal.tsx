@@ -60,6 +60,14 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
       setMessage(result.error ?? 'Could not send the code. Try again.')
       return
     }
+    // No code was issued because none was needed — the upgrade already landed. Advancing to
+    // the code step here would leave the player waiting for an email that never arrives.
+    if (result.complete) {
+      success('Saved to your profile')
+      onChanged()
+      onClose()
+      return
+    }
     // `flow` decides how the code is verified (an in-place upgrade vs a sign-in), so it has to
     // survive from this step to the next.
     setFlow(result.flow)
