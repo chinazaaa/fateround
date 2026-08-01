@@ -64,6 +64,9 @@ export const RATE_LIMITS = {
   // Guards the Codewords key card: without a cap, a wrong-token caller could grind this
   // endpoint. Sized for real play — every player re-fetches the board on each board change.
   codewordsBoard: { bucket: 'codewords-board', max: 600, windowSeconds: 300 },
+  // Card-hand fetches. Every player re-fetches on every play, so in a 6-player game a single
+  // round is ~36 calls; this has to clear a long session without ever throttling real play.
+  handsFetch: { bucket: 'hands-fetch', max: 1200, windowSeconds: 300 },
 } as const satisfies Record<string, RateLimitRule>
 
 // Keyed hash so stored keys can't be reversed by offline enumeration. Peppered

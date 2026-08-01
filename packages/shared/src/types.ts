@@ -777,7 +777,14 @@ export interface WhotPlayerHand {
   id: string
   game_id: string
   player_id: string
-  cards: WhotCard[]
+  /**
+   * `null` means REDACTED (another player's hand) — deliberately not `[]`, since an empty
+   * array is meaningful state ("this player is out"). Use `card_count` for anyone but the
+   * local player. See src/lib/hand-redaction.ts.
+   */
+  cards: WhotCard[] | null
+  /** How many cards the player holds. Public information; survives redaction. */
+  card_count?: number
   player_order: number
 }
 

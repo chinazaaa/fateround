@@ -1,5 +1,5 @@
 import { apiUrl } from '@/lib/config'
-import type { GameType } from '@fateround/shared'
+import type { GameType, WhotPlayerHand } from '@fateround/shared'
 import type { GamePlayerLimitsMap } from '@fateround/shared/lobby-limits'
 import { getCodeDefaultLimits } from '@fateround/shared/lobby-limits'
 import type { MafiaStateResponse } from '@fateround/shared/mafia'
@@ -992,6 +992,18 @@ export function postQuickDrawGuessSkip(gameId: string, resumeToken: string) {
 
 export function postQuickDrawGuessTeam(gameId: string, resumeToken: string, team: number) {
   return postJson<{ success: boolean }>('/api/quick-draw/guess-team', { gameId, resumeToken, team })
+}
+
+/**
+ * Whot hands via the server route — own cards in full, everyone else's as a count.
+ * Returns null on failure so callers can keep the previous hands rather than rendering an
+ * empty one (which reads as "you are out"). See src/lib/hand-redaction.ts.
+ */
+export function postWhotHands(gameCode: string, auth: { resumeToken?: string | null }) {
+  return postJson<{ hands: WhotPlayerHand[] }>('/api/whot/hands', {
+    gameCode: gameCode.toUpperCase(),
+    resumeToken: auth.resumeToken ?? undefined,
+  })
 }
 
 export function postAnonymousMessage(gameId: string, resumeToken: string, text: string, replyToId?: string | null) {

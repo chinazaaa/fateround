@@ -58,7 +58,9 @@ export type WhotStanding = {
 
 /** Minimal hand shape `whotPlacementOrder` needs — works for both `WhotPlayerHand`
  *  rows and the trimmed `{ player_id, cards }` rows the room-points query selects. */
-type WhotRankableHand = { player_id: string; cards: WhotCard[] }
+// Nullable to match WhotPlayerHand (null == redacted). Ranking only runs where the real
+// array is available; a missing one is treated as empty.
+type WhotRankableHand = { player_id: string; cards: WhotCard[] | null }
 
 /**
  * Final placement order (1st → last), the single source of truth for who placed where.
