@@ -138,6 +138,13 @@ function SaveToProfileSheet({
       setMessage(result.error ?? 'Could not send the code. Try again.')
       return
     }
+    // No code was issued because none was needed — the upgrade already landed. Advancing to
+    // the code step would leave the player waiting for an email that never arrives.
+    if (result.complete) {
+      onChanged()
+      onClose()
+      return
+    }
     // `flow` decides how the code is verified, so it has to survive to the next step.
     setFlow(result.flow)
     setStep('code')

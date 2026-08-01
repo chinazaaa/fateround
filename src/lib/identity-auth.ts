@@ -26,7 +26,20 @@ import { supabase } from '@/lib/supabase'
 /** Which Supabase verification the code belongs to — the two cases need different types. */
 export type EmailCodeFlow = 'upgrade' | 'signin'
 
-export type RequestCodeResult = { ok: boolean; flow: EmailCodeFlow; error?: string }
+export type RequestCodeResult = {
+  ok: boolean
+  flow: EmailCodeFlow
+  error?: string
+  /**
+   * True when the upgrade already finished and there is no code to enter.
+   *
+   * Supabase only sends a confirmation when "Confirm email" is enabled. With it off,
+   * `updateUser({ email })` applies the address immediately and marks it confirmed — so asking
+   * for a code would strand the user on a screen waiting for a mail that is never coming, even
+   * though they are already upgraded. The caller must treat this as success and close.
+   */
+  complete?: boolean
+}
 export type VerifyCodeResult = { ok: boolean; error?: string }
 
 const GENERIC_ERROR = "That didn't work. Check the address and try again."
@@ -60,8 +73,17 @@ export async function requestEmailCode(email: string): Promise<RequestCodeResult
     // Case A first: upgrading in place is strictly better than signing in, because it keeps
     // the same auth.uid() and therefore loses nothing.
     if (user?.is_anonymous) {
-      const { error } = await supabase.auth.updateUser({ email: address })
-      if (!error) return { ok: true, flow: 'upgrade' }
+      const { data: updated, error } = await supabase.auth.updateUser({ email: address })
+      if (!error) {
+        // When email confirmation is disabled the address is applied straight away and no
+        // code is issued. Detect that (address now live, nothing pending) and finish here.
+        const applied = updated.user?.email?.toLowerCase() === address && !updated.user?.new_email
+        if (applied) {
+          await ensureProfile()
+          return { ok: true, flow: 'upgrade', complete: true }
+        }
+        return { ok: true, flow: 'upgrade' }
+      }
       // Anything other than "already registered" is a real failure worth surfacing; a taken
       // address just means this is Case B, so fall through and sign in instead.
       if (!isEmailTaken(error)) return { ok: false, flow: 'upgrade', error: error.message || GENERIC_ERROR }
