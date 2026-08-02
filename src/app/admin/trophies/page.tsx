@@ -249,35 +249,55 @@ export default function AdminTrophiesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight">Trophies</h1>
-          <p className="mt-1 max-w-2xl text-sm text-[var(--muted)]">
-            Two kinds live here. <strong>Custom</strong> trophies are rules you write over the shared counters — add and
-            edit them freely. <strong>System</strong> trophies are written in code against one game&apos;s own
-            measurements; they show here so the list is the whole truth, but they can only be retired, not edited. What
-            you can&apos;t invent is a new <em>measurement</em> — the vocabulary below is what rules can talk about.
-          </p>
+      <div className="glass-card p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-black tracking-tight">Trophies</h1>
+            <p className="mt-1 max-w-xl text-sm text-[var(--muted)]">
+              Trophies are rules over a fixed vocabulary of measurements. You can compose rules freely — what you
+              can&apos;t do is invent a new <em>measurement</em>.
+            </p>
+          </div>
+          {/* The seed action, anchored top-right. It's the "a new game was added, give it its
+              trophies" action — not a launch step — so it reads as an obvious no-op when nothing
+              is missing, and only carries a caption when there's actually something to do. */}
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
+            <button
+              type="button"
+              onClick={seed}
+              disabled={busy || missingCount === null || missingCount === 0}
+              className={`px-4 py-2 text-sm disabled:opacity-60 ${
+                missingCount && missingCount > 0 ? 'btn-primary' : 'btn-secondary'
+              }`}
+            >
+              {missingCount === null
+                ? 'Catalog unavailable'
+                : missingCount > 0
+                  ? `Add ${missingCount} missing ${missingCount === 1 ? 'trophy' : 'trophies'}`
+                  : '✓ Catalog up to date'}
+            </button>
+            {missingCount !== 0 && (
+              <p className="max-w-[15rem] text-right text-xs text-[var(--muted)]">
+                {missingCount === null
+                  ? 'Reload the page to try again.'
+                  : 'Seeds the standard set for any newly-added game type.'}
+              </p>
+            )}
+          </div>
         </div>
-        {/* Kept, but stated as what it does. It is the "a new game was added, give it its
-            trophies" action — not a launch step — so when nothing is missing it says so rather
-            than sitting there looking like something you forgot to press. */}
-        <div className="text-right">
-          <button
-            type="button"
-            onClick={seed}
-            disabled={busy || missingCount === null || missingCount === 0}
-            className="btn-secondary px-4 py-2 text-sm disabled:opacity-50"
-          >
-            {missingCount === null
-              ? 'Catalog unavailable'
-              : missingCount > 0
-                ? `Add ${missingCount} missing ${missingCount === 1 ? 'trophy' : 'trophies'}`
-                : 'Catalog up to date'}
-          </button>
-          <p className="mt-1 max-w-[16rem] text-xs text-[var(--muted)]">
-            Builds the standard set for any game that has none — press it after adding a new game type.
-          </p>
+
+        {/* The two kinds of trophy, as scannable tags rather than a paragraph. */}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <span className="inline-flex items-center gap-2 rounded-full bg-[var(--surface-inset-bg)] px-3 py-1 text-xs">
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--primary)]" />
+            <span className="font-semibold">Custom</span>
+            <span className="text-[var(--muted)]">you write and edit these freely</span>
+          </span>
+          <span className="inline-flex items-center gap-2 rounded-full bg-[var(--surface-inset-bg)] px-3 py-1 text-xs">
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--muted)]" />
+            <span className="font-semibold">System</span>
+            <span className="text-[var(--muted)]">defined in code · shown here but retire-only</span>
+          </span>
         </div>
       </div>
 
@@ -288,10 +308,12 @@ export default function AdminTrophiesPage() {
           exist reads as zero (the trophy is simply never earned, with no error anywhere), so
           being able to check a name is what separates a typo from a real measure. But it grows
           with every game, so it's collapsed by default and out of the way until wanted. */}
-      <details className="glass-card p-5 [&[open]_summary_.chev]:rotate-90">
+      <details open={vocabOpen} onToggle={(e) => setVocabOpen(e.currentTarget.open)} className="glass-card p-5">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
           <span className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide">
-            <span className="chev inline-block text-[var(--muted)] transition-transform">›</span>
+            <span className={`inline-block text-[var(--muted)] transition-transform ${vocabOpen ? 'rotate-90' : ''}`}>
+              ›
+            </span>
             What rules can measure
           </span>
           <span className="text-xs font-normal normal-case text-[var(--muted)]">

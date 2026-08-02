@@ -1342,7 +1342,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         'The player who has won the most houses wins.',
         'Endgame: once only eight seeds remain, the player who captures the first four automatically takes the last four and the game ends.',
-        'You can also win if your opponent resigns, leaves, or runs out of time. A tie is possible if both players win the same number of houses.',
+        'You can also win if your opponent resigns, leaves, or runs out of time. If both players win the same number of houses, the most seeds captured breaks the tie; a draw needs both to be equal.',
       ],
     },
     {

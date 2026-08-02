@@ -103,7 +103,8 @@ export function HostAyoLobbyPanel({ gameCode, hostToken, game, onGameUpdate }: P
           <p className="text-xs text-white/60">
             Traditional Ayo Olopon. Sow anti-clockwise, relaying until your last seed lands in an empty house. When your
             last seed completes exactly four in any house — yours or your opponent’s — you win it. Once only eight seeds
-            remain, the player who captures the first four takes the last four and the game ends. Most houses wins.
+            remain, the player who captures the first four takes the last four and the game ends. Most houses wins — if
+            houses are equal, the most seeds captured breaks the tie.
           </p>
         </HostLobbySettingBlock>
 

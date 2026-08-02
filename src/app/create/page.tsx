@@ -4107,7 +4107,8 @@ function CreateGameInner() {
                   Traditional Ayo Olopon — sow anti-clockwise, relaying whenever your last seed lands in a non-empty
                   house. When your last seed completes exactly four in any house — yours or your opponent’s — you win
                   it. Once only eight seeds remain, the player who captures the first four takes the last four and the
-                  game ends. Most houses wins; the winner is Ọta.
+                  game ends. Most houses wins — if houses are equal, the most seeds captured breaks the tie. The winner
+                  is Ọta.
                 </p>
               </SettingsGroup>
             ) : isScrabble ? (

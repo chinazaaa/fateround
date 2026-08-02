@@ -117,9 +117,9 @@ describe('traditional sowFromPit', () => {
 
   it('relays through non-empty landings, conserving seeds when nothing is captured', () => {
     const pits = startingPits()
-    const { pits: next } = sowFromPit(pits, 0, TRADITIONAL_CONFIG)
-    // Nothing leaves the board unless a four is completed on the last seed.
-    expect(seedsOnBoard(next)).toBeLessThanOrEqual(48)
+    const { pits: next, capture } = sowFromPit(pits, 0, TRADITIONAL_CONFIG)
+    // Every seed is accounted for: whatever is not still on the board was captured.
+    expect(seedsOnBoard(next) + capture).toBe(48)
     expect(next.some((n) => n === 0)).toBe(true)
   })
 

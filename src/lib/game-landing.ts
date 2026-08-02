@@ -2563,7 +2563,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     heroSubtitle: 'Sow seeds, complete fours to win houses, and crown Ọta — the Yoruba classic, head-to-head.',
     bodyParagraph:
-      "Ayo on FateRound follows traditional Ayo Olopon rules for two players online. Twelve houses, four seeds each, sow anti-clockwise around the board — relaying whenever your last seed lands in a house that already has seeds, and picking them all up to keep going. Your turn ends when your last seed lands in an empty house. When your last seed makes a house hold exactly four seeds — your own or your opponent's — you win that house. Once only eight seeds remain, the player who captures the first four takes the last four and the game ends. The player who has won the most houses is the winner — Ọta; the loser is Ọpẹ. Three straight wins makes an Ọta champion.",
+      "Ayo on FateRound follows traditional Ayo Olopon rules for two players online. Twelve houses, four seeds each, sow anti-clockwise around the board — relaying whenever your last seed lands in a house that already has seeds, and picking them all up to keep going. Your turn ends when your last seed lands in an empty house. When your last seed makes a house hold exactly four seeds — your own or your opponent's — you win that house. Once only eight seeds remain, the player who captures the first four takes the last four and the game ends. The player who has won the most houses is the winner — Ọta; the loser is Ọpẹ. If houses are equal, the most seeds captured breaks the tie. Winning three straight games makes a player an Ọta champion.",
     highlights: ['2 players', 'Complete fours', 'Ọta & Ọpẹ'],
     features: [
       {
